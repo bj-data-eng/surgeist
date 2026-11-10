@@ -420,6 +420,51 @@ fn close(actual: f64, expected: f64) {
     assert!((actual - expected).abs() < 1e-10, "{actual} != {expected}");
 }
 
+#[test]
+fn control_participant_reports_cell_absorption_without_erasing_source() {
+    let mut system = System::default();
+    system
+        .register_fonts(qualified_font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    let orientation = LineOrientation::SidewaysClockwise;
+    let options = PreparationOptions::default().with_orientation(orientation);
+    for (mode, expected_advance) in [
+        (TextCombineUpright::None, 30.0),
+        (TextCombineUpright::All, 10.0),
+    ] {
+        let (processed, analyzed) = captured(InputKind::CapturedOverride, mode, orientation);
+        let prepared = system.prepare(&analyzed, options).unwrap();
+        let control = prepared.control_views().next().unwrap().handle();
+        assert_eq!(
+            control.captured_control(),
+            processed.captured_control(0),
+            "the actual inner RLO remains retained source"
+        );
+        assert_eq!(prepared.analyzed_source().source(), processed.source());
+        match mode {
+            TextCombineUpright::None => assert_eq!(
+                control.view().participant(),
+                Some(PreparedParticipant::Control(control.clone()))
+            ),
+            TextCombineUpright::All => {
+                assert_eq!(control.view().participant(), None);
+                let cell = prepared.cell_views().next().unwrap();
+                assert_eq!(
+                    cell.source_cell().used_code_points().collect::<Vec<_>>(),
+                    [0x41, 0x42, 0x43]
+                );
+                assert!(
+                    prepared
+                        .participants()
+                        .any(|participant| matches!(participant, PreparedParticipant::Cell(_)))
+                );
+            }
+            _ => unreachable!("the actual fixture selects None or All"),
+        }
+        assert_eq!(complete(&prepared).feedback().advance, expected_advance);
+    }
+}
+
 fn qualify(kind: InputKind) {
     let bytes = qualified_font();
     for orientation in [

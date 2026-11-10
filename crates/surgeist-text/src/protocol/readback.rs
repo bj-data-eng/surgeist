@@ -980,6 +980,18 @@ impl PreparedAtomicView<'_> {
 }
 
 impl PreparedControlView<'_> {
+    /// The actual canonical outer participant representing this control.
+    /// A transformed Wbr can be represented by Text rather than Control.
+    /// None means no outer participant represents the control, including when
+    /// a Cell absorbs it; the original control is still retained source.
+    /// This readback grants no break or placement authority.
+    #[must_use]
+    pub fn participant(&self) -> Option<PreparedParticipant> {
+        self.data()
+            .participant
+            .map(|index| participant(self.prepared, self.prepared.tables.participants[index]))
+    }
+
     /// Control occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {

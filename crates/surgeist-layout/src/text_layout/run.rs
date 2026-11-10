@@ -2691,7 +2691,7 @@ pub(crate) fn number<S: LayoutScalar>(value: f64) -> Result<S, FitError> {
     }
     Ok(number)
 }
-pub(super) fn add(base: f64, delta: f64) -> Result<f64, FitError> {
+pub(crate) fn add(base: f64, delta: f64) -> Result<f64, FitError> {
     crate::scalar::checked_geometry_add(base, delta).map_err(FitError::from)
 }
 

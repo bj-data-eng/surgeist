@@ -8,7 +8,201 @@ use super::floats::{
 };
 use crate::LayoutScalar;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
+use crate::text_layout::scope_alignment::EntryBacking;
+use crate::text_layout::scope_alignment::EntryFundingRef;
 use surgeist_text::{FinalizedLine, LineEnd, PreparedParticipant, SourcePosition, TextSeam};
+
+mod ancestor_end;
+use ancestor_end::ClosingEnds;
+pub(super) use ancestor_end::source_interval;
+
+pub(super) struct FloatEvents<Node, S: LayoutScalar> {
+    rows: Vec<FloatEvent<Node, S>>,
+    backing: EntryBacking,
+}
+impl<Node: Copy + Eq, S: LayoutScalar> FloatEvents<Node, S> {
+    pub fn new() -> Self {
+        Self {
+            rows: Vec::new(),
+            backing: EntryBacking::default(),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+    pub fn push(
+        &mut self,
+        event: FloatEvent<Node, S>,
+        funding: Option<EntryFundingRef<'_>>,
+    ) -> Result<(), FitError> {
+        self.backing.reserve_push_ref(&mut self.rows, funding)?;
+        self.rows.push(event);
+        Ok(())
+    }
+    pub fn bind<'a>(
+        self,
+        run: &crate::text_layout::AdmittedRun<'_, Node>,
+        associations: &crate::text_layout::capture::ScopeAssociations<Node>,
+        controls: impl Iterator<Item = &'a surgeist_text::ControlAllocation> + Clone,
+        mut interval: impl FnMut(
+            &surgeist_text::InlineBoxSource,
+        ) -> Result<Option<(usize, usize)>, FitError>,
+        funding: Option<EntryFundingRef<'_>>,
+    ) -> Result<BoundEvents<Node, S>, FitError> {
+        let mut backing = EntryBacking::default();
+        let mut rows = Vec::new();
+        for source in self.rows {
+            if let Some(funding) = funding {
+                funding.visit(1)?;
+            }
+            let closing_ends = ClosingEnds::project(
+                &source,
+                run,
+                associations,
+                controls.clone(),
+                &mut interval,
+                funding,
+            )?;
+            backing.reserve_push_ref(&mut rows, funding)?;
+            rows.push(FloatEncounter {
+                source,
+                closing_ends,
+            });
+        }
+        Ok(BoundEvents {
+            rows,
+            _backing: backing,
+        })
+    }
+}
+
+pub(super) struct FloatEncounter<Node, S: LayoutScalar> {
+    source: FloatEvent<Node, S>,
+    closing_ends: ClosingEnds,
+}
+pub(super) struct BoundEvents<Node, S: LayoutScalar> {
+    rows: Vec<FloatEncounter<Node, S>>,
+    _backing: EntryBacking,
+}
+impl<Node, S: LayoutScalar> std::ops::Deref for BoundEvents<Node, S> {
+    type Target = [FloatEncounter<Node, S>];
+    fn deref(&self) -> &Self::Target {
+        &self.rows
+    }
+}
+
+struct OriginIncidence {
+    represented: bool,
+    inside: bool,
+}
+
+fn visit_source(funding: Option<EntryFundingRef<'_>>) -> Result<(), FitError> {
+    if let Some(funding) = funding {
+        funding.visit(1)?;
+    }
+    Ok(())
+}
+
+fn source_computed_cut<Node: Copy + Eq>(
+    associations: &crate::text_layout::capture::ScopeAssociations<Node>,
+    boundary: &surgeist_text::PreparedComputedLineBoundary,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<crate::text_layout::capture::ComputedNativeCut>, FitError> {
+    for (actual, cut) in associations.computed_cuts() {
+        visit_source(funding)?;
+        if actual == boundary {
+            return Ok(Some(cut));
+        }
+    }
+    Ok(None)
+}
+
+/// Incidence belongs to one preparation and one actual original occurrence.
+/// The admitted origin ranges have equal local and aggregate lengths.
+fn text_origin_incidence(
+    unit: &surgeist_text::PreparedUnit,
+    origin: &surgeist_text::PreparedOrigin,
+    local: usize,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<OriginIncidence>, FitError> {
+    visit_source(funding)?;
+    if unit.prepared_text() != origin.prepared_text() {
+        return Ok(None);
+    }
+    let unit = unit.view();
+    let original = origin.view();
+    if let Some(empty) = unit.empty_origin() {
+        return Ok((empty == *origin).then_some(OriginIncidence {
+            represented: original.local_range().contains(local)
+                || local == original.local_range().end,
+            inside: false,
+        }));
+    }
+    let aggregate = original.aggregate_range();
+    let range = unit.source_range();
+    let start = range.start.max(aggregate.start);
+    let end = range.end.min(aggregate.end);
+    if start >= end {
+        return Ok(None);
+    }
+    let local_start = original.local_range().start + (start - aggregate.start);
+    let local_end = original.local_range().start + (end - aggregate.start);
+    let declared = original.local_range();
+    let in_origin = declared.start <= local && local <= declared.end;
+    let inside = if in_origin {
+        let source = aggregate.start + (local - declared.start);
+        range.start < source && source < range.end
+    } else {
+        false
+    };
+    Ok(Some(OriginIncidence {
+        represented: in_origin && local_start <= local && local <= local_end,
+        inside,
+    }))
+}
+
+/// A Cell can span several originals without offering an interior break.
+/// Its captured pieces preserve the original endpoint used by Text's prefix.
+fn cell_origin_incidence(
+    cell: &surgeist_text::PreparedCell,
+    origin: &surgeist_text::PreparedOrigin,
+    local: usize,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<OriginIncidence>, FitError> {
+    let view = origin.view();
+    let Some(captured) = view.capture_position() else {
+        return Ok(None);
+    };
+    let mut member = false;
+    let mut represented = false;
+    let mut before = false;
+    let mut after = false;
+    for piece in cell.view().source_cell().source_pieces() {
+        if let Some(funding) = funding {
+            funding.visit(1)?;
+        }
+        match piece.origin_position().partial_cmp(&captured) {
+            Some(std::cmp::Ordering::Less) => before = true,
+            Some(std::cmp::Ordering::Greater) => after = true,
+            Some(std::cmp::Ordering::Equal) => {
+                if let Some(funding) = funding {
+                    funding.visit(6)?;
+                }
+                let range = piece.local();
+                let declared = view.local_range();
+                member |= (range.start <= declared.end) & (declared.start <= range.end);
+                represented |= (range.start <= local) & (local <= range.end);
+                before |= range.start < local;
+                after |= local < range.end;
+            }
+            None => {}
+        }
+    }
+    Ok(member.then_some(OriginIncidence {
+        represented,
+        inside: before && after,
+    }))
+}
 
 pub(super) struct FloatEvent<Node, S: LayoutScalar> {
     pub pending: PendingFloat<Node, S>,
@@ -28,88 +222,124 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
         offset: usize,
         request: crate::ComputeInputOf<S>,
+        funding: Option<EntryFundingRef<'_>>,
     ) -> Result<Self, FitError> {
         let binding = run.binding;
         if packet.node != pending.node || packet.input != request {
             return Err(FitError::InvalidGeometry);
         }
-        let participants: Vec<_> = binding.prepared.participants().collect();
         let origin_seam = |origin: &surgeist_text::PreparedOrigin,
                            after: bool|
-         -> Option<(TextSeam, usize, bool)> {
+         -> Result<Option<(TextSeam, usize, bool)>, FitError> {
             let view = origin.view();
             let local = if after {
                 view.local_range().end
             } else {
                 view.local_range().start
             };
-            let source = if after {
-                view.aggregate_range().end
-            } else {
-                view.aggregate_range().start
+            let mut endpoint = None;
+            for (index, participant) in binding.prepared.participants().enumerate() {
+                visit_source(funding)?;
+                let inside = match participant {
+                    PreparedParticipant::Text(unit) => {
+                        let Some(incidence) = text_origin_incidence(&unit, origin, local, funding)?
+                        else {
+                            continue;
+                        };
+                        incidence.inside
+                    }
+                    PreparedParticipant::Cell(cell) => {
+                        let Some(incidence) = cell_origin_incidence(&cell, origin, local, funding)?
+                        else {
+                            continue;
+                        };
+                        incidence.inside
+                    }
+                    _ => continue,
+                };
+                endpoint = Some((index, inside));
+                if !after {
+                    break;
+                }
+            }
+            let Some((index, inside)) = endpoint else {
+                return Ok(None);
             };
-            let positions = participants
-                .iter()
-                .enumerate()
-                .filter_map(|(index, participant)| {
-                    let PreparedParticipant::Text(unit) = participant else {
-                        return None;
-                    };
-                    let unit_view = unit.view();
-                    (unit_view.empty_origin().as_ref() == Some(origin)
-                        || unit_view.origins().any(|row| row.origin() == *origin))
-                    .then_some((index, unit_view.source_range()))
-                })
-                .collect::<Vec<_>>();
-            let &(index, range) = if after {
-                positions.last()?
-            } else {
-                positions.first()?
-            };
-            let inside = range.start < source && source < range.end;
-            Some((
+            Ok(Some((
                 TextSeam::Origin {
                     origin: origin.clone(),
-                    local: SourcePosition::try_new(view.source().text(), local).ok()?,
+                    local: SourcePosition::try_new(view.source().text(), local)
+                        .map_err(|_| FitError::InvalidGeometry)?,
                 },
                 index + usize::from(after && !inside),
                 inside,
-            ))
+            )))
         };
-        let at_node = |node: Node, after: bool| -> Option<(TextSeam, usize, bool)> {
-            if let Some(row) = binding.origins.iter().find(|row| row.node == node) {
-                return origin_seam(&row.origin, after);
+        let at_node =
+            |node: Node, after: bool| -> Result<Option<(TextSeam, usize, bool)>, FitError> {
+                for row in &binding.origins {
+                    visit_source(funding)?;
+                    if row.node == node {
+                        return origin_seam(&row.origin, after);
+                    }
+                }
+                let mut participant = None;
+                for row in &binding.controls {
+                    visit_source(funding)?;
+                    if row.node == node {
+                        participant = row.occurrence.view().participant();
+                        break;
+                    }
+                }
+                if participant.is_none() {
+                    for row in &binding.atomics {
+                        visit_source(funding)?;
+                        if row.node == node {
+                            participant = Some(PreparedParticipant::Atomic(row.occurrence.clone()));
+                            break;
+                        }
+                    }
+                }
+                let Some(participant) = participant else {
+                    return Ok(None);
+                };
+                let mut rank = None;
+                for (index, actual) in binding.prepared.participants().enumerate() {
+                    visit_source(funding)?;
+                    if actual == participant {
+                        rank = Some(index);
+                        break;
+                    }
+                }
+                let Some(index) = rank else {
+                    return Ok(None);
+                };
+                Ok(Some((
+                    if after {
+                        TextSeam::AfterParticipant(participant)
+                    } else {
+                        TextSeam::BeforeParticipant(participant)
+                    },
+                    index + usize::from(after),
+                    false,
+                )))
+            };
+        let mut previous = None;
+        for &node in run.nodes()[..offset].iter().rev() {
+            visit_source(funding)?;
+            previous = at_node(node, true)?;
+            if previous.is_some() {
+                break;
             }
-            let participant = binding
-                .controls
-                .iter()
-                .find(|row| row.node == node)
-                .map(|row| PreparedParticipant::Control(row.occurrence.clone()))
-                .or_else(|| {
-                    binding
-                        .atomics
-                        .iter()
-                        .find(|row| row.node == node)
-                        .map(|row| PreparedParticipant::Atomic(row.occurrence.clone()))
-                })?;
-            let index = participants.iter().position(|p| p == &participant)?;
-            Some((
-                if after {
-                    TextSeam::AfterParticipant(participant)
-                } else {
-                    TextSeam::BeforeParticipant(participant)
-                },
-                index + usize::from(after),
-                false,
-            ))
-        };
-        let previous = run.nodes()[..offset]
-            .iter()
-            .rev()
-            .find_map(|&node| at_node(node, true));
-        let following = run.nodes()[offset + 1..]
-            .iter()
-            .find_map(|&node| at_node(node, false));
+        }
+        let mut following = None;
+        for &node in &run.nodes()[offset + 1..] {
+            visit_source(funding)?;
+            following = at_node(node, false)?;
+            if following.is_some() {
+                break;
+            }
+        }
         let lower = previous
             .as_ref()
             .map_or(run.segment.start().view().participant_offset(), |row| row.1);
@@ -122,12 +352,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         let mut next_seam = following.map(|value| value.0);
         let mut preceding_computed = None;
         let mut following_computed = None;
-        for (index, participant) in participants.iter().enumerate().take(upper).skip(lower) {
-            let PreparedParticipant::ComputedLineBoundary(boundary) = participant else {
+        for (index, participant) in binding.prepared.participants().enumerate().take(upper) {
+            visit_source(funding)?;
+            if index < lower {
+                continue;
+            }
+            let PreparedParticipant::ComputedLineBoundary(ref boundary) = participant else {
                 continue;
             };
-            let cut = associations
-                .computed_cut(boundary)
+            let cut = source_computed_cut(associations, boundary, funding)?
                 .and_then(|cut| cut.relative_to(run.inventory.clone()))
                 .ok_or(FitError::MissingComputedBoundaryIncidence)?;
             match cut.side_of_node(offset) {
@@ -196,7 +429,7 @@ struct EncounterJournal<Node, S: LayoutScalar> {
 }
 
 pub(super) struct Encounters<Node, S: LayoutScalar> {
-    pub events: Vec<FloatEvent<Node, S>>,
+    events: BoundEvents<Node, S>,
     incoming: Option<FloatExclusions<S, Node>>,
     base: FloatExclusions<S, Node>,
     current: FloatExclusions<S, Node>,
@@ -211,7 +444,7 @@ pub(super) struct Encounters<Node, S: LayoutScalar> {
 
 impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
     pub fn new(
-        events: Vec<FloatEvent<Node, S>>,
+        events: BoundEvents<Node, S>,
         base: FloatExclusions<S, Node>,
         cursor: S,
         inline_space: FloatInlineSpace,
@@ -225,7 +458,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 remaining: events
                     .iter()
                     .enumerate()
-                    .map(|(index, event)| (event.position, index))
+                    .map(|(index, event)| (event.source.position, index))
                     .collect(),
                 tentative: Vec::new(),
                 accepted: Vec::new(),
@@ -264,7 +497,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 self.accepted[index] = None;
                 journal
                     .remaining
-                    .insert((self.events[index].position, index));
+                    .insert((self.events[index].source.position, index));
             }
             journal.earlier_float_top = journal.incoming_float_top;
             journal.group = None;
@@ -300,7 +533,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 self.accepted[index] = None;
                 journal
                     .remaining
-                    .insert((self.events[index].position, index));
+                    .insert((self.events[index].source.position, index));
             }
             journal.earlier_float_top = group.earlier_float_top;
         }
@@ -326,6 +559,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         container: Node,
         line: &FinalizedLine,
         replay: EncounterReplay,
+        funding: Option<EntryFundingRef<'_>>,
     ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
         self.reset_candidate()
             .map_err(|error| super::inline_run::text_run_error(container, error))?;
@@ -360,7 +594,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         });
         for ordinal in 0..window.as_ref().map_or(self.events.len(), Vec::len) {
             let index = window.as_ref().map_or(ordinal, |window| window[ordinal]);
-            let event = &self.events[index];
+            let encounter = &self.events[index];
+            let event = &encounter.source;
             #[cfg(test)]
             {
                 self.replay_event_visits += 1;
@@ -374,38 +609,56 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
                 continue;
             }
-            let represented =
-                |request: &surgeist_text::LineSelectionRequest, seam: &TextSeam| match seam {
+            let represented = |request: &surgeist_text::LineSelectionRequest,
+                               seam: &TextSeam|
+             -> Result<bool, FitError> {
+                Ok(match seam {
                     TextSeam::BeforeParticipant(participant)
                     | TextSeam::AfterParticipant(participant) => {
-                        request.participants.contains(participant)
+                        let mut found = false;
+                        for actual in &request.participants {
+                            visit_source(funding)?;
+                            if actual == participant {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
                     }
                     TextSeam::Origin { origin, local } => {
-                        request
-                            .participants
-                            .iter()
-                            .any(|participant| match participant {
+                        let mut found = false;
+                        for participant in &request.participants {
+                            visit_source(funding)?;
+                            found = match participant {
                                 PreparedParticipant::Text(unit) => {
-                                    unit.view().empty_origin().as_ref() == Some(origin)
-                                        || unit.view().origins().any(|row| {
-                                            row.origin() == *origin
-                                                && row.local_range().start <= local.get()
-                                                && local.get() <= row.local_range().end
-                                        })
+                                    text_origin_incidence(unit, origin, local.get(), funding)?
+                                        .is_some_and(|incidence| incidence.represented)
+                                }
+                                PreparedParticipant::Cell(cell) => {
+                                    cell_origin_incidence(cell, origin, local.get(), funding)?
+                                        .is_some_and(|incidence| incidence.represented)
                                 }
                                 _ => false,
-                            })
+                            };
+                            if found {
+                                break;
+                            }
+                        }
+                        found
                     }
-                };
+                })
+            };
             // At an equal participant boundary the real originating seam,
             // rather than the numeric tie, determines prefix ownership.
             let original_request = line.selected_line();
-            let prefix = replay.preceding.as_ref().filter(|_| {
-                event.position < portion_start
+            let use_preceding = replay.preceding.is_some()
+                && (event.position < portion_start
                     || event.position == portion_start
                         && !event.inside
-                        && !represented(original_request.request(), &event.seam)
-            });
+                        && !represented(original_request.request(), &event.seam).map_err(
+                            |error| super::inline_run::text_run_error(container, error),
+                        )?);
+            let prefix = replay.preceding.as_ref().filter(|_| use_preceding);
             let boxes = prefix
                 .map_or(replay.boxes.as_ref(), |frame| frame.boxes.as_ref())
                 .cloned();
@@ -456,13 +709,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             if !eligible {
                 continue;
             }
-            let observation = if represented(request, &event.seam) {
-                AcceptedFloatPrefix::Seam(event.seam.clone())
-            } else if let Some(seam) = event
-                .following
-                .as_ref()
-                .filter(|seam| represented(request, seam))
+            let observation = if represented(request, &event.seam)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?
             {
+                AcceptedFloatPrefix::Seam(event.seam.clone())
+            } else if let Some(seam) = match &event.following {
+                Some(seam)
+                    if represented(request, seam)
+                        .map_err(|error| super::inline_run::text_run_error(container, error))? =>
+                {
+                    Some(seam)
+                }
+                _ => None,
+            } {
                 AcceptedFloatPrefix::Seam(seam.clone())
             } else if start == end
                 && event.position == end
@@ -482,7 +741,16 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             let (prefix, preceding) = observation
                 .observe(line)
                 .map_err(|error| super::inline_run::text_run_error(container, error))?;
-            let inline_constraint = prefix + request.context.indent;
+            let demand = encounter
+                .closing_ends
+                .demand(line, &observation, funding)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?;
+            let inline_constraint = crate::text_layout::run::add(
+                crate::text_layout::run::add(prefix, request.context.indent)
+                    .map_err(|error| super::inline_run::text_run_error(container, error))?,
+                demand.extra,
+            )
+            .map_err(|error| super::inline_run::text_run_error(container, error))?;
             if !inline_constraint.is_finite() {
                 return Err(super::inline_run::text_run_error(
                     container,
@@ -516,7 +784,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 FloatInlineSpace::Finite => self.current.place_float_for_line(
                     container,
                     &pending,
-                    preceding.then_some((inline_constraint, line_end)),
+                    (preceding || demand.participates).then_some((inline_constraint, line_end)),
                 )?,
                 FloatInlineSpace::IntrinsicMaximum => {
                     self.current.place_float_intrinsic(container, &pending)?
@@ -579,7 +847,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 journal.accepted.push(index);
                 journal
                     .remaining
-                    .remove(&(self.events[index].position, index));
+                    .remove(&(self.events[index].source.position, index));
             }
         } else {
             self.accepted = self.tentative.clone();
@@ -590,11 +858,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         let children = self
             .accepted
             .into_iter()
-            .zip(self.events)
+            .zip(self.events.rows)
             .filter_map(|(plan, event)| {
                 plan.map(|pending| AcceptedFloatChild {
                     pending,
-                    packet: event.packet,
+                    packet: event.source.packet,
                 })
             })
             .collect();
@@ -607,3 +875,30 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
 
 #[cfg(test)]
 mod balance_tests;
+
+#[cfg(test)]
+mod zero_edge_prefix_tests;
+
+#[cfg(test)]
+mod prefix_content_tests;
+
+#[cfg(test)]
+mod ancestor_end_tests;
+
+#[cfg(test)]
+mod ancestor_end_controls;
+
+#[cfg(test)]
+mod generated_end_controls;
+
+#[cfg(test)]
+mod cell_prefix_tests;
+
+#[cfg(test)]
+mod closing_source_controls;
+
+#[cfg(test)]
+mod closing_funding_tests;
+
+#[cfg(test)]
+mod source_incidence_tests;

@@ -150,10 +150,7 @@ impl AcceptedFloatPrefix {
         match self {
             Self::Seam(seam) => {
                 let observation = line.prefix_at(seam)?;
-                Ok((
-                    observation.advance(),
-                    observation.has_retained_flow_participation(),
-                ))
+                Ok((observation.advance(), observation.has_in_flow_content()))
             }
             Self::EmptyParagraphEnd { boundary, original } => {
                 let selected = line.selected_line();

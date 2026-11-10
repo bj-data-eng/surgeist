@@ -131,6 +131,174 @@ fn full_selection(layout: &crate::Layout) -> crate::PlacedSelection {
 }
 
 #[test]
+fn control_participant_keeps_the_ordinary_control_occurrence() {
+    let p = prepare(input(
+        Source::new("AX"),
+        WhiteSpace::Preserve,
+        vec![wbr(1, WordSpaceTransform::None)],
+    ));
+    let control = p.control_views().next().unwrap().handle();
+    assert_eq!(
+        control.view().participant(),
+        Some(PreparedParticipant::Control(control.clone()))
+    );
+    let line = whole(&p);
+    let participant = control.view().participant().unwrap();
+    for seam in [
+        crate::TextSeam::BeforeParticipant(participant.clone()),
+        crate::TextSeam::AfterParticipant(participant),
+    ] {
+        let prefix = line.prefix_at(&seam).unwrap();
+        assert_eq!(prefix.advance(), 10.0);
+        assert!(prefix.has_in_flow_content());
+    }
+}
+
+#[test]
+fn control_participant_keeps_distinct_generated_text_at_equal_anchors() {
+    let p = prepare(input(
+        Source::new("A\u{3099}"),
+        WhiteSpace::Preserve,
+        vec![
+            wbr(1, WordSpaceTransform::Space),
+            wbr(1, WordSpaceTransform::IdeographicSpace),
+        ],
+    ));
+    let controls: Vec<_> = p.control_views().map(|view| view.handle()).collect();
+    let line = whole(&p);
+    let mut actual = Vec::new();
+    for (control, expected) in controls.iter().zip([15.0, 35.0]) {
+        let participant = control.view().participant().unwrap();
+        let PreparedParticipant::Text(unit) = &participant else {
+            panic!("an expanded Wbr has a real Text participant")
+        };
+        assert_eq!(
+            unit.view().controls().collect::<Vec<_>>().as_slice(),
+            std::slice::from_ref(control)
+        );
+        assert!(unit.view().origins().next().is_none());
+        assert_eq!(unit.prepared_text(), p);
+        let prefix = line
+            .prefix_at(&crate::TextSeam::AfterParticipant(participant.clone()))
+            .unwrap();
+        // Actual width-Ahem A10, SPACE5, ideographic SPACE20 and mark0.
+        assert_eq!(prefix.advance(), expected);
+        assert!(prefix.has_in_flow_content());
+        actual.push(participant);
+    }
+    assert_ne!(actual[0], actual[1]);
+    assert_eq!(line.feedback().advance, 35.0);
+}
+
+#[test]
+fn control_participant_retains_its_preparation_after_the_view_drops() {
+    let source = Source::identified("", Id::from_u64(6_315), 7);
+    let prepare_same = || {
+        prepare(input(
+            source.clone(),
+            WhiteSpace::Preserve,
+            vec![wbr(0, WordSpaceTransform::Space)],
+        ))
+    };
+    let (participant, line) = {
+        let p = prepare_same();
+        let participant = p.control_views().next().unwrap().participant().unwrap();
+        (participant, whole(&p))
+    };
+    let prefix = line
+        .prefix_at(&crate::TextSeam::AfterParticipant(participant.clone()))
+        .unwrap();
+    assert_eq!(prefix.advance(), 5.0);
+    assert!(prefix.has_in_flow_content());
+
+    let foreign = prepare_same();
+    let foreign_participant = foreign
+        .control_views()
+        .next()
+        .unwrap()
+        .participant()
+        .unwrap();
+    assert_ne!(participant, foreign_participant);
+    let error = line
+        .prefix_at(&crate::TextSeam::AfterParticipant(foreign_participant))
+        .unwrap_err();
+    assert!(matches!(
+        error.detail(),
+        Some(crate::ErrorDetail::InvalidTextProtocol {
+            reason: ProtocolError::ForeignSelectedLine,
+        })
+    ));
+}
+
+#[test]
+fn control_participant_discarded_wbr_does_not_acquire_following_mark_content() {
+    let p = prepare(input(
+        Source::new("\u{3099}A"),
+        WhiteSpace::Collapse,
+        vec![paragraph::ParagraphControl {
+            at: 0,
+            kind: paragraph::ParagraphControlKind::Wbr {
+                style: Box::new(style(WordSpaceTransform::Space, WhiteSpace::Collapse)),
+            },
+        }],
+    ));
+    let control = p.control_views().next().unwrap().handle();
+    let generated = control.view().participant().unwrap();
+    let PreparedParticipant::Text(unit) = &generated else {
+        panic!("the real Wbr expansion must retain Text identity")
+    };
+    assert_eq!(
+        unit.view().controls().collect::<Vec<_>>().as_slice(),
+        std::slice::from_ref(&control)
+    );
+    let mark = p
+        .participants()
+        .find(|participant| {
+            matches!(participant, PreparedParticipant::Text(unit)
+            if unit.view().source_range() == Range::new(0, 1))
+        })
+        .unwrap();
+    assert_ne!(generated, mark);
+    let line = whole(&p);
+    let prefix = line
+        .prefix_at(&crate::TextSeam::AfterParticipant(generated.clone()))
+        .unwrap();
+    // Width-Ahem's SPACE5/mark0 provider group is shared across two semantic
+    // inputs before Phase-II discard: SPACE2.5 is discarded, mark2.5 remains.
+    // A35 contributes10px separately. Whole-group credit must not turn the
+    // later mark into preceding content.
+    assert!(!prefix.has_in_flow_content());
+    assert!(!prefix.has_retained_flow_participation());
+    assert!(prefix.interior_unit().is_some());
+    let generated_slot = line
+        .spacing_slots()
+        .find(|row| row.slot.participants().any(|part| *part == generated))
+        .unwrap();
+    assert_eq!(
+        generated_slot.disposition,
+        SpacingSlotDisposition::DiscardedAtLineEdge
+    );
+    assert_eq!(generated_slot.advance, 0.0);
+    let after_mark = line
+        .prefix_at(&crate::TextSeam::AfterParticipant(mark))
+        .unwrap();
+    assert!(after_mark.has_in_flow_content());
+    assert_eq!(prefix.advance(), 2.5);
+    assert_eq!(prefix.interior_unit().unwrap().advance().unwrap(), 2.5);
+    assert_eq!(after_mark.advance(), 2.5);
+    assert_eq!(line.feedback().advance, 12.5);
+    let first_consuming = p
+        .boundary_views()
+        .find(|view| {
+            p.boundary_consumes_control(&view.handle(), &control)
+                .unwrap()
+        })
+        .unwrap();
+    assert_eq!(first_consuming.participant_offset(), 2);
+    assert_eq!(p.participants().next(), Some(generated));
+}
+
+#[test]
 fn wbr_emits_real_control_owned_glyphs_without_source_donation() {
     for (operation, glyph, advance, total) in [
         (WordSpaceTransform::Space, 3, 5.0, 25.0),

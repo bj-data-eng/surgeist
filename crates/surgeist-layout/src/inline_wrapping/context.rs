@@ -39,6 +39,15 @@ enum SourceExtent {
     },
 }
 impl SourceExtent {
+    fn text_source(
+        &self,
+        prepared: &surgeist_text::PreparedText,
+    ) -> surgeist_text::Result<surgeist_text::InlineBoxSource> {
+        match self {
+            Self::Captured(scope) => Ok(surgeist_text::InlineBoxSource::captured(scope.clone())),
+            Self::Native { start, end } => prepared.native_inline_box(start.clone(), end.clone()),
+        }
+    }
     fn canonical(scope: &CapturedScope) -> Self {
         Self::Captured(scope.clone())
     }
@@ -310,35 +319,71 @@ pub(super) fn native_span_with<Node: Copy + Eq>(
     }
     Ok((graph.nodes[parent], NativeSpan { first, last }))
 }
+fn scan_ordered_ranks<Node: Copy + Eq, E: From<WrappingScopeError>>(
+    graph: &ValidationGraph<Node>,
+    owner: usize,
+    domain: std::ops::Range<usize>,
+    nodes: &[Node],
+    inspect: &mut impl FnMut() -> Result<(), E>,
+    mut consume: impl FnMut(usize) -> Result<(), E>,
+) -> Result<(), E> {
+    let children = &graph.children[owner];
+    children
+        .get(domain.clone())
+        .ok_or(WrappingScopeError::InconsistentIncidence)?;
+    let mut cursor = domain.start;
+    for &node in nodes {
+        let mut found = None;
+        for (offset, &child) in children[cursor..domain.end].iter().enumerate() {
+            inspect()?;
+            if graph.nodes[child] == node {
+                found = Some(cursor + offset);
+                break;
+            }
+        }
+        let Some(rank) = found else {
+            let mut in_domain = false;
+            for &child in &children[domain.clone()] {
+                inspect()?;
+                if graph.nodes[child] == node {
+                    in_domain = true;
+                    break;
+                }
+            }
+            if in_domain {
+                return Err(WrappingScopeError::EndpointOrder.into());
+            }
+            for &child in children {
+                inspect()?;
+                if graph.nodes[child] == node {
+                    return Err(WrappingScopeError::InconsistentIncidence.into());
+                }
+            }
+            return Err(WrappingScopeError::DifferentFlow.into());
+        };
+        consume(rank)?;
+        cursor = rank + 1;
+    }
+    Ok(())
+}
 fn ordered_ranks<Node: Copy + Eq>(
     graph: &ValidationGraph<Node>,
     owner: usize,
     domain: std::ops::Range<usize>,
     nodes: &[Node],
 ) -> Result<Vec<usize>, WrappingScopeError> {
-    let children = &graph.children[owner];
-    let search = children
-        .get(domain.clone())
-        .ok_or(WrappingScopeError::InconsistentIncidence)?;
-    let mut cursor = domain.start;
     let mut ranks = Vec::with_capacity(nodes.len());
-    for &node in nodes {
-        let Some(offset) = children[cursor..domain.end]
-            .iter()
-            .position(|&i| graph.nodes[i] == node)
-        else {
-            return Err(if search.iter().any(|&i| graph.nodes[i] == node) {
-                WrappingScopeError::EndpointOrder
-            } else if children.iter().any(|&i| graph.nodes[i] == node) {
-                WrappingScopeError::InconsistentIncidence
-            } else {
-                WrappingScopeError::DifferentFlow
-            });
-        };
-        let rank = cursor + offset;
-        ranks.push(rank);
-        cursor = rank + 1;
-    }
+    scan_ordered_ranks(
+        graph,
+        owner,
+        domain,
+        nodes,
+        &mut || Ok::<_, WrappingScopeError>(()),
+        |rank| {
+            ranks.push(rank);
+            Ok(())
+        },
+    )?;
     Ok(ranks)
 }
 impl<Node: Copy + Eq> WrappingContext<Node> {
@@ -810,15 +855,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         else {
             return Ok(None);
         };
-        let convert = |source: &SourceExtent| match source {
-            SourceExtent::Captured(scope) => {
-                Ok(surgeist_text::InlineBoxSource::captured(scope.clone()))
-            }
-            SourceExtent::Native { start, end } => {
-                prepared.native_inline_box(start.clone(), end.clone())
-            }
-        };
-        let owner = convert(&source)?;
+        let owner = source.text_source(prepared)?;
         let actual_parent = if let Some(scope) = owner.captured_scope() {
             scope.parent()
         } else if let SourceExtent::Native { start, .. } = &source {
@@ -846,7 +883,47 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 parent_source = candidate.clone();
             }
         }
-        Ok(Some((owner, convert(&parent_source)?)))
+        Ok(Some((owner, parent_source.text_source(prepared)?)))
+    }
+
+    /// Resolve an already checked physical edge owner through the existing
+    /// source rows. Captured pairs absent from these rows remain with their
+    /// canonical capture association at the caller.
+    pub(crate) fn text_box_source_pair(
+        &self,
+        flow: Node,
+        source: &surgeist_text::InlineBoxSource,
+        prepared: &surgeist_text::PreparedText,
+        mut inspect: impl FnMut() -> surgeist_text::Result<()>,
+    ) -> surgeist_text::Result<Option<(Node, Node)>> {
+        for row in &self.rows {
+            inspect()?;
+            if row.flow != flow {
+                continue;
+            }
+            let Some(actual) = &row.source else {
+                continue;
+            };
+            if let SourceExtent::Native { start, .. } = actual {
+                let mut same_domain = false;
+                if let Some(owner) = prepared.captured_owner() {
+                    for member in owner.members() {
+                        inspect()?;
+                        same_domain |= member.domain() == start.paragraph().domain()
+                            && member
+                                .enter_position()
+                                .same_capture(&start.event_position());
+                    }
+                }
+                if !same_domain {
+                    continue;
+                }
+            }
+            if actual.text_source(prepared)? == *source && row.pair.is_some() {
+                return Ok(row.pair);
+            }
+        }
+        Ok(None)
     }
 
     pub(crate) fn has_effects(&self) -> bool {
@@ -1139,29 +1216,64 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         nodes: &[Node],
         pair: (Node, Node),
     ) -> Result<NativePairProjection<Node>, WrappingScopeError> {
-        let owner = graph
-            .index(flow)
-            .ok_or(WrappingScopeError::NodeNotReachable)?;
-        let rank = |node| {
-            graph.children[owner]
-                .iter()
-                .position(|&i| graph.nodes[i] == node)
-                .ok_or(WrappingScopeError::DifferentFlow)
-        };
-        let ranks = ordered_ranks(graph, owner, 0..graph.children[owner].len(), nodes)?;
-        if ranks.is_empty() {
-            return Err(WrappingScopeError::EndpointOrder);
+        self.native_pair_projection_with(graph, flow, nodes, pair, || Ok(()))
+    }
+    pub(crate) fn native_pair_projection_with<E: From<WrappingScopeError>>(
+        &self,
+        graph: &ValidationGraph<Node>,
+        flow: Node,
+        nodes: &[Node],
+        pair: (Node, Node),
+        mut inspect: impl FnMut() -> Result<(), E>,
+    ) -> Result<NativePairProjection<Node>, E> {
+        let mut owner = None;
+        for (index, &actual) in graph.nodes.iter().enumerate() {
+            inspect()?;
+            if actual == flow {
+                owner = Some(index);
+                break;
+            }
         }
-        let project = |node| {
-            let at = rank(node)?;
-            if nodes.contains(&node) {
-                Ok(ScopeEndpoint::Local(node))
-            } else if at < ranks[0] {
+        let owner = owner.ok_or(WrappingScopeError::NodeNotReachable)?;
+        let mut first = None;
+        let mut last = None;
+        scan_ordered_ranks(
+            graph,
+            owner,
+            0..graph.children[owner].len(),
+            nodes,
+            &mut inspect,
+            |rank| {
+                first.get_or_insert(rank);
+                last = Some(rank);
+                Ok(())
+            },
+        )?;
+        let (Some(first), Some(last)) = (first, last) else {
+            return Err(WrappingScopeError::EndpointOrder.into());
+        };
+        let mut project = |node| -> Result<ScopeEndpoint<Node>, E> {
+            let mut at = None;
+            for (rank, &child) in graph.children[owner].iter().enumerate() {
+                inspect()?;
+                if graph.nodes[child] == node {
+                    at = Some(rank);
+                    break;
+                }
+            }
+            let at = at.ok_or(WrappingScopeError::DifferentFlow)?;
+            for &actual in nodes {
+                inspect()?;
+                if actual == node {
+                    return Ok(ScopeEndpoint::Local(node));
+                }
+            }
+            if at < first {
                 Ok(ScopeEndpoint::BeforeRun)
-            } else if at > *ranks.last().ok_or(WrappingScopeError::EndpointOrder)? {
+            } else if at > last {
                 Ok(ScopeEndpoint::AfterRun)
             } else {
-                Err(WrappingScopeError::UnsupportedIncidence)
+                Err(WrappingScopeError::UnsupportedIncidence.into())
             }
         };
         Ok(NativePairProjection {

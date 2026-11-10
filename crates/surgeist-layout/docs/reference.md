@@ -719,9 +719,18 @@ constrain later float placement, including floats preceding the capture.
 Rejected candidates discard their child output, caches and pending Text results;
 accepted candidates publish their actual float placements once.
 
-Retained source participation determines whether an encounter has preceding
-in-flow content, independently of zero or signed prefix advance. Hidden and
-absolute participants retain their own traversal and static-position effects.
+Text's finalized prefix determines actual preceding in-flow content, including
+zero-advance text and Cells. Represented control seams use Text's issued
+participant, including Wbr emissions represented as Text. An allocated nominal
+strut alone does not establish that content. Prefix content and signed advance
+remain separate observations.
+Native fitting also reserves the signed margin, border and padding of the
+immediate source closing run, skipping empty operations and stopping at a new
+opening or nonempty operation. Individual nonzero edge components establish a
+line even when their advance cancels. A closing edge already charged to the same
+selected presentation group contributes no additional advance.
+Hidden and absolute participants retain their own traversal and static-position
+effects.
 Separate paragraph bindings retain their terminal receipts. A
 strut-only Paragraph completion publishes no ordinary line; actual Forced
 endings remain real. A discarded-only soft endpoint contributes no phantom

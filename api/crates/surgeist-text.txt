@@ -2963,6 +2963,7 @@ impl surgeist_text::PreparedControlView<'_>
 pub fn surgeist_text::PreparedControlView<'_>::capture_position(&self) -> core::option::Option<surgeist_text::CapturedEventPosition>
 pub fn surgeist_text::PreparedControlView<'_>::kind(&self) -> &surgeist_text::ParagraphControlKind
 pub fn surgeist_text::PreparedControlView<'_>::level(&self) -> surgeist_text::BidiLevel
+pub fn surgeist_text::PreparedControlView<'_>::participant(&self) -> core::option::Option<surgeist_text::PreparedParticipant>
 pub fn surgeist_text::PreparedControlView<'_>::processed_position(&self) -> surgeist_text::ProcessedPosition
 pub fn surgeist_text::PreparedControlView<'_>::source_position(&self) -> surgeist_text::SourcePosition
 impl surgeist_text::PreparedControlView<'_>

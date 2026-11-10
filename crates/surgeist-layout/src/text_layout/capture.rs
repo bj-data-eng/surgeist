@@ -402,6 +402,17 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
             .map(|row| (&row.scope, (row.start, row.end)))
     }
 
+    pub(crate) fn computed_cuts(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            &surgeist_text::PreparedComputedLineBoundary,
+            ComputedNativeCut,
+        ),
+    > {
+        self.computed.iter().map(|row| (&row.boundary, row.cut))
+    }
+
     pub(crate) fn computed_cut(
         &self,
         boundary: &surgeist_text::PreparedComputedLineBoundary,

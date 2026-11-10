@@ -198,7 +198,7 @@ fn lane<S: LayoutScalar>() {
         ),
     );
     let mut packets = Vec::new();
-    let mut events = Vec::new();
+    let mut events = FloatEvents::new();
     for (node, offset, extent) in [(2, 1, 10.0), (5, 4, 20.0)] {
         let packet = owner
             .probe_float_child(
@@ -224,17 +224,26 @@ fn lane<S: LayoutScalar>() {
             float_exclusion: FloatExclusion::MarginBox,
             child_compute_geometry: packet.output.scroll_geometry,
         };
-        events.push(
-            FloatEvent::new(
-                pending,
-                packet.clone(),
-                &admitted,
-                &capture.associations,
-                offset,
-                child_request,
+        events
+            .push(
+                FloatEvent::new(
+                    pending,
+                    packet.clone(),
+                    &admitted,
+                    &capture.associations,
+                    offset,
+                    child_request,
+                    None,
+                )
+                .unwrap_or_else(|_| panic!("actual native float event")),
+                None,
             )
-            .unwrap_or_else(|_| panic!("actual native float event")),
-        );
+            .map_err(|error| {
+                super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(
+                    0, error,
+                )
+            })
+            .unwrap();
         packets.push(packet);
     }
     let forced = paragraph
@@ -265,6 +274,31 @@ fn lane<S: LayoutScalar>() {
     let failure = |error| {
         super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(0, error)
     };
+    let first_selected = first.selected_line();
+    let second_selected = second.selected_line();
+    let events = events
+        .bind(
+            &admitted,
+            &capture.associations,
+            first_selected
+                .request()
+                .controls
+                .iter()
+                .chain(second_selected.request().controls.iter()),
+            |owner| {
+                source_interval(
+                    &admitted,
+                    &capture.associations,
+                    &capture.wrapping,
+                    &capture.graph,
+                    owner,
+                    None,
+                )
+            },
+            None,
+        )
+        .map_err(failure)
+        .unwrap();
     let mut encounters =
         Encounters::new(events, base, S::ZERO, FloatInlineSpace::Finite, true, true)
             .map_err(failure)
@@ -278,7 +312,7 @@ fn lane<S: LayoutScalar>() {
     };
     encounters.checkpoint_group().map_err(failure).unwrap();
     let first_basis = encounters
-        .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
+        .replay::<core::convert::Infallible>(0, &first, replay_at(0.0), None)
         .unwrap();
     assert_eq!(
         first_basis.iter().map(|row| row.event).collect::<Vec<_>>(),
@@ -304,7 +338,7 @@ fn lane<S: LayoutScalar>() {
     // survive restoration to the real group entry at block10.
     let visits = encounters.replay_event_visits;
     let losing = encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0), None)
         .unwrap();
     assert_eq!(losing.iter().map(|row| row.event).collect::<Vec<_>>(), [1]);
     assert_eq!(
@@ -318,7 +352,7 @@ fn lane<S: LayoutScalar>() {
     assert!(encounters.tentative[1].is_none());
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0), None)
         .unwrap();
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
@@ -345,7 +379,7 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(90.0));
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     let winner = encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(10.0), None)
         .unwrap();
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
@@ -367,14 +401,14 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(100.0));
     assert_eq!(
         encounters
-            .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
+            .replay::<core::convert::Infallible>(0, &first, replay_at(0.0), None)
             .unwrap(),
         first_basis
     );
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
         encounters
-            .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
+            .replay::<core::convert::Infallible>(0, &second, replay_at(10.0), None)
             .unwrap(),
         winner
     );

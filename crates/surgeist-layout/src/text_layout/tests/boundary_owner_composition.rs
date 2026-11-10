@@ -10,6 +10,9 @@ use surgeist_text as text;
 #[path = "boundary_owner_composition/shared_unit_endpoints.rs"]
 mod shared_unit_endpoints;
 
+#[path = "boundary_owner_composition/float_end_prefix_controls.rs"]
+mod float_end_prefix_controls;
+
 const PHRASE: &[u8] =
     include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf");
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");

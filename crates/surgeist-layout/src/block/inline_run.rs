@@ -575,7 +575,7 @@ where
         ));
     }
     let mut text_atomics = Vec::new();
-    let mut float_events = Vec::new();
+    let mut float_events = super::float_text::FloatEvents::new();
     let mut encounter_plans = Vec::new();
     let mut static_positions = Vec::new();
     let mut absolute_children = Vec::new();
@@ -823,22 +823,26 @@ where
                 float_exclusion: child_style.float_exclusion,
                 child_compute_geometry: output.scroll_geometry,
             };
-            float_events.push(
-                super::float_text::FloatEvent::new(
-                    pending,
-                    packet,
-                    text_run
-                        .as_ref()
-                        .expect("actual float is in captured native run"),
-                    &tree
-                        .text_computation()
-                        .expect("captured float keeps source registry")
-                        .associations,
-                    offset,
-                    child_request,
+            let state = tree
+                .text_computation()
+                .expect("captured float keeps source registry");
+            float_events
+                .push(
+                    super::float_text::FloatEvent::new(
+                        pending,
+                        packet,
+                        text_run
+                            .as_ref()
+                            .expect("actual float is in captured native run"),
+                        &state.associations,
+                        offset,
+                        child_request,
+                        state.entry_case_funding().map(|funding| funding.as_ref()),
+                    )
+                    .map_err(|e| text_run_error(container, e))?,
+                    state.entry_case_funding().map(|funding| funding.as_ref()),
                 )
-                .map_err(|e| text_run_error(container, e))?,
-            );
+                .map_err(|error| text_run_error(container, error))?;
             continue;
         }
         let item = atomic_inline_box_participant(
@@ -1028,7 +1032,7 @@ where
         };
         let context = crate::text_layout::run::Context {
             scope_alignments,
-            entry_funding,
+            entry_funding: entry_funding.clone(),
             orientation: text_orientation
                 .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,
@@ -1145,9 +1149,32 @@ where
                 | crate::TextWrapStyle::AvoidShortLastLine
                 | crate::TextWrapStyle::Pretty
         ) && crate::layout_math::normal_available_size(available).is_some();
+        let admitted = text_run.as_ref().expect("actual admitted native run");
+        let funding = entry_funding.as_ref().map(|funding| funding.as_ref());
+        let bound_events = float_events
+            .bind(
+                admitted,
+                &associations,
+                text_controls.iter().map(|control| &control.allocation),
+                |owner| {
+                    let (context, graph) = tree
+                        .wrapping_context()
+                        .ok_or(crate::WrappingScopeError::MissingCapture)?;
+                    super::float_text::source_interval(
+                        admitted,
+                        &associations,
+                        context,
+                        graph,
+                        owner,
+                        funding,
+                    )
+                },
+                funding,
+            )
+            .map_err(|error| text_run_error(container, error))?;
         let encounters = std::cell::RefCell::new(
             super::float_text::Encounters::new(
-                float_events,
+                bound_events,
                 exclusions
                     .try_clone()
                     .map_err(|error| text_run_error(container, error.into()))?,
@@ -1251,8 +1278,12 @@ where
                 },
                 replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
                     .borrow_mut()
-                    .replay(container, line, replay)
-                {
+                    .replay(
+                        container,
+                        line,
+                        replay,
+                        entry_funding.as_ref().map(|funding| funding.as_ref()),
+                    ) {
                     Ok(basis) => Ok(basis),
                     Err(error) => {
                         *provider_error.borrow_mut() = Some(error);
