@@ -3044,6 +3044,8 @@ impl HtmlParseUsage {
 #[cfg(test)]
 mod admission_tests;
 #[cfg(test)]
+mod growth_tests;
+#[cfg(test)]
 mod html_value_tests;
 #[cfg(test)]
 mod release_tests;
