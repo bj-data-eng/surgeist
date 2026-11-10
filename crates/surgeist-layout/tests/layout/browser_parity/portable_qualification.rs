@@ -1149,6 +1149,15 @@ pub(super) fn admit_original_diagnostics(
     {
         return Err(changed("original diagnostic report lineage"));
     }
+    verify_grid_lanes_capture_contract(
+        &root,
+        &receipt,
+        &report,
+        receipt
+            .cases
+            .iter()
+            .map(|case| case.historical.path.as_str()),
+    )?;
     let artifacts: BTreeMap<_, _> = report
         .generated
         .iter()
@@ -1198,6 +1207,99 @@ pub(super) fn admit_original_diagnostics(
     }
     freshness.verify()?;
     Ok(AuthenticatedOriginalDiagnostics { cases })
+}
+
+fn verify_grid_lanes_capture_contract<'a, Case>(
+    root: &Path,
+    receipt: &'a authority::QualificationData<Case>,
+    report: &Report,
+    historical: impl Iterator<Item = &'a str>,
+) -> Result<()> {
+    const BROWSER_OWNER: &str = "browser-owner.toml";
+    const GLOBAL_INPUTS: [&str; 9] = [
+        BROWSER_OWNER,
+        "corpus.toml",
+        "fonts/Ahem.ttf",
+        "fonts/PROVENANCE.md",
+        "origin/selected-originals.json",
+        "origin/source-provenance.json",
+        "origin/source-receipt.json",
+        "scripts/gentest/test_base_style.css",
+        authority::ROOT_HELPER_INPUT,
+    ];
+    let expected: BTreeSet<_> = GLOBAL_INPUTS
+        .into_iter()
+        .chain(receipt.records.iter().map(|record| record.source.as_str()))
+        .chain(historical)
+        .collect();
+    if !expected
+        .into_iter()
+        .eq(receipt.retained_inputs.keys().map(String::as_str))
+    {
+        return Err(changed("complete Grid Lanes capture input census"));
+    }
+    if report
+        .generated
+        .iter()
+        .any(|artifact| !artifact.linked_resources.is_empty())
+    {
+        return Err(changed("Grid Lanes plain-box capture has linked resources"));
+    }
+
+    // The generator owns full manifest validation and launch. The portable
+    // reader compares only the owner fields that enter its settings witness.
+    #[derive(Deserialize)]
+    struct OwnerProjection {
+        browser: BrowserProjection,
+    }
+    #[derive(Deserialize, serde::Serialize)]
+    struct BrowserProjection {
+        source: String,
+        version: String,
+        version_output: String,
+        cache_root: surgeist_generator::RelativePath,
+        provenance_format: String,
+        launch: LaunchProjection,
+    }
+    #[derive(Deserialize, serde::Serialize)]
+    struct LaunchProjection {
+        batch_size: usize,
+        navigation_timeout_ms: u64,
+        dom_poll_interval_ms: u64,
+        arguments: Vec<String>,
+    }
+    let manifest = read_pinned(
+        root,
+        &PathDigest {
+            path: BROWSER_OWNER.into(),
+            sha256: receipt.retained_inputs[BROWSER_OWNER].clone(),
+        },
+    )?;
+    let manifest = std::str::from_utf8(&manifest).map_err(|error| malformed(error.to_string()))?;
+    let owner: OwnerProjection = surgeist_generator::parse_manifest(manifest, BROWSER_OWNER)
+        .map_err(|error| malformed(error.to_string()))?;
+    let witness = serde_json::to_value(&receipt.browser_settings)
+        .map_err(|error| malformed(error.to_string()))?;
+    let declared =
+        serde_json::to_value(&owner.browser).map_err(|error| malformed(error.to_string()))?;
+    if witness != declared {
+        return Err(changed(
+            "Grid Lanes browser settings differ from the owner manifest",
+        ));
+    }
+    let executable = surgeist_generator::RelativePath::new(&report.metadata.browser_executable)
+        .map_err(|error| malformed(error.to_string()))?;
+    let prefix = format!("{}/", owner.browser.cache_root.as_str());
+    let provenance = owner
+        .browser
+        .provenance_format
+        .replace("{version}", &owner.browser.version)
+        .replace("{repository_relative_executable}", executable.as_str());
+    if !executable.as_str().starts_with(&prefix) || report.metadata.browser_provenance != provenance
+    {
+        return Err(changed("Grid Lanes browser executable or provenance"));
+    }
+    Ok(())
 }
 
 fn verify_original_diagnostic_origin(
