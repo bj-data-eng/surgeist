@@ -470,13 +470,32 @@ pub(crate) struct PresentedConfigurationDraft {
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
-pub(crate) enum AcquiredPresentedSurfaceTexture {
-    Host(Option<wgpu::SurfaceTexture>),
+pub(crate) struct AcquiredPresentedSurfaceTexture {
+    provider: AcquiredPresentedSurfaceTextureProvider,
+}
+
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+enum AcquiredPresentedSurfaceTextureProvider {
+    Host(wgpu::SurfaceTexture),
     #[cfg(all(test, feature = "render-window"))]
-    DisplayFree {
-        texture: Option<wgpu::Texture>,
-        state: Arc<Mutex<DisplayFreePresentedSurfaceStateForTest>>,
-    },
+    DisplayFree(DisplayFreeAcquiredTextureForTest),
+}
+
+#[cfg(all(test, feature = "render-window"))]
+struct DisplayFreeAcquiredTextureForTest {
+    // After discard observation, release the texture before the fixture state.
+    texture: DisplayFreeTextureRetirementForTest,
+    state: Arc<Mutex<DisplayFreePresentedSurfaceStateForTest>>,
+}
+
+#[cfg(all(test, feature = "render-window"))]
+enum DisplayFreeTextureRetirementForTest {
+    Acquired(wgpu::Texture),
+    // Entered only by consuming fixture presentation, before its destructor.
+    Retired,
 }
 
 #[cfg(any(
@@ -579,13 +598,15 @@ impl PresentedSurface {
         let _ = device;
         match &self.target {
             PresentedSurfaceTarget::Host(surface) => match surface.get_current_texture() {
-                wgpu::CurrentSurfaceTexture::Success(texture) => PresentedSurfaceAcquire::Success(
-                    AcquiredPresentedSurfaceTexture::Host(Some(texture)),
-                ),
+                wgpu::CurrentSurfaceTexture::Success(texture) => {
+                    PresentedSurfaceAcquire::Success(AcquiredPresentedSurfaceTexture {
+                        provider: AcquiredPresentedSurfaceTextureProvider::Host(texture),
+                    })
+                }
                 wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
-                    PresentedSurfaceAcquire::Suboptimal(AcquiredPresentedSurfaceTexture::Host(
-                        Some(texture),
-                    ))
+                    PresentedSurfaceAcquire::Suboptimal(AcquiredPresentedSurfaceTexture {
+                        provider: AcquiredPresentedSurfaceTextureProvider::Host(texture),
+                    })
                 }
                 wgpu::CurrentSurfaceTexture::Outdated => PresentedSurfaceAcquire::Outdated,
                 wgpu::CurrentSurfaceTexture::Occluded => PresentedSurfaceAcquire::Occluded,
@@ -632,9 +653,13 @@ impl PresentedSurface {
                     fixture.observation.acquire_count =
                         fixture.observation.acquire_count.saturating_add(1);
                     drop(fixture);
-                    AcquiredPresentedSurfaceTexture::DisplayFree {
-                        texture: Some(texture()),
-                        state: Arc::clone(state),
+                    AcquiredPresentedSurfaceTexture {
+                        provider: AcquiredPresentedSurfaceTextureProvider::DisplayFree(
+                            DisplayFreeAcquiredTextureForTest {
+                                texture: DisplayFreeTextureRetirementForTest::Acquired(texture()),
+                                state: Arc::clone(state),
+                            },
+                        ),
                     }
                 };
                 match outcome {
@@ -741,38 +766,47 @@ impl AcquiredPresentedSurfaceTexture {
     ) -> Result<OwnedGpu<wgpu::TextureView>> {
         // Swapchain storage belongs to the host. Only the Render-created view
         // enters the generation's observed opaque-object custody.
-        generation.opaque(GpuObjectKind::TextureView, observer, || match self {
-            Self::Host(texture) => texture
-                .as_ref()
-                .expect("an unpresented host surface texture must remain available")
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-            #[cfg(all(test, feature = "render-window"))]
-            Self::DisplayFree { texture, .. } => texture
-                .as_ref()
-                .expect("an unpresented display-free texture must remain available")
-                .create_view(&wgpu::TextureViewDescriptor::default()),
+        generation.opaque(GpuObjectKind::TextureView, observer, || {
+            match &self.provider {
+                AcquiredPresentedSurfaceTextureProvider::Host(texture) => texture
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                #[cfg(all(test, feature = "render-window"))]
+                AcquiredPresentedSurfaceTextureProvider::DisplayFree(fixture) => {
+                    let DisplayFreeTextureRetirementForTest::Acquired(texture) = &fixture.texture
+                    else {
+                        unreachable!("retired fixture textures cannot create a view");
+                    };
+                    texture.create_view(&wgpu::TextureViewDescriptor::default())
+                }
+            }
         })
     }
 
-    pub(crate) fn present(mut self) {
-        match &mut self {
-            Self::Host(texture) => texture
-                .take()
-                .expect("a host surface texture is presented at most once")
-                .present(),
+    pub(crate) fn present(self) {
+        match self.provider {
+            AcquiredPresentedSurfaceTextureProvider::Host(texture) => texture.present(),
             #[cfg(all(test, feature = "render-window"))]
-            Self::DisplayFree { texture, state } => {
-                let texture = texture
-                    .take()
-                    .expect("a display-free surface texture is presented at most once");
-                let mut state = state
-                    .lock()
-                    .expect("display-free presentation fixture state must remain available");
-                state.last_presented_texture = Some(texture);
-                state.observation.present_count = state.observation.present_count.saturating_add(1);
-            }
+            AcquiredPresentedSurfaceTextureProvider::DisplayFree(fixture) => fixture.present(),
         }
+    }
+}
+
+#[cfg(all(test, feature = "render-window"))]
+impl DisplayFreeAcquiredTextureForTest {
+    fn present(mut self) {
+        let DisplayFreeTextureRetirementForTest::Acquired(texture) = std::mem::replace(
+            &mut self.texture,
+            DisplayFreeTextureRetirementForTest::Retired,
+        ) else {
+            unreachable!("retired fixture textures cannot be presented");
+        };
+        let mut state = self
+            .state
+            .lock()
+            .expect("display-free presentation fixture state must remain available");
+        state.last_presented_texture = Some(texture);
+        state.observation.present_count = state.observation.present_count.saturating_add(1);
     }
 }
 
@@ -786,17 +820,12 @@ impl Surface {
     }
 }
 
-#[cfg(any(
-    feature = "render-window",
-    all(feature = "render-web", target_arch = "wasm32")
-))]
-impl Drop for AcquiredPresentedSurfaceTexture {
+#[cfg(all(test, feature = "render-window"))]
+impl Drop for DisplayFreeAcquiredTextureForTest {
     fn drop(&mut self) {
-        #[cfg(all(test, feature = "render-window"))]
-        if let Self::DisplayFree { texture, state } = self
-            && texture.is_some()
-        {
-            let mut state = state
+        if let DisplayFreeTextureRetirementForTest::Acquired(_) = &self.texture {
+            let mut state = self
+                .state
                 .lock()
                 .expect("display-free presentation fixture state must remain available");
             state.observation.discarded_count = state.observation.discarded_count.saturating_add(1);
@@ -1326,6 +1355,9 @@ impl From<Format> for wgpu::TextureFormat {
         }
     }
 }
+
+#[cfg(all(test, feature = "render-window", not(target_arch = "wasm32")))]
+mod acquired_texture_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod custody_tests {
