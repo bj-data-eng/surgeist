@@ -61,6 +61,15 @@ impl DomEventRegistryAssociation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn registry_target_backing(dom: &Dom) -> usize {
+        // A nonempty Weak still owns this allocation's target area at strong
+        // zero. This observes backing independently of the claimed debit.
+        if dom.event_registry.ptr_eq(&std::sync::Weak::new()) {
+            0
+        } else {
+            DomEventRegistryAssociation::binding_payload_bytes()
+        }
+    }
     fn dom() -> Dom {
         Dom::new(
             DomLimits::new(
@@ -105,11 +114,21 @@ mod tests {
         ));
         assert_eq!(dom.custody_registry.ledger().total(), charged);
         drop(association);
-        assert_eq!(dom.custody_registry.ledger().total(), baseline);
+        assert_eq!(
+            dom.custody_registry.ledger().total(),
+            baseline
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
         let fresh = dom.bind_event_registry(17, &cancel).unwrap();
         fresh.validate(&dom).unwrap();
         drop(fresh);
-        assert_eq!(dom.custody_registry.ledger().total(), baseline);
+        assert_eq!(
+            dom.custody_registry.ledger().total(),
+            baseline
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
     }
     #[test]
     fn cancellation_overflow_and_foreign_validation_do_not_claim_or_charge() {
@@ -171,61 +190,107 @@ mod tests {
     }
     #[test]
     fn source_exact_and_one_short_claims_preserve_real_scope_and_custody() {
-        const LIMIT: usize = 32_000_000;
-        const PAYLOAD: usize = 65_536;
+        // Below the independent 1MB dispatch-custody cap. This isolates the
+        // original Source storage admission rather than another producer cap.
+        const LIMIT: usize = 262_144;
         let cancel = AtomicBool::new(false);
-        // This measurement places the finite admission boundary. Independent
-        // assertions below specify ownership, cleanup and unchanged DOM effects.
-        let (probe, _probe_executor, _probe_request, _probe_guard) = observation(LIMIT);
-        let formation = probe
-            .source_observation_formation(&cancel)
-            .unwrap()
-            .unwrap();
-        let baseline = LIMIT - formation.remaining_bytes().unwrap();
-        let exact = baseline + DomEventRegistryAssociation::binding_payload_bytes() + PAYLOAD;
+        let (mut dom, _executor, request, guard) = observation(LIMIT);
+        let stamp = dom.snapshot().stamp();
+        let before = dom.custody_registry.ledger().total();
+        // Place both requests against the SAME actual observation: fresh
+        // owners can require different custody-index backing for their real
+        // materialization IDs. The temporary formation owns no extra payload.
+        let formation = dom.source_observation_formation(&cancel).unwrap().unwrap();
+        assert_eq!(formation.owned_payload().bytes, 0);
+        let payload = formation.remaining_bytes().unwrap()
+            - DomEventRegistryAssociation::binding_payload_bytes();
         drop(formation);
-        drop(probe);
-        for bytes in [exact - 1, exact] {
-            let (mut dom, _executor, request, guard) = observation(bytes);
-            let stamp = dom.snapshot().stamp();
-            let before = dom.custody_registry.ledger().total();
-            let claim = dom.bind_event_registry(PAYLOAD, &cancel);
-            if bytes < exact {
-                assert!(
-                    matches!(claim, Err(DomError::ResourceLimit { resource: DomResource::SourceRetainedBytes, limit }) if limit == bytes)
-                );
-                assert_eq!(dom.custody_registry.ledger().total(), before);
-                let retry = dom.bind_event_registry(0, &cancel).unwrap();
-                retry.validate(&dom).unwrap();
-                drop(retry);
-            } else {
-                let claim = claim.unwrap();
-                let mut backing = Vec::<u8>::new();
-                backing.try_reserve_exact(PAYLOAD).unwrap();
-                assert_eq!(backing.capacity(), PAYLOAD);
-                assert_eq!(
-                    dom.custody_registry.ledger().total(),
-                    before
-                        .checked_add(custody::Usage::new(
-                            DomEventRegistryAssociation::binding_payload_bytes() + PAYLOAD,
-                            0
-                        ))
-                        .unwrap()
-                );
-                drop(backing);
-                drop(claim);
-            }
-            assert_eq!(dom.custody_registry.ledger().total(), before);
-            assert_eq!(dom.snapshot().stamp(), stamp);
-            assert_eq!(
-                dom.pending_source_edit().unwrap().operation(),
-                request.operation()
-            );
-            drop(guard);
-            assert!(matches!(
-                dom.bind_event_registry(0, &cancel),
-                Err(DomError::SourceOperationPending)
-            ));
-        }
+        assert_eq!(dom.custody_registry.ledger().total(), before);
+        assert!(matches!(
+            dom.bind_event_registry(payload + 1, &cancel),
+            Err(DomError::ResourceLimit {
+                resource: DomResource::SourceRetainedBytes,
+                limit: LIMIT
+            })
+        ));
+        assert_eq!(dom.custody_registry.ledger().total(), before);
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.pending_source_edit().unwrap().operation(),
+            request.operation()
+        );
+        let claim = dom.bind_event_registry(payload, &cancel).unwrap();
+        claim.validate(&dom).unwrap();
+        let mut backing = Vec::<u8>::new();
+        backing.try_reserve_exact(payload).unwrap();
+        assert_eq!(backing.capacity(), payload);
+        assert_eq!(
+            dom.custody_registry.ledger().total(),
+            before
+                .checked_add(custody::Usage::new(
+                    DomEventRegistryAssociation::binding_payload_bytes() + payload,
+                    0
+                ))
+                .unwrap()
+        );
+        drop(backing);
+        drop(claim);
+        assert_eq!(
+            dom.custody_registry.ledger().total(),
+            before
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.pending_source_edit().unwrap().operation(),
+            request.operation()
+        );
+        drop(guard);
+        assert!(matches!(
+            dom.bind_event_registry(0, &cancel),
+            Err(DomError::SourceOperationPending)
+        ));
+    }
+    #[test]
+    fn withdrawn_registry_body_stays_charged_until_its_last_weak_observation_is_removed() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = dom();
+        let ledger = dom.custody_registry.ledger().clone();
+        let before = ledger.total();
+        let association = dom.bind_event_registry(0, &cancel).unwrap();
+        assert_eq!(
+            ledger.total(),
+            before
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
+        drop(association);
+        assert_eq!(
+            ledger.total(),
+            before
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap(),
+            "withdrawn authority does not free a body still retained by the canonical weak slot"
+        );
+        // Withdrawing authority permits a fresh owner. It neither transfers
+        // the old authority nor charges the retired body's backing twice.
+        let replacement = dom.bind_event_registry(0, &cancel).unwrap();
+        replacement.validate(&dom).unwrap();
+        assert_eq!(
+            ledger.total(),
+            before
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
+        drop(replacement);
+        assert_eq!(
+            ledger.total(),
+            before
+                .checked_add(custody::Usage::new(registry_target_backing(&dom), 0))
+                .unwrap()
+        );
+        drop(dom);
+        assert_eq!(ledger.total(), custody::Usage::ZERO);
     }
 }

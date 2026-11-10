@@ -316,6 +316,53 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
 }
 
 #[test]
+fn completed_details_dispatch_retains_dead_index_backing_in_its_actual_storage_charge() {
+    let (mut dom, _, target, _) = fixture();
+    let mut c = context(&mut dom);
+    let mut dispatcher = registry();
+    dispatcher
+        .add_listener(
+            &mut dom.dom(),
+            target,
+            DomEventType::Toggle,
+            record(),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let (_, fixed_registry) = dispatcher.inspect_retired_continuation_storage();
+    let payload = c
+        .element_tasks
+        .state()
+        .unwrap()
+        .borrow()
+        .payload_bytes
+        .clone();
+    assert_eq!(payload.get(), 0);
+    open(&mut dom, target);
+    ingest(&mut dom, &mut c);
+    let (task, receipt) = complete(&mut dom, &mut dispatcher, &mut c);
+    assert_eq!(task.id().target(), target);
+    assert_eq!(receipt.callbacks(), 1);
+    assert_eq!(c.log.len(), 1);
+    assert_eq!(c.log[0].0, target);
+    assert_eq!(c.log[0].1.old_state(), "closed");
+    assert_eq!(c.log[0].1.new_state(), "open");
+    drop(receipt);
+    assert_eq!(c.element_tasks.pending_total_tasks().unwrap(), 0);
+    assert!(dom.dom().pending_source_edit().is_none());
+    let (raw_backing, registry_charge) = dispatcher.inspect_retired_continuation_storage();
+    // A body can remain charged by its original task owner or transfer to the
+    // canonical registry owner. Count it once across those actual owners.
+    let charged = payload.get() + registry_charge - fixed_registry;
+    assert_eq!(
+        charged, raw_backing,
+        "a completed task cannot release a continuation body retained by the dispatcher's weak index"
+    );
+    drop(dispatcher);
+    assert_eq!(payload.get(), 0);
+}
+
+#[test]
 fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers() {
     let (mut dom, _, a, _) = fixture();
     let mut c = context(&mut dom);

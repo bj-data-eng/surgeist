@@ -4,6 +4,24 @@ use super::*;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
 
+impl<C> DomEventDispatcher<C> {
+    /// Test-only raw backing observation. Empty and actively removed entries
+    /// retain no body; an expired nonempty Weak still retains its target area.
+    pub(crate) fn inspect_retired_continuation_storage(&self) -> (usize, usize) {
+        let body = self
+            .pending
+            .iter()
+            .filter(|entry| entry.strong_count() == 0 && !entry.ptr_eq(&std::rc::Weak::new()))
+            .count()
+            * std::mem::size_of::<EventContinuation>();
+        let association = match &self.association {
+            RegistryAssociation::Unbound => 0,
+            RegistryAssociation::Bound(association) => association.retained_bytes(),
+        };
+        (body, association)
+    }
+}
+
 fn limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
         path_items: 64,
