@@ -242,18 +242,7 @@ fn exact_ascii(
     value: Option<&DocumentString>,
     expected: &str,
 ) -> Result<bool, SessionError> {
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let Some(value) = value else { return Ok(false) };
-    if value.len() != expected.len() {
-        return Ok(false);
-    }
-    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        control.charge_unit_literal_comparison()?;
-        if unit != u16::from(byte) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    Ok(control.exact_ascii_matches(value, expected)?)
 }
 
 #[cfg(test)]

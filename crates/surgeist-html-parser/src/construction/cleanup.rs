@@ -119,8 +119,10 @@ pub(super) fn payload_write<T>(
     writes: u64,
 ) -> Result<(), SessionError> {
     control.admit_atomic_layout(mem::size_of::<T>())?;
-    control.charge(HtmlParseWorkCategory::CopyByte, mem::size_of::<T>() as u64)?;
-    control.charge(HtmlParseWorkCategory::RecordWrite, writes)?;
+    control.charge_many_pub(&[
+        (HtmlParseWorkCategory::CopyByte, mem::size_of::<T>() as u64),
+        (HtmlParseWorkCategory::RecordWrite, writes),
+    ])?;
     Ok(())
 }
 

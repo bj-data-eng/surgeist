@@ -33,19 +33,7 @@ pub(super) fn ascii_eq(
     expected: &'static str,
     control: &mut ParseControl,
 ) -> Result<bool, HtmlParseStop> {
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    if value.len() != expected.len() {
-        return Ok(false);
-    }
-    // The lengths are equal, so the pairs are exactly the literal's indices.
-    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        // Two stored UTF-16 bytes and one defining literal byte are inspected.
-        control.charge_unit_literal_comparison()?;
-        if unit != u16::from(byte) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    control.exact_ascii_matches(Some(value), expected)
 }
 
 pub(super) fn namespace(

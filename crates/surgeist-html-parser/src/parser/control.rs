@@ -379,6 +379,8 @@ pub(crate) struct ParseControl {
     /// only when the parse could not set them up; the control is then stopped
     /// from its creation with the fault.
     accounts: Option<Accounts>,
+    /// Prototype: the largest atomic layout the ledger holds as its peak.
+    layout_peak: u64,
     /// The caps the accounts were built with, for tests that lower one.
     #[cfg(test)]
     configured: HtmlParseLimits,
@@ -579,6 +581,7 @@ impl ParseControl {
         };
         let mut control = Self {
             accounts,
+            layout_peak: 0,
             #[cfg(test)]
             configured: limits,
             cancellation,
@@ -972,6 +975,10 @@ impl ParseControl {
     /// Records `bytes` as the latest indivisible layout; the largest one reached
     /// is its peak.
     pub(super) fn record_layout(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
+        if bytes <= self.layout_peak {
+            return Ok(());
+        }
+        self.layout_peak = bytes;
         let layout = self.gauge_changes(HtmlResource::AtomicLayoutBytes, bytes)?;
         self.admit_resources(&layout, Site::PLAIN)
     }
@@ -1075,22 +1082,70 @@ impl ParseControl {
         value: &surgeist_html::values::DocumentString,
         literal: &str,
     ) -> Result<bool, HtmlParseStop> {
-        self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if value.len() != literal.len() {
+            self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             return Ok(false);
         }
-        // The lengths are equal, so the pairs are exactly the literal's indices.
+        let mut compared = 0_u64;
+        let mut matches = true;
         for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
-            self.charge_unit_literal_comparison()?;
+            compared += 1;
             if !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(unit, byte) {
-                return Ok(false);
+                matches = false;
+                break;
             }
         }
-        Ok(true)
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                compared * UNIT_LITERAL_PAIR_BYTES,
+            ),
+        ])?;
+        Ok(matches)
+    }
+    /// Charges the comparison of a stored string with an ASCII literal: one record visit and one
+    /// literal comparison per paired unit up to the first mismatch, as one batch.
+    pub(crate) fn exact_ascii_matches(
+        &mut self,
+        value: Option<&surgeist_html::values::DocumentString>,
+        expected: &str,
+    ) -> Result<bool, HtmlParseStop> {
+        let Some(value) = value else {
+            self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            return Ok(false);
+        };
+        if value.len() != expected.len() {
+            self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            return Ok(false);
+        }
+        let mut compared = 0_u64;
+        let mut matches = true;
+        for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
+            compared += 1;
+            if unit != u16::from(byte) {
+                matches = false;
+                break;
+            }
+        }
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                compared * UNIT_LITERAL_PAIR_BYTES,
+            ),
+        ])?;
+        Ok(matches)
     }
     /// Charges comparing one byte of each of two byte sequences.
     pub(crate) fn charge_byte_pair_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, BYTE_PAIR_BYTES)
+    }
+    pub(crate) fn charge_many_pub<const N: usize>(
+        &mut self,
+        charges: &[(HtmlParseWorkCategory, u64); N],
+    ) -> Result<(), HtmlParseStop> {
+        self.charge_many(charges)
     }
     fn charge_many<const N: usize>(
         &mut self,
