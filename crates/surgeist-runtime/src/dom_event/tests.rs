@@ -24,6 +24,30 @@ impl<C> DomEventDispatcher<C> {
     }
 }
 impl NativeDomEvent {
+    pub(crate) fn inspect_continuation_body_bytes(&self) -> usize {
+        std::mem::size_of::<EventContinuation>()
+            + std::mem::size_of_val(self.0.continuation._body.as_ref())
+    }
+
+    pub(crate) fn inspect_retained_dispatch_banks(&self) -> (usize, usize, usize) {
+        let custody = self.0.continuation.upgrade().unwrap();
+        let retained = custody.dispatch.borrow();
+        let dispatch = retained.as_ref().unwrap();
+        assert!(matches!(
+            dispatch.failures.as_slice(),
+            [DomEventListenerFailure {
+                kind: DomEventListenerFailureKind::Reported(DomEventCallbackError { code: 91 }),
+                ..
+            }]
+        ));
+        let snapshot = dispatch.snapshot.as_ref().unwrap();
+        (
+            snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>(),
+            dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>(),
+            dispatch.association_custody.retained_bytes(),
+        )
+    }
+
     pub(crate) fn inspect_fixed_body_storage(&self) -> (Rc<Cell<usize>>, usize, usize) {
         let live = match &self.1._storage {
             BodyStorage::Source { _extent, .. } | BodyStorage::Style { _extent } => {
@@ -34,9 +58,20 @@ impl NativeDomEvent {
         (
             live,
             std::mem::size_of_val(self.0.as_ref()) + std::mem::size_of_val(self.1.as_ref()),
-            std::mem::size_of::<EventContinuation>()
-                + std::mem::size_of_val(self.0.continuation._body.as_ref()),
+            self.inspect_continuation_body_bytes(),
         )
+    }
+}
+
+impl DomEventComposedPath {
+    pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
+        self.path
+            .as_ref()
+            .unwrap()
+            ._manipulation
+            .as_ref()
+            .unwrap()
+            .source()
     }
 }
 

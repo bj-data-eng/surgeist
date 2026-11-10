@@ -407,3 +407,345 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         Err(DomElementTaskRuntimeError::Admission)
     ));
 }
+
+struct DispatchDropObservation {
+    held: HeldObservations,
+    calls: Vec<&'static str>,
+    running: Option<[(usize, usize, usize); 2]>,
+}
+
+impl DomElementTaskEventContext for DispatchDropObservation {
+    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+        &mut self.held.owner
+    }
+}
+
+fn details_dispatch_funding(state: &RefCell<ElementTaskState>, dom: &Dom) -> (usize, usize, usize) {
+    let state = state.borrow();
+    (
+        state.payload_bytes.get(),
+        state.tasks[0]
+            .event
+            .as_ref()
+            .unwrap()
+            .element_task_extent()
+            .1,
+        dom.dispatch_custody_retained_bytes(&cancel()).unwrap(),
+    )
+}
+
+fn details_drop_registry() -> DomEventDispatcher<DispatchDropObservation> {
+    DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 3,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap()
+}
+
+struct DetailsDispatchDropFixture {
+    session: DomSession,
+    document: DocumentId,
+    target: NodeId,
+    context: DispatchDropObservation,
+    dispatcher: DomEventDispatcher<DispatchDropObservation>,
+}
+
+fn details_dispatch_drop_fixture(drop_while_running: bool) -> DetailsDispatchDropFixture {
+    let (mut session, document, target, _) = fixture();
+    open(&mut session, target);
+    let mut owner = session.element_task_execution();
+    owner.ingest(&mut session.dom(), &cancel()).unwrap();
+    let context = DispatchDropObservation {
+        held: HeldObservations {
+            owner,
+            event: None,
+            path: None,
+        },
+        calls: Vec::new(),
+        running: None,
+    };
+    let mut dispatcher = details_drop_registry();
+    dispatcher
+        .add_listener(
+            &mut session.dom(),
+            target,
+            DomEventType::Toggle,
+            DomEventCallback::new(
+                move |dom, listeners, context: &mut DispatchDropObservation, event| {
+                    context.calls.push("prefix");
+                    context.held.event = Some(event.clone());
+                    context.held.path = Some(event.composed_path());
+                    if drop_while_running {
+                        let state = context.held.owner.state().unwrap();
+                        let before = details_dispatch_funding(&state, dom.raw());
+                        drop(std::mem::replace(listeners, details_drop_registry()));
+                        let after = details_dispatch_funding(&state, dom.raw());
+                        context.running = Some([before, after]);
+                    }
+                    Err(DomEventCallbackError { code: 91 })
+                },
+            ),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    if !drop_while_running {
+        dispatcher
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::Toggle,
+                DomEventCallback::host(17),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+    add_details_suffix(&mut session, target, &mut dispatcher);
+    DetailsDispatchDropFixture {
+        session,
+        document,
+        target,
+        context,
+        dispatcher,
+    }
+}
+
+fn add_details_suffix(
+    session: &mut DomSession,
+    target: NodeId,
+    dispatcher: &mut DomEventDispatcher<DispatchDropObservation>,
+) {
+    dispatcher
+        .add_listener(
+            &mut session.dom(),
+            target,
+            DomEventType::Toggle,
+            DomEventCallback::new(|_, _, context: &mut DispatchDropObservation, _| {
+                context.calls.push("suffix");
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+}
+
+fn details_run_limits() -> crate::DomElementTaskRunLimits {
+    crate::DomElementTaskRunLimits {
+        dispatch: dispatch_limits(),
+        source: source_limits(),
+    }
+}
+
+fn details_observation_bytes(held: &HeldObservations) -> (usize, usize) {
+    let event = held.event.as_ref().unwrap();
+    let path = held.path.as_ref().unwrap();
+    let (event_bytes, path_bytes) = crate::dom_event::manipulation_observation_layout(event, path);
+    assert_eq!(path.inspect_element_task_source_bytes(), path_bytes);
+    (
+        event_bytes + event.inspect_continuation_body_bytes(),
+        path_bytes,
+    )
+}
+
+fn assert_abandoned_details_row(
+    state: &RefCell<ElementTaskState>,
+    task: surgeist_dom::DomElementTaskId,
+    held: &mut HeldObservations,
+    expected_path: [NodeId; 3],
+) {
+    let state = state.borrow();
+    assert_eq!(state.tasks.len(), 1);
+    assert_eq!(state.tasks[0].value.id(), task);
+    assert!(state.tasks[0].receipt.is_none());
+    let event = held.event.as_ref().unwrap();
+    assert_eq!(event.current_target(), None);
+    assert_eq!(event.phase(), DomEventPhase::None);
+    assert!(event.composed_path().next().is_none());
+    let toggle = event.toggle_event().unwrap();
+    assert_eq!(toggle.old_state(), "closed");
+    assert_eq!(toggle.new_state(), "open");
+    assert_eq!(
+        held.path.as_mut().unwrap().by_ref().collect::<Vec<_>>(),
+        expected_path.map(surgeist_dom::DomEventTarget::Node),
+    );
+}
+
+#[test]
+fn details_dispatcher_drop_releases_retained_dispatch_with_live_task_owner() {
+    let DetailsDispatchDropFixture {
+        mut session,
+        document,
+        target,
+        mut context,
+        mut dispatcher,
+    } = details_dispatch_drop_fixture(false);
+    let snapshot = session.dom().snapshot();
+    let stamp = snapshot.stamp();
+    let parent = snapshot.node(target).unwrap().parent().unwrap();
+    let source = surgeist_dom::DomElementTaskSourceKind::DomManipulation;
+    let original = context.held.owner.pending_task(source, 0).unwrap().unwrap();
+    let progress = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        details_run_limits(),
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(
+        progress,
+        DomElementTaskProgress::Retained {
+            task,
+            dispatch: DomEventDispatchOutcome::RetainedHostUnavailable,
+            displaced_owner: None,
+        } if task.id() == original.id()
+    ));
+    assert_eq!(context.calls, ["prefix"]);
+
+    let state = context.held.owner.state().unwrap();
+    let counter = std::mem::size_of_val(state.borrow().payload_bytes.as_ref());
+    let (fixed, path) = details_observation_bytes(&context.held);
+    let (snapshot, failures, association) = context
+        .held
+        .event
+        .as_ref()
+        .unwrap()
+        .inspect_retained_dispatch_banks();
+    assert!(snapshot > 0 && failures > 0 && association > 0);
+    let retained = details_dispatch_funding(&state, session.dom().raw());
+    assert_eq!(
+        retained.0,
+        counter + fixed + path + snapshot + failures + association
+    );
+    assert_eq!(retained.1, fixed + path + snapshot + failures);
+
+    drop(dispatcher);
+    let abandoned = details_dispatch_funding(&state, session.dom().raw());
+    assert!(
+        abandoned.2 < retained.2,
+        "the canonical dispatch scope was released"
+    );
+    assert_abandoned_details_row(
+        &state,
+        original.id(),
+        &mut context.held,
+        [target, parent, document.node()],
+    );
+    let installed = candidate_peak(false) - size_of::<Intake>() - size_of::<Plan>();
+    let exact = installed + fixed + path;
+    let short = context.held.owner.set_limits(DomElementTaskRuntimeLimits {
+        storage_bytes: exact - 1,
+        ..limits()
+    });
+    let admitted = context.held.owner.set_limits(DomElementTaskRuntimeLimits {
+        storage_bytes: exact,
+        ..limits()
+    });
+    assert!(matches!(short, Err(DomElementTaskRuntimeError::Admission)));
+    assert_eq!(
+        (abandoned.0, abandoned.1, admitted.is_ok()),
+        (counter + fixed + path, fixed, true),
+        "dispatcher drop releases the snapshot, failure and association projection before retry"
+    );
+    assert_eq!(
+        context
+            .held
+            .path
+            .as_ref()
+            .unwrap()
+            .inspect_element_task_source_bytes(),
+        path
+    );
+    drop(context.held.path.take());
+    assert_eq!(state.borrow().payload_bytes.get(), counter + fixed);
+    context.held.owner.set_limits(limits()).unwrap();
+
+    let mut replacement = details_drop_registry();
+    add_details_suffix(&mut session, target, &mut replacement);
+    let retry = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut replacement,
+        &mut context,
+        details_run_limits(),
+        &cancel(),
+    );
+    assert!(matches!(
+        retry,
+        Err(DomElementTaskRuntimeError::Dispatch(
+            DomEventDispatchError::Abandoned
+        ))
+    ));
+    assert_eq!(context.calls, ["prefix"]);
+    assert_eq!(
+        context
+            .held
+            .owner
+            .pending_task(source, 0)
+            .unwrap()
+            .unwrap()
+            .id(),
+        original.id()
+    );
+    assert!(state.borrow().tasks[0].receipt.is_none());
+    assert_eq!(session.dom().snapshot().stamp(), stamp);
+}
+
+#[test]
+fn details_dispatcher_drop_keeps_running_dispatch_funded_until_callback_returns() {
+    let DetailsDispatchDropFixture {
+        mut session,
+        document,
+        target,
+        mut context,
+        mut dispatcher,
+    } = details_dispatch_drop_fixture(true);
+    let parent = session
+        .dom()
+        .snapshot()
+        .node(target)
+        .unwrap()
+        .parent()
+        .unwrap();
+    let source = surgeist_dom::DomElementTaskSourceKind::DomManipulation;
+    let original = context.held.owner.pending_task(source, 0).unwrap().unwrap();
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut dispatcher,
+        &mut context,
+        details_run_limits(),
+        &cancel(),
+    );
+    assert!(matches!(
+        result,
+        Err(DomElementTaskRuntimeError::Dispatch(
+            DomEventDispatchError::Abandoned
+        ))
+    ));
+    let state = context.held.owner.state().unwrap();
+    let counter = std::mem::size_of_val(state.borrow().payload_bytes.as_ref());
+    let (fixed, path) = details_observation_bytes(&context.held);
+    let [before, after] = context.running.unwrap();
+    assert_eq!(
+        after, before,
+        "the callback still owns the stack dispatch and canonical scope"
+    );
+    assert!(before.0 > counter + fixed + path && before.1 > fixed + path);
+    let settled = details_dispatch_funding(&state, session.dom().raw());
+    assert_eq!((settled.0, settled.1), (counter + fixed + path, fixed));
+    assert!(
+        settled.2 < after.2,
+        "the actual stack scope releases after return"
+    );
+    assert_eq!(context.calls, ["prefix"]);
+    assert_abandoned_details_row(
+        &state,
+        original.id(),
+        &mut context.held,
+        [target, parent, document.node()],
+    );
+    drop(context.held.path.take());
+    assert_eq!(state.borrow().payload_bytes.get(), counter + fixed);
+}
