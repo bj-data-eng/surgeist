@@ -3103,3 +3103,7 @@ mod prepared_range_tests;
 #[cfg(test)]
 #[path = "flex_composition_tests.rs"]
 mod flex_composition_tests;
+
+#[cfg(test)]
+#[path = "focused_declaration_tests.rs"]
+mod focused_declaration_tests;
