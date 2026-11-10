@@ -28,6 +28,14 @@ at operation boundaries after their last Rust token is dropped. Guest references
 and pending jobs can retain their objects after Rust roots are released.
 Dropping the process releases its handles and isolate without running jobs.
 
+Callback scopes share the production root registry through short checked
+borrows. No registry borrow crosses SDK allocation, coercion or a guest call.
+An internal registry conflict permanently refuses the owner and requests V8
+termination. V8 observes termination at interrupt checks; every native entry
+and continuation after guest coercion must also check the sticky failure before
+accepting native work. Refusal preserves the original host error and still
+permits required resource cleanup.
+
 Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 `to_utf16` conversion follows JavaScript ToString and can itself throw.
 Checkpoints are shared across realms. The current SDK checkpoint swallows job

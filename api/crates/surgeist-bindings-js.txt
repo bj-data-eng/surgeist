@@ -16,6 +16,7 @@ pub surgeist_bindings_js::Error::IdentityExhausted
 pub surgeist_bindings_js::Error::IntegerOutOfRange
 pub surgeist_bindings_js::Error::OwnerAlreadyActive
 pub surgeist_bindings_js::Error::PropertyRejected
+pub surgeist_bindings_js::Error::RegistryConflict
 pub surgeist_bindings_js::Error::StringTooLong
 pub surgeist_bindings_js::Error::Terminated
 pub surgeist_bindings_js::Error::TooManyArguments

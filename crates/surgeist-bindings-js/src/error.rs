@@ -65,6 +65,9 @@ pub enum Error {
     Terminated,
     /// The backend could not complete and supplied no guest exception.
     BackendUnavailable,
+    /// Internal root-registry access overlapped. The owner fails closed after
+    /// this defect rather than entering the SDK with inconsistent storage.
+    RegistryConflict,
     /// The original guest-thrown value and operation phase.
     Exception(Exception),
 }
@@ -86,6 +89,7 @@ impl fmt::Display for Error {
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
+            Self::RegistryConflict => "binding root-registry access overlapped",
             Self::Exception(_) => "JavaScript threw an exception",
         })
     }
