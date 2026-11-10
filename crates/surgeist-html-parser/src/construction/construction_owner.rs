@@ -247,10 +247,22 @@ impl ConstructionOwner {
             return Err(stop.into());
         }
         observation.accept();
-        let owner = initialization
-            .try_ready()
-            .map_err(|refusal| construction_error(control, refusal.into_parts().1))?
-            .commit();
+        let ready = match initialization.try_ready() {
+            Ok(ready) => ready,
+            Err(refusal) => {
+                // The refused initialization still owns its identity allocation: retire it
+                // as the observation failure above does.
+                let (initialization, error) = refusal.into_parts();
+                if let Some(receipt) = initialization.abort() {
+                    let Some(ticket) = identity.take() else {
+                        return Err(latch_registry_row(control));
+                    };
+                    control.retire_construction_allocation(ticket, receipt)?;
+                }
+                return Err(construction_error(control, error));
+            }
+        };
+        let owner = ready.commit();
         let (children, children_allocation) = match control.new_vector() {
             Ok(value) => value,
             Err(stop) => {

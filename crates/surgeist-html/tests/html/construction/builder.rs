@@ -228,7 +228,7 @@ fn template_contents_are_a_separate_fragment_with_a_reverse_association() {
     assert_eq!(fragment.root().parent(), None);
     assert_eq!(
         fragment.root().fragment_owner(),
-        Some(&HtmlFragmentOwner::Template(template_id))
+        Some(HtmlFragmentOwner::Template(template_id))
     );
     let text_id = fragment.root().children().next().unwrap();
     assert_eq!(
@@ -294,18 +294,18 @@ fn shadow_host_and_contents_keep_properties_and_separate_ordinary_children() {
     let host_view = fragment.node(&host_id).unwrap();
     assert_eq!(host_view.children().len(), 1);
     let relation = host_view.declarative_shadow_root().unwrap();
-    assert_eq!(relation.host(), &host_id);
+    assert_eq!(relation.host(), host_id);
     assert_eq!(relation.properties(), properties);
     assert_eq!(properties.mode(), HtmlShadowRootMode::Closed);
     assert_eq!(properties.slot_assignment(), HtmlSlotAssignment::Manual);
     assert!(properties.delegates_focus());
     assert!(!properties.clonable());
     assert!(properties.serializable());
-    let shadow = fragment.fragment(relation.contents()).unwrap().unwrap();
+    let shadow = fragment.fragment(&relation.contents()).unwrap().unwrap();
     assert_eq!(shadow.root().parent(), None);
     assert_eq!(
         shadow.root().fragment_owner(),
-        Some(&HtmlFragmentOwner::ShadowHost(host_id))
+        Some(HtmlFragmentOwner::ShadowHost(host_id))
     );
     let text_id = shadow.root().children().next().unwrap();
     assert_eq!(

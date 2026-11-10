@@ -60,8 +60,8 @@ fn insert(
     change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: node.clone(),
-            parent: parent.clone(),
+            node: *node,
+            parent: *parent,
             before: None,
         },
     )
@@ -249,11 +249,11 @@ fn replacing_content_commits_the_payload_and_its_utf16_usage_without_touching_to
             siblings,
         } = row(case.initial);
         let before = counters(&owner);
-        let target = siblings[1].clone();
+        let target = siblings[1];
         let (owner, created) = change(
             owner,
             HtmlConstructionCommand::ReplaceContent {
-                node: target.clone(),
+                node: target,
                 content: (case.content)(),
             },
         );
@@ -309,11 +309,11 @@ fn replacing_content_with_the_current_payload_changes_nothing_observable() {
         siblings,
     } = row(HtmlNodeKind::Text(text("same")));
     let before = counters(&owner);
-    let target = siblings[1].clone();
+    let target = siblings[1];
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::ReplaceContent {
-            node: target.clone(),
+            node: target,
             content: HtmlConstructionContent::Text(text("same")),
         },
     );
@@ -345,7 +345,7 @@ fn replacing_an_element_name_keeps_attributes_children_and_position_and_charges_
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::ReplaceContent {
-            node: target.clone(),
+            node: target,
             content: HtmlConstructionContent::ElementName(name(svg, Some("s\u{1F600}"), "section")),
         },
     );
@@ -398,7 +398,7 @@ fn link_element(
 }
 fn rename(node: &HtmlBuilderNode, to: QualifiedName) -> HtmlConstructionCommand {
     HtmlConstructionCommand::ReplaceContent {
-        node: node.clone(),
+        node: *node,
         content: HtmlConstructionContent::ElementName(to),
     }
 }
@@ -557,11 +557,11 @@ fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchange
                 siblings,
             } = row(kind());
             let before = counters(&owner);
-            let target = siblings[1].clone();
+            let target = siblings[1];
             let owner = refuse(
                 owner,
                 HtmlConstructionCommand::ReplaceContent {
-                    node: target.clone(),
+                    node: target,
                     content: content(),
                 },
                 cause::WRONG_NODE_KIND,
@@ -594,7 +594,7 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
         owner = refuse(
             owner,
             HtmlConstructionCommand::ReplaceContent {
-                node: node.clone(),
+                node: *node,
                 content: HtmlConstructionContent::Text(text("x")),
             },
             cause::WRONG_NODE_KIND,
@@ -614,7 +614,7 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
     let owner = refuse(
         owner,
         HtmlConstructionCommand::ReplaceContent {
-            node: foreign.clone(),
+            node: foreign,
             content: HtmlConstructionContent::Text(text("x")),
         },
         cause::FOREIGN_BUILDER,
@@ -639,11 +639,11 @@ fn aborting_a_content_replacement_after_any_action_changes_nothing_and_returns_t
                     owner, siblings, ..
                 } = row(initial.clone());
                 let before = counters(&owner);
-                let target = siblings[1].clone();
+                let target = siblings[1];
                 (
                     owner,
                     HtmlConstructionCommand::ReplaceContent {
-                        node: target.clone(),
+                        node: target,
                         content: content(),
                     },
                     (target, before),
@@ -680,7 +680,7 @@ fn replace_attributes(
     values: OrderedAttributes,
 ) -> HtmlConstructionCommand {
     HtmlConstructionCommand::ReplaceAttributes {
-        element: element.clone(),
+        element: *element,
         attributes: values.into(),
     }
 }
@@ -913,7 +913,7 @@ fn replacing_attributes_of_a_record_that_is_not_an_element_is_refused() {
             owner, siblings, ..
         } = row(kind.clone());
         let before = counters(&owner);
-        let target = siblings[1].clone();
+        let target = siblings[1];
         let owner = refuse(
             owner,
             replace_attributes(&target, new_attributes()),

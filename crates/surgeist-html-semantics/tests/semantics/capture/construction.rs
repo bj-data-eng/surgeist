@@ -94,12 +94,12 @@ fn facts_with(
             pending.push(id);
         }
         if let Some(shadow) = node.declarative_shadow_root() {
-            pending.push(shadow.contents().clone());
+            pending.push(shadow.contents());
         }
         if let Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
             node.fragment_owner()
         {
-            pending.push(owner.clone());
+            pending.push(owner);
         }
         ids.push(id);
     }
@@ -279,8 +279,7 @@ fn actual_shadow_root_imports_properties_and_rejects_conflicting_absence() {
         .unwrap()
         .declarative_shadow_root()
         .unwrap()
-        .contents()
-        .clone();
+        .contents();
     let source = HtmlConstructionResult::Fragment(source);
     let (mut builder, revision) = new_builder();
     let document = external_document(&mut builder);
@@ -346,8 +345,7 @@ fn hosted_shadow_import_preserves_its_evidenced_document_independently_of_host()
         .unwrap()
         .declarative_shadow_root()
         .unwrap()
-        .contents()
-        .clone();
+        .contents();
     let shadow_text = source.node(&shadow).unwrap().children().next().unwrap();
     let light = source.node(&host).unwrap().children().next().unwrap();
     let source = HtmlConstructionResult::Fragment(source);
@@ -374,7 +372,7 @@ fn hosted_shadow_import_preserves_its_evidenced_document_independently_of_host()
                     entry.document().clone()
                 };
                 HtmlConstructionCaptureNodeFacts::new(
-                    entry.node().clone(),
+                    *entry.node(),
                     document,
                     entry.document_facts().cloned(),
                     entry.element_facts().cloned(),
@@ -451,7 +449,7 @@ fn selected_template_fragment_imports_only_its_owner_and_leaves_unrelated_relati
     let text = source.node(&contents).unwrap().children().next().unwrap();
     let node_facts = vec![
         HtmlConstructionCaptureNodeFacts::new(
-            contents.clone(),
+            contents,
             HtmlConstructionCaptureDocument::Existing(document.clone()),
             None,
             None,
@@ -465,7 +463,7 @@ fn selected_template_fragment_imports_only_its_owner_and_leaves_unrelated_relati
             None,
         ),
         HtmlConstructionCaptureNodeFacts::new(
-            ids[0].clone(),
+            ids[0],
             HtmlConstructionCaptureDocument::Existing(document),
             None,
             Some(HtmlConstructionCaptureElementFacts::new(
@@ -860,8 +858,8 @@ fn the_first_fact_entry_outside_the_closure_is_where_the_import_stops() {
         refused.usage().work()
     };
     // Two entries outside, in either order, stop at the one that comes first.
-    let two = stopped_with(&[first.clone(), second.clone()], false);
-    let reversed = stopped_with(&[second, first.clone()], false);
+    let two = stopped_with(&[first, second], false);
+    let reversed = stopped_with(&[second, first], false);
     assert_eq!(reversed, two);
     // An entry outside is reached after the entries of the closure when it comes
     // last, so the import stops later, not at the end of a full scan.
@@ -882,16 +880,16 @@ fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth
     let (owner, _) = change(
         owner,
         C::Insert {
-            node: template.clone(),
-            parent: shadow.clone(),
+            node: template,
+            parent: shadow,
             before: None,
         },
     );
     let (owner, _) = change(
         owner,
         C::SetTemplateShadowContents {
-            template: template.clone(),
-            contents: shadow.clone(),
+            template,
+            contents: shadow,
         },
     );
     let shadow_id = owner.result_id(&shadow).unwrap();
@@ -946,17 +944,17 @@ fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
     let (owner, _) = change(
         owner,
         C::Insert {
-            node: template.clone(),
-            parent: selected.clone(),
+            node: template,
+            parent: selected,
             before: None,
         },
     );
     let (owner, _) = change(
         owner,
         C::AttachTemplateShadow {
-            template: template.clone(),
-            host: host.clone(),
-            contents: shadow.clone(),
+            template,
+            host,
+            contents: shadow,
         },
     );
     let template = owner.result_id(&template).unwrap();
@@ -1018,25 +1016,25 @@ fn a_template_below_an_unrelated_element_keeps_its_shadow_reference() {
     let (owner, _) = change(
         owner,
         C::Insert {
-            node: parent.clone(),
-            parent: selected.clone(),
+            node: parent,
+            parent: selected,
             before: None,
         },
     );
     let (owner, _) = change(
         owner,
         C::Insert {
-            node: template.clone(),
-            parent: parent.clone(),
+            node: template,
+            parent,
             before: None,
         },
     );
     let (owner, _) = change(
         owner,
         C::AttachTemplateShadow {
-            template: template.clone(),
-            host: host.clone(),
-            contents: shadow.clone(),
+            template,
+            host,
+            contents: shadow,
         },
     );
     let parent = owner.result_id(&parent).unwrap();
@@ -1129,7 +1127,7 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
     run(
         &|revision, document| {
             let entry = HtmlConstructionCaptureNodeFacts::new(
-                id.clone(),
+                id,
                 HtmlConstructionCaptureDocument::Existing(document),
                 None,
                 None,
@@ -1144,7 +1142,7 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
             HtmlConstructionCaptureFacts::new(
                 revision,
                 vec![HtmlConstructionCaptureNodeFacts::new(
-                    id.clone(),
+                    id,
                     HtmlConstructionCaptureDocument::Existing(document),
                     None,
                     Some(HtmlConstructionCaptureElementFacts::new(
@@ -1164,7 +1162,7 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
             HtmlConstructionCaptureFacts::new(
                 revision,
                 vec![HtmlConstructionCaptureNodeFacts::new(
-                    id.clone(),
+                    id,
                     HtmlConstructionCaptureDocument::Existing(document.clone()),
                     None,
                     None,
@@ -1236,7 +1234,7 @@ fn template_contents_keep_their_explicit_distinct_document_assignment() {
                 None,
             ),
             HtmlConstructionCaptureNodeFacts::new(
-                template.clone(),
+                template,
                 HtmlConstructionCaptureDocument::Existing(host_document.clone()),
                 None,
                 Some(HtmlConstructionCaptureElementFacts::new(
@@ -1246,7 +1244,7 @@ fn template_contents_keep_their_explicit_distinct_document_assignment() {
                 None,
             ),
             HtmlConstructionCaptureNodeFacts::new(
-                contents.clone(),
+                contents,
                 HtmlConstructionCaptureDocument::Existing(contents_document.clone()),
                 None,
                 None,

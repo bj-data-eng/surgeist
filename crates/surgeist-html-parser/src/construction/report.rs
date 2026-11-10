@@ -1995,7 +1995,6 @@ mod tests {
             )
             .unwrap();
         let index = node.index;
-        drop(node);
         let frozen = session.freeze(&mut c).unwrap();
         (c, frozen, index)
     }

@@ -154,11 +154,11 @@ fn image_frozen_metadata_resolves_actual_native_identity_and_unavailable_is_not_
         let html = doc.root().children().next().unwrap();
         let body = doc.node(&html).unwrap().children().next().unwrap();
         let ids: Vec<_> = doc.node(&body).unwrap().children().collect();
-        (ids[1].clone(), ids[0].clone(), ids[2].clone())
+        (ids[1], ids[0], ids[2])
     };
     assert_eq!(
         frozen.image_form_owner(&mut c, &image_id).unwrap(),
-        Some(form_id.clone())
+        Some(form_id)
     );
     assert!(
         frozen
@@ -1212,7 +1212,7 @@ fn image_self_reference_insertion_runs_removal_before_insertion_with_unchanged_l
             session.insert(&mut c, &body, &div, None, None).unwrap();
             div
         } else {
-            body.clone()
+            body
         };
         let image = form_creation(&mut session, &mut tokenizer, &mut c, &parent, Some(&form));
         session.insert(&mut c, &parent, &image, None, None).unwrap();

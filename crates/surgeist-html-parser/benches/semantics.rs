@@ -112,7 +112,7 @@ fn facts(
         .iter()
         .map(|(id, is_document, is_element)| {
             HtmlConstructionCaptureNodeFacts::new(
-                id.clone(),
+                *id,
                 HtmlConstructionCaptureDocument::ResultDocument,
                 is_document.then(|| {
                     HtmlConstructionCaptureDocumentFacts::new(

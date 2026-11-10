@@ -4075,11 +4075,8 @@ impl core::convert::TryFrom<surgeist_html::construction::HtmlProcessingInstructi
 pub type surgeist_html::construction::HtmlAuthoredProcessingInstruction::Error = surgeist_html::construction::HtmlProcessingInstructionError
 pub fn surgeist_html::construction::HtmlAuthoredProcessingInstruction::try_from(instruction: surgeist_html::construction::HtmlProcessingInstruction) -> core::result::Result<Self, Self::Error>
 pub struct surgeist_html::construction::HtmlBuilderNode
-impl core::cmp::Eq for surgeist_html::construction::HtmlBuilderNode
-impl core::cmp::PartialEq for surgeist_html::construction::HtmlBuilderNode
-pub fn surgeist_html::construction::HtmlBuilderNode::eq(&self, other: &Self) -> bool
-impl core::hash::Hash for surgeist_html::construction::HtmlBuilderNode
-pub fn surgeist_html::construction::HtmlBuilderNode::hash<H: core::hash::Hasher>(&self, state: &mut H)
+impl core::fmt::Debug for surgeist_html::construction::HtmlBuilderNode
+pub fn surgeist_html::construction::HtmlBuilderNode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::construction::HtmlConstructionError
 impl surgeist_html::construction::HtmlConstructionError
 pub fn surgeist_html::construction::HtmlConstructionError::accounting_fault(&self) -> core::option::Option<surgeist_html::accounting::HtmlAccountingFault>
@@ -4106,8 +4103,8 @@ pub fn surgeist_html::construction::HtmlConstructionUsage::nodes(self) -> usize
 pub fn surgeist_html::construction::HtmlConstructionUsage::utf16_units(self) -> usize
 pub struct surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>
 impl<'a> surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>
-pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::contents(&self) -> &'a surgeist_html::construction::HtmlNodeId
-pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::host(&self) -> &'a surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::contents(&self) -> surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::host(&self) -> surgeist_html::construction::HtmlNodeId
 pub fn surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>::properties(&self) -> surgeist_html::construction::HtmlShadowRootProperties
 pub struct surgeist_html::construction::HtmlDoctype
 impl surgeist_html::construction::HtmlDoctype
@@ -4168,7 +4165,7 @@ pub fn surgeist_html::construction::HtmlNode<'a>::children(self) -> impl core::i
 pub fn surgeist_html::construction::HtmlNode<'a>::declarative_shadow_root(self) -> core::option::Option<surgeist_html::construction::HtmlDeclarativeShadowRoot<'a>>
 pub fn surgeist_html::construction::HtmlNode<'a>::document_design_mode_enabled(self) -> core::option::Option<bool>
 pub fn surgeist_html::construction::HtmlNode<'a>::document_focused_area_designation(self) -> core::option::Option<surgeist_html::construction::HtmlFocusedAreaDesignation>
-pub fn surgeist_html::construction::HtmlNode<'a>::fragment_owner(self) -> core::option::Option<&'a surgeist_html::construction::HtmlFragmentOwner>
+pub fn surgeist_html::construction::HtmlNode<'a>::fragment_owner(self) -> core::option::Option<surgeist_html::construction::HtmlFragmentOwner>
 pub fn surgeist_html::construction::HtmlNode<'a>::id(self) -> surgeist_html::construction::HtmlNodeId
 pub fn surgeist_html::construction::HtmlNode<'a>::is_shadow_contents(self) -> bool
 pub fn surgeist_html::construction::HtmlNode<'a>::kind(self) -> &'a surgeist_html::construction::HtmlNodeKind
@@ -4177,11 +4174,8 @@ pub fn surgeist_html::construction::HtmlNode<'a>::shadow_properties(self) -> cor
 pub fn surgeist_html::construction::HtmlNode<'a>::template_contents(self) -> core::option::Option<surgeist_html::construction::HtmlNodeId>
 pub fn surgeist_html::construction::HtmlNode<'a>::template_contents_kind(self) -> core::option::Option<surgeist_html::construction::HtmlTemplateContentsKind>
 pub struct surgeist_html::construction::HtmlNodeId
-impl core::cmp::Eq for surgeist_html::construction::HtmlNodeId
-impl core::cmp::PartialEq for surgeist_html::construction::HtmlNodeId
-pub fn surgeist_html::construction::HtmlNodeId::eq(&self, other: &Self) -> bool
-impl core::hash::Hash for surgeist_html::construction::HtmlNodeId
-pub fn surgeist_html::construction::HtmlNodeId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+impl core::fmt::Debug for surgeist_html::construction::HtmlNodeId
+pub fn surgeist_html::construction::HtmlNodeId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::construction::HtmlProcessingInstruction
 impl surgeist_html::construction::HtmlProcessingInstruction
 pub fn surgeist_html::construction::HtmlProcessingInstruction::data(&self) -> &surgeist_html::values::DocumentString

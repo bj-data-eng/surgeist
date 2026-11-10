@@ -100,8 +100,8 @@ fn contents_of(storage: &HtmlConstructionStorage, template: &HtmlBuilderNode) ->
 struct RecordSnapshot {
     kind: HtmlNodeKind,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
-    parent: Option<usize>,
-    children: VecDeque<usize>,
+    parent: Option<NodeIx>,
+    children: VecDeque<NodeIx>,
     children_generation: u64,
     /// The depth cache: this record's depth, the histogram count at its index
     /// and the walk level count at its index.
@@ -155,9 +155,9 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
                 population: *population,
                 level_count: *level_count,
                 template_contents: *template_contents,
-                shadow: shadow.clone(),
+                shadow: *shadow,
                 shadow_properties: *shadow_properties,
-                owner: owner.clone(),
+                owner: *owner,
                 publish_found: *publish_found,
             }
         })
@@ -500,7 +500,7 @@ fn with_child(
         storage,
         HtmlConstructionCommand::Insert {
             node: child,
-            parent: parent.clone(),
+            parent: *parent,
             before: None,
         },
     )
@@ -597,7 +597,7 @@ fn reassigning_over_a_shadow_reference_assigns_the_new_owner_and_the_contents() 
     let (storage, _) = change(
         storage,
         HtmlConstructionCommand::SetTemplateShadowContents {
-            template: template.clone(),
+            template,
             contents: shadow,
         },
     );

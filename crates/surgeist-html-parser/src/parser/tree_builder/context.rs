@@ -2902,8 +2902,6 @@ pub(super) mod tests {
             assert_eq!(actual.len(), 1);
             assert_eq!(view.unit(&actual, 0).unwrap(), Some(text));
         }
-        drop(shadow);
-        drop(cloned);
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
     }
@@ -2972,7 +2970,6 @@ pub(super) mod tests {
         };
         assert_eq!(view.unit(&text, 0).unwrap(), Some(83));
         drop(effect);
-        drop(shadow);
         let fallback_contents = session
             .template_state(&mut driver.control, &fallback)
             .unwrap()
@@ -3328,7 +3325,7 @@ pub(super) mod tests {
             {
                 let (root, mut view) = driver.completed_native_view().unwrap();
                 assert_eq!(view.child_count(&root).unwrap(), 2);
-                let mut child = root.clone();
+                let mut child = root;
                 for ordinal in path {
                     child = view.child_at(&child, *ordinal).unwrap().unwrap();
                 }
@@ -5161,7 +5158,7 @@ mod owned_fragment_details_tests {
                         for previous in &detail_nodes {
                             result.distinct_details &= !view.same_node(previous, &node).unwrap();
                         }
-                        detail_nodes.push(node.clone());
+                        detail_nodes.push(node);
                         let attributes = (0..view.attribute_count(&node).unwrap())
                             .map(|position| {
                                 let attribute =
@@ -6164,7 +6161,7 @@ mod shadow_reference_alias_characterization {
             // while recovery is refused by an independently retained arena alias.
             assert_eq!(
                 fragment.node(&template).unwrap().template_contents(),
-                Some(shadow.clone())
+                Some(shadow)
             );
             let p = fragment.node(&shadow).unwrap().children().next().unwrap();
             let text = fragment.node(&p).unwrap().children().next().unwrap();

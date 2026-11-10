@@ -681,7 +681,7 @@ fn declarative_shadow_svg_preserves_captured_and_owned_effect_state_until_real_c
         let scripts = source_scripts(&report);
         assert_eq!(scripts.len(), 1);
         assert_eq!(scripts[0].1, HtmlParseSvgScriptOrigin::Parser);
-        let source_script = scripts[0].0.clone();
+        let source_script = scripts[0].0;
         let document_subject = capture.subject(document.node()).unwrap();
         let context_subject = capture.subject(context_host).unwrap();
         let mut source_root = None;

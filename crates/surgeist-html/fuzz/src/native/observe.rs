@@ -323,19 +323,19 @@ fn inspect(
     ids.resize_with(expected.len(), || None);
     ids[0] = Some(f.root().id());
     for (i, e) in expected.iter().enumerate() {
-        let id = ids[i].as_ref().ok_or("missing-recipe-node")?.clone();
+        let id = *ids[i].as_ref().ok_or("missing-recipe-node")?;
         let n = f.node(&id).map_err(|_| "foreign-native-node")?;
-        if !payload(n.kind(), e, c) || n.parent() != e.parent.and_then(|p| ids[p].clone()) {
+        if !payload(n.kind(), e, c) || n.parent() != e.parent.and_then(|p| ids[p]) {
             return Err("native-payload-or-parent");
         }
         let owner = e.owner.map(|(p, shadow)| {
             if shadow {
-                HtmlFragmentOwner::ShadowHost(ids[p].as_ref().expect("earlier owner").clone())
+                HtmlFragmentOwner::ShadowHost(*ids[p].as_ref().expect("earlier owner"))
             } else {
-                HtmlFragmentOwner::Template(ids[p].as_ref().expect("earlier owner").clone())
+                HtmlFragmentOwner::Template(*ids[p].as_ref().expect("earlier owner"))
             }
         });
-        if n.fragment_owner() != owner.as_ref() {
+        if n.fragment_owner() != owner {
             return Err("native-owner");
         }
         if n.children().len() != e.children.len() {
@@ -358,9 +358,9 @@ fn inspect(
         match (e.shadow, n.declarative_shadow_root()) {
             (None, None) => {}
             (Some((index, bits)), Some(shadow)) => {
-                if shadow.host() != &id
+                if shadow.host() != id
                     || shadow.properties() != properties(bits)
-                    || !assign(&mut ids, index, shadow.contents().clone())
+                    || !assign(&mut ids, index, shadow.contents())
                 {
                     return Err("native-shadow");
                 }

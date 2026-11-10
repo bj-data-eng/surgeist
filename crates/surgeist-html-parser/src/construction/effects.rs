@@ -467,7 +467,7 @@ impl SessionStorage {
                     let contents = self
                         .construction
                         .storage(c)?
-                        .node_by_result_id(shadow.contents())
+                        .node_by_result_id(&shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
                     self.shadow_state(c, contents)?;

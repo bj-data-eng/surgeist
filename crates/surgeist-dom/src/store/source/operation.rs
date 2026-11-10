@@ -2620,7 +2620,7 @@ impl DomSourceLease<'_> {
                             let payload = input.bindings_payload.take();
                             let result = crate::DomNativeHtmlInstallation {
                                 destination: input.destination,
-                                source_root: input.source_root.clone(),
+                                source_root: input.source_root,
                                 root,
                                 snapshot: self.dom.snapshot(),
                                 changes: commit.changes.clone(),
@@ -3413,7 +3413,7 @@ impl Operation {
                 Key::Created(index) => ids.get(index).ok_or(DomError::UnavailableCreation)?,
             };
             install.bindings.push(crate::DomNativeHtmlBinding {
-                source: row.source.clone(),
+                source: row.source,
                 node: id,
             });
             #[cfg(test)]

@@ -445,7 +445,7 @@ mod capture {
         let mut pending = ids.clone();
         while let Some(id) = pending.pop() {
             for child in result.node(&id).unwrap().children() {
-                ids.push(child.clone());
+                ids.push(child);
                 pending.push(child);
             }
         }

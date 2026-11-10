@@ -677,7 +677,6 @@ mod tests {
             native.attributes().as_slice()[1].name().prefix(),
             Some(&DocumentString::from("xlink"))
         );
-        drop(element);
         frozen.release(&mut c).unwrap();
         zero(&c);
     }

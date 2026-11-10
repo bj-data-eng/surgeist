@@ -23,7 +23,7 @@ fn parsed_document_enters_the_same_adapter_with_original_result_identity() {
         HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10, 16_777_216),
         revision.clone(),
     );
-    let mut pending = vec![id.clone()];
+    let mut pending = vec![id];
     let mut rows = Vec::new();
     while let Some(subject) = pending.pop() {
         let node = source.node(&subject).unwrap();

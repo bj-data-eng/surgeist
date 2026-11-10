@@ -800,7 +800,7 @@ fn reached(
         .try_reserve(1)
         .map_err(|_| HtmlConstructionCaptureError::AllocationFailed)?;
     index.reserve_one(control)?;
-    index.insert_reserved(node.clone(), next - 1);
+    index.insert_reserved(node, next - 1);
     map.entries.push(Entry {
         node,
         subject: None,
@@ -927,11 +927,11 @@ fn traverse<'a>(
     // Explicit tasks preserve source order without recursion or replaying a path.
     let mut pending = Vec::new();
     control.reserve(&mut pending, 1)?;
-    pending.push((map.root.clone(), true));
+    pending.push((map.root, true));
     while let Some((id, structural)) = pending.pop() {
         control.account.release_scratch(1)?;
         control.work(2)?;
-        let index = reached(map, node_index, id.clone(), structural, control)?;
+        let index = reached(map, node_index, id, structural, control)?;
         let node = source
             .node(&id)
             .map_err(|_| HtmlConstructionCaptureError::ForeignResult)?;
@@ -946,7 +946,7 @@ fn traverse<'a>(
         if let Some(owner) = node.fragment_owner() {
             let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) = owner;
             // Only the endpoint is supplemental; do not traverse unrelated owner edges.
-            let owner_index = reached(map, node_index, owner.clone(), false, control)?;
+            let owner_index = reached(map, node_index, owner, false, control)?;
             fact(facts, fact_index, &map.entries[owner_index].node, control)?;
         }
         if !structural || map.entries[index].expanded {
@@ -955,7 +955,7 @@ fn traverse<'a>(
         map.entries[index].expanded = true;
         if let Some(shadow) = node.declarative_shadow_root() {
             control.reserve(&mut pending, 1)?;
-            pending.push((shadow.contents().clone(), true));
+            pending.push((shadow.contents(), true));
         }
         if let Some(contents) = node.template_contents() {
             control.reserve(&mut pending, 1)?;
@@ -1073,7 +1073,7 @@ fn traverse<'a>(
                     control.work(10)?;
                     if let Some(HtmlFragmentOwner::ShadowHost(host)) = node.fragment_owner() {
                         let host = node_index
-                            .get(host, control)?
+                            .get(&host, control)?
                             .and_then(|i| map.entries[i].subject.as_ref())
                             .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
                         builder.add_shadow_root(
@@ -1197,7 +1197,7 @@ fn traverse<'a>(
         // Associations from supplemental fragment views are still established.
         if let Some(HtmlFragmentOwner::Template(host)) = node.fragment_owner() {
             let host = node_index
-                .get(host, control)?
+                .get(&host, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
             let mark = control.mark()?;
@@ -1249,7 +1249,7 @@ mod tests {
         }
         let source = source.finish().unwrap();
         let root_id = source.root().id();
-        let mut ids = vec![root_id.clone()];
+        let mut ids = vec![root_id];
         ids.extend(source.node(&root_id).unwrap().children());
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(
@@ -1267,7 +1267,7 @@ mod tests {
             .iter()
             .map(|id| {
                 HtmlConstructionCaptureNodeFacts::new(
-                    id.clone(),
+                    *id,
                     HtmlConstructionCaptureDocument::Existing(document.clone()),
                     None,
                     None,
@@ -1372,13 +1372,13 @@ mod tests {
         source.append_text(&shadow, "inside").unwrap();
         let source = source.finish().unwrap();
         let source_id = source.root().id();
-        let mut ids = vec![source_id.clone()];
+        let mut ids = vec![source_id];
         let mut cursor = 0;
         while cursor < ids.len() {
             let node = source.node(&ids[cursor]).unwrap();
             ids.extend(node.children());
             if let Some(shadow) = node.declarative_shadow_root() {
-                ids.push(shadow.contents().clone());
+                ids.push(shadow.contents());
             }
             cursor += 1;
         }
@@ -1400,7 +1400,7 @@ mod tests {
                 .map(|id| {
                     let node = source.node(id).unwrap();
                     HtmlConstructionCaptureNodeFacts::new(
-                        id.clone(),
+                        *id,
                         HtmlConstructionCaptureDocument::Existing(document.clone()),
                         None,
                         matches!(node.kind(), HtmlNodeKind::Element(_)).then(|| {

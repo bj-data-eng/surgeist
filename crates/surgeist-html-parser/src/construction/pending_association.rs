@@ -2909,7 +2909,7 @@ mod tests {
                 .iter()
                 .filter(|(found, _)| found == name)
                 .nth(nth)
-                .map(|(_, node)| node.clone())
+                .map(|(_, node)| *node)
                 .expect("a parsed element")
         };
         let (div, second) = (find("div", 0), find("style", 1));

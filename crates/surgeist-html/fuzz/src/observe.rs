@@ -228,11 +228,11 @@ pub(crate) fn native(
         if seen.len() >= MAX_NODES {
             return Err("native-node-limit");
         }
-        if !seen.insert(id.clone()) {
+        if !seen.insert(id) {
             return Err("native-revisit");
         }
         let n = node(report, &id).map_err(|_| "foreign-native-id")?;
-        if n.parent() != parent || n.fragment_owner() != owner.as_ref() {
+        if n.parent() != parent || n.fragment_owner() != owner {
             return Err("native-parent-owner");
         }
         if n.children().len() > MAX_NODES.saturating_sub(stack.len()) {
@@ -240,25 +240,17 @@ pub(crate) fn native(
         }
         let children: Vec<_> = n.children().collect();
         for child in children.iter().rev() {
-            stack.push((child.clone(), Some(id.clone()), None));
+            stack.push((*child, Some(id), None));
         }
         let template = n.template_contents();
         if let Some(ref f) = template {
-            stack.push((
-                f.clone(),
-                None,
-                Some(HtmlFragmentOwner::Template(id.clone())),
-            ));
+            stack.push((*f, None, Some(HtmlFragmentOwner::Template(id))));
         }
         let shadow = n
             .declarative_shadow_root()
-            .map(|s| (s.contents().clone(), s.properties()));
+            .map(|s| (s.contents(), s.properties()));
         if let Some((ref f, _)) = shadow {
-            stack.push((
-                f.clone(),
-                None,
-                Some(HtmlFragmentOwner::ShadowHost(id.clone())),
-            ));
+            stack.push((*f, None, Some(HtmlFragmentOwner::ShadowHost(id))));
         }
         if stack.len() > MAX_NODES {
             return Err("native-stack-limit");

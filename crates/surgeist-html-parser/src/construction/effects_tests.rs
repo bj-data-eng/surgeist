@@ -200,7 +200,7 @@ pub(in crate::construction) fn graph<'a>(
                     .insert(&mut c, parent, &node, None, Some(&proof))
                     .unwrap();
                 if !matches!(name.as_str(), "hr" | "input") {
-                    stack.push(node.clone());
+                    stack.push(node);
                 }
                 nodes.push((name.clone(), node));
                 if name == "script" {
@@ -279,7 +279,6 @@ pub(in crate::construction) fn named(
         .nth(occurrence)
         .unwrap()
         .1
-        .clone()
 }
 fn children(session: &ParserArenaSession, node: &ParserNode) -> Vec<usize> {
     session
@@ -629,7 +628,7 @@ fn select_owners_active_and_frozen_facts_are_qualified_and_unavailable_for_wrong
         if let HtmlNodeKind::Element(e) = node.kind()
             && e.name().local_name() == &DocumentString::from("option")
         {
-            ids.push(id.clone());
+            ids.push(id);
         }
         next.extend(node.children());
     }

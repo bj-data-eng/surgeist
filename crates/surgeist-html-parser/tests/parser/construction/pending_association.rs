@@ -560,7 +560,7 @@ fn recorded_bases(text: &str) -> Vec<(Option<HtmlNodeId>, Option<usize>)> {
         .map(|row| {
             let context = row.context();
             (
-                context.first_base().map(|node| node.id().clone()),
+                context.first_base().map(|node| node.id()),
                 context.base_observation(),
             )
         })
@@ -597,9 +597,6 @@ fn a_moved_subtree_records_the_first_base_with_an_href_that_it_holds_for_every_n
         "during the move {:?}",
         &moved[kept.len()..]
     );
-    let firsts: Vec<_> = moved
-        .iter()
-        .filter_map(|(first, _)| first.clone())
-        .collect();
+    let firsts: Vec<_> = moved.iter().filter_map(|(first, _)| *first).collect();
     assert!(firsts.iter().all(|first| *first == firsts[0]));
 }

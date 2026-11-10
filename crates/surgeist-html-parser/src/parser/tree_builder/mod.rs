@@ -262,7 +262,7 @@ fn copy_node(node: &ParserNode, control: &mut ParseControl) -> Result<ParserNode
         HtmlParseWorkCategory::CopyByte,
         size_of::<ParserNode>() as u64,
     )?;
-    Ok(node.clone())
+    Ok(*node)
 }
 
 impl LocationKernel {

@@ -68,8 +68,8 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: child.clone(),
-            parent: document.clone(),
+            node: child,
+            parent: document,
             before: None,
         },
     );
@@ -92,7 +92,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::SetDocumentMode {
-            document: document.clone(),
+            document,
             mode: HtmlDocumentMode::LimitedQuirks,
         },
     );

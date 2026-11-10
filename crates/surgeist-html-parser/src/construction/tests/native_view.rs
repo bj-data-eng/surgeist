@@ -386,7 +386,7 @@ impl<'a> NativeView<'a> {
                 .storage
                 .construction
                 .test_storage()
-                .node_by_result_id(shadow.contents())
+                .node_by_result_id(&shadow.contents())
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();
             Some(self.storage.shadow_state(self.control, position)?)
@@ -397,8 +397,8 @@ impl<'a> NativeView<'a> {
             declarative: state.map(|s| s.declarative),
             keep_registry_null: state.map(|s| s.keep_registry_null),
             available_to_internals: state.map(|s| s.available_to_internals),
-            host: self.association_node(shadow.host())?,
-            contents: self.association_node(shadow.contents())?,
+            host: self.association_node(&shadow.host())?,
+            contents: self.association_node(&shadow.contents())?,
             properties: shadow.properties(),
         }))
     }

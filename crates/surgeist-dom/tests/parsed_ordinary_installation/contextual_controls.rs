@@ -746,7 +746,7 @@ fn assert_checked_report(report: &HtmlParseReport) {
         if let Some(expected) = &common_owner {
             assert_eq!(owner, expected);
         } else {
-            common_owner = Some(owner.clone());
+            common_owner = Some(*owner);
         }
     }
 }

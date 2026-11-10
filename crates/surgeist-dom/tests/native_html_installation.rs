@@ -189,7 +189,7 @@ fn mixed_fields_and_utf16_install_before_real_reference_with_complete_historical
     };
     assert_eq!(pi.attribute(&"x".into()), Some(&"y".into()));
     assert_eq!(before.node(parent).unwrap().children(), &[marker]);
-    let source_id = ids[2].clone();
+    let source_id = ids[2];
     drop(source);
     let mut batch = DomBatch::new();
     batch.detach(mapped[2]);
@@ -968,4 +968,137 @@ fn deep_native_authoring_installs_iteratively_without_a_second_live_tree() {
             .code_units(),
         &[0xd800, 0, 0xdc00]
     );
+}
+
+/// A fragment of nested elements, text, a comment and a template with contents.
+fn nested_fragment() -> HtmlFragment {
+    let mut b = HtmlFragment::builder(authoring()).unwrap();
+    let root = b.root();
+    let outer = b
+        .append_element(
+            &root,
+            name(Namespace::html(), "section"),
+            OrderedAttributes::default(),
+        )
+        .unwrap();
+    b.append_text(&outer, "first").unwrap();
+    let template = b
+        .append_element(
+            &outer,
+            name(Namespace::html(), "template"),
+            OrderedAttributes::default(),
+        )
+        .unwrap();
+    let contents = b.template_contents(&template).unwrap().unwrap();
+    b.append_text(&contents, "inside").unwrap();
+    b.append_comment(&outer, "note").unwrap();
+    let inner = b
+        .append_element(
+            &outer,
+            name(Namespace::html(), "p"),
+            OrderedAttributes::default(),
+        )
+        .unwrap();
+    b.append_text(&inner, "last").unwrap();
+    b.finish().unwrap()
+}
+
+/// The names and data of the installed tree below `node`, in tree order.
+fn projection(
+    snapshot: &DomSnapshot,
+    node: NodeId,
+    out: &mut Vec<(String, Option<String>, usize)>,
+) {
+    let view = snapshot.node(node).unwrap();
+    out.push((
+        format!("{:?}", view.node_name()),
+        view.data().map(|data| format!("{data:?}")),
+        view.children().len(),
+    ));
+    for child in view.children() {
+        projection(snapshot, *child, out);
+    }
+}
+
+/// Installs `source` into a fresh DOM with the given limits.
+fn install_fresh(
+    source: &HtmlFragment,
+    install_limits: DomNativeHtmlInstallLimits,
+) -> Result<(Dom, DomNativeHtmlInstallation, NodeId), DomNativeHtmlInstallError> {
+    let mut dom = dom();
+    let (d, parent) = setup(&mut dom);
+    let report = dom.install_native_html_fragment(
+        stamp(&dom, d),
+        parent,
+        None,
+        source,
+        install_limits,
+        &AtomicBool::new(false),
+    )?;
+    Ok((dom, report, parent))
+}
+
+/// The smallest value in `0..=ceiling` for which `admits` holds, assuming it holds for every
+/// larger value.
+fn smallest_admitted(ceiling: usize, admits: impl Fn(usize) -> bool) -> usize {
+    assert!(admits(ceiling), "the ceiling admits the input");
+    let (mut low, mut high) = (0, ceiling);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if admits(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+#[test]
+fn two_builds_of_one_input_install_the_same_tree_and_charge_the_same_amounts() {
+    // Each build takes its own storage serial, so the source ids of the two differ at every
+    // equal index. Nothing the installation charges or stores may depend on that.
+    let first = nested_fragment();
+    let second = nested_fragment();
+    assert_ne!(first.root().id(), second.root().id());
+    let work = |source: &HtmlFragment| {
+        smallest_admitted(1_000_000, |work| {
+            install_fresh(
+                source,
+                DomNativeHtmlInstallLimits::new(1024, work, 1_048_576),
+            )
+            .is_ok()
+        })
+    };
+    let scratch = |source: &HtmlFragment| {
+        smallest_admitted(1_048_576, |bytes| {
+            install_fresh(
+                source,
+                DomNativeHtmlInstallLimits::new(1024, 1_000_000, bytes),
+            )
+            .is_ok()
+        })
+    };
+    let mapped = |source: &HtmlFragment| {
+        smallest_admitted(1024, |nodes| {
+            install_fresh(
+                source,
+                DomNativeHtmlInstallLimits::new(nodes, 1_000_000, 1_048_576),
+            )
+            .is_ok()
+        })
+    };
+    assert!(work(&first) > 0 && scratch(&first) > 0);
+    assert_eq!(work(&first), work(&second));
+    assert_eq!(scratch(&first), scratch(&second));
+    assert_eq!(mapped(&first), mapped(&second));
+    let (dom_a, report_a, parent_a) = install_fresh(&first, limits()).unwrap();
+    let (dom_b, report_b, parent_b) = install_fresh(&second, limits()).unwrap();
+    assert_eq!(dom_a.usage(), dom_b.usage());
+    assert_eq!(report_a.bindings().len(), report_b.bindings().len());
+    let (mut shape_a, mut shape_b) = (Vec::new(), Vec::new());
+    projection(report_a.snapshot(), parent_a, &mut shape_a);
+    projection(report_b.snapshot(), parent_b, &mut shape_b);
+    assert_eq!(shape_a, shape_b);
+    assert!(shape_a.len() > 6);
 }

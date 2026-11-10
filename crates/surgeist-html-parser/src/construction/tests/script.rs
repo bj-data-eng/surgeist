@@ -1410,7 +1410,6 @@ fn actual_template_contents_adoption_qualifies_inert_document_and_preserves_disc
         session.prepare_disabled_script(&mut c, &node, &capability),
         Ok(DisabledScriptPreparation::Disconnected)
     );
-    drop((parser, document, contents_document));
     let retained = session
         .active()
         .unwrap()
@@ -1430,7 +1429,6 @@ fn actual_template_contents_adoption_qualifies_inert_document_and_preserves_disc
     expected.flags.parser_document_cleared_without_async();
     assert_eq!(retained, expected);
     assert!(retained.preparation_document.is_none());
-    drop((node, contents, template));
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert!(c.stop().is_none());

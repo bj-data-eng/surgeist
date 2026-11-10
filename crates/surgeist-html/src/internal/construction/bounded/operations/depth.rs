@@ -17,7 +17,7 @@ use super::*;
 /// One subtree a topology change moves, and what planning learned of it.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Move {
-    root: usize,
+    root: NodeIx,
     /// The root's cached depth before the change.
     from: usize,
     /// The root's depth after the change.
@@ -56,7 +56,7 @@ pub(super) enum DepthPlan {
     /// A fresh leaf, or a template with only its empty contents, joins at one
     /// known depth and cannot lower any other record's.
     Fast {
-        node: usize,
+        node: NodeIx,
         depth: usize,
         /// The node, and its contents when it is a template.
         records: usize,
@@ -113,7 +113,7 @@ fn walk_budget(records: usize) -> usize {
 
 /// The record that owns `record` in its tree: its parent, or the host or
 /// template that owns the fragment.
-pub(super) fn owning_parent(record: &Record) -> Option<usize> {
+pub(super) fn owning_parent(record: &Record) -> Option<NodeIx> {
     record.parent.or(match &record.owner {
         Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
             Some(owner.index)
@@ -128,12 +128,12 @@ pub(super) fn owning_parent(record: &Record) -> Option<usize> {
 /// reports or skips, with one write.
 fn next_edge(
     arena: &mut Arena,
-    node: usize,
-    skip: Option<usize>,
-) -> Result<Option<usize>, HtmlConstructionError> {
+    node: NodeIx,
+    skip: Option<NodeIx>,
+) -> Result<Option<NodeIx>, HtmlConstructionError> {
     let record = arena
         .records
-        .get_mut(node)
+        .get_mut(node.position())
         .ok_or(HtmlConstructionCause::UnknownNode)?;
     let children = record.children.len();
     let mut cursor = record.walk_cursor;
@@ -163,9 +163,9 @@ impl Arena {
     /// Places the subtree rooted at `root` so that the root sits at depth `to`,
     /// leaving out the template contents `skip`. The walk was planned, so it
     /// cannot fail; an inconsistent arena only ends it early.
-    pub(super) fn relocate_subtree(&mut self, root: usize, to: usize, skip: Option<usize>) {
+    pub(super) fn relocate_subtree(&mut self, root: NodeIx, to: usize, skip: Option<NodeIx>) {
         let budget = walk_budget(self.records.len());
-        let Some(record) = self.records.get_mut(root) else {
+        let Some(record) = self.records.get_mut(root.position()) else {
             return;
         };
         record.walk_cursor = 0;
@@ -174,7 +174,7 @@ impl Arena {
         for _ in 0..budget {
             match next_edge(self, node, skip) {
                 Ok(Some(child)) => {
-                    let Some(record) = self.records.get_mut(child) else {
+                    let Some(record) = self.records.get_mut(child.position()) else {
                         return;
                     };
                     record.walk_cursor = 0;
@@ -184,7 +184,8 @@ impl Arena {
                 }
                 Ok(None) if node == root => return,
                 Ok(None) => {
-                    let Some(parent) = self.records.get(node).and_then(owning_parent) else {
+                    let Some(parent) = self.records.get(node.position()).and_then(owning_parent)
+                    else {
                         return;
                     };
                     node = parent;
@@ -205,7 +206,8 @@ impl HtmlConstructionOperation {
         let old = self.plan.old_contents;
         let missing = HtmlConstructionCause::InvalidTemplateAssociation;
         // The roots to move and where each goes: below a record, or detached.
-        let (detached, attached): (Option<usize>, Option<(usize, usize)>) = match self.command() {
+        let (detached, attached): (Option<NodeIx>, Option<(NodeIx, NodeIx)>) = match self.command()
+        {
             Command::Publish { .. } => return Ok(Phase::Layout),
             Command::Insert { .. } => (None, Some((p[0], p[1]))),
             Command::Detach { .. } => (Some(p[0]), None),
@@ -221,12 +223,12 @@ impl HtmlConstructionOperation {
             return Ok(fast);
         }
         let arena = self.arena();
-        let root_move = |root: usize, to: usize| -> Result<Move, HtmlConstructionError> {
+        let root_move = |root: NodeIx, to: usize| -> Result<Move, HtmlConstructionError> {
             Ok(Move {
                 root,
                 from: arena
                     .records
-                    .get(root)
+                    .get(root.position())
                     .ok_or(HtmlConstructionCause::UnknownNode)?
                     .depth,
                 to,
@@ -235,10 +237,10 @@ impl HtmlConstructionOperation {
                 calls: 0,
             })
         };
-        let depth_of = |index: usize| {
+        let depth_of = |index: NodeIx| {
             arena
                 .records
-                .get(index)
+                .get(index.position())
                 .map(|record| record.depth)
                 .ok_or(HtmlConstructionCause::UnknownNode)
         };
@@ -257,7 +259,7 @@ impl HtmlConstructionOperation {
             (Some(_), Some(old))
                 if arena
                     .records
-                    .get(old)
+                    .get(old.position())
                     .ok_or(HtmlConstructionCause::UnknownNode)?
                     .children
                     .is_empty() =>
@@ -289,8 +291,8 @@ impl HtmlConstructionOperation {
     /// The fresh-leaf case: a shallow node joins below `parent` at one depth.
     fn fast_depth(
         &mut self,
-        node: usize,
-        parent: usize,
+        node: NodeIx,
+        parent: NodeIx,
     ) -> Result<Option<Phase>, HtmlConstructionError> {
         if self.plan.old_parent.is_some() {
             return Ok(None);
@@ -298,7 +300,7 @@ impl HtmlConstructionOperation {
         let arena = self.arena();
         let record = arena
             .records
-            .get(node)
+            .get(node.position())
             .ok_or(HtmlConstructionCause::UnknownNode)?;
         let contents = record.template_contents.and_then(|value| match value {
             TemplateContents::Owned(index) => Some(index),
@@ -307,7 +309,7 @@ impl HtmlConstructionOperation {
         let shallow = record.children.is_empty()
             && record.shadow.is_none()
             && contents.is_none_or(|index| {
-                arena.records.get(index).is_some_and(|contents| {
+                arena.records.get(index.position()).is_some_and(|contents| {
                     contents.children.is_empty() && contents.shadow.is_none()
                 })
             });
@@ -317,7 +319,7 @@ impl HtmlConstructionOperation {
         let depth = add(
             arena
                 .records
-                .get(parent)
+                .get(parent.position())
                 .ok_or(HtmlConstructionCause::UnknownNode)?
                 .depth,
             1,
@@ -335,12 +337,12 @@ impl HtmlConstructionOperation {
     /// One step up the host's chain of owners, as it stands after the change.
     pub(super) fn host_step(
         &mut self,
-        cursor: usize,
+        cursor: NodeIx,
         depth: usize,
         steps: usize,
     ) -> Result<Phase, HtmlConstructionError> {
         let records = self.arena().records.len();
-        if cursor >= records {
+        if cursor.position() >= records {
             return Err(HtmlConstructionCause::UnknownNode.into());
         }
         if steps >= records {
@@ -378,7 +380,7 @@ impl HtmlConstructionOperation {
             let arena = self.arena_mut()?;
             let root = arena
                 .records
-                .get_mut(mov.root)
+                .get_mut(mov.root.position())
                 .ok_or(HtmlConstructionCause::UnknownNode)?;
             root.walk_cursor = 0;
             arena
@@ -400,7 +402,7 @@ impl HtmlConstructionOperation {
     pub(super) fn shift_step(
         &mut self,
         slot: usize,
-        node: usize,
+        node: NodeIx,
         level: usize,
         steps: usize,
     ) -> Result<Phase, HtmlConstructionError> {
@@ -418,7 +420,7 @@ impl HtmlConstructionOperation {
             let up = self
                 .arena()
                 .records
-                .get(node)
+                .get(node.position())
                 .and_then(owning_parent)
                 .ok_or(HtmlConstructionCause::ParentChildConflict)?;
             return Ok(Phase::Shift {
@@ -440,7 +442,7 @@ impl HtmlConstructionOperation {
         let arena = self.arena_mut()?;
         arena
             .records
-            .get_mut(child)
+            .get_mut(child.position())
             .ok_or(HtmlConstructionCause::UnknownNode)?
             .walk_cursor = 0;
         let bucket = arena
@@ -529,7 +531,7 @@ impl Plan {
                 arena.place(*node, *depth);
                 if let Some(TemplateContents::Owned(contents)) = arena
                     .records
-                    .get(*node)
+                    .get(node.position())
                     .and_then(|record| record.template_contents)
                 {
                     arena.place(contents, depth.saturating_add(1));
@@ -652,9 +654,9 @@ mod tests {
     /// Checks every cached depth, the usage depth and the histogram against
     /// depths recounted from each record's own parent or owner.
     fn assert_exact(arena: &Arena, context: &str) {
-        let recount = |start: usize| {
+        let recount = |start: NodeIx| {
             let (mut index, mut depth) = (start, 0usize);
-            while let Some(parent) = arena.records.get(index).and_then(owning_parent) {
+            while let Some(parent) = arena.records.get(index.position()).and_then(owning_parent) {
                 index = parent;
                 depth += 1;
                 assert!(depth <= arena.records.len(), "{context}: owner cycle");
@@ -663,7 +665,7 @@ mod tests {
         };
         let mut deepest = 0;
         for (index, record) in arena.records.iter().enumerate() {
-            let expected = recount(index);
+            let expected = recount(NodeIx::at(index));
             assert_eq!(record.depth, expected, "{context}: depth of record {index}");
             deepest = deepest.max(expected);
         }
@@ -763,7 +765,7 @@ mod tests {
             assert_exact(&storage.arena, "initial");
             for step in 0..3000 {
                 let pick = |sequence: &mut Sequence, from: &[HtmlBuilderNode]| {
-                    from[sequence.next(from.len())].clone()
+                    from[sequence.next(from.len())]
                 };
                 let kind = sequence.next(KINDS);
                 let command = match kind {

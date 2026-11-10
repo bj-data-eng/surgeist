@@ -235,7 +235,7 @@ fn paired_template_contents_are_separate_and_association_cycles_are_rejected() {
     let contents_id = template_node.template_contents().unwrap();
     assert_eq!(
         fragment.node(&contents_id).unwrap().fragment_owner(),
-        Some(&HtmlFragmentOwner::Template(template_id))
+        Some(HtmlFragmentOwner::Template(template_id))
     );
     assert!(fragment.node(&contents_id).unwrap().parent().is_none());
     assert_eq!(
@@ -617,7 +617,7 @@ fn cross_parent_move_changes_both_orders_and_backlinks_without_new_nodes_or_edge
     assert_eq!(fragment.node(&a_id).unwrap().children().len(), 0);
     assert_eq!(
         fragment.node(&b_id).unwrap().children().collect::<Vec<_>>(),
-        [c_id.clone(), d_id]
+        [c_id, d_id]
     );
     assert_eq!(fragment.node(&c_id).unwrap().parent(), Some(b_id));
     assert_eq!(fragment.usage().depth(), 2);
@@ -823,4 +823,25 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
             .current,
         1
     );
+}
+
+#[test]
+fn parser_nodes_are_copy_values_that_name_the_same_record_after_a_copy() {
+    fn assert_copy<T: Copy>() {}
+    assert_copy::<ParserNode>();
+    // A builder handle (storage serial and index, 16 bytes) and the parser's dense join index.
+    #[cfg(target_pointer_width = "64")]
+    assert_eq!(std::mem::size_of::<ParserNode>(), 24);
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let copy = root;
+    let child = session
+        .allocate_element(&mut c, element(Namespace::none(), "x"))
+        .unwrap();
+    // Both the original and the copy are usable after the copy was made.
+    session.insert(&mut c, &root, &child, None, None).unwrap();
+    session.remove(&mut c, &child, None).unwrap();
+    session.insert(&mut c, &copy, &child, None, None).unwrap();
+    assert_eq!(root.index, copy.index);
 }

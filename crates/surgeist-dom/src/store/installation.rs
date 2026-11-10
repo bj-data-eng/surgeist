@@ -284,13 +284,13 @@ impl Control<'_> {
 }
 fn source_error(subject: &HtmlNodeId, error: DomError) -> Error {
     Error::Source {
-        subject: subject.clone(),
+        subject: *subject,
         error,
     }
 }
 fn association(subject: &HtmlNodeId, kind: Association) -> Error {
     Error::UnsupportedAssociation {
-        subject: subject.clone(),
+        subject: *subject,
         association: kind,
     }
 }
@@ -416,7 +416,7 @@ impl Dom {
         #[cfg(test)]
         staging_observation::grew(pending_growth, &pending, &mut draft);
         pending.push(Visit {
-            source: source_root.clone(),
+            source: source_root,
             parent: None,
             existing: Some(wrapper),
             owner: None,
@@ -431,7 +431,7 @@ impl Dom {
             let original = source
                 .node(&visit.source)
                 .map_err(|error| Error::SourceLookup {
-                    subject: visit.source.clone(),
+                    subject: visit.source,
                     error,
                 })?;
             // All association observations are explicit, even on childless roots.
@@ -448,7 +448,7 @@ impl Dom {
                 (None, None) => {}
                 (Some(HtmlFragmentOwner::Template(actual)), Some(expected)) => {
                     control.charge(1)?;
-                    if actual != expected {
+                    if actual != *expected {
                         return Err(association(&visit.source, Association::TemplateOwnership));
                     }
                 }
@@ -595,13 +595,7 @@ impl Dom {
                     .map_err(|error| source_error(&visit.source, error))?;
                 key
             };
-            control.map_row(
-                &draft,
-                &mut rows,
-                &mut rows_payload,
-                visit.source.clone(),
-                key,
-            )?;
+            control.map_row(&draft, &mut rows, &mut rows_payload, visit.source, key)?;
             if let HtmlNodeKind::Element(element) = original.kind() {
                 for attribute in element.attributes().iter() {
                     control.charge(1)?;
@@ -775,7 +769,7 @@ impl Dom {
         for (row, node) in rows.iter().zip(mapped.iter()) {
             control.charge(1)?;
             bindings.push(DomNativeHtmlBinding {
-                source: row.source.clone(),
+                source: row.source,
                 node: *node,
             });
             #[cfg(test)]

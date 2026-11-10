@@ -340,7 +340,7 @@ pub(super) fn metadata(
                 == Some(surgeist_html::construction::HtmlTemplateContentsKind::Owned);
             if owned
                 && template.contents().fragment_owner()
-                    != Some(&surgeist_html::construction::HtmlFragmentOwner::Template(
+                    != Some(surgeist_html::construction::HtmlFragmentOwner::Template(
                         node.id(),
                     ))
             {

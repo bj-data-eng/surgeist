@@ -942,8 +942,6 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
     diagnostics
         .release(&mut completed.driver.as_mut().unwrap().control)
         .unwrap();
-    drop(text);
-    drop(root);
     completed.release().unwrap();
 }
 
@@ -1065,7 +1063,6 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
             }
         }
         assert_eq!(actual, expected_maps);
-        drop(node);
         owner.release().unwrap();
     }
 }
@@ -1122,7 +1119,6 @@ fn completed_formatting_reconstruction_distinguishes_original_creation_and_later
         }
     }
     assert_eq!(seen, 1);
-    drop((replay, body));
     owner.release().unwrap();
 }
 #[test]
@@ -1211,7 +1207,6 @@ fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text
             Some(HtmlParseOriginKind::Literal)
         )]
     );
-    drop((original, replay, parent, moved));
     owner.release().unwrap();
 }
 #[test]
@@ -1393,7 +1388,6 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
         }
     }
     assert_eq!((nodes, fields), (1, 1));
-    drop((original, copy));
     owner.release().unwrap();
 }
 #[test]
@@ -1515,7 +1509,6 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
         ]
     );
     assert!(source_less_svg_namespace);
-    drop(nodes);
     owner.release().unwrap();
 }
 #[test]
@@ -1591,7 +1584,6 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
             ),
         ]
     );
-    drop(text);
     owner.release().unwrap();
 }
 #[test]

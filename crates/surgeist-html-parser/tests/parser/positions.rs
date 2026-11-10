@@ -29,7 +29,7 @@ fn elements(report: &HtmlParseReport) -> Vec<(String, HtmlNodeId)> {
         let node = document.node(&id).expect("a node of the document");
         if let HtmlNodeKind::Element(element) = node.kind() {
             let name = element.name().local_name();
-            found.push((String::from_utf16(name.code_units()).unwrap(), id.clone()));
+            found.push((String::from_utf16(name.code_units()).unwrap(), id));
         }
         let mut children: Vec<_> = node.children().collect();
         children.reverse();
@@ -245,7 +245,7 @@ fn every_position_of_a_document_of_many_elements_is_read_back() {
     let named = |local: &str| -> Vec<HtmlNodeId> {
         all.iter()
             .filter(|(name, _)| name == local)
-            .map(|(_, id)| id.clone())
+            .map(|(_, id)| *id)
             .collect()
     };
     let (scripts, styles, divs) = (named("script"), named("style"), named("div"));

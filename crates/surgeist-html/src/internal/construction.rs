@@ -12,13 +12,7 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName,
 };
-use std::{
-    collections::VecDeque,
-    error::Error,
-    fmt,
-    hash::{Hash, Hasher},
-    sync::{Arc, Weak},
-};
+use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
 };
@@ -223,7 +217,7 @@ pub enum HtmlConstructionCause {
         /// The total the step would have reached.
         attempted: usize,
     },
-    /// A storage count cannot be represented by this platform.
+    /// A storage count, layout size, record index or storage serial has no representable value.
     RepresentationExhausted,
     /// Reserving arena or edge storage failed. A ledger that cannot allocate is
     /// [`Self::Accounting`].
@@ -331,7 +325,7 @@ impl fmt::Display for HtmlConstructionError {
             }
             Cause::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
             Cause::RepresentationExhausted => {
-                f.write_str("storage count cannot be represented on this platform")
+                f.write_str("a storage count, layout size, record index or storage serial has no representable value")
             }
             Cause::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
             Cause::DuplicateAttribute { first, duplicate } => write!(
@@ -372,46 +366,80 @@ impl fmt::Display for HtmlConstructionResource {
 #[derive(Debug)]
 struct Identity;
 
-/// An opaque node identity qualified by its immutable construction result.
+/// A record position within one construction storage, at most `u32::MAX - 1`.
 ///
-/// Cloning a document preserves identity. A separate build always has different
-/// identities, even when its text and local positions are identical.
-#[derive(Clone, Debug)]
-pub struct HtmlNodeId {
-    identity: Arc<Identity>,
-    index: usize,
-}
-impl PartialEq for HtmlNodeId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.identity, &other.identity) && self.index == other.index
+/// Only [`NodeIx::new`] makes one, so a position that exists fits the 32-bit index of a node id.
+/// The stored value is the position plus one, which gives `Option<NodeIx>` the size of a `NodeIx`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct NodeIx(NonZeroU32);
+impl NodeIx {
+    /// The first record position.
+    pub(crate) const FIRST: Self = Self(NonZeroU32::MIN);
+    /// The position as an index, or `None` when it does not fit the 32-bit index of a node id.
+    pub(crate) fn new(position: usize) -> Option<Self> {
+        let stored = u32::try_from(position).ok()?.checked_add(1)?;
+        NonZeroU32::new(stored).map(Self)
     }
-}
-impl Eq for HtmlNodeId {}
-impl Hash for HtmlNodeId {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.identity).hash(state);
-        self.index.hash(state);
+    /// The position as an index into the storage's records.
+    pub(crate) fn position(self) -> usize {
+        // A `u32` fits `usize` on every supported target; the stored value is never zero.
+        self.0.get().saturating_sub(1) as usize
+    }
+    /// The index of `position`, which a test names within a few records.
+    #[cfg(test)]
+    pub(crate) fn at(position: usize) -> Self {
+        Self::new(position).expect("a test position fits a node index")
+    }
+    /// The position `count` records after this one, or `None` when it does not fit.
+    pub(crate) fn offset(self, count: usize) -> Option<Self> {
+        Self::new(self.position().checked_add(count)?)
     }
 }
 
+impl Default for NodeIx {
+    fn default() -> Self {
+        Self::FIRST
+    }
+}
+
+/// An opaque node identity qualified by its immutable construction result.
+///
+/// Cloning a document preserves identity. A separate build always has different
+/// identities, even when its text and local positions are identical. An id
+/// holds the serial of the storage that issued it and a record index, and has
+/// no order.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct HtmlNodeId {
+    tree: u64,
+    index: NodeIx,
+}
+impl fmt::Debug for HtmlNodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HtmlNodeId")
+            .field("tree", &self.tree)
+            .field("index", &self.index.position())
+            .finish()
+    }
+}
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<HtmlNodeId>() == 16);
+
 /// A checked local handle usable only by the builder that issued it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct HtmlBuilderNode {
-    identity: Weak<Identity>,
-    index: usize,
+    tree: u64,
+    index: NodeIx,
 }
-impl PartialEq for HtmlBuilderNode {
-    fn eq(&self, other: &Self) -> bool {
-        Weak::ptr_eq(&self.identity, &other.identity) && self.index == other.index
+impl fmt::Debug for HtmlBuilderNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HtmlBuilderNode")
+            .field("tree", &self.tree)
+            .field("index", &self.index.position())
+            .finish()
     }
 }
-impl Eq for HtmlBuilderNode {}
-impl Hash for HtmlBuilderNode {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identity.as_ptr().hash(state);
-        self.index.hash(state);
-    }
-}
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<HtmlBuilderNode>() == 16);
 
 /// Lookup rejected an identity from a different immutable result.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -707,17 +735,17 @@ impl HtmlShadowRootProperties {
 /// A borrowed local shadow association with properties owned by its fragment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlDeclarativeShadowRoot<'a> {
-    host: &'a HtmlNodeId,
-    contents: &'a HtmlNodeId,
+    host: HtmlNodeId,
+    contents: HtmlNodeId,
     properties: &'a HtmlShadowRootProperties,
 }
 impl<'a> HtmlDeclarativeShadowRoot<'a> {
     /// Host element identity.
-    pub fn host(&self) -> &'a HtmlNodeId {
+    pub fn host(&self) -> HtmlNodeId {
         self.host
     }
     /// Associated fragment root identity.
-    pub fn contents(&self) -> &'a HtmlNodeId {
+    pub fn contents(&self) -> HtmlNodeId {
         self.contents
     }
     /// Actual properties retained once with the shadow contents.
@@ -725,18 +753,18 @@ impl<'a> HtmlDeclarativeShadowRoot<'a> {
         *self.properties
     }
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ShadowAssociation {
     host: HtmlNodeId,
     contents: HtmlNodeId,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TemplateContents {
-    Owned(usize),
-    ShadowReference(usize),
+    Owned(NodeIx),
+    ShadowReference(NodeIx),
 }
 impl TemplateContents {
-    fn position(self) -> usize {
+    fn position(self) -> NodeIx {
         match self {
             Self::Owned(i) | Self::ShadowReference(i) => i,
         }
@@ -749,7 +777,7 @@ impl TemplateContents {
     }
 }
 /// The non-child relationship that owns an associated fragment.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlFragmentOwner {
     /// The owner is the `template` element, which owns its separate ordinary contents fragment.
     /// The payload is the template element's node identity.
@@ -783,10 +811,10 @@ pub enum HtmlFocusedAreaDesignation {
 struct Record {
     kind: HtmlNodeKind,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
-    parent: Option<usize>,
+    parent: Option<NodeIx>,
     /// The ordinary children in order. A deque, so that taking or placing an entry near either
     /// end shifts no more entries than lie between it and the nearer end.
-    children: VecDeque<usize>,
+    children: VecDeque<NodeIx>,
     children_generation: u64,
     /// Depth of this record within its own tree, counting association edges;
     /// the root of every tree, attached or detached, is at zero. Every
@@ -813,7 +841,7 @@ struct Record {
     publish_found: u8,
 }
 impl Record {
-    fn new(kind: HtmlNodeKind, parent: Option<usize>, depth: usize) -> Self {
+    fn new(kind: HtmlNodeKind, parent: Option<NodeIx>, depth: usize) -> Self {
         let document_focused_area_designation = matches!(kind, HtmlNodeKind::Document(_))
             .then_some(HtmlFocusedAreaDesignation::Unavailable);
         Self {
@@ -844,8 +872,9 @@ struct Arena {
     // Shared never-reused namespace for child-bank incarnations and temporary
     // banks, including every successful reallocation or child-bank replacement.
     temporary_generation: u64,
-    // Names this storage among all storages, so that a table of attribute names can tell the
-    // attributes it describes from those of another storage.
+    // The tree serial of this storage's node ids and builder handles. It names this storage among
+    // all storages, so a lookup tells an id or handle of another storage from its own, and so that a
+    // table of attribute names can tell the attributes it describes from those of another storage.
     serial: u64,
     // Advances with every committed change to the attributes of any element of this storage,
     // whichever edit made it, so that a table of attribute names can tell the attributes it
@@ -853,8 +882,9 @@ struct Arena {
     attribute_revision: u64,
 }
 impl Arena {
-    /// An arena with no records and the given identity. A move out of an arena that sits behind a
-    /// `&mut` leaves this behind; it allocates nothing and is dropped by the same step.
+    /// An arena with no records and the given identity, holding serial 0, which no storage is
+    /// issued and so no id or handle matches. A move out of an arena that sits behind a `&mut`
+    /// leaves this behind; it allocates nothing and is dropped by the same step.
     fn vacated(identity: &Arc<Identity>) -> Self {
         Self {
             identity: Arc::clone(identity),
@@ -886,22 +916,59 @@ impl Arena {
         }
     }
     /// Gives the record a new depth and moves it between histogram buckets.
-    fn place(&mut self, index: usize, depth: usize) {
-        let Some(record) = self.records.get_mut(index) else {
+    fn place(&mut self, index: NodeIx, depth: usize) {
+        let Some(record) = self.records.get_mut(index.position()) else {
             return;
         };
         let old = std::mem::replace(&mut record.depth, depth);
         self.unpopulate(old);
         self.populate(depth);
     }
-    fn id(&self, index: usize) -> HtmlNodeId {
+    fn id(&self, index: NodeIx) -> HtmlNodeId {
         HtmlNodeId {
-            identity: self.identity.clone(),
+            tree: self.serial,
             index,
         }
     }
+    /// The record at `position`, or `None` past the last record.
+    fn record_at(&self, position: usize) -> Option<bounded::HtmlConstructionNode<'_>> {
+        let index = NodeIx::new(position).filter(|index| index.position() < self.records.len())?;
+        Some(bounded::HtmlConstructionNode { arena: self, index })
+    }
+    /// The first record, when there is one.
+    fn first_record(&self) -> Option<NodeIx> {
+        (!self.records.is_empty()).then_some(NodeIx::FIRST)
+    }
+    /// The record after `index`, when there is one. An index that has no successor as a `NodeIx`
+    /// is past every record, which count never exceeds what a `NodeIx` holds.
+    fn next_record(&self, index: NodeIx) -> Option<NodeIx> {
+        index
+            .offset(1)
+            .filter(|next| next.position() < self.records.len())
+    }
+    /// The record index a builder handle names: `ForeignBuilder` for another storage's handle and
+    /// `UnknownNode` for an index past the records.
+    fn index(&self, handle: &HtmlBuilderNode) -> Result<NodeIx, HtmlConstructionError> {
+        if handle.tree != self.serial {
+            return Err(HtmlConstructionCause::ForeignBuilder.into());
+        }
+        if handle.index.position() >= self.records.len() {
+            return Err(HtmlConstructionCause::UnknownNode.into());
+        }
+        Ok(handle.index)
+    }
+    fn construction_node(
+        &self,
+        id: &HtmlNodeId,
+    ) -> Result<bounded::HtmlConstructionNode<'_>, ForeignHtmlResult> {
+        let node = self.lookup(id)?;
+        Ok(bounded::HtmlConstructionNode {
+            arena: self,
+            index: node.index,
+        })
+    }
     fn lookup(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
-        if !Arc::ptr_eq(&self.identity, &id.identity) || id.index >= self.records.len() {
+        if self.serial != id.tree || id.index.position() >= self.records.len() {
             return Err(ForeignHtmlResult);
         }
         Ok(HtmlNode {
@@ -915,7 +982,7 @@ impl Arena {
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlNode<'a> {
     arena: &'a Arena,
-    index: usize,
+    index: NodeIx,
 }
 impl<'a> HtmlNode<'a> {
     /// Result-qualified node identity.
@@ -924,7 +991,7 @@ impl<'a> HtmlNode<'a> {
     }
     /// Immutable content record.
     pub fn kind(self) -> &'a HtmlNodeKind {
-        &self.arena.records[self.index].kind
+        &self.arena.records[self.index.position()].kind
     }
     /// Original design-mode state of this owned Document, or `None` for a
     /// non-Document. Controlled construction initializes Documents with design
@@ -938,24 +1005,24 @@ impl<'a> HtmlNode<'a> {
     /// null. Its closed operation domain preserves that state through recovery
     /// and publication; captured external Documents receive no such grant.
     pub fn document_focused_area_designation(self) -> Option<HtmlFocusedAreaDesignation> {
-        self.arena.records[self.index].document_focused_area_designation
+        self.arena.records[self.index.position()].document_focused_area_designation
     }
     /// Ordinary parent; association fragment roots have no ordinary parent.
     pub fn parent(self) -> Option<HtmlNodeId> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .parent
             .map(|index| self.arena.id(index))
     }
     /// Ordinary children in exact append order; associations are excluded.
     pub fn children(self) -> impl ExactSizeIterator<Item = HtmlNodeId> + DoubleEndedIterator + 'a {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .children
             .iter()
             .map(|index| self.arena.id(*index))
     }
     /// Separate contents of an HTML template element.
     pub fn template_contents(self) -> Option<HtmlNodeId> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .template_contents
             .map(|contents| self.arena.id(contents.position()))
     }
@@ -964,23 +1031,23 @@ impl<'a> HtmlNode<'a> {
     /// relation whose contents lack them (`validate_record`, `InvalidShadowAssociation`), so a
     /// published tree has no association that this answers with `None`.
     pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
-        let relation = self.arena.records[self.index].shadow.as_ref()?;
+        let relation = self.arena.records[self.index.position()].shadow.as_ref()?;
         // A declarative shadow root is an association whose contents carry shadow properties.
         let properties = self
             .arena
             .records
-            .get(relation.contents.index)?
+            .get(relation.contents.index.position())?
             .shadow_properties
             .as_ref()?;
         Some(HtmlDeclarativeShadowRoot {
-            host: &relation.host,
-            contents: &relation.contents,
+            host: relation.host,
+            contents: relation.contents,
             properties,
         })
     }
     /// Distinguishes an owning template association from a shadow reference.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .template_contents
             .map(TemplateContents::kind)
     }
@@ -990,11 +1057,11 @@ impl<'a> HtmlNode<'a> {
     }
     /// Actual shadow properties, including when no local host exists.
     pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
-        self.arena.records[self.index].shadow_properties
+        self.arena.records[self.index.position()].shadow_properties
     }
     /// Template or shadow association owning this fragment root.
-    pub fn fragment_owner(self) -> Option<&'a HtmlFragmentOwner> {
-        self.arena.records[self.index].owner.as_ref()
+    pub fn fragment_owner(self) -> Option<HtmlFragmentOwner> {
+        self.arena.records[self.index.position()].owner
     }
 }
 
@@ -1003,7 +1070,7 @@ impl<'a> HtmlNode<'a> {
 #[derive(Clone, Debug)]
 pub struct HtmlDocument {
     arena: Arc<Arena>,
-    root: usize,
+    root: NodeIx,
     /// The mode the published root Document had, which an immutable arena cannot change.
     mode: HtmlDocumentMode,
 }
@@ -1061,7 +1128,7 @@ impl HtmlDocument {
 #[derive(Clone, Debug)]
 pub struct HtmlFragment {
     arena: Arc<Arena>,
-    root: usize,
+    root: NodeIx,
 }
 impl HtmlFragment {
     /// Begins source-free native fragment construction. No parser context is inferred.
@@ -1575,8 +1642,8 @@ impl Builder {
         parent: &HtmlBuilderNode,
     ) -> Result<(), HtmlConstructionError> {
         let insert = || bounded::operations::HtmlConstructionCommand::Insert {
-            node: node.clone(),
-            parent: parent.clone(),
+            node: *node,
+            parent: *parent,
             before: None,
         };
         match self.apply(insert()) {
@@ -1740,8 +1807,8 @@ impl Builder {
             }
         };
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::AttachShadow {
-            host: host.clone(),
-            contents: contents.clone(),
+            host: *host,
+            contents,
         }) {
             self.roll_back_append(previous_len, previous_usage);
             self.accounting.release(charged)?;
@@ -1928,8 +1995,8 @@ mod tests {
             NativeRoot::Fragment,
         )
         .unwrap();
-        let root = builder.root.clone();
-        let mut parent = root.clone();
+        let root = builder.root;
+        let mut parent = root;
         let mut previous = (
             builder.storage().unwrap().records_capacity(),
             builder.storage().unwrap().children_capacity(0),
@@ -1988,7 +2055,7 @@ mod tests {
             NativeRoot::Fragment,
         )
         .unwrap();
-        let root = builder.root.clone();
+        let root = builder.root;
         for _ in 0..edges {
             builder
                 .append(&root, HtmlNodeKind::Comment("c".into()))
@@ -2011,7 +2078,7 @@ mod tests {
             NativeRoot::Fragment,
         )
         .unwrap();
-        let root = builder.root.clone();
+        let root = builder.root;
         let _refusing = crate::internal::amortized::fault::arm(1);
         for count in 1..=appends {
             builder
@@ -2090,10 +2157,35 @@ mod tests {
         assert_eq!((storage.usage(), storage.len()), (usage, records));
         builder.storage = BuilderStorage::Held(storage);
         // The builder keeps working with the recovered storage.
-        let root = builder.root.clone();
+        let root = builder.root;
         builder
             .append(&root, HtmlNodeKind::Comment("c".into()))
             .unwrap();
+    }
+
+    #[test]
+    fn a_node_index_names_every_position_below_the_32_bit_maximum_and_no_other() {
+        assert_eq!(NodeIx::FIRST.position(), 0);
+        assert_eq!(NodeIx::new(0), Some(NodeIx::FIRST));
+        assert_eq!(NodeIx::default(), NodeIx::FIRST);
+        // The positions u32::MAX - 1 and u32::MAX - 2 are the last two that fit a stored
+        // position plus one in 32 bits.
+        let last = u32::MAX as usize - 1;
+        assert_eq!(NodeIx::new(last).map(NodeIx::position), Some(last));
+        assert_eq!(NodeIx::new(last - 1).map(NodeIx::position), Some(last - 1));
+        assert_eq!(NodeIx::new(last + 1), None);
+        assert_eq!(NodeIx::new(usize::MAX), None);
+        // An offset keeps to the same bound and refuses an overflowing sum.
+        assert_eq!(NodeIx::at(3).offset(4).map(NodeIx::position), Some(7));
+        assert_eq!(
+            NodeIx::at(last - 1).offset(1).map(NodeIx::position),
+            Some(last)
+        );
+        assert_eq!(NodeIx::at(last - 1).offset(2), None);
+        assert_eq!(NodeIx::at(1).offset(usize::MAX), None);
+        // A position that exists can be absent in the same four bytes.
+        assert_eq!(size_of::<Option<NodeIx>>(), size_of::<NodeIx>());
+        assert_eq!(size_of::<NodeIx>(), 4);
     }
 
     #[test]
@@ -2114,7 +2206,7 @@ mod tests {
         };
         let node = HtmlNode {
             arena: &arena,
-            index: 0,
+            index: NodeIx::FIRST,
         };
         assert_eq!(
             node.document_focused_area_designation(),
@@ -2231,7 +2323,7 @@ mod tests {
         for (label, kind, attributes, units) in cases {
             let append = |limits: HtmlConstructionLimits| {
                 let mut builder = Builder::new(limits, NativeRoot::Fragment).unwrap();
-                let root = builder.root.clone();
+                let root = builder.root;
                 let result = builder.append(&root, kind.clone());
                 (result.map(|_| ()), builder.usage())
             };
@@ -2615,7 +2707,7 @@ mod cause_tests {
             ),
             (
                 HtmlConstructionCause::RepresentationExhausted,
-                "storage count cannot be represented on this platform",
+                "a storage count, layout size, record index or storage serial has no representable value",
             ),
             (
                 HtmlConstructionCause::AllocationFailed,
