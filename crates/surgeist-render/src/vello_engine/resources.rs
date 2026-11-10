@@ -1207,8 +1207,100 @@ mod tests {
             "destruction of admitted abort-vector backing must add CPU phase time: before={before_elapsed:?}, after={after_elapsed:?}",
         );
     }
+
+    #[test]
+    fn empty_lease_abort_preserves_work_and_records_one_backing_disposal() {
+        use super::{VelloResourceLease, abort_vello_leases};
+        use crate::accounting::{
+            AccountedVec, RenderAccountingOptions, RenderClock, RenderCpuScope, RenderProfile,
+            RenderResource, RenderWork, RendererCpu, StorageAccount,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+        use surgeist_ledger::Dimension;
+
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        fn clock() -> Duration {
+            Duration::from_nanos(TICKS.fetch_add(1, Ordering::Relaxed))
+        }
+        fn forbidden_clock() -> Duration {
+            panic!("off and untimed empty-lease disposal must not read the clock")
+        }
+        for profile in [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Summary { timing: true },
+        ] {
+            for capacity in [0, 3] {
+                let timed = matches!(profile, RenderProfile::Summary { timing: true });
+                let cpu = RendererCpu::new(
+                    RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_clock(RenderClock::Host(if timed {
+                            clock
+                        } else {
+                            forbidden_clock
+                        })),
+                )
+                .unwrap();
+                let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+                let baseline = cpu
+                    .snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::ScratchCpuBytes);
+                let leases = AccountedVec::<VelloResourceLease>::new_in(
+                    &storage,
+                    capacity,
+                    RenderResource::ScratchCpuBytes,
+                )
+                .unwrap();
+                let bytes = (leases.capacity() * std::mem::size_of::<VelloResourceLease>()) as u64;
+                assert!(leases.is_empty());
+                let before = cpu.snapshot().unwrap();
+                assert_eq!(
+                    before.usage().live(RenderResource::ScratchCpuBytes),
+                    baseline + bytes
+                );
+                let aborted = abort_vello_leases(leases);
+                assert_eq!(aborted.discarded_resource_count, 0);
+                assert_eq!(aborted.atlas_outcome, VelloAtlasOutcome::NoAtlas);
+                let after = cpu.snapshot().unwrap();
+                assert_eq!(
+                    after.usage().live(RenderResource::ScratchCpuBytes),
+                    baseline
+                );
+                assert_eq!(
+                    after.usage().peak(RenderResource::ScratchCpuBytes),
+                    before.usage().peak(RenderResource::ScratchCpuBytes)
+                );
+                assert_eq!(after.fault(), None);
+                for &work in RenderWork::ALL {
+                    assert_eq!(after.usage().work(work), before.usage().work(work));
+                }
+                let recorded = u64::from(!matches!(profile, RenderProfile::Off));
+                assert_eq!(
+                    after.scope_count(RenderCpuScope::FrameBacking)
+                        - before.scope_count(RenderCpuScope::FrameBacking),
+                    recorded
+                );
+                if timed {
+                    assert_eq!(
+                        after.scope_elapsed(RenderCpuScope::FrameBacking).unwrap()
+                            - before.scope_elapsed(RenderCpuScope::FrameBacking).unwrap(),
+                        Duration::from_nanos(1)
+                    );
+                } else {
+                    assert_eq!(after.scope_elapsed(RenderCpuScope::FrameBacking), None);
+                }
+            }
+        }
+    }
 }
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "resources/collection_tests.rs"]
+mod collection_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod gradient_extent_tests {
