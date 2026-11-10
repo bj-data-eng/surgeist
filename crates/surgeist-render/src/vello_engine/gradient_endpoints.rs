@@ -361,16 +361,18 @@ impl EndpointRecords {
                     return Err(correspondence());
                 }
                 let count = scalar(account, || program.records.len())?;
-                if scalar(account, || count < 2)? {
+                let Some((first, last)) = scalar(account, || match program.records {
+                    [first, .., last] => Some((first, last)),
+                    _ => None,
+                })?
+                else {
                     return Err(correspondence());
-                }
+                };
                 let words = mul(count, PROGRAM_RECORD_TEXELS, account)?;
                 if scalar(account, || words >= (1_usize << 30))? {
                     return Err(correspondence());
                 }
                 account.work(RenderWork::ResourceProbes, 2)?;
-                let first = program.records.first().expect("nonempty program");
-                let last = program.records.last().expect("nonempty program");
                 let first_control = scalar(account, || f32::from_bits(program.endpoints.first))?;
                 let last_control = scalar(account, || f32::from_bits(program.endpoints.last))?;
                 if !scalar(account, || first.position == first_control)?
@@ -425,13 +427,12 @@ impl EndpointRecords {
                 })
             }
         };
-        if self.records.is_none() {
-            self.records = Some(account.retained(0)?);
-        }
-        let records = self.records.as_mut().expect("endpoint backing");
-        if !records.is_empty() {
+        let records = match &mut self.records {
+            Some(records) => records,
+            slot @ None => slot.insert(account.retained(0)?),
+        };
+        if let [.., previous] = records.as_slice() {
             account.work(RenderWork::ResourceProbes, 1)?;
-            let previous = records.last().expect("nonempty endpoint records");
             if scalar(account, || previous.word >= word)? {
                 return Err(correspondence());
             }
