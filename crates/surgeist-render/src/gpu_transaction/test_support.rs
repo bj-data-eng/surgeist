@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) enum ScopePopPosition {
+pub(crate) enum ScopePopPosition {
     Validation,
     OutOfMemory,
     Internal,
@@ -12,7 +12,7 @@ pub(super) enum ScopePopPosition {
 /// A per-owner pause after the real consuming pop. The native result future,
 /// unpopped guards and generation lease remain owned by the real resolver.
 #[cfg(not(target_arch = "wasm32"))]
-pub(super) struct ScopePopGate {
+pub(crate) struct ScopePopGate {
     position: ScopePopPosition,
     reached: std::cell::Cell<bool>,
     released: std::cell::Cell<bool>,
@@ -21,7 +21,7 @@ pub(super) struct ScopePopGate {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl ScopePopGate {
-    pub(super) fn new(position: ScopePopPosition) -> std::rc::Rc<Self> {
+    pub(crate) fn new(position: ScopePopPosition) -> std::rc::Rc<Self> {
         std::rc::Rc::new(Self {
             position,
             reached: std::cell::Cell::new(false),
@@ -30,11 +30,11 @@ impl ScopePopGate {
         })
     }
 
-    pub(super) fn reached(&self) -> bool {
+    pub(crate) fn reached(&self) -> bool {
         self.reached.get()
     }
 
-    pub(super) fn release(&self) {
+    pub(crate) fn release(&self) {
         self.released.set(true);
         if let Some(waker) = self.waker.borrow_mut().take() {
             waker.wake();
@@ -55,6 +55,68 @@ impl ScopePopGate {
             }
         })
         .await;
+    }
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+impl GpuOperationTransaction {
+    pub(crate) fn with_scope_pop_gate_for_test(mut self, gate: std::rc::Rc<ScopePopGate>) -> Self {
+        self.scopes.scope_gate = Some(gate);
+        self
+    }
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+thread_local! {
+    static LEASE_DROP_OBSERVER: std::cell::RefCell<Option<std::rc::Rc<LeaseDropObserverForTest>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One actual lease's disposal event, scoped to its signal and generation.
+/// The callback records facts; assertions belong outside destructor execution.
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+struct LeaseDropObserverForTest {
+    signal: Arc<DeviceSignal>,
+    generation: u64,
+    observe: std::cell::RefCell<Box<dyn FnMut()>>,
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+pub(crate) struct LeaseDropObserverGuardForTest {
+    previous: Option<std::rc::Rc<LeaseDropObserverForTest>>,
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+impl LeaseDropObserverGuardForTest {
+    pub(crate) fn install(
+        signal: Arc<DeviceSignal>,
+        generation: u64,
+        observe: impl FnMut() + 'static,
+    ) -> Self {
+        let observer = std::rc::Rc::new(LeaseDropObserverForTest {
+            signal,
+            generation,
+            observe: std::cell::RefCell::new(Box::new(observe)),
+        });
+        let previous = LEASE_DROP_OBSERVER.with_borrow_mut(|slot| slot.replace(observer));
+        Self { previous }
+    }
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+impl Drop for LeaseDropObserverGuardForTest {
+    fn drop(&mut self) {
+        LEASE_DROP_OBSERVER.with_borrow_mut(|slot| *slot = self.previous.take());
+    }
+}
+
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+pub(super) fn observe_lease_drop_for_test(lease: &super::GpuOperationLease) {
+    let observer = LEASE_DROP_OBSERVER.with_borrow(Clone::clone);
+    if let Some(observer) = observer
+        && Arc::ptr_eq(&observer.signal, &lease.signal)
+        && observer.generation == lease.generation
+    {
+        (observer.observe.borrow_mut())();
     }
 }
 

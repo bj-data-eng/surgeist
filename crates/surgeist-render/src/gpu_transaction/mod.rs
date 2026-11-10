@@ -154,6 +154,8 @@ impl Drop for GpuOperationLease {
         if let Some(time) = &self.cleanup_time {
             time.set(time.get() + 7);
         }
+        #[cfg(all(test, feature = "render-window", not(target_arch = "wasm32")))]
+        test_support::observe_lease_drop_for_test(self);
     }
 }
 
