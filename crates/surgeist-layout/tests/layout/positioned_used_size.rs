@@ -8,8 +8,8 @@
 use surgeist_layout::{
     AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, Direction, Display, Edges,
     FlowAxes, LayoutInputOf, LayoutInputViewOf, LayoutRootRequestOf, LayoutScalar, LayoutTree,
-    LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NearestScrollportOf, NodeInputOf,
-    OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Position, PreferredSizeOf, Size,
+    LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NearestScrollportOf,
+    NodeInputOf, OrthogonalFallbackLimitOf, OrthogonalFallbackOf, Position, PreferredSizeOf, Size,
     SizingCalculationOf, SizingOperation, SizingRequestOf, TrackComponentOf, TrackSizingOf,
     Traverse, WritingMode, compute_layout,
 };
@@ -277,6 +277,74 @@ fn maximums_only_cap_the_ratio_size<S: LayoutScalar>() {
     assert_used_size("ratio 1 with max 100 by 80", child, 0.0, 0.0);
 }
 
+// Sizing 4 §4.4 caps and floors transferred limits by declared sizes only.
+// The preferred size transfers through the ratio first and min/max
+// constraints are applied to each axis independently afterwards (Sizing 4
+// §4.2 issue note). Height 100 gives a derived width of 100 and the declared
+// min-height 200 transfers to a minimum width of 200, so both axes reach 200.
+fn minimum_height_transfers_past_ratio_derived_width<S: LayoutScalar>() {
+    let child = NodeInputOf::<S> {
+        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::value(px(100.0))),
+        min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::value(px(200.0))),
+        aspect_ratio: ratio(1.0),
+        ..positioned(BoxSizing::BorderBox)
+    };
+    assert_used_size("height 100, min-height 200, ratio 1", child, 200.0, 200.0);
+}
+
+// Width axis mirror of the previous case.
+fn minimum_width_transfers_past_ratio_derived_height<S: LayoutScalar>() {
+    let child = NodeInputOf::<S> {
+        size: Size::new(PreferredSizeOf::value(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::value(px(200.0)), MinSizeOf::AUTO),
+        aspect_ratio: ratio(1.0),
+        ..positioned(BoxSizing::BorderBox)
+    };
+    assert_used_size("width 100, min-width 200, ratio 1", child, 200.0, 200.0);
+}
+
+// Height 100 gives a derived width of 100 and the declared max-height 50
+// transfers to a maximum width of 50, so both axes are capped at 50.
+fn maximum_height_transfers_past_ratio_derived_width<S: LayoutScalar>() {
+    let child = NodeInputOf::<S> {
+        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::value(px(100.0))),
+        max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::value(px(50.0))),
+        aspect_ratio: ratio(1.0),
+        ..positioned(BoxSizing::BorderBox)
+    };
+    assert_used_size("height 100, max-height 50, ratio 1", child, 50.0, 50.0);
+}
+
+// Width axis mirror of the previous case.
+fn maximum_width_transfers_past_ratio_derived_height<S: LayoutScalar>() {
+    let child = NodeInputOf::<S> {
+        size: Size::new(PreferredSizeOf::value(px(100.0)), PreferredSizeOf::AUTO),
+        max_size: Size::new(MaxSizeOf::value(px(50.0)), MaxSizeOf::NONE),
+        aspect_ratio: ratio(1.0),
+        ..positioned(BoxSizing::BorderBox)
+    };
+    assert_used_size("width 100, max-width 50, ratio 1", child, 50.0, 50.0);
+}
+
+// Left 10 and right 30 stretch the border-box width to 400 - 10 - 30 = 360
+// (Position 3 §4.1); the vertical insets are auto, so the height is the
+// ratio-dependent axis. The ratio applies to the box-sizing box (Sizing 4
+// §4.1): the content width is 360 - 40 = 320, the content height is 320, and
+// the border box is 360 by 320 because vertical padding is zero.
+fn inset_stretch_with_ratio_uses_content_box<S: LayoutScalar>() {
+    let child = NodeInputOf::<S> {
+        padding: horizontal_padding(20.0),
+        inset: Edges {
+            left: LengthAutoOf::value(px(10.0)),
+            right: LengthAutoOf::value(px(30.0)),
+            ..Edges::all(LengthAutoOf::AUTO)
+        },
+        aspect_ratio: ratio(1.0),
+        ..positioned(BoxSizing::ContentBox)
+    };
+    assert_used_size("content-box left 10 right 30, ratio 1", child, 360.0, 320.0);
+}
+
 scalar_lane_tests! {
     min_width_beats_smaller_max_width_in_every_parent => minimum_width_beats_smaller_maximum,
     border_box_max_width_keeps_padding_in_every_parent => border_box_maximum_floors_at_padding,
@@ -285,4 +353,9 @@ scalar_lane_tests! {
     ratio_applies_to_box_sizing_box_from_height_in_every_parent => ratio_applies_to_box_sizing_box_from_height,
     transferred_minimum_is_capped_by_definite_width_in_every_parent => transferred_minimum_is_capped_by_definite_width,
     max_sizes_only_cap_the_ratio_size_in_every_parent => maximums_only_cap_the_ratio_size,
+    min_height_past_ratio_derived_width_in_every_parent => minimum_height_transfers_past_ratio_derived_width,
+    min_width_past_ratio_derived_height_in_every_parent => minimum_width_transfers_past_ratio_derived_height,
+    max_height_past_ratio_derived_width_in_every_parent => maximum_height_transfers_past_ratio_derived_width,
+    max_width_past_ratio_derived_height_in_every_parent => maximum_width_transfers_past_ratio_derived_height,
+    inset_stretch_with_ratio_uses_content_box_in_every_parent => inset_stretch_with_ratio_uses_content_box,
 }
