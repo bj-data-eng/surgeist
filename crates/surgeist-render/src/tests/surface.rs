@@ -63,6 +63,9 @@ use std::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
+mod operation_routes;
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::{
     pin::Pin,
     sync::{Condvar, Mutex},
