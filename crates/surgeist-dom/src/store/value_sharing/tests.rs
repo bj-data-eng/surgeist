@@ -993,3 +993,107 @@ fn optional_bank_exhaustion_does_not_break_a_style_attribute_source_edit() {
         Some(&DocumentString::from("later"))
     );
 }
+
+mod seam {
+    use super::*;
+    use crate::{Dom, DomBatch, DomLimits, NodeId};
+    use surgeist_html::values::Namespace;
+    /// Two elements of `parent` whose single attribute has the same name and value.
+    fn equal_pair(
+        dom: &mut Dom,
+        document: crate::DocumentId,
+        name: &str,
+        value: &str,
+    ) -> [NodeId; 2] {
+        let cancel = AtomicBool::new(false);
+        let mut batch = DomBatch::new();
+        let a = batch.create_element_ns(document, Namespace::html(), "div");
+        batch.set_attribute(&a, name, value);
+        let b = batch.create_element_ns(document, Namespace::html(), "div");
+        batch.set_attribute(&b, name, value);
+        let commit = dom.apply(batch, &cancel).unwrap();
+        [
+            commit.created(&a).unwrap().unwrap(),
+            commit.created(&b).unwrap().unwrap(),
+        ]
+    }
+
+    #[test]
+    fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidates() {
+        let cancel = AtomicBool::new(false);
+        let mut dom = Dom::new(
+            DomLimits::new(
+                32,
+                65_536,
+                128,
+                0,
+                0,
+                64,
+                1_000_000,
+                crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut setup = DomBatch::new();
+        let document = setup.create_document();
+        let seeded = dom.apply(setup, &cancel).unwrap();
+        let document = seeded.document(&document).unwrap();
+
+        let mut units = Vec::with_capacity(19);
+        units.extend_from_slice(&[120, 0xd800, 0]);
+        let value = DocumentString::from_utf16(units);
+        let unused = value.block().downgrade();
+        let mut first = DomBatch::new();
+        let element = first.create_element_ns(document, Namespace::html(), "div");
+        first.set_attribute(&element, "data-first", value);
+        let first = dom.prepare(first, &cancel).unwrap();
+        assert!(unused.upgrade().is_some());
+        assert!(
+            lock(&dom.value_sharing.0).banks.occupied(),
+            "a retained preparation that formed a bank owns the optional root"
+        );
+
+        // The independent sibling prepares against the same canonical tree and bypasses the
+        // occupied root: its two equal banks are not shared.
+        let mut sibling = DomBatch::new();
+        let a = sibling.create_element_ns(document, Namespace::html(), "div");
+        sibling.set_attribute(&a, "data-x", "same");
+        let b = sibling.create_element_ns(document, Namespace::html(), "div");
+        sibling.set_attribute(&b, "data-x", "same");
+        let sibling = dom.prepare(sibling, &cancel).unwrap();
+        drop(first);
+        assert!(
+            unused.upgrade().is_none(),
+            "an aborted offer owns no strong field"
+        );
+        assert!(!lock(&dom.value_sharing.0).banks.occupied());
+        let commit = dom.publish(sibling, &cancel).unwrap();
+        let (a, b) = (
+            commit.created(&a).unwrap().unwrap(),
+            commit.created(&b).unwrap().unwrap(),
+        );
+        let snapshot = dom.snapshot();
+        let (a, b) = (
+            snapshot.node(a).unwrap().as_element().unwrap(),
+            snapshot.node(b).unwrap().as_element().unwrap(),
+        );
+        assert_eq!(a.attributes().len(), 1);
+        assert!(
+            !a.same_attribute_storage(b),
+            "the bypassing preparation shares nothing"
+        );
+
+        let [a, b] = equal_pair(&mut dom, document, "data-y", "other");
+        let snapshot = dom.snapshot();
+        assert!(
+            snapshot
+                .node(a)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .same_attribute_storage(snapshot.node(b).unwrap().as_element().unwrap()),
+            "the aborted root leaves the next real transaction usable"
+        );
+    }
+}
