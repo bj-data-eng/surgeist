@@ -557,7 +557,7 @@ fn check_reuse(
     check_inputs(inputs, grid.geometry, mode);
     let repeated = grid.values == ValuePattern::RepeatedShort;
     let banks = repeated && mode.layers() != Layers::CallerOnly && unique != Unique::Cells;
-    let strings = repeated && (mode.layers() == Layers::Combined || mode.caller_shared());
+    let strings = repeated && mode.caller_shared();
     let exact_optional_hits = grid.geometry == Geometry::Tiny;
     for index in 1..grid.geometry.cells() {
         // The representative unique stream can turn over the finite pools.

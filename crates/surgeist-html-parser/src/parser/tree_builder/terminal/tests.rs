@@ -519,54 +519,6 @@ fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once()
     super::super::tests::assert_released(&parts.control);
 }
 #[test]
-fn frozen_parts_active_payload_alias_rejects_before_freeze_and_preserves_completed_owner() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<p>x"),
-        super::super::tests::limits(100),
-    );
-    let mut completed = frozen_completed(&request);
-    let html = {
-        let mut view = completed.native_view().unwrap();
-        let root = view.root().unwrap();
-        child_named(&mut view, &root, "html")
-    };
-    let driver = completed.driver.as_mut().unwrap();
-    let alias = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .session
-        .element_name(&mut driver.control, &html)
-        .unwrap()
-        .unwrap()
-        .local_name()
-        .clone();
-    assert!(matches!(
-        completed.freeze_parts(),
-        Err(StandaloneError::Head(HeadError::Kernel(
-            KernelError::Session(SessionError::AliasedPayload)
-        )))
-    ));
-    assert!(completed.frozen.is_none());
-    assert!(completed.driver.as_ref().unwrap().control.stop().is_none());
-    assert!(matches!(
-        completed.native_view(),
-        Err(StandaloneError::Head(HeadError::Kernel(
-            KernelError::Session(SessionError::AliasedPayload)
-        )))
-    ));
-    drop(alias);
-    completed.native_view().unwrap();
-    let mut parts = completed.freeze_parts().unwrap();
-    parts.release().unwrap();
-    super::super::tests::assert_released(&parts.control);
-}
-#[test]
 fn frozen_parts_missing_transferred_evidence_cannot_invent_an_empty_store() {
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<p>\0"),
@@ -1377,48 +1329,6 @@ fn native_projection_exact_and_one_short_admission_retains_only_safe_failed_diag
     }
 }
 #[test]
-fn native_projection_cancel_and_alias_refusal_preserve_the_whole_owner_and_first_stop() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<p>A"),
-        super::super::tests::limits(100),
-    );
-    let mut owner = completed(&request);
-    let html = {
-        let mut view = owner.native_view().unwrap();
-        let root = view.root().unwrap();
-        child_named(&mut view, &root, "html")
-    };
-    let alias = {
-        let driver = owner.driver.as_mut().unwrap();
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        state
-            .before
-            .kernel
-            .session
-            .element_name(&mut driver.control, &html)
-            .unwrap()
-            .unwrap()
-            .local_name()
-            .clone()
-    };
-    assert!(owner.prepare_native_associations().is_err());
-    assert!(owner.driver.as_ref().unwrap().control.stop().is_none());
-    drop(alias);
-    drop(html);
-    owner.prepare_native_associations().unwrap();
-    request.cancellation().cancel();
-    assert!(owner.native_associations().is_err());
-    let stop = owner.driver.as_ref().unwrap().control.stop().unwrap();
-    assert_eq!(stop, HtmlParseStop::Cancelled);
-    assert!(owner.native_view().is_err());
-    assert_eq!(owner.driver.as_ref().unwrap().control.stop(), Some(stop));
-    let mut input = owner.driver.take();
-    let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
-    assert_eq!(failed.stop(), stop);
-    failed.release().unwrap();
-    super::super::tests::assert_released(&failed.control);
-}
-#[test]
 fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduling_trigger() {
     use crate::construction::provenance::{HtmlParseConstructionOperation, NativeDestination};
     let input = "<select><button><selectedcontent></selectedcontent></button><option selected>A</option></select>";
@@ -1988,54 +1898,6 @@ fn completed_native_view_rejects_foreign_nodes_and_cancel_without_mutation() {
 }
 
 #[test]
-fn completed_native_view_preserves_backing_alias_rejection_and_incomplete_take() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><p>A"),
-        super::super::tests::limits(100),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    to_phase(&mut driver, EndPhase::InsertionPoint);
-    let node = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .current(&mut driver.control)
-        .unwrap();
-    let mut input = Some(driver);
-    assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
-    let mut driver = input.take().unwrap();
-    finish(&mut driver);
-    let mut owner = StandaloneDocumentDriver::take_completed(&mut Some(driver)).unwrap();
-    let alias = {
-        let driver = owner.driver.as_mut().unwrap();
-        let (c, session, _) = driver.standalone_parts().unwrap();
-        session
-            .element_name(c, &node)
-            .unwrap()
-            .unwrap()
-            .local_name()
-            .clone()
-    };
-    assert!(owner.native_view().is_err());
-    assert!(owner.release().is_err());
-    assert!(owner.driver.is_some());
-    drop(alias);
-    {
-        let mut view = owner.native_view().unwrap();
-        let NativeKind::Element(name) = view.kind(&node).unwrap() else {
-            panic!("element")
-        };
-        assert_eq!(units(&mut view, name.local), vec![112]);
-    }
-    owner.release().unwrap();
-}
-
-#[test]
 fn completed_native_view_rejects_a_string_from_the_other_control() {
     let first_request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<p>A"),
@@ -2301,70 +2163,6 @@ fn completed_evidence_move_preserves_both_buffers_and_requires_same_completion_o
     let c = &mut completed.driver.as_mut().unwrap().control;
     evidence.release(c).unwrap();
     completed.release().unwrap();
-}
-
-#[test]
-fn failed_extraction_cleanup_refusal_keeps_actual_evidence_for_retry_or_disposal() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<div>A"),
-        super::super::tests::limits(100),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    to_phase(&mut driver, EndPhase::InsertionPoint);
-    let node = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .current(&mut driver.control)
-        .unwrap();
-    let (c, session, _) = driver.standalone_parts().unwrap();
-    let alias = session
-        .element_name(c, &node)
-        .unwrap()
-        .unwrap()
-        .local_name()
-        .clone();
-    request.cancellation().cancel();
-    assert!(driver.step().is_err());
-    let stop = driver.control.stop();
-    let pointer = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .session
-        .observed_evidence()
-        .records_pointer();
-    let mut input = Some(driver);
-    assert!(StandaloneDocumentDriver::take_failed(&mut input).is_err());
-    assert!(input.is_some());
-    assert_eq!(
-        input
-            .as_ref()
-            .unwrap()
-            .failed_evidence
-            .as_ref()
-            .unwrap()
-            .records_pointer(),
-        pointer
-    );
-    assert_eq!(input.as_ref().unwrap().control.stop(), stop);
-    drop(alias);
-    let mut failed = StandaloneDocumentDriver::take_failed(&mut input).unwrap();
-    assert!(input.is_none());
-    assert_eq!(failed.diagnostics().unwrap().records_pointer(), pointer);
-    assert_eq!(Some(failed.stop()), stop);
-    failed.release().unwrap();
-    super::super::tests::assert_released(&failed.control);
 }
 
 #[test]
@@ -2978,49 +2776,6 @@ fn completed_owner_retains_actual_evidence_and_same_control_usage_without_clones
 }
 
 #[test]
-fn completed_take_incomplete_and_aliased_rejection_retains_exact_input_owner() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><div>A"),
-        super::super::tests::limits(100),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    to_phase(&mut driver, EndPhase::InsertionPoint);
-    let node = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .current(&mut driver.control)
-        .unwrap();
-    let mut input = Some(driver);
-    assert!(StandaloneDocumentDriver::take_completed(&mut input).is_err());
-    assert!(input.is_some());
-    finish(input.as_mut().unwrap());
-    let driver = input.as_mut().unwrap();
-    let (c, session, _) = driver.standalone_parts().unwrap();
-    let alias = session
-        .element_name(c, &node)
-        .unwrap()
-        .unwrap()
-        .local_name()
-        .clone();
-    assert!(matches!(
-        StandaloneDocumentDriver::take_completed(&mut input),
-        Err(StandaloneError::Head(HeadError::Kernel(
-            KernelError::Session(SessionError::AliasedPayload)
-        )))
-    ));
-    assert!(input.is_some());
-    drop(alias);
-    let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
-    completed.release().unwrap();
-}
-
-#[test]
 fn completed_take_exact_one_short_preflight_retains_terminal_owner() {
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<!doctype html><div>A"),
@@ -3069,53 +2824,6 @@ fn completed_take_exact_one_short_preflight_retains_terminal_owner() {
     ));
     cleanup(driver);
     assert_eq!(driver.control.stop(), Some(first));
-}
-
-#[test]
-fn completed_release_alias_and_cancel_keep_real_borrowed_owner_until_cleanup() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><div>A"),
-        super::super::tests::limits(100),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    to_phase(&mut driver, EndPhase::InsertionPoint);
-    let node = driver
-        .head
-        .as_ref()
-        .unwrap()
-        .state
-        .as_ref()
-        .unwrap()
-        .before
-        .kernel
-        .current(&mut driver.control)
-        .unwrap();
-    finish(&mut driver);
-    let mut input = Some(driver);
-    let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
-    let driver = completed.driver.as_mut().unwrap();
-    let (c, session, _) = driver.standalone_parts().unwrap();
-    let alias = session
-        .element_name(c, &node)
-        .unwrap()
-        .unwrap()
-        .local_name()
-        .clone();
-    assert!(completed.release().is_err());
-    assert!(completed.driver.is_some());
-    drop(alias);
-    request.cancellation().cancel();
-    assert!(matches!(
-        completed.document_state(),
-        Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
-    ));
-    assert_eq!(
-        completed.driver.as_ref().unwrap().control.stop(),
-        Some(HtmlParseStop::Cancelled)
-    );
-    completed.release().unwrap();
-    assert!(completed.driver.is_none());
-    assert!(matches!(completed.usage(), Err(StandaloneError::Consumed)));
 }
 
 #[test]

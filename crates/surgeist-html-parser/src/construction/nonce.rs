@@ -626,14 +626,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.payloads
-            .check_new_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
-        self.payloads.check_row_aliases(
-            ConstructionView::Active(self.construction.storage(c)?),
-            c,
-            container,
-        )?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
@@ -1153,62 +1146,6 @@ mod tests {
             assert_eq!(c.stop(), first);
             assert_eq!(c.first_stop_usage(), at_stop.as_ref());
         }
-    }
-    #[test]
-    fn nonce_slot_alias_refuses_release_without_consuming_owner_then_retry_reclaims() {
-        let (mut c, mut session, node, _) = fixture();
-        let alias = session.cryptographic_nonce(&mut c, &node).unwrap().clone();
-        let capacity = c.usage().actual_capacity_bytes;
-        assert_eq!(session.release(&mut c), Err(SessionError::AliasedPayload));
-        assert!(session.active().is_ok());
-        assert_eq!(c.usage().actual_capacity_bytes, capacity);
-        assert!(c.stop().is_none());
-        assert_eq!(alias.code_units(), &[65]);
-        drop(alias);
-        session.release(&mut c).unwrap();
-        super::super::tests::storage_zero(&c);
-        assert!(c.stop().is_none());
-    }
-    #[test]
-    fn an_alias_of_an_old_attribute_string_between_edits_is_refused_at_the_freeze_preflight() {
-        let (mut c, mut session, node, _) = fixture();
-        // The first edit audits every row registered so far.
-        let value = supplied(&mut c, &[66]);
-        session
-            .active_mut()
-            .unwrap()
-            .set_nonce_content(&mut c, node.index, Some(value))
-            .unwrap();
-        // The `type` value is a row registered before that edit.
-        let alias = {
-            let HtmlNodeKind::Element(element) = session
-                .active()
-                .unwrap()
-                .construction
-                .node_at(node.index)
-                .expect("retained construction position")
-                .kind()
-            else {
-                panic!("input element")
-            };
-            element.attributes().as_slice()[0].value().clone()
-        };
-        // The second edit audits only what was registered since, so it succeeds;
-        // the audit of every row at the completed-freeze preflight is the backstop.
-        let value = supplied(&mut c, &[67]);
-        session
-            .active_mut()
-            .unwrap()
-            .set_nonce_content(&mut c, node.index, Some(value))
-            .unwrap();
-        assert_eq!(
-            session.preflight_completed_freeze(&mut c),
-            Err(SessionError::AliasedPayload)
-        );
-        assert!(session.active().is_ok());
-        drop(alias);
-        session.release(&mut c).unwrap();
-        super::super::tests::storage_zero(&c);
     }
     fn connected_request() -> crate::HtmlFragmentParseRequest {
         use crate::*;

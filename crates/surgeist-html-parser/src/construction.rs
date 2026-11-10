@@ -26,9 +26,8 @@ use crate::keyed::{Table, slots};
 #[cfg(test)]
 use crate::parser::control::WalkSite;
 use crate::parser::control::{
-    ControlIdentity, DocumentStringAllocation, FinalReleaseError, HtmlParseStop,
-    HtmlParseUnsupportedState, HtmlParseWorkCategory, OwnedVec, ParseControl, SharedAllocation,
-    VectorCapacity,
+    ControlIdentity, DocumentStringAllocation, HtmlParseStop, HtmlParseUnsupportedState,
+    HtmlParseWorkCategory, OwnedVec, ParseControl, SharedAllocation, VectorCapacity,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -85,7 +84,6 @@ mod nonce;
 pub(crate) mod provenance;
 pub(crate) mod read;
 pub(crate) mod report;
-mod value_sharing;
 use provenance::{FieldCopy, OriginGroupRef};
 #[cfg(test)]
 mod no_panic_tests;
@@ -196,6 +194,7 @@ mod storage_insertion;
 mod storage_release;
 mod storage_script;
 mod storage_strings;
+use storage_strings::{LITERALS, Literal};
 mod storage_textarea;
 use storage_textarea::TextareaRefresh;
 mod storage_tree;

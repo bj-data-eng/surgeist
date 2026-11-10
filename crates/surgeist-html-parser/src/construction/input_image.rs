@@ -236,7 +236,6 @@ pub(super) fn append_native_input_value(
 mod tests {
     use super::super::tests::{input_owner, limits, radio_next_attribute, storage_zero};
     use super::*;
-    use surgeist_html::construction::HtmlNodeKind;
     fn fixture<'a>(
         request: &'a crate::HtmlDocumentParseRequest,
     ) -> (
@@ -492,82 +491,6 @@ mod tests {
             session.release(&mut c).unwrap();
             storage_zero(&c);
         }
-    }
-    #[test]
-    fn image_managed_source_alias_refuses_before_take_then_empty_and_removal_are_distinct() {
-        let request = crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<html><head></head><input type=image src=A><i src=''>"),
-            limits(),
-        );
-        let (mut c, mut session, cap, mut lexer, node) = fixture(&request);
-        let mut attr = radio_next_attribute(&mut lexer, &mut c);
-        let pointer = attr
-            .as_ref()
-            .unwrap()
-            .value
-            .value
-            .text()
-            .code_units()
-            .as_ptr();
-        let HtmlNodeKind::Element(element) = &session
-            .active()
-            .unwrap()
-            .construction
-            .node_at(node.index)
-            .expect("retained construction position")
-            .kind()
-        else {
-            panic!("element")
-        };
-        let alias = element.attributes().clone();
-        assert_eq!(
-            session.set_input_attribute(&mut c, &node, &mut attr, &cap),
-            Err(SessionError::AliasedPayload)
-        );
-        assert_eq!(
-            attr.as_ref()
-                .unwrap()
-                .value
-                .value
-                .text()
-                .code_units()
-                .as_ptr(),
-            pointer
-        );
-        assert_eq!(
-            source(session.active().unwrap(), &mut c, node.index),
-            Some(vec![65])
-        );
-        drop(alias);
-        session
-            .set_input_attribute(&mut c, &node, &mut attr, &cap)
-            .unwrap();
-        assert!(attr.is_none());
-        assert_eq!(
-            source(session.active().unwrap(), &mut c, node.index),
-            Some(vec![])
-        );
-        session
-            .remove_managed_attribute(&mut c, &node, "src", mutation::ManagedFamily::Input)
-            .unwrap();
-        assert_eq!(source(session.active().unwrap(), &mut c, node.index), None);
-        let (_, state) = session
-            .active()
-            .unwrap()
-            .radio_input(&mut c, node.index)
-            .unwrap()
-            .unwrap();
-        let ImageState::Last {
-            source: None,
-            coordinate,
-        } = state.image
-        else {
-            panic!("absence retained")
-        };
-        assert_eq!((coordinate.x(), coordinate.y()), (0, 0));
-        lexer.release(&mut c).unwrap();
-        session.release(&mut c).unwrap();
-        storage_zero(&c);
     }
     #[test]
     fn actual_captured_clone_uses_new_environment_not_original_disabled_or_target_only_policy() {

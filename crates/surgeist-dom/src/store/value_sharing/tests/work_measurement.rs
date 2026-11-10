@@ -2,7 +2,6 @@
 //! actual HTML hash/comparison phases are qualified inside the HTML owner.
 use super::*;
 use crate::store::scale_metrics::{self, Hooks, Measurement};
-use surgeist_html::values::DocumentString;
 
 #[test]
 #[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1"]
@@ -180,96 +179,4 @@ fn empty_reserved_oversized_and_cancelled_bank_paths_count_only_completed_work()
     );
     drop(session);
     assert_raw(&f);
-}
-
-#[test]
-#[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1"]
-fn paired_lifecycle_counts_reached_authority_and_distinguishes_admitted_html_work() {
-    scale_metrics::require_enabled().expect("counter-qualified measurement");
-    let f = fixture();
-    let baseline = f.ledger.total();
-    let bank = value(&f, &[0xd800], 1);
-    let measurement = Measurement::begin().unwrap();
-    let session = admitted(|a| f.pool.attach(a)).unwrap();
-    let BankProbe::Miss(_) = admitted(|a| session.probe_bank(bank.entries(), a)).unwrap() else {
-        panic!("first eligible probe")
-    };
-    let mark = admitted(|a| session.checkpoint(a)).unwrap();
-    mark.restore();
-    let mark = admitted(|a| session.checkpoint(a)).unwrap();
-    let ready = admitted(|a| session.prepare_close(&[&mark], a)).unwrap();
-    session.close(ready, &[&mark]).commit();
-    drop(mark);
-    let counts = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counts.sharing_pair_activations, 1);
-    assert_eq!(counts.sharing_marks_created, 2);
-    assert_eq!(counts.sharing_marks_restored, 1);
-    assert_eq!(counts.sharing_marks_accepted, 1);
-    assert_eq!(counts.sharing_close_preparations, 1);
-    assert_eq!(counts.sharing_pairs_closed, 1);
-    assert_eq!(counts.sharing_pairs_committed, 1);
-    assert_eq!(counts.sharing_pairs_aborted, 0);
-    // Two verifies each examine one nomination and two live frame headers;
-    // deepest-first close repeats that same three-visit selection once.
-    assert_eq!(counts.sharing_coordination_visits, 9);
-    assert!(counts.sharing_html_admitted_immediate[0] > 0);
-    assert!(counts.sharing_html_admitted_closing[0] > 0);
-    assert_eq!(counts.sharing_html_admitted_immediate[1], 0);
-    assert_eq!(counts.sharing_html_admitted_closing[1], 0);
-    assert_eq!(f.ledger.total(), baseline);
-    let measurement = Measurement::begin().unwrap();
-    let session = active_session(&f);
-    drop(session);
-    let counts = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counts.sharing_pair_activations, 1);
-    assert_eq!(counts.sharing_pairs_aborted, 1);
-    assert_eq!(counts.sharing_pairs_committed, 0);
-    assert_eq!(f.ledger.total(), baseline);
-}
-
-#[test]
-#[ignore = "requires SURGEIST_DOM_STORAGE_COUNTERS=1"]
-fn string_driver_reports_attempts_outcomes_and_admitted_coordinates_not_phase_counts() {
-    scale_metrics::require_enabled().expect("counter-qualified measurement");
-    let f = fixture();
-    let session = active_session(&f);
-    let original = DocumentString::from_utf16(vec![0xd800, 0, 122]);
-    let measurement = Measurement::begin().unwrap();
-    assert!(
-        admitted(|a| session.share_string(&original, a))
-            .unwrap()
-            .is_none()
-    );
-    let selected =
-        admitted(|a| session.share_string(&DocumentString::from_utf16(vec![0xd800, 0, 122]), a))
-            .unwrap()
-            .unwrap();
-    let counts = measurement.finish(Hooks::default()).unwrap();
-    assert!(selected.value().shares_storage_with(&original));
-    assert_eq!(counts.sharing_string_probes, 2);
-    assert_eq!(counts.sharing_string_offer_promotions, 1);
-    assert_eq!(counts.sharing_string_offers, 1);
-    assert_eq!(counts.sharing_string_hits, 1);
-    assert_eq!(
-        counts.sharing_string_misses, 0,
-        "the cold miss was promoted into an offer"
-    );
-    assert_eq!(counts.sharing_string_bypasses, 0);
-    assert!(counts.sharing_html_admitted_immediate[1] > 0);
-    drop(selected);
-    drop(session);
-    let dormant = admitted(|a| f.pool.attach(a)).unwrap();
-    assert!(dormant.is_dormant());
-    let large = DocumentString::from_utf16(vec![0xd800; 65_536]);
-    let measurement = Measurement::begin().unwrap();
-    assert!(
-        admitted(|a| dormant.share_string(&large, a))
-            .unwrap()
-            .is_none()
-    );
-    let counts = measurement.finish(Hooks::default()).unwrap();
-    assert_eq!(counts.sharing_string_bypasses, 1);
-    assert_eq!(counts.sharing_string_probes, 0);
-    assert_eq!(counts.sharing_html_admitted_immediate, [0; 5]);
-    assert_eq!(large.code_units()[0], 0xd800);
 }

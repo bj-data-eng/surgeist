@@ -1,5 +1,4 @@
 use super::*;
-use crate::bounded::values::HtmlStringPool;
 use surgeist_ledger::{Dimension, Error, Operation, RefusalReason};
 
 type Op = Operation<HtmlWork, HtmlResource>;
@@ -99,28 +98,6 @@ fn the_credit_cap_refuses_the_charge_that_exceeds_it() {
     assert_eq!(refusal.reason, RefusalReason::Limit { limit: 10 });
     assert_eq!(refusal.item, 1);
     assert_eq!(operation.usage(cap).unwrap().work(HtmlWork::Credits), 9);
-}
-
-#[test]
-fn value_pool_work_charges_the_sum_of_its_five_fields_as_credits() {
-    for work in [
-        HtmlStringPool::root_work(),
-        HtmlStringPool::mark_work(),
-        HtmlStringPool::seal_work(),
-        HtmlStringPool::disposal_work(),
-    ] {
-        let expected = work.record_visits() as u64
-            + work.inspected_bytes() as u64
-            + work.copied_bytes() as u64
-            + work.provider_calls() as u64
-            + work.reserve_bytes() as u64;
-        let (mut operation, cap, charging) = charging(HtmlLimits::unlimited());
-        work.charge(&mut operation.charge_at(charging)).unwrap();
-        assert_eq!(
-            operation.usage(cap).unwrap().work(HtmlWork::Credits),
-            expected
-        );
-    }
 }
 
 #[test]

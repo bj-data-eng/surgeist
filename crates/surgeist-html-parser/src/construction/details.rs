@@ -552,15 +552,6 @@ mod tests {
                 (vec![99], vec![51])
             ]
         );
-        session
-            .active()
-            .unwrap()
-            .payloads
-            .check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
-                &mut c,
-            )
-            .unwrap();
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         zero(&c);
@@ -776,61 +767,6 @@ mod tests {
             c.usage().resource(HtmlParseResource::WorkCredits).current,
             work
         );
-    }
-    #[test]
-    fn details_alias_refusal_preserves_attributes_and_original_setter_input() {
-        let request = request("<details name=g><i open=v>");
-        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
-        let root = session.root(&mut c).unwrap();
-        let mut lexer =
-            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
-        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
-        let mut input = attribute(&mut lexer, &mut c);
-        let HtmlNodeKind::Element(element) = &session
-            .active()
-            .unwrap()
-            .construction
-            .node_at(node.index)
-            .expect("retained construction position")
-            .kind()
-        else {
-            unreachable!()
-        };
-        let alias = element.attributes().clone();
-        let original = input
-            .as_ref()
-            .unwrap()
-            .value
-            .value
-            .text()
-            .code_units()
-            .as_ptr();
-        assert_eq!(
-            session.set_details_attribute(&mut c, &node, &mut input, &proof),
-            Err(SessionError::AliasedPayload)
-        );
-        assert_eq!(
-            input
-                .as_ref()
-                .unwrap()
-                .value
-                .value
-                .text()
-                .code_units()
-                .as_ptr(),
-            original
-        );
-        assert_eq!(
-            attributes(&session, &node),
-            vec![(vec![110, 97, 109, 101], vec![103])]
-        );
-        drop(alias);
-        session
-            .set_details_attribute(&mut c, &node, &mut input, &proof)
-            .unwrap();
-        lexer.release(&mut c).unwrap();
-        session.release(&mut c).unwrap();
-        zero(&c);
     }
     #[test]
     fn details_managed_clone_owns_independent_attributes_and_notification_domain() {

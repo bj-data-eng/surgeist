@@ -83,10 +83,6 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         }
         let container = self.element_attribute_container(control, target)?;
-        self.payloads.check_new_aliases(
-            ConstructionView::Active(self.construction.storage(control)?),
-            control,
-        )?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if Arc::weak_count(element.attributes().shared_attributes()) != 1 {
             return Err(SessionError::AliasedPayload);

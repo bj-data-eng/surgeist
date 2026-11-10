@@ -182,7 +182,7 @@ fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay()
     assert_eq!(text(&after_text, child).code_units(), [98, 123, 125]);
     assert_eq!(text(&before, child).code_units(), [97, 123, 125]);
     assert_eq!(text(&after_attribute, child).code_units(), [97, 123, 125]);
-    assert!(text(&after_text, child).shares_storage_with(text(&after_text, seed_text)));
+    assert!(!text(&after_text, child).shares_storage_with(text(&after_text, seed_text)));
     assert!(std::ptr::eq(
         bank(&after_attribute, style),
         bank(&after_text, style)
@@ -419,7 +419,7 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
     assert_eq!(dom.pending_source_edit().unwrap().operation(), parent);
     assert!(dom.pending_source_edit().unwrap().spent_work() > work_before);
     assert!(std::ptr::eq(bank(&child, target), bank(&child, seed)));
-    assert!(text(&child, target_text).shares_storage_with(text(&child, seed_text)));
+    assert!(!text(&child, target_text).shares_storage_with(text(&child, seed_text)));
     drop(scope);
     assert_eq!(dom.source_dispatch_blocker(), Some(parent));
     let mut permit = Some(permit);
@@ -465,7 +465,7 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
         bank(&after, target),
         bank(&after, later_element)
     ));
-    assert!(text(&child, target_text).shares_storage_with(text(&after, later_text)));
+    assert!(!text(&child, target_text).shares_storage_with(text(&after, later_text)));
 }
 
 #[test]

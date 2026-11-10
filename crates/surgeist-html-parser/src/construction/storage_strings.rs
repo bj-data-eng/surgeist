@@ -3,7 +3,98 @@
 use super::*;
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
+/// A constant string that one parse creates once and shares between its occurrences.
+#[derive(Clone, Copy)]
+pub(super) enum Literal {
+    HtmlNamespace,
+    SvgNamespace,
+    MathMlNamespace,
+    XlinkNamespace,
+    XmlNamespace,
+    XmlnsNamespace,
+    XlinkPrefix,
+    XmlPrefix,
+    XmlnsPrefix,
+}
+pub(super) const LITERALS: usize = 9;
+impl Literal {
+    fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::HtmlNamespace => b"http://www.w3.org/1999/xhtml",
+            Self::SvgNamespace => b"http://www.w3.org/2000/svg",
+            Self::MathMlNamespace => b"http://www.w3.org/1998/Math/MathML",
+            Self::XlinkNamespace => b"http://www.w3.org/1999/xlink",
+            Self::XmlNamespace => b"http://www.w3.org/XML/1998/namespace",
+            Self::XmlnsNamespace => b"http://www.w3.org/2000/xmlns/",
+            Self::XlinkPrefix => b"xlink",
+            Self::XmlPrefix => b"xml",
+            Self::XmlnsPrefix => b"xmlns",
+        }
+    }
+    /// The literal that is the namespace `uri`, if it is one.
+    pub(super) fn of_uri(uri: &str) -> Option<Self> {
+        [
+            Self::HtmlNamespace,
+            Self::SvgNamespace,
+            Self::MathMlNamespace,
+            Self::XlinkNamespace,
+            Self::XmlNamespace,
+            Self::XmlnsNamespace,
+        ]
+        .into_iter()
+        .find(|literal| literal.bytes() == uri.as_bytes())
+    }
+    /// The literal that is the attribute prefix `prefix`, if it is one.
+    pub(super) fn of_prefix(prefix: &str) -> Option<Self> {
+        [Self::XlinkPrefix, Self::XmlPrefix, Self::XmlnsPrefix]
+            .into_iter()
+            .find(|literal| literal.bytes() == prefix.as_bytes())
+    }
+}
+
 impl SessionStorage {
+    /// Registers an occurrence of `literal`. The first one of a parse creates the string and
+    /// charges its storage; later ones register the same string with only their units.
+    pub(super) fn register_literal(
+        &mut self,
+        control: &mut ParseControl,
+        literal: Literal,
+    ) -> Result<(DocumentString, usize), SessionError> {
+        self.require(control)?;
+        let Some(entry) = self.payloads.literals.get_mut(literal as usize) else {
+            return Err(latch_registry_row(control));
+        };
+        let Some(first) = *entry else {
+            let frozen = literal_string(control, literal.bytes())?;
+            let (value, slot) = self.register_string(control, frozen, None)?;
+            let Some(RetainedPayload::String { allocation, .. }) =
+                self.payloads.values.get_mut(slot)
+            else {
+                return Err(latch_registry_row(control));
+            };
+            allocation.mark_shared();
+            let Some(entry) = self.payloads.literals.get_mut(literal as usize) else {
+                return Err(latch_registry_row(control));
+            };
+            *entry = Some(slot);
+            return Ok((value, slot));
+        };
+        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(first) else {
+            return Err(latch_registry_row(control));
+        };
+        let value = value.clone();
+        // The origin group is a fact of each occurrence, as for any created string.
+        let group = if !control.detail().records_graph() {
+            None
+        } else if let Some(evidence) = &mut self.evidence {
+            Some(evidence.rule_group(control, value.len())?)
+        } else {
+            None
+        };
+        let prepared = self.prepare_payload_slot_owned(control)?;
+        let allocation = control.share_document_string(&value)?;
+        self.push_string_row(control, prepared, value, allocation, group, false)
+    }
     pub(super) fn check_text(
         control: &mut ParseControl,
         text: &mut Text,
@@ -89,6 +180,20 @@ impl SessionStorage {
             }
         };
         let (value, allocation) = value.into_parts();
+        self.push_string_row(control, prepared, value, allocation, origins, true)
+    }
+    /// Appends the row of a string whose ticket is made, and binds its origin group. A string in
+    /// the buffered domain moves to the managed one; a ticket of the managed domain is already
+    /// there.
+    fn push_string_row(
+        &mut self,
+        control: &mut ParseControl,
+        prepared: PreparedSlot,
+        value: DocumentString,
+        allocation: DocumentStringAllocation,
+        origins: Option<OriginGroupRef>,
+        buffered: bool,
+    ) -> Result<(DocumentString, usize), SessionError> {
         let index = self
             .payloads
             .push_row(
@@ -110,7 +215,9 @@ impl SessionStorage {
         else {
             return Err(latch_registry_row(control));
         };
-        control.move_document_string_to_managed(allocation, value)?;
+        if buffered {
+            control.move_document_string_to_managed(allocation, value)?;
+        }
         if let Some(origins) = origins {
             self.evidence
                 .as_mut()

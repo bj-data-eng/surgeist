@@ -3,15 +3,12 @@
 //! controller charges today; the schema side runs through a real ledger.
 
 use crate::parser::control::{HtmlParseStop, ParseControl};
-use crate::schema_support::{CATEGORIES, charged, through_ledger};
+use crate::schema_support::CATEGORIES;
 use crate::settings::RESOURCES;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
-use surgeist_html::{
-    accounting::{
-        HtmlChange, HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, record_largest,
-        retained_provider_storage,
-    },
-    bounded::values::HtmlStringPool,
+use surgeist_html::accounting::{
+    HtmlChange, HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, record_largest,
+    retained_provider_storage,
 };
 use surgeist_ledger::{Change, Dimension, Operation};
 
@@ -64,24 +61,6 @@ fn parser_resources_are_the_leading_schema_resources_in_precedence_order() {
             "slot {index}"
         );
     }
-}
-
-#[test]
-fn value_pool_charges_through_the_controller_match_the_stock_ledger_charger() {
-    macro_rules! same {
-        ($charge:ident) => {{
-            let mut c = control();
-            HtmlStringPool::$charge(&mut c).unwrap();
-            assert_eq!(
-                charged(&c),
-                through_ledger(|charge| HtmlStringPool::$charge(charge))
-            );
-        }};
-    }
-    same!(charge_root);
-    same!(charge_mark);
-    same!(charge_seal);
-    same!(charge_disposal);
 }
 
 #[test]

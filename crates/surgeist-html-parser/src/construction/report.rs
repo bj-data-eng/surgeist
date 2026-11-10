@@ -138,62 +138,7 @@ pub(crate) struct PreparedReportStorage<'a> {
     closed_common: bool,
     associated_slot: Option<usize>,
 }
-pub(crate) struct SharedReportStorage<'a, 'c> {
-    storage: PreparedReportStorage<'a>,
-    sharing: super::value_sharing::Sharing<'c>,
-}
-impl SharedReportStorage<'_, '_> {
-    pub(crate) fn control(&mut self) -> &mut ParseControl {
-        self.sharing.control()
-    }
-    pub(crate) fn commit(self) -> Result<ReportStorage, PublishFault> {
-        self.sharing.commit()?;
-        Ok(self.storage.commit()?)
-    }
-}
-/// Why a prepared report could not be published.
-pub(crate) enum PublishFault {
-    /// The stop is already the controller's first.
-    Stop(HtmlParseStop),
-    /// The prepared history held no custody of what the report needs.
-    Unpublishable,
-}
-impl From<HtmlParseStop> for PublishFault {
-    fn from(stop: HtmlParseStop) -> Self {
-        Self::Stop(stop)
-    }
-}
-impl From<Unpublishable> for PublishFault {
-    fn from(_: Unpublishable) -> Self {
-        Self::Unpublishable
-    }
-}
-impl PublishFault {
-    /// The refusal as the session error, with a custody fault latched as the
-    /// controller's first stop.
-    pub(crate) fn latch(self, c: &mut ParseControl) -> SessionError {
-        match self {
-            Self::Stop(stop) => SessionError::Stop(stop),
-            Self::Unpublishable => latch_registry_row(c),
-        }
-    }
-}
 impl<'a> PreparedReportStorage<'a> {
-    pub(crate) fn share_values<'c>(
-        mut self,
-        c: &'c mut ParseControl,
-        #[cfg(test)] mode: crate::request::ValueSharingMode,
-    ) -> Result<SharedReportStorage<'a, 'c>, SessionError> {
-        let sharing = self.history.share_values(
-            c,
-            #[cfg(test)]
-            mode,
-        )?;
-        Ok(SharedReportStorage {
-            storage: self,
-            sharing,
-        })
-    }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
@@ -2183,24 +2128,5 @@ mod tests {
         assert!(frozen.fragment().is_some());
         frozen.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
-    }
-
-    #[test]
-    fn a_publish_fault_reports_a_stop_as_it_is_and_latches_a_custody_fault_first() {
-        let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
-        // A stop is already the controller's first; reporting it latches nothing.
-        let stop = HtmlParseStop::Cancelled;
-        assert_eq!(
-            PublishFault::from(stop).latch(&mut c),
-            SessionError::Stop(stop)
-        );
-        assert_eq!(c.stop(), None);
-        // A prepared history without custody has no stop yet: the registry row
-        // becomes the first one.
-        assert_eq!(
-            PublishFault::from(Unpublishable).latch(&mut c),
-            SessionError::Stop(registry_row())
-        );
-        assert_eq!(c.stop(), Some(registry_row()));
     }
 }

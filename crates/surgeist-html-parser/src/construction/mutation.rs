@@ -345,14 +345,7 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<(), SessionError> {
-        self.payloads
-            .check_new_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
-        self.payloads.check_row_aliases(
-            ConstructionView::Active(self.construction.storage(c)?),
-            c,
-            container,
-        )?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction

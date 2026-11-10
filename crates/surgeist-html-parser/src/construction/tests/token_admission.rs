@@ -1,5 +1,4 @@
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
 
 #[test]
 fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validation() {
@@ -28,54 +27,6 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
         1
     );
     session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-#[test]
-fn external_input_and_native_backing_aliases_reject_without_consuming_owners() {
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.root(&mut c).unwrap();
-    let mut text = Some(owned_text(&mut c, &[0x61]));
-    let alias = text.as_ref().unwrap().value.text().clone();
-    assert!(matches!(
-        session.insert_text(&mut c, &root, None, &mut text, None),
-        Err(SessionError::AliasedPayload)
-    ));
-    assert!(text.is_some());
-    drop(alias);
-    let inserted = session
-        .insert_text(&mut c, &root, None, &mut text, None)
-        .unwrap()
-        .unwrap();
-    let HtmlNodeKind::Text(value) = &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(inserted._node.index)
-        .expect("retained construction position")
-        .kind()
-    else {
-        panic!("text")
-    };
-    let alias = value.clone();
-    let mut frozen = session.freeze(&mut c).unwrap();
-    let capacity = c
-        .usage()
-        .resource(HtmlParseResource::ManagedCapacityBytes)
-        .current;
-    assert!(matches!(
-        frozen.release(&mut c),
-        Err(SessionError::AliasedPayload)
-    ));
-    assert!(frozen.fragment().is_some());
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current,
-        capacity
-    );
-    drop(alias);
-    frozen.release(&mut c).unwrap();
     storage_zero(&c);
 }
 #[test]

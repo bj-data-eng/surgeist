@@ -8,8 +8,6 @@ use surgeist_html::{
 
 pub(crate) struct FrozenArena {
     pub(super) storage: Option<FrozenStorage>,
-    pub(super) finalizing: Option<value_sharing::Finalizing>,
-    pub(super) sharing_started: bool,
 }
 
 pub(super) struct FrozenStorage {
@@ -26,6 +24,14 @@ pub(super) struct FrozenStorage {
 }
 
 impl FrozenArena {
+    /// Polls the controller before a frozen arena is published.
+    pub(crate) fn require_original_transfer(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        c.checkpoint()?;
+        Ok(())
+    }
     /// Fixed lender of the real committed store, not a report projection.
     pub(crate) fn retained_evidence(&self) -> Result<&ParseEvidence, SessionError> {
         self.storage
@@ -40,9 +46,6 @@ impl FrozenArena {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<Option<evidence::FailureDiagnosticEvidence>, SessionError> {
-        if let Some(finalizing) = &mut self.finalizing {
-            return finalizing.take_stopped_evidence(control);
-        }
         let storage = self.storage.as_mut().ok_or(SessionError::Consumed)?;
         control.cleanup_release(&storage.control, HtmlParseResource::AuxiliaryEntries, 0)?;
         ParseEvidence::partition_failed(&mut storage.evidence, control)
@@ -60,17 +63,8 @@ impl FrozenArena {
         }
     }
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
-        if let Some(finalizing) = &self.finalizing {
-            finalizing.require_cleanup(control)?;
-        }
-        if let Some(finalizing) = self.finalizing.take() {
-            return finalizing.release(control);
-        }
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         cleanup_owner(control, &storage.control)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Frozen(&storage.view), control)?;
         // A missing lease is refused before anything is taken, so the owner
         // stays where it was.
         let Some(publication) = storage.lease.as_ref() else {

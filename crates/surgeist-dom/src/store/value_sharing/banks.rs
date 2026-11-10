@@ -4,6 +4,7 @@ use super::*;
 use crate::name::{AttributeValues, NameRecord};
 use crate::store::payload;
 use std::hash::{Hash, Hasher};
+use surgeist_html::values::DocumentString;
 
 const BUCKETS: usize = 32;
 const WAYS: usize = 4;
@@ -385,18 +386,6 @@ impl Banks {
             live,
             saved,
         )
-    }
-    #[cfg(test)]
-    pub(super) fn exhaust_qualifiers(&mut self) {
-        self.next = None;
-    }
-    #[cfg(test)]
-    pub(super) fn leave_last_qualifier(&mut self) {
-        self.next = Some(u64::MAX);
-    }
-    #[cfg(test)]
-    pub(super) fn next_qualifier(&self) -> Option<u64> {
-        self.next
     }
     #[cfg(test)]
     pub(super) fn first_allocation_bytes() -> usize {

@@ -3,7 +3,6 @@
 //! latched stop, that nothing was credited, and that the owner's own release
 //! path still drains the controller afterwards.
 use super::*;
-use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
 const FOREIGN: HtmlParseStop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl);
 const MISMATCH: HtmlParseStop =
@@ -11,9 +10,6 @@ const MISMATCH: HtmlParseStop =
 /// A release the ledger refuses.
 const UNDERFLOW: HtmlParseStop =
     HtmlParseStop::Accounting(surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow);
-const REPRESENTATION: HtmlParseStop = HtmlParseStop::RepresentationExhausted {
-    resource: HtmlParseResource::ManagedCapacityBytes,
-};
 
 fn control() -> ParseControl {
     ParseControl::new(
@@ -24,32 +20,9 @@ fn control() -> ParseControl {
 fn current(c: &ParseControl, resource: HtmlParseResource) -> u64 {
     c.usage().resource(resource).current()
 }
-/// Every live (refundable) resource is back at zero. Permanent and cumulative
-/// resources are never refunded, so they are not drain-checked.
-fn assert_drained(c: &ParseControl) {
-    for resource in crate::settings::RESOURCES {
-        match resource {
-            HtmlParseResource::SourceUnits
-            | HtmlParseResource::ManagedNodes
-            | HtmlParseResource::Diagnostics
-            | HtmlParseResource::TreeDepth
-            | HtmlParseResource::AtomicLayoutBytes
-            | HtmlParseResource::WorkCredits => {}
-            live => assert_eq!(current(c, live), 0, "{live:?}"),
-        }
-    }
-}
 fn current_of(usage: &HtmlParseUsage, resource: HtmlParseResource) -> u64 {
     usage.resource(resource).current()
 }
-fn bank() -> OrderedAttributes {
-    OrderedAttributes::new([Attribute::new(
-        QualifiedName::new(Namespace::none(), None, "class"),
-        "k",
-    )])
-    .unwrap()
-}
-
 #[test]
 fn provider_release_for_another_controller_latches_foreign_control_and_credits_nothing() {
     let mut c = control();
@@ -99,153 +72,10 @@ fn prepared_release_beyond_the_admitted_amount_latches_underflow_and_credits_not
     assert_eq!(current(&c, HtmlParseResource::AuxiliaryEntries), 0);
 }
 
-#[test]
-fn final_vector_release_of_another_controllers_ticket_is_refused_and_credits_nothing() {
-    let mut c = control();
-    let mut other = control();
-    let (_vector, ticket) = other.new_vector::<Attribute>().unwrap();
-    let before = c.usage().clone();
-    let (stop, ticket) = c.release_final_vector(ticket, 0).unwrap_err().into_parts();
-    assert_eq!(stop, FOREIGN);
-    assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), before);
-    // The ticket comes back intact for its own controller.
-    assert!(other.release_final_vector(ticket, 0).is_ok());
-}
-
-#[test]
-fn final_shared_release_of_an_unfinalized_ticket_is_refused_and_credits_nothing() {
-    let mut c = control();
-    let (shared, ticket) = c.share_owned(7_u32).unwrap();
-    let before = c.usage().clone();
-    let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
-    assert_eq!(stop, MISMATCH);
-    assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), before);
-    // The ticket comes back intact for the ordinary shared release.
-    assert_eq!(c.release_shared(shared, ticket).unwrap(), 7);
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
-}
-
-#[test]
-fn final_shared_release_of_another_controllers_ticket_is_refused_and_credits_nothing() {
-    let mut c = control();
-    let mut other = control();
-    let values = bank();
-    let (_vector, ticket) = other.final_attribute_tickets(&values).unwrap();
-    let before = c.usage().clone();
-    let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
-    assert_eq!(stop, FOREIGN);
-    assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), before);
-    assert!(other.release_final_shared(ticket).is_ok());
-}
-
-#[test]
-fn final_attribute_release_of_another_controllers_tickets_is_refused() {
-    let mut c = control();
-    let mut other = control();
-    let values = bank();
-    let (vector, shared) = other.final_attribute_tickets(&values).unwrap();
-    let before = c.usage().clone();
-    let (stop, (values, vector, shared)) = c
-        .release_final_attributes(values, vector, shared)
-        .unwrap_err()
-        .into_parts();
-    assert_eq!(stop, FOREIGN);
-    assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), before);
-    // The bank and both tickets come back intact for their own controller.
-    assert!(
-        other
-            .release_final_attributes(values, vector, shared)
-            .is_ok()
-    );
-    assert_eq!(current(&other, HtmlParseResource::ManagedAttributes), 0);
-}
-
-#[test]
-fn final_attribute_release_of_a_different_bank_is_refused() {
-    let mut c = control();
-    let values = bank();
-    let (vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    let before = c.usage().clone();
-    let (stop, (_other_bank, vector, shared)) = c
-        .release_final_attributes(bank(), vector, shared)
-        .unwrap_err()
-        .into_parts();
-    assert_eq!(stop, MISMATCH);
-    assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), before);
-    assert!(c.release_final_attributes(values, vector, shared).is_ok());
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
-}
-
-#[test]
-fn final_attribute_release_with_a_forged_capacity_is_refused() {
-    let mut c = control();
-    let values = bank();
-    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    vector.capacity += 1;
-    let before = c.usage().clone();
-    let (stop, (values, mut vector, shared)) = c
-        .release_final_attributes(values, vector, shared)
-        .unwrap_err()
-        .into_parts();
-    assert_eq!(stop, MISMATCH);
-    assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), before);
-    vector.capacity -= 1;
-    assert!(c.release_final_attributes(values, vector, shared).is_ok());
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
-}
-
 // Characterization of existing behaviour after the release paths became
 // fallible; these were not RED against any earlier commit.
-#[test]
-fn characterization_final_vector_release_beyond_the_admitted_bytes_hands_the_ticket_back() {
-    let mut c = control();
-    let values = bank();
-    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    let real = vector.admitted;
-    // The ticket claims more bytes than the ledger holds for the bank.
-    vector.admitted = u64::MAX;
-    let before = c.usage().clone();
-    let (stop, mut vector) = c.release_final_vector(vector, 1).unwrap_err().into_parts();
-    assert_eq!(stop, UNDERFLOW);
-    assert_eq!(c.stop(), Some(UNDERFLOW));
-    assert_eq!(c.usage(), before);
-    // The ticket came back intact: restored, the owner's release drains it.
-    vector.admitted = real;
-    c.release_final_vector(vector, 1).unwrap();
-    c.release_final_shared(shared).unwrap();
-    drop(values);
-    assert_drained(&c);
-}
-
 // Characterization, as above. The vector capacity must equal the bank's real
 // one, so the overflow is reached through the shared ticket's byte count.
-#[test]
-fn characterization_final_attribute_release_with_an_unrepresentable_byte_count_hands_everything_back()
- {
-    let mut c = control();
-    let values = bank();
-    let (vector, mut shared) = c.final_attribute_tickets(&values).unwrap();
-    let real = shared.bytes;
-    shared.bytes = u64::MAX;
-    let before = c.usage().clone();
-    let (stop, (values, vector, mut shared)) = c
-        .release_final_attributes(values, vector, shared)
-        .unwrap_err()
-        .into_parts();
-    assert_eq!(stop, REPRESENTATION);
-    assert_eq!(c.stop(), Some(REPRESENTATION));
-    assert_eq!(c.usage(), before);
-    shared.bytes = real;
-    c.release_final_attributes(values, vector, shared).unwrap();
-    assert_drained(&c);
-}
-
 fn text(units: &[u16]) -> surgeist_html::values::DocumentString {
     surgeist_html::values::DocumentString::from_utf16(units.to_vec())
 }
@@ -474,20 +304,4 @@ fn a_shared_admission_whose_charge_vanished_still_reports_the_post_poll_stop() {
         Err(HtmlParseStop::Cancelled)
     );
     assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
-}
-
-#[test]
-fn final_attribute_release_credits_the_admitted_bytes_not_the_physical_capacity() {
-    let mut c = control();
-    let values = bank();
-    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    // The ledger holds eight bytes fewer for the vector than it physically has.
-    vector.admitted -= 8;
-    let held = current(&c, HtmlParseResource::ManagedCapacityBytes);
-    c.release_final_attributes(values, vector, shared)
-        .unwrap_or_else(|_| panic!("the release is accepted"));
-    // The bytes the ticket never admitted are not credited.
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 8);
-    assert_eq!(current(&c, HtmlParseResource::PeakTransientBytes), 8);
-    assert!(held > 8);
 }

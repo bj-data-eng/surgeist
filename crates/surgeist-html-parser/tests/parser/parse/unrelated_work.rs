@@ -83,15 +83,8 @@ fn assert_independent_of_unrelated_within(unit: &str, element: &str, slack: i64)
     assert_flat(element, unit, measures, slack);
 }
 
-/// Slack for an element whose strings are new to the value pool the final
-/// sharing pass probes. The pool is a fixed table (surgeist-html
-/// `values/sharing/policy.rs`), so a probe's visits are bounded, but they
-/// depend on the occupancy the filler's pooled values leave in its bucket:
-/// how many of the four candidates it inspects, whether a matching hash is
-/// upgraded and compared, how many hot slots it scans before a free one, and
-/// whether that slot's page is already allocated. This value is not derived
-/// from those terms: the largest spread seen for an anchor or a style element
-/// over filler sizes 1 to 130, 190 to 210 and 790 to 810 was 29 visits.
+/// Slack, in visits, for an element whose strings are new to the parse. The value is not derived
+/// from the terms of those lookups.
 const POOL_PROBE_SLACK: i64 = 32;
 
 fn assert_independent_of_unrelated(unit: &str, element: &str) {

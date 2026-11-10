@@ -3018,10 +3018,6 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         c.require_source(source)?;
-        storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.storage(c)?),
-            c,
-        )?;
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         if evidence
             .native

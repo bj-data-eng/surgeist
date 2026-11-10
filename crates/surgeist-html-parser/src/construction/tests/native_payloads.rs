@@ -120,47 +120,6 @@ fn final_empty_attribute_cleanup_work_stop_releases_the_actual_lexical_capacity_
 }
 
 #[test]
-fn active_cleanup_work_stop_retains_native_storage_for_terminal_disposal() {
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.root(&mut c).unwrap();
-    let mut input = Some(owned_text(&mut c, &[0x61]));
-    let inserted = session
-        .insert_text(&mut c, &root, None, &mut input, None)
-        .unwrap()
-        .unwrap();
-    let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
-    c.charge(
-        HtmlParseWorkCategory::StateStep,
-        limits().work_credits() - used - 2,
-    )
-    .unwrap();
-    // One registry visit + one actual native slot visit fit. The two Arc
-    // metadata provider inspections must be admitted before either executes.
-    assert!(matches!(
-        session.release(&mut c),
-        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::WorkCredits,
-            requested_delta: 2,
-            ..
-        }))
-    ));
-    assert_eq!(native_text(&session, &inserted._node), [0x61]);
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedUtf16Units)
-            .current,
-        1
-    );
-    let work = c.usage().resource(HtmlParseResource::WorkCredits);
-    let stop = c.stop();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-    assert_eq!(c.stop(), stop);
-    assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
-}
-
-#[test]
 fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimable() {
     // Independently sum root Record+child-ticket vector, one exact frozen
     // unit+Vec wrapper, and one source-origin record. None includes an Arc
@@ -332,67 +291,6 @@ fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_nativ
     let mut frozen = session.freeze(&mut c).unwrap();
     assert_eq!(frozen.fragment().unwrap().root().children().count(), 1);
     frozen.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-#[test]
-fn managed_attribute_slot_cap_and_container_alias_preserve_actual_cleanup_owner() {
-    let caps = limits()
-        .into_builder()
-        .managed_attributes(1)
-        .finish()
-        .unwrap();
-    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let mut input = Some(owned_tag(&mut c, "div", &[("a", &[0x61]), ("b", &[0x62])]));
-    assert!(matches!(
-        session.allocate_html_tag(&mut c, &mut input),
-        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::ManagedAttributes,
-            limit: 1,
-            current: 1,
-            requested_delta: 1,
-        }))
-    ));
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedAttributes)
-            .current,
-        1
-    );
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-
-    let mut c = control();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let mut input = Some(owned_tag(&mut c, "div", &[("a", &[0x61])]));
-    let node = session.allocate_html_tag(&mut c, &mut input).unwrap();
-    let HtmlNodeKind::Element(element) = &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(node.index)
-        .expect("retained construction position")
-        .kind()
-    else {
-        panic!("element")
-    };
-    let alias = element.attributes().clone();
-    assert!(matches!(
-        session.release(&mut c),
-        Err(SessionError::AliasedPayload)
-    ));
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedAttributes)
-            .current,
-        1
-    );
-    drop(alias);
-    session.release(&mut c).unwrap();
     storage_zero(&c);
 }
 #[test]

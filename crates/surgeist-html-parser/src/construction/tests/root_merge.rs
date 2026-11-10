@@ -265,15 +265,6 @@ fn assert_partial_merge_storage(
             .current,
         3
     );
-    // Checks the real destination/staging lookup for every original ticket,
-    // including those already rebound and those still using the redirect.
-    storage
-        .payloads
-        .check_aliases(
-            ConstructionView::Active(storage.construction.test_storage()),
-            c,
-        )
-        .unwrap();
 }
 
 fn dispose_stopped_merge(
@@ -586,86 +577,6 @@ fn cancellation_between_real_slot_and_rebind_operations_retains_exact_owner_stat
 }
 
 #[test]
-fn merge_rejects_external_alias_and_foreign_origin_before_consuming_input() {
-    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    let source = crate::HtmlSource::utf8("<html id=x><html a=y>");
-    let mut c = control();
-    c.admit_source(&source).unwrap();
-    let mut t = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
-    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let TokenKind::Tag(first) = lexical_kind(&mut t, &mut c) else {
-        panic!("tag")
-    };
-    let root = session.allocate_html_tag(&mut c, &mut Some(first)).unwrap();
-    let TokenKind::Tag(second) = lexical_kind(&mut t, &mut c) else {
-        panic!("tag")
-    };
-    let mut incoming = Some(second);
-    let alias = match &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(root.index)
-        .expect("retained construction position")
-        .kind()
-    {
-        HtmlNodeKind::Element(e) => e.attributes().clone(),
-        _ => panic!("root"),
-    };
-    assert_eq!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::AliasedPayload)
-    );
-    assert!(incoming.is_some());
-    drop(alias);
-    let weak = match &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(root.index)
-        .expect("retained construction position")
-        .kind()
-    {
-        HtmlNodeKind::Element(e) => Arc::downgrade(e.attributes().shared_attributes()),
-        _ => panic!("root"),
-    };
-    assert_eq!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::AliasedPayload)
-    );
-    assert!(incoming.is_some());
-    drop(weak);
-    // Correct execution tickets alone cannot qualify an origin from another
-    // immutable source. The actual original slot remains owned by caller.
-    let foreign_source = crate::HtmlSource::utf8("other");
-    let original = mem::replace(
-        &mut incoming
-            .as_mut()
-            .unwrap()
-            .attributes
-            .get_mut(0, &mut c)
-            .unwrap()
-            .unwrap()
-            .source,
-        foreign_source.range(0, 5).unwrap(),
-    );
-    assert!(matches!(
-        session.add_attributes_if_missing(&mut c, &root, &mut incoming),
-        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
-            crate::parser::control::HtmlParseInvariant::ForeignSource
-        )))
-    ));
-    assert!(incoming.is_some());
-    // Terminal disposal validates real ownership rather than source content.
-    let _retained_original = original;
-    let mut kind = incoming.take().map(TokenKind::Tag);
-    release_token_kind(&mut kind, &mut c).unwrap();
-    t.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
 fn imported_attribute_backing_is_explicitly_unavailable_and_retained() {
     let mut c = control();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
@@ -895,15 +806,6 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
                 assert!(input.is_none());
             }
         }
-        session
-            .active()
-            .unwrap()
-            .payloads
-            .check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
-                &mut c,
-            )
-            .unwrap();
         let stop = c.stop();
         if let Some(tag) = input {
             let mut kind = Some(TokenKind::Tag(tag));

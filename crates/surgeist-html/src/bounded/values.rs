@@ -1,4 +1,4 @@
-//! Attribute storage and validation, shared value pools and the name index.
+//! Attribute storage and validation and the name index.
 
 pub use crate::internal::values::attribute_name_index::HtmlAttributeNameIndex;
 pub use crate::internal::values::bounded::{
@@ -11,12 +11,4 @@ pub use crate::internal::values::name_index::{
     HtmlNameIndexInsertError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,
     HtmlNameIndexSlots, HtmlNameIndexStep, HtmlNameIndexStorageError, HtmlNameIndexTable,
     HtmlNameIndexVacancy,
-};
-pub use crate::internal::values::sharing::{
-    HtmlAttributePool, HtmlAttributePoolCandidate, HtmlAttributePoolOperation,
-    HtmlAttributePoolResult, HtmlStringPool, HtmlStringPoolCandidate, HtmlStringPoolOperation,
-    HtmlStringPoolResult, HtmlValuePoolAction, HtmlValuePoolActionKind, HtmlValuePoolChange,
-    HtmlValuePoolError, HtmlValuePoolLayout, HtmlValuePoolMark, HtmlValuePoolOccurrence,
-    HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolSealRefusal,
-    HtmlValuePoolUsage,
 };

@@ -2,26 +2,16 @@
 //!
 //! Every callback runs outside the operational mutex. A session owns only weak
 //! cleanup authority, and an occupied root makes a second session bypass.
-use super::html_credits::Credits;
 #[cfg(test)]
 use super::scale_metrics::Event;
 use super::{DomError, custody};
 use crate::DomAttribute;
 use crate::name::AttributeStorage;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
-use surgeist_html::bounded::values::{
-    HtmlStringPool, HtmlValuePoolMark, HtmlValuePoolRoot, HtmlValuePoolSeal,
-};
-use surgeist_html::values::DocumentString;
-#[cfg(test)]
-use surgeist_ledger::Change;
-use surgeist_ledger::Charge;
 
 mod banks;
 #[cfg(test)]
 pub(in crate::store) mod fixture;
-mod strings;
 #[cfg(test)]
 mod tests;
 
@@ -43,7 +33,6 @@ impl Admission<'_> {
 pub(in crate::store) struct Owner(Arc<Mutex<State>>);
 struct State {
     owner: crate::DomOwnerId,
-    strings: HtmlStringPool,
     banks: banks::Banks,
     roots: Option<Roots>,
     ledger: custody::Ledger,
@@ -52,7 +41,6 @@ struct State {
 }
 struct Roots {
     id: u64,
-    strings: HtmlValuePoolRoot,
     marks: usize,
     suspended: bool,
 }
@@ -101,7 +89,6 @@ impl Drop for Acquisition<'_> {
     }
 }
 struct Marks {
-    strings: HtmlValuePoolMark,
     bank: banks::Mark,
 }
 pub(in crate::store) struct Checkpoint {
@@ -120,7 +107,6 @@ pub(in crate::store) struct CloseReady {
 pub(in crate::store) struct Prepared {
     owner: Weak<Mutex<State>>,
     root: Option<u64>,
-    strings: Option<HtmlValuePoolSeal>,
     _authority: Option<custody::Debit>,
 }
 
@@ -145,101 +131,13 @@ impl SelectedBank {
         self.0
     }
 }
-pub(in crate::store) struct SelectedString(custody::Held<DocumentString>);
-impl SelectedString {
-    pub(in crate::store) fn value(&self) -> &DocumentString {
-        self.0.value()
-    }
-    pub(in crate::store) fn into_held(self) -> custody::Held<DocumentString> {
-        self.0
-    }
-}
-
 fn lock(owner: &Mutex<State>) -> MutexGuard<'_, State> {
     owner.lock().expect("exclusive optional value owner")
-}
-fn protocol<T>(result: Result<T, surgeist_html::bounded::values::HtmlValuePoolError>) -> T {
-    result.expect("owned optional value protocol")
-}
-/// Charges the work of `surgeist-html`'s pool operations into the DOM's
-/// cumulative work owner. A batch is the sum of its work dimensions, each weighed
-/// by the schema's credit rate, and the owner steps once per credit. Pool
-/// operations charge nothing else.
-struct PoolCharge<'a, 'b> {
-    admission: &'a mut Admission<'b>,
-    #[cfg(test)]
-    closing: bool,
-}
-impl<'a, 'b> PoolCharge<'a, 'b> {
-    fn new(admission: &'a mut Admission<'b>) -> Self {
-        Self {
-            admission,
-            #[cfg(test)]
-            closing: false,
-        }
-    }
-    #[cfg(test)]
-    fn closing(&mut self, closing: bool) {
-        self.closing = closing;
-    }
-}
-/// The five pool work dimensions of a batch, in the order records, inspected bytes, copied bytes,
-/// providers, reserved bytes.
-#[cfg(test)]
-fn coordinates_of(batch: &[HtmlChange]) -> [usize; 5] {
-    let mut coordinates = [0_usize; 5];
-    for change in batch {
-        let Change::Work(dimension, amount) = *change else {
-            continue;
-        };
-        let slot = match dimension {
-            HtmlWork::RecordVisit => coordinates.get_mut(0),
-            HtmlWork::InspectByte => coordinates.get_mut(1),
-            HtmlWork::CopyByte => coordinates.get_mut(2),
-            HtmlWork::ProviderCall => coordinates.get_mut(3),
-            HtmlWork::ReserveByte => coordinates.get_mut(4),
-            _ => None,
-        };
-        if let Some(slot) = slot {
-            *slot = usize::try_from(amount).unwrap_or(usize::MAX);
-        }
-    }
-    coordinates
-}
-impl Charge<HtmlWork, HtmlResource> for PoolCharge<'_, '_> {
-    type Stop = DomError;
-
-    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), DomError> {
-        let admission = &mut *self.admission;
-        Credits(|credits| {
-            admission.work(usize::try_from(credits).map_err(|_| DomError::RepresentationExhausted)?)
-        })
-        .charge(batch)?;
-        #[cfg(test)]
-        admitted_html(coordinates_of(batch), self.closing);
-        Ok(())
-    }
-
-    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), DomError> {
-        Err(DomError::HtmlChargeProtocol)
-    }
-}
-fn html_usage(value: surgeist_html::bounded::values::HtmlValuePoolUsage) -> custody::Usage {
-    custody::Usage::new(value.bytes(), value.utf16_units())
 }
 #[cfg(test)]
 fn metric(event: Event) {
     if super::scale_metrics::ENABLED {
         super::scale_metrics::record(event);
-    }
-}
-#[cfg(test)]
-fn admitted_html(coordinates: [usize; 5], closing: bool) {
-    if super::scale_metrics::ENABLED {
-        metric(Event::SharingHtmlAdmitted {
-            closing,
-            coordinates,
-        });
     }
 }
 impl State {
@@ -253,9 +151,7 @@ impl State {
             && !self.banks.frozen()
     }
     fn usage(&self) -> Result<custody::Usage, DomError> {
-        custody::Usage::new(size_of::<Mutex<State>>(), 0)
-            .checked_add(html_usage(self.strings.heap_usage()))?
-            .checked_add(self.banks.usage())
+        custody::Usage::new(size_of::<Mutex<State>>(), 0).checked_add(self.banks.usage())
     }
     fn reconcile(&mut self) {
         let excess = self
@@ -276,8 +172,7 @@ impl State {
         if !self.active(id) {
             return;
         }
-        let root = self.roots.take().expect("matching root");
-        protocol(self.strings.abort_root(root.strings));
+        self.roots.take().expect("matching root");
         self.banks.abort(id);
         #[cfg(test)]
         metric(Event::SharingPairAborted);
@@ -291,10 +186,6 @@ impl Owner {
         ledger: custody::Ledger,
         admission: &mut Admission<'_>,
     ) -> Result<Self, DomError> {
-        let mut charge = PoolCharge::new(admission);
-        #[cfg(test)]
-        charge.closing(true);
-        HtmlStringPool::charge_disposal(&mut charge)?;
         admission.work(banks::DISPOSAL_WORK)?;
         let storage = ledger.retain(
             custody::Usage::new(size_of::<Mutex<State>>(), 0),
@@ -302,7 +193,6 @@ impl Owner {
         )?;
         let result = Self(Arc::new(Mutex::new(State {
             owner,
-            strings: HtmlStringPool::new(),
             banks: banks::Banks::new(),
             roots: None,
             ledger,
@@ -341,11 +231,6 @@ impl Owner {
 }
 
 impl Session {
-    #[cfg(test)]
-    pub(in crate::store) fn fixture_strings_enabled(&self) -> bool {
-        fixture::layers(self) == fixture::Layers::Combined
-    }
-
     fn active_id(&self) -> Option<u64> {
         match *self.phase.lock().expect("session phase") {
             Phase::Active(id) => Some(id),
@@ -418,7 +303,6 @@ impl Session {
             acquiring.finish(Phase::Bypassed);
             return Ok(None);
         }
-        HtmlStringPool::charge_root(&mut PoolCharge::new(admission))?;
         admission.work(banks::ROOT_WORK)?;
         let mut state = lock(&owner);
         if state.banks.occupied() {
@@ -432,16 +316,8 @@ impl Session {
             return Ok(None);
         };
         acquiring.partial = Some(id);
-        let Some(strings) = state.strings.begin_root() else {
-            state.banks.abort(id);
-            acquiring.partial = None;
-            drop(state);
-            acquiring.finish(Phase::Bypassed);
-            return Ok(None);
-        };
         state.roots = Some(Roots {
             id,
-            strings,
             marks: 0,
             suspended: false,
         });
@@ -467,7 +343,6 @@ impl Session {
         if !lock(&owner).mutable(id) {
             return Ok(empty());
         }
-        HtmlStringPool::charge_mark(&mut PoolCharge::new(admission))?;
         admission.work(banks::MARK_WORK)?;
         let ledger = lock(&owner).ledger.clone();
         let authority = ledger.retain(
@@ -478,34 +353,20 @@ impl Session {
         if !state.mutable(id) {
             return Ok(empty());
         }
-        let bank = state.banks.mark(id);
-        let strings = {
-            let State { strings, roots, .. } = &mut *state;
-            protocol(strings.mark(&roots.as_ref().expect("active root").strings))
-        };
-        match (bank, strings) {
-            (Some(bank), Some(strings)) => {
+        match state.banks.mark(id) {
+            Some(bank) => {
                 state.roots.as_mut().expect("active root").marks += 1;
                 #[cfg(test)]
                 metric(Event::SharingMarkCreated);
                 Ok(Checkpoint {
                     owner: self.owner.clone(),
                     root: Some(id),
-                    marks: Mutex::new(Some(Marks { strings, bank })),
+                    marks: Mutex::new(Some(Marks { bank })),
                     _authority: Some(authority),
                 })
             }
-            (bank, strings) => {
-                if let Some(bank) = bank {
-                    state.banks.accept(bank);
-                }
-                if let Some(strings) = strings {
-                    protocol(state.strings.accept_mark(strings));
-                }
-                let State { strings, roots, .. } = &mut *state;
-                let root = roots.as_mut().expect("active root");
-                protocol(strings.suspend_mutations(&root.strings));
-                root.suspended = true;
+            None => {
+                state.roots.as_mut().expect("active root").suspended = true;
                 Ok(empty())
             }
         }
@@ -530,10 +391,6 @@ impl Session {
             .marks;
         // Price both verification passes and the protected close selection
         // before traversing nominations. Only scalar shape is read above.
-        let mut charge = PoolCharge::new(admission);
-        #[cfg(test)]
-        charge.closing(true);
-        HtmlStringPool::charge_seal(&mut charge)?;
         admission.work(banks::close_work(marks.len(), live)?)?;
         let verify = |state: &State| {
             let root = state
@@ -602,7 +459,6 @@ impl Session {
         let mut prepared = Prepared {
             owner: std::mem::take(&mut self.owner),
             root: None,
-            strings: None,
             _authority: self._authority.take(),
         };
         let (Some(owner), Some(id)) = (prepared.owner.upgrade(), ready.root) else {
@@ -642,22 +498,14 @@ impl Session {
                 .expect("mark state")
                 .take()
                 .expect("live nominated mark");
-            protocol(state.strings.accept_mark(tokens.strings));
             state.banks.accept(tokens.bank);
             #[cfg(test)]
             metric(Event::SharingMarkAccepted);
             state.roots.as_mut().expect("owned root").marks -= 1;
         }
-        let root = state.roots.take().expect("owned root");
-        let strings = state
-            .strings
-            .prepare_seal(root.strings)
-            .unwrap_or_else(|_| panic!("preadmitted mark-free freeze"));
-        protocol(state.strings.validate_seal(&strings));
+        state.roots.take().expect("owned root");
         state.banks.freeze(id);
-        // The frozen bank root and prepared HTML token remain paired.
         prepared.root = Some(id);
-        prepared.strings = Some(strings);
         #[cfg(test)]
         metric(Event::SharingPairClosed);
         *self.phase.lock().expect("session phase") = Phase::Bypassed;
@@ -691,13 +539,11 @@ impl Checkpoint {
             return;
         }
         if restore {
-            protocol(state.strings.restore_mark(tokens.strings));
             let removed = state.banks.restore(tokens.bank);
             #[cfg(test)]
             metric(Event::SharingMarkRestored);
             state.roots.as_mut().expect("owned root").marks -= removed;
         } else {
-            protocol(state.strings.accept_mark(tokens.strings));
             if state.banks.accept(tokens.bank) {
                 #[cfg(test)]
                 metric(Event::SharingMarkAccepted);
@@ -714,12 +560,8 @@ impl Drop for Checkpoint {
 }
 impl Prepared {
     pub(in crate::store) fn commit(mut self) {
-        if let (Some(owner), Some(id), Some(strings)) =
-            (self.owner.upgrade(), self.root.take(), self.strings.take())
-        {
+        if let (Some(owner), Some(id)) = (self.owner.upgrade(), self.root.take()) {
             let mut state = lock(&owner);
-            protocol(state.strings.validate_seal(&strings));
-            protocol(state.strings.seal(strings));
             state.banks.seal(id);
             #[cfg(test)]
             metric(Event::SharingPairCommitted);
@@ -729,11 +571,8 @@ impl Prepared {
 }
 impl Drop for Prepared {
     fn drop(&mut self) {
-        if let (Some(owner), Some(id), Some(strings)) =
-            (self.owner.upgrade(), self.root.take(), self.strings.take())
-        {
+        if let (Some(owner), Some(id)) = (self.owner.upgrade(), self.root.take()) {
             let mut state = lock(&owner);
-            protocol(state.strings.abort_seal(strings));
             state.banks.abort(id);
             #[cfg(test)]
             metric(Event::SharingPairAborted);

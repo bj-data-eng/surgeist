@@ -236,8 +236,7 @@ dimensions! {
         ReserveByte,
         /// One request to a provider.
         ProviderCall,
-        /// The weighted total of the eight parser categories and the single
-        /// count of value-pool work. It is charged only through
+        /// The weighted total of the eight parser categories. It is charged only through
         /// [`charging_tariffs`].
         Credits,
         /// One semantic step: a visit of a query, a validation step of a fact

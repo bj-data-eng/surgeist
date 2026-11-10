@@ -198,7 +198,7 @@ impl Draft {
             },
             Ok,
         )?;
-        let incoming = self.share_held_name_prefix(custody::Held::new(name, debit), cancel)?;
+        let incoming = custody::Held::new(name, debit);
         let original = incoming.value().retained_payload()?;
         let (name, debit) = incoming.into_parts();
         let incoming = custody::Held::new(crate::element::ElementName { value: name }, debit);
@@ -430,73 +430,6 @@ impl Draft {
         Ok(input)
     }
 
-    fn selected_attribute_credit(
-        &self,
-        input: &mut AttributeInput,
-        original: source::storage::Payload,
-        selected: custody::Debit,
-        budget: Option<&source::formation::Formation>,
-    ) {
-        if let Some(budget) = budget {
-            // The old field was destroyed before this exact occurrence ends.
-            budget.release_payload(original);
-            budget.absorb_payload_debit(selected);
-        } else if let Some(credit) = &mut input.selected {
-            credit
-                .absorb(selected)
-                .expect("one original DOM custody domain");
-        } else {
-            input.selected = Some(selected);
-        }
-    }
-
-    fn share_attribute_strings(
-        &self,
-        input: &mut AttributeInput,
-        budget: Option<&source::formation::Formation>,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        let Some(session) = self.sharing_session() else {
-            return Ok(());
-        };
-        #[cfg(test)]
-        if !session.fixture_strings_enabled() {
-            return Ok(());
-        }
-        for index in 0..input.entries.len() {
-            self.source_step(cancel)?;
-            self.seed_name_atoms(input.entries[index].name(), cancel)?;
-            if let Some(prefix) = input.entries[index].name().prefix() {
-                let selected = self.with_sharing_admission(cancel, |admission| {
-                    session.share_string(prefix, admission)
-                })?;
-                if let Some(selected) = selected
-                    && !prefix.shares_storage_with(selected.value())
-                {
-                    let mut original = source::storage::Payload::default();
-                    original.string(prefix)?;
-                    let (value, credit) = selected.into_held().into_parts();
-                    drop(input.entries[index].replace_prefix(Some(value)));
-                    self.selected_attribute_credit(input, original, credit, budget);
-                }
-            }
-            let value = input.entries[index].value();
-            let selected = self.with_sharing_admission(cancel, |admission| {
-                session.share_string(value, admission)
-            })?;
-            if let Some(selected) = selected
-                && !value.shares_storage_with(selected.value())
-            {
-                let mut original = source::storage::Payload::default();
-                original.string(value)?;
-                let (value, credit) = selected.into_held().into_parts();
-                drop(input.entries[index].replace_value(value));
-                self.selected_attribute_credit(input, original, credit, budget);
-            }
-        }
-        Ok(())
-    }
-
     fn reuse_attributes(
         &self,
         input: AttributeInput,
@@ -551,7 +484,7 @@ impl Draft {
 
     pub(in crate::store) fn form_attributes(
         &self,
-        mut input: AttributeInput,
+        input: AttributeInput,
         budget: Option<&source::formation::Formation>,
         cancel: &AtomicBool,
     ) -> Result<FormedAttributes, DomError> {
@@ -577,7 +510,6 @@ impl Draft {
         } else {
             None
         };
-        self.share_attribute_strings(&mut input, budget, cancel)?;
         let reserved = payload::Reserved::new()?;
         let body = size_of::<payload::Payload<AttributeValues>>();
         let bytes = input

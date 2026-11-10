@@ -684,8 +684,8 @@ impl SessionStorage {
             let (name, name_ticket) = self.register_string(control, name, origins)?;
             // The selected HTML namespace is a defining literal, copied through
             // the same admitted exact buffer as token-created units.
-            let namespace = literal_string(control, b"http://www.w3.org/1999/xhtml")?;
-            let (namespace, namespace_ticket) = self.register_string(control, namespace, None)?;
+            let (namespace, namespace_ticket) =
+                self.register_literal(control, Literal::HtmlNamespace)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let mut units = name
                 .len()

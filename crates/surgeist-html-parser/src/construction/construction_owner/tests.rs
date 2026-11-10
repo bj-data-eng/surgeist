@@ -449,30 +449,6 @@ fn losing_the_attribute_edit_during_a_replacement_reports_the_registry_row() {
 }
 
 #[test]
-fn losing_the_attribute_edit_during_a_removal_reports_the_registry_row() {
-    use crate::construction::effects::tests::{graph, named, request};
-    use crate::construction::mutation::ManagedFamily;
-    let request = request("<body><dialog open id=e>");
-    let (mut c, mut session, _proof, nodes) = graph(&request);
-    let dialog = named(&nodes, "dialog", 0);
-    session
-        .active_mut()
-        .unwrap()
-        .construction
-        .hide_next_attribute_edit();
-    let result = session.remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog);
-    assert_registry_row(result, &c);
-    let storage = session.active_mut().unwrap();
-    storage.construction.restore_hidden_attribute_edit();
-    storage.construction.abort_attributes(&mut c).unwrap();
-    // The element's shared attributes lived in the lost edit's storage, so the
-    // row that held them cannot be put back; its release reports the emptied
-    // row instead of dropping it silently, and the first stop is unchanged.
-    assert_eq!(session.release(&mut c), Err(SessionError::Consumed));
-    assert_eq!(c.stop(), Some(registry_row()));
-}
-
-#[test]
 fn ending_an_attribute_edit_without_its_plan_ticket_reports_the_registry_row() {
     let (mut control, mut owner) = with_element();
     owner

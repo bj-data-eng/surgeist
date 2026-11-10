@@ -10,7 +10,7 @@ use surgeist_css::source::{
 use surgeist_css::values::color_adjust::{CssColorScheme, CssColorSchemeParseReport};
 use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
-/// One admitted immutable provider occurrence. This never enters the string pool.
+/// One admitted immutable provider occurrence.
 struct ProviderReceipt {
     owner: ControlIdentity,
     bytes: u64,

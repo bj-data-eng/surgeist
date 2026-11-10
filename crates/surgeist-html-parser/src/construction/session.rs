@@ -476,8 +476,6 @@ impl ParserArenaSession {
             }
         };
         Ok(FrozenArena {
-            finalizing: None,
-            sharing_started: false,
             storage: Some(FrozenStorage {
                 view,
                 control: owner,
@@ -498,10 +496,6 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active()?;
         storage.require(control)?;
-        storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.storage(control)?),
-            control,
-        )?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if storage
             .evidence
@@ -514,10 +508,6 @@ impl ParserArenaSession {
     }
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         cleanup_owner(control, &self.active()?.control)?;
-        self.active()?.payloads.check_aliases(
-            ConstructionView::Active(self.active()?.construction.storage(control)?),
-            control,
-        )?;
         self.storage
             .take()
             .ok_or(SessionError::Consumed)?

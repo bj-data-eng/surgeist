@@ -34,8 +34,7 @@
 //!
 //! 1. Does the refusal hand back recoverable owners? Then it is a carrier
 //!    struct with the reason and an `into_parts` or accessor, such as
-//!    [`bounded::construction::HtmlConstructionRefusal`] and
-//!    [`bounded::values::HtmlValuePoolSealRefusal`].
+//!    [`bounded::construction::HtmlConstructionRefusal`].
 //! 2. Is it a misuse of an owner or cursor protocol (a consumed, not-ready,
 //!    stale, wrong-reply or already-complete state), or does one type merge the
 //!    refusals of many operations? Then it is a struct with a private cause,
@@ -54,7 +53,7 @@
 //! 4. Otherwise it names a rule of the pinned standard, a syntax class, an
 //!    unavailability reason or a vocabulary that a driver constructs. Then it is
 //!    a `#[non_exhaustive]` enum, such as [`microsyntax::tokens::HtmlTokenError`],
-//!    [`attributes::HtmlAttributeConformanceError`] and [`bounded::values::HtmlValuePoolError`].
+//!    and [`attributes::HtmlAttributeConformanceError`].
 //!
 //! An owned cause converts with `From`, so `?` applies it. `map_err` remains
 //! where the wrapped value is the caller's generic error, because a blanket
