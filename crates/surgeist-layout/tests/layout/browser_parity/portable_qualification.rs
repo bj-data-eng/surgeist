@@ -571,38 +571,38 @@ impl AdmittedRegistry {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
-    "801abc2424a4bd97f5d0fa4d1518fbe9fe060fa74135849c57ad01429f11f1d0";
+    "efb16ee21c7723d55bb4f3fbb6798dc673649f059e34927a03e441a9a919ab14";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "b49a365a7d2cae81852ebc3d61086119ac94b04b9363583fdbbd80b9837c3c3b";
+    "89c48b694219dbe5e0a12af765ae61fc235c07e8ba7a6d73aa762b805579d57e";
 
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
-    "dc30448e413b58865816a7e04c52acc8a2e518d04d27c6e9b26d45afa24ef43e";
+    "0b1022369cfbe3a7fdefcda0670b12704d272c6581d2a4d0f984f182e952675e";
 
 const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
-    "2604d4f621d508f4466c01a6d652152729bb7384e1a3981591d48e8add55e89e";
+    "142eaf2840440c66d78c0f47536bbba494afd1f59bdf1855d945d4447ab30d40";
 
 const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
-    "a62a47ffdd66a267579819bf03208d0e13ae3b0268e75ac9f71a92d84cc54149";
+    "3f893fbcff11d2a092cd0f7d28e2e03a94aa4b8925571f629b617dd21a11d4ef";
 
 const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
-    "996f40a0fb869a7af9b2a530f1ed8eb35b5882920e9220df381af20ce8dbd87a";
+    "7a37728e0bf757ff52214fca9142950a5995a4d143217b4445d3a08a7df44458";
 
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
-    "ab5e855ac082238860e925b6b85fd92a99b2a6e49664adcc8daae1042e33c267";
+    "a750835d1871fdb2b8c518d0f7dd8f200793b034f4aa54edfa5a135fb5c3cfc6";
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
-    "a566dc1542149d992ff31142c46966b772089efa69ff3a518b6380a495126397";
+    "cb95757f57de7ba86900c34d66d3a90c7a71a65a7570f1a74af5ce2eb14ccbc7";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
-    "b76c52ed64f9b63201681259db84ad3d8f3e2ef3d2e47da87c9337a054c9eb9f";
+    "dfecda65ccaf3bd7b8c88a9c6021de8e316282cd31fbe184906d9326cc856a4d";
 
 const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "3bfc85f72d277f94a3af430cfdced7d32d2accd57139bd0abd85dc0625c69394";
+    "c79a807c28351fc697cd37acd35bc7334c819a2e973c1af69b5f44a35c1bf3dc";
 
 const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "183019eea4508e1eefb999d7d66dbd257b1b10c0112ad0d07dbcd66a0d6ea731";
+    "13b587990167206f1b10928fe2e050646846b1b383c539a51d44a4b69838cbaf";
 
 const REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "0957cf7d3a81b133579619f1bf8832c13508d9cd9aa4e3d86df388f97f43350a";
+    "cdbae0252f9b77d6d3d6fa6e5dd9609a8bcb4a257ed9b17bad07b6080d2e92ce";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -618,19 +618,19 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
         "baseline-math",
-        "2c0c8a7c227b8009ba05d1c4b0cdcd2cb8ddbf5120e87a9602daeb82708f400f",
+        "67103ca9a9de1abadf8f090d8c50d9127a5b296d46f030db57f67eafba7710b1",
     ),
     (
         "grid-order",
-        "f527352997769a0c8373662f925d89104e0ddc7b2382e19958adabcf431d77e8",
+        "424fc977f184c28f73cb9110c33a0f54e10bf4c624e13125499eef83dad7e3cf",
     ),
     (
         "scriptless-order",
-        "9b6957c7042f1732e57035d6e7ceb9bbb78cbe9de94189a8b8cd1313e882fa9a",
+        "c3c6336b0de926d8106ac31f016b543f51f25d57ebc15e082b9ded45ee90b7ed",
     ),
     (
         "box-controls",
-        "eb95dfdcacc6352d990230e39bc133744f7a316dc918ae0a42eb5a2d74bbb69c",
+        "828d03b03d17b07def0bfe64d6c8fac352093d4d38953527fdfa4287415b1cc0",
     ),
 ];
 

@@ -505,7 +505,7 @@ fn specialized_terminal_requires_complete_current_and_historical_bindings() {
 
 #[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
-    const VALIDATOR: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
+    const VALIDATOR: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(ARTIFACT_ROOT)
@@ -515,7 +515,7 @@ fn current_terminal_requires_distinct_producer_and_validator_authority() {
     terminal["capture_validation"] = json!({
         "producer_profile": "root-context-v4",
         "producer_helper_sha256": HELPER,
-        "validator_profile": "root-context-script-custody-v1",
+        "validator_profile": "root-context-fixed-orthogonal-v1",
         "validator_helper_sha256": VALIDATOR,
     });
     terminal["current_owner_inputs"]["tests/layout/browser_parity/scripts/gentest/test_helper.js"] =
@@ -823,8 +823,8 @@ fn matching_capture_binding_authenticates_inputs_without_a_policy_identity() {
 }
 
 #[test]
-fn script_custody_validator_preserves_every_qualified_producer_profile_and_current_owner() {
-    const QUALIFIED: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
+fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_current_owner() {
+    const QUALIFIED: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
     assert_eq!(sha256(ROOT_HELPER), QUALIFIED);
     for (producer, profile) in [
         (
@@ -839,7 +839,11 @@ fn script_custody_validator_preserves_every_qualified_producer_profile_and_curre
             "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
             "root-context-flex-composition-v1",
         ),
-        (QUALIFIED, "root-context-script-custody-v1"),
+        (
+            crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256,
+            "root-context-script-custody-v1",
+        ),
+        (QUALIFIED, "root-context-fixed-orthogonal-v1"),
     ] {
         let retained = BTreeMap::from([
             (ROOT_HELPER_INPUT.to_owned(), producer.to_owned()),
@@ -851,7 +855,7 @@ fn script_custody_validator_preserves_every_qualified_producer_profile_and_curre
             serde_json::to_value(validation).unwrap(),
             json!({
                 "producer_profile":profile,"producer_helper_sha256":producer,
-                "validator_profile":"root-context-script-custody-v1","validator_helper_sha256":QUALIFIED,
+                "validator_profile":"root-context-fixed-orthogonal-v1","validator_helper_sha256":QUALIFIED,
             })
         );
         let owners =
@@ -866,10 +870,10 @@ fn script_custody_validator_preserves_every_qualified_producer_profile_and_curre
 }
 
 #[test]
-fn script_custody_validator_updates_schema_only_without_changing_producing_identity() {
+fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_identity() {
     // This pure wire-schema control includes the superseded canonical fixture.
     // It grants no live publication authority and installs no terminal bytes.
-    const QUALIFIED: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
+    const QUALIFIED: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
     const PRIOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
     let owner = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     for edition in [
@@ -887,6 +891,9 @@ fn script_custody_validator_updates_schema_only_without_changing_producing_ident
         "vertical-br-font-band-qualification",
         "empty-line-br-font-band-qualification",
         "box-controls",
+        "scriptless-order",
+        "grid-order",
+        "baseline-math",
     ] {
         let path = owner
             .join("tests/layout/browser_parity/captured")
@@ -913,7 +920,7 @@ fn script_custody_validator_updates_schema_only_without_changing_producing_ident
             .insert(ROOT_HELPER_OWNER.to_owned(), QUALIFIED.to_owned());
         let mut expected = stale;
         expected["capture_validation"]["validator_profile"] =
-            json!("root-context-script-custody-v1");
+            json!("root-context-fixed-orthogonal-v1");
         expected["capture_validation"]["validator_helper_sha256"] = json!(QUALIFIED);
         expected["current_owner_inputs"][ROOT_HELPER_OWNER] = json!(QUALIFIED);
         let bytes = candidate.to_bytes().unwrap();
@@ -992,6 +999,17 @@ fn script_custody_admission_binds_each_specialized_producer_without_global_profi
             fixture.metadata.inputs = fixture.inputs.clone();
             let current = bind(&fixture)
                 .expect("the script-custody producer binds through its owning profile");
+            fixture.inputs.insert(
+                ROOT_HELPER_INPUT.to_owned(),
+                crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256.to_owned(),
+            );
+            fixture.metadata.inputs = fixture.inputs.clone();
+            let fixed = bind(&fixture)
+                .expect("the fixed-orthogonal producer binds through its owning profile");
+            assert_eq!(
+                fixed.projection().inputs[ROOT_HELPER_INPUT],
+                crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
+            );
             assert_eq!(
                 current.projection().inputs[ROOT_HELPER_INPUT],
                 crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256

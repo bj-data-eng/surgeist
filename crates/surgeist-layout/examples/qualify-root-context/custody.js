@@ -246,6 +246,25 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
     }
   }
 
+  function sourceSubtreeCustody(ctx) {
+    const root = document.getElementById('test-root');
+    const target = root.firstElementChild || root;
+    const original = target.getAttribute('style');
+    const replacement = target.style.width === '123px' ? '124px' : '123px';
+    try {
+      target.style.width = replacement;
+      require(target.style.width === replacement && target.getAttribute('style') !== original,
+        'actual source subtree mutation executed');
+      refused('Root context: DocumentFrameChanged');
+      repeat(ctx);
+      refused('Root context: SourceBodyChanged');
+    } finally {
+      if (original === null) target.removeAttribute('style');
+      else target.setAttribute('style', original);
+    }
+    pristineAgain(ctx);
+  }
+
   if (mode === 'stylesheet') {
     getTestData = function () {
       const ctx = context();
@@ -255,6 +274,7 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
       require(measure() === pristine, 'successful repeated setup preserves complete envelope');
       scriptSourceCustody(ctx);
       postMeasurementScriptCustody(ctx);
+      sourceSubtreeCustody(ctx);
 
       const sheet = owner.sheet;
       const ruleIndex = sheet.cssRules.length;

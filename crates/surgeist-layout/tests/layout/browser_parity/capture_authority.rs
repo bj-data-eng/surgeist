@@ -73,12 +73,16 @@ pub(crate) enum RootCaptureProfile {
     RootContextFlexCompositionV1,
     #[serde(rename = "root-context-script-custody-v1")]
     RootContextScriptCustodyV1,
+    #[serde(rename = "root-context-fixed-orthogonal-v1")]
+    RootContextFixedOrthogonalV1,
 }
 
 const PREPARED_RANGE_HELPER_SHA256: &str =
     "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
-use crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256;
-const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextScriptCustodyV1;
+use crate::capture_helper_identity::{
+    FIXED_ORTHOGONAL_HELPER_SHA256, SCRIPT_CUSTODY_HELPER_SHA256,
+};
+const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextFixedOrthogonalV1;
 
 pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     match digest {
@@ -88,6 +92,7 @@ pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
             Ok(RootCaptureProfile::RootContextFlexCompositionV1)
         }
         SCRIPT_CUSTODY_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextScriptCustodyV1),
+        FIXED_ORTHOGONAL_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextFixedOrthogonalV1),
         _ => Err(changed("unsupported retained root proof helper")),
     }
 }

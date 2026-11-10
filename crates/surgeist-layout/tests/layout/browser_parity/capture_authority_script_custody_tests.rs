@@ -84,3 +84,14 @@ fn script_custody_flex_terminal_admits_the_current_prepared_range_producer() {
         )],
     );
 }
+
+#[test]
+fn fixed_orthogonal_terminal_helpers_keep_range_and_flex_profile_boundaries() {
+    for request in ["prepared-ranges", "flex-composition"] {
+        script_custody_flex_terminal_helper_controls(request, &[
+            (crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256, true),
+            (crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256, true),
+            ("0000000000000000000000000000000000000000000000000000000000000000", false),
+        ]);
+    }
+}

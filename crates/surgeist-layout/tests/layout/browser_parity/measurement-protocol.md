@@ -120,6 +120,30 @@ is not normalized into a fabricated local zero. A zero-size box remains
 a box. Hidden clipping within the admitted moving subtree remains local. The base
 `.viewport` class refuses because its sizes are absent from this inline-declaration-only sizing channel.
 
+A closed absolute-local profile also permits nonhorizontal plain-box descendants
+beneath the horizontal root. Each such descendant must author finite nonnegative
+literal physical pixel width and height. The proof uses those source declarations;
+used rectangles and resolved dimensions do not establish fixed sizing. Ordinary
+empty Flex leaves retain their existing eligibility.
+
+If any descendant uses this profile, the whole moving subtree has a restricted
+inline source vocabulary: display, writing mode, direction, physical width/height,
+Grid templates/auto-flow and Grid placement. Other declarations refuse, including
+logical sizes, bounds, aspect ratio, position/inset overrides, clipping and scroll
+dependencies. Descendants retain the authenticated static/relative all-Auto-inset
+base behavior, zero edges, visible overflow and normal whitespace. Individual
+transforms and motion paths must also be absent in computed style. Only
+CSS-collapsible ASCII whitespace is admitted as text; preserved whitespace and
+Unicode spacing glyphs refuse. Existing tag, display, source/live identity and
+producer-channel checks still apply. This profile does not admit nonhorizontal
+roots, Auto/intrinsic orthogonal sizes or the ElementScrollSizes channel.
+
+The fractional spacer controls independently check complete local geometry and
+raw DOM-size invariance, with a changed world-rounded height phase at the root
+and its first child. Source admission does not certify that a browser implements
+the adopted Grid Lanes orientation semantics; those comparisons retain their
+own source applicability boundary.
+
 The descriptor used by both root contexts validates preferred-size, bound,
 flex-basis, edge and gap projections. A present value whose actual projection is
 absent refuses with `Root context: UnresolvedSizingDeclaration`;

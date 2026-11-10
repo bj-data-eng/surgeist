@@ -2327,7 +2327,7 @@
     "tests/layout/browser_parity/html/grid/grid_absolute_layout_within_border_static.html": "9cc3ec5d8fad45b6e022a1b9178cbfad1a01f75c8dc30d9c802057dc1d240b65",
     "tests/layout/browser_parity/html/grid/grid_absolute_resolved_insets.html": "b225a7a58230ba8155042b2bc6a8ad352d6e63b3ab336c47c39faf01dca6e1d0",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
     "tests/layout/browser_parity/xml/grid/grid_absolute_layout_within_border_static__border_box_ltr.xml": "3b25dd0dfffefcbbfbc7050f6d583045cf68cd2eac32c890ed0678a1ff8e2c26",
     "tests/layout/browser_parity/xml/grid/grid_absolute_layout_within_border_static__border_box_rtl.xml": "10184e25f69a7187580866f8118c3d2fbc4311af973df313344af076ae714a10",
     "tests/layout/browser_parity/xml/grid/grid_absolute_layout_within_border_static__content_box_ltr.xml": "2467da46edc636c44f5483ec8914278686173c289f26ee40964e13a51c970999",
@@ -2340,7 +2340,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-script-custody-v1",
-    "validator_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
+    "validator_profile": "root-context-fixed-orthogonal-v1",
+    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
   }
 }

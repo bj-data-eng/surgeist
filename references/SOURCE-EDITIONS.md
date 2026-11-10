@@ -276,6 +276,11 @@ inline content extent can supply the inline operand; the exhausted-owner block-b
 producer remains an explicit requirement. Carrier origin and sizing percentage
 definiteness retain separate authority.
 
+The [Chromium Grid Lanes orientation witness](chromium-grid-lanes-orientation--149.0.7827.115.md)
+records the browser's separate controlling property and the source-equivalent
+corpus contract under [#2326](https://github.com/bj-data-eng/surgeist/issues/2326).
+It does not replace the #997/#993 orientation policy or certify geometry parity.
+
 The shared [text/layout contract](../docs/text-layout-contract.md) remains authoritative for prepared text, selected-line metrics, font identity and publication. Feature-specific decisions stay in the linked issues. Resolving source/design questions does not certify implementation, browser parity, or completion of the enclosing contribution.
 
 ## DOM, selector execution and bounded style determinations

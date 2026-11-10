@@ -312,12 +312,12 @@
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
   },
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-script-custody-v1",
-    "validator_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
+    "validator_profile": "root-context-fixed-orthogonal-v1",
+    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
   }
 }

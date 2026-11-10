@@ -48,6 +48,7 @@ pub(super) enum QualificationMode {
     StylesheetCustody,
     FontCustody,
     NumericDiagnostics,
+    PairedGeometryCapture,
     ElementScrollSizeDiagnostics,
     MeasuredLeafDiagnostics,
     FlexContentTextDiagnostics,
@@ -81,6 +82,7 @@ impl Serialize for QualificationMode {
             Self::StylesheetCustody => "stylesheet-custody",
             Self::FontCustody => "font-custody",
             Self::NumericDiagnostics => "numeric-diagnostics",
+            Self::PairedGeometryCapture => "paired-geometry-capture",
             Self::ElementScrollSizeDiagnostics => "element-scroll-size-diagnostics",
             Self::MeasuredLeafDiagnostics => "measured-leaf-diagnostics",
             Self::FlexContentTextDiagnostics => "flex-content-text-diagnostics",
@@ -269,11 +271,16 @@ fn select_records(
     }
     if matches!(
         mode,
-        QualificationMode::ElementScrollSizeDiagnostics
+        QualificationMode::PairedGeometryCapture
+            | QualificationMode::ElementScrollSizeDiagnostics
             | QualificationMode::MeasuredLeafDiagnostics
             | QualificationMode::FlexContentTextDiagnostics
     ) {
-        return select_scroll_size_records(declaration, fixture);
+        select_related_records(declaration, fixture)?;
+        if mode == QualificationMode::PairedGeometryCapture && declaration.records.len() < 2 {
+            return Err("paired geometry capture requires a declared peer closure".into());
+        }
+        return Ok(());
     }
     match (mode, fixture) {
         (QualificationMode::StylesheetCustody, None) => {
@@ -322,7 +329,8 @@ fn select_records(
                 | QualificationMode::EmptyLineBrFontBandCapture => {
                     return Err("specialized qualification requires a Generated fixture".into());
                 }
-                QualificationMode::ElementScrollSizeDiagnostics
+                QualificationMode::PairedGeometryCapture
+                | QualificationMode::ElementScrollSizeDiagnostics
                 | QualificationMode::MeasuredLeafDiagnostics
                 | QualificationMode::FlexContentTextDiagnostics => unreachable!("selected above"),
                 QualificationMode::Regular => {}
@@ -358,8 +366,8 @@ fn select_records(
     Ok(())
 }
 
-fn select_scroll_size_records(declaration: &mut Declaration, fixture: Option<&str>) -> Result<()> {
-    let source = fixture.ok_or("element scroll-size diagnostics require one declared fixture")?;
+fn select_related_records(declaration: &mut Declaration, fixture: Option<&str>) -> Result<()> {
+    let source = fixture.ok_or("related source selection requires one declared fixture")?;
     let initial = declaration
         .records
         .iter()
@@ -408,7 +416,7 @@ fn select_scroll_size_records(declaration: &mut Declaration, fixture: Option<&st
             &declaration.records[*index].expected,
             ExpectedDisposition::Generated { .. }
         ) {
-            return Err("element scroll-size diagnostics require Generated declarations".into());
+            return Err("related source selection requires Generated declarations".into());
         }
     }
     let mut index = 0;
@@ -1419,6 +1427,7 @@ fn validate_corpus(
         ),
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
+        | QualificationMode::PairedGeometryCapture
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
@@ -1648,6 +1657,7 @@ fn inventory_with_retained_helper(
         }
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
+        | QualificationMode::PairedGeometryCapture
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
@@ -2298,6 +2308,30 @@ fn qualify_pairs(root: &Path, cases: &[ExpectedCase]) -> Result<()> {
                 left_world.keys().collect::<Vec<_>>(),
                 right_world.keys().collect::<Vec<_>>()
             );
+            // These are raw browser diagnostics, not admission of the typed
+            // ElementScrollSizes request. Their complete tuples must commute
+            // with the same translation even when that Native channel refuses.
+            for (path, left) in &left_world {
+                let right = right_world[path];
+                for field in [
+                    "scroll-width",
+                    "scroll-height",
+                    "client-width",
+                    "client-height",
+                ] {
+                    let value = |node: roxmltree::Node<'_, '_>| -> Result<u32> {
+                        Ok(node
+                            .attribute(field)
+                            .ok_or("missing paired DOM size diagnostic")?
+                            .parse()?)
+                    };
+                    assert_eq!(
+                        value(*left)?,
+                        value(right)?,
+                        "{path}: paired {field} changed"
+                    );
+                }
+            }
             // Both actual root and child have authored10.5px height at the same
             // world phase. A half-pixel translation changes their world-corner
             // rounded heights together while their local tree stays identical.

@@ -1938,6 +1938,18 @@ fn assert_grid_lanes_case(
     {
         return Err("each named lanes case must have definite unequal logical totals".to_string());
     }
+    let physical_size = if parent_mode == "horizontal-tb" {
+        ("70px", "110px")
+    } else {
+        ("110px", "70px")
+    };
+    if case.style.get("width") != Some(physical_size.0)
+        || case.style.get("height") != Some(physical_size.1)
+    {
+        return Err(
+            "lanes containers must preserve their authored fixed physical dimensions".to_string(),
+        );
+    }
     for (index, child) in case.children.iter().enumerate() {
         if child.kind != support::NodeKind::Div
             || child.style.get("display") == Some("none")
@@ -1946,6 +1958,18 @@ fn assert_grid_lanes_case(
         {
             return Err(
                 "lanes items must be visible in-flow elements in the named child flow".to_string(),
+            );
+        }
+        let physical_size = if index == 0 {
+            ("30px", "50px")
+        } else {
+            ("40px", "60px")
+        };
+        if child.style.get("width") != Some(physical_size.0)
+            || child.style.get("height") != Some(physical_size.1)
+        {
+            return Err(
+                "lanes items must preserve their authored fixed physical dimensions".to_string(),
             );
         }
         let (start, end) = if index == 0 { ("1", "2") } else { ("2", "3") };
