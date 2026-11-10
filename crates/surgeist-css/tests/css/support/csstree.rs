@@ -183,11 +183,6 @@ impl ValidatedCorpus {
             )
         })
     }
-
-    /// The source text of every case, in corpus order.
-    pub(crate) fn case_inputs(&self) -> impl Iterator<Item = &str> {
-        self.inventory.cases.iter().map(|case| case.input.as_str())
-    }
 }
 
 #[derive(Debug)]

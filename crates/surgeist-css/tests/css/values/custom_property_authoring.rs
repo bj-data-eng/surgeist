@@ -252,7 +252,9 @@ fn custom_property_names_are_case_sensitive_when_parsed() {
 }
 
 #[test]
-fn parser_accepts_escaped_custom_property_names_from_cssparser_ident_tokens() {
+fn parser_accepts_escaped_custom_property_names_as_decoded_ident_tokens() {
+    // CSS Syntax 3 section 4.3.7: `\ ` is an escaped U+0020, so the ident token
+    // `--bad\ name` has the value `--bad name`.
     assert_eq!(CssCustomPropertyName::try_new("--bad name"), None);
 
     let declaration = single_declaration(".theme { --bad\\ name: 1px; }");

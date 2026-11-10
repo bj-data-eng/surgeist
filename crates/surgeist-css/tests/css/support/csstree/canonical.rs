@@ -18,7 +18,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cssparser::{Parser, ParserInput, Token as CssToken};
+use surgeist_css_parser::Token as Lexed;
+use surgeist_css_parser::lexer::{Lexer, Options};
 
 use super::{
     Adapter, CssRecoveryActionName, EntryPoint, ExpectedClass, ExpectedUnsupportedPolicy,
@@ -517,10 +518,13 @@ fn records_whole_input_rejection(expected: &ExpectedClass) -> bool {
 
 /// Normalizes canonical CSS text from either generator.
 ///
-/// Both forms are tokenized by the crate's CSS Syntax 3 tokenizer dependency
-/// (cssparser, the Servo and Firefox tokenizer), so token boundaries, escapes,
-/// bad strings, bad urls, functions, CDO/CDC and input preprocessing follow the
-/// specification rather than a hand-written approximation. On that token
+/// Both forms are tokenized by `surgeist_css_parser::lexer::Lexer`, the crate's
+/// CSS Syntax 3 section 4 tokenizer, so token boundaries, escapes, bad strings,
+/// bad urls, functions, CDO/CDC and input preprocessing follow the
+/// specification rather than a hand-written approximation. The attribute
+/// matchers `~=`, `|=`, `^=`, `$=` and `*=` are not tokens of that section: each
+/// is two delim tokens, joined here into one comparison token only when nothing
+/// separates them (Selectors 4 section 16, `<attr-matcher>`). On that token
 /// sequence the step removes only presentation choices on which CSSTree's
 /// compact generator and Surgeist's specified serializers legitimately differ:
 ///
@@ -720,153 +724,139 @@ impl Token {
     }
 }
 
-/// Whether `source` ends with an unescaped `close` code point.
-fn closes_with(source: &str, close: char) -> bool {
-    let Some(rest) = source.strip_suffix(close) else {
-        return false;
-    };
-    rest.chars().rev().take_while(|&c| c == '\\').count() % 2 == 0
-}
-
 fn tokenize(css: &str) -> Vec<Token> {
-    let mut input = ParserInput::new(css);
-    let mut parser = Parser::new(&mut input);
+    let mut lexer = Lexer::new(css, &Options::default());
     let mut tokens = Vec::new();
-    collect_tokens(&mut parser, &mut tokens);
+    collect_tokens(css, &mut lexer, None, &mut tokens);
     tokens
 }
 
 /// Appends the tokens of one block level, descending into nested blocks and
 /// emitting their closing delimiter only when the source actually closes them.
-fn collect_tokens(parser: &mut Parser<'_, '_>, tokens: &mut Vec<Token>) {
-    loop {
-        let start = parser.position();
-        let Ok(token) = parser.next_including_whitespace_and_comments() else {
-            return;
-        };
-        let (opening, closing) = match token {
-            CssToken::WhiteSpace(_) => {
+/// `closing` is the code point of the token that ends this level, or `None` at
+/// the top; any other closing token is a preserved delim (Syntax 3 section
+/// 5.5.8, "anything else"). Returns whether the closing token was met.
+fn collect_tokens(
+    css: &str,
+    lexer: &mut Lexer<'_>,
+    closing: Option<char>,
+    tokens: &mut Vec<Token>,
+) -> bool {
+    // The delim that the previous lexeme was, with the offset where it ended.
+    let mut previous_delim: Option<(char, usize)> = None;
+    while let Some(lexeme) = lexer.next_lexeme() {
+        let range = lexeme.range();
+        let (start, end) = (range.start.value(), range.end.value());
+        let unterminated = lexeme.is_unterminated();
+        let token = lexeme.token();
+        let adjacent = previous_delim.take();
+        // Syntax 3 has no tokens for the attribute matchers. Selectors 4
+        // section 16 defines `<attr-matcher>` as one of `~ | ^ $ *` and then
+        // `=`, with nothing between its components: a `=` directly after
+        // such a delim completes the matcher.
+        if let (Lexed::Delim('='), Some((first @ ('~' | '|' | '^' | '$' | '*'), before))) =
+            (&token, adjacent)
+            && before == start
+        {
+            tokens.pop();
+            tokens.push(Token::Matcher(first));
+            continue;
+        }
+        let (opening, close) = match token {
+            Lexed::Whitespace => {
                 if !matches!(tokens.last(), Some(Token::Whitespace)) {
                     tokens.push(Token::Whitespace);
                 }
                 continue;
             }
-            CssToken::Comment(_) => continue,
-            CssToken::Ident(value) => {
-                tokens.push(Token::Ident(value.to_string()));
+            Lexed::Comment => continue,
+            Lexed::Ident(value) => {
+                tokens.push(Token::Ident(value.to_owned()));
                 continue;
             }
-            CssToken::AtKeyword(value) => {
-                tokens.push(Token::AtKeyword(value.to_string()));
+            Lexed::AtKeyword(value) => {
+                tokens.push(Token::AtKeyword(value.to_owned()));
                 continue;
             }
-            CssToken::Hash(value) | CssToken::IDHash(value) => {
-                tokens.push(Token::Hash(value.to_string()));
+            Lexed::Hash { value, .. } => {
+                tokens.push(Token::Hash(value.to_owned()));
                 continue;
             }
-            CssToken::QuotedString(value) => {
-                let value = value.to_string();
-                let source = parser.slice_from(start);
-                let quote = source.chars().next().unwrap_or('"');
-                tokens.push(if source.len() > 1 && closes_with(source, quote) {
-                    Token::String(value)
+            Lexed::String(value) => {
+                tokens.push(if unterminated {
+                    Token::UnterminatedString(value.to_owned())
                 } else {
-                    Token::UnterminatedString(value)
+                    Token::String(value.to_owned())
                 });
                 continue;
             }
-            CssToken::UnquotedUrl(value) => {
-                let value = value.to_string();
-                tokens.push(if closes_with(parser.slice_from(start), ')') {
-                    Token::Url(value)
+            Lexed::Url(value) => {
+                tokens.push(if unterminated {
+                    Token::UnterminatedUrl(value.to_owned())
                 } else {
-                    Token::UnterminatedUrl(value)
+                    Token::Url(value.to_owned())
                 });
                 continue;
             }
-            CssToken::Number { .. } | CssToken::Percentage { .. } | CssToken::Dimension { .. } => {
-                tokens.push(Token::Numeric(parser.slice_from(start).to_owned()));
+            Lexed::Number(_) | Lexed::Percentage(_) | Lexed::Dimension { .. } => {
+                tokens.push(Token::Numeric(css[start..end].to_owned()));
                 continue;
             }
-            CssToken::Delim(delim) => {
-                tokens.push(Token::Delim(*delim));
+            Lexed::Delim(delim) => {
+                tokens.push(Token::Delim(delim));
+                previous_delim = Some((delim, end));
                 continue;
             }
-            CssToken::Colon => {
+            Lexed::Colon => {
                 tokens.push(Token::Delim(':'));
                 continue;
             }
-            CssToken::Semicolon => {
+            Lexed::Semicolon => {
                 tokens.push(Token::Delim(';'));
                 continue;
             }
-            CssToken::Comma => {
+            Lexed::Comma => {
                 tokens.push(Token::Delim(','));
                 continue;
             }
-            CssToken::IncludeMatch => {
-                tokens.push(Token::Matcher('~'));
-                continue;
-            }
-            CssToken::DashMatch => {
-                tokens.push(Token::Matcher('|'));
-                continue;
-            }
-            CssToken::PrefixMatch => {
-                tokens.push(Token::Matcher('^'));
-                continue;
-            }
-            CssToken::SuffixMatch => {
-                tokens.push(Token::Matcher('$'));
-                continue;
-            }
-            CssToken::SubstringMatch => {
-                tokens.push(Token::Matcher('*'));
-                continue;
-            }
-            CssToken::CDO => {
+            Lexed::Cdo => {
                 tokens.push(Token::Cdo);
                 continue;
             }
-            CssToken::CDC => {
+            Lexed::Cdc => {
                 tokens.push(Token::Cdc);
                 continue;
             }
-            CssToken::BadUrl(_) => {
-                tokens.push(Token::BadUrl(parser.slice_from(start).to_owned()));
+            Lexed::BadUrl => {
+                tokens.push(Token::BadUrl(css[start..end].to_owned()));
                 continue;
             }
-            CssToken::BadString(_) => {
-                tokens.push(Token::BadString(parser.slice_from(start).to_owned()));
+            Lexed::BadString => {
+                tokens.push(Token::BadString(css[start..end].to_owned()));
                 continue;
             }
-            CssToken::CloseParenthesis => {
-                tokens.push(Token::Delim(')'));
+            Lexed::CloseParen | Lexed::CloseSquare | Lexed::CloseCurly => {
+                let delim = match token {
+                    Lexed::CloseParen => ')',
+                    Lexed::CloseSquare => ']',
+                    _ => '}',
+                };
+                if closing == Some(delim) {
+                    return true;
+                }
+                tokens.push(Token::Delim(delim));
                 continue;
             }
-            CssToken::CloseSquareBracket => {
-                tokens.push(Token::Delim(']'));
-                continue;
-            }
-            CssToken::CloseCurlyBracket => {
-                tokens.push(Token::Delim('}'));
-                continue;
-            }
-            CssToken::Function(name) => (Some(Token::Function(name.to_string())), ')'),
-            CssToken::ParenthesisBlock => (None, ')'),
-            CssToken::SquareBracketBlock => (Some(Token::Delim('[')), ']'),
-            CssToken::CurlyBracketBlock => (Some(Token::Delim('{')), '}'),
+            // `unicode-range` tokens are produced only when the options allow
+            // them, and these options do not.
+            Lexed::UnicodeRange(_) => continue,
+            Lexed::Function(name) => (Some(Token::Function(name.to_owned())), ')'),
+            Lexed::OpenParen => (None, ')'),
+            Lexed::OpenSquare => (Some(Token::Delim('[')), ']'),
+            Lexed::OpenCurly => (Some(Token::Delim('{')), '}'),
         };
         let mut nested = Vec::new();
-        let mut inner_end = None;
-        let _ = parser.parse_nested_block(|block| {
-            collect_tokens(block, &mut nested);
-            inner_end = Some(block.position());
-            Ok::<(), cssparser::ParseError<'_, ()>>(())
-        });
-        // The nested parser stops before the closing token; the block is closed
-        // exactly when the outer parser then consumed one beyond that point.
-        let closed = inner_end.is_some_and(|end| parser.position() != end);
+        let closed = collect_tokens(css, lexer, Some(close), &mut nested);
         // `url(` with one string argument is a URL compared by its value.
         if let Some(Token::Function(name)) = &opening
             && name.eq_ignore_ascii_case("url")
@@ -884,7 +874,8 @@ fn collect_tokens(parser: &mut Parser<'_, '_>, tokens: &mut Vec<Token>) {
         tokens.push(opening.unwrap_or(Token::Delim('(')));
         tokens.append(&mut nested);
         if closed {
-            tokens.push(Token::Delim(closing));
+            tokens.push(Token::Delim(close));
         }
     }
+    false
 }

@@ -85,7 +85,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -166,7 +166,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -247,7 +247,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -328,7 +328,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3153,7 +3153,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3229,7 +3229,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3305,7 +3305,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3457,7 +3457,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3533,7 +3533,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3609,7 +3609,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3838,7 +3838,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3914,7 +3914,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -3990,7 +3990,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -4066,7 +4066,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -4224,7 +4224,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -4528,7 +4528,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -5307,7 +5307,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -5572,7 +5572,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -5647,7 +5647,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -5722,7 +5722,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -5797,7 +5797,7 @@
       "diagnostic_count": 1,
       "class_status": "independent static source-contract prediction; requires real adapter verification",
       "explanations": [
-        "No top-level curly block: cssparser expect_curly_bracket_block reaches EOF, overriding selector-prelude error; from_rule_parse_error converts basic EOF to invalid_qualified_rule because failed unit contains no opening curly. Consumed unit includes trailing whitespace."
+        "No top-level curly block: consuming a qualified rule (CSS Syntax 3 (2026-10-01) section 5.5.3) reaches <EOF-token> before any <{-token>, a parse error that drops the rule, so no selector error in the prelude is reached. The drop is reported as invalid_qualified_rule because the failed unit contains no opening curly. The consumed unit includes trailing whitespace (section 5.5.3, \"anything else\")."
       ],
       "uncertainties": []
     },
@@ -6054,7 +6054,7 @@
       "src/parser/variables.rs consume_authored_value_tokens_with_restrictions",
       "src/parser/selectors.rs malformed selector and namespace paths",
       "tests/support/csstree.rs ExpectedClass, observation_from_report, payload_relation_holds",
-      "locked cssparser rules_and_declarations.rs RuleBodyParser::next and parse_qualified_rule"
+      "CSS Syntax 3 (2026-10-01) section 5.5.5 (consume a block's contents) and section 5.5.3 (consume a qualified rule)"
     ],
     "normative_basis": [
       "https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule",

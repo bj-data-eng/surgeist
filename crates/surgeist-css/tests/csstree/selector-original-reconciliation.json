@@ -87,7 +87,7 @@
     "src/parser/selectors.rs parse_language_ranges, parse_pseudo_selector_list_with_options",
     "src/error.rs resolve_source, invalid_selector, selector_basic, previous_authored_token_before",
     "src/syntax.rs CssAttributeName and typed selector constructors",
-    "locked cssparser0.37.0 tokenizer escaped-code-point handling; parser expect_exhausted"
+    "CSS Syntax 3 (2026-10-01) section 4.3.7 (consume an escaped code point); Selectors 4 (WD 2026-01-22) section 16 (a complete selector accepts no component after its last)"
   ],
   "policy_separation": "No unsupported/vendor/downstream exclusion applies to any of these14 inputs. Grammar validity is independent of whether a selector has possible matches. Exact diagnostic vocabulary/coordinates are project policy predictions.",
   "summary": {
