@@ -1095,6 +1095,86 @@ mod tests {
     }
 
     #[test]
+    fn repeating_span_failure_releases_fixed_output_before_its_actual_stop_backing() {
+        use crate::{RenderChangeKind, RenderEvent, RenderPhaseFilter, RenderQuantity};
+
+        let source = source(-f64::MAX, f64::MAX);
+        let stops = resolve_gradient_stops(1.0, &source, options())
+            .result
+            .unwrap();
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 128,
+                filter: RenderPhaseFilter::All,
+            }),
+        );
+        let error =
+            prepare_repeating_radial_gradient(&geometry(), &stops, &mut context).unwrap_err();
+        assert_eq!(
+            error.paint_gradient_diagnostic(),
+            Some(&PaintGradientError::UnrepresentableSpan {
+                first_source_index: 0,
+                last_source_index: 1,
+            })
+        );
+        let preserved: Vec<_> = stops
+            .items()
+            .map(|item| match item {
+                UsedGradientItem::Stop {
+                    source_index,
+                    position,
+                    payload,
+                    ..
+                } => (source_index, position, *payload),
+                UsedGradientItem::Hint { .. } => panic!("the source has only two color stops"),
+            })
+            .collect();
+        assert_eq!(
+            preserved,
+            [(0, -f64::MAX, Color::BLACK), (1, f64::MAX, Color::BLACK)]
+        );
+        let report = context.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(report.dropped_events(), 0);
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+        let amounts = |kind| {
+            report
+                .events()
+                .filter_map(move |event| match event {
+                    RenderEvent::Change {
+                        phase: RenderPhase::Preparation,
+                        quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                        kind: actual_kind,
+                        amount,
+                        ..
+                    } if actual_kind == kind && amount != 0 => Some(amount),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // Conversion acquires the actual stop-vector capacity first. Output then
+        // acquires its fixed value. No allocator capacity is guessed here.
+        let acquired = amounts(RenderChangeKind::Acquire);
+        assert_eq!(acquired.len(), 2);
+        let stop_capacity = acquired[0];
+        let fixed_output = acquired[1];
+        assert!(stop_capacity >= (2 * size_of::<GradientStop>()) as u64);
+        assert_eq!(fixed_output, size_of::<RepeatingGradient>() as u64);
+        assert_ne!(
+            stop_capacity, fixed_output,
+            "the real backing amounts must distinguish their release order"
+        );
+        // The complete value destroys before both leases; the fixed lease then
+        // releases before its stop storage, preserving the original custody order.
+        // The attempt's final zero-sized cleanup release is not a backing release.
+        assert_eq!(
+            amounts(RenderChangeKind::Release),
+            [fixed_output, stop_capacity]
+        );
+    }
+
+    #[test]
     fn canonical_owner_keeps_actual_capacity_and_fixed_custody_until_transfer() {
         let source = source(1.0, 2.0);
         let stops = resolve_gradient_stops(1.0, &source, options())
