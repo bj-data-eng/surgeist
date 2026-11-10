@@ -92,6 +92,117 @@ impl<C> Clone for UsedGradientItem<'_, C> {
     }
 }
 
+/// The mandatory first color occurrence of a qualified used-stop list.
+/// Only Paint's resolver constructs this record; payloads remain source-borrowed.
+///
+/// ```compile_fail
+/// use surgeist_paint::UsedGradientStop;
+/// let forged = UsedGradientStop {
+///     source_index: 0, position_index: 0, payload: &(), position: 0.0,
+/// };
+/// ```
+#[derive(Debug)]
+pub struct UsedGradientStop<'a, C> {
+    source_index: usize,
+    position_index: usize,
+    payload: &'a C,
+    position: f64,
+}
+impl<C> UsedGradientStop<'_, C> {
+    pub const fn source_index(&self) -> usize {
+        self.source_index
+    }
+    pub const fn position_index(&self) -> usize {
+        self.position_index
+    }
+    pub const fn payload(&self) -> &C {
+        self.payload
+    }
+    pub const fn position(&self) -> f64 {
+        self.position
+    }
+}
+
+/// A borrowed prepared record. Obtaining a view does not project its fields;
+/// consumers can admit a visit before calling [`Self::item`].
+///
+/// A view cannot be constructed through a raw record or reassociated:
+///
+/// ```compile_fail
+/// use surgeist_paint::GradientRecord;
+/// fn fabricate(authentic: GradientRecord<'_, ()>) {
+///     let _ = GradientRecord { ..authentic };
+/// }
+/// ```
+///
+/// Even with the source alive, a borrowed record cannot outlive its owner:
+///
+/// ```compile_fail
+/// use surgeist_paint::{GradientStopItem, GradientStopPositions, PaintLimits,
+///     PaintOptions, ProfileMode, resolve_gradient_stops};
+/// let source = [GradientStopItem::Stop { payload: (), positions: GradientStopPositions::Omitted }];
+/// let view = {
+///     let stops = resolve_gradient_stops(1.0, &source,
+///         PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)).result.unwrap();
+///     stops.records().next().unwrap()
+/// };
+/// let _ = view.item();
+/// ```
+#[derive(Debug)]
+pub struct GradientRecord<'a, C> {
+    record: PreparedRecord<'a, C>,
+}
+#[derive(Debug)]
+enum PreparedRecord<'a, C> {
+    First(&'a UsedGradientStop<'a, C>),
+    Tail(&'a UsedGradientItem<'a, C>),
+}
+impl<'a, C> GradientRecord<'a, C> {
+    /// Projects the actual prepared record without source access or validation.
+    pub fn item(&self) -> UsedGradientItem<'a, C> {
+        match self.record {
+            PreparedRecord::First(first) => UsedGradientItem::Stop {
+                source_index: first.source_index,
+                position_index: first.position_index,
+                payload: first.payload,
+                position: first.position,
+            },
+            PreparedRecord::Tail(item) => *item,
+        }
+    }
+}
+
+struct PreparedRecords<'a, C> {
+    first: Option<&'a UsedGradientStop<'a, C>>,
+    tail: std::slice::Iter<'a, UsedGradientItem<'a, C>>,
+}
+impl<'a, C> Iterator for PreparedRecords<'a, C> {
+    type Item = GradientRecord<'a, C>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.first
+            .take()
+            .map(|first| GradientRecord {
+                record: PreparedRecord::First(first),
+            })
+            .or_else(|| {
+                self.tail.next().map(|item| GradientRecord {
+                    record: PreparedRecord::Tail(item),
+                })
+            })
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+impl<C> ExactSizeIterator for PreparedRecords<'_, C> {
+    fn len(&self) -> usize {
+        // The tail contains nonzero-sized prepared records in an actual Vec
+        // allocation, so its length plus the inline head fits usize.
+        usize::from(self.first.is_some()) + self.tail.len()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct UsedGradientRecord<P = f64> {
     pub(crate) source_index: usize,
@@ -106,7 +217,8 @@ pub(crate) struct UsedGradientRecord<P = f64> {
 pub struct GradientStops<'a, C> {
     source: &'a [GradientStopItem<C>],
     line_length: f64,
-    records: Vec<UsedGradientItem<'a, C>>,
+    first: UsedGradientStop<'a, C>,
+    tail: Vec<UsedGradientItem<'a, C>>,
 }
 impl<'a, C> GradientStops<'a, C> {
     pub const fn source(&self) -> &'a [GradientStopItem<C>] {
@@ -116,7 +228,39 @@ impl<'a, C> GradientStops<'a, C> {
         self.line_length
     }
     pub fn items(&self) -> impl ExactSizeIterator<Item = UsedGradientItem<'_, C>> {
-        self.records.iter().copied()
+        self.records().map(|record| record.item())
+    }
+    /// Borrows the mandatory first color, before any consumer field inspection.
+    ///
+    /// ```
+    /// use surgeist_paint::{GradientStopItem, GradientStopPositions, PaintLimits,
+    ///     PaintOptions, ProfileMode, resolve_gradient_stops};
+    /// let source = [GradientStopItem::Stop {
+    ///     payload: "first", positions: GradientStopPositions::Omitted,
+    /// }];
+    /// let stops = resolve_gradient_stops(1.0, &source,
+    ///     PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)).result.unwrap();
+    /// assert_eq!(*stops.first_stop().payload(), "first");
+    /// assert_eq!(stops.first_stop().position(), 0.0);
+    /// assert_eq!(stops.tail().len(), 0);
+    /// assert_eq!(stops.records().len(), 1);
+    /// ```
+    pub const fn first_stop(&self) -> &UsedGradientStop<'_, C> {
+        &self.first
+    }
+    /// Borrows the remaining prepared records in expanded source order.
+    pub fn tail(&self) -> impl ExactSizeIterator<Item = GradientRecord<'_, C>> {
+        PreparedRecords {
+            first: None,
+            tail: self.tail.iter(),
+        }
+    }
+    /// Borrows every physical record exactly once, including the inline first color.
+    pub fn records(&self) -> impl ExactSizeIterator<Item = GradientRecord<'_, C>> {
+        PreparedRecords {
+            first: Some(&self.first),
+            tail: self.tail.iter(),
+        }
     }
 }
 
@@ -412,6 +556,12 @@ pub(crate) struct ValidatedStops<'s, C> {
     source: &'s [GradientStopItem<C>],
     records: usize,
     colors: ColorArity<'s, C>,
+    first: FirstColors<'s, C>,
+}
+
+struct FirstColors<'s, C> {
+    first: ColorOccurrence<'s, C>,
+    second: Option<ColorOccurrence<'s, C>>,
 }
 
 impl<'s, C> ValidatedStops<'s, C> {
@@ -482,6 +632,7 @@ pub(crate) fn validate_source<'s, C>(
         source,
         records: count,
         colors,
+        first: FirstColors { first, second },
     })
 }
 
@@ -919,7 +1070,7 @@ mod ordinary {
                 .map_err(setup_error)??;
             meter
                 .with_phase(scopes[4], |p| {
-                    self.prepare(&mut StopWork::new(p, scopes[4]), root)?;
+                    let first = self.prepare(&mut StopWork::new(p, scopes[4]), root)?;
                     apply(
                         p,
                         root,
@@ -935,7 +1086,8 @@ mod ordinary {
                     Ok(GradientStops {
                         source: self.input.source,
                         line_length: self.line_length,
-                        records: take(&mut self.prepared),
+                        first,
+                        tail: take(&mut self.prepared),
                     })
                 })
                 .map_err(setup_error)?
@@ -945,15 +1097,31 @@ mod ordinary {
             &mut self,
             work: &mut StopWork<'_, '_, '_>,
             root: Scope,
-        ) -> Result<(), PaintError> {
+        ) -> Result<UsedGradientStop<'s, C>, PaintError> {
             self.prepared = allocate(
                 work.meter(),
                 root,
-                self.input.records,
+                // Validation proves at least one expanded occurrence; this
+                // owner alone expands and qualifies that complete backing.
+                self.input.records - 1,
                 ResourceKind::RetainedResultBytes,
             )?;
-            let mut index = 0;
-            for source_index in 0..self.input.source.len() {
+            // Validation retained the actual first Stop occurrences. Numerical
+            // qualification above completed before any prepared allocation.
+            let occurrence = self.input.first.first;
+            let position = work.record(&self.staging, 0)?.position;
+            let first = work.output(|| UsedGradientStop {
+                source_index: occurrence.source_index(),
+                position_index: occurrence.position_index(),
+                payload: occurrence.payload(),
+                position,
+            })?;
+            let mut index = 1;
+            if let Some(second) = self.input.first.second {
+                self.prepare_stop(work, index, second)?;
+                index += 1;
+            }
+            for source_index in 1..self.input.source.len() {
                 match work.color_source(self.input.source, source_index)? {
                     ColorSourceItem::Stop { first, second, .. } => {
                         self.prepare_stop(work, index, first)?;
@@ -977,7 +1145,7 @@ mod ordinary {
                     }
                 }
             }
-            Ok(())
+            Ok(first)
         }
 
         fn prepare_stop(
@@ -1119,10 +1287,12 @@ mod ordinary {
             let (_, report) = finish(meter, Ok(()));
             let report = report.unwrap();
             assert_eq!(size_of::<Payload>(), 0);
-            assert_eq!(plan.records.len(), 4);
+            assert_eq!(plan.tail.len(), 3);
+            assert!(plan.tail.capacity() >= 3);
+            assert_eq!(plan.first.position(), 0.0);
             assert!(size_of::<UsedGradientRecord>() > 0);
             let backing =
-                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+                (plan.tail.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
             let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
             assert_eq!(
                 report.live(ResourceKind::RetainedResultBytes),
@@ -1136,6 +1306,16 @@ mod ordinary {
             assert_eq!(report.peak(ResourceKind::ScratchBytes), scratch);
             assert!(scratch > 0);
             assert_eq!(report.work(WorkKind::OutputRecord), 9);
+            // Validation 3 sources; expansion 3 sources; endpoint fixup 5
+            // accesses + 4 record/source pairs; distribution 3 pairs + 4
+            // qualification records; publication 2 sources + 4 records.
+            assert_eq!(
+                report.work(WorkKind::GradientStopVisit),
+                3 + 3 + 13 + 10 + 6
+            );
+            // Three positioned occurrences each FMA/finite (6), three prefix
+            // comparisons, then four finite and three ordering checks (7).
+            assert_eq!(report.work(WorkKind::GradientCoordinate), 6 + 3 + 7);
             assert_eq!(
                 plan.items()
                     .map(|item| match item {
@@ -1148,13 +1328,149 @@ mod ordinary {
         }
 
         #[test]
+        fn every_source_record_and_emission_frontier_keeps_causal_error_and_retries() {
+            let source = source();
+            for cap in 0..35 {
+                let outcome = resolve_gradient_stops(
+                    100.0,
+                    &source,
+                    options(
+                        PaintLimits::unlimited().with_work_limit(WorkKind::GradientStopVisit, cap),
+                    ),
+                );
+                let Err(PaintError::Budget(refusal)) = outcome.result else {
+                    panic!("visit must refuse")
+                };
+                assert_eq!(refusal.current, cap);
+                assert_eq!(
+                    refusal.change,
+                    PaintChange::Work {
+                        kind: WorkKind::GradientStopVisit,
+                        amount: 1
+                    }
+                );
+                let expected_phase = match cap {
+                    0..=2 => PaintPhase::GradientValidation,
+                    3..=5 => PaintPhase::GradientStopResolution,
+                    6..=18 => PaintPhase::GradientStopFixup,
+                    19..=28 => PaintPhase::GradientStopDistribution,
+                    _ => PaintPhase::Publication,
+                };
+                assert_eq!(refusal.origin, expected_phase);
+                let report = outcome.report.unwrap();
+                assert_eq!(report.work(WorkKind::GradientStopVisit), cap);
+                let emissions = match cap {
+                    0..=3 => 0,
+                    4 => 2,
+                    5 => 3,
+                    6..=29 => 4,
+                    30 => 5,
+                    31..=32 => 6,
+                    _ => 7,
+                };
+                assert_eq!(report.work(WorkKind::OutputRecord), emissions);
+                for &resource in ResourceKind::ALL {
+                    assert_eq!(report.live(resource), 0);
+                }
+                let retried = resolve_gradient_stops(
+                    100.0,
+                    &source,
+                    options(
+                        PaintLimits::unlimited().with_work_limit(WorkKind::GradientStopVisit, 35),
+                    ),
+                );
+                assert_eq!(retried.result.unwrap().items().count(), 4);
+            }
+            for cap in 0..9 {
+                let outcome = resolve_gradient_stops(
+                    100.0,
+                    &source,
+                    options(PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, cap)),
+                );
+                let Err(PaintError::Budget(refusal)) = outcome.result else {
+                    panic!("emission must refuse")
+                };
+                assert_eq!(refusal.current, cap);
+                assert_eq!(
+                    refusal.change,
+                    PaintChange::Work {
+                        kind: WorkKind::OutputRecord,
+                        amount: 1
+                    }
+                );
+                assert_eq!(
+                    refusal.origin,
+                    if cap < 4 {
+                        PaintPhase::GradientStopResolution
+                    } else {
+                        PaintPhase::Publication
+                    }
+                );
+                let report = outcome.report.unwrap();
+                assert_eq!(report.work(WorkKind::OutputRecord), cap);
+                for &resource in ResourceKind::ALL {
+                    assert_eq!(report.live(resource), 0);
+                }
+            }
+        }
+
+        #[test]
+        fn single_inline_head_has_no_prepared_heap_and_charges_actual_fixed_owner() {
+            let source = [GradientStopItem::Stop {
+                payload: Payload,
+                positions: GradientStopPositions::Omitted,
+            }];
+            let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
+            let outcome = resolve_gradient_stops(
+                0.0,
+                &source,
+                options(
+                    PaintLimits::unlimited()
+                        .with_resource_limit(ResourceKind::RetainedResultBytes, fixed),
+                ),
+            );
+            let plan = outcome.result.unwrap();
+            assert_eq!(plan.tail.capacity(), 0);
+            assert_eq!(plan.first.position(), 0.0);
+            let report = outcome.report.unwrap();
+            assert_eq!(report.live(ResourceKind::RetainedResultBytes), fixed);
+            assert_eq!(report.peak(ResourceKind::RetainedResultBytes), fixed);
+            assert_eq!(report.work(WorkKind::GradientStopVisit), 9);
+            assert_eq!(report.work(WorkKind::OutputRecord), 3);
+            let failed = resolve_gradient_stops(
+                0.0,
+                &source,
+                options(
+                    PaintLimits::unlimited()
+                        .with_resource_limit(ResourceKind::RetainedResultBytes, fixed - 1),
+                ),
+            );
+            let Err(PaintError::Budget(refusal)) = failed.result else {
+                panic!("fixed owner must refuse")
+            };
+            assert_eq!(refusal.current, 0);
+            assert_eq!(
+                refusal.change,
+                PaintChange::Acquire {
+                    kind: ResourceKind::RetainedResultBytes,
+                    amount: fixed
+                }
+            );
+            let report = failed.report.unwrap();
+            assert_eq!(report.work(WorkKind::OutputRecord), 2);
+            for &resource in ResourceKind::ALL {
+                assert_eq!(report.live(resource), 0);
+            }
+        }
+
+        #[test]
         fn fixed_owner_and_later_output_refusals_release_all_admitted_custody() {
             let source = source();
             let baseline =
                 resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
             let plan = baseline.result.unwrap();
             let backing =
-                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+                (plan.tail.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
             let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
             drop(plan);
 
@@ -1220,15 +1536,16 @@ mod ordinary {
             let report = baseline.report.unwrap();
             let scratch = report.peak(ResourceKind::ScratchBytes);
             let backing =
-                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+                (plan.tail.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
             let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
             let publication_visits = report
                 .phases()
                 .find(|phase| phase.phase() == PaintPhase::Publication)
                 .unwrap()
                 .work(WorkKind::GradientStopVisit);
-            // Three authored source visits and four reads of their numeric positions.
-            assert_eq!(publication_visits, 7);
+            // Source zero is retained from validation: two later source visits
+            // and four reads of qualified numerical positions.
+            assert_eq!(publication_visits, 2 + 4);
             let before_capture = report.work(WorkKind::GradientStopVisit) - publication_visits;
             // Byte custody is admitted at the root; capture work is admitted
             // at Publication. Refusal origins follow those actual scopes.
@@ -1253,11 +1570,11 @@ mod ordinary {
                     5,
                     backing,
                 ),
-                // The first source visit and first position read are accepted;
-                // the second numeric read refuses after one prepared record.
+                // The first position read is accepted; the second numeric read
+                // refuses after the inline head has been emitted.
                 (
                     PaintLimits::unlimited()
-                        .with_work_limit(WorkKind::GradientStopVisit, before_capture + 2),
+                        .with_work_limit(WorkKind::GradientStopVisit, before_capture + 1),
                     PaintPhase::Publication,
                     5,
                     backing,
@@ -1307,10 +1624,10 @@ mod ordinary {
             let report = baseline.report.unwrap();
             // L, list emptiness, item grammar. Visits: validation1 + expansion1 +
             // first record/source/write3 + prefix record/source2 + qualification1.
-            // Preparation visits the source and its numeric position once more.
+            // Preparation reuses the validated occurrence and reads its numeric position.
             // The only numeric inspection is final finiteness; no affine/lerp runs.
             assert_eq!(report.work(WorkKind::GradientValidation), 3);
-            assert_eq!(report.work(WorkKind::GradientStopVisit), 10);
+            assert_eq!(report.work(WorkKind::GradientStopVisit), 9);
             assert_eq!(report.work(WorkKind::GradientCoordinate), 1);
             assert_eq!(report.work(WorkKind::OutputRecord), 3);
 

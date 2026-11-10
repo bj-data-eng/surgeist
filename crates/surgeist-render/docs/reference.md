@@ -456,8 +456,12 @@ profile. Per-use `GradientPrepare`, native qualification and GPU publication
 still run later in the normal frame attempt.
 
 For this consumer, `PaintVisits` counts inspections of geometry, the stop owner
-and the constructed native gradient. `GradientStopVisits` counts every item visit
-in preflight and conversion. `CoordinateVisits` counts each
+and the constructed native gradient. `GradientStopVisits` counts every actual
+record in the full preflight and conversion: 2n visits for n prepared records.
+Each visit is admitted before projecting Paint's borrowed record view. Conversion
+starts with the mandatory typed first color, then consumes the tail; hints update
+that pending color, and following colors emit and replace it. Endpoint and final
+pending state remain required values. `CoordinateVisits` counts each
 actual scalar inspection or calculation, including comparisons. Repeated passes
 are charged separately; a refusal retains only admitted work.
 
@@ -470,9 +474,11 @@ the source, measure and contexts have been dropped.
 
 Paint owns the [zero-height basis and color weights](../../surgeist-paint/docs/reference.md#zero-height-gradient-colors),
 including mixed-unit fixup, omission/hint distribution and repetition selection.
-Render uses those weights in premultiplied numeric-sRGBA. A single color is
-copied directly; an average is reduced with the same arithmetic owner as existing
-repeating fallbacks. Zero alpha produces transparent output; nonzero alpha is
+Render uses Paint's actual `selected_last_color()` selection to copy Last
+directly, preserving straight RGB even at zero alpha. Average consumes the real
+borrowed weighted records, including zero-weight occurrences, in premultiplied
+numeric-sRGBA with the same arithmetic owner as existing repeating fallbacks.
+An average with zero alpha produces transparent output; nonzero alpha is
 converted back to straight channels with the existing final color rounding.
 The positive-field adapters retain their geometry/used-position contracts.
 

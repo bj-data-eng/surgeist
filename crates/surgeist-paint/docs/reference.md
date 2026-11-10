@@ -32,8 +32,13 @@ The [public front door](../src/lib.rs) exports these surfaces:
 `resolve_gradient_stops` validates its source, resolves and qualifies numerical
 positions, then prepares Stop/Hint records with direct borrowed payloads and
 captured source identities. The construction owner creates and advances its own
-staging. `items()` projects the prepared records without source indexing or
-interpreting source kinds again. `source()` retains the exact original slice;
+staging. `first_stop()` borrows the mandatory typed `UsedGradientStop`;
+`tail()` borrows the remaining records, including a first Two's second occurrence.
+`records()` borrows the whole list as `GradientRecord` views. Obtaining a view
+does not inspect the prepared fields: a consumer admits its visit before
+`item()` projects the record. `items()` remains a whole-list projection of this
+same inline head and tail, without source indexing or interpreting source kinds
+again. No prepared record is stored twice. `source()` retains the exact original slice;
 the result and its views cannot outlive that source.
 
 ## Zero-height gradient colors
@@ -46,6 +51,14 @@ typed error and the existing optional report. `source()` retains the exact
 source association. `colors()` yields `WeightedGradientColor` views with a
 borrowed payload, source index, Two-position ordinal and finite nonnegative
 weight. Payloads remain opaque to Paint.
+
+`selected_last_color()` borrows the actual Last record as a
+`WeightedGradientRecord`; `None` means Average, rather than an absent endpoint.
+`records()` borrows the selected measure's ordered weighted records, including
+zero weights. Admit each consumer visit before `color()` projects its fields.
+`colors()` uses the same projection and backing. These borrowed operations add
+no allocation, source read, stored flag, or producer work; Measure storage and
+its weighting and custody remain unchanged.
 
 Construction captures each color's payload and first/second-position identity
 from its authored stop. The finished measure retains these associations;
@@ -142,9 +155,17 @@ expanded-record visit, including repeated passes and boundary inspection.
 `GradientCoordinate` counts actual numeric calculations/conversions/inspections;
 `GradientValidation` counts input domain/grammar actions. Each expanded numerical
 record, prepared Stop/Hint record and final fixed result owner contributes an
-`OutputRecord`. After numerical qualification, preparation visits each source
-item and numerical record once. Numerical staging uses actual `ScratchBytes`;
-prepared capacity and the fixed owner use `RetainedResultBytes`. Both backings
+`OutputRecord`. After numerical qualification, preparation reuses the first
+source Stop's occurrences captured during charged validation. With S source
+items and R expanded records, publication performs S-1+R visits: each later
+source item and each numerical record once. It previously performed S+R visits;
+numeric work and R prepared emissions are unchanged. Numerical staging uses
+actual `ScratchBytes`; retained custody is the actual tail capacity multiplied
+by `size_of::<UsedGradientItem<C>>()`, plus `size_of::<GradientStops<C>>()` for
+the complete fixed owner containing its inline typed head. The tail reserves
+R-1 items; a single-stop result needs no prepared heap storage. These actual
+sizes replace the former full-vector capacity and smaller fixed owner, so byte
+thresholds and refusal prefixes can change. Both numerical and prepared backings
 coexist during preparation, and cleanup releases staging before return. Source
 and payload storage remain caller-owned. See
 [the implementation](../src/gradient_stops.rs) for the precise charged units.

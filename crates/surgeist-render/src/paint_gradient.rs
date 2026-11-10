@@ -134,17 +134,16 @@ pub fn prepare_zero_height_gradient_color(
                 let coordinates = account.at(RenderPhase::Coordinates);
                 let color = account.phase(RenderPhase::Coordinates, || {
                     coordinates.work(RenderWork::PaintVisits, 1)?;
-                    let mut colors = colors.colors();
-                    if colors.len() == 1 {
+                    if let Some(last) = colors.selected_last_color() {
                         coordinates.work(RenderWork::GradientStopVisits, 1)?;
                         // Last's sole authenticated occurrence is a direct Color
                         // copy, including any straight RGB with zero alpha.
-                        return Ok(*colors.next().expect("authenticated Last color").payload);
+                        return Ok(*last.color().payload);
                     }
                     let mut total = PremultipliedSum::new();
-                    while colors.len() != 0 {
+                    for record in colors.records() {
                         coordinates.work(RenderWork::GradientStopVisits, 1)?;
-                        let item = colors.next().expect("nonempty exact-size view");
+                        let item = record.color();
                         let weight = scalar(&coordinates, || item.weight)?;
                         let color = premultiplied(*item.payload, &coordinates)?;
                         total.add_weighted(color, weight, &coordinates)?;
@@ -292,18 +291,14 @@ fn prepare<T>(
 }
 
 // PaintVisits: producer geometry, used-stop owner, and owned native gradient.
-// Stop visits: each actual next() in preflight and conversion. Qualified output
+// Stop visits: each actual record projection in preflight and conversion. Qualified output
 // construction consumes the completed proof/backing without another record walk.
-// Iterator length inspections are constant control metadata, not hidden walks.
+// Borrowing a record view does not inspect its fields before admission.
 fn preflight(stops: &GradientStops<'_, Color>, account: &Account) -> Result<usize> {
-    let mut items = stops.items();
     let mut color_count = 0usize;
-    while items.len() != 0 {
+    for record in stops.records() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        if matches!(
-            items.next().expect("nonempty exact-size view"),
-            UsedGradientItem::Stop { .. }
-        ) {
+        if matches!(record.item(), UsedGradientItem::Stop { .. }) {
             color_count = color_count
                 .checked_add(1)
                 .ok_or_else(|| account.capacity_error(RenderResource::RetainedCpuBytes))?;
@@ -333,17 +328,27 @@ fn convert(
     color_count: usize,
     account: &Account,
 ) -> Result<ConvertedStops> {
-    let mut items = stops.items();
     let mut output = account.retained(color_count)?;
-    let mut first = None;
-    let mut last = None;
-    let mut previous = None;
-    // Pending color/hint fields are assembled once when the next color arrives.
-    // No already-owned output record is patched or traversed again.
-    let mut pending: Option<(f64, Color, Option<GradientHint>)> = None;
-    while items.len() != 0 {
+    let head = stops.first_stop();
+    account.work(RenderWork::GradientStopVisits, 1)?;
+    let first_index = head.source_index();
+    let (position, field) = convert_position(
+        geometry,
+        account,
+        first_index,
+        head.position_index(),
+        || head.position(),
+        None,
+    )?;
+    let mut previous = (position, field);
+    let first = (first_index, field);
+    let mut last = first;
+    // Paint's mandatory head establishes a required pending color. Hints mutate
+    // its outgoing control; each following color emits and replaces it once.
+    let mut pending = (field, *head.payload(), None);
+    for record in stops.tail() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        let item = items.next().expect("nonempty exact-size view");
+        let item = record.item();
         let (source_index, position_index) = match item {
             UsedGradientItem::Stop {
                 source_index,
@@ -352,74 +357,83 @@ fn convert(
             } => (source_index, position_index),
             UsedGradientItem::Hint { source_index, .. } => (source_index, 0),
         };
-        let failure = || PaintGradientError::UnrepresentablePosition {
+        let (position, field) = convert_position(
+            geometry,
+            account,
             source_index,
             position_index,
-        };
-        let position = scalar(account, || match item {
-            UsedGradientItem::Stop { position, .. } | UsedGradientItem::Hint { position, .. } => {
-                position
-            }
-        })?;
-        let field = match geometry {
-            AdapterGeometry::UnitBasis { basis, .. } => {
-                let field = scalar(account, || position / basis)?;
-                if !scalar(account, || field.is_finite())? {
-                    return Err(failure().into());
-                }
-                if scalar(account, || position != 0.0)? && scalar(account, || field == 0.0)? {
-                    return Err(failure().into());
-                }
-                if let Some((previous_position, previous_field)) = previous {
-                    let same = scalar(account, || position == previous_position)?;
-                    let preserves_order = scalar(account, || {
-                        if same {
-                            field == previous_field
-                        } else {
-                            field > previous_field
-                        }
-                    })?;
-                    if !preserves_order {
-                        return Err(failure().into());
-                    }
-                }
-                previous = Some((position, field));
-                field
-            }
-            AdapterGeometry::HorizontalDistance { .. } => position,
-        };
-        // Qualified division preserves source equality/order; physical identity
-        // preserves the authentic proof exactly without redundant numeric checks.
-        // Paint's item association proves inclusive hints and following colors.
+            || match item {
+                UsedGradientItem::Stop { position, .. }
+                | UsedGradientItem::Hint { position, .. } => position,
+            },
+            Some(previous),
+        )?;
+        previous = (position, field);
         match item {
             UsedGradientItem::Stop { payload, .. } => {
-                if let Some((position, color, hint_after)) =
-                    pending.replace((field, *payload, None))
-                {
-                    output
-                        .append_slot()?
-                        .write(GradientStop::from_qualified_paint(
-                            position, color, hint_after,
-                        ));
-                }
-                first.get_or_insert((source_index, field));
-                last = Some((source_index, field));
+                let (position, color, hint_after) =
+                    std::mem::replace(&mut pending, (field, *payload, None));
+                output
+                    .append_slot()?
+                    .write(GradientStop::from_qualified_paint(
+                        position, color, hint_after,
+                    ));
+                last = (source_index, field);
             }
             UsedGradientItem::Hint { .. } => {
-                pending.as_mut().expect("Paint hint follows a color").2 =
-                    Some(GradientHint::from_qualified_paint(field));
+                pending.2 = Some(GradientHint::from_qualified_paint(field));
             }
         }
     }
-    let (position, color, hint_after) = pending.expect("Paint list has a color");
+    let (position, color, hint_after) = pending;
     output
         .append_slot()?
         .write(GradientStop::from_qualified_paint(
             position, color, hint_after,
         ));
-    let first = first.expect("Paint list has a stop");
-    let last = last.expect("Paint list has a stop");
     Ok((output, (first.0, last.0), (first.1, last.1)))
+}
+
+fn convert_position(
+    geometry: &AdapterGeometry,
+    account: &Account,
+    source_index: usize,
+    position_index: usize,
+    position: impl FnOnce() -> f64,
+    previous: Option<(f64, f64)>,
+) -> Result<(f64, f64)> {
+    let failure = || PaintGradientError::UnrepresentablePosition {
+        source_index,
+        position_index,
+    };
+    let position = scalar(account, position)?;
+    let field = match geometry {
+        AdapterGeometry::UnitBasis { basis, .. } => {
+            let field = scalar(account, || position / basis)?;
+            if !scalar(account, || field.is_finite())? {
+                return Err(failure().into());
+            }
+            if scalar(account, || position != 0.0)? && scalar(account, || field == 0.0)? {
+                return Err(failure().into());
+            }
+            if let Some((previous_position, previous_field)) = previous {
+                let same = scalar(account, || position == previous_position)?;
+                let preserves_order = scalar(account, || {
+                    if same {
+                        field == previous_field
+                    } else {
+                        field > previous_field
+                    }
+                })?;
+                if !preserves_order {
+                    return Err(failure().into());
+                }
+            }
+            field
+        }
+        AdapterGeometry::HorizontalDistance { .. } => position,
+    };
+    Ok((position, field))
 }
 
 #[cfg(test)]
@@ -474,6 +488,76 @@ mod tests {
         )
         .result
         .unwrap()
+    }
+
+    #[test]
+    fn first_two_hint_later_two_keep_literal_colors_positions_and_visit_frontiers() {
+        let position = |length| GradientPosition {
+            length,
+            fraction: 0.0,
+        };
+        let hidden = Color::try_rgba(0.25, 0.5, 0.75, 0.0).unwrap();
+        let source = [
+            GradientStopItem::Stop {
+                payload: Color::BLACK,
+                positions: GradientStopPositions::Two(position(-4.0), position(0.0)),
+            },
+            GradientStopItem::Hint {
+                position: position(2.0),
+            },
+            GradientStopItem::Stop {
+                payload: hidden,
+                positions: GradientStopPositions::Two(position(4.0), position(12.0)),
+            },
+        ];
+        let used = resolve_gradient_stops(1.0, &source, options())
+            .result
+            .unwrap();
+        let mut context = context(RenderLimits::new());
+        let gradient = prepare_radial_gradient(&geometry(), &used, &mut context).unwrap();
+        assert_eq!(
+            gradient
+                .stops()
+                .iter()
+                .map(|s| (
+                    s.position(),
+                    s.color(),
+                    s.hint_after().map(|h| h.position())
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (-4.0, Color::BLACK, None),
+                (0.0, Color::BLACK, Some(2.0)),
+                (4.0, hidden, None),
+                (12.0, hidden, None)
+            ]
+        );
+        let report = context.last_attempt().unwrap().attempt().unwrap();
+        // Five real records in preflight and conversion. Geometry/basis 6,
+        // source captures/division/domain 24, four adjacent pairs 8.
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 10);
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 38);
+        for cap in [0, 4, 5, 6, 7, 8, 9] {
+            context.set_options(
+                RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::GradientStopVisits, cap)
+                        .unwrap(),
+                ),
+            );
+            let error = prepare_radial_gradient(&geometry(), &used, &mut context).unwrap_err();
+            assert!(error.accounting_diagnostic().is_some());
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(report.usage().work(RenderWork::GradientStopVisits), cap);
+            assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+            assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+            assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+            context.set_options(RenderAccountingOptions::new());
+            assert_eq!(
+                prepare_radial_gradient(&geometry(), &used, &mut context).unwrap(),
+                gradient
+            );
+        }
     }
 
     fn zero_width_geometry(origin_x: f64, center_y: f64, height: f64) -> RadialGradientGeometry {

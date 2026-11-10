@@ -214,10 +214,26 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                 3
             }
         );
-        if repeat == paint::GradientRepeat::None {
-            assert_eq!(baseline.usage().work(RenderWork::CoordinateVisits), 0);
-        }
-        for profile in [
+        // Last copies directly. Average performs weight capture1,
+        // premultiplication11 and weighted product/sum8 per occurrence, then
+        // nonzero-alpha final conversion12, including the zero-weight record.
+        let coordinates = if repeat == paint::GradientRepeat::None {
+            0
+        } else {
+            3 * 20 + 12
+        };
+        assert_eq!(
+            baseline.usage().work(RenderWork::CoordinateVisits),
+            coordinates
+        );
+        assert_eq!(baseline.usage().work(RenderWork::PaintVisits), 2);
+        let visits = if repeat == paint::GradientRepeat::None {
+            1
+        } else {
+            3
+        };
+        let mut failure_oracles = Vec::new();
+        for (profile_index, profile) in [
             RenderProfile::Off,
             RenderProfile::Summary { timing: false },
             RenderProfile::Summary { timing: true },
@@ -226,7 +242,15 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                 event_limit: 2,
                 filter: RenderPhaseFilter::Phase(RenderPhase::Coordinates),
             },
-        ] {
+            RenderProfile::Detailed {
+                timing: false,
+                event_limit: 0,
+                filter: RenderPhaseFilter::All,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let timed = matches!(profile, RenderProfile::Summary { timing: true });
             let options = RenderAccountingOptions::new()
                 .with_profile(profile)
@@ -244,12 +268,11 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
             assert_eq!(report.usage(), baseline.usage());
             assert_eq!(report.elapsed().is_some(), timed);
             let mut limits = vec![RenderLimits::new().with_retained_bytes(bytes - 1)];
-            for work in [
-                RenderWork::GradientStopVisits,
-                RenderWork::PaintVisits,
-                RenderWork::CoordinateVisits,
+            for (work, count) in [
+                (RenderWork::GradientStopVisits, visits),
+                (RenderWork::PaintVisits, 2),
+                (RenderWork::CoordinateVisits, coordinates),
             ] {
-                let count = baseline.usage().work(work);
                 if count > 0 {
                     limits.push(
                         RenderLimits::new()
@@ -258,7 +281,7 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                     );
                 }
             }
-            for limits in limits {
+            for (index, limits) in limits.into_iter().enumerate() {
                 context.set_options(options.with_limits(limits));
                 let error = prepare_zero_height_gradient_color(&measure, &mut context).unwrap_err();
                 assert!(matches!(
@@ -274,6 +297,25 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                     RenderResource::ScratchCpuBytes,
                 ] {
                     assert_eq!(report.usage().live(resource), 0);
+                }
+                let phases = [
+                    RenderPhase::Preparation,
+                    RenderPhase::Coordinates,
+                    RenderPhase::Output,
+                    RenderPhase::Cleanup,
+                ]
+                .map(|phase| report.phase_usage(phase));
+                if profile_index == 0 {
+                    failure_oracles.push((
+                        error.accounting_diagnostic().unwrap(),
+                        report.usage(),
+                        phases,
+                    ));
+                } else {
+                    let (expected_error, expected_usage, expected_phases) = &failure_oracles[index];
+                    assert_eq!(error.accounting_diagnostic(), Some(*expected_error));
+                    assert_eq!(&report.usage(), expected_usage);
+                    assert_eq!(&phases, expected_phases);
                 }
                 context.set_options(options);
                 assert_eq!(
