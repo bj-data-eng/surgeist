@@ -19,6 +19,7 @@ use crate::{
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
 use std::{
+    collections::BTreeMap,
     fmt,
     sync::{Arc, Mutex},
 };
@@ -28,6 +29,11 @@ use wgpu::util::DeviceExt;
 struct FrameLeaseOwner<'a> {
     manager_identity: &'a ManagerIdentity,
     frame: FrameIdentity,
+}
+
+enum ResolutionProofMode {
+    CompleteFrame,
+    ProvidedLeases,
 }
 
 /// Mandatory real cleanup transactions run even after the first health fault.
@@ -43,52 +49,36 @@ impl ResourceManagerState {
         tokens: impl Iterator<Item = &'a ResourceLeaseToken>,
     ) -> Result<()> {
         self.ensure_accounting_exact(None)?;
-        self.prepare_resolution_proof(manager_identity, frame, tokens, true)?;
-        let scratch = self
-            .active_frames
-            .get(&frame)
-            .ok_or(RenderAccountingError::Invariant)?;
-        let mut covered = scratch.indices.iter().map(|(_, id)| *id);
-        for (identity, entry) in &self.entries {
-            self.cpu
-                .at(RenderCpuScope::Cleanup)
-                .maintenance(RenderWork::ResourceProbes, 1);
-            if entry.state == (ResourceEntryState::Leased { frame })
-                && covered.next() != Some(*identity)
-            {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "clean resource resolution must own every exact lease in its frame",
-                ));
-            }
-        }
-        if covered.next().is_some() {
-            return Err(Error::new(
-                BackendErrorCode::RenderFailed,
-                "clean resource resolution contains an unavailable lease",
-            ));
-        }
-        Ok(())
+        self.prepare_resolution_proof(
+            manager_identity,
+            frame,
+            tokens,
+            ResolutionProofMode::CompleteFrame,
+        )
     }
     fn prepare_resolution_proof<'a>(
         &mut self,
         manager_identity: &ManagerIdentity,
         frame: FrameIdentity,
         tokens: impl Iterator<Item = &'a ResourceLeaseToken>,
-        include_resolved: bool,
+        mode: ResolutionProofMode,
     ) -> Result<()> {
-        if self.identity != *manager_identity || !self.active_frames.contains_key(&frame) {
-            return Err(Error::new(
+        let unavailable_frame = || {
+            Error::new(
                 BackendErrorCode::RenderFailed,
                 "resource frame is unavailable for clean accounting resolution",
-            ));
+            )
+        };
+        if self.identity != *manager_identity {
+            return Err(unavailable_frame());
         }
         let scratch = self
             .active_frames
             .get_mut(&frame)
-            .expect("validated active frame");
+            .ok_or_else(unavailable_frame)?;
+        let complete_frame = matches!(mode, ResolutionProofMode::CompleteFrame);
         scratch.indices.clear();
-        if include_resolved {
+        if complete_frame {
             for (identity, entry) in &self.entries {
                 self.cpu
                     .at(RenderCpuScope::Cleanup)
@@ -99,11 +89,8 @@ impl ResourceManagerState {
             }
         }
         for token in tokens {
-            self.validate_lease(manager_identity, frame, token, None)?;
-            let scratch = self
-                .active_frames
-                .get_mut(&frame)
-                .expect("validated active frame");
+            Self::validate_lease_identity(&self.identity, manager_identity, frame, token)?;
+            Self::validate_lease_entry(&self.entries, &self.generation, frame, token, None)?;
             if scratch.indices.len() == scratch.indices.capacity() {
                 return Err(Self::invalid_lease(
                     token.resource_identity,
@@ -112,21 +99,41 @@ impl ResourceManagerState {
             }
             scratch.push_index(0, token.resource_identity)?;
         }
-        let scratch = self
-            .active_frames
-            .get_mut(&frame)
-            .expect("validated active frame");
-        let cpu = self.cpu.at(RenderCpuScope::Cleanup);
-        scratch.indices.sort_unstable_by(|a, b| {
-            cpu.maintenance(RenderWork::ResourceProbes, 1);
-            a.1.cmp(&b.1)
-        });
-        for pair in scratch.indices.windows(2) {
-            cpu.maintenance(RenderWork::ResourceProbes, 1);
-            if pair[0].1 == pair[1].1 {
-                return Err(Self::invalid_lease(
-                    pair[0].1,
-                    "must occur at most once in one clean resolution",
+        {
+            let cpu = self.cpu.at(RenderCpuScope::Cleanup);
+            scratch.indices.sort_unstable_by(|a, b| {
+                cpu.maintenance(RenderWork::ResourceProbes, 1);
+                a.1.cmp(&b.1)
+            });
+            for pair in scratch.indices.windows(2) {
+                cpu.maintenance(RenderWork::ResourceProbes, 1);
+                if pair[0].1 == pair[1].1 {
+                    return Err(Self::invalid_lease(
+                        pair[0].1,
+                        "must occur at most once in one clean resolution",
+                    ));
+                }
+            }
+        }
+        if complete_frame {
+            let mut covered = scratch.indices.iter().map(|(_, id)| *id);
+            for (identity, entry) in &self.entries {
+                self.cpu
+                    .at(RenderCpuScope::Cleanup)
+                    .maintenance(RenderWork::ResourceProbes, 1);
+                if entry.state == (ResourceEntryState::Leased { frame })
+                    && covered.next() != Some(*identity)
+                {
+                    return Err(Error::new(
+                        BackendErrorCode::RenderFailed,
+                        "clean resource resolution must own every exact lease in its frame",
+                    ));
+                }
+            }
+            if covered.next().is_some() {
+                return Err(Error::new(
+                    BackendErrorCode::RenderFailed,
+                    "clean resource resolution contains an unavailable lease",
                 ));
             }
         }
@@ -305,20 +312,47 @@ impl ResourceManagerState {
         token: &ResourceLeaseToken,
         observer: Option<&Account>,
     ) -> Result<()> {
-        if self.identity != *manager_identity || token.manager_identity != self.identity {
-            return Err(Self::invalid_lease(
-                token.resource_identity,
-                "must belong to this resource manager",
-            ));
-        }
-        if token.frame_identity != frame || !self.active_frames.contains_key(&frame) {
+        Self::validate_lease_identity(&self.identity, manager_identity, frame, token)?;
+        if !self.active_frames.contains_key(&frame) {
             return Err(Self::invalid_lease(
                 token.resource_identity,
                 "must belong to this active resource frame",
             ));
         }
-        self.generation.probe_cache(observer)?;
-        let Some(entry) = self.entries.get(&token.resource_identity) else {
+        Self::validate_lease_entry(&self.entries, &self.generation, frame, token, observer)
+    }
+
+    fn validate_lease_identity(
+        identity: &ManagerIdentity,
+        manager_identity: &ManagerIdentity,
+        frame: FrameIdentity,
+        token: &ResourceLeaseToken,
+    ) -> Result<()> {
+        if identity != manager_identity || &token.manager_identity != identity {
+            return Err(Self::invalid_lease(
+                token.resource_identity,
+                "must belong to this resource manager",
+            ));
+        }
+        if token.frame_identity != frame {
+            return Err(Self::invalid_lease(
+                token.resource_identity,
+                "must belong to this active resource frame",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Checks the entry after the caller admits the frame and qualifies the token identity.
+    fn validate_lease_entry(
+        entries: &BTreeMap<ResourceIdentity, ResourceEntry>,
+        generation: &Generation,
+        frame: FrameIdentity,
+        token: &ResourceLeaseToken,
+        observer: Option<&Account>,
+    ) -> Result<()> {
+        generation.probe_cache(observer)?;
+        let Some(entry) = entries.get(&token.resource_identity) else {
             return Err(Self::invalid_lease(
                 token.resource_identity,
                 "must name a current resource identity",
@@ -368,7 +402,12 @@ impl ResourceManagerState {
         frame: FrameIdentity,
         tokens: impl Clone + Iterator<Item = &'a ResourceLeaseToken>,
     ) -> Result<()> {
-        self.prepare_resolution_proof(manager_identity, frame, tokens.clone(), false)?;
+        self.prepare_resolution_proof(
+            manager_identity,
+            frame,
+            tokens.clone(),
+            ResolutionProofMode::ProvidedLeases,
+        )?;
         for token in tokens {
             self.generation.probe_cache(None)?;
             let entry = self
@@ -1573,6 +1612,9 @@ impl FrameCleanup {
         Ok(self)
     }
 }
+
+#[cfg(test)]
+mod proof_tests;
 
 #[cfg(test)]
 mod tests {
