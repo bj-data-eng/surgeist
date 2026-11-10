@@ -61,40 +61,38 @@ fn declaration_importance_strips_only_terminal_annotation_boundary() {
     assert_eq!(substitution.as_css(), "var(--measure,  2px)");
 }
 
+// Syntax 3 (2026 CRD) §5.5.6 steps 6 and 7 read an annotation only at the end
+// of a value. A `!` anywhere else is an ordinary delimiter in the value, which
+// the property's grammar rejects at the `!`; a custom property keeps it.
 #[test]
-fn declaration_importance_malformed_annotations_report_first_bang() {
+fn declaration_importance_a_bang_before_the_end_is_part_of_the_value() {
     for (source, bang) in [
         (".x { width: 1px !; }", 16),
         (".x { width: 1px !imporant; }", 16),
         (".x { width: 1px !important !important; }", 16),
         (".x { width: 1px !important extra; }", 16),
-        (".x { --custom: value !oops; }", 21),
     ] {
         let error = CssParser::default()
             .parse_sheet(source)
-            .expect_err("annotation must be rejected");
-        assert_eq!(
-            error.code(),
-            CssErrorCode::InvalidDeclarationAnnotation,
-            "{source}"
-        );
+            .expect_err("the value must be rejected");
+        assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue, "{source}");
         assert_eq!(error.position().byte_offset().value(), bang, "{source}");
-        let detail = &error;
-        assert_eq!(
-            detail.code(),
-            CssErrorCode::InvalidDeclarationAnnotation,
-            "expected annotation detail for {source}"
-        );
-        assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
-        assert_eq!(detail.encountered().unwrap().authored(), "!");
-        match detail.declaration_context().unwrap() {
-            CssDeclarationContextRef::KnownProperty(_) if !source.contains("--custom") => {}
-            CssDeclarationContextRef::CustomProperty(name) => {
-                assert_eq!(name.as_str(), "--custom");
-            }
-            context => panic!("unexpected context {context:?}"),
-        }
+        assert_eq!(error.encountered().unwrap().kind(), CssTokenKind::Delim);
+        assert_eq!(error.encountered().unwrap().authored(), "!");
     }
+    let sheet = CssParser::default()
+        .parse_sheet(".x { --custom: value !oops; }")
+        .expect("a custom property keeps the bang in its value");
+    let [CssRule::Style(rule)] = sheet.rules() else {
+        panic!("expected a style rule");
+    };
+    let custom = rule.declarations().as_slice()[0]
+        .custom()
+        .expect("custom declaration");
+    assert_eq!(
+        custom.value().value().expect("authored value").as_css(),
+        "value !oops"
+    );
 }
 
 #[test]
@@ -103,7 +101,7 @@ fn declaration_importance_strict_sheet_rejects_bad_declaration_between_valid_sib
     let error = CssParser::default()
         .parse_sheet(source)
         .expect_err("current strict parser must reject the sheet");
-    assert_eq!(error.code(), CssErrorCode::InvalidDeclarationAnnotation);
+    assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
     assert_eq!(
         error.position().byte_offset().value(),
         source.find('!').expect("bang")

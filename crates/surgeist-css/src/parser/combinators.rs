@@ -12,10 +12,12 @@
 //! example a malformed nested function) propagates unchanged, and [`fill`]
 //! treats an ordinary rejection as "no match" while nesting and
 //! component-resource failures propagate from any operand.
-use super::property_input::Parser;
-use crate::diagnostic::error::property::{
-    Error, ParseError, is_resource_parse_error, unexpected_at,
-};
+use super::descriptor_stream::ValueError;
+use super::syntax_types::{Site, Stream};
+use crate::diagnostic::error::property::{Error, is_resource_parse_error, unexpected_at};
+use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::stream::StopToken;
 
 /// The reorderable combinator joining one operand table.
 #[derive(Clone, Copy)]
@@ -51,7 +53,7 @@ pub(super) enum Tail {
 /// One operand attempt: `Ok(true)` consumed a complete match, `Ok(false)`
 /// did not match (the combinator undoes any consumption), and `Err` is a
 /// committed failure that ends the whole value.
-pub(super) type Operand<'i> = Result<bool, ParseError<'i, Error>>;
+pub(super) type Operand<'i> = Result<bool, SyntaxError<'i, Error>>;
 
 /// Parses one reorderable group from an operand table indexed `0..N`, tried
 /// in table order, and returns which operands matched.
@@ -65,13 +67,13 @@ pub(super) type Operand<'i> = Result<bool, ParseError<'i, Error>>;
 ///
 /// A rejection reports the next component as the encountered token, or the
 /// end of the value when none remains.
-pub(super) fn parse_group<'i, 't, const N: usize>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_group<'i, const N: usize>(
+    input: &mut Stream<'i>,
     combinator: Combinator<N>,
     tail: Tail,
-    boundary: impl FnMut(&mut Parser<'i, 't>) -> bool,
-    operand: impl FnMut(usize, &mut Parser<'i, 't>) -> Operand<'i>,
-) -> Result<[bool; N], ParseError<'i, Error>> {
+    boundary: impl FnMut(&mut Stream<'i>) -> bool,
+    operand: impl FnMut(usize, &mut Stream<'i>) -> Operand<'i>,
+) -> Result<[bool; N], SyntaxError<'i, Error>> {
     let matched = collect(input, tail, boundary, operand)?;
     if combinator.is_complete(&matched) {
         Ok(matched)
@@ -84,10 +86,10 @@ pub(super) fn parse_group<'i, 't, const N: usize>(
 /// empty group does not match; its operands' committed failures still
 /// propagate. Only `||` is admitted: an unmatched `||` group has filled no
 /// operand slot, so the enclosing group never sees partial state.
-pub(super) fn group_operand<'i, 't, const N: usize>(
-    input: &mut Parser<'i, 't>,
-    boundary: impl FnMut(&mut Parser<'i, 't>) -> bool,
-    operand: impl FnMut(usize, &mut Parser<'i, 't>) -> Operand<'i>,
+pub(super) fn group_operand<'i, const N: usize>(
+    input: &mut Stream<'i>,
+    boundary: impl FnMut(&mut Stream<'i>) -> bool,
+    operand: impl FnMut(usize, &mut Stream<'i>) -> Operand<'i>,
 ) -> Operand<'i> {
     let matched = collect::<N>(input, Tail::Leave, boundary, operand)?;
     Ok(Combinator::AnyOf.is_complete(&matched))
@@ -95,35 +97,35 @@ pub(super) fn group_operand<'i, 't, const N: usize>(
 
 /// The rejection at the current location: the next component is the
 /// encountered token, or the value ended.
-fn rejected_here<'i>(input: &mut Parser<'i, '_>) -> ParseError<'i, Error> {
-    let location = input.current_source_location();
-    let state = input.state();
-    let error = match input.next() {
-        Ok(token) => location.new_unexpected_token_error(token.clone()),
+fn rejected_here<'i>(input: &mut Stream<'i>) -> SyntaxError<'i, Error> {
+    let location = input.site();
+    let state = input.mark();
+    let error = match input.consume_after_whitespace() {
+        Ok(token) => location.unexpected(token),
         Err(_) => unexpected_at(location),
     };
-    input.reset(&state);
+    input.restore(state);
     error
 }
 
-fn collect<'i, 't, const N: usize>(
-    input: &mut Parser<'i, 't>,
+fn collect<'i, const N: usize>(
+    input: &mut Stream<'i>,
     tail: Tail,
-    mut boundary: impl FnMut(&mut Parser<'i, 't>) -> bool,
-    mut operand: impl FnMut(usize, &mut Parser<'i, 't>) -> Operand<'i>,
-) -> Result<[bool; N], ParseError<'i, Error>> {
+    mut boundary: impl FnMut(&mut Stream<'i>) -> bool,
+    mut operand: impl FnMut(usize, &mut Stream<'i>) -> Operand<'i>,
+) -> Result<[bool; N], SyntaxError<'i, Error>> {
     let mut matched = [false; N];
-    'group: while !input.is_exhausted() && !boundary(input) {
+    'group: while !input.only_whitespace_remains() && !boundary(input) {
         for (index, matched) in matched.iter_mut().enumerate() {
             if *matched {
                 continue;
             }
-            let state = input.state();
+            let state = input.mark();
             if operand(index, input)? {
                 *matched = true;
                 continue 'group;
             }
-            input.reset(&state);
+            input.restore(state);
         }
         if tail == Tail::Reject {
             return Err(rejected_here(input));
@@ -135,11 +137,11 @@ fn collect<'i, 't, const N: usize>(
 
 /// An operand committed by lookahead: once `starts` admits the next
 /// component, a parse failure is the whole value's failure.
-pub(super) fn commit<'i, 't, T>(
+pub(super) fn commit<'i, T>(
     slot: &mut Option<T>,
-    input: &mut Parser<'i, 't>,
-    starts: impl FnOnce(&mut Parser<'i, 't>) -> bool,
-    parse: impl FnOnce(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
+    input: &mut Stream<'i>,
+    starts: impl FnOnce(&mut Stream<'i>) -> bool,
+    parse: impl FnOnce(&mut Stream<'i>) -> Result<T, SyntaxError<'i, Error>>,
 ) -> Operand<'i> {
     if !starts(input) {
         return Ok(false);
@@ -151,10 +153,10 @@ pub(super) fn commit<'i, 't, T>(
 /// One keyword operand from `table`, matched ASCII case-insensitively.
 pub(super) fn keyword<'i, T: Copy>(
     slot: &mut Option<T>,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     table: &[(&str, T)],
 ) -> Operand<'i> {
-    let Ok(ident) = input.expect_ident() else {
+    let Ok(ident) = input.consume_ident() else {
         return Ok(false);
     };
     let Some((_, value)) = table
@@ -169,10 +171,10 @@ pub(super) fn keyword<'i, T: Copy>(
 
 /// One optional component under the shared failure policy: a rejection is
 /// `None` with its consumption undone; resource failures propagate.
-pub(super) fn attempt<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
-    parse: impl FnOnce(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
-) -> Result<Option<T>, ParseError<'i, Error>> {
+pub(super) fn attempt<'i, T>(
+    input: &mut Stream<'i>,
+    parse: impl FnOnce(&mut Stream<'i>) -> Result<T, SyntaxError<'i, Error>>,
+) -> Result<Option<T>, SyntaxError<'i, Error>> {
     let mut value = None;
     fill(&mut value, input, parse)?;
     Ok(value)
@@ -180,12 +182,12 @@ pub(super) fn attempt<'i, 't, T>(
 
 /// Attempts one recoverable operand into its slot under the shared failure
 /// policy: a rejection is "no match"; resource failures propagate.
-pub(super) fn fill<'i, 't, T>(
+pub(super) fn fill<'i, T>(
     slot: &mut Option<T>,
-    input: &mut Parser<'i, 't>,
-    parse: impl FnOnce(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, Error>>,
+    input: &mut Stream<'i>,
+    parse: impl FnOnce(&mut Stream<'i>) -> Result<T, SyntaxError<'i, Error>>,
 ) -> Operand<'i> {
-    match input.try_parse(parse) {
+    match input.attempt(parse) {
         Ok(value) => {
             *slot = Some(value);
             Ok(true)
@@ -195,45 +197,44 @@ pub(super) fn fill<'i, 't, T>(
     }
 }
 
-/// The Values 4 §2.3 `#` multiplier over a native rule-level parser, each
-/// item bounded at its comma (cssparser's `parse_until_before`). An empty
-/// item keeps the list's own
+/// The Values 4 §2.3 `#` multiplier over a stream-level parser, each
+/// item bounded at its comma. An empty item keeps the list's own
 /// post-conditions: at the end of the list it is diagnosed by `trailing`
 /// (given the exhausted input and the empty item's start); elsewhere `item`
 /// re-enters at the stray separator and reports it as it would any
 /// unexpected component.
-pub(super) fn parse_native_comma_list<'i, 't, T>(
-    input: &mut cssparser::Parser<'i, 't>,
-    mut item: impl FnMut(
-        &mut cssparser::Parser<'i, '_>,
-    ) -> Result<T, cssparser::ParseError<'i, crate::diagnostic::CssError>>,
-    trailing: impl FnOnce(
-        &mut cssparser::Parser<'i, 't>,
-        cssparser::SourceLocation,
-    ) -> cssparser::ParseError<'i, crate::diagnostic::CssError>,
-) -> Result<Vec<T>, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
+pub(super) fn parse_comma_separated<'i, T>(
+    input: &mut Stream<'i>,
+    mut item: impl FnMut(&mut Stream<'i>) -> Result<T, ValueError<'i>>,
+    trailing: impl FnOnce(&mut Stream<'i>, Site<'i>) -> ValueError<'i>,
+) -> Result<Vec<T>, ValueError<'i>> {
     let mut values = Vec::with_capacity(1);
     loop {
         // The item starts directly after its separator.
-        let start = input.current_source_location();
+        let start = input.site();
         let mut empty = false;
-        let value = input.parse_until_before(cssparser::Delimiter::Comma, |input| {
-            if input.is_exhausted() {
+        let value = input.within_list_until(StopToken::Comma, |input| {
+            if input.only_whitespace_remains() {
                 empty = true;
-                return Err(input.new_error(cssparser::BasicParseErrorKind::EndOfInput));
+                return Err(input.end_of_stream());
             }
             item(input)
         });
         match value {
             Ok(value) => values.push(value),
-            Err(_) if empty && input.is_exhausted() => return Err(trailing(input, start)),
+            Err(_) if empty && input.only_whitespace_remains() => {
+                return Err(trailing(input, start));
+            }
             Err(error) if empty => return Err(item(input).err().unwrap_or(error)),
             Err(error) => return Err(error),
         }
-        match input.next() {
-            Err(_) => return Ok(values),
-            Ok(cssparser::Token::Comma) => {}
-            Ok(_) => unreachable!("an item ends at a comma or the end of the list"),
+        match input.consume_after_whitespace() {
+            Ok(Token::Comma) => {}
+            // An item ends at a comma or at the end of the list.
+            Ok(_) => return Ok(values),
+            Err(error) if error.is_end_of_stream() => return Ok(values),
+            // A refusal of the meter does not end the list.
+            Err(error) => return Err(error.into()),
         }
     }
 }
@@ -243,28 +244,27 @@ mod tests {
     use super::*;
     use crate::component::values::CssComponentValueErrorKind;
     use crate::component::{CssComponentValueError, CssValueOrigin};
-    use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize};
 
-    fn with_input<R>(css: &str, run: impl FnOnce(&mut Parser<'_, '_>) -> R) -> R {
+    fn with_input<R>(css: &str, run: impl FnOnce(&mut Stream<'_>) -> R) -> R {
         let values = crate::component::values::parse_component_values(css).unwrap();
-        let document = normalize(
-            SyntaxInput::CheckedComponents(values.items()),
-            SyntaxInputLimits::default(),
+        let document = crate::syntax_consumption::checked_document(
+            values.items(),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
         .unwrap();
-        run(&mut Parser::new(&document))
+        run(&mut document.root())
     }
 
-    fn word<'i>(input: &mut Parser<'i, '_>, expected: &str) -> Operand<'i> {
+    fn word<'i>(input: &mut Stream<'i>, expected: &str) -> Operand<'i> {
         Ok(input
-            .try_parse(|input| input.expect_ident_matching(expected))
+            .attempt(|input| input.consume_keyword(expected))
             .is_ok())
     }
 
-    fn resource<'i>(input: &Parser<'i, '_>) -> ParseError<'i, Error> {
+    fn resource<'i>(input: &Stream<'i>) -> SyntaxError<'i, Error> {
         crate::diagnostic::error::property::invalid_component_value(
-            input.current_source_location(),
+            input.site(),
             CssComponentValueError::new(
                 CssComponentValueErrorKind::NestingLimit,
                 CssValueOrigin::Programmatic,
@@ -273,10 +273,7 @@ mod tests {
     }
 
     /// `a || b || c`, each operand its same-named keyword.
-    fn flat<'i>(
-        input: &mut Parser<'i, '_>,
-        tail: Tail,
-    ) -> Result<[bool; 3], ParseError<'i, Error>> {
+    fn flat<'i>(input: &mut Stream<'i>, tail: Tail) -> Result<[bool; 3], SyntaxError<'i, Error>> {
         parse_group::<3>(
             input,
             Combinator::AnyOf,
@@ -287,7 +284,7 @@ mod tests {
     }
 
     /// `a || [ b || c ]`.
-    fn nested<'i>(input: &mut Parser<'i, '_>) -> Result<[bool; 2], ParseError<'i, Error>> {
+    fn nested<'i>(input: &mut Stream<'i>) -> Result<[bool; 2], SyntaxError<'i, Error>> {
         parse_group::<2>(
             input,
             Combinator::AnyOf,
@@ -316,7 +313,7 @@ mod tests {
     fn leave_stops_before_an_unadmitted_component() {
         with_input("b x", |input| {
             assert_eq!(flat(input, Tail::Leave).unwrap(), [false, true, false]);
-            assert!(input.expect_ident_matching("x").is_ok());
+            assert!(input.consume_keyword("x").is_ok());
         });
         assert!(with_input("x", |input| flat(input, Tail::Leave).is_err()));
     }
@@ -368,7 +365,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(matched, [true, false, false]);
-            assert!(input.expect_comma().is_ok());
+            assert!(input.consume_comma().is_ok());
         });
     }
 
@@ -377,7 +374,7 @@ mod tests {
         with_input("a", |input| {
             let mut slot: Option<()> = None;
             let rejected = fill(&mut slot, input, |input| {
-                Err::<(), _>(unexpected_at(input.current_source_location()))
+                Err::<(), _>(unexpected_at(input.site()))
             });
             assert!(!rejected.unwrap() && slot.is_none());
             let error = fill(&mut slot, input, |input| Err::<(), _>(resource(input)));
@@ -386,7 +383,7 @@ mod tests {
                 &mut slot,
                 input,
                 |_| true,
-                |input| Err::<(), _>(unexpected_at(input.current_source_location())),
+                |input| Err::<(), _>(unexpected_at(input.site())),
             );
             assert!(committed.is_err());
             assert!(!commit(&mut slot, input, |_| false, |_| Ok(())).unwrap());

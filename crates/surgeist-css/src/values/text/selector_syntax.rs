@@ -55,6 +55,6 @@ impl CssDirectionality {
     /// Serializes the argument as a canonical identifier, without the pseudo-class.
     #[must_use]
     pub fn to_css_string(&self) -> String {
-        cssparser::ToCss::to_css_string(&cssparser::Token::Ident(self.as_str().into()))
+        surgeist_css_parser::Token::Ident(self.as_str()).to_string()
     }
 }

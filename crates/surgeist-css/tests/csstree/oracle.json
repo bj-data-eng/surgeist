@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "671eb420c4cffd8bab440c715235e0a66616e00dceb9cbd44a84a4f2a633e3da",
+  "expected_class_registry_sha256": "fd7740c15e96dc6eb20423fe01ed8d3eb6c0156229e22c5965b83f3c44f30f64",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -443,9 +443,9 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "unknown_descriptor",
+            "code": "unexpected_token",
             "action": "drop_descriptor",
-            "byte_offset": 13,
+            "byte_offset": 17,
             "span_start": 13,
             "span_end": 19,
             "multiplicity": 1,
@@ -8717,25 +8717,15 @@
         }
       },
       "outcome": {
-        "kind": "strict_rejected"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "style_declarations"
         },
-        "syntax_count": 0,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "invalid_declaration_annotation",
-            "action": "reject_input",
-            "byte_offset": 7,
-            "span_start": 0,
-            "span_end": 20,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "syntax_count": 1,
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
@@ -10879,9 +10869,9 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
-            "byte_offset": 26,
+            "byte_offset": 36,
             "span_start": 26,
             "span_end": 51,
             "multiplicity": 1,
@@ -34132,7 +34122,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 4,
+            "byte_offset": 7,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34179,7 +34169,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 4,
+            "byte_offset": 7,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34226,7 +34216,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 5,
             "span_start": 0,
             "span_end": 8,
             "multiplicity": 1,
@@ -34367,7 +34357,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 3,
             "span_start": 0,
             "span_end": 7,
             "multiplicity": 1,
@@ -34461,7 +34451,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34508,7 +34498,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34555,7 +34545,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34602,7 +34592,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 10,
             "multiplicity": 1,
@@ -34649,7 +34639,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 8,
+            "byte_offset": 15,
             "span_start": 0,
             "span_end": 16,
             "multiplicity": 1,
@@ -34696,7 +34686,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 8,
+            "byte_offset": 15,
             "span_start": 0,
             "span_end": 16,
             "multiplicity": 1,

@@ -26,4 +26,5 @@ mod import_rule_authoring;
 mod keyframes_rule_authoring;
 mod layer_rule_authoring;
 mod nesting_rule_authoring;
+mod prelude_syntax3_lexing;
 mod scope_rule_authoring;

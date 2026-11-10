@@ -64,10 +64,10 @@ classes and reconciliation records, and from the
 Surgeist's public parse result for each upstream-parsed case and compares it with
 CSSTree's own generator expectation: the case's `canonical_css`, or its input
 when that field is absent, as CSSTree's `lib/__tests/generate.js` requires at
-the pinned revision. Both sides are tokenized by the crate's CSS Syntax 3
-tokenizer dependency (cssparser, the Servo and Firefox tokenizer), so token
-boundaries, escapes, bad strings and urls, functions and input preprocessing
-follow the specification. One documented normalization then removes comments,
+the pinned revision. Both sides are tokenized by `surgeist-css-parser`'s
+`Lexer`, the CSS Syntax 3 section 4 tokenizer, so token boundaries, escapes,
+bad strings and urls, functions and input preprocessing follow the
+specification. One documented normalization then removes comments,
 quote style, optional whitespace and optional final semicolons, and the token
 sequences are compared. A removed comment still separates the tokens around it,
 identifiers and strings compare by decoded value, and whitespace stays

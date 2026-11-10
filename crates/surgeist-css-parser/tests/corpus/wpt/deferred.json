@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "deferred-dispositions",
+  "cases": [
+    {
+      "id": "serialize-consecutive-comments-001",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 117,
+        "case": "testComments(\"a/* comment */b\", \"\", \"a/* comment */b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"a/* comment */b\", \"\", \"a/* comment */b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-002",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 118,
+        "case": "testComments(\"a/* comment */var(--t1)\", \"b\", \"a/**/b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"a/* comment */var(--t1)\", \"b\", \"a/**/b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-003",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 119,
+        "case": "testComments(\"var(--t1)b\", \"a/* comment */\", \"a/**/b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"a/* comment */\", \"a/**/b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-004",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 122,
+        "case": "testComments(\"var(--t1)b\", \"'a/* unfinished '\", \"'a/* unfinished 'b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"'a/* unfinished '\", \"'a/* unfinished 'b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-005",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 123,
+        "case": "testComments(\"var(--t1)b\", \"\\\"a/* unfinished \\\"\", \"\\\"a/* unfinished \\\"b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"\\\"a/* unfinished \\\"\", \"\\\"a/* unfinished \\\"b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-006",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 124,
+        "case": "testComments(\"var(--t1)b\", \"'a \\\" '/* comment */\", \"'a \\\" 'b\");"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "testComments(\"var(--t1)b\", \"'a \\\" '/* comment */\", \"'a \\\" 'b\");",
+      "expectation": "see the assertion at the bound line",
+      "reason": "The observable is the computed value of a custom property after var() substitution, a CSS Variables result outside Syntax 3."
+    },
+    {
+      "id": "serialize-consecutive-comments-007",
+      "source": {
+        "path": "css/css-syntax/serialize-consecutive-tokens.html",
+        "sha256": "8f51db51d5355c42a8179beed9933cfcf90f5b676f41c3ca5f913ff3f723b467",
+        "line": 135,
+        "case": "}, 'Empty fallback between tokens must not disturb comment insertion');"
+      },
+      "disposition": "computed-value-substitution",
+      "input": "var(--t1)var(--does-not-exist,)var(--t2)",
+      "expectation": "the result starts with a, ends with b and differs from ab",
+      "reason": "The observable is the computed value after var() substitution with an empty fallback, a CSS Variables result outside Syntax 3."
+    }
+  ]
+}

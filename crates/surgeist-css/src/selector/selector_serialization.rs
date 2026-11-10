@@ -816,23 +816,10 @@ impl SpecifiedRuleWriter {
                         CssNthPattern::Odd => self.append("2n+1")?,
                         CssNthPattern::Even => self.append("2n")?,
                         CssNthPattern::Integer(value) => self.append(&value.to_string())?,
-                        CssNthPattern::AnPlusB(value) => {
-                            let (a, b) = (value.a(), value.b());
-                            if a == 0 {
-                                self.append(&b.to_string())?;
-                            } else {
-                                if a == -1 {
-                                    self.append("-")?;
-                                } else if a != 1 {
-                                    self.append(&a.to_string())?;
-                                }
-                                self.append("n")?;
-                                if b != 0 {
-                                    self.append(if b < 0 { "-" } else { "+" })?;
-                                    self.append(&i64::from(b).abs().to_string())?;
-                                }
-                            }
-                        }
+                        CssNthPattern::AnPlusB(value) => self.append(
+                            &surgeist_css_parser::anb::AnPlusB::new(value.a(), value.b())
+                                .to_string(),
+                        )?,
                     }
                 }
                 Event::Pseudo(value, grammar) => {

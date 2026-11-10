@@ -2,13 +2,16 @@
 use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
+use super::descriptor_stream::collect_stream_scope;
 use super::query_components::ComponentCursor;
 use super::recovery::RecoveryState;
+use super::syntax_types::Stream;
 use crate::CssParserContext;
 use crate::component::{
     CssBlockKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::GrammarFailure;
 use crate::query::supports::construction::SupportsLexical;
 use crate::query::{
     CssCondition, CssConditionConstructionError, CssConditionKind, CssConditionList,
@@ -16,7 +19,6 @@ use crate::query::{
 };
 use crate::rule::{CssElseRule, CssRule, CssWhenRule};
 use crate::source::CssSourcePosition;
-use cssparser::{ParseError, Parser};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.rule.when"),
@@ -32,26 +34,22 @@ pub(crate) fn construct_when_condition(
 /// A parsed `@when` or `@else` condition and the offsets of its implicit closures.
 pub(super) type WhenPrelude = (Option<CssCondition<CssWhenLeaf>>, Vec<usize>);
 pub(super) fn parse_prelude<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
-) -> Result<WhenPrelude, ParseError<'i, CssError>> {
+) -> Result<WhenPrelude, GrammarFailure> {
     let production = if optional {
         "ext.rule.else"
     } else {
         "ext.rule.when"
     };
-    let start = input.position().byte_index();
-    let implicit = recovery.check_specialized_components(source, input, production)?;
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
+    let start = super::block_units::offset_of(input.site());
+    let implicit = recovery.check_specialized_components_from(source, start, production)?;
+    let values = collect_stream_scope(input, recovery.source_snapshot())
+        .values
+        .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     if optional
         && values
             .items()
@@ -69,40 +67,24 @@ pub(super) fn parse_prelude<'i>(
     .map_err(|error| prelude_error(source, name, start, error))?;
     Ok((Some(parsed), implicit))
 }
-fn prelude_error<'i>(
-    source: &'i str,
+fn prelude_error(
+    source: &str,
     name: &str,
     fallback: usize,
     error: CssConditionConstructionError,
-) -> ParseError<'i, CssError> {
+) -> GrammarFailure {
     let position = crate::query::media::construction::parsed_position(error.origin())
         .unwrap_or_else(|| {
-            let mut offset = fallback;
-            while let Some((start, end, token)) = super::recovery::next_source_token(source, offset)
-            {
-                if !matches!(
-                    token,
-                    cssparser::Token::WhiteSpace(_) | cssparser::Token::Comment(_)
-                ) {
-                    return CssSourcePosition::from_byte_offset_in(source, start);
-                }
-                offset = end;
-            }
-            CssSourcePosition::from_byte_offset_in(source, source.len())
+            CssSourcePosition::from_byte_offset_in(
+                source,
+                super::structure::first_non_trivia(source, fallback, source.len()),
+            )
         });
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    };
     match error.into_kind() {
         crate::query::when::ConditionConstructionKind::Component(error) => {
-            crate::diagnostic::error::invalid_component_value(location, error)
+            crate::diagnostic::error::invalid_component_value(position, error)
         }
-        _ => {
-            let token = super::recovery::next_source_token(source, position.byte_offset().value())
-                .map(|(_, _, token)| token);
-            crate::diagnostic::error::invalid_when_prelude(position, name, token.as_ref())
-        }
+        _ => crate::diagnostic::error::invalid_when_prelude(source, position, name),
     }
 }
 fn invalid(lexical: &SupportsLexical, index: usize) -> CssConditionConstructionError {

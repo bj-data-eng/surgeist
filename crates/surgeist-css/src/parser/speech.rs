@@ -1,41 +1,41 @@
 //! Exact authored Speech 1 keyword grammars; no speech execution.
 
 use super::combinators::{Combinator, Tail, commit, parse_group};
-use super::property_input::Parser;
 use super::side_shapes::parse_side_pair;
-use crate::diagnostic::error::property::{Error, ParseError, basic};
+use super::syntax_types::Stream;
+use crate::diagnostic::error::property::{Error, basic};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::common::CssSidePair;
 use crate::values::speech::CssCue;
 use crate::values::speech::{
     CssSpeak, CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakStrength,
 };
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
-pub(super) fn parse_speak<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssSpeak, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
+pub(super) fn parse_speak<'i>(input: &mut Stream<'i>) -> Result<CssSpeak, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let token = input.consume_after_whitespace().map_err(basic)?;
     match &token {
         Token::Ident(ident) if ident.eq_ignore_ascii_case("auto") => Ok(CssSpeak::Auto),
         Token::Ident(ident) if ident.eq_ignore_ascii_case("never") => Ok(CssSpeak::Never),
         Token::Ident(ident) if ident.eq_ignore_ascii_case("always") => Ok(CssSpeak::Always),
-        _ => Err(location.new_unexpected_token_error(token)),
+        _ => Err(location.unexpected(token)),
     }
 }
 
-pub(super) fn parse_speak_as<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssSpeakAs, ParseError<'i, Error>> {
+pub(super) fn parse_speak_as<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssSpeakAs, SyntaxError<'i, Error>> {
     let mut normal = false;
     let mut spell_out = false;
     let mut digits = false;
     let mut punctuation = None;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        let token = input.next().map_err(basic)?.clone();
+    while !input.only_whitespace_remains() {
+        input.discard_whitespace();
+        let location = input.site();
+        let token = input.consume_after_whitespace().map_err(basic)?;
         let valid = match &token {
             Token::Ident(ident) if !normal && ident.eq_ignore_ascii_case("normal") => {
                 if spell_out || digits || punctuation.is_some() {
@@ -74,60 +74,56 @@ pub(super) fn parse_speak_as<'i, 't>(
             _ => false,
         };
         if !valid {
-            return Err(location.new_unexpected_token_error(token));
+            return Err(location.unexpected(token));
         }
     }
     if normal {
         return Ok(CssSpeakAs::normal());
     }
-    CssSpeakAs::try_new(spell_out, digits, punctuation)
-        .ok_or_else(|| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+    CssSpeakAs::try_new(spell_out, digits, punctuation).ok_or_else(|| input.end_of_stream())
 }
 
-pub(super) fn parse_speech_break<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_speech_break<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssSpeechBreak, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let value = cssparser::match_ignore_ascii_case! { &ident,
+) -> Result<CssSpeechBreak, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
+        let value = surgeist_css_parser::match_ignore_ascii_case! { &ident,
             "none" => CssSpeechBreak::None,
             "x-weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::XWeak),
             "weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Weak),
             "medium" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Medium),
             "strong" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Strong),
             "x-strong" => CssSpeechBreak::Strength(CssSpeechBreakStrength::XStrong),
-            _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+            _ => return Err(location.unexpected(Token::Ident(ident))),
         };
         return Ok(value);
     }
     super::timing::parse_duration(input, numeric).map(CssSpeechBreak::Time)
 }
 
-pub(super) fn parse_speech_break_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_speech_break_pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssSidePair<CssSpeechBreak>, ParseError<'i, Error>> {
+) -> Result<CssSidePair<CssSpeechBreak>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_speech_break(input, numeric))
 }
 
-pub(super) fn parse_cue<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_cue<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssCue, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    if input
-        .try_parse(|input| input.expect_ident_matching("none"))
-        .is_ok()
-    {
+) -> Result<crate::values::speech::CssCue, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    if input.attempt(|input| input.consume_keyword("none")).is_ok() {
         return Ok(crate::values::speech::CssCue::None);
     }
     let url = super::url::parse_url(input, numeric)?;
-    input.skip_whitespace();
-    let state = input.state();
-    let is_decibel = matches!(input.next(), Ok(Token::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("dB"));
-    input.reset(&state);
+    input.discard_whitespace();
+    let state = input.mark();
+    let is_decibel = matches!(input.consume_after_whitespace(), Ok(Token::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("dB"));
+    input.restore(state);
     let decibel = if is_decibel {
         Some(parse_decibel(input, numeric)?)
     } else {
@@ -138,35 +134,35 @@ pub(super) fn parse_cue<'i, 't>(
     ))
 }
 
-pub(super) fn parse_cue_pair<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_cue_pair<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::common::CssSidePair<CssCue>, ParseError<'i, Error>> {
+) -> Result<crate::values::common::CssSidePair<CssCue>, SyntaxError<'i, Error>> {
     parse_side_pair(input, |input| parse_cue(input, numeric))
 }
 
-pub(super) fn parse_voice_stress<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<crate::values::speech::CssVoiceStress, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    cssparser::match_ignore_ascii_case! { &ident,
+pub(super) fn parse_voice_stress<'i>(
+    input: &mut Stream<'i>,
+) -> Result<crate::values::speech::CssVoiceStress, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let ident = input.consume_ident().map_err(basic)?;
+    surgeist_css_parser::match_ignore_ascii_case! { &ident,
         "normal" => Ok(crate::values::speech::CssVoiceStress::Normal),
         "strong" => Ok(crate::values::speech::CssVoiceStress::Strong),
         "moderate" => Ok(crate::values::speech::CssVoiceStress::Moderate),
         "none" => Ok(crate::values::speech::CssVoiceStress::None),
         "reduced" => Ok(crate::values::speech::CssVoiceStress::Reduced),
-        _ => Err(location.new_unexpected_token_error(Token::Ident(ident))),
+        _ => Err(location.unexpected(Token::Ident(ident))),
     }
 }
 
-pub(super) fn parse_voice_family<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_family<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceFamily, ParseError<'i, Error>> {
+) -> Result<crate::values::speech::CssVoiceFamily, SyntaxError<'i, Error>> {
     if input
-        .try_parse(|input| input.expect_ident_matching("preserve"))
+        .attempt(|input| input.consume_keyword("preserve"))
         .is_ok()
     {
         return Ok(crate::values::speech::CssVoiceFamily::Preserve);
@@ -174,10 +170,10 @@ pub(super) fn parse_voice_family<'i, 't>(
     let mut entries = Vec::new();
     loop {
         entries.push(parse_voice_entry(input, numeric)?);
-        if input.is_exhausted() {
+        if input.only_whitespace_remains() {
             break;
         }
-        input.expect_comma().map_err(basic)?;
+        input.consume_comma().map_err(basic)?;
     }
     Ok(crate::values::speech::CssVoiceFamily::Voices(
         crate::values::speech::CssVoiceFamilyList::from_parser(entries)
@@ -185,39 +181,38 @@ pub(super) fn parse_voice_family<'i, 't>(
     ))
 }
 fn voice_age(value: &str) -> Option<crate::values::speech::CssVoiceAge> {
-    cssparser::match_ignore_ascii_case! { value, "child" => Some(crate::values::speech::CssVoiceAge::Child), "young" => Some(crate::values::speech::CssVoiceAge::Young), "old" => Some(crate::values::speech::CssVoiceAge::Old), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "child" => Some(crate::values::speech::CssVoiceAge::Child), "young" => Some(crate::values::speech::CssVoiceAge::Young), "old" => Some(crate::values::speech::CssVoiceAge::Old), _ => None }
 }
 fn voice_gender(value: &str) -> Option<crate::values::speech::CssVoiceGender> {
-    cssparser::match_ignore_ascii_case! { value, "male" => Some(crate::values::speech::CssVoiceGender::Male), "female" => Some(crate::values::speech::CssVoiceGender::Female), "neutral" => Some(crate::values::speech::CssVoiceGender::Neutral), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "male" => Some(crate::values::speech::CssVoiceGender::Male), "female" => Some(crate::values::speech::CssVoiceGender::Female), "neutral" => Some(crate::values::speech::CssVoiceGender::Neutral), _ => None }
 }
-fn parse_voice_entry<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_voice_entry<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceFamilyEntry, ParseError<'i, Error>> {
+) -> Result<crate::values::speech::CssVoiceFamilyEntry, SyntaxError<'i, Error>> {
     use crate::values::speech::{CssGenericVoice, CssVoiceFamilyEntry, CssVoiceFamilyName};
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
+    input.discard_whitespace();
+    let location = input.site();
+    if let Ok(value) = input.attempt(Stream::consume_string) {
         return CssVoiceFamilyName::try_quoted(value.to_string())
             .map(CssVoiceFamilyEntry::Name)
             .map_err(|_| crate::diagnostic::error::property::unexpected_at(location));
     }
-    let start = input.state();
-    let first = input.expect_ident_cloned().map_err(basic)?;
-    let age = voice_age(&first);
+    let start = input.mark();
+    let first = input.consume_ident().map_err(basic)?;
+    let age = voice_age(first);
     let gender = if age.is_some() {
         input
-            .try_parse(|input| {
-                let ident = input.expect_ident_cloned()?;
-                voice_gender(&ident)
-                    .ok_or_else(|| input.new_unexpected_token_error::<Error>(Token::Ident(ident)))
+            .attempt(|input| {
+                let ident = input.consume_ident()?;
+                voice_gender(ident).ok_or_else(|| input.unexpected::<Error>(Token::Ident(ident)))
             })
             .ok()
     } else {
-        voice_gender(&first)
+        voice_gender(first)
     };
     if let Some(gender) = gender {
-        let variant = if input.is_exhausted() || super::values::next_is_comma(input) {
+        let variant = if input.only_whitespace_remains() || super::values::next_is_comma(input) {
             None
         } else {
             Some(super::values::parse_positive_integer_value(input, numeric)?)
@@ -226,14 +221,14 @@ fn parse_voice_entry<'i, 't>(
             .map(CssVoiceFamilyEntry::Generic)
             .map_err(|_| crate::diagnostic::error::property::unexpected_at(location));
     }
-    input.reset(&start);
+    input.restore(start);
     let mut identifiers = Vec::new();
-    while !input.is_exhausted() && !super::values::next_is_comma(input) {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        if crate::values::speech::values::reserved_voice_identifier(&ident) {
-            return Err(location.new_unexpected_token_error(Token::Ident(ident)));
+    while !input.only_whitespace_remains() && !super::values::next_is_comma(input) {
+        input.discard_whitespace();
+        let location = input.site();
+        let ident = input.consume_ident().map_err(basic)?;
+        if crate::values::speech::values::reserved_voice_identifier(ident) {
+            return Err(location.unexpected(Token::Ident(ident)));
         }
         identifiers.push(
             crate::values::common::CssIdent::try_new(ident.to_string())
@@ -242,44 +237,41 @@ fn parse_voice_entry<'i, 't>(
     }
     CssVoiceFamilyName::try_identifiers(identifiers)
         .map(CssVoiceFamilyEntry::Name)
-        .ok_or_else(|| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+        .ok_or_else(|| input.end_of_stream())
 }
 
-pub(super) fn parse_voice_duration<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_duration<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceDuration, ParseError<'i, Error>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+) -> Result<crate::values::speech::CssVoiceDuration, SyntaxError<'i, Error>> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(crate::values::speech::CssVoiceDuration::Auto);
     }
     super::timing::parse_duration(input, numeric).map(crate::values::speech::CssVoiceDuration::Time)
 }
 fn voice_level(value: &str) -> Option<crate::values::speech::CssVoiceLevel> {
-    cssparser::match_ignore_ascii_case! { value, "x-low" => Some(crate::values::speech::CssVoiceLevel::XLow), "low" => Some(crate::values::speech::CssVoiceLevel::Low), "medium" => Some(crate::values::speech::CssVoiceLevel::Medium), "high" => Some(crate::values::speech::CssVoiceLevel::High), "x-high" => Some(crate::values::speech::CssVoiceLevel::XHigh), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "x-low" => Some(crate::values::speech::CssVoiceLevel::XLow), "low" => Some(crate::values::speech::CssVoiceLevel::Low), "medium" => Some(crate::values::speech::CssVoiceLevel::Medium), "high" => Some(crate::values::speech::CssVoiceLevel::High), "x-high" => Some(crate::values::speech::CssVoiceLevel::XHigh), _ => None }
 }
-pub(super) fn parse_voice_pitch_range<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_pitch_range<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoicePitchRange, ParseError<'i, Error>> {
+) -> Result<crate::values::speech::CssVoicePitchRange, SyntaxError<'i, Error>> {
     let mut level = None;
     let mut absolute = None;
     let mut offset = None;
-    while !input.is_exhausted() {
-        input.skip_whitespace();
-        let location = input.current_source_location();
-        let root_site = input.position();
-        if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-            if let Some(value) = voice_level(&ident)
+    while !input.only_whitespace_remains() {
+        input.discard_whitespace();
+        let location = input.site();
+        let root_site = input.site();
+        if let Ok(ident) = input.attempt(Stream::consume_ident) {
+            if let Some(value) = voice_level(ident)
                 && level.is_none()
             {
                 level = Some(value);
             } else if ident.eq_ignore_ascii_case("absolute") && absolute.is_none() {
                 absolute = Some(location);
             } else {
-                return Err(location.new_unexpected_token_error(Token::Ident(ident)));
+                return Err(location.unexpected(Token::Ident(ident)));
             }
         } else {
             if offset.is_some() {
@@ -355,16 +347,16 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
             })
             .transpose()?;
         crate::values::speech::CssVoicePitchRange::from_parser_relative(level, offset)
-            .map_err(|_| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+            .map_err(|_| input.end_of_stream())
     }
 }
 fn voice_rate_keyword(value: &str) -> Option<crate::values::speech::CssVoiceRateKeyword> {
-    cssparser::match_ignore_ascii_case! { value, "normal" => Some(crate::values::speech::CssVoiceRateKeyword::Normal), "x-slow" => Some(crate::values::speech::CssVoiceRateKeyword::XSlow), "slow" => Some(crate::values::speech::CssVoiceRateKeyword::Slow), "medium" => Some(crate::values::speech::CssVoiceRateKeyword::Medium), "fast" => Some(crate::values::speech::CssVoiceRateKeyword::Fast), "x-fast" => Some(crate::values::speech::CssVoiceRateKeyword::XFast), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "normal" => Some(crate::values::speech::CssVoiceRateKeyword::Normal), "x-slow" => Some(crate::values::speech::CssVoiceRateKeyword::XSlow), "slow" => Some(crate::values::speech::CssVoiceRateKeyword::Slow), "medium" => Some(crate::values::speech::CssVoiceRateKeyword::Medium), "fast" => Some(crate::values::speech::CssVoiceRateKeyword::Fast), "x-fast" => Some(crate::values::speech::CssVoiceRateKeyword::XFast), _ => None }
 }
-pub(super) fn parse_voice_rate<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_rate<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceRate, ParseError<'i, Error>> {
+) -> Result<crate::values::speech::CssVoiceRate, SyntaxError<'i, Error>> {
     // `[ normal | x-slow | slow | medium | fast | x-fast ] || <percentage [0,∞]>`:
     // an identifier commits the keyword and anything else the percentage.
     let (mut keyword, mut percentage) = (None, None);
@@ -375,11 +367,10 @@ pub(super) fn parse_voice_rate<'i, 't>(
         |_| false,
         |operand, input| match operand {
             0 => commit(&mut keyword, input, next_is_any_ident, |input| {
-                input.skip_whitespace();
-                let location = input.current_source_location();
-                let ident = input.expect_ident_cloned().map_err(basic)?;
-                voice_rate_keyword(&ident)
-                    .ok_or_else(|| location.new_unexpected_token_error(Token::Ident(ident)))
+                input.discard_whitespace();
+                let location = input.site();
+                let ident = input.consume_ident().map_err(basic)?;
+                voice_rate_keyword(ident).ok_or_else(|| location.unexpected(Token::Ident(ident)))
             }),
             1 => commit(
                 &mut percentage,
@@ -391,24 +382,24 @@ pub(super) fn parse_voice_rate<'i, 't>(
         },
     )?;
     crate::values::speech::CssVoiceRate::from_parser(keyword, percentage)
-        .map_err(|_| input.new_error(cssparser::BasicParseErrorKind::EndOfInput))
+        .map_err(|_| input.end_of_stream())
 }
-fn next_is_any_ident(input: &mut Parser<'_, '_>) -> bool {
-    let state = input.state();
-    let ident = input.expect_ident().is_ok();
-    input.reset(&state);
+fn next_is_any_ident(input: &mut Stream<'_>) -> bool {
+    let state = input.mark();
+    let ident = input.consume_ident().is_ok();
+    input.restore(state);
     ident
 }
-fn parse_voice_rate_percentage<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_voice_rate_percentage<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<
     crate::numeric::CssNumeric<crate::numeric::CssPercentage, crate::numeric::CssNonNegative>,
-    ParseError<'i, Error>,
+    SyntaxError<'i, Error>,
 > {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let root_site = input.position();
+    input.discard_whitespace();
+    let location = input.site();
+    let root_site = input.site();
     let component = input
         .collect_component()
         .map_err(crate::numeric::CssNumericConstructionError::component)
@@ -431,9 +422,9 @@ fn parse_voice_rate_percentage<'i, 't>(
 fn speech_numeric_error<'i>(
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
     error: &crate::numeric::CssNumericConstructionError,
-    fallback: super::property_input::Site<'i>,
-    offset: super::property_input::Site<'i>,
-) -> ParseError<'i, Error> {
+    fallback: super::syntax_types::Site<'i>,
+    offset: super::syntax_types::Site<'i>,
+) -> SyntaxError<'i, Error> {
     let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
         && crate::diagnostic::error::is_component_resource_error(component)
@@ -446,13 +437,13 @@ fn speech_numeric_error<'i>(
     crate::diagnostic::error::property::unexpected_at(location)
 }
 
-fn parse_decibel<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_decibel<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssDecibelLiteral, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let offset = input.position();
+) -> Result<crate::values::speech::CssDecibelLiteral, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let offset = input.site();
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|error| speech_numeric_error(numeric, &error, location, offset))?;
@@ -461,20 +452,20 @@ fn parse_decibel<'i, 't>(
     })
 }
 
-pub(super) fn parse_voice_balance<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_balance<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceBalance, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let keyword = cssparser::match_ignore_ascii_case! { &ident,
+) -> Result<crate::values::speech::CssVoiceBalance, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    if let Ok(ident) = input.attempt(Stream::consume_ident) {
+        let keyword = surgeist_css_parser::match_ignore_ascii_case! { &ident,
             "left" => crate::values::speech::CssVoiceBalanceKeyword::Left,
             "center" => crate::values::speech::CssVoiceBalanceKeyword::Center,
             "right" => crate::values::speech::CssVoiceBalanceKeyword::Right,
             "leftwards" => crate::values::speech::CssVoiceBalanceKeyword::Leftwards,
             "rightwards" => crate::values::speech::CssVoiceBalanceKeyword::Rightwards,
-            _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+            _ => return Err(location.unexpected(Token::Ident(ident))),
         };
         return Ok(crate::values::speech::CssVoiceBalance::from_keyword(
             keyword,
@@ -484,13 +475,13 @@ pub(super) fn parse_voice_balance<'i, 't>(
         .map(crate::values::speech::CssVoiceBalance::from_parser_number)
 }
 
-pub(super) fn parse_voice_volume<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_voice_volume<'i>(
+    input: &mut Stream<'i>,
     numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<crate::values::speech::CssVoiceVolume, ParseError<'i, Error>> {
-    input.skip_whitespace();
+) -> Result<crate::values::speech::CssVoiceVolume, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
     if input
-        .try_parse(|input| input.expect_ident_matching("silent"))
+        .attempt(|input| input.consume_keyword("silent"))
         .is_ok()
     {
         return Ok(crate::values::speech::CssVoiceVolume::Silent);
@@ -505,26 +496,26 @@ pub(super) fn parse_voice_volume<'i, 't>(
         |_| false,
         |operand, input| match operand {
             0 => commit(&mut level, input, next_is_any_ident, |input| {
-                input.skip_whitespace();
-                let location = input.current_source_location();
-                let ident = input.expect_ident_cloned().map_err(basic)?;
-                Ok(cssparser::match_ignore_ascii_case! { &ident,
+                input.discard_whitespace();
+                let location = input.site();
+                let ident = input.consume_ident().map_err(basic)?;
+                Ok(surgeist_css_parser::match_ignore_ascii_case! { &ident,
                     "x-soft" => crate::values::speech::CssVoiceVolumeLevel::XSoft,
                     "soft" => crate::values::speech::CssVoiceVolumeLevel::Soft,
                     "medium" => crate::values::speech::CssVoiceVolumeLevel::Medium,
                     "loud" => crate::values::speech::CssVoiceVolumeLevel::Loud,
                     "x-loud" => crate::values::speech::CssVoiceVolumeLevel::XLoud,
-                    _ => return Err(location.new_unexpected_token_error(Token::Ident(ident))),
+                    _ => return Err(location.unexpected(Token::Ident(ident))),
                 })
             }),
             1 => commit(
                 &mut decibel,
                 input,
                 |input| {
-                    let state = input.state();
-                    let starts = matches!(input.next(), Ok(Token::Dimension { unit, .. })
+                    let state = input.mark();
+                    let starts = matches!(input.consume_after_whitespace(), Ok(Token::Dimension { unit, .. })
                         if unit.eq_ignore_ascii_case("dB"));
-                    input.reset(&state);
+                    input.restore(state);
                     starts
                 },
                 |input| parse_decibel(input, numeric),
@@ -537,6 +528,6 @@ pub(super) fn parse_voice_volume<'i, 't>(
             Ok(crate::values::speech::CssVoiceVolume::Level { level, decibel })
         }
         (None, Some(value)) => Ok(crate::values::speech::CssVoiceVolume::Offset(value)),
-        (None, None) => Err(input.new_error(cssparser::BasicParseErrorKind::EndOfInput)),
+        (None, None) => Err(input.end_of_stream()),
     }
 }

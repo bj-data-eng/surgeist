@@ -199,7 +199,7 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_descriptor",
+            "code": "unexpected_token",
             "action": "drop_descriptor",
             "payload_relation": "intersects"
           }
@@ -4118,22 +4118,15 @@
       "id": "declaration/custom-property.json#/error/0",
       "expectation_sha256": "360bce09f22dc5e243e364c97938253d4220b098f4136adbf8dec7aacc1ac205",
       "class": {
-        "kind": "strict_rejected",
+        "kind": "clean",
         "retained_syntax": {
           "extractor": {
             "kind": "style_declarations"
           },
           "predicate": {
-            "relation": "empty"
+            "relation": "nonempty"
           }
-        },
-        "diagnostics": [
-          {
-            "code": "invalid_declaration_annotation",
-            "action": "reject_input",
-            "payload_relation": "intersects"
-          }
-        ]
+        }
       }
     },
     {
@@ -5139,7 +5132,7 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }

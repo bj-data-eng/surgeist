@@ -13,9 +13,9 @@ use crate::color::controlled::protocol::{
 };
 use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
 use crate::color::{CssColorFactIdentity, CssColorFacts};
-use crate::tokenization::bounded::InputKind;
-use crate::tokenization::tokenizer::Span;
 use surgeist_color::Color;
+use surgeist_css_parser::input::InputKind;
+use surgeist_css_parser::lexer::protocol::Span;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GrammarRequest {

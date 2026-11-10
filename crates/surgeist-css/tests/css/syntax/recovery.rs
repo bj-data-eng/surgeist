@@ -1,5 +1,8 @@
 //! Browser recovery and end-of-file handling.
 
+mod block_punctuation_alphabet;
+mod ceiling_in_dropped_rules;
+mod custom_property_look_alike_rule;
 mod deep_qualified_punctuation;
 mod deep_rule_list_context;
 mod deep_statement_eof;
@@ -16,4 +19,5 @@ mod specialized_recovery_boundaries;
 mod statement_eof_boundaries;
 mod structural_recovery_adversarial;
 mod stylesheet_recovery;
+mod token_boundaries_in_diagnostics;
 mod top_level_semicolon_nesting_limit;

@@ -54,8 +54,7 @@ use surgeist_css::selector::{
 };
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_css::source::{
-    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssStylesheetDecodeLimits,
-    CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+    CssDecodedStylesheetInput, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
 };
 use surgeist_css::values::background::CssBackground;
 use surgeist_css::values::color_adjust::CssColorScheme;
@@ -71,6 +70,7 @@ use surgeist_css::values::position::{
 use surgeist_css::values::shape::{CssPathData, CssShapeCommandList};
 use surgeist_css::values::text::CssCharacterAlignment;
 use surgeist_css::values::transform::CssOffsetRotate;
+use surgeist_css_parser::input::{DecodeHints, DecodeLimits};
 
 use super::{Observation, Stop, error_chain};
 
@@ -300,8 +300,8 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "input-decode" => failed(CssDecodedStylesheetInput::decode(
             b".a { color: red }",
-            CssStylesheetDecodeHints::default(),
-            CssStylesheetDecodeLimits::new(1, 1),
+            DecodeHints::default(),
+            DecodeLimits::new(1, 1),
         )),
         "keyframe-rule-view" => {
             let report = CssParsedKeyframeRule::parse(&CssParser::default(), "from { opacity: 0 }");

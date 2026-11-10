@@ -3,71 +3,72 @@ use super::ErrorKind;
 use super::source_resolution::{ends_input, precedes_input};
 use crate::diagnostic::error::{
     CssQualifiedRuleError, CssUnexpectedEndError, CssUnexpectedTokenError, EXPECT_CSS_SYNTAX,
-    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, PropertyValueRejection, QUALIFIED_RULE,
-    encountered_mut, is_component_resource_error, optional_encountered_mut, token_kind,
+    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, GrammarFailure, PropertyValueRejection,
+    QUALIFIED_RULE, encountered_mut, is_component_resource_error, optional_encountered_mut,
 };
 use crate::diagnostic::{CssGrammarExpectation, CssTokenKind, CssTokenSummary};
-use crate::parser::property_input::Site;
+use crate::parser::property_input::SiteExt;
+use crate::parser::syntax_types::{Site, StreamError, SyntaxError};
 use crate::source::CssSourcePosition;
 use crate::validation::property_for_supported_name;
-use cssparser::BasicParseErrorKind;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Error {
     pub(crate) kind: ErrorKind,
 }
-#[derive(Clone, Debug)]
-pub(crate) enum ParseErrorKind<'i, E> {
-    Basic(BasicParseErrorKind<'i>),
-    Custom(Box<E>),
-}
-#[derive(Clone, Debug)]
-pub(crate) struct ParseError<'i, E> {
-    pub(crate) kind: ParseErrorKind<'i, E>,
-    pub(crate) location: Site<'i>,
-}
-#[derive(Clone, Debug)]
-pub(crate) struct BasicParseError<'i> {
-    pub(crate) kind: BasicParseErrorKind<'i>,
-    pub(crate) location: Site<'i>,
-}
-impl<'i, E> From<BasicParseError<'i>> for ParseError<'i, E> {
-    fn from(error: BasicParseError<'i>) -> Self {
-        Self {
-            kind: ParseErrorKind::Basic(error.kind),
-            location: error.location,
-        }
-    }
-}
-impl<'i> ParseError<'i, Error> {
+
+/// What CSS does with a grammar failure before it is published.
+pub(crate) trait SyntaxErrorExt<'i>: Sized {
     /// Qualify diagnostics from actual input bookmarks before publishing them.
-    pub(crate) fn qualify(self) -> Self {
-        if let Some(control) = self.location.control() {
-            let location = self.location;
-            return self
-                .qualify_controlled(control)
-                .unwrap_or_else(|()| location.new_error(BasicParseErrorKind::EndOfInput));
-        }
-        let mut error = match self.kind {
-            ParseErrorKind::Custom(error) => error,
-            ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)) => Box::new(Error {
+    fn qualify(self) -> Self;
+    fn into_parts_controlled(
+        self,
+        control: &crate::values::color_adjust::utf16_value::Control<'_>,
+    ) -> Result<(ErrorKind, crate::component::CssSerializedOrigin), ()>;
+    fn into_parts(self) -> (ErrorKind, crate::component::CssSerializedOrigin);
+    fn into_grammar_failure_at(self, source: &str, offset: usize) -> GrammarFailure;
+    fn into_grammar_failure_source(self) -> GrammarFailure;
+    /// Only source-owned callers may ask for a single source diagnostic.
+    fn into_source_error(self) -> crate::diagnostic::CssError;
+}
+
+/// The failure as a property error: the grammar's own, or the one the token
+/// stream's failure stands for.
+fn property_error(error: SyntaxError<'_, Error>) -> Error {
+    let unexpected = error.unexpected_token();
+    match error.into_custom() {
+        Ok(error) => error,
+        Err(_) => match unexpected {
+            Some(token) => Error {
                 kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                     expectation: EXPECT_CSS_SYNTAX,
-                    encountered: CssTokenSummary::from_token(&token),
+                    encountered: CssTokenSummary::from_syntax_token(token),
                 }),
-            }),
-            ParseErrorKind::Basic(_) => Box::new(Error {
+            },
+            None => Error {
                 kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
                     expectation: EXPECT_CSS_SYNTAX,
                 }),
-            }),
-        };
-        let mut location = self.location;
+            },
+        },
+    }
+}
+
+impl<'i> SyntaxErrorExt<'i> for SyntaxError<'i, Error> {
+    fn qualify(self) -> Self {
+        if let Some(control) = self.at().control() {
+            let location = self.at();
+            return self
+                .qualify_controlled(control)
+                .unwrap_or_else(|()| location.end_of_stream());
+        }
+        let mut location = self.at();
+        let mut error = property_error(self);
         let (next, previous) = location.diagnostic_candidates();
         if let Some(encountered) = encountered_mut(&mut error.kind) {
             if let Some(site) = next
                 && let Some(token) = site.token()
-                && token_kind(&token) == encountered.kind
+                && super::syntax_token_kind(token) == encountered.kind
             {
                 if let Some(text) = site.lexeme()
                     && encountered.authored != text
@@ -83,16 +84,16 @@ impl<'i> ParseError<'i, Error> {
             let candidate = next
                 .and_then(|site| {
                     let token = site.token()?;
-                    (!ends_input(token_kind(&token))).then_some((site, token))
+                    (!ends_input(super::syntax_token_kind(token))).then_some((site, token))
                 })
                 .or_else(|| {
                     previous.and_then(|site| {
                         let token = site.token()?;
-                        (!precedes_input(token_kind(&token))).then_some((site, token))
+                        (!precedes_input(super::syntax_token_kind(token))).then_some((site, token))
                     })
                 });
             if let Some((site, token)) = candidate {
-                let mut summary = CssTokenSummary::from_token(&token);
+                let mut summary = CssTokenSummary::from_syntax_token(token);
                 if let Some(text) = site.lexeme() {
                     summary.authored = text.to_owned();
                 }
@@ -100,60 +101,113 @@ impl<'i> ParseError<'i, Error> {
                 location = site;
             }
         }
-        Self {
-            kind: ParseErrorKind::Custom(error),
-            location,
-        }
+        SyntaxError::custom(location, error)
     }
-    pub(crate) fn into_parts_controlled(
+
+    fn into_parts_controlled(
         self,
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<(ErrorKind, crate::component::CssSerializedOrigin), ()> {
         let error = self.qualify_controlled(control)?;
         control.step()?;
-        let ParseErrorKind::Custom(detail) = error.kind else {
+        let at = error.at();
+        let Ok(Error { kind }) = error.into_custom() else {
             unreachable!("admitted qualified property diagnostic")
         };
-        let Error { kind } = *detail;
         control.released(std::mem::size_of::<Error>());
         let origin = match &kind {
             ErrorKind::InvalidComponentValue(detail) => {
                 crate::component::CssSerializedOrigin::Token(detail.origin().clone())
             }
-            _ => error.location.origin(),
+            _ => at.origin(),
         };
         if control.failure().is_some() {
             return Err(());
         }
         Ok((kind, origin))
     }
+
+    fn into_parts(self) -> (ErrorKind, crate::component::CssSerializedOrigin) {
+        let error = self.qualify();
+        let at = error.at();
+        let Ok(Error { kind }) = error.into_custom() else {
+            unreachable!("qualified property errors own their semantic kind");
+        };
+        let origin = match &kind {
+            ErrorKind::InvalidComponentValue(detail) => {
+                crate::component::CssSerializedOrigin::Token(detail.origin().clone())
+            }
+            _ => at.origin(),
+        };
+        (kind, origin)
+    }
+
+    fn into_grammar_failure_at(self, source: &str, offset: usize) -> GrammarFailure {
+        let (kind, _) = self.into_parts();
+        let position = CssSourcePosition::from_byte_offset_in(source, offset);
+        GrammarFailure::new(crate::diagnostic::CssError { position, kind }, position)
+    }
+
+    fn into_grammar_failure_source(self) -> GrammarFailure {
+        let error = self.into_source_error();
+        let position = error.position();
+        GrammarFailure::new(error, position)
+    }
+
+    fn into_source_error(self) -> crate::diagnostic::CssError {
+        let error = self.qualify();
+        let site = error.at();
+        let (kind, origin) = error.into_parts();
+        let position = match origin {
+            crate::component::CssSerializedOrigin::Token(
+                crate::component::CssValueOrigin::Parsed(origin),
+            ) => origin.span().start(),
+            crate::component::CssSerializedOrigin::Token(
+                crate::component::CssValueOrigin::ImplicitClosure { at, .. },
+            ) => at.span().start(),
+            _ => site.source_position().expect("source property input"),
+        };
+        crate::diagnostic::CssError { position, kind }
+    }
+}
+
+/// The controlled halves of the operations above.
+trait Controlled<'i>: Sized {
+    fn qualify_controlled(
+        self,
+        control: &crate::values::color_adjust::utf16_value::Control<'_>,
+    ) -> Result<Self, ()>;
+}
+
+impl<'i> Controlled<'i> for SyntaxError<'i, Error> {
     fn qualify_controlled(
         self,
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<Self, ()> {
         control.step()?;
-        let mut error = match self.kind {
-            ParseErrorKind::Custom(error) => error,
-            ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_token)) => {
-                let encountered = summary_at_controlled(self.location, control)?;
+        let mut location = self.at();
+        let unexpected = self.unexpected_token().is_some();
+        let mut error = match self.into_custom() {
+            Ok(error) => error,
+            Err(_) if unexpected => {
+                let encountered = summary_at_controlled(location, control)?;
                 control.add(std::mem::size_of::<Error>())?;
-                Box::new(Error {
+                Error {
                     kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                         expectation: EXPECT_CSS_SYNTAX,
                         encountered,
                     }),
-                })
+                }
             }
-            ParseErrorKind::Basic(_) => {
+            Err(_) => {
                 control.add(std::mem::size_of::<Error>())?;
-                Box::new(Error {
+                Error {
                     kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
                         expectation: EXPECT_CSS_SYNTAX,
                     }),
-                })
+                }
             }
         };
-        let mut location = self.location;
         let (next, previous) = location.diagnostic_candidates();
         control.step()?;
         if let Some(encountered) = encountered_mut(&mut error.kind) {
@@ -195,79 +249,17 @@ impl<'i> ParseError<'i, Error> {
             }
         }
         control.step()?;
-        Ok(Self {
-            kind: ParseErrorKind::Custom(error),
-            location,
-        })
-    }
-    pub(crate) fn into_parts(self) -> (ErrorKind, crate::component::CssSerializedOrigin) {
-        let error = self.qualify();
-        let ParseErrorKind::Custom(detail) = error.kind else {
-            unreachable!("qualified property errors own their semantic kind");
-        };
-        let Error { kind } = *detail;
-        let origin = match &kind {
-            ErrorKind::InvalidComponentValue(detail) => {
-                crate::component::CssSerializedOrigin::Token(detail.origin().clone())
-            }
-            _ => error.location.origin(),
-        };
-        (kind, origin)
-    }
-    pub(crate) fn into_native_at<'s>(
-        self,
-        source: &str,
-        offset: usize,
-    ) -> cssparser::ParseError<'s, crate::diagnostic::CssError> {
-        let (kind, _) = self.into_parts();
-        let position = CssSourcePosition::from_byte_offset_in(source, offset);
-        let location = cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value().saturating_add(1),
-        };
-        cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(crate::diagnostic::CssError { position, kind }),
-            location,
-        }
-    }
-    pub(crate) fn into_native_source<'s>(
-        self,
-    ) -> cssparser::ParseError<'s, crate::diagnostic::CssError> {
-        let error = self.into_source_error();
-        let position = error.position();
-        let location = cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value().saturating_add(1),
-        };
-        cssparser::ParseError {
-            kind: cssparser::ParseErrorKind::Custom(error),
-            location,
-        }
-    }
-    /// Only source-owned callers may ask for a single source diagnostic.
-    pub(crate) fn into_source_error(self) -> crate::diagnostic::CssError {
-        let error = self.qualify();
-        let site = error.location;
-        let (kind, origin) = error.into_parts();
-        let position = match origin {
-            crate::component::CssSerializedOrigin::Token(
-                crate::component::CssValueOrigin::Parsed(origin),
-            ) => origin.span().start(),
-            crate::component::CssSerializedOrigin::Token(
-                crate::component::CssValueOrigin::ImplicitClosure { at, .. },
-            ) => at.span().start(),
-            _ => site.source_position().expect("source property input"),
-        };
-        crate::diagnostic::CssError { position, kind }
+        Ok(SyntaxError::custom(location, error))
     }
 }
-pub(crate) fn basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, Error> {
+
+pub(crate) fn basic<'i>(error: StreamError<'i>) -> SyntaxError<'i, Error> {
     error.into()
 }
-pub(crate) fn error_at<'i>(location: Site<'i>, kind: ErrorKind) -> ParseError<'i, Error> {
-    location.new_custom_error(Error { kind })
+pub(crate) fn error_at<'i>(location: Site<'i>, kind: ErrorKind) -> SyntaxError<'i, Error> {
+    location.grammar_error(Error { kind })
 }
-pub(crate) fn unexpected_at<'i>(location: Site<'i>) -> ParseError<'i, Error> {
+pub(crate) fn unexpected_at<'i>(location: Site<'i>) -> SyntaxError<'i, Error> {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -275,7 +267,7 @@ pub(crate) fn unexpected_at<'i>(location: Site<'i>) -> ParseError<'i, Error> {
         }),
     )
 }
-pub(crate) fn invalid_syntax<'i>(location: Site<'i>) -> ParseError<'i, Error> {
+pub(crate) fn invalid_syntax<'i>(location: Site<'i>) -> SyntaxError<'i, Error> {
     error_at(
         location,
         ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
@@ -288,64 +280,59 @@ pub(crate) fn invalid_syntax<'i>(location: Site<'i>) -> ParseError<'i, Error> {
 pub(crate) fn invalid_component_value<'i>(
     location: Site<'i>,
     detail: crate::component::CssComponentValueError,
-) -> ParseError<'i, Error> {
+) -> SyntaxError<'i, Error> {
     if location.control().is_some_and(|control| {
         control
             .add(std::mem::size_of::<crate::component::CssComponentValueError>())
             .is_err()
     }) {
-        return location.new_error(BasicParseErrorKind::EndOfInput);
+        return location.end_of_stream();
     }
     error_at(location, ErrorKind::InvalidComponentValue(Box::new(detail)))
 }
 pub(crate) fn invalid_color<'i>(
     location: Site<'i>,
     component: Option<&str>,
-) -> ParseError<'i, Error> {
+) -> SyntaxError<'i, Error> {
     error_at(location, super::color_syntax_kind(component))
 }
-fn encountered(kind: &mut ParseErrorKind<'_, Error>) -> Option<CssTokenSummary> {
-    match kind {
-        ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(token)) => {
-            Some(CssTokenSummary::from_token(token))
-        }
-        ParseErrorKind::Custom(error) => encountered_mut(&mut error.kind).cloned(),
-        _ => None,
+fn encountered(error: &SyntaxError<'_, Error>) -> Option<CssTokenSummary> {
+    if let Some(token) = error.unexpected_token() {
+        return Some(CssTokenSummary::from_syntax_token(token));
     }
+    let mut detail = error.custom_value()?.clone();
+    encountered_mut(&mut detail.kind).cloned()
 }
 pub(crate) fn with_property_context<'i>(
-    mut error: ParseError<'i, Error>,
+    error: SyntaxError<'i, Error>,
     property: &str,
-) -> ParseError<'i, Error> {
-    if let Some(control) = error.location.control() {
-        let location = error.location;
+) -> SyntaxError<'i, Error> {
+    if let Some(control) = error.at().control() {
+        let location = error.at();
         return with_property_context_controlled(error, property, control)
-            .unwrap_or_else(|()| location.new_error(BasicParseErrorKind::EndOfInput));
+            .unwrap_or_else(|()| location.end_of_stream());
     }
     let Some(property) = property_for_supported_name(property) else {
         return error;
     };
-    if let ParseErrorKind::Custom(detail) = &error.kind
+    if let Some(detail) = error.custom_value()
         && (matches!(&detail.kind, ErrorKind::InvalidColorSyntax(_))
             || matches!(&detail.kind, ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)))
     {
         return error;
     }
-    let encountered = encountered(&mut error.kind);
+    let encountered = encountered(&error);
     let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
         property,
         expectation: EXPECT_PROPERTY_VALUE,
         encountered,
     });
-    match &mut error.kind {
-        ParseErrorKind::Custom(error) => error.kind = kind,
-        ParseErrorKind::Basic(_) => error.kind = ParseErrorKind::Custom(Box::new(Error { kind })),
-    }
-    error
+    let at = error.at();
+    SyntaxError::custom(at, Error { kind })
 }
 
-pub(crate) fn is_resource_parse_error(error: &ParseError<'_, Error>) -> bool {
-    matches!(&error.kind, ParseErrorKind::Custom(error)
+pub(crate) fn is_resource_parse_error(error: &SyntaxError<'_, Error>) -> bool {
+    matches!(error.custom_value(), Some(error)
         if matches!(&error.kind, ErrorKind::NestingLimit(_))
             || matches!(&error.kind, ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)))
 }
@@ -401,36 +388,32 @@ fn same_text_controlled(
     Ok(true)
 }
 fn with_property_context_controlled<'i>(
-    mut error: ParseError<'i, Error>,
+    error: SyntaxError<'i, Error>,
     property: &str,
     control: &crate::values::color_adjust::utf16_value::Control<'_>,
-) -> Result<ParseError<'i, Error>, ()> {
+) -> Result<SyntaxError<'i, Error>, ()> {
     control.step()?;
     let Some(property) = property_for_supported_name(property) else {
         return Ok(error);
     };
-    if let ParseErrorKind::Custom(detail) = &error.kind
+    if let Some(detail) = error.custom_value()
         && (matches!(&detail.kind, ErrorKind::InvalidColorSyntax(_))
             || matches!(&detail.kind, ErrorKind::InvalidComponentValue(detail) if is_component_resource_error(detail)))
     {
         return Ok(error);
     }
-    let encountered = match &mut error.kind {
-        ParseErrorKind::Basic(BasicParseErrorKind::UnexpectedToken(_token)) => {
-            Some(summary_at_controlled(error.location, control)?)
-        }
-        ParseErrorKind::Custom(detail) => encountered_mut(&mut detail.kind)
-            .map(|value| value.clone_controlled(control))
-            .transpose()?,
-        _ => None,
-    };
-    let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
-        property,
-        expectation: EXPECT_PROPERTY_VALUE,
-        encountered,
-    });
-    match &mut error.kind {
-        ParseErrorKind::Custom(detail) => {
+    let at = error.at();
+    let unexpected = error.unexpected_token().is_some();
+    match error.into_custom() {
+        Ok(mut detail) => {
+            let encountered = encountered_mut(&mut detail.kind)
+                .map(|value| value.clone_controlled(control))
+                .transpose()?;
+            let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
+                property,
+                expectation: EXPECT_PROPERTY_VALUE,
+                encountered,
+            });
             let previous_bytes = detail
                 .kind
                 .retained_backing_bytes_with(&mut || control.step())
@@ -444,13 +427,23 @@ fn with_property_context_controlled<'i>(
             let previous = std::mem::replace(&mut detail.kind, kind);
             drop(previous);
             control.released(previous_bytes);
+            Ok(SyntaxError::custom(at, detail))
         }
-        ParseErrorKind::Basic(_) => {
+        Err(_) => {
+            let encountered = if unexpected {
+                Some(summary_at_controlled(at, control)?)
+            } else {
+                None
+            };
+            let kind = ErrorKind::InvalidPropertyValue(PropertyValueRejection {
+                property,
+                expectation: EXPECT_PROPERTY_VALUE,
+                encountered,
+            });
             control.add(std::mem::size_of::<Error>())?;
-            error.kind = ParseErrorKind::Custom(Box::new(Error { kind }));
+            Ok(SyntaxError::custom(at, Error { kind }))
         }
     }
-    Ok(error)
 }
 
 fn checked_kind_at(site: Site<'_>) -> Option<CssTokenKind> {
@@ -489,9 +482,8 @@ mod tests {
     use crate::component::{
         CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
     };
-    use crate::parser::property_input::Parser;
     use crate::source::CssSourceSnapshot;
-    use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize, source_document};
+    use crate::syntax_consumption::{SyntaxInputLimits, checked_document, source_document};
 
     #[test]
     fn checked_numeric_error_retains_exact_lexeme_without_float_rounding() {
@@ -501,14 +493,9 @@ mod tests {
             Default::default(),
         )
         .unwrap();
-        let document = normalize(
-            SyntaxInput::CheckedComponents(values.items()),
-            SyntaxInputLimits::default(),
-            0,
-        )
-        .unwrap();
-        let mut input = Parser::new(&document);
-        let (kind, origin) = basic(input.expect_ident_matching("auto").unwrap_err()).into_parts();
+        let document = checked_document(values.items(), SyntaxInputLimits::default(), 0).unwrap();
+        let mut input = document.root();
+        let (kind, origin) = basic(input.consume_keyword("auto").unwrap_err()).into_parts();
         let ErrorKind::UnexpectedToken(detail) = kind else {
             panic!("unexpected lexical number");
         };
@@ -523,9 +510,9 @@ mod tests {
     fn source_error_uses_original_scalar_and_utf16_position() {
         let snapshot = CssSourceSnapshot::new("ok\r\n  😀");
         let document = source_document(snapshot.as_str(), &snapshot, 0).unwrap();
-        let mut input = Parser::new(&document);
-        input.expect_ident_matching("ok").unwrap();
-        let error = basic(input.expect_ident_matching("other").unwrap_err()).into_source_error();
+        let mut input = document.root();
+        input.consume_keyword("ok").unwrap();
+        let error = basic(input.consume_keyword("other").unwrap_err()).into_source_error();
         assert_eq!(error.position().byte_offset().value(), 6);
         assert_eq!(error.position().line().value(), 1);
         assert_eq!(error.position().column().value(), 2);
@@ -534,16 +521,11 @@ mod tests {
     #[test]
     fn checked_origins_never_enable_source_reverse_lookup() {
         let values = crate::component::values::parse_component_values("a b").unwrap();
-        let document = normalize(
-            SyntaxInput::CheckedComponents(values.items()),
-            SyntaxInputLimits::default(),
-            0,
-        )
-        .unwrap();
-        let input = Parser::new(&document);
+        let document = checked_document(values.items(), SyntaxInputLimits::default(), 0).unwrap();
+        let input = document.root();
         assert!(
             input
-                .position()
+                .site()
                 .source_origin(values.items()[2].origin())
                 .is_none()
         );

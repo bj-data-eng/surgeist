@@ -13,7 +13,7 @@ subset; it does not establish complete support for all CSS syntax.
 | --- | --- | --- |
 | `CssParser::new(context, component_limits)` | Default features | The configuration every source-text front takes first: a grammar context and the component limits |
 | `CssParser::parse_sheet(source)` | Default features | `CssParseReport<CssSheet>` |
-| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding |
+| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding; `hints` and `limits` are `surgeist_css_parser::input::{DecodeHints, DecodeLimits}` |
 | `CssParser::parse_sheet_bytes(&input)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
 | `CssParseReport<CssSheet>::with_location(location)` | Default features | The same report with an optional symbolic location |
 | `CssParser::parse_block_contents(source)` | Default features | `CssParseReport<CssDeclarationList>`: Syntax 3 2026 block contents for style attributes, `cssText` and raw lists |
@@ -37,10 +37,11 @@ subset; it does not establish complete support for all CSS syntax.
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
-Clean-report validation is always available. Production dependencies are pinned to
-`cssparser = 0.37.0`, `encoding_rs = 0.8.35` (default `alloc`) and
-`unicode-segmentation = 1.13.3`; test-only JSON support uses
-`serde = 1.0.229` and `serde_json = 1.0.151`.
+Clean-report validation is always available. The production dependency
+`unicode-segmentation` is pinned to 1.13.3, beside the path dependencies on
+`surgeist-color` and `surgeist-css-parser` (which tokenizes and parses CSS and
+decodes style sheet bytes); test-only JSON support uses `serde = 1.0.229` and
+`serde_json = 1.0.151`.
 
 `CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
 identifier content, just like an interior U+FEFF. For byte streams, first use
@@ -66,7 +67,7 @@ CR, FF, CRLF and NUL remain in the snapshot for the existing tokenizer to filter
 An inferred charset prefix remains in decoded text and passes through the current
 string sheet grammar; decoding does not strip it or certify charset admission.
 
-`CssStylesheetDecodeLimits` bounds original bytes and decoded UTF-8 bytes
+`surgeist_css_parser::input::DecodeLimits` bounds original bytes and decoded UTF-8 bytes
 independently. Defaults follow component-input length policy, with no extra
 finite cap. Limit and checked-capacity failures return no partial input.
 `CssSheet::location()` is null by default. `CssStylesheetLocation` preserves
@@ -96,7 +97,7 @@ behavior and whether the move changed it.
 | Difference (2026 text) | Surgeist behavior | Outcome |
 | --- | --- | --- |
 | §3.3 input preprocessing adds only a note on surrogates from object-model strings. | CR, FF, CRLF and NUL filtering is unchanged. | Unchanged |
-| §4.2 restricts *non-ASCII ident code point* to the HTML custom-element ranges; for example U+0080–U+00B6, U+00A0, U+00D7, U+2000–U+200B, U+2028, U+E000–U+F8FF and U+FFFE no longer start or continue an ident sequence. | Identifiers still accept every code point at or above U+0080: `.a\u{a0}b`, `.\u{2603}` and a U+FFFE type selector remain valid. | Deferred, tracked separately: the crate's own lexical correction layer (`src/tokenization.rs`, `src/tokenization/name.rs`) can implement it, but every grammar consumes the pinned `cssparser` 0.37 identifier tokens, so splitting them at excluded code points is a non-trivial tokenizer change. |
+| §4.2 restricts *non-ASCII ident code point* to the HTML custom-element ranges; for example U+0080–U+00B6, U+00A0, U+00D7, U+2000–U+200B, U+2028, U+E000–U+F8FF and U+FFFE no longer start or continue an ident sequence. | Identifiers admit exactly the §4.2 ranges, through `surgeist-css-parser`'s `lexical` predicates, which every grammar reads. A code point outside them ends an ident and is a delim: `.a\u{a0}b`, `.\u{2603}` and a U+FFFE type selector, which the 2021 text admitted, are invalid, while `.a\u{b7}b` and astral code points stay valid. Serialization escapes those code points, as in `\a0 `, so output reads back as the same identifier. | Behavior change |
 | §4 tokens carry a sign character, and §4.3.13 interprets the number and exponent parts directly; the 2021 *representation* and "convert a string to a number" are removed. | Numeric tokens keep their exact spelling and sign; values are equal. | Unchanged |
 | §6.2 renames `<an+b>` to `<a-n-plus-b>` and defines signed and signless integers by the sign character. | The same tokens are admitted and §9.1 serialization is unchanged. | Unchanged |
 | §§4.3.11, 4.3.14 and 5.5.11 replace the 2021 §7 `<urange>` token production: a `unicode-range` value is re-tokenized from its original text, where one contiguous token starts with a literal `U` or `u`. | A comment inside a range, or an escaped `u`, now makes the range invalid. Range endpoint validity remains the Fonts descriptor rule. | Behavior change |
@@ -4215,8 +4216,9 @@ Each decoded string row follows [Grid 2 §7.3](https://www.w3.org/TR/2025/CRD-cs
 the longest run of ident code points makes one named cell, the longest run of
 periods makes one empty cell, and decoded space, tab, and line feed separate
 runs. Other decoded ASCII punctuation or controls, including carriage return
-and form feed produced by an escape, invalidate the declaration. Non-ASCII
-code points such as NBSP remain part of an area name. The checked row and
+and form feed produced by an escape, invalidate the declaration, and so does a
+non-ASCII code point that is not a [Syntax 3 §4.2 ident code point](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#non-ascii-ident-code-point),
+such as NBSP. The checked row and
 matrix constructors require nonempty rows, equal widths, and a filled rectangle
 for each case-sensitive name. Area names have their own checked type so leading
 digits and CSS-wide keyword spellings remain valid within a string. The

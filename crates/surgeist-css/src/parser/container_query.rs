@@ -1,4 +1,5 @@
-use cssparser::{ParseError, Parser};
+use crate::diagnostic::error::GrammarFailure;
+use crate::source::CssSourcePosition;
 
 use super::boolean_condition::{
     BooleanModel, BooleanNode, BooleanNodeKind, ComponentOperands, ConditionFailure,
@@ -9,11 +10,11 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
+use super::syntax_types::Stream;
 use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::invalid_syntax;
 use crate::numeric::expression::CalculationRoot;
 use crate::numeric::expression::CssCalculationExpression;
@@ -484,18 +485,17 @@ fn container_orientation(
 /// production's shared depth check, before any semantic classification.
 pub(crate) fn collect_container_components<'i>(
     source: &str,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, CssError>> {
-    let implicit =
-        recovery.check_specialized_components(source, input, "baseline.rule.container")?;
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
+) -> Result<(CssComponentValues, Vec<usize>), GrammarFailure> {
+    let implicit = recovery.check_specialized_components_from(
+        source,
+        super::block_units::offset_of(input.site()),
+        "baseline.rule.container",
+    )?;
+    let values = super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot())
+        .values
+        .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     Ok((values, implicit))
 }
 // Parser collection already enforces the stylesheet's complete component limits.
@@ -584,10 +584,10 @@ fn admit_container_prelude(
     Ok(CssContainerPrelude::new(entries, lexical))
 }
 
-pub(crate) fn container_prelude_from_components<'i>(
+pub(crate) fn container_prelude_from_components(
     values: CssComponentValues,
-    location: cssparser::SourceLocation,
-) -> Result<CssContainerPrelude, ParseError<'i, CssError>> {
+    location: CssSourcePosition,
+) -> Result<CssContainerPrelude, GrammarFailure> {
     let end = values.items().len();
     admit_container_prelude(values).map_err(|error| match error {
         ContainerPreludeAdmissionError::Component(error) => {
@@ -599,26 +599,18 @@ pub(crate) fn container_prelude_from_components<'i>(
             } else {
                 crate::query::media::construction::parsed_position(&origin)
             };
-            let location = failure.map_or(location, |position| cssparser::SourceLocation {
-                line: position.line().value(),
-                column: position.column().value() + 1,
-            });
+            let location = failure.unwrap_or(location);
             invalid_syntax(location)
         }
     })
 }
 
-fn container_component_error<'i>(
-    fallback: cssparser::SourceLocation,
+fn container_component_error(
+    fallback: CssSourcePosition,
     error: crate::component::CssComponentValueError,
-) -> ParseError<'i, CssError> {
-    let location = crate::query::media::construction::parsed_position(error.origin()).map_or(
-        fallback,
-        |position| cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        },
-    );
+) -> GrammarFailure {
+    let location =
+        crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     crate::diagnostic::error::invalid_component_value(location, error)
 }
 #[derive(Clone, Copy)]

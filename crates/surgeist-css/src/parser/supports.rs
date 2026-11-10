@@ -1,8 +1,12 @@
 use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
-use super::recovery::{RecoveryState, StyleContextCaptures};
-use super::selectors::{SelectorRecovery, parse_rule_selector};
+use super::descriptor_stream::{
+    Value, byte_offset, collect_scope, consume_remaining, location, read_scope, value_failure,
+};
+use super::recovery::{RecoveryState, SharedNamespaces};
+use super::selectors::{SelectorRecovery, read_rule_selector};
+use super::syntax_types::{Stream, SyntaxError};
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
@@ -10,12 +14,13 @@ use crate::component::{
     CssValueOrigin, CssValueTokenRef,
 };
 use crate::declaration::{CssDeclarationBody, CssImportance};
-use crate::diagnostic::CssError;
-use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::error::GrammarFailure;
+use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
-    invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
+    invalid_component_value, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
 };
+use crate::numeric::expression::NumericInputContext;
 use crate::property::CssPropertyGrammar;
 use crate::query::supports::construction::{SupportsLexical, trivia};
 use crate::query::supports::{
@@ -27,8 +32,7 @@ use crate::rule::font_face::{
     CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
 };
 use crate::selector::CssNamespaceContext;
-use crate::source::CssSourceSnapshot;
-use cssparser::{ParseError, Parser};
+use crate::source::CssSourcePosition;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
     crate::diagnostic::CssFeatureId::new("ext.supports.general-enclosed"),
@@ -43,27 +47,25 @@ pub(super) static IMPLEMENTED_SELECTORS: &[crate::diagnostic::CssFeatureId] =
         "ext.supports.selector",
     )];
 
-fn terminal_error(error: &ParseError<'_, CssError>) -> bool {
+fn terminal_error(error: &GrammarFailure) -> bool {
     is_nesting_limit_error(error)
-        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error)
-            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)))
+        || matches!(
+            error.error.kind(),
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)
+        )
 }
 
 /// Only a grammar mismatch permits another supports interpretation. A lexical
 /// or resource failure cannot become valid by selecting an opaque fallback.
-pub(super) fn grammar_probe<'i, T>(
-    result: Result<T, ParseError<'i, CssError>>,
-) -> Result<Option<T>, ParseError<'i, CssError>> {
+pub(super) fn grammar_probe<'i, T>(result: Value<'i, T>) -> Value<'i, Option<T>> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(error) if terminal_error(&error) => Err(error),
+        Err(error) if error.custom_value().is_some_and(terminal_error) => Err(error),
         Err(_) => Ok(None),
     }
 }
 
-pub(crate) fn with_supports_prelude_context<'i>(
-    error: ParseError<'i, CssError>,
-) -> ParseError<'i, CssError> {
+pub(crate) fn with_supports_prelude_context(error: GrammarFailure) -> GrammarFailure {
     if terminal_error(&error) {
         error
     } else {
@@ -76,54 +78,72 @@ pub(crate) fn with_supports_prelude_context<'i>(
     }
 }
 
-pub(crate) fn parse_supports_condition<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    _diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+/// The `<supports-condition>` that the stream `input` holds to its end.
+pub(crate) fn parse_supports_condition<'i>(
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssCondition<CssSupportsLeaf>, ParseError<'i, CssError>> {
-    let implicit =
-        recovery.check_specialized_components(source, input, "baseline.rule.supports")?;
-    let start = input.current_source_location();
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|e| crate::diagnostic::error::invalid_component_value(start, e))?;
+) -> Result<CssCondition<CssSupportsLeaf>, GrammarFailure> {
+    read_scope(input, recovery.source_snapshot(), |stream, numeric| {
+        supports_condition(source, stream, numeric, recovery)
+    })
+}
+
+/// The `<supports-condition>` that `input` holds to its end.
+pub(super) fn supports_condition<'i>(
+    source: &str,
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    recovery: &RecoveryState,
+) -> Value<'i, CssCondition<CssSupportsLeaf>> {
+    let implicit = recovery
+        .check_specialized_components_from(
+            source,
+            byte_offset(numeric, input.site()),
+            "baseline.rule.supports",
+        )
+        .map_err(|error| SyntaxError::custom(input.site(), error))?;
+    let start = location(numeric, input.site());
+    let values = collect_scope(input, numeric);
+    consume_remaining(input);
+    let values = values
+        .map_err(|(e, _)| SyntaxError::custom(input.site(), invalid_component_value(start, e)))?;
     let result = condition(
         SupportsLexical::root(values),
         recovery,
         true,
         CssComponentValueLimits::default(),
     )
-    .map_err(|e| parser_error(e, start))?;
+    .map_err(|e| SyntaxError::custom(input.site(), parser_error(e, start)))?;
     recovery.retain_component_closures(implicit);
     Ok(result)
 }
-pub(super) fn parse_supports_declaration<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    source: &CssSourceSnapshot,
+
+/// The bare supports declaration that `input` holds to its end.
+pub(super) fn supports_declaration<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssSupportsDeclaration, ParseError<'i, CssError>> {
-    let start = input.current_source_location();
-    let values = CssComponentValues::collect_from_parser(input, source)
-        .map_err(|e| crate::diagnostic::error::invalid_component_value(start, e))?;
+) -> Value<'i, CssSupportsDeclaration> {
+    let start = location(numeric, input.site());
+    let values = collect_scope(input, numeric);
+    consume_remaining(input);
+    let values = values
+        .map_err(|(e, _)| SyntaxError::custom(input.site(), invalid_component_value(start, e)))?;
     declaration(
         SupportsLexical::root(values),
         true,
         CssComponentValueLimits::default(),
         parser_context,
     )
-    .map_err(|e| parser_error(e, start))
+    .map_err(|e| SyntaxError::custom(input.site(), parser_error(e, start)))
 }
-fn parser_error<'i>(
+fn parser_error(
     error: CssSupportsConstructionError,
-    fallback: cssparser::SourceLocation,
-) -> ParseError<'i, CssError> {
+    fallback: CssSourcePosition,
+) -> GrammarFailure {
     let location =
-        crate::query::media::construction::parsed_position(error.origin()).map_or(fallback, |p| {
-            cssparser::SourceLocation {
-                line: p.line().value(),
-                column: p.column().value() + 1,
-            }
-        });
+        crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     match error.into_kind() {
         crate::query::supports::construction::SupportsConstructionKind::Component(e) => {
             crate::diagnostic::error::invalid_component_value(location, e)
@@ -165,7 +185,7 @@ pub(crate) fn construct_supports_condition_with_context(
     parser_context: crate::CssParserContext,
 ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     validate(&values, limits)?;
-    let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default())
+    let recovery = RecoveryState::at_depth("", 0, SharedNamespaces::default())
         .with_parser_context(parser_context);
     if let Some(name) = &namespaces.0.default {
         recovery.activate_namespace(None, name.clone());
@@ -377,26 +397,25 @@ fn operand(
                 out.push_components(function.values().items())?;
                 let serialized = out.finish()?;
                 let source = serialized.as_css();
-                let working_source = crate::tokenization::prepare(source);
-                let mut parser_input = cssparser::ParserInput::new(&working_source);
-                let mut input = Parser::new(&mut parser_input);
+                let probe = recovery.generated_selector_probe(source);
+                let snapshot = probe.source_snapshot().clone();
+                let tree =
+                    crate::syntax_consumption::source_scope_document(&snapshot, 0..source.len())?;
+                let mut input = tree.root();
                 let mut diagnostics = Vec::new();
-                let mut selector_recovery = SelectorRecovery::new(
-                    source,
-                    &mut diagnostics,
-                    recovery.generated_selector_probe(source),
-                );
-                let parsed = parse_rule_selector(&mut input, &mut selector_recovery);
+                let mut selector_recovery = SelectorRecovery::new(source, &mut diagnostics, probe);
+                let parsed =
+                    read_rule_selector(&mut input, &mut selector_recovery).map_err(|error| {
+                        value_failure(&NumericInputContext::parsed(&snapshot), &error)
+                    });
+                let selector_ends = input.only_whitespace_remains();
                 match parsed {
-                    Ok(selector) if input.is_exhausted() && diagnostics.is_empty() => {
+                    Ok(selector) if selector_ends && diagnostics.is_empty() => {
                         CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector))
                     }
                     Err(error) if terminal_error(&error) => {
-                        let kind = match &error.kind {
-                            cssparser::ParseErrorKind::Custom(error) => match error.kind() {
-                                ErrorKind::InvalidComponentValue(component) => component.kind,
-                                _ => CssComponentValueErrorKind::NestingLimit,
-                            },
+                        let kind = match error.error.kind() {
+                            ErrorKind::InvalidComponentValue(component) => component.kind,
                             _ => CssComponentValueErrorKind::NestingLimit,
                         };
                         let position =
@@ -632,16 +651,8 @@ fn parsed_admitted(
         .expect("parsed lexical root");
     let start = first.span().start().byte_offset().value();
     let end = last.span().end().byte_offset().value();
-    let document = crate::syntax_consumption::normalize(
-        crate::syntax_consumption::SyntaxInput::Source(crate::syntax_consumption::SourceWindow {
-            text: std::borrow::Cow::Borrowed(first.source().as_str()),
-            range: start..end,
-            original: first.source().clone(),
-        }),
-        crate::syntax_consumption::SyntaxInputLimits::default(),
-        0,
-    )?;
-    let mut input = super::property_input::Parser::new(&document);
+    let document = crate::syntax_consumption::source_window_document(first.source(), start..end)?;
+    let mut input = document.root();
     let numeric = crate::numeric::expression::NumericInputContext::parsed(first.source());
     let parsed = if parser_context.selects_svg_glyph(name) {
         super::parse_svg_glyph_declaration_body_from_property_input(
@@ -661,7 +672,7 @@ fn parsed_admitted(
         Ok(
             body @ (CssDeclarationBody::Known(_)
             | CssDeclarationBody::SvgGlyphOrientationVertical(_)),
-        ) if input.is_exhausted() => Ok(Some(body)),
+        ) if input.only_whitespace_remains() => Ok(Some(body)),
         Err(error) if crate::diagnostic::error::property::is_resource_parse_error(&error) => {
             let (kind, origin) = error.into_parts();
             if let ErrorKind::InvalidComponentValue(component) = kind {
@@ -708,7 +719,7 @@ mod generated_selector_tests {
             panic!("Is")
         };
         let expected = is.values().items()[1].origin().clone();
-        let state = RecoveryState::at_depth(source, 254, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 254, SharedNamespaces::default());
         let value = condition(
             SupportsLexical::root(values.clone()),
             &state,
@@ -721,7 +732,7 @@ mod generated_selector_tests {
             CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
         assert_eq!(state.structural_depth(), 254);
-        let state = RecoveryState::at_depth(source, 255, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 255, SharedNamespaces::default());
         let error = condition(
             SupportsLexical::root(values),
             &state,

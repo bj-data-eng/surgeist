@@ -286,7 +286,9 @@ fn selected_page_consumer_retains_margin_children_and_removes_invalid_qualified_
         panic!("one disallowed qualified child")
     };
     assert_eq!(nested_style.error().code(), CssErrorCode::InvalidAtRuleBody);
-    assert_eq!(nested_style.action(), CssRecoveryAction::DropAtRule);
+    // `.nested{...}` does not begin with an <at-keyword-token>, so the page body
+    // drops it as a qualified rule (CSS Syntax 3 section 5.5.5).
+    assert_eq!(nested_style.action(), CssRecoveryAction::DropQualifiedRule);
 }
 
 #[test]

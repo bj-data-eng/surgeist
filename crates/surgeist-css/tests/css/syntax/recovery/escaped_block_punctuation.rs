@@ -46,10 +46,9 @@ use surgeist_css::selector::{
     CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssSelector,
     CssStyleSelectorContext,
 };
-use surgeist_css::source::{
-    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssUtf16InputLimits,
-};
+use surgeist_css::source::{CssDecodedStylesheetInput, CssUtf16InputLimits};
 use surgeist_css::{CssParseReport, CssParser};
+use surgeist_css_parser::input::DecodeHints;
 use surgeist_fuzz::engine::{PropertyConfig, run_property};
 use surgeist_fuzz::generation::property::bytes;
 use surgeist_fuzz::{
@@ -137,7 +136,7 @@ fn fronts() -> Vec<Front> {
     front!("sheet.bytes", |s| {
         let decoded = CssDecodedStylesheetInput::decode(
             s.as_bytes(),
-            CssStylesheetDecodeHints {
+            DecodeHints {
                 protocol_label: None,
                 environment_encoding: None,
             },

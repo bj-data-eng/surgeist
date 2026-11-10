@@ -75,10 +75,41 @@ pub struct CssSourcePosition {
     column: CssUtf16ColumnIndex,
 }
 
+// Test-only work counter: the bytes of source text that position resolution
+// walked on this thread.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static WALKED_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn walked(bytes: usize) {
+    WALKED_BYTES.with(|walked| walked.set(walked.get() + bytes));
+}
+
+/// The last character boundary of `text` at or before the byte `at`, or its end
+/// when `at` lies past it.
+pub(crate) fn floor_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
 impl CssSourcePosition {
+    /// The start of the input: the position of a failure that names none.
+    pub(crate) const START: Self = Self {
+        byte_offset: CssByteOffset::new(0),
+        line: CssLineIndex::new(0),
+        column: CssUtf16ColumnIndex::new(0),
+    };
+
     /// Advances a parser-owned checkpoint over original source text. Checkpoints
     /// never split CRLF; the final requested position may stop between its bytes.
     pub(crate) fn advanced_by(self, source: &str) -> Self {
+        #[cfg(test)]
+        walked(source.len());
         let mut line = self.line.value();
         let mut column = self.column.value();
         let mut characters = source.chars().peekable();
@@ -110,14 +141,65 @@ impl CssSourcePosition {
         }
     }
 
-    pub(crate) fn from_cssparser(
-        position: cssparser::SourcePosition,
-        location: cssparser::SourceLocation,
-    ) -> Self {
+    /// The position of the byte `target` of `source`, found from this position,
+    /// which is that of a byte of `source` too: the walk covers the bytes
+    /// between the two and, going back across a line break, the line of
+    /// `target` up to it, and never the text before them.
+    pub(crate) fn resolved_near(self, source: &str, target: usize) -> Self {
+        let from = floor_boundary(source, self.byte_offset.value());
+        let target = floor_boundary(source, target);
+        if target >= from {
+            let mut text = &source[from..target];
+            let mut position = self;
+            // A line feed that completes a carriage return before it is part
+            // of that break, which the position already counts.
+            if from > 0 && source.as_bytes()[from - 1] == b'\r' && text.starts_with('\n') {
+                text = &text[1..];
+                position.byte_offset = CssByteOffset::new(from + 1);
+            }
+            return position.advanced_by(text);
+        }
+        let text = &source[target..from];
+        #[cfg(test)]
+        walked(text.len());
+        let mut breaks = 0_u32;
+        let mut characters = text.chars().peekable();
+        // The line feed of a carriage return and line feed that `target`
+        // separates belongs to the break the prefix ends with.
+        if target > 0 && source.as_bytes()[target - 1] == b'\r' && text.starts_with('\n') {
+            characters.next();
+        }
+        while let Some(character) = characters.next() {
+            match character {
+                '\r' => {
+                    if characters.peek() == Some(&'\n') {
+                        characters.next();
+                    }
+                    breaks += 1;
+                }
+                '\n' | '\u{000c}' => breaks += 1,
+                _ => {}
+            }
+        }
+        let column = if breaks == 0 {
+            self.column
+                .value()
+                .saturating_sub(text.chars().map(|c| c.len_utf16() as u32).sum())
+        } else {
+            let line_start = source[..target]
+                .rfind(['\n', '\r', '\u{000c}'])
+                .map_or(0, |at| at + 1);
+            #[cfg(test)]
+            walked(target - line_start);
+            source[line_start..target]
+                .chars()
+                .map(|c| c.len_utf16() as u32)
+                .sum()
+        };
         Self {
-            byte_offset: CssByteOffset::new(position.byte_index()),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(location.column.saturating_sub(1)),
+            byte_offset: CssByteOffset::new(target),
+            line: CssLineIndex::new(self.line.value().saturating_sub(breaks)),
+            column: CssUtf16ColumnIndex::new(column),
         }
     }
 
@@ -129,61 +211,10 @@ impl CssSourcePosition {
         }
     }
 
-    pub(crate) const fn from_source_location(location: cssparser::SourceLocation) -> Self {
-        Self {
-            byte_offset: CssByteOffset::new(0),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(location.column.saturating_sub(1)),
-        }
-    }
-
-    pub(crate) fn from_source_location_in(
-        source: &str,
-        location: cssparser::SourceLocation,
-    ) -> Self {
-        let target_line = location.line;
-        let target_column = location.column.saturating_sub(1);
-        let mut line = 0_u32;
-        let mut column = 0_u32;
-        let mut byte_offset = 0_usize;
-        let mut characters = source.char_indices().peekable();
-
-        while let Some((index, character)) = characters.next() {
-            if line == target_line && column >= target_column {
-                byte_offset = index;
-                break;
-            }
-
-            byte_offset = index + character.len_utf8();
-            match character {
-                '\r' => {
-                    if characters
-                        .peek()
-                        .is_some_and(|(_, next_character)| *next_character == '\n')
-                        && let Some((next_index, next_character)) = characters.next()
-                    {
-                        byte_offset = next_index + next_character.len_utf8();
-                    }
-                    line = line.saturating_add(1);
-                    column = 0;
-                }
-                '\n' | '\u{000c}' => {
-                    line = line.saturating_add(1);
-                    column = 0;
-                }
-                _ => column = column.saturating_add(character.len_utf16() as u32),
-            }
-        }
-
-        Self {
-            byte_offset: CssByteOffset::new(byte_offset),
-            line: CssLineIndex::new(location.line),
-            column: CssUtf16ColumnIndex::new(target_column),
-        }
-    }
-
     pub(crate) fn from_byte_offset_in(source: &str, target: usize) -> Self {
         let target = target.min(source.len());
+        #[cfg(test)]
+        walked(target);
         let mut line = 0_u32;
         let mut column = 0_u32;
         let mut characters = source[..target].chars().peekable();
@@ -286,15 +317,10 @@ impl CssSourceSpan {
 
 #[cfg(test)]
 mod tests {
-    use cssparser::{Parser, ParserInput};
-
     use super::*;
 
     fn position_after_tokenizing(source: &str) -> CssSourcePosition {
-        let mut input = ParserInput::new(source);
-        let mut parser = Parser::new(&mut input);
-        while parser.next().is_ok() {}
-        CssSourcePosition::from_cssparser(parser.position(), parser.current_source_location())
+        CssSourcePosition::from_byte_offset_in(source, source.len())
     }
 
     fn assert_position(position: CssSourcePosition, byte_offset: usize, line: u32, column: u32) {
@@ -335,6 +361,96 @@ mod tests {
         assert_position(position_after_tokenizing("😀2x"), 6, 0, 4);
     }
 
+    /// The position of every byte found near the position of every other byte
+    /// of texts with every kind of line break, in both directions, is the
+    /// position found from the start of the text.
+    #[test]
+    fn a_position_found_near_another_is_the_position_found_from_the_start() {
+        let pieces = [
+            "a",
+            "\r",
+            "\n",
+            "\u{c}",
+            "\u{e9}",
+            "\u{1f600}",
+            "bc",
+            "\r\n",
+            " ",
+        ];
+        let mut state = 0x2545_F491_4F6C_DD1D_u64;
+        let mut next = move |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        for _ in 0..400 {
+            let text: String = (0..next(14)).map(|_| pieces[next(pieces.len())]).collect();
+            let boundaries: Vec<usize> = (0..=text.len())
+                .filter(|offset| text.is_char_boundary(*offset))
+                .collect();
+            for &from in &boundaries {
+                let anchor = CssSourcePosition::from_byte_offset_in(&text, from);
+                for &target in &boundaries {
+                    assert_eq!(
+                        anchor.resolved_near(&text, target),
+                        CssSourcePosition::from_byte_offset_in(&text, target),
+                        "{text:?} from {from} to {target}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A position found from a checkpoint or from a position found before is
+    /// the position found from the start, for every pair, stride and text.
+    #[test]
+    fn a_position_located_from_checkpoints_and_a_cursor_is_the_position_found_from_the_start() {
+        let pieces = [
+            "a",
+            "\n",
+            "\r",
+            "\r\n",
+            "\u{000c}",
+            "\u{e9}",
+            "\u{1f600}",
+            "bc",
+            " ",
+        ];
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = move |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % bound as u64) as usize
+        };
+        for _ in 0..150 {
+            let text: String = (0..next(16)).map(|_| pieces[next(pieces.len())]).collect();
+            let boundaries: Vec<usize> = (0..=text.len() + 2)
+                .filter(|offset| text.is_char_boundary((*offset).min(text.len())))
+                .collect();
+            for stride in [1_usize, 3, 8] {
+                let checkpoints = checkpoints_of(&text, stride);
+                for &target in &boundaries {
+                    let expected = CssSourcePosition::from_byte_offset_in(&text, target);
+                    assert_eq!(
+                        locate(&text, &checkpoints, None, target),
+                        expected,
+                        "{text:?} stride {stride} to {target}"
+                    );
+                    for &from in &boundaries {
+                        let cursor = CssSourcePosition::from_byte_offset_in(&text, from);
+                        assert_eq!(
+                            locate(&text, &checkpoints, Some(cursor), target),
+                            expected,
+                            "{text:?} stride {stride} from {from} to {target}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn source_span_rejects_reverse_order_and_allows_zero_width() {
         let start = position_after_tokenizing("a");
@@ -349,16 +465,60 @@ mod tests {
         assert_eq!(CssSourceSpan::new(end, start), None);
     }
 
+    /// "a", "é" (2 bytes, 1 UTF-16 unit), "😀" (4 bytes, 2 units) and "b" are the
+    /// bytes 0, 1..3, 3..7 and 7; a byte inside a character belongs to the
+    /// character, and a byte past the text to its end.
     #[test]
-    fn source_dependency_zero_column_saturates_to_zero() {
-        let mut input = ParserInput::new("");
-        let parser = Parser::new(&mut input);
-        let position = CssSourcePosition::from_cssparser(
-            parser.position(),
-            cssparser::SourceLocation { line: 0, column: 0 },
-        );
+    fn a_byte_inside_a_character_has_the_position_of_the_start_of_the_character() {
+        let snapshot = CssSourceSnapshot::new("a\u{e9}\u{1f600}b");
+        assert_position(snapshot.position_or_walk(1), 1, 0, 1);
+        assert_position(snapshot.position_or_walk(2), 1, 0, 1);
+        assert_position(snapshot.position_or_walk(3), 3, 0, 2);
+        for inside in [4, 5, 6] {
+            assert_position(snapshot.position_or_walk(inside), 3, 0, 2);
+        }
+        assert_position(snapshot.position_or_walk(7), 7, 0, 4);
+        assert_position(snapshot.position_or_walk(99), 8, 0, 5);
+    }
 
-        assert_position(position, 0, 0, 0);
+    #[test]
+    fn a_position_found_near_another_rounds_a_byte_inside_a_character_down() {
+        let text = "a\u{e9}\u{1f600}b";
+        let start = CssSourcePosition::from_byte_offset_in(text, 0);
+        let end = CssSourcePosition::from_byte_offset_in(text, text.len());
+        for (inside, boundary) in [(2, 1), (4, 3), (5, 3), (6, 3)] {
+            let expected = CssSourcePosition::from_byte_offset_in(text, boundary);
+            assert_eq!(
+                start.resolved_near(text, inside),
+                expected,
+                "forward to {inside}"
+            );
+            assert_eq!(
+                end.resolved_near(text, inside),
+                expected,
+                "backward to {inside}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_origin_covering_a_range_rounds_its_ends_to_characters_and_orders_them() {
+        let snapshot = CssSourceSnapshot::new("a\u{e9}b");
+        let span = |range| CssParsedOrigin::covering(&snapshot, range).span();
+        // The bytes 0, 1..3 and 3 are "a", "é" and "b".
+        let whole = span(1..3);
+        assert_position(whole.start(), 1, 0, 1);
+        assert_position(whole.end(), 3, 0, 2);
+        let inside = span(2..4);
+        assert_position(inside.start(), 1, 0, 1);
+        assert_position(inside.end(), 4, 0, 3);
+        let past = span(3..99);
+        assert_position(past.start(), 3, 0, 2);
+        assert_position(past.end(), 4, 0, 3);
+        let (late, early) = (3, 1);
+        let reversed = span(late..early);
+        assert_position(reversed.start(), 3, 0, 2);
+        assert_position(reversed.end(), 3, 0, 2);
     }
 }
 
@@ -380,13 +540,19 @@ struct SourceCheckpoints {
     values: Vec<CssSourcePosition>,
     position: CssSourcePosition,
     start: usize,
+    /// The bytes between two checkpoints, at least.
+    stride: usize,
 }
 impl SourceCheckpoints {
     fn new() -> Self {
+        Self::with_stride(64)
+    }
+    fn with_stride(stride: usize) -> Self {
         Self {
             values: Vec::new(),
             position: CssSourcePosition::from_byte_offset_in("", 0),
             start: 0,
+            stride,
         }
     }
     fn fill<E>(
@@ -410,7 +576,7 @@ impl SourceCheckpoints {
             // Advance over this one scalar (or indivisible CRLF), rather than
             // rescanning a whole checkpoint suffix after its metered walk.
             current = current.advanced_by(&source[offset..end]);
-            if end - self.start >= 64 {
+            if end - self.start >= self.stride {
                 self.position = current;
                 reserve(&mut self.values)?;
                 self.values.push(self.position);
@@ -421,10 +587,89 @@ impl SourceCheckpoints {
     }
 }
 
+/// The bytes between the checkpoints of a text that holds no snapshot: far
+/// enough apart that they cost a small fraction of the text, and near enough
+/// that a position found from one is found in bounded work.
+pub(crate) const COARSE_CHECKPOINT_STRIDE: usize = 4096;
+
+/// The checkpoints of `text`: its position at the start and after about every
+/// `stride` bytes, as the checkpoints of a source snapshot.
+pub(crate) fn checkpoints_of(text: &str, stride: usize) -> Box<[CssSourcePosition]> {
+    let mut checkpoints = SourceCheckpoints::with_stride(stride);
+    // The start and at most one checkpoint for each stride of the text.
+    checkpoints
+        .values
+        .reserve_exact(text.len() / stride.max(1) + 1);
+    let Ok(()) = checkpoints.fill(
+        text,
+        || Ok::<(), std::convert::Infallible>(()),
+        |values| {
+            values.reserve(1);
+            Ok(())
+        },
+    );
+    checkpoints.values.into_boxed_slice()
+}
+
+/// The position of the byte `byte_offset` of `text`, found from the last of its
+/// `checkpoints` at or before it, or `None` when the byte is not a character
+/// boundary of `text`.
+pub(crate) fn position_from_checkpoints(
+    text: &str,
+    checkpoints: &[CssSourcePosition],
+    byte_offset: usize,
+) -> Option<CssSourcePosition> {
+    if !text.is_char_boundary(byte_offset) {
+        return None;
+    }
+    let index =
+        checkpoints.partition_point(|position| position.byte_offset().value() <= byte_offset);
+    let checkpoint = checkpoints.get(index.checked_sub(1)?)?;
+    text.get(checkpoint.byte_offset().value()..byte_offset)
+        .map(|suffix| checkpoint.advanced_by(suffix))
+}
+
+/// The position of the byte `byte_offset` of `text`, or of its end when the byte
+/// lies past it, found from the nearer of the last of `checkpoints` at or before
+/// it and `cursor`, a position found before in the same text: positions asked
+/// for in the order of the text, or near one another, cost the bytes between
+/// them, and any position at most the stride of the checkpoints.
+pub(crate) fn locate(
+    text: &str,
+    checkpoints: &[CssSourcePosition],
+    cursor: Option<CssSourcePosition>,
+    byte_offset: usize,
+) -> CssSourcePosition {
+    let target = byte_offset.min(text.len());
+    let Some(checkpoint) = text
+        .is_char_boundary(target)
+        .then(|| {
+            checkpoints
+                .partition_point(|position| position.byte_offset().value() <= target)
+                .checked_sub(1)
+                .and_then(|index| checkpoints.get(index))
+        })
+        .flatten()
+    else {
+        return CssSourcePosition::from_byte_offset_in(text, byte_offset);
+    };
+    let from_checkpoint = target - checkpoint.byte_offset().value();
+    if let Some(cursor) = cursor
+        && cursor.byte_offset().value().abs_diff(target) <= from_checkpoint
+    {
+        return cursor.resolved_near(text, target);
+    }
+    text.get(checkpoint.byte_offset().value()..target)
+        .map_or_else(
+            || CssSourcePosition::from_byte_offset_in(text, byte_offset),
+            |suffix| checkpoint.advanced_by(suffix),
+        )
+}
+
 struct SecondarySourceFormation {
     text: String,
     checkpoints: SourceCheckpoints,
-    input: crate::tokenization::bounded::InputCursor,
+    input: surgeist_css_parser::input::InputCursor,
     scalars: Vec<char>,
 }
 
@@ -488,8 +733,8 @@ impl CssSourceSnapshot {
         source: &str,
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<Self, ()> {
-        use crate::tokenization::bounded::{InputCursor, InputKind, Request};
         use crate::values::color_adjust::utf16_value::Failure;
+        use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest};
         let baseline = control.live().bytes();
         let result = (|| {
             control.step()?;
@@ -504,12 +749,14 @@ impl CssSourceSnapshot {
             loop {
                 control.step()?;
                 match formation.input.request() {
-                    Request::Read { index } => formation
+                    InputRequest::Read { index } => formation
                         .input
                         .read(u16::from(source.as_bytes()[index]))
                         .expect("actual decoded UTF8 input"),
-                    Request::HeldUnit => formation.input.process_held().expect("actual held input"),
-                    Request::Emit(scalar) => {
+                    InputRequest::HeldUnit => {
+                        formation.input.process_held().expect("actual held input")
+                    }
+                    InputRequest::Emit(scalar) => {
                         let Some(bytes) = output_bytes.checked_add(scalar.value.len_utf8()) else {
                             return control.fail(Failure::CapacityOverflow);
                         };
@@ -521,7 +768,7 @@ impl CssSourceSnapshot {
                             .emitted()
                             .expect("actual admitted scalar storage");
                     }
-                    Request::End => {
+                    InputRequest::End => {
                         if formation.input.end().expect("actual UTF8 EOF") {
                             break;
                         }
@@ -599,18 +846,18 @@ impl CssSourceSnapshot {
         result
     }
 
+    /// The position of the byte `byte_offset`, or the end of the text when it
+    /// lies past it, or the start of the character it lies inside. The
+    /// checkpoints of the snapshot bound the walk.
+    pub(crate) fn position_or_walk(&self, byte_offset: usize) -> CssSourcePosition {
+        let text = self.as_str();
+        let target = floor_boundary(text, byte_offset);
+        self.position_at(target)
+            .unwrap_or_else(|| CssSourcePosition::from_byte_offset_in(text, target))
+    }
+
     pub(crate) fn position_at(&self, byte_offset: usize) -> Option<CssSourcePosition> {
-        if !self.as_str().is_char_boundary(byte_offset) {
-            return None;
-        }
-        let index = self
-            .0
-            .checkpoints
-            .partition_point(|position| position.byte_offset().value() <= byte_offset);
-        let checkpoint = self.0.checkpoints[index - 1];
-        self.as_str()
-            .get(checkpoint.byte_offset().value()..byte_offset)
-            .map(|suffix| checkpoint.advanced_by(suffix))
+        position_from_checkpoints(self.as_str(), &self.0.checkpoints, byte_offset)
     }
 
     /// Returns the complete UTF8 parser input: original for UTF8 ingress,
@@ -642,12 +889,7 @@ impl CssSourceSnapshot {
                     .checked_mul(std::mem::size_of::<CssSourcePosition>())?,
             )?;
         if let Some(input) = &self.0.utf16 {
-            bytes = bytes.checked_add(
-                input
-                    .map
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<(usize, usize)>())?,
-            )?;
+            bytes = bytes.checked_add(input.map.capacity_bytes())?;
             if include_original {
                 bytes = bytes
                     .checked_add(std::mem::size_of::<Vec<u16>>())?
@@ -669,40 +911,25 @@ impl CssSourceSnapshot {
     }
 
     pub(crate) fn preprocessed_scalar_count(&self) -> Option<usize> {
-        self.0.utf16.as_ref().map(|value| value.map.len())
+        self.0.utf16.as_ref().map(|value| value.map.scalar_count())
     }
 
     /// Maps complete normalized scalar boundaries to original half-open units.
     /// Interior UTF8 byte offsets and out-of-range intervals are rejected.
     #[must_use]
     pub fn original_utf16_range(&self, range: Range<usize>) -> Option<Range<usize>> {
-        let input = self.0.utf16.as_ref()?;
-        if range.start > range.end {
-            return None;
-        }
-        let boundary = |byte| {
-            if byte == self.as_str().len() {
-                return Some(input.original.len());
-            }
-            input
-                .map
-                .binary_search_by_key(&byte, |entry| entry.0)
-                .ok()
-                .map(|index| input.map[index].1)
-        };
-        Some(boundary(range.start)?..boundary(range.end)?)
+        self.0.utf16.as_ref()?.map.original_utf16(range)
     }
 
     pub(crate) fn attach_utf16(
         mut self,
         input: crate::source::utf16_input::Utf16Source,
     ) -> Option<Self> {
-        let extra = input.original.capacity().checked_mul(2)?.checked_add(
-            input
-                .map
-                .capacity()
-                .checked_mul(std::mem::size_of::<(usize, usize)>())?,
-        )?;
+        let extra = input
+            .original
+            .capacity()
+            .checked_mul(2)?
+            .checked_add(input.map.capacity_bytes())?;
         let data = Arc::get_mut(&mut self.0)?;
         data.storage = data.storage.checked_add(CssSourceStorageUsage(extra))?;
         data.utf16 = Some(input);
@@ -869,6 +1096,19 @@ impl CssParsedOrigin {
         })
     }
 
+    /// The origin of the bytes `range` of `source`, for a range the parser
+    /// produced: each end that lies inside a character, or past the text, is
+    /// the nearest position of `source` at or before it, and an end before the
+    /// start is the start.
+    pub(crate) fn covering(source: &CssSourceSnapshot, range: Range<usize>) -> Self {
+        let start = source.position_or_walk(range.start);
+        let end = source.position_or_walk(range.end).max(start);
+        Self {
+            source: source.clone(),
+            span: CssSourceSpan { start, end },
+        }
+    }
+
     /// Returns the source snapshot that owns this span.
     #[must_use]
     pub const fn source(&self) -> &CssSourceSnapshot {
@@ -900,7 +1140,7 @@ mod utf16_admission_tests {
             .unwrap();
         let source = report.syntax().parse_source().unwrap().source();
         let raw = source.0.utf16.as_ref().unwrap();
-        let scratch = std::mem::size_of::<crate::tokenization::bounded::InputCursor>()
+        let scratch = std::mem::size_of::<surgeist_css_parser::input::InputCursor>()
             + std::mem::size_of::<CssSourcePosition>();
         let exact = CssUtf16InputLimits {
             max_input_units: original.len(),
@@ -913,7 +1153,7 @@ mod utf16_admission_tests {
             max_work: calls - 1,
         };
         assert_eq!(source.as_str().len(), exact.max_output_bytes);
-        assert_eq!(raw.map.len(), exact.max_map_entries);
+        assert_eq!(raw.map.scalar_count(), exact.max_map_entries);
         assert_eq!(source.0.checkpoints.len(), exact.max_checkpoints);
         crate::CssParser::default()
             .parse_sheet_utf16(original.clone(), exact, || Ok::<_, ()>(()))

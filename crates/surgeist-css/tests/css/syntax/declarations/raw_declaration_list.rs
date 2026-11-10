@@ -309,16 +309,8 @@ fn ordinary_grammar_drops_invalid_values_annotations_and_residual_tokens() {
     for (unit, code, responsible) in [
         ("width: red", CssErrorCode::InvalidPropertyValue, 7),
         ("mystery: 1", CssErrorCode::UnknownProperty, 0),
-        (
-            "width: 2px !oops",
-            CssErrorCode::InvalidDeclarationAnnotation,
-            11,
-        ),
-        (
-            "--x: a!urgent",
-            CssErrorCode::InvalidDeclarationAnnotation,
-            6,
-        ),
+        // §5.5.6 step 6: `!oops` ends no value with `!important`.
+        ("width: 2px !oops", CssErrorCode::InvalidPropertyValue, 11),
         ("broken", CssErrorCode::UnexpectedEnd, 6),
     ] {
         let source = format!("{unit}; height: 2px!important;");

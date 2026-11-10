@@ -149,8 +149,11 @@ fn number_start_lookahead_preserves_flags_and_false_branch_code_points() {
         ".a",
         &[(Expected::Delim('.'), 0..1), (Expected::Ident("a"), 1..2)],
     );
-    // Non-ASCII digits are identifier code points, not CSS's ASCII digits.
-    assert_sequence("²", &[(Expected::Ident("²"), 0..2)]);
+    // Non-ASCII digits are not CSS's ASCII digits. U+0660 is a non-ASCII ident
+    // code point (Syntax 3 §4.2), so it makes an ident; U+00B2 is not listed,
+    // so it is a delim.
+    assert_sequence("\u{660}", &[(Expected::Ident("\u{660}"), 0..2)]);
+    assert_sequence("²", &[(Expected::Delim('²'), 0..2)]);
     for delimiter in ['+', '-', '.'] {
         let source = delimiter.to_string();
         assert_sequence(&source, &[(Expected::Delim(delimiter), 0..1)]);

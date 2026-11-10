@@ -4,7 +4,7 @@ use super::{conditional_chains, recovery};
 use crate::declaration::CssDeclaration;
 use crate::normalize::{CssNormalizedItem, CssRuleContextKindRef};
 use crate::parser::reconstruction::{BoundedParseContext, parse_sheet_bounded};
-use crate::parser::recovery::StyleContextCaptures;
+use crate::parser::recovery::SharedNamespaces;
 use crate::rule::{CssNamespacePrefix, CssRule, CssSheet};
 use crate::selector::{CssNamespaceConstraint, CssSelector, CssStyleSelector};
 use crate::source::{CssSourcePosition, CssSourceSnapshot};
@@ -51,12 +51,11 @@ fn bounded(source: &str) -> CssParseReport<CssSheet> {
     let report = parse_sheet_bounded(
         source,
         &snapshot,
-        0,
-        BoundedParseContext::Rules { top_level: true },
-        StyleContextCaptures::default(),
+        BoundedParseContext::Sheet,
+        SharedNamespaces::default(),
         CssParserContext::default(),
     );
-    recovery::finish_report(source, conditional_chains::sheet(source, report))
+    recovery::finish_report(source, conditional_chains::sheet(&snapshot, report))
 }
 
 fn on_two_mib(run: impl FnOnce() + Send + 'static) {

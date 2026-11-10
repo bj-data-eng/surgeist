@@ -13,7 +13,7 @@
 //! Media construction and serialization, whose depth is a model walk rather
 //! than source nesting, share the same thread policy through [`media`].
 
-use super::recovery;
+use super::structure;
 use crate::CssParseReport;
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{CssComponentValue, CssComponentValueError, CssValueOrigin};
@@ -38,12 +38,20 @@ pub(super) enum StackProfile {
     Fragment,
 }
 
+/// The deepest structural nesting parsed directly on the caller's stack, for
+/// the tests that probe it.
+#[cfg(test)]
+pub(super) const STRUCTURAL_DIRECT_DEPTH: u32 = StackProfile::Structural.direct_depth();
+
 impl StackProfile {
     /// The deepest nesting parsed directly on the caller's stack. This is a
-    /// stack admission threshold, not a lower nesting contract.
+    /// stack admission threshold, not a lower nesting contract. A nested rule
+    /// takes about 30 KiB of an unoptimized build's stack, so an ordinary 2 MiB
+    /// thread holds about 64 levels of rules; the structural depth trusts half
+    /// of that.
     const fn direct_depth(self) -> u32 {
         match self {
-            Self::Structural => 128,
+            Self::Structural => 32,
             Self::Fragment => 63,
         }
     }
@@ -73,6 +81,13 @@ fn execute<T: Send>(
         let builder = std::thread::Builder::new()
             .name(profile.thread_name().to_owned())
             .stack_size(PARSER_STACK_BYTES);
+        #[cfg(test)]
+        let counters = work::current();
+        let parse = move || {
+            #[cfg(test)]
+            work::install(counters);
+            parse()
+        };
         match spawn_parser(scope, builder, parse) {
             Ok(thread) => match thread.join() {
                 Ok(value) => Ok(value),
@@ -93,7 +108,7 @@ pub(super) fn report<T: Send>(
     refused: impl FnOnce() -> T,
     parse: impl FnOnce() -> CssParseReport<T> + Send,
 ) -> CssParseReport<T> {
-    match execute(profile, recovery::maximum_nested_depth(source), parse) {
+    match execute(profile, structure::nesting_depth(source), parse) {
         Ok(report) => report,
         Err(unavailable) => CssParseReport::new(refused(), vec![unavailable.diagnostic(source)]),
     }
@@ -155,7 +170,7 @@ pub(crate) fn deep_component_origin(components: &[CssComponentValue]) -> CssValu
 impl ParserThreadUnavailable {
     fn diagnostic(&self, source: &str) -> CssRecoveryDiagnostic {
         let opening =
-            recovery::first_opening_at_depth(source, self.direct_depth).unwrap_or(source.len());
+            structure::first_opening_at_depth(source, self.direct_depth).unwrap_or(source.len());
         self.diagnostic_at(source, opening)
     }
 
@@ -164,8 +179,7 @@ impl ParserThreadUnavailable {
         let error = crate::diagnostic::error::from_parse_error(
             source,
             crate::diagnostic::error::parser_unavailable(
-                source,
-                opening,
+                CssSourcePosition::from_byte_offset_in(source, opening),
                 self.direct_depth,
                 REFUSED_PRODUCTION,
             ),
@@ -204,6 +218,60 @@ impl ParserThreadUnavailable {
             .map_or(CssValueOrigin::Programmatic, |component| {
                 component.origin().clone()
             })
+    }
+}
+
+/// Counters of the work a test bounds, which the parser thread a test starts adds
+/// to as the test's own thread does.
+#[cfg(test)]
+pub(crate) mod work {
+    use std::cell::RefCell;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Default)]
+    pub(crate) struct Counters {
+        built: AtomicUsize,
+        scanned: AtomicUsize,
+    }
+
+    thread_local! {
+        static CURRENT: RefCell<Option<Arc<Counters>>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn current() -> Option<Arc<Counters>> {
+        CURRENT.with(|current| current.borrow().clone())
+    }
+
+    pub(super) fn install(counters: Option<Arc<Counters>>) {
+        CURRENT.with(|current| *current.borrow_mut() = counters);
+    }
+
+    /// Runs `work`, and returns the nodes built for source documents and the
+    /// nodes the structural queries read while it ran, on this thread and on the
+    /// parser threads it started.
+    pub(crate) fn measure<R>(work: impl FnOnce() -> R) -> (R, usize, usize) {
+        let counters = Arc::new(Counters::default());
+        install(Some(Arc::clone(&counters)));
+        let result = work();
+        install(None);
+        (
+            result,
+            counters.built.load(Ordering::Relaxed),
+            counters.scanned.load(Ordering::Relaxed),
+        )
+    }
+
+    pub(crate) fn add_built(nodes: usize) {
+        if let Some(counters) = current() {
+            counters.built.fetch_add(nodes, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn add_scanned(nodes: usize) {
+        if let Some(counters) = current() {
+            counters.scanned.fetch_add(nodes, Ordering::Relaxed);
+        }
     }
 }
 
@@ -247,7 +315,7 @@ mod tests {
     //! that thread cannot start, the parse is refused with a typed
     //! `ParserUnavailable` outcome at the first opening the caller's stack is
     //! not trusted with (#1277).
-    use super::with_parser_thread_unavailable;
+    use super::{STRUCTURAL_DIRECT_DEPTH, with_parser_thread_unavailable};
     use crate::component::values::CssComponentValueErrorKind;
     use crate::component::{CssSerializedOrigin, CssValueOrigin};
     use crate::declaration::CssImportance;
@@ -255,8 +323,6 @@ mod tests {
     use crate::property::{CssKnownProperty, CssPropertyNameRef};
     use crate::query::media::CssMediaQuery;
 
-    /// Structural sheet recursion runs directly to 128 levels.
-    const STRUCTURAL_DIRECT_DEPTH: u32 = 128;
     /// Fragment value/selector recursion runs directly below 64 levels.
     const FRAGMENT_DIRECT_DEPTH: u32 = 63;
 
@@ -297,9 +363,9 @@ mod tests {
         let report =
             with_parser_thread_unavailable(|| crate::CssParser::default().parse_sheet(&source));
         assert!(report.syntax().rules().is_empty());
-        // `.a{` repeats every three bytes; the brace with 128 enclosing blocks
-        // is the 129th, at 3 * 128 + 2.
-        assert_refusal(report.diagnostics(), &source, STRUCTURAL_DIRECT_DEPTH, 386);
+        // `.a{` repeats every three bytes; the brace with 32 enclosing blocks
+        // is the 33rd, at 3 * 32 + 2.
+        assert_refusal(report.diagnostics(), &source, STRUCTURAL_DIRECT_DEPTH, 98);
 
         let available = crate::CssParser::default().parse_sheet(&source);
         assert!(available.is_clean(), "{:?}", available.diagnostics());
@@ -376,7 +442,7 @@ mod tests {
         let error = crate::diagnostic::error::from_parse_error(
             &source,
             crate::diagnostic::error::invalid_component_value(
-                cssparser::SourceLocation { line: 0, column: 1 },
+                crate::source::CssSourcePosition::START,
                 component,
             ),
         );
@@ -496,7 +562,7 @@ mod tests {
     #[test]
     fn deep_cssom_media_query_is_refused_typed_instead_of_panicking() {
         let source = deep_not_condition();
-        assert!(crate::parser::recovery::maximum_nested_depth(&source) <= FRAGMENT_DIRECT_DEPTH);
+        assert!(crate::parser::structure::nesting_depth(&source) <= FRAGMENT_DIRECT_DEPTH);
         let report = with_parser_thread_unavailable(|| {
             crate::query::media::CssMediaQuery::parse_medium(&crate::CssParser::default(), &source)
         });

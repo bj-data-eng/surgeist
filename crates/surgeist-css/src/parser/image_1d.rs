@@ -1,15 +1,17 @@
-use super::property_input::{Parser, Site};
+use super::syntax_types::{Site, Stream};
 use crate::color::CssColor;
 use crate::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
-use crate::diagnostic::error::property::ParseError;
+use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::property::{Error, basic, unexpected_at};
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{CssCalculation, CssFlex, CssLengthPercentage, CssNumeric};
+use crate::parser::property_input::StreamExt;
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::image::{
     CssImage1D, CssImageConstructionError, CssStripe, CssStripeLengthPercentage,
     CssStripeThickness, CssStripes,
 };
-use cssparser::Token;
+use surgeist_css_parser::Token;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
     crate::diagnostic::CssFeatureId::new("ext.value.image-1d"),
@@ -30,23 +32,23 @@ pub(crate) fn checked_image(
 }
 fn checked<T: Send>(
     values: &CssComponentValues,
-    parse: impl for<'i, 't> FnOnce(
-        &mut Parser<'i, 't>,
+    parse: impl for<'i> FnOnce(
+        &mut Stream<'i>,
         &NumericInputContext<'_>,
-    ) -> Result<T, ParseError<'i, Error>>
+    ) -> Result<T, SyntaxError<'i, Error>>
     + Send,
 ) -> Result<T, CssImageConstructionError> {
     let refused = CssImageConstructionError::from;
     super::bounded_execution::components(values.items(), values.nesting_depth(), refused, || {
-        let document = crate::syntax_consumption::normalize(
-            crate::syntax_consumption::SyntaxInput::CheckedComponents(values.items()),
+        let document = crate::syntax_consumption::checked_document(
+            values.items(),
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
         .map_err(CssImageConstructionError::from)?;
-        let mut input = Parser::new(&document);
+        let mut input = document.root();
         input
-            .parse_entirely(|input| parse(input, &NumericInputContext::Checked))
+            .parse_complete(|input| parse(input, &NumericInputContext::Checked))
             .map_err(|error| {
                 let (kind, origin) = error.into_parts();
                 CssImageConstructionError::from(
@@ -55,38 +57,38 @@ fn checked<T: Send>(
             })
     })
 }
-pub(super) fn parse_image_1d<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_image_1d<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssImage1D, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let location = input.current_source_location();
+) -> Result<CssImage1D, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let start = input.mark();
+    let location = input.site();
     let original = input
         .collect_numeric_component(numeric)
-        .map_err(|error| numeric_error(numeric, &error, location, start.position()))?;
-    input.reset(&start);
-    match input.next().map_err(basic)? {
+        .map_err(|error| numeric_error(numeric, &error, location, start.site()))?;
+    input.restore(start);
+    match input.consume_after_whitespace().map_err(basic)? {
         Token::Function(name) if name.eq_ignore_ascii_case("stripes") => {}
-        token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => return Err(location.unexpected::<Error>(token)),
     }
-    let stripes = input.parse_nested_block(|input| {
-        input.parse_comma_separated(|input| {
+    let stripes = input.within_block(|input| {
+        input.comma_segments(|input| {
             let mut color = None;
             let mut color_component = None;
             let mut thickness = None;
-            while !input.is_exhausted() {
+            while !input.only_whitespace_remains() {
                 if color.is_none() {
-                    let state = input.state();
-                    match input.try_parse(|input| super::color::parse_color(input, numeric)) {
+                    let state = input.mark();
+                    match input.attempt(|input| super::color::parse_color(input, numeric)) {
                         Ok(value) => {
-                            let after = input.state();
-                            input.reset(&state);
+                            let after = input.mark();
+                            input.restore(state);
                             let component =
                                 input.collect_numeric_component(numeric).map_err(|error| {
-                                    numeric_error(numeric, &error, location, state.position())
+                                    numeric_error(numeric, &error, location, state.site())
                                 })?;
-                            input.reset(&after);
+                            input.restore(after);
                             color = Some(value);
                             color_component = Some(component);
                             continue;
@@ -105,10 +107,10 @@ pub(super) fn parse_image_1d<'i, 't>(
                     thickness = Some(parse_thickness(input, numeric)?);
                     continue;
                 }
-                return Err(unexpected_at(input.current_source_location()));
+                return Err(unexpected_at(input.site()));
             }
             let (Some(color), Some(color_component)) = (color, color_component) else {
-                return Err(unexpected_at(input.current_source_location()));
+                return Err(unexpected_at(input.site()));
             };
             Ok(CssStripe::from_parser(color, color_component, thickness))
         })
@@ -125,7 +127,7 @@ fn numeric_error<'i>(
     error: &crate::numeric::CssNumericConstructionError,
     location: Site<'i>,
     offset: Site<'i>,
-) -> ParseError<'i, Error> {
+) -> SyntaxError<'i, Error> {
     let location = numeric.property_error_location(error, location, offset);
     if let Some(component) = error.component_error()
         && crate::diagnostic::error::is_component_resource_error(component)
@@ -137,13 +139,13 @@ fn numeric_error<'i>(
     }
     unexpected_at(location)
 }
-fn parse_thickness<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_thickness<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssStripeThickness, ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let offset = input.position();
+) -> Result<CssStripeThickness, SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let location = input.site();
+    let offset = input.site();
     let component = input
         .collect_component()
         .map_err(crate::numeric::CssNumericConstructionError::component)

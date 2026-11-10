@@ -107,17 +107,14 @@ impl CssRecoveryDiagnostic {
     pub(crate) fn bind_source(&mut self, source: &crate::source::CssSourceSnapshot) {
         self.source = Some(source.clone());
     }
-    pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
+    pub(crate) fn resolve_original_coordinates(
+        &mut self,
+        source: &crate::source::CssSourceSnapshot,
+    ) {
         self.error.resolve_original_coordinates(source);
         self.span = CssSourceSpan::new(
-            crate::source::CssSourcePosition::from_byte_offset_in(
-                source,
-                self.span.start().byte_offset().value(),
-            ),
-            crate::source::CssSourcePosition::from_byte_offset_in(
-                source,
-                self.span.end().byte_offset().value(),
-            ),
+            source.position_or_walk(self.span.start().byte_offset().value()),
+            source.position_or_walk(self.span.end().byte_offset().value()),
         )
         .expect("same-length replay preserves ordered original byte boundaries");
     }

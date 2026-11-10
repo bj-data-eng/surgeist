@@ -2,7 +2,7 @@
   "schema_version": 1,
   "basis": "93ed337803f9014d99f5d420c51cadab1be8fc05",
   "scope": "All19 original declarationList cases. Raw declaration-list grammar expectations, distinct from current artificial stylesheet adapter.",
-  "method": "Read-only original corpus and immutable source inspection. No parser/Cargo/runtime/oracle execution. Expected-class registry not read or used as authority. Grammar derives from pinned standards; diagnostics independently predicted from immutable public parser source and locked cssparser rules.",
+  "method": "Read-only original corpus and immutable source inspection. No parser/Cargo/runtime/oracle execution. Expected-class registry not read or used as authority. Grammar derives from pinned standards; diagnostics independently predicted from immutable public parser source and the pinned CSS Syntax 3 (2026-10-01) algorithms (sections 5.5.2, 5.5.3 and 5.5.5).",
   "catalog_path": "crates/surgeist-css/specs/catalog.json",
   "catalog_sha256": "607e533df4d206b893497414cf4852cf707f484492a3053b1c56155f83e6f523",
   "normative_sources": [
@@ -81,7 +81,7 @@
     "src/parser/declaration_block.rs reconsume_as_rule, dropped_end; recovery_unit_start; block_item_diagnostic_from_start",
     "src/error.rs:1257 basic_error; resolve_source; property_name_error; unsupported_at_rule_feature",
     "src/report.rs CssParseReport ordering, is_clean, validation",
-    "locked cssparser0.37.0 rules_and_declarations.rs RuleBodyParser::next, parse_at_rule, parse_qualified_rule",
+    "CSS Syntax 3 (2026-10-01) section 5.5.5 (consume a block's contents), section 5.5.2 (consume an at-rule) and section 5.5.3 (consume a qualified rule)",
     "tests/support/csstree_adapters.rs current declarationList entries and wrap",
     "tests/support/csstree.rs observation_from_report, payload_relation_holds, EntryPoint::StyleAttribute"
   ],
@@ -1144,7 +1144,7 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
@@ -1161,10 +1161,10 @@
           "multiplicity": 1
         },
         {
-          "code": "unknown_property",
+          "code": "unexpected_token",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 26,
+          "byte_offset": 36,
           "span_start": 26,
           "span_end": 51,
           "multiplicity": 1

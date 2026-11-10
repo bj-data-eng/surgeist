@@ -17,8 +17,8 @@ pub(crate) enum EscapedKind {
 impl EscapedKind {
     fn write(self, value: &str, writer: &mut impl fmt::Write) -> fmt::Result {
         match self {
-            Self::Identifier => cssparser::serialize_identifier(value, writer),
-            Self::String => cssparser::serialize_string(value, writer),
+            Self::Identifier => surgeist_css_parser::serialize::identifier(value, writer),
+            Self::String => surgeist_css_parser::serialize::string(value, writer),
         }
     }
 }

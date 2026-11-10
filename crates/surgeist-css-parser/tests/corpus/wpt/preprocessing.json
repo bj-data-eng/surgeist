@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "utf16-preprocessing-reads-as-one-ident",
+  "cases": [
+    {
+      "id": "input-preprocessing-001",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 33,
+        "case": "testParsing(\"foo\\x00\", \"foo\\ufffd\");"
+      },
+      "input_js": "\"foo\\x00\"",
+      "input_units": [
+        102,
+        111,
+        111,
+        0
+      ],
+      "expected_js": "\"foo\\ufffd\"",
+      "text": "foo\ufffd",
+      "ident": "foo\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-002",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 34,
+        "case": "testParsing(\"f\\x00oo\", \"f\\ufffdoo\");"
+      },
+      "input_js": "\"f\\x00oo\"",
+      "input_units": [
+        102,
+        0,
+        111,
+        111
+      ],
+      "expected_js": "\"f\\ufffdoo\"",
+      "text": "f\ufffdoo",
+      "ident": "f\ufffdoo",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-003",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 35,
+        "case": "testParsing(\"\\x00foo\", \"\\ufffdfoo\");"
+      },
+      "input_js": "\"\\x00foo\"",
+      "input_units": [
+        0,
+        102,
+        111,
+        111
+      ],
+      "expected_js": "\"\\ufffdfoo\"",
+      "text": "\ufffdfoo",
+      "ident": "\ufffdfoo",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-004",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 36,
+        "case": "testParsing(\"\\x00\", \"\\ufffd\");"
+      },
+      "input_js": "\"\\x00\"",
+      "input_units": [
+        0
+      ],
+      "expected_js": "\"\\ufffd\"",
+      "text": "\ufffd",
+      "ident": "\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-005",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 37,
+        "case": "testParsing(\"\\x00\\x00\\x00\", \"\\ufffd\\ufffd\\ufffd\");"
+      },
+      "input_js": "\"\\x00\\x00\\x00\"",
+      "input_units": [
+        0,
+        0,
+        0
+      ],
+      "expected_js": "\"\\ufffd\\ufffd\\ufffd\"",
+      "text": "\ufffd\ufffd\ufffd",
+      "ident": "\ufffd\ufffd\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-006",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 40,
+        "case": "testParsing(\"foo\\ud800\", \"foo\\ufffd\");"
+      },
+      "input_js": "\"foo\\ud800\"",
+      "input_units": [
+        102,
+        111,
+        111,
+        55296
+      ],
+      "expected_js": "\"foo\\ufffd\"",
+      "text": "foo\ufffd",
+      "ident": "foo\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-007",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 41,
+        "case": "testParsing(\"f\\ud800oo\", \"f\\ufffdoo\");"
+      },
+      "input_js": "\"f\\ud800oo\"",
+      "input_units": [
+        102,
+        55296,
+        111,
+        111
+      ],
+      "expected_js": "\"f\\ufffdoo\"",
+      "text": "f\ufffdoo",
+      "ident": "f\ufffdoo",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-008",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 42,
+        "case": "testParsing(\"\\ud800foo\", \"\\ufffdfoo\");"
+      },
+      "input_js": "\"\\ud800foo\"",
+      "input_units": [
+        55296,
+        102,
+        111,
+        111
+      ],
+      "expected_js": "\"\\ufffdfoo\"",
+      "text": "\ufffdfoo",
+      "ident": "\ufffdfoo",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-009",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 43,
+        "case": "testParsing(\"\\ud800\", \"\\ufffd\");"
+      },
+      "input_js": "\"\\ud800\"",
+      "input_units": [
+        55296
+      ],
+      "expected_js": "\"\\ufffd\"",
+      "text": "\ufffd",
+      "ident": "\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "input-preprocessing-010",
+      "source": {
+        "path": "css/css-syntax/input-preprocessing.html",
+        "sha256": "8792806053c83b90517e2c4b64fec98ba8b6146e15f19e1fa1078694aace6aa0",
+        "line": 44,
+        "case": "testParsing(\"\\ud800\\ud800\\ud800\", \"\\ufffd\\ufffd\\ufffd\");"
+      },
+      "input_js": "\"\\ud800\\ud800\\ud800\"",
+      "input_units": [
+        55296,
+        55296,
+        55296
+      ],
+      "expected_js": "\"\\ufffd\\ufffd\\ufffd\"",
+      "text": "\ufffd\ufffd\ufffd",
+      "ident": "\ufffd\ufffd\ufffd",
+      "remainder": "The upstream test assigns the string to a rule's selectorText and reads it back, which is a CSSOM result. The Syntax 3 observable claimed here is that preprocessing the UTF-16 input gives the expected text and that the text is one ident token with the expected value."
+    },
+    {
+      "id": "non-ascii-invalid-0d800",
+      "source": {
+        "path": "css/css-syntax/non-ascii-codepoints.html",
+        "sha256": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+        "line": 76,
+        "case": "[0x3001, 0xd7ff],"
+      },
+      "derivation": "range-end-plus-one",
+      "input_units": [
+        102,
+        55296,
+        111,
+        111
+      ],
+      "text": "f\ufffdoo",
+      "ident": "f\ufffdoo",
+      "profile": "profile-expectations.json",
+      "remainder": "The upstream test sets animationName to \"f\" + U+D800 + \"oo\" and reads whether it changed, which is a CSSOM and property-validity result, and it expects not. The pinned edition governs: the surrogate becomes U+FFFD and the text is one ident token, as the profile file records."
+    }
+  ]
+}

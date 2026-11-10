@@ -4,16 +4,17 @@ use crate::CssParseReport;
 use crate::component::CssComponentValues;
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
-    CssValueOrigin,
+    CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssValueOrigin,
 };
 use crate::declaration::CssCustomPropertyName;
-use crate::diagnostic::CssError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::diagnostic::error::invalid_component_value;
-use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
+use crate::diagnostic::error::{invalid_syntax, with_at_rule_prelude_context};
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::parser::block_units::{location_at, offset_of};
 use crate::parser::recovery::RecoveryState;
-use crate::parser::{fragments, recovery, syntax_bridge};
+use crate::parser::syntax_types::{Document, Site, Stream};
+use crate::parser::{fragments, recovery, tree_build_diagnostics};
 use crate::query::supports::CssSupportsConstructionError;
 use crate::query::supports::named_supports::retained_component_recovery;
 use crate::query::supports::{
@@ -24,12 +25,10 @@ use crate::query::supports::{
 use crate::rule::CssSupportsConditionRule;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
-    self as syntax, CursorItem, GroupEnd, ListId, NodeId, SyntaxCursor, SyntaxDocument, SyntaxNode,
-    SyntaxRange, TokenKind,
+    self as syntax, CursorItem, DocumentExt, SyntaxCursor, SyntaxRange, TokenKind,
+    malformed_structure,
 };
-#[cfg(test)]
-use cssparser::Token;
-use cssparser::{ParseError, Parser, ParserState};
+use surgeist_css_parser::document::{BlockKind, Component, Fault, GroupEnd, ListId, NodeId};
 
 enum PartitionIssue {
     Grammar(CssValueOrigin, CssRecoveryAction),
@@ -55,13 +54,16 @@ pub(crate) struct NamedSupportsPrelude {
     pub(super) name: CssSupportsConditionName,
 }
 
-pub(super) fn parse_prelude<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_prelude<'i>(
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
-    let at = input.current_source_location();
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| invalid_component_value(at, error))?;
+) -> Result<NamedSupportsPrelude, GrammarFailure> {
+    let collected =
+        super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot());
+    let at = collected.start;
+    let values = collected
+        .values
+        .map_err(|(error, _)| invalid_component_value(at, error))?;
     let meaningful: Vec<_> = values
         .items()
         .iter()
@@ -87,29 +89,36 @@ pub(super) fn parse_prelude<'i, 't>(
     Ok(NamedSupportsPrelude { name })
 }
 
-pub(super) fn parse_rule<'i, 't>(
-    source: &'i str,
+pub(super) fn parse_rule<'i>(
+    source: &str,
     prelude: NamedSupportsPrelude,
-    start: &ParserState,
-    input: &mut Parser<'i, 't>,
+    start: Site<'i>,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsConditionRule, ParseError<'i, CssError>> {
-    let (body, opening, closing) = parse_body(source, input, diagnostics, recovery)?;
-    let document = recovery
-        .syntax_document(source)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
-    let mut at_cursor = document
-        .cursor_at_source(start.position().byte_index())
-        .expect("named at-keyword");
-    let CursorItem::Node(at_node) = at_cursor.consume() else {
-        unreachable!("named at-keyword node");
+) -> Result<CssSupportsConditionRule, GrammarFailure> {
+    let (body, opening, closing) = parse_body(source, contents, diagnostics, recovery)?;
+    let snapshot = recovery.source_snapshot();
+    let Some(at_node) = start.node() else {
+        return Err(invalid_component_value(
+            location_at(snapshot, offset_of(contents.site())),
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                CssValueOrigin::Programmatic,
+            ),
+        ));
     };
-    let at_keyword = promote(&document, &[at_node])
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?
-        .items()[0]
-        .origin()
-        .clone();
+    let at_keyword = promote(start.document(), &[at_node])
+        .and_then(|values| {
+            values
+                .items()
+                .first()
+                .map(|item| item.origin().clone())
+                .ok_or_else(malformed_structure)
+        })
+        .map_err(|error| {
+            invalid_component_value(location_at(snapshot, offset_of(contents.site())), error)
+        })?;
     Ok(CssSupportsConditionRule::parsed(
         prelude.name,
         body,
@@ -119,24 +128,22 @@ pub(super) fn parse_rule<'i, 't>(
     ))
 }
 
-pub(super) fn parse_body<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
+/// The body of the block `contents` holds, with the origins of its braces.
+pub(super) fn parse_body<'i>(
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, CssError>> {
-    let body_start = input.position().byte_index();
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), GrammarFailure> {
+    let body_start = offset_of(contents.start_site());
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
-    recovery.check_entered_curly_contents(source, input, "ext.rule.supports-condition")?;
-    let document = recovery
-        .syntax_document(source)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
-    let list = document
-        .list_at_source_start(body_start)
-        .expect("named body list");
-    while input.next_including_whitespace_and_comments().is_ok() {}
-    let end = input.position().byte_index();
+    recovery.check_entered_curly_contents(source, body_start, "ext.rule.supports-condition")?;
+    let document = contents.start_site().document();
+    let list = contents.start_site().list();
+    let end = offset_of(contents.end_site());
+    super::descriptor_stream::consume_remaining(contents);
+    let at_end = || location_at(recovery.source_snapshot(), end);
     let opening = parsed_delimiter(
         recovery.source_snapshot(),
         body_start.saturating_sub(1),
@@ -157,30 +164,33 @@ pub(super) fn parse_body<'i, 't>(
         CssValueOrigin::Programmatic
     };
     let mut issues = Vec::new();
-    let body = partition(&document, list, Some(closing.clone()), true, &mut issues)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    let body = partition(document, list, Some(closing.clone()), true, &mut issues)
+        .map_err(|error| invalid_component_value(at_end(), error))?;
     for issue in issues {
-        if let Some(diagnostic) = issue_diagnostic(source, issue) {
+        if let Some(diagnostic) = issue_diagnostic(
+            &crate::diagnostic::error::token_navigation::Scoped {
+                document,
+                text: recovery.source_snapshot().as_str(),
+            },
+            issue,
+        ) {
             diagnostics.push(diagnostic);
         }
     }
-    let mut nodes = document.lists[list].clone();
+    let mut nodes = document.list(list).to_vec();
     let mut implicit = Vec::new();
     while let Some(node) = nodes.pop() {
-        let value = &document.nodes[node];
-        if let Some(children) = value.children() {
-            nodes.extend(&document.lists[children]);
-            if matches!(value.end(), Some(GroupEnd::Implicit { .. }))
-                && let CssValueOrigin::Parsed(origin) = value.token().origin.as_ref()
+        if let Some(children) = document.children(node) {
+            nodes.extend(document.list(children));
+            if matches!(document.group_end(node), Some(GroupEnd::Eof { .. }))
+                && let CssValueOrigin::Parsed(origin) = &document.origin(node)
             {
                 implicit.push(origin.span().end().byte_offset().value().saturating_sub(1));
             }
-        } else if !matches!(value, SyntaxNode::Error { .. }) {
+        } else if document.component(node).fault().is_none() {
             implicit.extend(
-                promote(&document, &[node])
-                    .map_err(|error| {
-                        invalid_component_value(input.current_source_location(), error)
-                    })?
+                promote(document, &[node])
+                    .map_err(|error| invalid_component_value(at_end(), error))?
                     .implicit_opening_offsets(),
             );
         }
@@ -190,7 +200,7 @@ pub(super) fn parse_body<'i, 't>(
 }
 
 fn promote(
-    document: &SyntaxDocument<'_>,
+    document: &Document<'_>,
     nodes: &[NodeId],
 ) -> Result<CssComponentValues, CssComponentValueError> {
     crate::component::values::parse::promote_nodes(
@@ -210,18 +220,21 @@ fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> 
     }
 }
 
-fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDiagnostic> {
+fn issue_diagnostic(
+    tokens: &impl crate::diagnostic::error::token_navigation::TokenContext,
+    issue: PartitionIssue,
+) -> Option<CssRecoveryDiagnostic> {
     let origin = issue.origin();
     let position = crate::query::media::construction::parsed_position(origin)?;
-    let location = cssparser::SourceLocation {
-        line: position.line().value(),
-        column: position.column().value() + 1,
-    };
+    let location = position;
     let error = match &issue {
-        PartitionIssue::Grammar(_, _) => from_parse_error(source, invalid_syntax(location)),
-        PartitionIssue::Lexical(detail, _) => {
-            from_parse_error(source, invalid_component_value(location, detail.clone()))
+        PartitionIssue::Grammar(_, _) => {
+            crate::diagnostic::error::from_grammar_failure(tokens, invalid_syntax(location))
         }
+        PartitionIssue::Lexical(detail, _) => crate::diagnostic::error::from_grammar_failure(
+            tokens,
+            invalid_component_value(location, detail.clone()),
+        ),
     };
     let span = match origin {
         CssValueOrigin::Parsed(parsed) => parsed.span(),
@@ -236,8 +249,8 @@ pub(crate) fn construct_test_body(
     limits: CssComponentValueLimits,
 ) -> Result<CssSupportsTestBody, CssSupportsConstructionError> {
     values.validate_with_limits(limits)?;
-    let document = syntax::normalize(
-        syntax::SyntaxInput::CheckedComponents(values.items()),
+    let document = syntax::checked_document(
+        values.items(),
         syntax::SyntaxInputLimits {
             max_depth: limits.max_nesting_depth(),
             max_components: limits.max_components(),
@@ -248,7 +261,7 @@ pub(crate) fn construct_test_body(
         0,
     )?;
     let mut issues = Vec::new();
-    let body = partition(&document, document.root, None, false, &mut issues)?;
+    let body = partition(&document, document.root_list(), None, false, &mut issues)?;
     if let Some(issue) = issues.into_iter().next() {
         return Err(CssSupportsConstructionError::from(
             crate::query::supports::construction::SupportsConstructionKind::InvalidBodyGrammar {
@@ -270,7 +283,7 @@ fn flush_run(run: &mut Vec<CssSupportsTestDeclaration>, items: &mut Vec<CssSuppo
 }
 
 fn faults(
-    document: &SyntaxDocument<'_>,
+    document: &Document<'_>,
     nodes: &[NodeId],
     action: CssRecoveryAction,
     issues: &mut Vec<PartitionIssue>,
@@ -278,49 +291,30 @@ fn faults(
     let before = issues.len();
     let mut pending: Vec<_> = nodes.iter().rev().copied().collect();
     while let Some(id) = pending.pop() {
-        match &document.nodes[id] {
-            SyntaxNode::Error { token, cause } => {
-                let kind = match cause {
-                    syntax::SyntaxTokenFault::BadString => CssComponentValueErrorKind::BadString,
-                    syntax::SyntaxTokenFault::BadUrl => CssComponentValueErrorKind::BadUrl,
-                    syntax::SyntaxTokenFault::UnexpectedCloser => {
-                        CssComponentValueErrorKind::UnmatchedClosingDelimiter
-                    }
-                };
-                issues.push(PartitionIssue::Lexical(
-                    CssComponentValueError::new(kind, token.origin.clone().into_owned()),
-                    action,
-                ));
-            }
-            node => {
-                if let Some(children) = node.children() {
-                    pending.extend(document.lists[children].iter().rev().copied());
-                }
-            }
+        if let Some(fault) = document.component(id).fault() {
+            let kind = match fault {
+                Fault::BadString => CssComponentValueErrorKind::BadString,
+                Fault::BadUrl => CssComponentValueErrorKind::BadUrl,
+                Fault::UnexpectedCloser => CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+                // A parse error the tree preserves is an invalid token.
+                _ => CssComponentValueErrorKind::InvalidToken,
+            };
+            issues.push(PartitionIssue::Lexical(
+                CssComponentValueError::new(kind, document.origin(id)),
+                action,
+            ));
+        } else if let Some(children) = document.children(id) {
+            pending.extend(document.list(children).iter().rev().copied());
         }
     }
     issues.len() != before
 }
 
-fn closing_origin(document: &SyntaxDocument<'_>, node: NodeId) -> CssValueOrigin {
-    match document.nodes[node].end().expect("group end") {
-        GroupEnd::Explicit(token) => token.origin.clone().into_owned(),
-        GroupEnd::Implicit { opening, at } => match (opening.as_ref(), &at.source) {
-            (CssValueOrigin::Parsed(opening), Some(at)) => CssValueOrigin::ImplicitClosure {
-                opening: opening.clone(),
-                at: CssParsedOrigin::from_range(&at.snapshot, at.offset..at.offset)
-                    .expect("actual child EOF"),
-            },
-            _ => CssValueOrigin::Programmatic,
-        },
-    }
-}
-
-fn curly(document: &SyntaxDocument<'_>, node: NodeId) -> bool {
+fn curly(document: &Document<'_>, node: NodeId) -> bool {
     matches!(
-        document.nodes[node],
-        SyntaxNode::Block {
-            kind: CssBlockKind::CurlyBracket,
+        document.component(node),
+        Component::Block {
+            kind: BlockKind::Curly,
             ..
         }
     )
@@ -353,11 +347,7 @@ struct PartitionFrame<'a> {
     pending: Option<PendingChild>,
 }
 impl<'a> PartitionFrame<'a> {
-    fn new(
-        document: &'a SyntaxDocument<'a>,
-        list: ListId,
-        closing: Option<CssValueOrigin>,
-    ) -> Self {
+    fn new(document: &'a Document<'a>, list: ListId, closing: Option<CssValueOrigin>) -> Self {
         Self {
             cursor: document.cursor(list),
             closing,
@@ -370,7 +360,7 @@ impl<'a> PartitionFrame<'a> {
 }
 
 fn partition(
-    document: &SyntaxDocument<'_>,
+    document: &Document<'_>,
     list: ListId,
     closing: Option<CssValueOrigin>,
     recover: bool,
@@ -378,9 +368,11 @@ fn partition(
 ) -> Result<CssSupportsTestBody, CssComponentValueError> {
     let mut frames = vec![PartitionFrame::new(document, list, closing)];
     loop {
-        let frame = frames.last_mut().expect("partition frame");
+        let Some(frame) = frames.last_mut() else {
+            return Err(malformed_structure());
+        };
         while let CursorItem::Node(node) = frame.cursor.peek() {
-            if !document.nodes[node].is_trivia() {
+            if !document.is_trivia(node) {
                 break;
             }
             frame.local_recovery.extend(retained_component_recovery(
@@ -401,7 +393,10 @@ fn partition(
             let Some(parent) = frames.last_mut() else {
                 return Ok(completed);
             };
-            match parent.pending.take().expect("child continuation") {
+            let Some(pending) = parent.pending.take() else {
+                return Err(malformed_structure());
+            };
+            match pending {
                 PendingChild::At(pending) => {
                     if !pending.malformed {
                         parent
@@ -439,11 +434,11 @@ fn partition(
             }
             continue;
         };
-        if document.nodes[first].token().kind() == TokenKind::Semicolon {
+        if document.kind(first) == TokenKind::Semicolon {
             frame.cursor.consume();
             continue;
         }
-        if let TokenKind::AtKeyword(name) = document.nodes[first].token().kind() {
+        if let TokenKind::AtKeyword(name) = document.kind(first) {
             let name = name.to_owned();
             flush_run(&mut frame.run, &mut frame.items);
             let candidate = syntax::consume_at_rule(&mut frame.cursor);
@@ -464,10 +459,14 @@ fn partition(
             } else {
                 promote(document, &candidate.prelude)?
             };
-            let at_keyword = promote(document, &[candidate.name])?.items()[0].clone();
+            let at_keyword = promote(document, &[candidate.name])?
+                .items()
+                .first()
+                .cloned()
+                .ok_or_else(malformed_structure)?;
             if let Some(block) = candidate.block {
-                let opening = document.nodes[block].token().origin.clone().into_owned();
-                let closing = closing_origin(document, block);
+                let opening = document.origin(block);
+                let closing = document.closing_origin(block);
                 frame.pending = Some(PendingChild::At(Box::new(PendingAt {
                     name,
                     at_keyword,
@@ -478,14 +477,12 @@ fn partition(
                 })));
                 frames.push(PartitionFrame::new(
                     document,
-                    document.nodes[block].children().expect("body"),
+                    document.children(block).ok_or_else(malformed_structure)?,
                     Some(closing),
                 ));
             } else if !malformed {
                 let terminator = match candidate.termination {
-                    syntax::RuleTermination::Semicolon(node) => {
-                        document.nodes[node].token().origin.clone().into_owned()
-                    }
+                    syntax::RuleTermination::Semicolon(node) => document.origin(node),
                     _ => CssValueOrigin::Programmatic,
                 };
                 frame
@@ -504,16 +501,19 @@ fn partition(
         }
         let mut attempt = frame.cursor.clone();
         let range = syntax::consume_declaration_candidate(&mut attempt);
-        let nodes = &document.lists[range.list][range.start..range.end];
+        let nodes = document
+            .list(range.list)
+            .get(range.start..range.end)
+            .unwrap_or_default();
         let parsed = syntax::consume_declaration(&mut document.cursor_range(&range));
-        let custom_name = matches!(document.nodes[first].token().kind(), TokenKind::Ident(name) if name.starts_with("--"))
+        let custom_name = matches!(document.kind(first), TokenKind::Ident(name) if name.starts_with("--"))
             && parsed.is_ok();
-        let valid_custom_name = matches!(document.nodes[first].token().kind(), TokenKind::Ident(name) if CssCustomPropertyName::from_ident_token(name).is_some());
+        let valid_custom_name = matches!(document.kind(first), TokenKind::Ident(name) if CssCustomPropertyName::from_ident_token(name).is_some());
         let permitted_value = parsed.as_ref().is_ok_and(|declaration| {
             let meaningful: Vec<_> = declaration
                 .value
                 .iter()
-                .filter(|node| !document.nodes[**node].is_trivia())
+                .filter(|node| !document.is_trivia(**node))
                 .collect();
             valid_custom_name
                 || !meaningful.iter().any(|node| curly(document, **node))
@@ -530,7 +530,7 @@ fn partition(
                     .map(|issue| issue.origin().clone()),
             );
             let terminator = match attempt.peek() {
-                CursorItem::Node(node) => document.nodes[node].token().origin.clone().into_owned(),
+                CursorItem::Node(node) => document.origin(node),
                 _ => CssValueOrigin::Programmatic,
             };
             frame.cursor = attempt;
@@ -539,8 +539,8 @@ fn partition(
             }
             if !malformed {
                 let components = promote(document, nodes)?;
-                let TokenKind::Ident(name) = document.nodes[declaration.name].token().kind() else {
-                    unreachable!("declaration name");
+                let TokenKind::Ident(name) = document.kind(declaration.name) else {
+                    return Err(malformed_structure());
                 };
                 frame.run.push(CssSupportsTestDeclaration {
                     components: components.items().to_vec(),
@@ -591,16 +591,12 @@ fn partition(
             } else {
                 promote(document, &candidate.prelude)?
             };
-            let opening = document.nodes[candidate.block]
-                .token()
-                .origin
-                .clone()
-                .into_owned();
-            let closing = closing_origin(document, candidate.block);
+            let opening = document.origin(candidate.block);
+            let closing = document.closing_origin(candidate.block);
             frame.cursor = document.cursor_range(&SyntaxRange {
                 list: range.list,
                 start: candidate.range.end,
-                end: document.lists[range.list].len(),
+                end: document.list(range.list).len(),
             });
             frame.pending = Some(PendingChild::Qualified(Box::new(PendingQualified {
                 prelude,
@@ -610,7 +606,9 @@ fn partition(
             })));
             frames.push(PartitionFrame::new(
                 document,
-                document.nodes[candidate.block].children().expect("body"),
+                document
+                    .children(candidate.block)
+                    .ok_or_else(malformed_structure)?,
                 Some(closing),
             ));
             continue;
@@ -618,7 +616,7 @@ fn partition(
         let issue_start = issues.len();
         if !faults(document, nodes, CssRecoveryAction::DropDeclaration, issues) {
             issues.push(PartitionIssue::Grammar(
-                document.nodes[first].token().origin.clone().into_owned(),
+                document.origin(first),
                 CssRecoveryAction::DropDeclaration,
             ));
         }
@@ -651,26 +649,33 @@ pub(crate) fn parse_supports_test_contents_with_limits(
         let document = match syntax::source_document_with_limits(source, limits) {
             Ok(document) => document,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let mut issues = Vec::new();
-        let body = match partition(&document, document.root, None, true, &mut issues) {
+        let body = match partition(&document, document.root_list(), None, true, &mut issues) {
             Ok(body) => body,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let mut diagnostics: Vec<_> = issues
             .into_iter()
-            .filter_map(|issue| issue_diagnostic(source, issue))
+            .filter_map(|issue| issue_diagnostic(&document, issue))
             .collect();
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin
-                && let Some(diagnostic) = CssRecoveryDiagnostic::new(
-                    crate::diagnostic::error::implicit_eof(source),
+                && let Some(span) =
                     crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
-                        .expect("actual implicit source extent"),
+                && let Some(diagnostic) = CssRecoveryDiagnostic::new(
+                    crate::diagnostic::error::implicit_eof(at.span().end()),
+                    span,
                     CssRecoveryAction::RetainWithImplicitClosure,
                 )
             {
@@ -702,26 +707,27 @@ pub(crate) fn parse_supports_test_child_with_limits(
         let origin = extra
             .map(CssSupportsTestChildRef::origin)
             .cloned()
-            .unwrap_or_else(|| {
-                CssValueOrigin::Parsed(
-                    CssParsedOrigin::from_range(&snapshot, 0..0).expect("original empty position"),
-                )
-            });
+            .unwrap_or_else(|| CssValueOrigin::Parsed(CssParsedOrigin::covering(&snapshot, 0..0)));
         let kind = if first.is_none() {
             CssComponentValueErrorKind::EmptyInput
         } else {
             CssComponentValueErrorKind::TrailingInput
         };
-        diagnostics.push(syntax_bridge::arena_error(
+        diagnostics.push(tree_build_diagnostics::tree_build_failure(
             source,
             CssComponentValueError::new(kind, origin),
         ));
         return CssParseReport::new(None, diagnostics);
     }
-    let child = match first.expect("one child") {
-        CssSupportsTestChildRef::Declaration(v) => CssSupportsTestChild::Declaration(v.clone()),
-        CssSupportsTestChildRef::QualifiedRule(v) => CssSupportsTestChild::QualifiedRule(v.clone()),
-        CssSupportsTestChildRef::AtRule(v) => CssSupportsTestChild::AtRule(v.clone()),
+    let child = match first {
+        Some(CssSupportsTestChildRef::Declaration(v)) => {
+            CssSupportsTestChild::Declaration(v.clone())
+        }
+        Some(CssSupportsTestChildRef::QualifiedRule(v)) => {
+            CssSupportsTestChild::QualifiedRule(v.clone())
+        }
+        Some(CssSupportsTestChildRef::AtRule(v)) => CssSupportsTestChild::AtRule(v.clone()),
+        None => return CssParseReport::new(None, diagnostics),
     };
     CssParseReport::new(Some(child), diagnostics)
 }
@@ -732,20 +738,10 @@ pub(crate) mod candidate_membership_independent_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::borrow::Cow;
 
     #[test]
     fn ordered_fault_membership_does_not_require_monotonic_or_present_source_offsets() {
-        fn checked(component: &CssComponentValue) -> syntax::SyntaxToken<'_> {
-            syntax::SyntaxToken {
-                payload: syntax::TokenPayload::Checked {
-                    component,
-                    lexeme: syntax::CheckedLexeme::Leaf,
-                },
-                spelling: Some(Cow::Borrowed(component.structural_lexeme(false).unwrap().0)),
-                origin: Cow::Borrowed(component.origin()),
-            }
-        }
+        use syntax::Supplied::{Checked, Fault};
         let before = crate::component::values::parse_component_values(
             "                                                  before:yes;",
         )
@@ -756,24 +752,15 @@ mod tests {
             .items()
             .iter()
             .filter(|value| !crate::query::supports::construction::trivia(value))
-            .map(checked)
+            .map(Checked)
             .collect();
-        tokens.extend(bad.items()[..2].iter().map(checked));
-        tokens.push(syntax::SyntaxToken {
-            payload: syntax::TokenPayload::Native(Token::BadUrl("a b".into())),
-            spelling: Some(Cow::Borrowed("url(a b)")),
-            origin: Cow::Owned(CssValueOrigin::Programmatic),
-        });
-        tokens.push(checked(&bad.items()[2]));
-        tokens.extend(after.items().iter().map(checked));
-        let document = syntax::normalize(
-            syntax::SyntaxInput::Tokens(&tokens),
-            syntax::SyntaxInputLimits::default(),
-            0,
-        )
-        .unwrap();
+        tokens.extend(bad.items()[..2].iter().map(Checked));
+        tokens.push(Fault(surgeist_css_parser::Token::BadUrl));
+        tokens.push(Checked(&bad.items()[2]));
+        tokens.extend(after.items().iter().map(Checked));
+        let document = syntax::supplied_document(&tokens, None);
         let mut issues = Vec::new();
-        let body = partition(&document, document.root, None, true, &mut issues).unwrap();
+        let body = partition(&document, document.root_list(), None, true, &mut issues).unwrap();
         let [CssSupportsTestItem::Declarations(run)] = body.items() else {
             panic!("one retained run");
         };

@@ -1,4 +1,4 @@
-use super::property_input::{Parser, Site};
+use super::syntax_types::{Site, Stream};
 use crate::component::CssComponentValueRef as Component;
 use crate::component::CssValueTokenRef as ValueToken;
 use crate::component::values::CssComponentValueErrorKind;
@@ -6,10 +6,11 @@ use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValues, CssNumericTokenKind,
     CssValueOrigin,
 };
-use crate::diagnostic::error::property::ParseError;
 use crate::numeric::expression::NumericInputContext;
+use crate::parser::property_input::{SiteExt, StreamExt};
+use crate::parser::syntax_types::SyntaxError;
 use crate::values::color_adjust::utf16_value::Control;
-use cssparser::{BasicParseErrorKind, Token};
+use surgeist_css_parser::Token;
 
 use crate::declaration::{
     CssAuthoredDeclarationValue, CssCustomPropertyDeclaredValue, CssCustomPropertyName,
@@ -88,18 +89,18 @@ impl Summary {
     }
 }
 
-pub(crate) fn parse_custom_property_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_custom_property_value<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssCustomPropertyDeclaredValue, ParseError<'i, Error>> {
-    let state = input.state();
-    if let Ok(ident) = input.expect_ident_cloned()
-        && let Some(keyword) = parse_global_keyword(&ident)
-        && input.is_exhausted()
+) -> Result<CssCustomPropertyDeclaredValue, SyntaxError<'i, Error>> {
+    let state = input.mark();
+    if let Ok(ident) = input.consume_ident()
+        && let Some(keyword) = parse_global_keyword(ident)
+        && input.only_whitespace_remains()
     {
         return Ok(CssCustomPropertyDeclaredValue::Global(keyword));
     }
-    input.reset(&state);
+    input.restore(state);
     let (authored, _) =
         collect_authored_declaration_value(input, numeric, SubstitutionContext::CustomProperty)?;
     Ok(CssCustomPropertyDeclaredValue::Value(
@@ -107,60 +108,50 @@ pub(crate) fn parse_custom_property_value<'i, 't>(
     ))
 }
 
-pub(crate) fn collect_authored_declaration_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn collect_authored_declaration_value<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
     context: SubstitutionContext,
-) -> Result<(CssAuthoredDeclarationValue, bool), ParseError<'i, Error>> {
-    input.skip_whitespace();
-    let start = input.position();
+) -> Result<(CssAuthoredDeclarationValue, bool), SyntaxError<'i, Error>> {
+    input.discard_whitespace();
+    let start = input.site();
     let mut end = start;
     let mut summary = Summary::default();
     let mut invalid_var_error = None;
     loop {
-        input.skip_whitespace();
-        let state = input.state();
-        let offset = input.position();
-        let location = input.current_source_location();
-        let group = if input.control().is_some() {
-            match input.next_kind(false) {
-                Ok(
-                    crate::syntax_consumption::TokenKind::Function(_)
-                    | crate::syntax_consumption::TokenKind::Opening(_),
-                ) => true,
-                Ok(_) => false,
-                Err(error) => match error.kind {
-                    BasicParseErrorKind::EndOfInput => break,
-                    _ => return Err(basic(error)),
-                },
-            }
-        } else {
-            let token = match input.next() {
-                Ok(token) => token.clone(),
-                Err(error) => match error.kind {
-                    BasicParseErrorKind::EndOfInput => break,
-                    _ => return Err(basic(error)),
-                },
+        input.discard_whitespace();
+        let state = input.mark();
+        let offset = input.site();
+        let location = input.site();
+        let group = {
+            let token = match input.consume_after_whitespace() {
+                Ok(token) => token,
+                Err(error) if error.is_end_of_stream() => break,
+                Err(error) => return Err(basic(error)),
             };
-            if token.is_parse_error() {
-                return Err(location.new_unexpected_token_error(token));
+            if matches!(
+                token,
+                Token::BadUrl
+                    | Token::BadString
+                    | Token::CloseParen
+                    | Token::CloseSquare
+                    | Token::CloseCurly
+            ) {
+                return Err(location.unexpected(token));
             }
             matches!(
                 token,
-                Token::Function(_)
-                    | Token::ParenthesisBlock
-                    | Token::SquareBracketBlock
-                    | Token::CurlyBracketBlock
+                Token::Function(_) | Token::OpenParen | Token::OpenSquare | Token::OpenCurly
             )
         };
         if group {
-            input.reset(&state);
+            input.restore(state);
             let collected = input.collect_component();
             if input
                 .control()
                 .is_some_and(|control| control.failure().is_some())
             {
-                return Err(location.new_error(BasicParseErrorKind::EndOfInput));
+                return Err(location.end_of_stream());
             }
             let component = collected
                 .map_err(crate::numeric::CssNumericConstructionError::component)
@@ -218,7 +209,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
             }
             summary.merge(local, input.control());
         }
-        end = input.position();
+        end = input.site();
     }
     let qualifies = summary.var.qualifies() || summary.env.qualifies() || summary.attr.qualifies();
     if summary.var.invalid
@@ -229,14 +220,12 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
             release(input.control(), issue.path);
         }
         return Err(match reason {
-            VarMismatch::MissingName => location.new_error(BasicParseErrorKind::EndOfInput),
+            VarMismatch::MissingName => location.end_of_stream(),
             VarMismatch::InvalidName(_) => invalid_syntax(location),
-            VarMismatch::Unexpected(_) if input.control().is_some() => {
-                location.new_error(BasicParseErrorKind::EndOfInput)
-            }
+            VarMismatch::Unexpected(_) if input.control().is_some() => location.end_of_stream(),
             VarMismatch::Unexpected(_) => match location.token() {
-                Some(token) => location.new_unexpected_token_error(token),
-                None => location.new_error(BasicParseErrorKind::EndOfInput),
+                Some(token) => location.unexpected(token),
+                None => location.end_of_stream(),
             },
         });
     }
@@ -244,7 +233,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
         release(input.control(), issue.path);
     }
     Ok((
-        CssAuthoredDeclarationValue::new(input.slice(start..end)),
+        CssAuthoredDeclarationValue::new(input.authored_text_between(start, end)),
         qualifies,
     ))
 }
@@ -270,15 +259,15 @@ fn token_error<'i>(
     closing: bool,
     root: Site<'i>,
     location: Site<'i>,
-) -> ParseError<'i, Error> {
+) -> SyntaxError<'i, Error> {
     let site = issue_location(numeric, origin, path, closing, root, location);
     if site.control().is_some() {
-        return site.new_error(BasicParseErrorKind::EndOfInput);
+        return site.end_of_stream();
     }
     if let Some(token) = site.token() {
-        site.new_unexpected_token_error(token)
+        site.unexpected(token)
     } else {
-        site.new_error(BasicParseErrorKind::EndOfInput)
+        site.end_of_stream()
     }
 }
 

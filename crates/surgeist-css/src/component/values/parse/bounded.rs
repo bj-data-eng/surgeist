@@ -10,13 +10,23 @@ use crate::component::{
     CssComponentValues, CssHashFlag, CssNumericTokenKind, CssValueOrigin,
 };
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
-use crate::tokenization::bounded::Scalar;
-use crate::tokenization::tokenizer::{
-    NameKind, NumberKind, Record, Request, Span, TokenCursor, TokenKind,
-};
 use crate::values::color_adjust::utf16_value::{Control, Failure};
 use std::mem::size_of;
+use surgeist_css_parser::input::Scalar;
+use surgeist_css_parser::lexer::protocol::{
+    NameKind, NumericTokenKind, RawTokenKind, Record, Span, TokenCursor, TokenRequest,
+};
 
+/// Reads the components of `source` through the stepwise token cursor, metering
+/// each request with `control`.
+///
+/// `source` must hold text that Syntax 3 section 3.3 has preprocessed: the
+/// cursor takes the scalars of preprocessed input and refuses U+0000, U+000D
+/// and U+000C, so a snapshot of text as authored ([`CssSourceSnapshot::new`])
+/// is no valid input. The snapshots that hold preprocessed text are the ones
+/// the UTF-16 preparation and
+/// [`CssSourceSnapshot::try_from_decoded_utf8`] form, and those are the
+/// only snapshots the callers pass.
 pub(crate) fn parse_controlled_snapshot(
     source: &CssSourceSnapshot,
     limits: CssComponentValueLimits,
@@ -71,7 +81,7 @@ fn consume_snapshot(
     loop {
         control.step().map_err(|()| refused())?;
         match cursor.request() {
-            Request::ReadScalar { index } => {
+            TokenRequest::ReadScalar { index } => {
                 assert_eq!(
                     index, scalar_index,
                     "original lexical cursor reads in order"
@@ -89,17 +99,17 @@ fn consume_snapshot(
                     .expect("actual prepared scalar observation");
                 scalar_index += 1;
             }
-            Request::Compute => cursor.compute().map_err(|_| {
+            TokenRequest::Compute => cursor.compute().map_err(|_| {
                 let _ = control.fail::<()>(Failure::CapacityOverflow);
                 refused()
             })?,
-            Request::Append { index, record } => {
+            TokenRequest::Append { index, record } => {
                 assert_eq!(index, records.len());
                 control.reserve(&mut records, 1).map_err(|()| refused())?;
                 records.push(record);
                 cursor.appended(index).expect("actual lexical append");
             }
-            Request::Done => break,
+            TokenRequest::Done => break,
         }
     }
     let mut stack = ComponentStack::new(source, limits, 0, Some(control));
@@ -112,27 +122,29 @@ fn consume_snapshot(
         let range = token.source.start..token.source.end;
         let origin = range_origin(source, range.clone());
         let closing = match token.kind {
-            TokenKind::Delimiter(')') => Some(CssBlockKind::Parenthesis),
-            TokenKind::Delimiter(']') => Some(CssBlockKind::SquareBracket),
-            TokenKind::Delimiter('}') => Some(CssBlockKind::CurlyBracket),
+            RawTokenKind::Delim(')') => Some(CssBlockKind::Parenthesis),
+            RawTokenKind::Delim(']') => Some(CssBlockKind::SquareBracket),
+            RawTokenKind::Delim('}') => Some(CssBlockKind::CurlyBracket),
             _ => None,
         };
         if stack.close(closing, range.clone())? {
             continue;
         }
         let kind = match token.kind {
-            TokenKind::Name {
+            RawTokenKind::Name {
                 kind: NameKind::Function,
                 ..
             }
-            | TokenKind::Delimiter('(') => Some(CssBlockKind::Parenthesis),
-            TokenKind::Delimiter('[') => Some(CssBlockKind::SquareBracket),
-            TokenKind::Delimiter('{') => Some(CssBlockKind::CurlyBracket),
+            | RawTokenKind::Delim('(') => Some(CssBlockKind::Parenthesis),
+            RawTokenKind::Delim('[') => Some(CssBlockKind::SquareBracket),
+            RawTokenKind::Delim('{') => Some(CssBlockKind::CurlyBracket),
             _ => None,
         };
         if let Some(kind) = kind {
             let name = match token.kind {
-                TokenKind::Name { units, .. } => Some(decoded(&records, units, control, &origin)?),
+                RawTokenKind::Name { units, .. } => {
+                    Some(decoded(&records, units, control, &origin)?)
+                }
                 _ => None,
             };
             stack.open(kind, name, range, &mut count)?;
@@ -140,9 +152,9 @@ fn consume_snapshot(
         }
         admit_component(&mut count, limits, &origin)?;
         let invalid = match token.kind {
-            TokenKind::BadString => Some(CssComponentValueErrorKind::BadString),
-            TokenKind::BadUrl { .. } => Some(CssComponentValueErrorKind::BadUrl),
-            TokenKind::Delimiter(')' | ']' | '}') => {
+            RawTokenKind::BadString => Some(CssComponentValueErrorKind::BadString),
+            RawTokenKind::BadUrl { .. } => Some(CssComponentValueErrorKind::BadUrl),
+            RawTokenKind::Delim(')' | ']' | '}') => {
                 Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter)
             }
             _ => None,
@@ -164,7 +176,7 @@ fn consume_snapshot(
         // (§4.3.7), which the closure spells as an explicit escape.
         let escaped_eof = odd_trailing_backslashes(raw);
         let implicit_text = match token.kind {
-            TokenKind::String { closed: false, .. } => {
+            RawTokenKind::String { closed: false, .. } => {
                 Some(match (raw.starts_with('\''), escaped_eof) {
                     (true, false) => "'",
                     (true, true) => "\n'",
@@ -172,14 +184,16 @@ fn consume_snapshot(
                     (false, true) => "\n\"",
                 })
             }
-            TokenKind::Url { closed: false, .. } => Some(if escaped_eof { "fffd )" } else { ")" }),
-            TokenKind::Comment { closed: false } => Some("*/"),
-            TokenKind::Name {
-                kind: NameKind::Ident | NameKind::At | NameKind::Hash { .. },
+            RawTokenKind::Url { closed: false, .. } => {
+                Some(if escaped_eof { "fffd )" } else { ")" })
+            }
+            RawTokenKind::Comment { closed: false } => Some("*/"),
+            RawTokenKind::Name {
+                kind: NameKind::Ident | NameKind::AtKeyword | NameKind::Hash { .. },
                 ..
             }
-            | TokenKind::Number {
-                kind: NumberKind::Dimension,
+            | RawTokenKind::Number {
+                kind: NumericTokenKind::Dimension,
                 ..
             } if escaped_eof => Some("fffd "),
             _ => None,
@@ -195,7 +209,7 @@ fn consume_snapshot(
                 })
             })
             .transpose()?;
-        let data = if let TokenKind::Comment { closed } = token.kind {
+        let data = if let RawTokenKind::Comment { closed } = token.kind {
             let end = raw.len() - if closed { 2 } else { 0 };
             ComponentData::Comment {
                 content: copied(&raw[2..end], Some(control), &origin)?,
@@ -269,7 +283,7 @@ fn decoded(
 }
 
 fn token_data_bounded(
-    kind: TokenKind,
+    kind: RawTokenKind,
     raw: &str,
     records: &[Record],
     control: &Control<'_>,
@@ -277,15 +291,15 @@ fn token_data_bounded(
 ) -> Result<TokenData, CssComponentValueError> {
     let name = |span| decoded(records, span, control, origin);
     Ok(match kind {
-        TokenKind::Name {
+        RawTokenKind::Name {
             kind: NameKind::Ident,
             units,
         } => TokenData::Ident(name(units)?),
-        TokenKind::Name {
-            kind: NameKind::At,
+        RawTokenKind::Name {
+            kind: NameKind::AtKeyword,
             units,
         } => TokenData::AtKeyword(name(units)?),
-        TokenKind::Name {
+        RawTokenKind::Name {
             kind: NameKind::Hash { identifier },
             units,
         } => TokenData::Hash {
@@ -296,16 +310,16 @@ fn token_data_bounded(
                 CssHashFlag::Unrestricted
             },
         },
-        TokenKind::String { units, .. } => TokenData::String(name(units)?),
-        TokenKind::Url { units, .. } => TokenData::Url(name(units)?),
-        TokenKind::Whitespace => TokenData::Whitespace,
-        TokenKind::Cdo => TokenData::Cdo,
-        TokenKind::Cdc => TokenData::Cdc,
-        TokenKind::Delimiter(':') => TokenData::Colon,
-        TokenKind::Delimiter(';') => TokenData::Semicolon,
-        TokenKind::Delimiter(',') => TokenData::Comma,
-        TokenKind::Delimiter(point) => TokenData::Delim(point),
-        TokenKind::Number {
+        RawTokenKind::String { units, .. } => TokenData::String(name(units)?),
+        RawTokenKind::Url { units, .. } => TokenData::Url(name(units)?),
+        RawTokenKind::Whitespace => TokenData::Whitespace,
+        RawTokenKind::Cdo => TokenData::Cdo,
+        RawTokenKind::Cdc => TokenData::Cdc,
+        RawTokenKind::Delim(':') => TokenData::Colon,
+        RawTokenKind::Delim(';') => TokenData::Semicolon,
+        RawTokenKind::Delim(',') => TokenData::Comma,
+        RawTokenKind::Delim(point) => TokenData::Delim(point),
+        RawTokenKind::Number {
             kind, layout, unit, ..
         } => {
             let sign = usize::from(raw.starts_with(['+', '-']));
@@ -325,20 +339,37 @@ fn token_data_bounded(
                 has_sign: sign != 0,
             };
             match kind {
-                NumberKind::Number => TokenData::Number(number),
-                NumberKind::Percentage => TokenData::Percentage(number),
-                NumberKind::Dimension => TokenData::Dimension {
+                NumericTokenKind::Number => TokenData::Number(number),
+                NumericTokenKind::Percentage => TokenData::Percentage(number),
+                NumericTokenKind::Dimension => TokenData::Dimension {
                     number,
                     unit: name(unit)?,
                 },
             }
         }
-        TokenKind::Name {
+        // The caller opens a function, reads a comment and rejects a bad
+        // string or url before it asks for the data of a token.
+        RawTokenKind::BadString => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::BadString,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
+        RawTokenKind::BadUrl { .. } => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::BadUrl,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
+        RawTokenKind::Name {
             kind: NameKind::Function,
             ..
         }
-        | TokenKind::Comment { .. }
-        | TokenKind::BadString
-        | TokenKind::BadUrl { .. } => unreachable!("structural/error token handled"),
+        | RawTokenKind::Comment { .. } => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
     })
 }

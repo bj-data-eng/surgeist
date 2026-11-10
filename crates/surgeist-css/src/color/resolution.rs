@@ -1441,7 +1441,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     pub(crate) fn consumed_source(
         &self,
-    ) -> Result<crate::tokenization::tokenizer::Span, ColorProtocolError> {
+    ) -> Result<surgeist_css_parser::lexer::protocol::Span, ColorProtocolError> {
         if matches!(self.state, State::Done(_)) {
             self.source.ok_or(ColorProtocolError::WrongSlot)?.source()
         } else {

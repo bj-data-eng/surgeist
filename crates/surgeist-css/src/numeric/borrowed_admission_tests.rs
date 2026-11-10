@@ -55,13 +55,13 @@ fn check_mapped_collection() {
     // The source route actually collects an owned graph. Its allocations are
     // legitimate source admission and are outside the mapped-transport region.
     let source = CssSourceSnapshot::new(SOURCE);
-    let mut source_input = cssparser::ParserInput::new(SOURCE);
-    let mut source_cursor = cssparser::Parser::new(&mut source_input);
+    let source_document = crate::syntax_consumption::source_document(SOURCE, &source, 0).unwrap();
+    let mut source_cursor = source_document.root();
     let source_root = NumericInputContext::Parsed(&source)
         .collect(&mut source_cursor)
         .unwrap();
-    assert_eq!(source_cursor.expect_ident().unwrap().as_ref(), "blue");
-    assert!(source_cursor.is_exhausted());
+    assert_eq!(source_cursor.consume_ident().unwrap(), "blue");
+    assert!(source_cursor.only_whitespace_remains());
     let source_leaf = first_number(&source_root);
     let origin = parsed_origin(source_leaf);
     assert!(origin.source().same_snapshot(&source));
@@ -81,8 +81,13 @@ fn check_mapped_collection() {
     .unwrap();
     let serialized = values.serialize_tokens(Default::default()).unwrap();
     let context = NumericInputContext::Components(&values, &serialized);
-    let mut input = cssparser::ParserInput::new(serialized.as_css());
-    let mut cursor = cssparser::Parser::new(&mut input);
+    let document = crate::syntax_consumption::checked_document(
+        values.items(),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+    )
+    .unwrap();
+    let mut cursor = document.root();
 
     let region = Region::new(GLOBAL);
     let collected = context.collect(&mut cursor).unwrap();
@@ -104,8 +109,8 @@ fn check_mapped_collection() {
     assert_eq!(origin.span(), expected_leaf_origin.span());
     assert_eq!(origin.span().start().byte_offset().value(), 5);
     assert_eq!(origin.span().end().byte_offset().value(), 6);
-    assert_eq!(cursor.expect_ident().unwrap().as_ref(), "blue");
-    assert!(cursor.is_exhausted());
+    assert_eq!(cursor.consume_ident().unwrap(), "blue");
+    assert!(cursor.only_whitespace_remains());
     assert_eq!(component_css(&source_root), ROOT);
     assert_eq!(component_css(observed), ROOT);
 
@@ -194,8 +199,8 @@ fn check_read_only_retention() {
 #[test]
 fn read_only_component_check_preserves_context_closure_policy() {
     let source = CssSourceSnapshot::new("calc(1 + 2");
-    let mut input = cssparser::ParserInput::new(source.as_str());
-    let mut cursor = cssparser::Parser::new(&mut input);
+    let document = crate::syntax_consumption::source_document(source.as_str(), &source, 0).unwrap();
+    let mut cursor = document.root();
     let parsed = NumericInputContext::Parsed(&source);
     let component = parsed.collect(&mut cursor).unwrap();
     parsed

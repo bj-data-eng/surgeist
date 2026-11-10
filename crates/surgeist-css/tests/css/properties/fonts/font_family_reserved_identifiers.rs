@@ -150,7 +150,8 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
         (r"default\41", "defaultA", IdentSequence),
         (r"A\ default", "A default", IdentSequence),
         (r"default\ A", "default A", IdentSequence),
-        ("A\u{a0}default", "A\u{a0}default", IdentSequence),
+        ("A\u{b7}default", "A\u{b7}default", IdentSequence),
+        (r"A\a0 default", "A\u{a0}default", IdentSequence),
     ] {
         let style = format!("font-family:{authored};font:16px {authored}");
         let report = CssParser::default().parse_block_contents(&style);
@@ -218,6 +219,12 @@ fn checked_quoted_and_decoded_face_names_preserve_reserved_spelling() {
         assert_eq!(CssFontFaceFamily::try_new(name).unwrap().as_str(), name);
         assert_eq!(CssFontLocalName::try_new(name).unwrap().as_str(), name);
     }
+
+    // Syntax 3 §4.2 does not list U+00A0, so written as itself it ends the
+    // identifier and is a delim, which no family name holds.
+    let report = CssParser::default().parse_block_contents("font-family:A\u{a0}default");
+    assert!(!report.is_clean());
+    assert!(report.syntax().is_empty());
 
     // An escaped space can occur inside one identifier. The single-token
     // constructor preserves it without inventing another token boundary.

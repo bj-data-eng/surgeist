@@ -5,10 +5,8 @@
 
 use crate::color::grammar::GrammarRecord;
 use crate::numeric::bounded_decimal::DecimalDigit;
-use crate::tokenization::bounded::{
-    Error as InputError, InputCursor, InputKind, Request as InputRequest, Scalar,
-};
-use crate::tokenization::tokenizer::{Record, Request as TokenRequest, Token, TokenCursor};
+use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest, Scalar};
+use surgeist_css_parser::lexer::protocol::{RawToken, Record, TokenCursor, TokenRequest};
 
 /// A nonzero-sized allocation-free anchor, exclusively lent to one parse.
 ///
@@ -109,7 +107,7 @@ pub(crate) struct RecordRange {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AuthoredNumber<'css> {
     pub(crate) numeric: crate::component::CssNumericTokenRef<'css>,
-    pub(crate) layout: crate::tokenization::number::Layout,
+    pub(crate) layout: surgeist_css_parser::lexer::protocol::NumberLayout,
     pub(crate) digits: RecordRange,
     pub(crate) unit: Option<crate::numeric::CssNumericUnit>,
     pub(crate) percentage: bool,
@@ -145,7 +143,7 @@ pub(crate) enum Data<'css> {
         exponent: bool,
         value: u8,
     },
-    Token(Token),
+    Token(RawToken),
     DecimalDigit {
         token: usize,
         digit: DecimalDigit,
@@ -292,7 +290,7 @@ impl<'owner> CssColorSlot<'owner> {
 pub(crate) enum LexicalRecord {
     NameUnit(char),
     NumberDigit { exponent: bool, value: u8 },
-    Token(Token),
+    Token(RawToken),
 }
 
 /// Qualification of canonical records, independent of the input's provenance.
@@ -304,7 +302,7 @@ pub(crate) struct RecordTable<'css> {
 }
 #[derive(Clone, Copy)]
 pub(crate) struct NumberHeader {
-    pub(crate) layout: crate::tokenization::number::Layout,
+    pub(crate) layout: surgeist_css_parser::lexer::protocol::NumberLayout,
     pub(crate) digits: RecordRange,
 }
 impl RecordTable<'_> {
@@ -339,8 +337,11 @@ impl RecordTable<'_> {
     ) -> Result<NumberHeader, ColorProtocolError> {
         self.qualify(index, slot)?;
         let header = match slot.data {
-            Data::Token(crate::tokenization::tokenizer::Token {
-                kind: crate::tokenization::tokenizer::TokenKind::Number { layout, digits, .. },
+            Data::Token(surgeist_css_parser::lexer::protocol::RawToken {
+                kind:
+                    surgeist_css_parser::lexer::protocol::RawTokenKind::Number {
+                        layout, digits, ..
+                    },
                 ..
             }) => NumberHeader {
                 layout,
@@ -376,10 +377,10 @@ impl RecordTable<'_> {
     ) -> Result<Option<RecordRange>, ColorProtocolError> {
         self.qualify(index, slot)?;
         let range = match slot.data {
-            Data::Token(crate::tokenization::tokenizer::Token {
+            Data::Token(surgeist_css_parser::lexer::protocol::RawToken {
                 kind:
-                    crate::tokenization::tokenizer::TokenKind::Name {
-                        kind: crate::tokenization::tokenizer::NameKind::Ident,
+                    surgeist_css_parser::lexer::protocol::RawTokenKind::Name {
+                        kind: surgeist_css_parser::lexer::protocol::NameKind::Ident,
                         units,
                     },
                 ..
@@ -682,12 +683,13 @@ impl<'owner> ColorAction<'_, 'owner> {
         let Stage::Input(cursor) = &mut self.operation.stage else {
             return Err(ColorProtocolError::WrongAction);
         };
-        cursor.read(unit).map_err(|error| match error {
+        cursor.read(unit).map_err(|error| {
             // A UTF-8 unit beyond a byte, or a byte no UTF-8 sequence admits.
-            InputError::WrongUnit | InputError::InvalidUtf8 => {
+            if error.is_wrong_unit() || error.is_invalid_utf8() {
                 ColorProtocolError::Malformed { offset }
+            } else {
+                ColorProtocolError::Input
             }
-            _ => ColorProtocolError::Input,
         })
     }
 
@@ -805,12 +807,15 @@ impl<'owner> ColorAction<'_, 'owner> {
                     .process_held()
                     .map_err(|_| ColorProtocolError::Input)?,
                 InputRequest::End => {
-                    let ended = cursor.end().map_err(|error| match error {
-                        // The input ends inside a multi-unit UTF-8 sequence.
-                        InputError::InvalidUtf8 => ColorProtocolError::Malformed {
-                            offset: self.operation.length,
-                        },
-                        _ => ColorProtocolError::Input,
+                    let ended = cursor.end().map_err(|error| {
+                        if error.is_invalid_utf8() {
+                            // The input ends inside a multi-unit UTF-8 sequence.
+                            ColorProtocolError::Malformed {
+                                offset: self.operation.length,
+                            }
+                        } else {
+                            ColorProtocolError::Input
+                        }
                     })?;
                     if ended {
                         self.operation.stage = Stage::Tokens(TokenCursor::new(
@@ -837,7 +842,19 @@ impl<'owner> ColorAction<'_, 'owner> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tokenization::tokenizer::{NameKind, TokenKind};
+    use surgeist_css_parser::lexer::protocol::{NameKind, RawTokenKind};
+
+    // Hosts admit these two amounts before storing a record or starting a parse,
+    // so they are part of the protocol's public contract. They depend on the
+    // layouts of the stepwise protocol's `RawToken`, `NumberLayout` and `Span`, which
+    // `surgeist-css-parser/tests/layout_pins.rs` pins. The values are the sizes
+    // of those layouts.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn public_admission_layouts_keep_their_measured_values() {
+        assert_eq!(CssColorSlot::record_bytes(), 1184);
+        assert_eq!(CssColorOperationOwner::layout_bytes(), 16);
+    }
 
     #[test]
     fn a_slot_bank_is_part_of_every_qualified_observation() {
@@ -927,7 +944,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let TokenKind::Name {
+        let RawTokenKind::Name {
             kind: NameKind::Function,
             units,
         } = tokens[0].kind

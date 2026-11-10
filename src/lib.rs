@@ -16,6 +16,7 @@ pub mod color {
     pub use surgeist_color::*;
 }
 pub use surgeist_css as css;
+pub use surgeist_css_parser as css_parser;
 pub mod cssom {
     pub use surgeist_cssom::*;
 }

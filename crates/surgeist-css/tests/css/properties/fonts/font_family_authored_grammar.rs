@@ -300,7 +300,10 @@ fn bare_function_names_and_nonreserved_font_words_remain_literal_names() {
     for (authored, decoded) in [
         (r"serif\ A", "serif A"),
         (r"default\ A", "default A"),
-        ("A\u{a0}default", "A\u{a0}default"),
+        // §4.2 lists U+00B7, so it continues the identifier; U+00A0 is not
+        // listed, so only an escape can put it in an unquoted name.
+        ("A\u{b7}default", "A\u{b7}default"),
+        (r"A\a0 default", "A\u{a0}default"),
         (r"\31 st", "1st"),
         (r"A\,B", "A,B"),
     ] {

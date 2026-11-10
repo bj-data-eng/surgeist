@@ -18,16 +18,16 @@ pub enum CssColorInputKind {
     Utf16,
 }
 impl CssColorInputKind {
-    pub(crate) fn native(self) -> crate::tokenization::bounded::InputKind {
+    pub(crate) fn native(self) -> surgeist_css_parser::input::InputKind {
         match self {
-            Self::Utf8 => crate::tokenization::bounded::InputKind::Utf8,
-            Self::Utf16 => crate::tokenization::bounded::InputKind::Utf16,
+            Self::Utf8 => surgeist_css_parser::input::InputKind::Utf8,
+            Self::Utf16 => surgeist_css_parser::input::InputKind::Utf16,
         }
     }
-    pub(crate) fn from_native(kind: crate::tokenization::bounded::InputKind) -> Self {
+    pub(crate) fn from_native(kind: surgeist_css_parser::input::InputKind) -> Self {
         match kind {
-            crate::tokenization::bounded::InputKind::Utf8 => Self::Utf8,
-            crate::tokenization::bounded::InputKind::Utf16 => Self::Utf16,
+            surgeist_css_parser::input::InputKind::Utf8 => Self::Utf8,
+            surgeist_css_parser::input::InputKind::Utf16 => Self::Utf16,
         }
     }
 }

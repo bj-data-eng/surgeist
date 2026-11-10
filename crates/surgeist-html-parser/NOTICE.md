@@ -138,102 +138,29 @@ replay are separately authored; they do not change this project's own license.
 
 ## Dependencies
 
-This notice covers the 19 registry packages in this crate’s default-feature
+This notice covers the 3 registry packages in this crate’s default-feature
 normal and build dependency graph. They are external Cargo dependencies, not
-vendored source. The HTML value dependency uses cssparser for safe legacy named-color
-lookup. The repository-owned surgeist-css dependency supplies controlled color grammar
-and source-qualified resolution; surgeist-color supplies numerical conversion
-and serialization for parser input-color construction.
-The license texts below reuse the exact retained copies in the CSS crate.
+vendored source. The repository-owned surgeist-css dependency supplies controlled color grammar
+and source-qualified resolution through surgeist-css-parser, its CSS Syntax 3 tokenizer and parser;
+surgeist-color supplies numerical conversion,
+serialization and the named-color table for parser input-color construction, and the HTML value
+dependency uses that table for legacy named colors.
+The license texts below reuse the exact retained copies in the CSS and CSS parser crates.
 The graph is not an inventory of every downstream binary; linker behavior and
 resolution determine a consumer’s contents. License alternatives remain intact.
 
-This product depends on `cfg-if` 1.0.4 through surgeist-css stylesheet decoding,
-distributed by Alex Crichton:
+This product depends on `cfg-if` 1.0.5 through surgeist-css-parser stylesheet byte
+decoding, distributed by Alex Crichton:
 
 * License: [MIT](../surgeist-css/licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/cfg-if/LICENSE-APACHE)
 * Homepage: [cfg-if](https://github.com/rust-lang/cfg-if)
 
-This product depends on `cssparser` 0.37.0 for named-color lookup, with `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
-
-* License: [MPL-2.0](../surgeist-css/licenses/rust-cssparser/LICENSE)
-* Homepage: [rust-cssparser](https://github.com/servo/rust-cssparser)
-
-This product depends on `dtoa` 1.0.11 as a transitive runtime dependency,
-distributed by David Tolnay:
-
-* License: [MIT](../surgeist-css/licenses/dtoa/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/dtoa/LICENSE-APACHE)
-* Homepage: [dtoa](https://github.com/dtolnay/dtoa)
-
-This product depends on `dtoa-short` 0.3.5 as a transitive runtime dependency,
-distributed by Xidorn Quan:
-
-* License: [MPL-2.0](../surgeist-css/licenses/dtoa-short/LICENSE)
-* Homepage: [dtoa-short](https://github.com/upsuper/dtoa-short)
-
-This product depends on `encoding_rs` 0.8.35 through surgeist-css stylesheet byte
+This product depends on `encoding_rs` 0.8.35 through surgeist-css-parser stylesheet byte
 decoding, copyright Mozilla Foundation, authored by Henri Sivonen. Its included
 WHATWG Encoding Standard data carries the additional BSD license:
 
-* License: ([Apache-2.0](../surgeist-css/licenses/encoding-rs/LICENSE-APACHE) OR [MIT](../surgeist-css/licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](../surgeist-css/licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](../surgeist-css/licenses/encoding-rs/COPYRIGHT)
+* License: ([Apache-2.0](../surgeist-css-parser/licenses/encoding-rs/LICENSE-APACHE) OR [MIT](../surgeist-css-parser/licenses/encoding-rs/LICENSE-MIT)) AND [BSD-3-Clause](../surgeist-css-parser/licenses/encoding-rs/LICENSE-WHATWG); [upstream copyright and declaration](../surgeist-css-parser/licenses/encoding-rs/COPYRIGHT)
 * Homepage: [encoding_rs](https://github.com/hsivonen/encoding_rs)
-
-This product depends on `fastrand` 2.4.1 for PHF macro generation at build time,
-distributed by Stjepan Glavina:
-
-* License: [Apache-2.0](../surgeist-css/licenses/fastrand/LICENSE-APACHE) OR [MIT](../surgeist-css/licenses/fastrand/LICENSE-MIT)
-* Homepage: [fastrand](https://github.com/smol-rs/fastrand)
-
-This product depends on `itoa` 1.0.18 as a transitive dependency,
-distributed by David Tolnay:
-
-* License: [MIT](../surgeist-css/licenses/itoa/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/itoa/LICENSE-APACHE)
-* Homepage: [itoa](https://github.com/dtolnay/itoa)
-
-This product depends on `phf`, `phf_shared`, `phf_generator`, and `phf_macros`
-0.13.1, distributed by Steven Fackler and Yuki Okushi. `phf` and `phf_shared`
-support runtime lookup; `phf_generator`, `phf_macros`, and `phf_shared` also
-support macro generation at build time:
-
-* License: [MIT](../surgeist-css/licenses/rust-phf/LICENSE)
-* Homepage: [rust-phf](https://github.com/rust-phf/rust-phf)
-
-This product depends on `proc-macro2` 1.0.106 for procedural macro compilation,
-distributed by David Tolnay and Alex Crichton:
-
-* License: [MIT](../surgeist-css/licenses/proc-macro2/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/proc-macro2/LICENSE-APACHE)
-* Homepage: [proc-macro2](https://github.com/dtolnay/proc-macro2)
-
-This product depends on `quote` 1.0.45 for procedural macro compilation,
-distributed by David Tolnay:
-
-* License: [MIT](../surgeist-css/licenses/quote/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/quote/LICENSE-APACHE)
-* Homepage: [quote](https://github.com/dtolnay/quote)
-
-This product depends on `siphasher` 1.0.3 through PHF's runtime and macro
-generation support, distributed by Frank Denis and the Rust Project Developers:
-
-* License: [MIT](../surgeist-css/licenses/siphasher/MIT-LICENSE-TEXT) OR [Apache-2.0](../surgeist-css/licenses/siphasher/APACHE-2.0-LICENSE-TEXT); [upstream copyright and declaration](../surgeist-css/licenses/siphasher/COPYING)
-* Homepage: [rust-siphash](https://github.com/jedisct1/rust-siphash)
-* License-text provenance: [siphasher note](../surgeist-css/licenses/siphasher/NOTICE.md)
-
-This product depends on `smallvec` 1.15.2 as a transitive runtime dependency,
-distributed by the Servo Project Developers:
-
-* License: [MIT](../surgeist-css/licenses/smallvec/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/smallvec/LICENSE-APACHE)
-* Homepage: [rust-smallvec](https://github.com/servo/rust-smallvec)
-
-This product depends on `syn` 2.0.118 for procedural macro compilation,
-distributed by David Tolnay:
-
-* License: [MIT](../surgeist-css/licenses/syn/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/syn/LICENSE-APACHE)
-* Homepage: [syn](https://github.com/dtolnay/syn)
-
-This product depends on `unicode-ident` 1.0.24 for procedural macro compilation,
-distributed by David Tolnay, with Unicode data from Unicode, Inc.:
-
-* License: ([MIT](../surgeist-css/licenses/unicode-ident/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/unicode-ident/LICENSE-APACHE)) AND [Unicode-3.0](../surgeist-css/licenses/unicode-ident/LICENSE-UNICODE)
-* Homepage: [unicode-ident](https://github.com/dtolnay/unicode-ident)
 
 This product depends on `unicode-segmentation` 1.13.3 through surgeist-css
 authored text-alignment string validation. Its package lists kwantam and Manish

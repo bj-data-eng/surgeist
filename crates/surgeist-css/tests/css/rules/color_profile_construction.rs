@@ -445,7 +445,12 @@ fn root_annotations_fail_before_environment_deferral() {
         ] {
             let report = fragment(source, kind);
             assert!(report.syntax().is_none(), "{source}");
-            rejected(token).assert_first(&report);
+            // Value text holds no importance flag: its root `!` is a
+            // delimiter that `<declaration-value>` excludes, rejected as the
+            // descriptor's value (Syntax 3 sections 5.4.1 and 5.4.9).
+            invalid_descriptor("color-profile", kind.as_str())
+                .at(token)
+                .assert_first(&report);
             if let Ok(components) = CssComponentValues::parse(&CssParser::default(), source) {
                 let error = Value::try_new(kind, components, Default::default()).unwrap_err();
                 let Some(detail) = error.diagnostic() else {
@@ -476,14 +481,22 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
             value(Kind::RenderingIntent, source).view(),
             View::Pending(_)
         ));
+        // Syntax 3 §5.5.6 step 8: as a declaration, a block beside another
+        // value returns nothing, whatever env() could defer.
         let sheet = CssParser::default().parse_sheet(format!(
             "@color-profile --x {{ rendering-intent: {source}; }} .after {{ color: red; }}"
         ));
-        assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-        assert!(matches!(
-            sheet.syntax().rules(),
-            [CssRule::ColorProfile(_), CssRule::Style(_)]
-        ));
+        let units = if source.ends_with('}') { 1 } else { 2 };
+        assert_eq!(
+            sheet.diagnostics().len(),
+            units,
+            "{:?}",
+            sheet.diagnostics()
+        );
+        let [CssRule::ColorProfile(profile), CssRule::Style(_)] = sheet.syntax().rules() else {
+            panic!("the profile and the following rule survive");
+        };
+        assert_eq!(profile.descriptors().len(), 0);
     }
     // Without env(), the ordinary keyword grammar rejects the block.
     for ordinary in ["{}", "perceptual {}"] {

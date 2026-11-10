@@ -1,20 +1,25 @@
-use super::property_input::{NativeValueRange, adapt_native};
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser,
-};
+use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
-use super::parse_descriptor_boundary;
+use super::block_units::{
+    DeclarationUnit, GrammarError, GrammarFailure, grammar_error, location_at, offset_of,
+};
+use super::declaration_unit::DeclarationText;
+use super::descriptor_stream::{
+    Boundary, DescriptorRecovery, Value, comma_list, consume_remaining, declaration_position,
+    drive_descriptors, expect_exhausted, fail, from_component, parse_descriptor_checked,
+    parse_descriptor_range, read_scope, validate_root, value_failure,
+};
+use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
+use super::syntax_types::{Attached, Stream, SyntaxError};
 use crate::color::{CssColorProfileComponentName, CssColorProfileName};
 use crate::component::{CssComponentValues, CssSerializedValue};
 use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
-use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::diagnostic::error::{
-    basic, descriptor_name_error, from_parse_error, invalid_component_value, invalid_syntax,
+    descriptor_name_error, from_parse_error, invalid_component_value, invalid_syntax,
     with_at_rule_prelude_context, with_descriptor_context,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
+use crate::diagnostic::{CssError, CssFeatureId, CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::numeric::expression::NumericInputContext;
 use crate::rule::color_profile::rule::CssColorProfileDescriptorData;
 use crate::rule::color_profile::{
@@ -32,23 +37,27 @@ pub(super) static IMPLEMENTED_DESCRIPTORS: &[CssFeatureId] = &[
 ];
 
 pub(super) fn parse_name<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssColorProfileRuleName, ParseError<'i, CssError>> {
-    recovery.check_specialized_components(source, input, "interop.rule.color-profile")?;
-    (|| {
-        let location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        input.expect_exhausted().map_err(basic)?;
+) -> Result<CssColorProfileRuleName, GrammarFailure> {
+    recovery.check_specialized_components_from(
+        source,
+        offset_of(input.site()),
+        "interop.rule.color-profile",
+    )?;
+    read_scope(input, recovery.source_snapshot(), |input, numeric| {
+        let location = input.site();
+        let ident = input.consume_ident()?;
+        expect_exhausted(input)?;
         if ident.eq_ignore_ascii_case("device-cmyk") {
             Ok(CssColorProfileRuleName::DeviceCmyk)
         } else {
-            CssColorProfileName::try_new(ident.as_ref())
+            CssColorProfileName::try_new(ident)
                 .map(CssColorProfileRuleName::Custom)
-                .ok_or_else(|| invalid_syntax(location))
+                .ok_or_else(|| fail(numeric, location, invalid_syntax))
         }
-    })()
+    })
     .map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -60,119 +69,165 @@ pub(super) fn parse_name<'i>(
 }
 
 pub(super) fn parse_rule<'i>(
-    source: &'i str,
+    source: &str,
     name: CssColorProfileRuleName,
-    input: &mut Parser<'i, '_>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: CssSourcePosition,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssColorProfileRule, ParseError<'i, CssError>> {
-    let descriptors = parse_body(source, input, diagnostics, recovery);
-    Ok(CssColorProfileRule::new(name, descriptors).with_position(position(start)))
+) -> CssColorProfileRule {
+    let descriptors = parse_body(source, contents, diagnostics, recovery);
+    CssColorProfileRule::new(name, descriptors).with_position(position)
 }
 
+/// The descriptors of the block `contents` holds.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Vec<CssColorProfileDescriptor> {
-    let mut parser = BodyParser {
-        source,
-        recovery,
-        diagnostics: Vec::new(),
-    };
-    let descriptors =
-        super::descriptor_body::parse(input, &mut parser, "interop.rule.color-profile");
-    diagnostics.extend(parser.diagnostics);
+    let (descriptors, mut recovered) = drive_body(contents, source, &recovery);
+    diagnostics.append(&mut recovered);
     descriptors
 }
 
-fn position(start: &ParserState) -> CssSourcePosition {
-    CssSourcePosition::from_cssparser(start.position(), start.source_location())
+fn drive_body<'i>(
+    contents: &mut Stream<'i>,
+    source: &str,
+    recovery: &RecoveryState,
+) -> (Vec<CssColorProfileDescriptor>, Vec<CssRecoveryDiagnostic>) {
+    let mut grammar = BodyParser {
+        source,
+        recovery: recovery.clone(),
+    };
+    drive_descriptors(
+        contents,
+        &mut grammar,
+        &DescriptorRecovery {
+            source,
+            recovery,
+            production: "interop.rule.color-profile",
+            declaration: CssRecoveryAction::DropDescriptor,
+            at_rule_first: true,
+        },
+    )
 }
 
 struct BodyParser<'i> {
     source: &'i str,
     recovery: RecoveryState,
-    diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 
-impl<'i> super::descriptor_body::Receiver<'i, CssColorProfileDescriptor> for BodyParser<'i> {
-    fn recovery_context(&mut self) -> super::descriptor_body::RecoveryContext<'_, 'i> {
-        super::descriptor_body::RecoveryContext {
-            source: self.source,
-            recovery: &self.recovery,
-            diagnostics: &mut self.diagnostics,
-        }
-    }
-}
+impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
+    type Item = CssColorProfileDescriptor;
+    type Error = GrammarFailure;
 
-impl<'i> AtRuleParser<'i> for BodyParser<'i> {
-    type Prelude = ();
-    type AtRule = CssColorProfileDescriptor;
-    type Error = CssError;
-}
-
-impl<'i> QualifiedRuleParser<'i> for BodyParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = CssColorProfileDescriptor;
-    type Error = CssError;
-}
-
-impl<'i> RuleBodyItemParser<'i, CssColorProfileDescriptor, CssError> for BodyParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        true
-    }
-
-    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
-    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
-    fn parse_qualified(&self) -> bool {
-        true
-    }
-}
-
-impl<'i> DeclarationParser<'i> for BodyParser<'i> {
-    type Declaration = CssColorProfileDescriptor;
-    type Error = CssError;
-
-    fn parse_value<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        start: &ParserState,
-    ) -> Result<Self::Declaration, ParseError<'i, CssError>> {
-        let implicit =
-            self.recovery
-                .check_component_values(self.source, input, "css.descriptor")?;
-        let kind = CssColorProfileDescriptorKind::from_css_name(&name).ok_or_else(|| {
-            descriptor_name_error(start.source_location(), "color-profile", &name)
-        })?;
-        let value = parse_descriptor_value_from_parser(input, kind, &self.recovery)
-            .map_err(|error| with_descriptor_context(error, "color-profile", &name))?;
-        self.recovery.retain_component_closures(implicit);
-        Ok(CssColorProfileDescriptor::new(value).with_position(position(start)))
-    }
-}
-
-pub(super) fn parse_descriptor_value_from_parser<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssColorProfileDescriptorKind,
-    recovery: &RecoveryState,
-) -> Result<CssColorProfileDescriptorValue, ParseError<'i, CssError>> {
-    super::descriptor_values::validate_root(input, "color-profile", kind.as_str())?;
-    let numeric = NumericInputContext::parsed(recovery.source_snapshot());
-    parse_descriptor_boundary(input, "color-profile", kind.as_str(), |input| {
-        let beginning = input.state();
-        let components = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-            .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
-        input.reset(&beginning);
-        let data = parse_value_data(input, kind, &components, &numeric)?;
-        input.expect_exhausted().map_err(basic)?;
-        Ok(CssColorProfileDescriptorValue::from_parts(
-            kind, components, data,
+    // The body is a descriptor list: an at-rule is not valid in it.
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        Err(SyntaxError::unknown_at_rule_error(
+            rule.prelude().start_site(),
+            rule.name(),
         ))
-    })
+    }
+
+    // Syntax 3 (2026 CRD) section 5.5.5 reads a unit that is not a
+    // declaration as a qualified rule, which a descriptor list does not admit.
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        Err(SyntaxError::invalid_qualified_rule_error(rule.start()))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl BodyParser<'_> {
+    /// Admits the descriptor named `name` that lies at `text`.
+    fn admit(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<CssColorProfileDescriptor, GrammarFailure> {
+        let snapshot = self.recovery.source_snapshot();
+        let implicit = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.descriptor",
+        )?;
+        let kind = CssColorProfileDescriptorKind::from_css_name(name).ok_or_else(|| {
+            descriptor_name_error(
+                location_at(snapshot, text.name_start()),
+                "color-profile",
+                name,
+            )
+        })?;
+        let value = parse_declared_value(snapshot, text, kind)
+            .map_err(|error| with_descriptor_context(error, "color-profile", name))?;
+        self.recovery.retain_component_closures(implicit);
+        Ok(CssColorProfileDescriptor::new(value)
+            .with_position(declaration_position(snapshot, text.name_start())))
+    }
+}
+
+/// The value of a descriptor from the value text between `value_start` and
+/// `end`. The text is a value, not a declaration: a `!` in it is a delimiter
+/// that the descriptor's grammar judges.
+pub(super) fn parse_text_value(
+    snapshot: &crate::source::CssSourceSnapshot,
+    value_start: usize,
+    end: usize,
+    kind: CssColorProfileDescriptorKind,
+) -> Result<CssColorProfileDescriptorValue, GrammarFailure> {
+    parse_descriptor_range(
+        snapshot,
+        value_start..end,
+        None,
+        "color-profile",
+        kind.as_str(),
+        Boundary::ValidatedText,
+        |input, components, numeric, _| read_value(input, components, numeric, kind),
+    )
+}
+
+/// The value of the descriptor that the declaration `text` holds.
+fn parse_declared_value(
+    snapshot: &crate::source::CssSourceSnapshot,
+    text: &DeclarationText,
+    kind: CssColorProfileDescriptorKind,
+) -> Result<CssColorProfileDescriptorValue, GrammarFailure> {
+    parse_descriptor_range(
+        snapshot,
+        text.value_start..text.value_end(),
+        text.bang(),
+        "color-profile",
+        kind.as_str(),
+        Boundary::Validated,
+        |input, components, numeric, _| read_value(input, components, numeric, kind),
+    )
+}
+
+fn read_value<'d>(
+    input: &mut Stream<'d>,
+    components: CssComponentValues,
+    numeric: &NumericInputContext<'_>,
+    kind: CssColorProfileDescriptorKind,
+) -> Value<'d, CssColorProfileDescriptorValue> {
+    let data = parse_value_data(input, kind, &components, numeric)?;
+    expect_exhausted(input)?;
+    Ok(CssColorProfileDescriptorValue::from_parts(
+        kind, components, data,
+    ))
 }
 
 /// The component-native constructor uses the same grammar with strict numeric admission.
@@ -181,17 +236,28 @@ pub(crate) fn construct_descriptor_value(
     components: &CssComponentValues,
     serialized: &CssSerializedValue,
 ) -> Result<CssColorProfileDescriptorData, CssError> {
-    let working_source = crate::tokenization::prepare(serialized.as_css());
-    let mut parser_input = cssparser::ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut parser_input);
     let numeric = NumericInputContext::components(components, serialized);
     let result = (|| {
-        super::descriptor_values::validate_root(&mut input, "color-profile", kind.as_str())?;
-        parse_descriptor_boundary(&mut input, "color-profile", kind.as_str(), |input| {
-            let data = parse_value_data(input, kind, components, &numeric)?;
-            input.expect_exhausted().map_err(basic)?;
-            Ok(data)
-        })
+        let document = crate::syntax_consumption::checked_document(
+            components.items(),
+            crate::syntax_consumption::SyntaxInputLimits::default(),
+            0,
+        )
+        .map_err(|error| invalid_component_value(CssSourcePosition::START, error))?;
+        let mut input = document.root();
+        validate_root(&mut input, &numeric, "color-profile", kind.as_str())
+            .map_err(|error| value_failure(&numeric, &error))?;
+        parse_descriptor_checked(
+            &mut input,
+            &numeric,
+            "color-profile",
+            kind.as_str(),
+            |input| {
+                let data = parse_value_data(input, kind, components, &numeric)?;
+                expect_exhausted(input)?;
+                Ok(data)
+            },
+        )
     })();
     result.map_err(|error| {
         from_parse_error(
@@ -206,45 +272,49 @@ pub(crate) fn construct_descriptor_value(
 }
 
 fn parse_value_data<'i>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     kind: CssColorProfileDescriptorKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssColorProfileDescriptorData, ParseError<'i, CssError>> {
+) -> Value<'i, CssColorProfileDescriptorData> {
     let qualifying =
-        super::variables::descriptor_environment_qualifies(components.items(), numeric)
-            .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+        super::variables::descriptor_environment_qualifies(components.items(), numeric).map_err(
+            |error| {
+                fail(numeric, input.site(), |at| {
+                    invalid_component_value(at, error)
+                })
+            },
+        )?;
     if qualifying {
-        let start = input.position();
-        super::descriptor_values::consume_remaining_components(input)?;
+        let start = input.site();
+        consume_remaining(input);
         return Ok(CssColorProfileDescriptorData::Pending(
             CssSubstitutionDependentValue::new(CssAuthoredDeclarationValue::new(
-                input.slice_from(start),
+                input.authored_text_since(start),
             )),
         ));
     }
     Ok(match kind {
-        CssColorProfileDescriptorKind::Src => CssColorProfileDescriptorData::Src(adapt_native(
-            input,
-            numeric,
-            NativeValueRange::Component,
-            super::url::parse_url,
-        )?),
+        CssColorProfileDescriptorKind::Src => {
+            CssColorProfileDescriptorData::Src(from_component(numeric, input, |input| {
+                super::url::parse_url(input, numeric)
+            })?)
+        }
         CssColorProfileDescriptorKind::RenderingIntent => {
-            let location = input.current_source_location();
-            let ident = input.expect_ident_cloned().map_err(basic)?;
+            let location = input.site();
+            let ident = input.consume_ident()?;
             CssColorProfileDescriptorData::RenderingIntent(
-                CssColorProfileRenderingIntent::from_css_name(&ident)
-                    .ok_or_else(|| invalid_syntax(location))?,
+                CssColorProfileRenderingIntent::from_css_name(ident)
+                    .ok_or_else(|| fail(numeric, location, invalid_syntax))?,
             )
         }
         CssColorProfileDescriptorKind::Components => {
-            CssColorProfileDescriptorData::Components(input.parse_comma_separated(|input| {
-                let location = input.current_source_location();
-                let ident = input.expect_ident_cloned().map_err(basic)?;
-                input.expect_exhausted().map_err(basic)?;
-                CssColorProfileComponentName::try_new(ident.as_ref())
-                    .ok_or_else(|| invalid_syntax(location))
+            CssColorProfileDescriptorData::Components(comma_list(input, |input| {
+                let location = input.site();
+                let ident = input.consume_ident()?;
+                expect_exhausted(input)?;
+                CssColorProfileComponentName::try_new(ident)
+                    .ok_or_else(|| fail(numeric, location, invalid_syntax))
             })?)
         }
     })

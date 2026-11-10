@@ -2,14 +2,13 @@
 use crate::component::CssComponentValueLimits;
 use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
-use crate::parser::rule_candidate::{RuleEnvelope, classify_rule_syntax_with_limits};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
+use crate::parser::rule_candidate::classify_rule_syntax_with_limits;
 use crate::parser::{conditional_chains, fragments, recovery};
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
-use crate::syntax_consumption::{self as syntax};
 use crate::{CssParseReport, CssParserContext};
 
 /// Preliminary generic rule classification, independent of supported grammar.
@@ -56,9 +55,8 @@ pub enum CssRuleAdmissionContext {
 pub struct CssRuleSyntax {
     pub(crate) origin: CssParsedOrigin,
     pub(crate) name: Option<Box<str>>,
-    pub(crate) envelope: RuleEnvelope,
     pub(crate) limits: CssComponentValueLimits,
-    pub(crate) metrics: syntax::SyntaxInputMetrics,
+    pub(crate) metrics: surgeist_css_parser::document::Metrics,
     pub(crate) diagnostics: Vec<CssRecoveryDiagnostic>,
 }
 impl CssRuleSyntax {
@@ -89,7 +87,7 @@ impl CssRuleSyntax {
     /// Returns the cumulatively charged component count, including descendants/trivia.
     #[must_use]
     pub const fn component_count(&self) -> usize {
-        self.metrics.components
+        self.metrics.components()
     }
     /// Returns preliminary recovery independently of later semantic retention.
     #[must_use]
@@ -119,16 +117,12 @@ impl CssRuleSyntax {
     ) -> CssParseReport<Option<CssRule>> {
         let source = self.origin.source().as_str();
         let refused = || None;
-        let report = fragments::bounded_report(source, refused, || {
+        let report = fragments::bounded_rules_report(source, refused, || {
             let (syntax, diagnostics) = parse_bounded(
                 source,
                 self.origin.source(),
-                0,
-                BoundedParseContext::Candidate {
-                    envelope: self.envelope.clone(),
-                    context,
-                },
-                StyleContextCaptures::with_namespaces(namespaces),
+                BoundedParseContext::Candidate { context },
+                SharedNamespaces::with_namespaces(namespaces),
                 parser_context,
             )
             .into_parts();
@@ -136,7 +130,9 @@ impl CssRuleSyntax {
                 unreachable!("candidate replay retains its carrier")
             };
             let (rule, diagnostics) = match rule {
-                Some(rule) => conditional_chains::rule(source, rule, diagnostics).into_parts(),
+                Some(rule) => {
+                    conditional_chains::rule(self.origin.source(), rule, diagnostics).into_parts()
+                }
                 None => (None, diagnostics),
             };
             CssParseReport::new(rule, diagnostics)
@@ -168,13 +164,12 @@ impl CssRuleSyntax {
         let refused = || None;
         let report = fragments::bounded_report(source, refused, || {
             let state = RecoveryState::at_depth_with_snapshot(
-                source,
                 0,
-                StyleContextCaptures::default(),
+                SharedNamespaces::default(),
                 self.origin.source().clone(),
             )
             .with_parser_context(parser_context);
-            crate::parser::page::admit_margin_rule(source, state, &self.envelope)
+            crate::parser::page::admit_margin_rule(source, state)
         });
         let (margin, diagnostics) = recovery::finish_report(source, report).into_parts();
         let margin = margin.map(|margin| margin.with_detached_origin(self.origin.clone()));

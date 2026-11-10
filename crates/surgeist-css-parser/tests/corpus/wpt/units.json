@@ -1,0 +1,909 @@
+{
+  "schema_version": 1,
+  "source_revision": "ddcca5943fd41232d42149aaa19d9a04c5651b18",
+  "assertion_kind": "rule-and-declaration-units",
+  "cases": [
+    {
+      "id": "at-rule-in-declaration-list-001",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 25,
+        "case": "}, \"Allow @-rule with block inside style rule\");"
+      },
+      "input": "\n      div {\n        @at {}\n        color: green;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [div] {@at [] {} | decl color: green}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "at-rule-in-declaration-list-002",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 35,
+        "case": "}, \"Allow @-rule with semi-colon inside style rule\");"
+      },
+      "input": "\n      div {\n        @at at;\n        color: green;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [div] {@at [at] | decl color: green}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "at-rule-in-declaration-list-003",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 45,
+        "case": "}, \"Allow @-rule with block inside page rule\");"
+      },
+      "input": "\n      @page {\n        @at {}\n        margin-top: 20px;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "@page [] {@at [] {} | decl margin-top: 20px}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "at-rule-in-declaration-list-004",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 55,
+        "case": "}, \"Allow @-rule with semi-colon inside page rule\");"
+      },
+      "input": "\n      @page {\n        @at at;\n        margin-top: 20px;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "@page [] {@at [at] | decl margin-top: 20px}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "at-rule-in-declaration-list-005",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 65,
+        "case": "}, \"Allow @-rule with block inside font-face rule\");"
+      },
+      "input": "\n      @font-face {\n        @at {}\n        font-family: myfont;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "@font-face [] {@at [] {} | decl font-family: myfont}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "at-rule-in-declaration-list-006",
+      "source": {
+        "path": "css/css-syntax/at-rule-in-declaration-list.html",
+        "sha256": "00093c4749ae4a24fa4fffbe5cd3f881f7b4a0f17dff3558a7089fa82d07feaa",
+        "line": 75,
+        "case": "}, \"Allow @-rule with semi-colon inside font-face rule\");"
+      },
+      "input": "\n      @font-face {\n        @at at;\n        font-family: myfont;\n      }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "@font-face [] {@at [at] | decl font-family: myfont}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving property value on the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "charset-is-not-a-rule-001",
+      "source": {
+        "path": "css/css-syntax/charset-is-not-a-rule.html",
+        "sha256": "17c76572cdb4c09b6efc78be51648b2e2df32ba4f669cdff34f1ce93c54c94d9",
+        "line": 16,
+        "case": "}, \"@charset isn't a valid rule and shouldn't show up in the OM\");"
+      },
+      "input": "\n@charset \"utf-8\";\n@charset \"utf-8\";\nfoo { color: blue; }\n@charset \"utf-8\";\n",
+      "context": "sheet",
+      "grammar": {},
+      "expected": [
+        "@charset [\"utf-8\"]",
+        "@charset [\"utf-8\"]",
+        "rule [foo] {color: blue;}",
+        "@charset [\"utf-8\"]"
+      ],
+      "input_literal": true,
+      "remainder": "That exactly one rule survives (cssRules.length of 1) needs the grammar that drops @charset, which belongs to surgeist-css."
+    },
+    {
+      "id": "cdc-vs-ident-003",
+      "source": {
+        "path": "css/css-syntax/cdc-vs-ident-tokens.html",
+        "sha256": "5f52d414359c7e39d49e356c84af9be914f336926d31ddb94321978131d5edf9",
+        "line": 25,
+        "case": "assert_equals(rule.selectorText, \"--foo\");"
+      },
+      "input": "\n\n-->\n\n--foo { color: blue; }\n\n",
+      "context": "sheet",
+      "grammar": {},
+      "expected": [
+        "rule [--foo] {color: blue;}"
+      ],
+      "input_literal": true,
+      "remainder": "The rule's selectorText is a CSSOM result; the first rule being `--foo` is what shows the leading CDC-token was discarded."
+    },
+    {
+      "id": "custom-property-rule-ambiguity-001",
+      "source": {
+        "path": "css/css-syntax/custom-property-rule-ambiguity.html",
+        "sha256": "fe7b5a092b043dcd195af19a62f896a256ab5b2b1f9787d80a836eb5c5dea034",
+        "line": 18,
+        "case": "}, 'Rule that looks like a custom property declaration is ignored');"
+      },
+      "input": "\n  .a { }\n  --x:hover { } /* Ambiguous \"rule\" */\n  .b { }\n",
+      "context": "sheet",
+      "grammar": {},
+      "expected": [
+        "rule [.a] {}",
+        "rule [.b] {}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM rule list, selectorText and CSSNestedDeclarations objects are not claimed."
+    },
+    {
+      "id": "custom-property-rule-ambiguity-002",
+      "source": {
+        "path": "css/css-syntax/custom-property-rule-ambiguity.html",
+        "sha256": "fe7b5a092b043dcd195af19a62f896a256ab5b2b1f9787d80a836eb5c5dea034",
+        "line": 33,
+        "case": "}, 'Rule that looks like an invalid custom property declaration is ignored');"
+      },
+      "input": "\n  .a { }\n  --x:hover { ] } /* Ambiguous \"rule\" */\n  .b { }\n",
+      "context": "sheet",
+      "grammar": {},
+      "expected": [
+        "rule [.a] {}",
+        "rule [.b] {}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM rule list, selectorText and CSSNestedDeclarations objects are not claimed."
+    },
+    {
+      "id": "custom-property-rule-ambiguity-003",
+      "source": {
+        "path": "css/css-syntax/custom-property-rule-ambiguity.html",
+        "sha256": "fe7b5a092b043dcd195af19a62f896a256ab5b2b1f9787d80a836eb5c5dea034",
+        "line": 55,
+        "case": "}, 'Nested rule that looks like a custom property declaration');"
+      },
+      "input": "\n  div {\n    .a { }\n    --x:hover { }\n    .b { }\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [div] {rule [.a] {} | decl --x = \"hover { }\\n    .b { }\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM rule list, selectorText and CSSNestedDeclarations objects are not claimed."
+    },
+    {
+      "id": "custom-property-rule-ambiguity-004",
+      "source": {
+        "path": "css/css-syntax/custom-property-rule-ambiguity.html",
+        "sha256": "fe7b5a092b043dcd195af19a62f896a256ab5b2b1f9787d80a836eb5c5dea034",
+        "line": 84,
+        "case": "}, 'Nested rule that looks like an invalid custom property declaration');"
+      },
+      "input": "\n  div {\n    .a { }\n    --x:hover { ] }\n    .b { }\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "reject_declarations": [
+          "--x"
+        ]
+      },
+      "expected": [
+        "rule [div] {rule [.a] {}}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM rule list, selectorText and CSSNestedDeclarations objects are not claimed."
+    },
+    {
+      "id": "declarations-trim-whitespace-000",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 11,
+        "case": "#foo {"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-1 = \"bar\" | decl --foo-2 = \"bar\" | decl --foo-3 = \"bar\" | decl --foo-4 = \"bar\" | decl --foo-5 = \"bar\" !important | decl --foo-6 = \"bar\" !important | decl --foo-7 = \"bar\" !important | decl --foo-8 = \"bar\" !important | decl --foo-9 = \"bar\"}"
+      ],
+      "input_literal": true
+    },
+    {
+      "id": "declarations-trim-whitespace-001",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 29,
+        "case": "}, \"--foo-1:bar;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-1"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-1 = \"bar\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-002",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 32,
+        "case": "}, \"--foo-2: bar;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-2"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-2 = \"bar\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-003",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 35,
+        "case": "}, \"--foo-3:bar ;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-3"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-3 = \"bar\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-004",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 38,
+        "case": "}, \"--foo-4: bar ;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-4"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-4 = \"bar\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-005",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 41,
+        "case": "}, \"--foo-5: bar !important;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-5"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-5 = \"bar\" !important}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-006",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 44,
+        "case": "}, \"--foo-6: bar !important ;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-6"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-6 = \"bar\" !important}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-007",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 47,
+        "case": "}, \"--foo-7:bar!important;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-7"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-7 = \"bar\" !important}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-008",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 50,
+        "case": "}, \"--foo-8:bar!important ;\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-8"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-8 = \"bar\" !important}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "declarations-trim-whitespace-009",
+      "source": {
+        "path": "css/css-syntax/declarations-trim-whitespace.html",
+        "sha256": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+        "line": 53,
+        "case": "}, \"--foo-9:bar (then ws until end of rule)\");"
+      },
+      "input": "\n    #foo {\n        --foo-1:bar;\n        --foo-2: bar;\n        --foo-3:bar ;\n        --foo-4: bar ;\n        --foo-5: bar !important;\n        --foo-6: bar !important ;\n        --foo-7:bar!important;\n        --foo-8:bar!important ;\n        --foo-9:bar\n    }\n    ",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true,
+        "focus": "--foo-9"
+      },
+      "expected": [
+        "rule [#foo] {decl --foo-9 = \"bar\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The computed value of the custom property is a cascade and computed-value result."
+    },
+    {
+      "id": "invalid-nested-rules-001",
+      "source": {
+        "path": "css/css-syntax/invalid-nested-rules.html",
+        "sha256": "fe53ac01f159378c2e0288ce7250ac541c9ee8cea2850cf551292b3dfb000086",
+        "line": 20,
+        "case": "}, 'Continues parsing after block on invalid rule error');"
+      },
+      "input": "\n  .a {\n    .b <::::invalid::::> {}\n    & .c {}\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "reject_qualified_starting": [
+          ".b"
+        ]
+      },
+      "expected": [
+        "rule [.a] {invalid rule error: rule | rule [& .c] {}}"
+      ],
+      "input_literal": true,
+      "remainder": "That the grammar rejects the first nested rule (an invalid selector) is surgeist-css's decision, given here as an input; the CSSOM rule list is not claimed."
+    },
+    {
+      "id": "trailing-braces-001",
+      "source": {
+        "path": "css/css-syntax/trailing-braces.html",
+        "sha256": "279e348aa2dfdc33507d6fd07f59ecec7b9a5f9cd43707c51d0d1168b6e29f02",
+        "line": 19,
+        "case": "}, 'Trailing braces are not valid');"
+      },
+      "input": "\n  #target1 {\n    color:green;\n    color:red{};\n    color:red {};\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [#target1] {decl color: green | rule [color:red] {} | rule [color:red] {}}"
+      ],
+      "input_literal": true,
+      "remainder": "The surviving color of the CSSOM rule is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-001",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 23,
+        "case": "}, 'Plain var()');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:var(--x); /* Valid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | decl color: var(--x) | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-002",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 40,
+        "case": "}, 'Whole-value block with var()');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:{var(--x)}; /* Valid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | decl color: {var(--x)} | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-003",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 57,
+        "case": "}, 'Whole-value block with var() (spaces)');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color: { var(--x) }; /* Valid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | decl color: { var(--x) } | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-004",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 74,
+        "case": "}, 'Trailing block, leading var()');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:var(--x) { }; /* Invalid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | rule [color:var(--x)] {} | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-005",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 91,
+        "case": "}, 'Leading block, trailing var()');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:{ } var(--x); /* Invalid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | rule [color:] {} | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-006",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 108,
+        "case": "}, 'In-block var() with trailing token');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:{ var(--x) } A; /* Invalid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | rule [color:] {var(--x)} | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-007",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 125,
+        "case": "}, 'In-block var() with leading token');"
+      },
+      "input": "\n  .a {\n    color: rgb(2, 2, 2);\n    color:A { var(--x) }; /* Invalid */\n    background-color:rgb(1, 1, 1);\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl color: rgb(2, 2, 2) | rule [color:A] {var(--x)} | decl background-color: rgb(1, 1, 1)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-008",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 140,
+        "case": "}, 'Plain var() (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:var(--x); /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"var(--x)\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-009",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 153,
+        "case": "}, 'Whole-value block with var() (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:{var(--x)}; /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"{var(--x)}\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-010",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 166,
+        "case": "}, 'Whole-value block with var() (spaces, custom property)');"
+      },
+      "input": "\n  .a {\n    --y: { var(--x) }; /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"{ var(--x) }\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-011",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 179,
+        "case": "}, 'Trailing block, leading var() (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:var(--x) { }; /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"var(--x) { }\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-012",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 192,
+        "case": "}, 'Leading block, trailing var() (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:{ } var(--x); /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"{ } var(--x)\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-013",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 205,
+        "case": "}, 'In-block var() with trailing token (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:{ var(--x) } A; /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"{ var(--x) } A\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "var-with-blocks-014",
+      "source": {
+        "path": "css/css-syntax/var-with-blocks.html",
+        "sha256": "af3956010a00321e51159d67f92bf7554ca79881c78de745ea2c5ccef91620bc",
+        "line": 218,
+        "case": "}, 'In-block var() with leading token (custom property)');"
+      },
+      "input": "\n  .a {\n    --y:A { var(--x) }; /* Valid */\n  }\n",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true,
+        "original_for_custom": true
+      },
+      "expected": [
+        "rule [.a] {decl --y = \"A { var(--x) }\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM property value is a property-validity result."
+    },
+    {
+      "id": "escaped-eof-declaration-001",
+      "source": {
+        "path": "css/css-syntax/escaped-eof.html",
+        "sha256": "dec0d40911d7247999dbb2866c5a58b7a884198285dd766bf55d5ce468c8cff2",
+        "line": 11,
+        "case": "<style>foo { --foo:foo\\</style>"
+      },
+      "input": "foo { --foo:foo\\",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [foo] {decl --foo: foo\ufffd}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM getPropertyValue string is the serialization of these tokens; the style sheet object itself is not claimed."
+    },
+    {
+      "id": "escaped-eof-declaration-002",
+      "source": {
+        "path": "css/css-syntax/escaped-eof.html",
+        "sha256": "dec0d40911d7247999dbb2866c5a58b7a884198285dd766bf55d5ce468c8cff2",
+        "line": 12,
+        "case": "<style>foo { --foo:1foo\\</style>"
+      },
+      "input": "foo { --foo:1foo\\",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [foo] {decl --foo: 1foo\ufffd}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM getPropertyValue string is the serialization of these tokens; the style sheet object itself is not claimed."
+    },
+    {
+      "id": "escaped-eof-declaration-003",
+      "source": {
+        "path": "css/css-syntax/escaped-eof.html",
+        "sha256": "dec0d40911d7247999dbb2866c5a58b7a884198285dd766bf55d5ce468c8cff2",
+        "line": 13,
+        "case": "<style>foo { --foo:url(foo\\</style>"
+      },
+      "input": "foo { --foo:url(foo\\",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [foo] {decl --foo: url(foo\ufffd)}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM getPropertyValue string is the serialization of these tokens; the style sheet object itself is not claimed."
+    },
+    {
+      "id": "escaped-eof-declaration-004",
+      "source": {
+        "path": "css/css-syntax/escaped-eof.html",
+        "sha256": "dec0d40911d7247999dbb2866c5a58b7a884198285dd766bf55d5ce468c8cff2",
+        "line": 14,
+        "case": "<style>foo { --foo:\"foo\\</style>"
+      },
+      "input": "foo { --foo:\"foo\\",
+      "context": "sheet",
+      "grammar": {
+        "blocks_as_contents": true
+      },
+      "expected": [
+        "rule [foo] {decl --foo: \"foo\"}"
+      ],
+      "input_literal": true,
+      "remainder": "The CSSOM getPropertyValue string is the serialization of these tokens; the style sheet object itself is not claimed."
+    },
+    {
+      "id": "unclosed-url-declaration-001-control-1",
+      "source": {
+        "path": "css/css-syntax/unclosed-url-at-eof.html",
+        "sha256": "b4dbc9b5aa113d06ba8627bc1fdc0abd9b669ccebc399c81d8f07889e135f2ca",
+        "line": 9,
+        "case": "<div id=test1-control style=\"background-image:url(foo)\"></div>"
+      },
+      "input": "background-image:url(foo)",
+      "context": "block",
+      "grammar": {},
+      "expected": [
+        "decl background-image: url(foo)"
+      ],
+      "input_literal": true,
+      "remainder": "That the CSSOM backgroundImage values are equal is a property-validity result; the two declarations carry the same value tokens."
+    },
+    {
+      "id": "unclosed-url-declaration-002-experiment-1",
+      "source": {
+        "path": "css/css-syntax/unclosed-url-at-eof.html",
+        "sha256": "b4dbc9b5aa113d06ba8627bc1fdc0abd9b669ccebc399c81d8f07889e135f2ca",
+        "line": 10,
+        "case": "<div id=test1-experiment style=\"background-image:url(foo\"></div>"
+      },
+      "input": "background-image:url(foo",
+      "context": "block",
+      "grammar": {},
+      "expected": [
+        "decl background-image: url(foo)"
+      ],
+      "input_literal": true,
+      "remainder": "That the CSSOM backgroundImage values are equal is a property-validity result; the two declarations carry the same value tokens."
+    },
+    {
+      "id": "unclosed-url-declaration-003-control-2",
+      "source": {
+        "path": "css/css-syntax/unclosed-url-at-eof.html",
+        "sha256": "b4dbc9b5aa113d06ba8627bc1fdc0abd9b669ccebc399c81d8f07889e135f2ca",
+        "line": 12,
+        "case": "<div id=test2-control style=\"background-image:url()\"></div>"
+      },
+      "input": "background-image:url()",
+      "context": "block",
+      "grammar": {},
+      "expected": [
+        "decl background-image: url()"
+      ],
+      "input_literal": true,
+      "remainder": "That the CSSOM backgroundImage values are equal is a property-validity result; the two declarations carry the same value tokens."
+    },
+    {
+      "id": "unclosed-url-declaration-004-experiment-2",
+      "source": {
+        "path": "css/css-syntax/unclosed-url-at-eof.html",
+        "sha256": "b4dbc9b5aa113d06ba8627bc1fdc0abd9b669ccebc399c81d8f07889e135f2ca",
+        "line": 13,
+        "case": "<div id=test2-experiment style=\"background-image:url(\"></div>"
+      },
+      "input": "background-image:url(",
+      "context": "block",
+      "grammar": {},
+      "expected": [
+        "decl background-image: url()"
+      ],
+      "input_literal": true,
+      "remainder": "That the CSSOM backgroundImage values are equal is a property-validity result; the two declarations carry the same value tokens."
+    }
+  ]
+}
