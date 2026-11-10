@@ -800,3 +800,90 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
         );
     }
 }
+
+fn composite_x(bytes: &[u8], cyclic: bool) -> Vec<u8> {
+    let table = |tag: &[u8; 4]| {
+        (0..usize::from(read_be_u16(bytes, 4)))
+            .find_map(|i| {
+                let at = 12 + i * 16;
+                if &bytes[at..at + 4] != tag {
+                    return None;
+                }
+                let start = read_be_u32(bytes, at + 8) as usize;
+                let len = read_be_u32(bytes, at + 12) as usize;
+                Some(bytes[start..start + len].to_vec())
+            })
+            .unwrap()
+    };
+    let old_loca = table(b"loca");
+    let old_glyf = table(b"glyf");
+    let count = usize::from(read_be_u16(&table(b"maxp"), 4));
+    let mut head = table(b"head");
+    assert_eq!(read_be_u16(&head, 50), 0);
+    write_be_u16(&mut head, 50, 1);
+    // Two repeated A contours use completed-cache reuse. A self reference is
+    // malformed even when sbix supplies a fully decodable selected PNG.
+    let child = if cyclic { AHEM_GLYPH_X as i16 } else { 35 };
+    let compound: Vec<_> = [-1i16, 0, -200, 1000, 800, 35, child, 0, 0, 3, child, 0, 0]
+        .into_iter()
+        .flat_map(i16::to_be_bytes)
+        .collect();
+    let mut loca = Vec::new();
+    let mut glyf = Vec::new();
+    for id in 0..count {
+        push_be_u32(&mut loca, glyf.len().try_into().unwrap());
+        if id == AHEM_GLYPH_X as usize {
+            glyf.extend_from_slice(&compound);
+        } else {
+            let start = usize::from(read_be_u16(&old_loca, id * 2)) * 2;
+            let end = usize::from(read_be_u16(&old_loca, id * 2 + 2)) * 2;
+            glyf.extend_from_slice(&old_glyf[start..end]);
+        }
+    }
+    push_be_u32(&mut loca, glyf.len().try_into().unwrap());
+    font_with_tables(
+        bytes,
+        vec![(*b"head", head), (*b"loca", loca), (*b"glyf", glyf)],
+    )
+}
+
+#[test]
+fn selected_color_and_bitmap_consumers_qualify_real_composite_closures_before_publication() {
+    for (bytes, size, expected) in [
+        (
+            ahem_color_font(valid_cpal()),
+            10.0,
+            Rect::new(3.0, 3.0, 10.0, 10.0),
+        ),
+        (translated_clipped_v1(), 10.0, Rect::new(5.0, 3.0, 6.0, 8.0)),
+        (offset_sbix(), 20.0, Rect::new(5.0, 11.0, 1.0, 1.0)),
+    ] {
+        assert_retained_ink(composite_x(&bytes, false), size, expected);
+        let font = FontData::try_from_bytes(
+            composite_x(&bytes, true),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let mut context = crate::RenderAccountingContext::default();
+        let error = font
+            .prepare_glyph_run(
+                &instance(size),
+                &[TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 11.0, 777.0).unwrap()],
+                limits(),
+                &mut context,
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.glyph_preparation_diagnostic(),
+            Some(&crate::GlyphPreparationError::InvalidFont)
+        );
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.cleanup_fault(), None);
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.work(crate::RenderWork::PreparedTransferredBytes), 0);
+        assert_retained_ink(composite_x(&bytes, false), size, expected);
+    }
+}

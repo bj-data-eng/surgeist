@@ -226,27 +226,44 @@ pub(super) fn simple_structure(
     Ok((count, contours))
 }
 
+/// Only successful simple qualification and composite completion produce this
+/// private value. Copies preserve the same fully qualified immutable summary.
 #[derive(Clone, Copy)]
-enum State {
-    Active,
-    Qualified(Summary),
-}
-struct Memo {
+struct QualifiedGlyph {
     glyph: GlyphId,
-    state: State,
+    summary: Summary,
 }
-fn memo_index(memos: &[Memo], glyph: GlyphId, account: &Account) -> Result<Option<usize>> {
-    for (index, memo) in memos.iter().enumerate() {
+impl QualifiedGlyph {
+    fn simple(
+        font: &skrifa::FontRef<'_>,
+        glyph: GlyphId,
+        coordinates: &[NormalizedCoord],
+        account: &Account,
+    ) -> Result<Self> {
+        Ok(Self {
+            glyph,
+            summary: super::qualify_simple_glyf(font, glyph, coordinates, account)?,
+        })
+    }
+}
+fn completed_glyph<'a>(
+    completed: &'a [QualifiedGlyph],
+    glyph: GlyphId,
+    account: &Account,
+) -> Result<Option<&'a QualifiedGlyph>> {
+    for qualified in completed {
         account
             .at(RenderPhase::Qualify)
             .work(RenderWork::GlyphVisits, 1)?;
-        if memo.glyph == glyph {
-            return Ok(Some(index));
+        if qualified.glyph == glyph {
+            return Ok(Some(qualified));
         }
     }
     Ok(None)
 }
-struct Frame<'a> {
+
+/// The only frame allowed to parse another edge or complete its source.
+struct ReadyFrame<'a> {
     glyph: GlyphId,
     data: &'a [u8],
     at: usize,
@@ -254,10 +271,9 @@ struct Frame<'a> {
     instructions: bool,
     first_overlap: bool,
     components: usize,
-    pending_offset: (i32, i32),
     summary: Summary,
 }
-impl<'a> Frame<'a> {
+impl<'a> ReadyFrame<'a> {
     fn new(glyph: GlyphId, data: &'a [u8]) -> Result<Self> {
         if signed(data, 0)? >= 0 {
             return Err(invalid());
@@ -271,11 +287,16 @@ impl<'a> Frame<'a> {
             instructions: false,
             first_overlap: false,
             components: 0,
-            pending_offset: (0, 0),
             summary: Summary::default(),
         })
     }
-    fn next(&mut self) -> Result<GlyphId> {
+    fn advance(mut self, account: &Account) -> Result<Advance<'a>> {
+        if self.terminal {
+            return self.finish().map(Advance::Complete);
+        }
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::GlyphComponentVisits, 1)?;
         let flags = word(self.data, self.at)?;
         let glyph = GlyphId::new(u32::from(word(self.data, add(self.at, 2)?)?));
         self.at = add(self.at, 4)?;
@@ -339,30 +360,15 @@ impl<'a> Frame<'a> {
         self.terminal = !more;
         self.instructions = flags & 256 != 0;
         self.components = add(self.components, 1)?;
-        self.pending_offset = (x, y);
-        Ok(glyph)
+        Ok(Advance::Child {
+            parent: AwaitingParent {
+                frame: self,
+                offset: (x, y),
+            },
+            glyph,
+        })
     }
-    fn include(&mut self, child: Summary) -> Result<()> {
-        self.summary.points = add(self.summary.points, child.points)?;
-        self.summary.contours = add(self.summary.contours, child.contours)?;
-        self.summary.max_simple = self.summary.max_simple.max(child.max_simple);
-        self.summary.max_other = self.summary.max_other.max(child.max_other);
-        self.summary.component_stack = self.summary.component_stack.max(child.component_stack);
-        // Draw calls Scaler::load for every child, including loca-equal None.
-        // Only the metadata walk skips None; its zero point/storage summary
-        // must not erase the actual draw recursion level.
-        self.summary.depth = self.summary.depth.max(add(child.depth, 1)?);
-        if let Some(bounds) = child.bounds {
-            let bounds = bounds.translated(self.pending_offset.0, self.pending_offset.1)?;
-            if let Some(existing) = &mut self.summary.bounds {
-                existing.include(bounds);
-            } else {
-                self.summary.bounds = Some(bounds);
-            }
-        }
-        self.summary.metadata()
-    }
-    fn finish(mut self) -> Result<Summary> {
+    fn finish(mut self) -> Result<QualifiedGlyph> {
         if self.instructions {
             let len = usize::from(word(self.data, self.at)?);
             self.at = add(add(self.at, 2)?, len)?;
@@ -385,7 +391,48 @@ impl<'a> Frame<'a> {
         }
         self.summary.component_stack = add(self.summary.component_stack, add(self.components, 4)?)?;
         self.summary.metadata()?;
-        Ok(self.summary)
+        Ok(QualifiedGlyph {
+            glyph: self.glyph,
+            summary: self.summary,
+        })
+    }
+}
+
+/// A decoded edge owns its continuation until a qualified child is included.
+struct AwaitingParent<'a> {
+    frame: ReadyFrame<'a>,
+    offset: (i32, i32),
+}
+enum Advance<'a> {
+    Child {
+        parent: AwaitingParent<'a>,
+        glyph: GlyphId,
+    },
+    Complete(QualifiedGlyph),
+}
+impl<'a> AwaitingParent<'a> {
+    fn resume(self, child: QualifiedGlyph) -> Result<ReadyFrame<'a>> {
+        let Self { mut frame, offset } = self;
+        let child = child.summary;
+        frame.summary.points = add(frame.summary.points, child.points)?;
+        frame.summary.contours = add(frame.summary.contours, child.contours)?;
+        frame.summary.max_simple = frame.summary.max_simple.max(child.max_simple);
+        frame.summary.max_other = frame.summary.max_other.max(child.max_other);
+        frame.summary.component_stack = frame.summary.component_stack.max(child.component_stack);
+        // Draw calls Scaler::load for every child, including loca-equal None.
+        // Only the metadata walk skips None; its zero point/storage summary
+        // must not erase the actual draw recursion level.
+        frame.summary.depth = frame.summary.depth.max(add(child.depth, 1)?);
+        if let Some(bounds) = child.bounds {
+            let bounds = bounds.translated(offset.0, offset.1)?;
+            if let Some(existing) = &mut frame.summary.bounds {
+                existing.include(bounds);
+            } else {
+                frame.summary.bounds = Some(bounds);
+            }
+        }
+        frame.summary.metadata()?;
+        Ok(frame)
     }
 }
 
@@ -429,59 +476,60 @@ pub(super) fn qualify(
         return Err(unsupported());
     }
     root_metrics(font, glyph)?;
-    let mut memos = account.temporary::<Memo>(0)?;
-    let mut frames = account.temporary::<Frame<'_>>(0)?;
-    memos.push(Memo {
-        glyph,
-        state: State::Active,
-    })?;
-    frames.push(Frame::new(glyph, raw)?)?;
+    let mut completed = account.temporary::<QualifiedGlyph>(0)?;
+    let mut parents = account.temporary::<AwaitingParent<'_>>(0)?;
+    let mut current = ReadyFrame::new(glyph, raw)?;
     loop {
-        if frames.last().expect("root frame").terminal {
-            let frame = frames.pop().expect("current frame");
-            let completed_glyph = frame.glyph;
-            let summary = frame.finish()?;
-            let index = memo_index(&memos, completed_glyph, account)?.expect("active memo");
-            memos[index].state = State::Qualified(summary);
-            if let Some(parent) = frames.last_mut() {
-                parent.include(summary)?;
-            } else {
-                return Ok(summary);
-            }
-            continue;
-        }
-        account
-            .at(RenderPhase::Qualify)
-            .work(RenderWork::GlyphComponentVisits, 1)?;
-        let child = frames.last_mut().expect("current frame").next()?;
-        if let Some(index) = memo_index(&memos, child, account)? {
-            let memo = &memos[index];
-            let State::Qualified(summary) = memo.state else {
-                return Err(invalid());
-            };
-            if add(frames.len(), summary.depth)? > 32 {
-                return Err(unsupported());
-            }
-            frames.last_mut().expect("parent frame").include(summary)?;
-            continue;
-        }
-        let raw = raw_glyph(font, child, account)?;
-        if frames.len() > 32 {
-            return Err(unsupported());
-        }
-        if raw.is_empty() || signed(raw, 0)? >= 0 {
-            let summary = super::qualify_simple_glyf(font, child, coordinates, account)?;
-            memos.push(Memo {
+        match current.advance(account)? {
+            Advance::Complete(qualified) => match parents.pop() {
+                Some(parent) => {
+                    // Each outstanding nonroot composite reserved its eventual
+                    // completed slot on entry. Finishing acquires no backing.
+                    completed.append_slot()?.write(qualified);
+                    current = parent.resume(qualified)?;
+                }
+                None => return Ok(qualified.summary),
+            },
+            Advance::Child {
+                parent,
                 glyph: child,
-                state: State::Qualified(summary),
-            })?;
-            frames.last_mut().expect("parent frame").include(summary)?;
-        } else {
-            memos.push(Memo {
-                glyph: child,
-                state: State::Active,
-            })?;
-            frames.push(Frame::new(child, raw)?)?;
+            } => {
+                let depth = add(parents.len(), 1)?;
+                if let Some(qualified) = completed_glyph(&completed, child, account)? {
+                    if add(depth, qualified.summary.depth)? > 32 {
+                        return Err(unsupported());
+                    }
+                    current = parent.resume(*qualified)?;
+                    continue;
+                }
+                // Completed-first descent keeps the two identity sets disjoint.
+                // Only a miss probes active ancestors, in root-to-leaf order.
+                for ancestor in parents.iter().chain(std::iter::once(&parent)) {
+                    account
+                        .at(RenderPhase::Qualify)
+                        .work(RenderWork::GlyphVisits, 1)?;
+                    if ancestor.frame.glyph == child {
+                        return Err(invalid());
+                    }
+                }
+                let raw = raw_glyph(font, child, account)?;
+                if depth > 32 {
+                    return Err(unsupported());
+                }
+                if raw.is_empty() || signed(raw, 0)? >= 0 {
+                    let qualified = QualifiedGlyph::simple(font, child, coordinates, account)?;
+                    // Reserve len+d+1 real slots: the new child and d pending
+                    // nonroot composites, whose completed records come later.
+                    completed.grow(depth)?;
+                    completed.append_slot()?.write(qualified);
+                    current = parent.resume(qualified)?;
+                } else {
+                    completed.grow(depth)?;
+                    let child = ReadyFrame::new(child, raw)?;
+                    parents.push(parent)?;
+                    current = child;
+                }
+            }
         }
     }
 }
