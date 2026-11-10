@@ -16,7 +16,7 @@ use surgeist_html::{
     bounded::attributes::{
         HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationLimits,
     },
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{
         HtmlConstructionCause, HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument,
         HtmlDocumentMode, HtmlNodeId, HtmlNodeKind,

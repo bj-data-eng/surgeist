@@ -5,7 +5,7 @@ use super::*;
 use history::{FrozenHistory, PreparedHistory, Unpublishable};
 use surgeist_html::{
     attributes::HtmlReferrerPolicy,
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind},
     values::DocumentString,
 };

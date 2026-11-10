@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind},
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };

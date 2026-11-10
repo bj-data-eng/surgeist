@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlFragmentOwner, HtmlNodeKind},
     values::{DocumentString, QualifiedName},
 };

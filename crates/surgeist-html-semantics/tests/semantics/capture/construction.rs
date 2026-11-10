@@ -1,5 +1,5 @@
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{
         HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlElement,
         HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,

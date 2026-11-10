@@ -1,5 +1,5 @@
 use crate::parser::support::small_limits_builder;
-use surgeist_html::{bounded::construction::HtmlConstructionResult, construction::HtmlNodeKind};
+use surgeist_html::{construction::HtmlConstructionResult, construction::HtmlNodeKind};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::*;

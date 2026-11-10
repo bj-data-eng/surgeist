@@ -7,11 +7,12 @@ use surgeist_html::bounded::construction::{
     HtmlConstructionAllocationRole, HtmlConstructionAttributeEdit, HtmlConstructionCommand,
     HtmlConstructionCommit, HtmlConstructionGrowth, HtmlConstructionLease, HtmlConstructionNode,
     HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRecovery,
-    HtmlConstructionResult, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
+    HtmlConstructionRetirementDescription, HtmlConstructionStorage,
 };
 use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
 use surgeist_html::construction::{
-    HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionError, HtmlConstructionUsage,
+    HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionError, HtmlConstructionResult,
+    HtmlConstructionUsage,
 };
 mod attributes;
 #[cfg(test)]

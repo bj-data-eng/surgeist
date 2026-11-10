@@ -31,5 +31,5 @@ pub use crate::internal::construction::bounded::{
     HtmlConstructionInitialization, HtmlConstructionInitializationAction,
     HtmlConstructionInitializationObservation, HtmlConstructionLease, HtmlConstructionNode,
     HtmlConstructionReadyInitialization, HtmlConstructionRecovery, HtmlConstructionRefusal,
-    HtmlConstructionResult, HtmlConstructionRetired, HtmlConstructionStorage,
+    HtmlConstructionRetired, HtmlConstructionStorage,
 };

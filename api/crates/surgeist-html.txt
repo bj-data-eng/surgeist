@@ -2608,7 +2608,7 @@ pub surgeist_html::bounded::construction::HtmlConstructionCommit::Changed::creat
 pub surgeist_html::bounded::construction::HtmlConstructionCommit::Changed::storage: surgeist_html::bounded::construction::HtmlConstructionStorage
 pub surgeist_html::bounded::construction::HtmlConstructionCommit::Published
 pub surgeist_html::bounded::construction::HtmlConstructionCommit::Published::lease: surgeist_html::bounded::construction::HtmlConstructionLease
-pub surgeist_html::bounded::construction::HtmlConstructionCommit::Published::result: surgeist_html::bounded::construction::HtmlConstructionResult
+pub surgeist_html::bounded::construction::HtmlConstructionCommit::Published::result: surgeist_html::construction::HtmlConstructionResult
 pub enum surgeist_html::bounded::construction::HtmlConstructionContent
 pub surgeist_html::bounded::construction::HtmlConstructionContent::Comment(surgeist_html::values::DocumentString)
 pub surgeist_html::bounded::construction::HtmlConstructionContent::Doctype(surgeist_html::construction::HtmlDoctype)
@@ -2618,19 +2618,6 @@ pub surgeist_html::bounded::construction::HtmlConstructionContent::Text(surgeist
 pub enum surgeist_html::bounded::construction::HtmlConstructionGrowth
 pub surgeist_html::bounded::construction::HtmlConstructionGrowth::Exact
 pub surgeist_html::bounded::construction::HtmlConstructionGrowth::Geometric
-pub enum surgeist_html::bounded::construction::HtmlConstructionResult
-pub surgeist_html::bounded::construction::HtmlConstructionResult::Document(surgeist_html::construction::HtmlDocument)
-pub surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(surgeist_html::construction::HtmlFragment)
-impl surgeist_html::bounded::construction::HtmlConstructionResult
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::document(&self) -> core::option::Option<&surgeist_html::construction::HtmlDocument>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::fragment(&self) -> core::option::Option<&surgeist_html::construction::HtmlFragment>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::is_empty(&self) -> bool
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::len(&self) -> usize
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::node(&self, id: &surgeist_html::construction::HtmlNodeId) -> core::result::Result<surgeist_html::construction::HtmlNode<'_>, surgeist_html::construction::ForeignHtmlResult>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::node_at(&self, position: usize) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionNode<'_>>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::node_by_result_id(&self, id: &surgeist_html::construction::HtmlNodeId) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionNode<'_>, surgeist_html::construction::ForeignHtmlResult>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::position(&self, handle: &surgeist_html::construction::HtmlBuilderNode) -> core::result::Result<usize, surgeist_html::construction::HtmlConstructionError>
-pub fn surgeist_html::bounded::construction::HtmlConstructionResult::usage(&self) -> surgeist_html::construction::HtmlConstructionUsage
 pub enum surgeist_html::bounded::construction::HtmlConstructionRetirementDescription<'a>
 pub surgeist_html::bounded::construction::HtmlConstructionRetirementDescription::Allocation(&'a surgeist_html::bounded::construction::HtmlConstructionAllocationSnapshot)
 pub surgeist_html::bounded::construction::HtmlConstructionRetirementDescription::Payload
@@ -2792,7 +2779,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionInitializationObser
 pub struct surgeist_html::bounded::construction::HtmlConstructionLease
 impl surgeist_html::bounded::construction::HtmlConstructionLease
 pub fn surgeist_html::bounded::construction::HtmlConstructionLease::allocation(&self) -> &surgeist_html::bounded::construction::HtmlConstructionAllocationSnapshot
-pub fn surgeist_html::bounded::construction::HtmlConstructionLease::try_recover(result: surgeist_html::bounded::construction::HtmlConstructionResult, lease: Self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionRecovery, surgeist_html::bounded::construction::HtmlConstructionRefusal<(surgeist_html::bounded::construction::HtmlConstructionResult, Self)>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionLease::try_recover(result: surgeist_html::construction::HtmlConstructionResult, lease: Self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionRecovery, surgeist_html::bounded::construction::HtmlConstructionRefusal<(surgeist_html::construction::HtmlConstructionResult, Self)>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionNode<'a>
 impl<'a> surgeist_html::bounded::construction::HtmlConstructionNode<'a>
 pub fn surgeist_html::bounded::construction::HtmlConstructionNode<'a>::as_node(self) -> surgeist_html::construction::HtmlNode<'a>
@@ -4021,6 +4008,19 @@ pub surgeist_html::construction::HtmlConstructionResource::Nodes
 pub surgeist_html::construction::HtmlConstructionResource::Utf16Units
 impl core::fmt::Display for surgeist_html::construction::HtmlConstructionResource
 pub fn surgeist_html::construction::HtmlConstructionResource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::construction::HtmlConstructionResult
+pub surgeist_html::construction::HtmlConstructionResult::Document(surgeist_html::construction::HtmlDocument)
+pub surgeist_html::construction::HtmlConstructionResult::Fragment(surgeist_html::construction::HtmlFragment)
+impl surgeist_html::construction::HtmlConstructionResult
+pub fn surgeist_html::construction::HtmlConstructionResult::document(&self) -> core::option::Option<&surgeist_html::construction::HtmlDocument>
+pub fn surgeist_html::construction::HtmlConstructionResult::fragment(&self) -> core::option::Option<&surgeist_html::construction::HtmlFragment>
+pub fn surgeist_html::construction::HtmlConstructionResult::is_empty(&self) -> bool
+pub fn surgeist_html::construction::HtmlConstructionResult::len(&self) -> usize
+pub fn surgeist_html::construction::HtmlConstructionResult::node(&self, id: &surgeist_html::construction::HtmlNodeId) -> core::result::Result<surgeist_html::construction::HtmlNode<'_>, surgeist_html::construction::ForeignHtmlResult>
+pub fn surgeist_html::construction::HtmlConstructionResult::node_at(&self, position: usize) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionNode<'_>>
+pub fn surgeist_html::construction::HtmlConstructionResult::node_by_result_id(&self, id: &surgeist_html::construction::HtmlNodeId) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionNode<'_>, surgeist_html::construction::ForeignHtmlResult>
+pub fn surgeist_html::construction::HtmlConstructionResult::position(&self, handle: &surgeist_html::construction::HtmlBuilderNode) -> core::result::Result<usize, surgeist_html::construction::HtmlConstructionError>
+pub fn surgeist_html::construction::HtmlConstructionResult::usage(&self) -> surgeist_html::construction::HtmlConstructionUsage
 pub enum surgeist_html::construction::HtmlDocumentMode
 pub surgeist_html::construction::HtmlDocumentMode::LimitedQuirks
 pub surgeist_html::construction::HtmlDocumentMode::NoQuirks

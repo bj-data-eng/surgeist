@@ -10,7 +10,7 @@ use provenance::{
     OriginGroup,
 };
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlDocument, HtmlFragment, HtmlNode},
 };
 

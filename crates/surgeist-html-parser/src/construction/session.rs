@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlFragmentOwner, HtmlNodeKind, HtmlTemplateContentsKind},
     values::QualifiedName,
 };
@@ -468,10 +468,10 @@ impl ParserArenaSession {
                 cancel_after_text_append_chunk: _,
         } = self.storage.take().ok_or(SessionError::Consumed)?;
         let view = match result {
-            surgeist_html::bounded::construction::HtmlConstructionResult::Document(value) => {
+            surgeist_html::construction::HtmlConstructionResult::Document(value) => {
                 HtmlConstructionResult::Document(value)
             }
-            surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(value) => {
+            surgeist_html::construction::HtmlConstructionResult::Fragment(value) => {
                 HtmlConstructionResult::Fragment(value)
             }
         };

@@ -5,7 +5,7 @@ use super::*;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{
         HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind, HtmlShadowRootProperties,
     },

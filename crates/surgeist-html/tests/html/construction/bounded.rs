@@ -12,13 +12,13 @@ use surgeist_html::{
         HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode, HtmlConstructionCommand,
         HtmlConstructionCommit, HtmlConstructionContent, HtmlConstructionGrowth,
         HtmlConstructionLease, HtmlConstructionNode, HtmlConstructionReadyOperation,
-        HtmlConstructionRefusal, HtmlConstructionResult, HtmlConstructionRetirementDescription,
-        HtmlConstructionStorage, HtmlConstructionTextAppend,
+        HtmlConstructionRefusal, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
+        HtmlConstructionTextAppend,
     },
     construction::{
-        ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause, HtmlDocumentMode, HtmlElement,
-        HtmlFragmentOwner, HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties,
-        HtmlSlotAssignment, HtmlTemplateContentsKind,
+        ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionResult,
+        HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind, HtmlShadowRootMode,
+        HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };

@@ -1,5 +1,6 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
+pub use crate::internal::construction::bounded::HtmlConstructionResult;
 pub use crate::internal::construction::{
     ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlBuilderNode, HtmlConstructionCause,
     HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource, HtmlConstructionUsage,

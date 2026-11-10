@@ -374,7 +374,7 @@ fn a_scope_bound_without_room_for_the_session_is_an_accounting_fault() {
 mod capture {
     use super::*;
     use surgeist_html::{
-        bounded::construction::HtmlConstructionResult,
+        construction::HtmlConstructionResult,
         construction::{
             HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlNodeId, HtmlNodeKind,
         },

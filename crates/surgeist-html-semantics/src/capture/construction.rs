@@ -8,7 +8,7 @@ use surgeist_html::construction::{
     HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
     HtmlTemplateContentsKind,
 };
-use surgeist_html::{bounded::construction::HtmlConstructionResult, values::DocumentString};
+use surgeist_html::{construction::HtmlConstructionResult, values::DocumentString};
 
 /// Explicit document assignment at one coherent host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]

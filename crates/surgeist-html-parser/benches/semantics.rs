@@ -26,7 +26,7 @@ use std::{fmt::Write as _, hint::black_box, time::Instant};
 mod documents;
 
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlDocument, HtmlNodeId, HtmlNodeKind},
     values::HtmlValueInterpreter,
 };
