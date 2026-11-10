@@ -660,6 +660,8 @@ mod tests {
     use super::*;
     use surgeist_generator::browser::{CaseSpec, FixtureStatus};
 
+    include!("script_custody_admission_tests.rs");
+
     fn fixture() -> FixtureSpec {
         FixtureSpec::new(
             "example".to_string(),
