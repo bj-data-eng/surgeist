@@ -206,9 +206,12 @@ impl<V> JsExpect<V> for Option<V> {
 }
 
 #[cfg(test)]
-use std::{borrow::Cow, pin::Pin};
+use std::borrow::Cow;
 
-#[cfg(test)]
+#[cfg(all(test, any(not(feature = "intl"), feature = "intl_bundled")))]
+use std::pin::Pin;
+
+#[cfg(all(test, any(not(feature = "intl"), feature = "intl_bundled")))]
 type PinBoxFuture<'a> = Pin<Box<dyn Future<Output = ()> + 'a>>;
 
 /// A test action executed in a test function.
@@ -224,6 +227,7 @@ enum Inner {
     InspectContext {
         op: fn(&mut Context),
     },
+    #[cfg(any(not(feature = "intl"), feature = "intl_bundled"))]
     InspectContextAsync {
         op: Box<dyn for<'a> FnOnce(&'a mut Context) -> PinBoxFuture<'a>>,
     },
@@ -278,6 +282,7 @@ impl TestAction {
     }
 
     /// Executes `op` with the currently active context in an async environment.
+    #[cfg(any(not(feature = "intl"), feature = "intl_bundled"))]
     pub(crate) fn inspect_context_async(op: impl AsyncFnOnce(&mut Context) + 'static) -> Self {
         Self(Inner::InspectContextAsync {
             op: Box::new(move |ctx| Box::pin(op(ctx))),
@@ -425,6 +430,7 @@ fn run_test_actions_with(actions: impl IntoIterator<Item = TestAction>, context:
             Inner::InspectContext { op } => {
                 op(context);
             }
+            #[cfg(any(not(feature = "intl"), feature = "intl_bundled"))]
             Inner::InspectContextAsync { op } => futures_lite::future::block_on(op(context)),
             Inner::Assert { source } => {
                 let val = match forward_val(context, &source) {

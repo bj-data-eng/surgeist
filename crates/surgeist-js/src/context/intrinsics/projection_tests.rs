@@ -16,6 +16,15 @@ fn context() -> Context {
     builder.build().unwrap()
 }
 
+#[cfg(all(feature = "intl", not(feature = "intl_bundled")))]
+#[test]
+fn intl_without_a_supplied_or_bundled_provider_returns_the_configuration_error() {
+    let error = Context::builder().build().unwrap_err();
+    let native = error.as_native().unwrap();
+    assert!(native.is_type());
+    assert_eq!(native.message(), "missing Intl provider for context");
+}
+
 fn guest_object(context: &mut Context, source: &str) -> JsObject {
     context
         .with_execution(ExecutionOptions::new(100_000), |mut access| {
