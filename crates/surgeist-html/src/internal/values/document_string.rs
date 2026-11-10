@@ -34,7 +34,7 @@ impl TextBlock {
     }
 
     /// Adopts a shared vector of units, for example one a CSS input holds, without copying it.
-    pub fn from_shared_utf16(units: Arc<Vec<u16>>) -> Self {
+    fn from_shared_utf16(units: Arc<Vec<u16>>) -> Self {
         Self { units }
     }
 
@@ -77,25 +77,13 @@ impl TextBlock {
     /// The range must lie in the block. A range that is not the whole block also has to fit the
     /// handle's 32-bit start and have at most [`Self::MAX_RANGE_UNITS`] units.
     pub fn string(&self, range: Range<usize>) -> Result<DocumentString, TextRangeError> {
-        let Range { start, end } = range;
-        if start > end {
-            return Err(TextRangeError::Reversed { start, end });
-        }
-        let block_len = self.units.len();
-        if end > block_len {
-            return Err(TextRangeError::OutOfBounds { end, block_len });
-        }
-        if start == 0 && end == block_len {
-            return Ok(self.whole());
-        }
-        let len = end - start;
-        match (u32::try_from(start), u32::try_from(len)) {
-            (Ok(start), Ok(len)) if len != WHOLE => Ok(DocumentString {
+        match range_fields(range.start, range.end, self.units.len())? {
+            None => Ok(self.whole()),
+            Some((start, len)) => Ok(DocumentString {
                 block: self.clone(),
                 start,
                 len,
             }),
-            _ => Err(TextRangeError::Unrepresentable { start, len }),
         }
     }
 
@@ -105,7 +93,8 @@ impl TextBlock {
     }
 
     /// Returns an identity for the allocation, equal for the clones of one block and different
-    /// for blocks alive at the same time.
+    /// for blocks alive at the same time. A block allocated after this one is freed may reuse
+    /// its address.
     pub fn address(&self) -> usize {
         Arc::as_ptr(&self.units) as usize
     }
@@ -145,9 +134,37 @@ impl WeakTextBlock {
         self.units.strong_count()
     }
 
-    /// Returns the identity [`TextBlock::address`] gives the block.
+    /// Returns the identity [`TextBlock::address`] gives the block. The address identifies the
+    /// block only while [`Self::holders`] is not zero: once the units are freed, a later block
+    /// may reuse it.
     pub fn address(&self) -> usize {
         self.units.as_ptr() as usize
+    }
+}
+
+/// Returns the `start` and `len` fields of a handle on `start..end` in a block of `block_len`
+/// units, or `None` when the range is the whole block.
+///
+/// A range other than the whole block needs a start that fits `u32` and a length below
+/// [`WHOLE`], which marks the whole block.
+fn range_fields(
+    start: usize,
+    end: usize,
+    block_len: usize,
+) -> Result<Option<(u32, u32)>, TextRangeError> {
+    if start > end {
+        return Err(TextRangeError::Reversed { start, end });
+    }
+    if end > block_len {
+        return Err(TextRangeError::OutOfBounds { end, block_len });
+    }
+    if start == 0 && end == block_len {
+        return Ok(None);
+    }
+    let len = end - start;
+    match (u32::try_from(start), u32::try_from(len)) {
+        (Ok(start), Ok(len)) if len != WHOLE => Ok(Some((start, len))),
+        _ => Err(TextRangeError::Unrepresentable { start, len }),
     }
 }
 
@@ -424,3 +441,6 @@ impl fmt::Display for Utf8ConversionError {
 }
 
 impl Error for Utf8ConversionError {}
+
+#[cfg(test)]
+mod tests;

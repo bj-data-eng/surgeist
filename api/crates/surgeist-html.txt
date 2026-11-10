@@ -7079,7 +7079,6 @@ pub const surgeist_html::values::TextBlock::MAX_RANGE_UNITS: usize
 pub fn surgeist_html::values::TextBlock::address(&self) -> usize
 pub fn surgeist_html::values::TextBlock::capacity(&self) -> usize
 pub fn surgeist_html::values::TextBlock::downgrade(&self) -> surgeist_html::values::WeakTextBlock
-pub fn surgeist_html::values::TextBlock::from_shared_utf16(units: alloc::sync::Arc<alloc::vec::Vec<u16>>) -> Self
 pub fn surgeist_html::values::TextBlock::from_utf16(units: impl core::convert::Into<alloc::vec::Vec<u16>>) -> Self
 pub fn surgeist_html::values::TextBlock::get(&self, range: core::ops::range::Range<usize>) -> core::option::Option<&[u16]>
 pub fn surgeist_html::values::TextBlock::holders(&self) -> usize
