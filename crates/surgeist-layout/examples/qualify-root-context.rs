@@ -255,6 +255,36 @@ mod tests {
     }
 
     #[test]
+    fn matching_geometry_commands_resolve_a_named_catalogue_edition() {
+        let modes = [
+            "--publish-matching-geometry",
+            "--check-published-matching-geometry",
+        ]
+        .map(|command| {
+            let requested = arguments(&[command, "box-controls"]);
+            let (fixture, mode) = parse_arguments(&requested).expect(
+                "a declared matching edition must be selectable without a fixture override",
+            );
+            assert_eq!(fixture, None);
+            assert_ne!(mode, QualificationMode::Regular);
+            for invalid in [
+                vec![command],
+                vec![command, "unknown-matching-edition"],
+                vec![command, "../box-controls"],
+                vec![command, "box-controls", "arbitrary-output"],
+                vec![command, "box-controls", "--fixture", "html/other.html"],
+            ] {
+                assert!(
+                    parse_arguments(&arguments(&invalid)).is_err(),
+                    "matching publication must resolve one authored edition: {invalid:?}"
+                );
+            }
+            mode
+        });
+        assert_ne!(modes[0], modes[1]);
+    }
+
+    #[test]
     fn canonical_publication_commands_select_the_fixed_owner_without_extra_arguments() {
         for (flag, mode) in [
             (

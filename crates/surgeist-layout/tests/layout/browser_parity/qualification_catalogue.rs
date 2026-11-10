@@ -476,4 +476,139 @@ profile = "flex-composition"
             );
         }
     }
+
+    const MATCHING: &str = r#"
+
+[[matching_publications]]
+edition = "box-controls"
+sources = [
+  "html/grid/grid_fit_content_points_argument.html",
+  "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+]
+"#;
+
+    #[test]
+    fn matching_publications_bind_named_original_cohorts_and_report_uncovered_variants() {
+        let prior = Declaration::parse(unannotated_catalogue()).unwrap();
+        let appended = Declaration::parse(&[unannotated_catalogue(), MATCHING.as_bytes()].concat())
+            .expect("a named matching cohort of complete original sources must be admitted");
+        let mut selected = BTreeMap::new();
+        for record in prior
+            .records
+            .iter()
+            .filter(|record| record.semantic_specifications.is_some())
+        {
+            let projection = serde_json::to_value(record).unwrap();
+            assert!(projection.get("matching_publication").is_none());
+            selected.insert(record.source.as_str().to_owned(), projection);
+        }
+        let expected: BTreeSet<_> = [
+            "html/grid/grid_fit_content_points_argument.html",
+            "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+        ]
+        .into_iter()
+        .flat_map(|source| fixture_cases().map(move |(variant, _)| format!("{source} ({variant})")))
+        .collect();
+        assert_eq!(
+            appended
+                .check_live_records(&selected)
+                .unwrap()
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            expected
+        );
+        for source in [
+            "html/grid/grid_fit_content_points_argument.html",
+            "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+        ] {
+            let record = appended
+                .records
+                .iter()
+                .find(|record| record.source.as_str() == source)
+                .unwrap();
+            let projection = serde_json::to_value(record).unwrap();
+            assert_eq!(projection["matching_publication"], "box-controls");
+            selected.insert(source.to_owned(), projection);
+        }
+        assert!(appended.check_live_records(&selected).unwrap().is_empty());
+        assert!(prior.check_live_records(&selected).is_err());
+        selected
+            .get_mut("html/grid/grid_fit_content_points_argument.html")
+            .unwrap()["matching_publication"] = serde_json::json!("other-controls");
+        assert!(appended.check_live_records(&selected).is_err());
+    }
+
+    #[test]
+    fn matching_publications_accept_authored_edition_names_without_fixed_owner_variants() {
+        for edition in ["box-controls", "independent-box-controls"] {
+            let input = [
+                unannotated_catalogue(),
+                MATCHING.replace("box-controls", edition).as_bytes(),
+            ]
+            .concat();
+            let parsed =
+                Declaration::parse(&input).expect("the catalogue owns matching edition identity");
+            let record = parsed
+                .records
+                .iter()
+                .find(|record| {
+                    record.source.as_str() == "html/grid/grid_fit_content_points_argument.html"
+                })
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(record).unwrap()["matching_publication"],
+                edition
+            );
+        }
+    }
+
+    #[test]
+    fn matching_publications_reject_ambiguous_membership_and_other_capture_authority() {
+        let prior = Declaration::parse(unannotated_catalogue()).unwrap();
+        let semantic = prior
+            .records
+            .iter()
+            .find(|record| record.semantic_specifications.is_some())
+            .unwrap()
+            .source
+            .as_str();
+        for appendix in [
+            MATCHING.repeat(2),
+            MATCHING.replace("box-controls", "../escaped"),
+            MATCHING.replace("box-controls", ""),
+            MATCHING.replace(
+                "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+                "html/grid/grid_fit_content_points_argument.html",
+            ),
+            MATCHING.replace(
+                "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+                "html/missing.html",
+            ),
+            MATCHING.replace(
+                "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+                "html/qualification/fixed-grid.html",
+            ),
+            MATCHING.replace(
+                "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+                semantic,
+            ),
+            format!(
+                "{MATCHING}{}",
+                MATCHING.replace("box-controls", "another-controls")
+            ),
+            format!(
+                "{SPECIALIZED}{}",
+                MATCHING.replace(
+                    "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+                    "html/block/prepared_text_continuity_bidi.html"
+                )
+            ),
+        ] {
+            assert!(
+                Declaration::parse(&[unannotated_catalogue(), appendix.as_bytes()].concat())
+                    .is_err(),
+                "{appendix}"
+            );
+        }
+    }
 }

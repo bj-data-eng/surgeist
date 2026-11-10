@@ -670,3 +670,122 @@ fn live_owner_bindings_require_the_exact_specialized_request() {
         current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json").is_err()
     );
 }
+
+#[test]
+fn matching_terminal_wire_requires_policy_free_complete_original_bindings() {
+    // This exercises the terminal wire consumer only. Actual capture bytes,
+    // observations and comparison are authenticated again during admission.
+    let raw = include_str!("captured/canonical-box-differences/qualification.json");
+    let original = Qualification::parse(raw).unwrap();
+    let mut terminal: Value = serde_json::from_str(raw).unwrap();
+    terminal["edition"] = json!("box-controls");
+    let record = &mut terminal["records"][0]["value"];
+    record["semantic_specifications"] = Value::Null;
+    record["matching_publication"] = json!("box-controls");
+    let record_sha = semantic_record_digest(record).unwrap();
+    terminal["records"][0]["sha256"] = json!(record_sha);
+    for field in ["retained_inputs", "current_owner_inputs"] {
+        terminal[field]
+            .as_object_mut()
+            .unwrap()
+            .retain(|path, _| !path.starts_with("semantic/"));
+    }
+    for case in terminal["cases"].as_array_mut().unwrap() {
+        let object = case.as_object_mut().unwrap();
+        object.remove("spec");
+        object.remove("policy");
+        object.remove("requirements");
+        object.insert("matching".into(), json!("geometry"));
+        case["case"]["record_sha256"] = json!(record_sha);
+        let variant = case["case"]["variant"].as_str().unwrap().to_owned();
+        let identity = case["identity"].as_object_mut().unwrap();
+        identity.remove("policy_source_sha256");
+        identity.insert("record_sha256".into(), json!(record_sha));
+        identity
+            .get_mut("inputs")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .retain(|path, _| !path.starts_with("semantic/"));
+        identity.insert(
+            "profile_sha256".into(),
+            json!(sha256(
+                &serde_json::to_vec(&(
+                    "canonical-no-text-boxes",
+                    &original.browser_settings,
+                    record_sha.as_str(),
+                    variant.as_str(),
+                    "geometry",
+                    Option::<&str>::None,
+                ))
+                .unwrap()
+            )),
+        );
+    }
+    let valid = Qualification::parse(&terminal.to_string())
+        .expect("complete original matching wire must admit a policy-free capture binding");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&valid.to_bytes().unwrap()).unwrap(),
+        terminal
+    );
+    for (pointer, replacement) in [
+        ("/edition", json!("other-controls")),
+        ("/cases/0/matching", json!("unknown")),
+        ("/cases/0/historical", Value::Null),
+        ("/cases/0/historical/sha256", json!("0".repeat(64))),
+        ("/cases/0/identity/historical_sha256", Value::Null),
+        ("/cases/0/identity/source_sha256", json!("0".repeat(64))),
+        ("/cases/0/identity/record_sha256", json!("0".repeat(64))),
+        ("/cases/0/identity/capture_sha256", json!("0".repeat(64))),
+    ] {
+        let mut changed = terminal.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(
+            Qualification::parse(&changed.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut incomplete = terminal.clone();
+    incomplete["cases"].as_array_mut().unwrap().pop();
+    assert!(Qualification::parse(&incomplete.to_string()).is_err());
+    let mut duplicate = terminal.clone();
+    duplicate["cases"][1] = duplicate["cases"][0].clone();
+    assert!(Qualification::parse(&duplicate.to_string()).is_err());
+    let mut missing_history = terminal.clone();
+    missing_history["records"][0]["value"]["historical_sha256"]
+        .as_object_mut()
+        .unwrap()
+        .remove("border_box_ltr");
+    let hash = semantic_record_digest(&missing_history["records"][0]["value"]).unwrap();
+    missing_history["records"][0]["sha256"] = json!(hash);
+    for case in missing_history["cases"].as_array_mut().unwrap() {
+        case["case"]["record_sha256"] = json!(hash);
+        case["identity"]["record_sha256"] = json!(hash);
+    }
+    assert!(Qualification::parse(&missing_history.to_string()).is_err());
+    for (pointer, value) in [
+        (
+            "/cases/0/identity",
+            ("policy_source_sha256", json!("0".repeat(64))),
+        ),
+        (
+            "/cases/0",
+            (
+                "policy",
+                json!({"path":"semantic/forbidden-policy.md","sha256":"0".repeat(64)}),
+            ),
+        ),
+    ] {
+        let mut changed = terminal.clone();
+        changed
+            .pointer_mut(pointer)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(value.0.into(), value.1);
+        assert!(
+            Qualification::parse(&changed.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+}
