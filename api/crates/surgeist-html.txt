@@ -7082,6 +7082,9 @@ pub fn surgeist_html::values::QualifiedName::local_name(&self) -> &surgeist_html
 pub fn surgeist_html::values::QualifiedName::namespace_uri(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::values::QualifiedName::prefix(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub mod surgeist_html::vocabulary
+pub enum surgeist_html::vocabulary::HtmlEventHandlerApplicability
+pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::AllHtmlElements
+pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::BodyElement
 pub enum surgeist_html::vocabulary::KnownHtmlAttribute
 pub surgeist_html::vocabulary::KnownHtmlAttribute::Abbr
 pub surgeist_html::vocabulary::KnownHtmlAttribute::Accept
@@ -7356,6 +7359,106 @@ impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
 impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::inventory_row(self) -> &'static surgeist_html::vocabulary::ElementInventoryRow
+pub enum surgeist_html::vocabulary::KnownHtmlEventHandler
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onafterprint
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onauxclick
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onbeforeinput
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onbeforematch
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onbeforeprint
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onbeforetoggle
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onbeforeunload
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onblur
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncancel
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncanplay
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncanplaythrough
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onchange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onclick
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onclose
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncommand
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncontextlost
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncontextmenu
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncontextrestored
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncopy
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncuechange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oncut
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondblclick
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondrag
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondragend
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondragenter
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondragleave
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondragover
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondragstart
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondrop
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ondurationchange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onemptied
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onended
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onerror
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onfocus
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onformdata
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onhashchange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oninput
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Oninvalid
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onkeydown
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onkeypress
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onkeyup
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onlanguagechange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onload
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onloadeddata
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onloadedmetadata
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onloadstart
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmessage
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmessageerror
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmousedown
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmouseenter
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmouseleave
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmousemove
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmouseout
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmouseover
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onmouseup
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onoffline
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ononline
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpagehide
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpagereveal
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpageshow
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpageswap
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpaste
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpause
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onplay
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onplaying
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onpopstate
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onprogress
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onratechange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onrejectionhandled
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onreset
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onresize
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onscroll
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onscrollend
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onsecuritypolicyviolation
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onseeked
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onseeking
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onselect
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onslotchange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onstalled
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onstorage
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onsubmit
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onsuspend
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ontimeupdate
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Ontoggle
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onunhandledrejection
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onunload
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onvolumechange
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onwaiting
+pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onwheel
+impl surgeist_html::vocabulary::KnownHtmlEventHandler
+pub const surgeist_html::vocabulary::KnownHtmlEventHandler::ALL: &'static [Self]
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::local_name(self) -> &'static str
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::qualified_name(self) -> surgeist_html::values::QualifiedName
+impl surgeist_html::vocabulary::KnownHtmlEventHandler
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::applicability(self) -> surgeist_html::vocabulary::HtmlEventHandlerApplicability
+impl surgeist_html::vocabulary::KnownHtmlEventHandler
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::applies_to(self, element: surgeist_html::vocabulary::KnownHtmlElement) -> bool
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::from_local_units(units: &[u16]) -> core::option::Option<Self>
+pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
 pub struct surgeist_html::vocabulary::AttributeInventoryRow
 impl surgeist_html::vocabulary::AttributeInventoryRow
 pub fn surgeist_html::vocabulary::AttributeInventoryRow::all_html_elements(self) -> bool
