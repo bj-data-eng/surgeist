@@ -1098,8 +1098,8 @@ impl<S: LayoutScalar> Constants<S> {
         let is_root = input.run_mode() == RunMode::PerformRootLayout;
         let boundary_margins_can_collapse =
             input.parent_formatting_context() == ParentFormattingContext::BlockFlow;
-        let blocks_margin_collapse = style.block_flow_context
-            == crate::BlockFlowContext::Independent
+        let blocks_margin_collapse = !style.float.is_none()
+            || style.block_flow_context == crate::BlockFlowContext::Independent
             || style.common.item_is_replaced
             || style.common.item_is_table
             || style
