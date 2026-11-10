@@ -4,6 +4,8 @@
 ))]
 use super::SurfaceFrameCommit;
 use super::{Backend, DeviceSlotIdentity};
+#[cfg(all(test, feature = "render-window", not(target_arch = "wasm32")))]
+mod tests;
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
