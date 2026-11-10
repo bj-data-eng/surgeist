@@ -13,11 +13,15 @@ mod vello;
 )]
 pub(crate) use graph::GraphSubmissionCommit;
 pub(crate) use graph::{GraphOutputCommit, GraphSubmissionPayload};
-#[expect(
-    unused_imports,
-    reason = "preserves the existing crate-visible readback transaction front-door paths"
+pub(crate) use readback::PendingReadbackSubmission;
+#[cfg_attr(
+    not(test),
+    expect(
+        unused_imports,
+        reason = "preserves the existing crate-visible readback transaction front-door paths"
+    )
 )]
-pub(crate) use readback::{PendingReadbackSubmission, ReadbackSubmission};
+pub(crate) use readback::ReadbackSubmission;
 pub(crate) use vello::{InternalVelloPayload, VelloResourceCommitProof};
 
 use super::{

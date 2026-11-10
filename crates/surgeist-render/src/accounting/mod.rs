@@ -478,6 +478,39 @@ pub(crate) struct ForwardPhase<'a> {
     account: &'a Account,
     observation: Option<surgeist_ledger::PhaseObservation>,
 }
+
+/// Field-ordered tail for mandatory native readback disposal. It owns the
+/// staging owner's existing participant, so its observation needs no borrow.
+pub(crate) struct ReadbackCleanupTail {
+    account: Account,
+    observation: Option<surgeist_ledger::PhaseObservation>,
+}
+impl ReadbackCleanupTail {
+    pub(crate) fn account(&self) -> &Account {
+        &self.account
+    }
+    pub(crate) fn begin(&mut self) {
+        match self
+            .account
+            .ledger
+            .begin_phase(self.account.scopes[RenderPhase::ReadbackCleanup.index()])
+        {
+            Ok(observation) => self.observation = Some(observation),
+            Err(error) => self.account.note_drop_error(error),
+        }
+    }
+}
+impl Drop for ReadbackCleanupTail {
+    fn drop(&mut self) {
+        if let Some(observation) = self.observation.take()
+            && self.account.ledger.end_phase(observation).is_err()
+        {
+            // Only a private association defect can reject an observation;
+            // originating recording defects remain latched by Ledger itself.
+            self.account.note_drop_error(LedgerError::ForeignScope);
+        }
+    }
+}
 impl Drop for ForwardPhase<'_> {
     fn drop(&mut self) {
         if let Some(observation) = self.observation.take()
@@ -494,6 +527,12 @@ impl Drop for ForwardPhase<'_> {
 }
 
 impl Account {
+    pub(crate) fn readback_cleanup_tail(self) -> ReadbackCleanupTail {
+        ReadbackCleanupTail {
+            account: self,
+            observation: None,
+        }
+    }
     pub(crate) fn begin_phase(&self, phase: RenderPhase) -> Result<ForwardPhase<'_>> {
         let observation = self
             .ledger

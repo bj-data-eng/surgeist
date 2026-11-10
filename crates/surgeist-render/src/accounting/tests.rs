@@ -1,5 +1,6 @@
 use super::*;
 
+mod readback_cleanup;
 mod resolved_reports;
 
 #[test]

@@ -1,92 +1,5 @@
-use super::{PhysicalSize, Result, layout::ReadbackLayout, output::ReadbackOutput};
-use crate::accounting::{Account, AccountedVec, OwnedGpu, RenderPhase};
-use std::{
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-
-pub(super) enum ReadbackPhase<I> {
-    Allocated,
-    CopySubmitted { submission_index: I },
-    MapPending,
-    Mapped,
-    PublishedBytes,
-    Failed,
-    Canceled,
-}
-
-pub(super) struct ReadbackLifecycle<I> {
-    pub(super) phase: ReadbackPhase<I>,
-}
-
-impl<I> ReadbackLifecycle<I> {
-    pub(super) const fn allocated() -> Self {
-        Self {
-            phase: ReadbackPhase::Allocated,
-        }
-    }
-
-    pub(super) fn copy_submitted(&mut self, submission_index: I) {
-        assert!(
-            matches!(&self.phase, ReadbackPhase::Allocated),
-            "readback copy submission must follow allocation"
-        );
-        self.phase = ReadbackPhase::CopySubmitted { submission_index };
-    }
-
-    pub(super) fn map_pending(&mut self) {
-        let previous = std::mem::replace(&mut self.phase, ReadbackPhase::MapPending);
-        let ReadbackPhase::CopySubmitted { submission_index } = previous else {
-            self.phase = previous;
-            panic!("readback mapping must follow copy submission");
-        };
-        drop(submission_index);
-    }
-
-    pub(super) fn mapped(&mut self) {
-        assert!(
-            matches!(&self.phase, ReadbackPhase::MapPending),
-            "mapped readback bytes require callback success"
-        );
-        self.phase = ReadbackPhase::Mapped;
-    }
-
-    pub(super) fn published(&mut self) {
-        assert!(
-            matches!(&self.phase, ReadbackPhase::Mapped),
-            "readback bytes may publish only from the mapped phase"
-        );
-        self.phase = ReadbackPhase::PublishedBytes;
-    }
-
-    pub(super) fn fail(&mut self) -> bool {
-        if self.is_uncertain() {
-            self.phase = ReadbackPhase::Failed;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(super) fn cancel(&mut self) -> bool {
-        if self.is_uncertain() {
-            self.phase = ReadbackPhase::Canceled;
-            true
-        } else {
-            false
-        }
-    }
-
-    const fn is_uncertain(&self) -> bool {
-        matches!(
-            &self.phase,
-            ReadbackPhase::Allocated
-                | ReadbackPhase::CopySubmitted { .. }
-                | ReadbackPhase::MapPending
-                | ReadbackPhase::Mapped
-        )
-    }
-}
+use crate::accounting::{Account, OwnedGpu, ReadbackCleanupTail};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ReadbackStagingDisposition {
@@ -96,205 +9,98 @@ pub(super) enum ReadbackStagingDisposition {
     Released,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReadbackStagingCleanupAction {
-    Drop,
-    UnmapThenDrop,
-    None,
-}
-
 pub(super) struct ReadbackStagingMapState {
     disposition: Mutex<ReadbackStagingDisposition>,
 }
-
 impl ReadbackStagingMapState {
-    pub(super) fn idle() -> Self {
-        Self {
-            disposition: Mutex::new(ReadbackStagingDisposition::Idle),
-        }
-    }
-
-    pub(super) fn map_pending(&self) {
+    pub(super) fn completed(&self, succeeded: bool) {
         let mut disposition = self
             .disposition
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        assert_eq!(
-            *disposition,
-            ReadbackStagingDisposition::Idle,
-            "a readback map request requires known-idle staging"
-        );
-        *disposition = ReadbackStagingDisposition::MapPending;
-    }
-
-    pub(super) fn map_callback_completed(&self, succeeded: bool) {
-        let mut disposition = self
-            .disposition
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        match *disposition {
-            ReadbackStagingDisposition::MapPending => {
-                *disposition = if succeeded {
-                    ReadbackStagingDisposition::MappedActive
-                } else {
-                    ReadbackStagingDisposition::Idle
-                };
-            }
-            ReadbackStagingDisposition::Released => {}
-            ReadbackStagingDisposition::Idle | ReadbackStagingDisposition::MappedActive => {
-                panic!("a readback map request callback may complete only once")
-            }
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The once-owned callback is the only physical completion producer.
+        // A late callback cannot resurrect locally released staging.
+        if *disposition == ReadbackStagingDisposition::MapPending {
+            *disposition = if succeeded {
+                ReadbackStagingDisposition::MappedActive
+            } else {
+                ReadbackStagingDisposition::Idle
+            };
         }
     }
-
-    pub(super) fn assert_mapped_active(&self) {
-        assert_eq!(
-            *self
+    fn release(&self) -> bool {
+        let previous = std::mem::replace(
+            &mut *self
                 .disposition
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()),
-            ReadbackStagingDisposition::MappedActive,
-            "map callback success must make staging actively mapped"
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ReadbackStagingDisposition::Released,
         );
+        matches!(
+            previous,
+            ReadbackStagingDisposition::MapPending | ReadbackStagingDisposition::MappedActive
+        )
     }
-
-    pub(super) fn take_cleanup_action(&self) -> ReadbackStagingCleanupAction {
-        let mut disposition = self
-            .disposition
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        match std::mem::replace(&mut *disposition, ReadbackStagingDisposition::Released) {
-            ReadbackStagingDisposition::Idle => ReadbackStagingCleanupAction::Drop,
-            ReadbackStagingDisposition::MapPending | ReadbackStagingDisposition::MappedActive => {
-                ReadbackStagingCleanupAction::UnmapThenDrop
-            }
-            ReadbackStagingDisposition::Released => ReadbackStagingCleanupAction::None,
-        }
-    }
-
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     pub(super) fn disposition_for_test(&self) -> ReadbackStagingDisposition {
         *self
             .disposition
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
-pub(super) struct ReadbackOwner {
-    account: Account,
-    lifecycle: ReadbackLifecycle<wgpu::SubmissionIndex>,
-    staging: Option<OwnedGpu<wgpu::Buffer>>,
-    staging_map: Arc<ReadbackStagingMapState>,
-    pub(super) layout: ReadbackLayout,
-    physical_size: PhysicalSize,
+/// Mandatory native staging drops before its accounting phase tail.
+/// The callback's independent clone can retain shared custody afterward.
+pub(super) struct ReadbackStaging {
+    pub(super) buffer: OwnedGpu<wgpu::Buffer>,
+    #[cfg(test)]
+    pub(super) probe: super::test_support::BufferDropProbe,
+    cleanup: ReadbackCleanupTail,
+    map: Arc<ReadbackStagingMapState>,
 }
-
-impl ReadbackOwner {
-    pub(super) fn allocated(
-        staging: OwnedGpu<wgpu::Buffer>,
-        layout: ReadbackLayout,
-        physical_size: PhysicalSize,
-        account: &Account,
-    ) -> Self {
+impl ReadbackStaging {
+    pub(super) fn new(buffer: OwnedGpu<wgpu::Buffer>, account: &Account) -> Self {
         Self {
-            account: account.clone(),
-            lifecycle: ReadbackLifecycle::allocated(),
-            staging: Some(staging),
-            staging_map: Arc::new(ReadbackStagingMapState::idle()),
-            layout,
-            physical_size,
+            buffer,
+            #[cfg(test)]
+            probe: super::test_support::BufferDropProbe::default(),
+            map: Arc::new(ReadbackStagingMapState {
+                disposition: Mutex::new(ReadbackStagingDisposition::Idle),
+            }),
+            cleanup: account.clone().readback_cleanup_tail(),
         }
     }
-
     pub(super) fn account(&self) -> &Account {
-        &self.account
+        self.cleanup.account()
     }
-
-    pub(super) fn staging(&self) -> &OwnedGpu<wgpu::Buffer> {
-        self.staging
-            .as_ref()
-            .expect("an uncertain readback phase must own its staging buffer")
+    pub(super) fn register(&self) -> Arc<ReadbackStagingMapState> {
+        // Consuming registration calls this once, before map_async can deliver.
+        *self
+            .map
+            .disposition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            ReadbackStagingDisposition::MapPending;
+        self.map.clone()
     }
-
-    pub(super) fn copy_submitted(&mut self, submission_index: wgpu::SubmissionIndex) {
-        self.lifecycle.copy_submitted(submission_index);
-    }
-
-    pub(super) fn map_pending(&mut self) {
-        self.lifecycle.map_pending();
-        self.staging_map.map_pending();
-    }
-
-    pub(super) fn mapped(&mut self) {
-        self.staging_map.assert_mapped_active();
-        self.lifecycle.mapped();
-    }
-
-    pub(super) fn staging_map(&self) -> Arc<ReadbackStagingMapState> {
-        Arc::clone(&self.staging_map)
-    }
-
-    pub(super) fn mapped_range(&self) -> Range<wgpu::BufferAddress> {
-        self.layout.mapped_range()
-    }
-
-    pub(super) fn fail(&mut self) {
-        if self.lifecycle.fail() {
-            self.release_staging();
-        }
-    }
-
-    pub(super) fn cancel(&mut self) {
-        if self.lifecycle.cancel() {
-            self.release_staging();
-        }
-    }
-
-    pub(super) fn publish_mapped(mut self, rgba: AccountedVec<u8>) -> Result<ReadbackOutput> {
-        self.release_staging();
-        match ReadbackOutput::try_new(self.physical_size, rgba) {
-            Ok(image) => {
-                self.lifecycle.published();
-                Ok(image)
-            }
-            Err(error) => {
-                self.lifecycle.fail();
-                Err(error)
-            }
-        }
-    }
-
-    fn release_staging(&mut self) {
-        let action = self.staging_map.take_cleanup_action();
-        let Some(staging) = self.staging.take() else {
-            assert_eq!(
-                action,
-                ReadbackStagingCleanupAction::None,
-                "readback staging cleanup action must be consumed with ownership"
-            );
-            return;
-        };
-        self.account
-            .phase(RenderPhase::ReadbackCleanup, || {
-                match action {
-                    ReadbackStagingCleanupAction::Drop => drop(staging),
-                    ReadbackStagingCleanupAction::UnmapThenDrop => {
-                        staging.unmap();
-                        drop(staging);
-                    }
-                    ReadbackStagingCleanupAction::None => {
-                        unreachable!("owned readback staging cannot already be released")
-                    }
-                }
-                Ok(())
-            })
-            .expect("owned readback cleanup phase");
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(super) fn observation(&self) -> Arc<ReadbackStagingMapState> {
+        self.map.clone()
     }
 }
-
-impl Drop for ReadbackOwner {
+impl Drop for ReadbackStaging {
     fn drop(&mut self) {
-        self.cancel();
+        self.cleanup.begin();
+        if self.map.release() {
+            self.buffer.unmap();
+            #[cfg(test)]
+            if let Some(observation) = &self.probe.0 {
+                observation
+                    .record(super::test_support::ReadbackCleanupEventForTest::StagingUnmapped);
+            }
+        }
+        // Rust destroys buffer (native value then hold handle), the cleanup
+        // tail, then unrelated map metadata. No resource is extracted/replaced.
     }
 }
