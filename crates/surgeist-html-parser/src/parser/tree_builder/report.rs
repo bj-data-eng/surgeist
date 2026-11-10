@@ -252,6 +252,10 @@ impl HtmlParseReport {
     /// The line and column at which the start tag of the parser-created
     /// `script` element `id` ended, as a browser's parser reads the position of
     /// a script. `None` for a node that is not a script the parser created.
+    ///
+    /// The first read of a script, style or event handler position builds an index of the
+    /// report's start positions by node, and the first position read builds the source's line
+    /// index. The parse itself builds neither, and neither is charged to a parse limit.
     pub fn script_position(
         &self,
         id: &surgeist_html::construction::HtmlNodeId,
@@ -264,6 +268,9 @@ impl HtmlParseReport {
     /// The line and column at which the start tag of the parser-created `style`
     /// element `id` ended. `None` for a node that is not a style the parser
     /// created.
+    ///
+    /// The first read builds the node and line indexes that
+    /// [`script_position`](Self::script_position) describes, which no parse limit is charged for.
     pub fn style_position(
         &self,
         id: &surgeist_html::construction::HtmlNodeId,
@@ -276,6 +283,9 @@ impl HtmlParseReport {
     /// The event handler content attributes the parser created on the element
     /// `id`, as the index of each among the attributes of the element and the
     /// line and column at which the start tag it came from ended.
+    ///
+    /// The first read builds the node and line indexes that
+    /// [`script_position`](Self::script_position) describes, which no parse limit is charged for.
     pub fn event_handler_positions<'a>(
         &'a self,
         id: &'a surgeist_html::construction::HtmlNodeId,
