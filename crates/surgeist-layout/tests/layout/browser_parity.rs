@@ -532,7 +532,9 @@ fn block_item_boundary_margin_variants_match_browser() {
         ),
     ];
 
-    let mut goldens = Vec::with_capacity(fixtures.len());
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/block");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden = support::Golden::parse(fixture).expect("settled block fixture should parse");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
@@ -563,12 +565,9 @@ fn block_item_boundary_margin_variants_match_browser() {
         assert_eq!(golden.expectations.children.len(), 2);
         assert_eq!(golden.expectations.children[1].children.len(), 1);
         assert_eq!(golden.expectations.children[1].children[0].y, Some(1.0));
-        goldens.push(golden);
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
-    for golden in goldens {
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
-    }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
@@ -828,19 +827,15 @@ fn fri04_c05_fixture_outputs_parse_and_match_surgeist_layout() {
         .unwrap_or_else(|error| panic!("FRI-04 C05 fixture matrix is incomplete: {error}"));
     let corpus_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
 
-    let mut goldens = Vec::with_capacity(paths.len());
+    let mut originals = Vec::with_capacity(paths.len());
     for relative in paths {
         let fixture = corpus_root.join(&relative);
         let golden = support::Golden::parse_file(&fixture)
             .unwrap_or_else(|error| panic!("{} failed to parse: {error}", fixture.display()));
         assert_fri04_c05_source_intent(&golden);
-        goldens.push((fixture, golden));
+        originals.push(fixture);
     }
-    for (fixture, golden) in goldens {
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} failed layout comparison: {error}", fixture.display())
-        });
-    }
+    assert_registered_originals_match(&originals);
 }
 
 fn assert_fri04_c05_source_intent(golden: &support::Golden) {
@@ -1112,7 +1107,10 @@ fn runs_grid_multiline_baseline_fixture_against_surgeist_layout() {
             .is_some_and(|(top, height)| top + height > 100.0)),
         "baseline-aligned rows retain overflow below the fixed-height root"
     );
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/xml/grid")
+        .join(format!("{}.xml", golden.name));
+    assert_registered_originals_match(&[original]);
 }
 
 #[test]
