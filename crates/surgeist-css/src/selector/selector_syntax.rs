@@ -1,5 +1,6 @@
 use crate::component::CssValueOrigin;
 use crate::rule::CssNamespacePrefix;
+use crate::source::Provenance;
 use crate::source::{CssRetainedSources, CssSourceRetention, CssSourceRetentionError};
 use crate::values::common::CssCustomIdent;
 use crate::values::text::CssDirectionality;
@@ -83,7 +84,7 @@ impl CssRetainedSources for CssPseudoSelectorList {
             match item {
                 CssPseudoSelectorListItem::Selector(value) => sources.visit(value)?,
                 CssPseudoSelectorListItem::InvalidNesting(value) => {
-                    sources.visit(&value.origin)?;
+                    sources.visit(value.origin.inner())?;
                     sources.visit(&value.components)?;
                 }
             }
@@ -630,9 +631,9 @@ pub enum CssPseudoSelectorListItem {
 /// intrinsic grammar. Clone/output never rebinds namespaces: explicitly parsing
 /// its emitted text with different bindings is a new operation and may admit a
 /// different state. Source coordinates are metadata, not structural identity.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssInvalidNestingSelectorItem {
-    origin: crate::source::CssParsedOrigin,
+    origin: Provenance<crate::source::CssParsedOrigin>,
     components: crate::component::CssComponentValues,
     grammar: CssSelectorGrammarContext,
 }
@@ -644,7 +645,7 @@ impl CssInvalidNestingSelectorItem {
         grammar: CssSelectorGrammarContext,
     ) -> Self {
         Self {
-            origin,
+            origin: Provenance::new(origin),
             components,
             grammar,
         }
@@ -660,7 +661,7 @@ impl CssInvalidNestingSelectorItem {
     /// Returns the original raw-source window of the member.
     #[must_use]
     pub const fn origin(&self) -> &crate::source::CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 
     /// Returns the component values of the member, including edge trivia.
@@ -671,12 +672,6 @@ impl CssInvalidNestingSelectorItem {
 
     pub(crate) fn admitted_in(&self, grammar: CssSelectorGrammarContext) -> bool {
         grammar.at_least_as_restrictive_as(self.grammar)
-    }
-}
-
-impl PartialEq for CssInvalidNestingSelectorItem {
-    fn eq(&self, other: &Self) -> bool {
-        self.authored() == other.authored() && self.grammar == other.grammar
     }
 }
 

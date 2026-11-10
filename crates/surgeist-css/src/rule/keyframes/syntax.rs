@@ -4,6 +4,7 @@ use crate::numeric::{CssCalculation, CssNumeric, CssPercentage};
 use crate::property::CssKnownDeclaration;
 use crate::property::CssPropertyNameRef;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use crate::values::common::CssCustomIdent;
 
 /// A parser-produced authored `@keyframes` rule: its animation name and its keyframe blocks in authored order.
@@ -13,7 +14,7 @@ use crate::values::common::CssCustomIdent;
 pub struct CssKeyframesRule {
     name: CssKeyframesName,
     blocks: Vec<CssKeyframeBlock>,
-    position: CssSourcePosition,
+    position: Provenance<CssSourcePosition>,
 }
 
 impl CssKeyframesRule {
@@ -26,7 +27,7 @@ impl CssKeyframesRule {
         Self {
             name,
             blocks,
-            position,
+            position: position.into(),
         }
     }
 
@@ -45,7 +46,7 @@ impl CssKeyframesRule {
     /// Returns the source position of the rule's `@keyframes` at-keyword.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -89,7 +90,7 @@ impl CssKeyframesString {
 pub struct CssKeyframeBlock {
     selectors: CssKeyframeSelectorList,
     declarations: CssKeyframeDeclarationList,
-    position: CssSourcePosition,
+    position: Provenance<CssSourcePosition>,
 }
 
 impl CssKeyframeBlock {
@@ -102,7 +103,7 @@ impl CssKeyframeBlock {
         Self {
             selectors,
             declarations,
-            position,
+            position: position.into(),
         }
     }
 
@@ -121,7 +122,7 @@ impl CssKeyframeBlock {
     /// Returns the source position of the start of the block's selector list.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -364,8 +365,8 @@ struct NormalParsedKeyframeCssDeclaration(CssDeclaration);
 impl PartialEq for CssKeyframeDeclaration {
     fn eq(&self, other: &Self) -> bool {
         self.body() == other.body()
-            && self.value_components() == other.value_components()
-            && self.position() == other.position()
+            && Provenance::new((self.value_components(), self.position()))
+                == Provenance::new((other.value_components(), other.position()))
     }
 }
 

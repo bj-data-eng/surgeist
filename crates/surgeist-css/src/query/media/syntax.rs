@@ -4,31 +4,26 @@ use crate::query::CssGeneralEnclosed;
 use crate::query::media::construction::*;
 use crate::query::media::media_features::*;
 use crate::source::CssSourcePosition;
+use crate::source::{Provenance, Uncompared};
 
 /// A `<media-query-list>`: the ordered, comma-separated members of a media query, possibly empty.
 ///
 /// Parsed lists retain their comma origins and parse source; constructed lists have neither.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssMediaQueryList {
-    parse_source: Option<crate::source::CssParseSource>,
+    parse_source: Uncompared<Option<crate::source::CssParseSource>>,
     queries: Vec<CssMediaQuery>,
-    pub(crate) comma_origins: Vec<CssValueOrigin>,
-}
-
-impl PartialEq for CssMediaQueryList {
-    fn eq(&self, other: &Self) -> bool {
-        self.queries == other.queries && self.comma_origins == other.comma_origins
-    }
+    pub(crate) comma_origins: Provenance<Vec<CssValueOrigin>>,
 }
 
 impl CssMediaQueryList {
     /// Complete actual parse input/context, absent for constructed lists.
     #[must_use]
     pub const fn parse_source(&self) -> Option<&crate::source::CssParseSource> {
-        self.parse_source.as_ref()
+        self.parse_source.inner().as_ref()
     }
     pub(crate) fn bind_parse_source(&mut self, source: crate::source::CssParseSource) {
-        self.parse_source = Some(source);
+        self.parse_source = Uncompared::new(Some(source));
     }
 
     /// Constructs a list, including the valid empty media-query list.
@@ -37,9 +32,9 @@ impl CssMediaQueryList {
     #[must_use]
     pub fn new(queries: Vec<CssMediaQuery>) -> Self {
         Self {
-            parse_source: None,
+            parse_source: Uncompared::new(None),
             queries,
-            comma_origins: Vec::new(),
+            comma_origins: Vec::new().into(),
         }
     }
 
@@ -48,9 +43,9 @@ impl CssMediaQueryList {
         comma_origins: Vec<CssValueOrigin>,
     ) -> Self {
         Self {
-            parse_source: None,
+            parse_source: Uncompared::new(None),
             queries,
-            comma_origins,
+            comma_origins: comma_origins.into(),
         }
     }
 
@@ -122,21 +117,21 @@ impl CssMediaQuery {
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNeverMediaQuery {
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
 }
 impl CssNeverMediaQuery {
     pub(crate) fn new(origin: crate::source::CssParsedOrigin) -> Self {
         Self {
-            origin: CssValueOrigin::Parsed(origin),
+            origin: CssValueOrigin::Parsed(origin).into(),
         }
     }
     /// Returns the origin of the recovered member, which is always parsed from source.
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
     /// Returns the first non-trivia position of the recovered member, or the member end when it had no non-trivia token.
     pub const fn position(&self) -> CssSourcePosition {
-        match &self.origin {
+        match self.origin.inner() {
             CssValueOrigin::Parsed(v) => v.span().start(),
             _ => panic!("parser-only recovery origin"),
         }
@@ -166,8 +161,8 @@ pub struct CssTypedMediaQuery {
     media_type: CssMediaType,
     unknown_media_type: Option<CssUnknownMediaType>,
     condition: Option<Box<CssCondition<CssMediaLeaf>>>,
-    origin: CssValueOrigin,
-    pub(crate) syntax: Box<MediaTypedSyntax>,
+    origin: Provenance<CssValueOrigin>,
+    pub(crate) syntax: Provenance<Box<MediaTypedSyntax>>,
 }
 
 impl CssTypedMediaQuery {
@@ -185,8 +180,8 @@ impl CssTypedMediaQuery {
             media_type,
             unknown_media_type: None,
             condition: condition.map(Box::new),
-            origin,
-            syntax: Box::new(syntax),
+            origin: origin.into(),
+            syntax: Box::new(syntax).into(),
         }
     }
 
@@ -203,8 +198,8 @@ impl CssTypedMediaQuery {
             media_type: CssMediaType::Unknown,
             unknown_media_type: Some(media_type),
             condition: condition.map(Box::new),
-            origin,
-            syntax: Box::new(syntax),
+            origin: origin.into(),
+            syntax: Box::new(syntax).into(),
         }
     }
 
@@ -240,11 +235,11 @@ impl CssTypedMediaQuery {
     /// Returns the first non-trivia position of the authored typed media query.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.origin)
+        crate::query::media::construction::parsed_position(self.origin.inner())
     }
     /// Returns the origin of the query.
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 
@@ -319,7 +314,7 @@ impl CssMediaType {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssUnknownMediaType {
     spelling: String,
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
 }
 
 impl CssUnknownMediaType {
@@ -327,7 +322,10 @@ impl CssUnknownMediaType {
     pub(crate) fn new(spelling: impl Into<String>, origin: CssValueOrigin) -> Self {
         let spelling = spelling.into();
         debug_assert!(!spelling.is_empty());
-        Self { spelling, origin }
+        Self {
+            spelling,
+            origin: origin.into(),
+        }
     }
 
     /// Returns the exact authored media-type token spelling, including escapes and casing.
@@ -345,11 +343,11 @@ impl CssUnknownMediaType {
     /// Returns the position of the authored unknown media-type token.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.origin)
+        crate::query::media::construction::parsed_position(self.origin.inner())
     }
     /// Returns the origin of the unknown media-type token.
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 

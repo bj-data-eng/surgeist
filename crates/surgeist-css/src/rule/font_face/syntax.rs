@@ -1,6 +1,7 @@
 use crate::component::CssComponentValues;
 use crate::rule::font_face::{CssFontMetricOverride, CssFontNamedInstance};
 use crate::source::CssSourcePosition;
+use crate::source::{Provenance, Verbatim};
 use crate::values::common::CssUrl;
 use crate::values::font::{
     CssAuthoredFontFeatureSettings, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth,
@@ -15,7 +16,7 @@ pub(crate) mod pending;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {
     descriptors: CssFontFaceDescriptors,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssFontFaceRule {
@@ -24,12 +25,12 @@ impl CssFontFaceRule {
     pub const fn new(descriptors: CssFontFaceDescriptors) -> Self {
         Self {
             descriptors,
-            position: None,
+            position: Provenance::new(None),
         }
     }
 
     pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Provenance::new(Some(position));
         self
     }
 
@@ -42,7 +43,7 @@ impl CssFontFaceRule {
     /// Returns the source position of the rule, or `None` when it was assembled programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -227,7 +228,10 @@ impl CssAuthoredFontFaceDescriptorValue {
     }
 
     pub(crate) fn pending(kind: CssFontFaceDescriptorKind, components: CssComponentValues) -> Self {
-        Self::Pending(CssPendingFontFaceDescriptorValue { kind, components })
+        Self::Pending(CssPendingFontFaceDescriptorValue {
+            kind,
+            components: components.into(),
+        })
     }
 }
 
@@ -246,7 +250,7 @@ impl From<CssFontFaceDescriptorValue> for CssAuthoredFontFaceDescriptorValue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPendingFontFaceDescriptorValue {
     kind: CssFontFaceDescriptorKind,
-    components: CssComponentValues,
+    components: Verbatim<CssComponentValues>,
 }
 
 impl CssPendingFontFaceDescriptorValue {
@@ -259,7 +263,7 @@ impl CssPendingFontFaceDescriptorValue {
     /// Returns the complete pending component stream.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
 }
 
@@ -267,7 +271,7 @@ impl CssPendingFontFaceDescriptorValue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceDescriptor {
     value: CssAuthoredFontFaceDescriptorValue,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssFontFaceDescriptor {
@@ -276,12 +280,12 @@ impl CssFontFaceDescriptor {
     pub const fn new(value: CssAuthoredFontFaceDescriptorValue) -> Self {
         Self {
             value,
-            position: None,
+            position: Provenance::new(None),
         }
     }
 
     pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Provenance::new(Some(position));
         self
     }
 
@@ -294,7 +298,7 @@ impl CssFontFaceDescriptor {
     /// Returns the parsed descriptor name position, if this came from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 

@@ -4,6 +4,7 @@ use crate::query::CssWhenLeaf;
 use crate::rule::{CssRule, CssRuleConstructionError};
 use crate::selector::CssNamespaceContext;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 macro_rules! conditional_rule {
     ($name:ident, $condition:ty, $borrowed:ty, $get:ident, $condition_doc:literal, $rule_doc:literal) => {
         #[doc = $rule_doc]
@@ -14,7 +15,7 @@ macro_rules! conditional_rule {
         pub struct $name {
             condition: $condition,
             rules: Vec<CssRule>,
-            position: Option<CssSourcePosition>,
+            position: Provenance<Option<CssSourcePosition>>,
         }
         impl $name {
             pub(crate) fn new(
@@ -25,7 +26,7 @@ macro_rules! conditional_rule {
                 Self {
                     condition,
                     rules,
-                    position: Some(position),
+                    position: Some(position).into(),
                 }
             }
             #[doc = $condition_doc]
@@ -44,7 +45,7 @@ macro_rules! conditional_rule {
             /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
             #[must_use]
             pub const fn position(&self) -> Option<CssSourcePosition> {
-                self.position
+                *self.position.inner()
             }
             /// Constructs the rule from a condition and its child rules, checking the children as
             /// the body of a conditional group outside any style rule.
@@ -79,7 +80,7 @@ macro_rules! conditional_rule {
                 Ok(Self {
                     condition,
                     rules,
-                    position: None,
+                    position: Provenance::new(None),
                 })
             }
         }

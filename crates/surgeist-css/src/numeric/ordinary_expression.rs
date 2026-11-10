@@ -12,6 +12,7 @@ use crate::numeric::expression::{
     direct_syntax, trivia,
 };
 use crate::numeric::{CssMathFunction, CssRoundingStrategy};
+use crate::source::Provenance;
 
 pub(crate) fn parse<'a>(
     items: &'a [CssComponentValue],
@@ -293,7 +294,7 @@ fn project(
                         args: arguments,
                         strategy,
                     },
-                    component.origin().clone(),
+                    component.origin().clone().into(),
                     0,
                     items.len(),
                 )
@@ -310,7 +311,7 @@ fn project(
                 origin,
                 components: None,
                 syntax: direct_syntax(&items[start..end]),
-                closing: None,
+                closing: Provenance::new(None),
             }),
             start,
             end,

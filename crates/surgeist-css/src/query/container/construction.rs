@@ -30,7 +30,7 @@ fn construct<T: Send>(
             .map_err(|_| {
                 CssContainerConstructionError::from(
                     crate::query::container::syntax::ContainerConstructionKind::WorkerUnavailable {
-                        origin: CssValueOrigin::Programmatic,
+                        origin: CssValueOrigin::Programmatic.into(),
                     },
                 )
             })?;

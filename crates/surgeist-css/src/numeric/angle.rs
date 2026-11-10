@@ -5,6 +5,7 @@ use crate::component::{
     CssValueOrigin, CssValueTokenRef,
 };
 use crate::numeric::{CssAngle, CssAngleUnit, CssNumeric, CssNumericConstructionError};
+use crate::source::Provenance;
 
 pub(crate) const fn suffix(unit: CssAngleUnit) -> &'static str {
     crate::numeric::units::suffix(crate::numeric::CssNumericUnit::Angle(unit))
@@ -28,8 +29,8 @@ pub struct CssZeroLiteral {
 }
 
 impl PartialEq for CssZeroLiteral {
-    fn eq(&self, _other: &Self) -> bool {
-        true
+    fn eq(&self, other: &Self) -> bool {
+        Provenance::new(&self.component) == Provenance::new(&other.component)
     }
 }
 

@@ -125,7 +125,7 @@ fn cancellation_and_each_one_short_observation_refuse_without_false_total() {
     });
     let error = CssError {
         kind,
-        position: CssSourcePosition::from_byte_offset_in("", 0),
+        position: CssSourcePosition::from_byte_offset_in("", 0).into(),
     };
     let mut steps = 0;
     let expected = error
@@ -299,7 +299,7 @@ fn namespace_and_annotation_contexts_measure_owner_spelling_and_tokens() {
         measured(&ErrorKind::NamespaceRedeclaration(
             CssNamespaceRedeclarationError {
                 prefix: Some(prefix),
-                previous_position: CssSourcePosition::from_byte_offset_in("", 0),
+                previous_position: CssSourcePosition::from_byte_offset_in("", 0).into(),
             }
         )),
         bytes
@@ -352,7 +352,7 @@ fn nested_component_origin_remains_in_existing_source_closure_separately() {
                 crate::component::CssValueOrigin::Parsed(origin),
             ),
         )),
-        position: CssSourcePosition::from_byte_offset_in("outer", 0),
+        position: CssSourcePosition::from_byte_offset_in("outer", 0).into(),
     };
     let span = crate::source::CssSourceSpan::new(error.position(), error.position()).unwrap();
     let mut diagnostic = crate::diagnostic::CssRecoveryDiagnostic::new(

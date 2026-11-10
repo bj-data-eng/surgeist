@@ -150,7 +150,13 @@ fn block_origin_excludes_outer_trivia_and_shares_the_original_snapshot() {
             .source()
             .same_snapshot(second.syntax().as_ref().unwrap().origin().source())
     );
-    assert_ne!(parse("{}").syntax(), parse(" {} ").syntax());
+    let (bare, padded) = (parse("{}"), parse(" {} "));
+    assert_eq!(bare.syntax(), padded.syntax());
+    assert!(!surgeist_css::source::same_provenance(
+        bare.syntax(),
+        padded.syntax()
+    ));
+    assert_ne!(parse("{}").syntax(), parse("{color:red}").syntax());
 }
 
 #[test]

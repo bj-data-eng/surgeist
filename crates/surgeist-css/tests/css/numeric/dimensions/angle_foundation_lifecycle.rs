@@ -480,7 +480,7 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 }
 
 #[test]
-fn raw_angle_math_and_color_compare_original_provenance() {
+fn raw_angle_math_and_color_equal_across_origins_and_differ_in_provenance() {
     let first = CssCalculation::<CssAngle>::try_from_components(
         CssComponentValues::parse(&CssParser::default(), "calc(25deg + 5deg)").unwrap(),
         Default::default(),
@@ -493,6 +493,7 @@ fn raw_angle_math_and_color_compare_original_provenance() {
     .unwrap();
     assert_eq!(first, second);
     assert_ne!(first.origin(), second.origin());
+    assert!(!surgeist_css::source::same_provenance(&first, &second));
     let (first, second) = located(CssKnownProperty::Color, "hsl(25deg 20% 30%)");
     let CssKnownPropertyValueRef::Color(first) = first.known().unwrap().property_value().unwrap()
     else {
@@ -502,7 +503,11 @@ fn raw_angle_math_and_color_compare_original_provenance() {
     else {
         panic!("color")
     };
-    assert_ne!(first.value(), second.value());
+    assert_eq!(first.value(), second.value());
+    assert!(!surgeist_css::source::same_provenance(
+        first.value(),
+        second.value()
+    ));
 }
 
 #[test]

@@ -31,6 +31,7 @@ use crate::color::{
     CssColorStandardFailureKind,
 };
 use crate::component::CssValueOrigin;
+use crate::source::Provenance;
 use std::mem::size_of;
 
 /// A failure of the private authored protocol: a reached semantic failure, or
@@ -134,7 +135,7 @@ pub(crate) struct CssAuthoredColorCleanupLayout {
     pub owned_origin_bytes: usize,
 }
 /// Standard invalidity owns its actual path allocation exactly once.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct CssAuthoredColorStandardFailure {
     /// The canonical reason the authored color is standard-invalid.
     pub kind: CssColorStandardFailureKind,
@@ -143,6 +144,17 @@ pub struct CssAuthoredColorStandardFailure {
     /// The origin of the failing component, when it has one.
     pub origin: Option<CssValueOrigin>,
 }
+// Failures are equal when they name the same reason and path. The origin locates the
+// failure in its source, so only `same_provenance` compares it; `origin` is a public
+// field, so it cannot be stored as a `Provenance`.
+impl PartialEq for CssAuthoredColorStandardFailure {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.path == other.path
+            && Provenance::new(&self.origin) == Provenance::new(&other.origin)
+    }
+}
+impl Eq for CssAuthoredColorStandardFailure {}
 /// The result of resolving an authored color: a used color or a standard failure.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]

@@ -1,5 +1,6 @@
 //! Checked authored shape commands; geometric interpretation remains downstream.
 use crate::numeric::{CssAngle, CssLengthPercentage, CssNumeric};
+use crate::source::Provenance;
 use crate::values::position::{
     CssCartesianPosition, CssHorizontalPosition, CssHorizontalPositionKeyword, CssPosition,
     CssVerticalPosition, CssVerticalPositionKeyword,
@@ -23,7 +24,7 @@ pub(crate) enum ShapeConstructionKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PathDataRejection {
     failure: path_data::PathDataFailure,
-    origin: crate::component::CssValueOrigin,
+    origin: Provenance<crate::component::CssValueOrigin>,
     decoded_byte_offset: Option<usize>,
 }
 impl From<ShapeConstructionKind> for CssShapeConstructionError {
@@ -40,7 +41,7 @@ impl CssShapeConstructionError {
         Self {
             kind: ShapeConstructionKind::PathData(Box::new(PathDataRejection {
                 failure,
-                origin,
+                origin: origin.into(),
                 decoded_byte_offset,
             })),
         }
@@ -82,7 +83,7 @@ impl CssShapeConstructionError {
     #[must_use]
     pub const fn origin(&self) -> Option<&crate::component::CssValueOrigin> {
         match self.path() {
-            Some(rejection) => Some(&rejection.origin),
+            Some(rejection) => Some(rejection.origin.inner()),
             None => None,
         }
     }

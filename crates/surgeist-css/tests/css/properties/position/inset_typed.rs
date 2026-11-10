@@ -316,7 +316,8 @@ fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
     else {
         panic!("top")
     };
-    assert_ne!(left, spelling);
+    assert_eq!(left, spelling);
+    assert!(!surgeist_css::source::same_provenance(left, spelling));
 
     let first = wrapper("inset", "auto calc(1px + 2%)");
     let second = CssParser::default().parse_block_contents("color:red; inset:auto calc(1px + 2%);");

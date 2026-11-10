@@ -4,6 +4,7 @@ use crate::query::container::container_features::*;
 use crate::query::container::{CssScrollStateLeaf, CssStyleQueryLeaf};
 use crate::query::media::media_features::*;
 use crate::source::CssSourcePosition;
+use crate::source::{Layout, Provenance};
 use surgeist_css_parser::Token;
 use surgeist_css_parser::lexer::{Lexer, Options};
 
@@ -88,16 +89,16 @@ fn is_parser_reserved_container_name(name: &str) -> bool {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerPrelude {
     entries: Vec<CssContainerQueryEntry>,
-    lexical: crate::query::supports::construction::SupportsLexical,
-    origin: CssValueOrigin,
+    lexical: Provenance<crate::query::supports::construction::SupportsLexical>,
+    origin: Provenance<CssValueOrigin>,
 }
 impl crate::source::CssRetainedSources for CssContainerPrelude {
     fn visit_retained_sources(
         &self,
         sources: &mut crate::source::CssSourceRetention,
     ) -> Result<(), crate::source::CssSourceRetentionError> {
-        sources.visit(&self.origin)?;
-        sources.visit(&self.lexical)
+        sources.visit(self.origin.inner())?;
+        sources.visit(self.lexical.inner())
     }
 }
 
@@ -110,8 +111,8 @@ impl CssContainerPrelude {
         let origin = lexical.first_origin().clone();
         Self {
             entries,
-            lexical,
-            origin,
+            lexical: lexical.into(),
+            origin: origin.into(),
         }
     }
     /// Returns the comma-separated entries in authored order; the list is never empty.
@@ -127,12 +128,12 @@ impl CssContainerPrelude {
     /// Returns the origin of the first component of the prelude.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
     /// Returns the source position of the prelude, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.origin)
+        crate::query::media::construction::parsed_position(self.origin.inner())
     }
 }
 
@@ -140,8 +141,8 @@ impl CssContainerPrelude {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerQueryEntry {
     kind: CssContainerQueryEntryKind,
-    lexical: crate::query::supports::construction::SupportsLexical,
-    origin: CssValueOrigin,
+    lexical: Provenance<crate::query::supports::construction::SupportsLexical>,
+    origin: Provenance<CssValueOrigin>,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum CssContainerQueryEntryKind {
@@ -159,8 +160,8 @@ impl CssContainerQueryEntry {
         let origin = lexical.first_origin().clone();
         Self {
             kind: CssContainerQueryEntryKind::NameOnly(name),
-            lexical,
-            origin,
+            lexical: lexical.into(),
+            origin: origin.into(),
         }
     }
     pub(crate) fn with_query(
@@ -171,8 +172,8 @@ impl CssContainerQueryEntry {
         let origin = lexical.first_origin().clone();
         Self {
             kind: CssContainerQueryEntryKind::Query { name, query },
-            lexical,
-            origin,
+            lexical: lexical.into(),
+            origin: origin.into(),
         }
     }
     /// Returns the container name, or `None` when the entry is a query without a name.
@@ -199,12 +200,12 @@ impl CssContainerQueryEntry {
     /// Returns the origin of the first component of the entry.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
     /// Returns the source position of the entry, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.origin)
+        crate::query::media::construction::parsed_position(self.origin.inner())
     }
 }
 
@@ -234,13 +235,15 @@ pub enum CssContainerLeaf {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerGeneralEnclosed {
-    lexical: crate::query::supports::construction::SupportsLexical,
+    lexical: Layout<crate::query::supports::construction::SupportsLexical>,
 }
 impl Eq for CssContainerGeneralEnclosed {}
 
 impl CssContainerGeneralEnclosed {
     pub(crate) fn new(lexical: crate::query::supports::construction::SupportsLexical) -> Self {
-        Self { lexical }
+        Self {
+            lexical: lexical.into(),
+        }
     }
     /// Borrows the single admitted enclosure from the shared lexical root.
     #[must_use]
@@ -301,10 +304,10 @@ pub struct CssContainerConstructionError {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ContainerConstructionKind {
-    InvalidConditionGrammar { origin: CssValueOrigin },
-    InvalidPreludeGrammar { origin: CssValueOrigin },
+    InvalidConditionGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidPreludeGrammar { origin: Provenance<CssValueOrigin> },
     Component(crate::component::CssComponentValueError),
-    WorkerUnavailable { origin: CssValueOrigin },
+    WorkerUnavailable { origin: Provenance<CssValueOrigin> },
 }
 impl From<ContainerConstructionKind> for CssContainerConstructionError {
     fn from(kind: ContainerConstructionKind) -> Self {
@@ -334,7 +337,7 @@ impl CssContainerConstructionError {
         match &self.kind {
             ContainerConstructionKind::InvalidConditionGrammar { origin }
             | ContainerConstructionKind::InvalidPreludeGrammar { origin }
-            | ContainerConstructionKind::WorkerUnavailable { origin } => origin,
+            | ContainerConstructionKind::WorkerUnavailable { origin } => origin.inner(),
             ContainerConstructionKind::Component(error) => error.origin(),
         }
     }

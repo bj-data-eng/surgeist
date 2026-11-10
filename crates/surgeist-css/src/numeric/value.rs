@@ -30,7 +30,7 @@ use crate::serialization::exact_decimal::LexicalDecimal;
 use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
 use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 use crate::serialization::{CssSerializationError, CssSerializationLimits};
-use crate::source::CssSourcePosition;
+use crate::source::{CssSourcePosition, Provenance};
 
 type Result<T> = std::result::Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
@@ -275,7 +275,8 @@ impl CssRange<CssInteger> for CssPositive {}
 /// spelling of the value are ignored, so `2`, `2.0` and `+2` are equal, as are
 /// `2x` and `2dppx` (one unit under two spellings), while `96px` and `1in` are
 /// not. A length's unitless zero and quirky Number have
-/// unit px, as Typed OM reifies them.
+/// unit px, as Typed OM reifies them. [`crate::source::same_provenance`] also compares
+/// the spelling and the origin.
 #[derive(Clone, Debug)]
 pub struct CssNumericLiteral<T: CssNumericRoot> {
     component: Box<CssComponentValue>,
@@ -298,6 +299,7 @@ impl<T: CssNumericRoot> PartialEq for CssNumericLiteral<T> {
         self.reified_unit() == other.reified_unit()
             && LexicalDecimal::new(self.numeric().representation())
                 .value_eq(&LexicalDecimal::new(other.numeric().representation()))
+            && Provenance::new(&self.component) == Provenance::new(&other.component)
     }
 }
 
@@ -749,7 +751,8 @@ fn literal_unit(kind: RootKind, component: &CssComponentValue) -> Result<Option<
 /// "equal numeric values"). Operands compare as literals do: by exact value
 /// and by unit after alias resolution, so `calc(2x)` equals `calc(2dppx)`.
 /// Source origin and spelling are ignored, so `calc(1px + 2px)` equals
-/// `CALC(1.0px + 2px)` but not `calc(2px + 1px)`.
+/// `CALC(1.0px + 2px)` but not `calc(2px + 1px)`; [`crate::source::same_provenance`]
+/// also compares the authored calculation and its origins.
 ///
 /// Redundant parentheses and nested `calc()` functions leave no node (Values
 /// 4 "parse a calculation") and are seen through, so `calc((1px + 2px) + 3px)`
@@ -768,6 +771,7 @@ pub struct CssCalculation<T: CssNumericRoot> {
 impl<T: CssNumericRoot> PartialEq for CssCalculation<T> {
     fn eq(&self, other: &Self) -> bool {
         self.expression.value_eq(&other.expression)
+            && Provenance::new(&self.expression) == Provenance::new(&other.expression)
     }
 }
 
@@ -820,7 +824,7 @@ impl<T: CssNumericRoot> CssCalculation<T> {
 
     /// Returns the parsed root's start position, when parsed.
     pub fn position(&self) -> Option<CssSourcePosition> {
-        match &self.expression.origin {
+        match self.expression.origin.inner() {
             CssValueOrigin::Parsed(origin) => Some(origin.span().start()),
             _ => None,
         }
@@ -1360,7 +1364,7 @@ impl<R: CssRange<CssTime>> CssNumeric<CssTime, R> {
         match (&self.value, &other.value) {
             (NumericValue::Literal(left), NumericValue::Literal(right)) => left.equivalent(right),
             (NumericValue::Calculation(left), NumericValue::Calculation(right)) => {
-                left.expression.structural_eq(&right.expression)
+                left.expression.same_authored_form(&right.expression)
             }
             _ => false,
         }

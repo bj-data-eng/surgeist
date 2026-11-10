@@ -8,6 +8,7 @@ use crate::component::{
 use crate::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
 use crate::serialization::CssSerializationError;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::source::Provenance;
 use crate::values::effects::CssShadow;
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
@@ -234,19 +235,13 @@ keyword!(
 );
 /// Authored fill and shape slots; omitted shape remains contextual and unresolved.
 /// Equality compares authored slots independently of their occurrence origins.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssTextEmphasisMark {
     fill: Option<CssTextEmphasisFill>,
     shape: Option<CssTextEmphasisShape>,
-    fill_origin: Option<CssValueOrigin>,
-    shape_origin: Option<CssValueOrigin>,
+    fill_origin: Provenance<Option<CssValueOrigin>>,
+    shape_origin: Provenance<Option<CssValueOrigin>>,
 }
-impl PartialEq for CssTextEmphasisMark {
-    fn eq(&self, other: &Self) -> bool {
-        self.fill == other.fill && self.shape == other.shape
-    }
-}
-impl Eq for CssTextEmphasisMark {}
 impl CssTextEmphasisMark {
     /// Checks a `text-emphasis-style` mark combination.
     ///
@@ -262,14 +257,14 @@ impl CssTextEmphasisMark {
                 fill,
                 shape,
                 fill_origin: if fill.is_some() {
-                    Some(CssValueOrigin::Programmatic)
+                    Some(CssValueOrigin::Programmatic).into()
                 } else {
-                    None
+                    None.into()
                 },
                 shape_origin: if shape.is_some() {
-                    Some(CssValueOrigin::Programmatic)
+                    Some(CssValueOrigin::Programmatic).into()
                 } else {
-                    None
+                    None.into()
                 },
             })
         }
@@ -281,17 +276,17 @@ impl CssTextEmphasisMark {
         shape_origin: Option<CssValueOrigin>,
     ) -> Option<Self> {
         let mut value = Self::try_new(fill, shape)?;
-        value.fill_origin = fill_origin;
-        value.shape_origin = shape_origin;
+        value.fill_origin = fill_origin.into();
+        value.shape_origin = shape_origin.into();
         Some(value)
     }
     /// Returns the origin of the fill keyword, or `None` when the fill was omitted.
     pub const fn fill_origin(&self) -> Option<&CssValueOrigin> {
-        self.fill_origin.as_ref()
+        self.fill_origin.inner().as_ref()
     }
     /// Returns the origin of the shape keyword, or `None` when the shape was omitted.
     pub const fn shape_origin(&self) -> Option<&CssValueOrigin> {
-        self.shape_origin.as_ref()
+        self.shape_origin.inner().as_ref()
     }
     /// Returns the authored `filled` or `open` keyword, or `None` when it was omitted.
     pub const fn fill(&self) -> Option<CssTextEmphasisFill> {
@@ -429,30 +424,24 @@ keyword!(
 );
 /// Authored vertical and optional side slots, with separately retained occurrence origins.
 /// Equality retains the distinction between an omitted and explicit side.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssTextEmphasisPosition {
     vertical: CssTextEmphasisVertical,
     side: Option<CssTextSide>,
-    vertical_origin: CssValueOrigin,
-    side_origin: Option<CssValueOrigin>,
+    vertical_origin: Provenance<CssValueOrigin>,
+    side_origin: Provenance<Option<CssValueOrigin>>,
 }
-impl PartialEq for CssTextEmphasisPosition {
-    fn eq(&self, other: &Self) -> bool {
-        self.vertical == other.vertical && self.side == other.side
-    }
-}
-impl Eq for CssTextEmphasisPosition {}
 impl CssTextEmphasisPosition {
     /// Creates a position from a vertical keyword and an optional side; both origins are programmatic.
     pub fn new(vertical: CssTextEmphasisVertical, side: Option<CssTextSide>) -> Self {
         Self {
             vertical,
             side,
-            vertical_origin: CssValueOrigin::Programmatic,
+            vertical_origin: CssValueOrigin::Programmatic.into(),
             side_origin: if side.is_some() {
-                Some(CssValueOrigin::Programmatic)
+                Some(CssValueOrigin::Programmatic).into()
             } else {
-                None
+                None.into()
             },
         }
     }
@@ -465,17 +454,17 @@ impl CssTextEmphasisPosition {
         Self {
             vertical,
             side,
-            vertical_origin,
-            side_origin,
+            vertical_origin: vertical_origin.into(),
+            side_origin: side_origin.into(),
         }
     }
     /// Returns the origin of the vertical keyword.
     pub const fn vertical_origin(&self) -> &CssValueOrigin {
-        &self.vertical_origin
+        self.vertical_origin.inner()
     }
     /// Returns the origin of the side keyword, or `None` when the side was omitted.
     pub const fn side_origin(&self) -> Option<&CssValueOrigin> {
-        self.side_origin.as_ref()
+        self.side_origin.inner().as_ref()
     }
     /// Returns the `over` or `under` keyword.
     pub const fn vertical(&self) -> CssTextEmphasisVertical {

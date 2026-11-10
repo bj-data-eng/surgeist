@@ -5,6 +5,7 @@ use crate::numeric::{
     CssAngle, CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssHintedNumber,
     CssNumber, CssNumericLiteral, CssPercentage,
 };
+use crate::source::Provenance;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
 pub(crate) mod inverse;
@@ -32,10 +33,12 @@ impl std::fmt::Debug for CssColor {
     }
 }
 
-// Closure provenance does not redefine the existing semantic color equality.
+// Whether the source closed the color is recovery provenance, as an EOF-implied closing
+// delimiter is: `==` ignores it and `same_provenance` compares it.
 impl PartialEq for CssColor {
     fn eq(&self, other: &Self) -> bool {
         self.representation == other.representation
+            && Provenance::new(self.original_closed) == Provenance::new(other.original_closed)
     }
 }
 
@@ -689,10 +692,23 @@ impl CssColor {
 }
 
 /// A checked hex color retaining its digits as authored, without the leading `#`.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// Equality compares the digits ASCII case-insensitively, so `#ABC` equals `#abc`; the digit
+/// count stays part of the value (`#abc` differs from `#aabbcc`), and
+/// [`crate::source::same_provenance`] also compares the authored case.
+#[derive(Clone, Debug)]
 pub struct CssHexColor {
     digits: String,
 }
+
+impl PartialEq for CssHexColor {
+    fn eq(&self, other: &Self) -> bool {
+        self.digits.eq_ignore_ascii_case(&other.digits)
+            && Provenance::new(&self.digits) == Provenance::new(&other.digits)
+    }
+}
+
+impl Eq for CssHexColor {}
 
 impl CssHexColor {
     /// Checks that `digits` is 3, 4, 6 or 8 ASCII hexadecimal digits, without a leading `#`.
@@ -1372,7 +1388,7 @@ pub(crate) enum ColorConstructionKind {
 /// A checked colour scalar outside its range, or a malformed scalar component.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ColorScalarFailure {
-    origin: crate::component::CssValueOrigin,
+    origin: Provenance<crate::component::CssValueOrigin>,
     component: Option<crate::component::CssComponentValueError>,
 }
 impl CssColorConstructionError {
@@ -1382,7 +1398,7 @@ impl CssColorConstructionError {
     pub(crate) fn scalar_out_of_range(origin: crate::component::CssValueOrigin) -> Self {
         Self::new(ColorConstructionKind::Scalar(Box::new(
             ColorScalarFailure {
-                origin,
+                origin: origin.into(),
                 component: None,
             },
         )))
@@ -1428,7 +1444,7 @@ impl From<crate::component::CssComponentValueError> for CssColorConstructionErro
     fn from(source: crate::component::CssComponentValueError) -> Self {
         Self::new(ColorConstructionKind::Scalar(Box::new(
             ColorScalarFailure {
-                origin: source.origin().clone(),
+                origin: source.origin().clone().into(),
                 component: Some(source),
             },
         )))
@@ -1879,7 +1895,7 @@ pub struct CssRelativeColorCalculation {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CssRelativeColorCalculationData {
-    authored: CssAuthoredDeclarationValue,
+    authored: Provenance<CssAuthoredDeclarationValue>,
     result_type: CssCalculationType,
     references: Vec<CssRelativeColorChannel>,
     expression: CssCalculationExpression,
@@ -1892,7 +1908,7 @@ impl CssRelativeColorCalculation {
     ) -> Self {
         Self {
             data: Box::new(CssRelativeColorCalculationData {
-                authored,
+                authored: authored.into(),
                 result_type: expression.result_type(),
                 references: expression.references(),
                 expression,
@@ -1903,7 +1919,7 @@ impl CssRelativeColorCalculation {
     /// Returns the authored declaration value of the calculation, with its original components.
     #[must_use]
     pub const fn authored(&self) -> &CssAuthoredDeclarationValue {
-        &self.data.authored
+        self.data.authored.inner()
     }
 
     /// Returns the result type of the calculation.
@@ -1930,7 +1946,7 @@ pub struct CssRelativeColorExpression {
     environment: CssRelativeColorEnvironment,
     result_domain: CssRelativeColorResultDomain,
     value: CssRelativeColorExpressionValue,
-    origin: crate::component::CssValueOrigin,
+    origin: Provenance<crate::component::CssValueOrigin>,
 }
 
 impl CssRelativeColorExpression {
@@ -1944,7 +1960,7 @@ impl CssRelativeColorExpression {
             environment,
             result_domain,
             value,
-            origin,
+            origin: Provenance::new(origin),
         }
     }
 
@@ -1968,7 +1984,7 @@ impl CssRelativeColorExpression {
     /// Returns the origin of the authored expression.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 
@@ -2576,5 +2592,23 @@ impl CssRelativeColorFunction {
             | Self::Oklch
             | Self::Color(_) => 3,
         }
+    }
+}
+
+#[cfg(test)]
+mod closure_equality_tests {
+    use super::*;
+
+    // Whether the source closed the color is recovery provenance: `==` ignores it and
+    // `same_provenance` compares it.
+    #[test]
+    fn colors_equal_across_original_closure_and_differ_in_provenance() {
+        let closed = CssColor::current_color();
+        let mut unclosed = closed.clone();
+        unclosed.retain_original_closure(false);
+        assert!(closed.is_closed() && !unclosed.is_closed());
+        assert_eq!(closed, unclosed);
+        assert!(!crate::source::same_provenance(&closed, &unclosed));
+        assert!(crate::source::same_provenance(&unclosed, &unclosed.clone()));
     }
 }

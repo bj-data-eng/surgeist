@@ -8,6 +8,7 @@ use crate::component::{
 use crate::numeric::{CssNonNegative, CssNumeric, CssPercentage};
 use crate::serialization::CssSerializationError;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::source::Provenance;
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
@@ -93,6 +94,7 @@ crate::serialization::specified_rule_serialization::specified_serialization!(
 impl PartialEq for CssFontNamedInstanceString {
     fn eq(&self, other: &Self) -> bool {
         self.as_str() == other.as_str()
+            && Provenance::new(&self.component) == Provenance::new(&other.component)
     }
 }
 impl Eq for CssFontNamedInstanceString {}

@@ -2,6 +2,7 @@ use crate::component::{
     CssComponentValueError, CssSerializedOrigin, CssSerializedValue, CssValueOrigin,
 };
 use crate::diagnostic::CssError;
+use crate::source::Provenance;
 use std::fmt;
 
 /// The shared failure of one checked component-native descriptor construction or
@@ -10,7 +11,7 @@ use std::fmt;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DescriptorValueFailure {
     kind: DescriptorFailureKind,
-    origin: Box<CssSerializedOrigin>,
+    origin: Provenance<Box<CssSerializedOrigin>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,14 +26,14 @@ enum DescriptorFailureKind {
 impl DescriptorValueFailure {
     pub(crate) fn component(error: CssComponentValueError) -> Self {
         Self {
-            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())),
+            origin: Box::new(CssSerializedOrigin::Token(error.origin().clone())).into(),
             kind: DescriptorFailureKind::Component(Box::new(error)),
         }
     }
 
     pub(crate) fn grammar(error: CssError, serialized: &CssSerializedValue) -> Self {
         Self {
-            origin: Box::new(error.component_input_origin(serialized)),
+            origin: Box::new(error.component_input_origin(serialized)).into(),
             kind: DescriptorFailureKind::Grammar(Box::new(error)),
         }
     }
@@ -40,26 +41,26 @@ impl DescriptorValueFailure {
     pub(crate) fn recovered(origin: CssValueOrigin) -> Self {
         Self {
             kind: DescriptorFailureKind::RecoveredComponent,
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
+            origin: Box::new(CssSerializedOrigin::Token(origin)).into(),
         }
     }
 
     pub(crate) fn residual(origin: CssValueOrigin) -> Self {
         Self {
             kind: DescriptorFailureKind::ResidualSubstitution,
-            origin: Box::new(CssSerializedOrigin::Token(origin)),
+            origin: Box::new(CssSerializedOrigin::Token(origin)).into(),
         }
     }
 
     pub(crate) fn not_pending() -> Self {
         Self {
             kind: DescriptorFailureKind::NotPending,
-            origin: Box::new(CssSerializedOrigin::End(None)),
+            origin: Box::new(CssSerializedOrigin::End(None)).into(),
         }
     }
 
-    pub(crate) const fn origin(&self) -> &CssSerializedOrigin {
-        &self.origin
+    pub(crate) fn origin(&self) -> &CssSerializedOrigin {
+        self.origin.inner()
     }
 
     pub(crate) fn component_error(&self) -> Option<&CssComponentValueError> {

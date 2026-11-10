@@ -17,6 +17,7 @@ use crate::serialization::CssSerializationError;
 use crate::serialization::specified_serialization::{
     CssSpecifiedValueSerializationErrorKind, SpecifiedSerializationContext,
 };
+use crate::source::Provenance;
 
 type Result<T> = std::result::Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
@@ -104,19 +105,31 @@ struct CssCalcSizeData {
 }
 
 // The basis and calculation compare as numeric values do: by structure and
-// operand value, without diagnostic origins or root-relative error paths.
+// operand value, without diagnostic origins or root-relative error paths. Under
+// `same_provenance` the origins and the authored calculation are compared too.
 impl PartialEq for CssCalcSize {
     fn eq(&self, other: &Self) -> bool {
         let mut pending = vec![(self, other)];
         while let Some((left, right)) = pending.pop() {
-            if !left.data.calculation.value_eq(&right.data.calculation) {
+            if !left.data.calculation.value_eq(&right.data.calculation)
+                || Provenance::new((
+                    &left.data.origin,
+                    &left.data.basis_origin,
+                    &left.data.calculation,
+                )) != Provenance::new((
+                    &right.data.origin,
+                    &right.data.basis_origin,
+                    &right.data.calculation,
+                ))
+            {
                 return false;
             }
             match (&left.data.basis, &right.data.basis) {
                 (Basis::Keyword(a), Basis::Keyword(b)) if a == b => {}
                 (Basis::Any, Basis::Any) => {}
                 (Basis::Nested(a), Basis::Nested(b)) => pending.push((a, b)),
-                (Basis::Sum(a), Basis::Sum(b)) if a.value_eq(b) => {}
+                (Basis::Sum(a), Basis::Sum(b))
+                    if a.value_eq(b) && Provenance::new(a) == Provenance::new(b) => {}
                 _ => return false,
             }
         }

@@ -1,6 +1,7 @@
 //! Bounded, context-independent specified-value text.
 
 use crate::serialization::numeric_formatting::format_css_number;
+use crate::source::Provenance;
 use crate::values::box_model::CssBoxSizing;
 use crate::values::effects::{CssOpacityScalarKind, CssOpacityValue};
 use crate::values::table::{CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout};
@@ -88,7 +89,7 @@ pub struct CssSerializationError {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct SerializationDetail {
     cause: Option<SerializationCause>,
-    origin: Option<crate::component::CssValueOrigin>,
+    origin: Provenance<Option<crate::component::CssValueOrigin>>,
     rule_index: Option<usize>,
 }
 
@@ -116,7 +117,7 @@ impl CssSerializationError {
             kind,
             detail: Some(Box::new(SerializationDetail {
                 cause: Some(cause),
-                origin: Some(origin.clone()),
+                origin: Some(origin.clone()).into(),
                 rule_index: None,
             })),
         }
@@ -159,7 +160,7 @@ impl CssSerializationError {
     }
     pub(crate) fn at_origin(mut self, origin: &crate::component::CssValueOrigin) -> Self {
         if self.origin().is_none() {
-            self.detail_mut().origin = Some(origin.clone());
+            self.detail_mut().origin = Some(origin.clone()).into();
         }
         self
     }

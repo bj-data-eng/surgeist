@@ -20,6 +20,7 @@ use crate::rule::font_feature_values::CssFontFeatureValuesRule;
 use crate::rule::font_palette_values::CssFontPaletteValuesRule;
 use crate::rule::keyframes::CssKeyframesRule;
 use crate::selector::{CssScopeSelectorList, CssStyleSelectorList};
+use crate::source::{Provenance, Uncompared};
 use crate::values::common::CssIdent;
 use std::sync::Arc;
 
@@ -38,17 +39,11 @@ use crate::source::CssSourcePosition;
 ///
 /// Serializes retained authored rules; discarded source and its diagnostics remain on the original
 /// parse report. Top-level rules are separated by one newline.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CssSheet {
     location: Option<crate::source::CssStylesheetLocation>,
     rules: Vec<CssRule>,
-    parse_source: Option<crate::source::CssParseSource>,
-}
-
-impl PartialEq for CssSheet {
-    fn eq(&self, other: &Self) -> bool {
-        self.location == other.location && self.rules == other.rules
-    }
+    parse_source: Uncompared<Option<crate::source::CssParseSource>>,
 }
 
 impl CssSheet {
@@ -58,7 +53,7 @@ impl CssSheet {
         Self {
             location: None,
             rules: Vec::new(),
-            parse_source: None,
+            parse_source: Uncompared::new(None),
         }
     }
 
@@ -69,11 +64,11 @@ impl CssSheet {
     /// Complete root source and actual grammar context; absent for construction.
     #[must_use]
     pub const fn parse_source(&self) -> Option<&crate::source::CssParseSource> {
-        self.parse_source.as_ref()
+        self.parse_source.inner().as_ref()
     }
 
     pub(crate) fn bind_parse_source(&mut self, source: crate::source::CssParseSource) {
-        self.parse_source = Some(source);
+        self.parse_source = Uncompared::new(Some(source));
     }
 
     /// Returns the host-supplied symbolic stylesheet location, or null.
@@ -183,7 +178,7 @@ use crate::rule::counter_style::CssCounterStyleRule;
 pub struct CssNamespaceRule {
     prefix: Option<CssNamespacePrefix>,
     name: CssNamespaceName,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssNamespaceRule {
@@ -195,12 +190,12 @@ impl CssNamespaceRule {
         Self {
             prefix,
             name,
-            position: None,
+            position: Provenance::new(None),
         }
     }
 
     pub(crate) const fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Provenance::new(Some(position));
         self
     }
 
@@ -219,7 +214,7 @@ impl CssNamespaceRule {
     /// Returns the rule's authored at-keyword position, or `None` for Rust construction.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -292,7 +287,7 @@ pub struct CssImportRule {
     layer: Option<CssImportLayer>,
     supports: Option<CssImportSupports>,
     media: Option<CssMediaQueryList>,
-    pub(crate) syntax: Box<crate::rule::imports::ImportSyntax>,
+    pub(crate) syntax: Provenance<Box<crate::rule::imports::ImportSyntax>>,
 }
 
 impl CssImportRule {
@@ -309,7 +304,7 @@ impl CssImportRule {
             layer,
             supports,
             media,
-            syntax: Box::new(syntax),
+            syntax: Box::new(syntax).into(),
         }
     }
 
@@ -341,7 +336,7 @@ impl CssImportRule {
     /// Returns the origin of the `@import` at-keyword.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        self.syntax.at_keyword.origin()
+        self.syntax.inner().at_keyword.origin()
     }
 
     /// Returns the source position of the `@import` at-keyword, or `None` when its origin was not parsed from source.
@@ -459,14 +454,14 @@ use crate::rule::font_face::CssFontFaceRule;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssDescriptorOccurrence<T> {
     value: T,
-    position: CssSourcePosition,
-    parsed: Option<Arc<CssParsedDescriptor>>,
+    position: Provenance<CssSourcePosition>,
+    parsed: Provenance<Option<Arc<CssParsedDescriptor>>>,
 }
 
 #[derive(Debug, PartialEq)]
 struct CssParsedDescriptor {
-    name: CssParsedOrigin,
-    value: CssParsedOrigin,
+    name: Provenance<CssParsedOrigin>,
+    value: Provenance<CssParsedOrigin>,
     components: CssComponentValues,
 }
 
@@ -475,8 +470,8 @@ impl<T> CssDescriptorOccurrence<T> {
     pub(crate) const fn new(value: T, position: CssSourcePosition) -> Self {
         Self {
             value,
-            position,
-            parsed: None,
+            position: Provenance::new(position),
+            parsed: Provenance::new(None),
         }
     }
 
@@ -488,19 +483,19 @@ impl<T> CssDescriptorOccurrence<T> {
     ) -> Self {
         Self {
             value,
-            position: name.span().start(),
-            parsed: Some(Arc::new(CssParsedDescriptor {
-                name,
-                value: value_origin,
+            position: name.span().start().into(),
+            parsed: Provenance::new(Some(Arc::new(CssParsedDescriptor {
+                name: name.into(),
+                value: value_origin.into(),
                 components,
-            })),
+            }))),
         }
     }
 
     /// Reports identity of the parsed occurrence, including across projection clones.
     #[must_use]
     pub fn same_occurrence(&self, other: &Self) -> bool {
-        match (&self.parsed, &other.parsed) {
+        match (self.parsed.inner(), other.parsed.inner()) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
             _ => std::ptr::eq(self, other),
         }
@@ -509,20 +504,29 @@ impl<T> CssDescriptorOccurrence<T> {
     /// Borrows the original descriptor-name token when retained by its parser.
     #[must_use]
     pub fn parsed_name(&self) -> Option<&CssParsedOrigin> {
-        self.parsed.as_ref().map(|parsed| &parsed.name)
+        self.parsed
+            .inner()
+            .as_ref()
+            .map(|parsed| parsed.name.inner())
     }
 
     /// Borrows the original descriptor-value region when retained by its parser.
     #[must_use]
     pub fn parsed_value(&self) -> Option<&CssParsedOrigin> {
-        self.parsed.as_ref().map(|parsed| &parsed.value)
+        self.parsed
+            .inner()
+            .as_ref()
+            .map(|parsed| parsed.value.inner())
     }
 
     /// Borrows every original value component, including trivia and nested delimiters.
     /// The retained source stays distinct from specified-text projection.
     #[must_use]
     pub fn value_components(&self) -> Option<&CssComponentValues> {
-        self.parsed.as_ref().map(|parsed| &parsed.components)
+        self.parsed
+            .inner()
+            .as_ref()
+            .map(|parsed| &parsed.components)
     }
 
     /// Returns the typed authored descriptor value.
@@ -534,7 +538,7 @@ impl<T> CssDescriptorOccurrence<T> {
     /// Returns the semantic source position at the descriptor-name start.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -626,13 +630,16 @@ impl CssLayerNameList {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLayerStatementRule {
     names: CssLayerNameList,
-    position: CssSourcePosition,
+    position: Provenance<CssSourcePosition>,
 }
 
 impl CssLayerStatementRule {
     #[must_use]
     pub(crate) const fn new(names: CssLayerNameList, position: CssSourcePosition) -> Self {
-        Self { names, position }
+        Self {
+            names,
+            position: Provenance::new(position),
+        }
     }
 
     /// Returns the names the statement declares.
@@ -644,7 +651,7 @@ impl CssLayerStatementRule {
     /// Returns the source position of the rule.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -653,7 +660,7 @@ impl CssLayerStatementRule {
 pub struct CssLayerBlockRule {
     name: Option<CssLayerName>,
     rules: Vec<CssRule>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssLayerBlockRule {
@@ -666,7 +673,7 @@ impl CssLayerBlockRule {
         Self {
             name,
             rules,
-            position: Some(position),
+            position: Some(position).into(),
         }
     }
 
@@ -685,7 +692,7 @@ impl CssLayerBlockRule {
     /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -706,7 +713,7 @@ fn is_parser_reserved_layer_name(component: &str) -> bool {
 pub struct CssMediaRule {
     query: CssMediaQueryList,
     rules: Vec<CssRule>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssMediaRule {
@@ -719,7 +726,7 @@ impl CssMediaRule {
         Self {
             query,
             rules,
-            position: Some(position),
+            position: Some(position).into(),
         }
     }
 
@@ -738,7 +745,7 @@ impl CssMediaRule {
     /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -750,7 +757,7 @@ impl CssMediaRule {
 pub struct CssSupportsRule {
     condition: CssCondition<CssSupportsLeaf>,
     rules: Vec<CssRule>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssSupportsRule {
@@ -763,7 +770,7 @@ impl CssSupportsRule {
         Self {
             condition,
             rules,
-            position: Some(position),
+            position: Some(position).into(),
         }
     }
 
@@ -782,7 +789,7 @@ impl CssSupportsRule {
     /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -791,7 +798,7 @@ impl CssSupportsRule {
 pub struct CssContainerRule {
     prelude: CssContainerPrelude,
     rules: Vec<CssRule>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssContainerRule {
@@ -804,7 +811,7 @@ impl CssContainerRule {
         Self {
             prelude,
             rules,
-            position: Some(position),
+            position: Some(position).into(),
         }
     }
 
@@ -823,7 +830,7 @@ impl CssContainerRule {
     /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -838,7 +845,7 @@ pub struct CssScopeRule {
     root: Option<CssScopeSelectorList>,
     limit: Option<CssScopeSelectorList>,
     rules: crate::rule::CssRuleList,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssScopeRule {
@@ -853,7 +860,7 @@ impl CssScopeRule {
             root,
             limit,
             rules: crate::rule::CssRuleList::from_parsed(rules),
-            position: Some(position),
+            position: Some(position).into(),
         }
     }
 
@@ -878,7 +885,7 @@ impl CssScopeRule {
     /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -928,12 +935,15 @@ impl StyleContents {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssStyleBlock {
     contents: StyleContents,
-    origin: CssParsedOrigin,
+    origin: Provenance<CssParsedOrigin>,
 }
 
 impl CssStyleBlock {
     pub(crate) fn new(contents: StyleContents, origin: CssParsedOrigin) -> Self {
-        Self { contents, origin }
+        Self {
+            contents,
+            origin: origin.into(),
+        }
     }
 
     /// Returns leading declarations when the first retained body item is a declaration run.
@@ -953,7 +963,7 @@ impl CssStyleBlock {
     /// Surrounding trivia is excluded; the snapshot retains the entire original input.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 
@@ -966,7 +976,7 @@ impl CssStyleBlock {
 pub struct CssStyleRule {
     selectors: CssStyleSelectorList,
     contents: StyleContents,
-    position: CssSourcePosition,
+    position: Provenance<CssSourcePosition>,
 }
 
 impl CssStyleRule {
@@ -982,7 +992,7 @@ impl CssStyleRule {
                 declarations,
                 rules,
             },
-            position,
+            position: position.into(),
         }
     }
 
@@ -1008,7 +1018,7 @@ impl CssStyleRule {
     /// Returns the source position of the authored selector-list start.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -1053,7 +1063,7 @@ impl CssSheet {
         Ok(Self {
             location: None,
             rules,
-            parse_source: None,
+            parse_source: Uncompared::new(None),
         })
     }
 }
@@ -1072,7 +1082,7 @@ impl CssMediaRule {
         Ok(Self {
             query,
             rules,
-            position: None,
+            position: Provenance::new(None),
         })
     }
 }
@@ -1092,7 +1102,7 @@ impl CssSupportsRule {
         Ok(Self {
             condition,
             rules,
-            position: None,
+            position: Provenance::new(None),
         })
     }
 }
@@ -1111,7 +1121,7 @@ impl CssContainerRule {
         Ok(Self {
             prelude,
             rules,
-            position: None,
+            position: Provenance::new(None),
         })
     }
 }
@@ -1130,7 +1140,7 @@ impl CssLayerBlockRule {
         Ok(Self {
             name,
             rules,
-            position: None,
+            position: Provenance::new(None),
         })
     }
 }
@@ -1156,7 +1166,7 @@ impl CssScopeRule {
             root,
             limit,
             rules: crate::rule::CssRuleList::from_parsed(rules),
-            position: None,
+            position: Provenance::new(None),
         })
     }
 }

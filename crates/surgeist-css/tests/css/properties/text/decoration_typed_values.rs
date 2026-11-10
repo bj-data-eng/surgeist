@@ -285,12 +285,17 @@ fn emphasis_semantic_equality_preserves_authored_slots_and_borrows_original_prov
     };
     assert_eq!(plain.as_str(), "hello");
     assert_eq!(escaped.as_str(), "hello");
-    assert_ne!(
+    assert_eq!(
         plain, escaped,
-        "the retained string leaf still compares original components"
+        "the retained string leaf compares decoded components, not their spelling"
     );
+    assert!(!surgeist_css::source::same_provenance(&plain, &escaped));
     assert_ne!(plain.origin(), escaped.origin());
-    assert_ne!(plain.component(), escaped.component());
+    assert_eq!(plain.component(), escaped.component());
+    assert!(!surgeist_css::source::same_provenance(
+        plain.component(),
+        escaped.component()
+    ));
     assert_eq!(
         CssTextEmphasisStyle::String(plain),
         CssTextEmphasisStyle::String(CssTextEmphasisString::try_new("hello").unwrap())

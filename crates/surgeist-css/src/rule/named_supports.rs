@@ -7,6 +7,7 @@ use crate::component::{
 use crate::query::supports::CssSupportsConstructionError;
 use crate::query::supports::named_supports::validate_emitted_budget;
 use crate::query::supports::{CssSupportsConditionName, CssSupportsTestBody};
+use crate::source::Provenance;
 use crate::source::{
     CssRetainedSources, CssSourcePosition, CssSourceRetention, CssSourceRetentionError,
 };
@@ -17,9 +18,9 @@ impl CssRetainedSources for CssSupportsConditionRule {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.data.name.component())?;
-        sources.visit(&self.data.origin)?;
-        sources.visit(&self.data.opening)?;
-        sources.visit(&self.data.closing)?;
+        sources.visit(self.data.origin.inner())?;
+        sources.visit(self.data.opening.inner())?;
+        sources.visit(self.data.closing.inner())?;
         sources.visit(&self.data.body)
     }
 }
@@ -38,9 +39,9 @@ pub struct CssSupportsConditionRule {
 struct SupportsConditionRuleData {
     name: CssSupportsConditionName,
     body: CssSupportsTestBody,
-    origin: CssValueOrigin,
-    opening: CssValueOrigin,
-    closing: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
+    opening: Provenance<CssValueOrigin>,
+    closing: Provenance<CssValueOrigin>,
 }
 
 impl CssSupportsConditionRule {
@@ -57,7 +58,7 @@ impl CssSupportsConditionRule {
         if let Some(origin) = body.recovery_origin() {
             return Err(CssSupportsConstructionError::from(
                 crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
-                    origin: origin.clone(),
+                    origin: origin.clone().into(),
                 },
             ));
         }
@@ -84,9 +85,9 @@ impl CssSupportsConditionRule {
             data: Box::new(SupportsConditionRuleData {
                 name,
                 body,
-                origin,
-                opening,
-                closing,
+                origin: origin.into(),
+                opening: opening.into(),
+                closing: closing.into(),
             }),
         }
     }

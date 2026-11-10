@@ -3,6 +3,7 @@ use crate::property::CssKnownDeclaration;
 use crate::property::{CssCustomPropertyMetadata, CssPropertyNameRef};
 use crate::source::CssParsedOrigin;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use std::sync::Arc;
 
 /// An ordered collection of parsed or checked ordinary and Page authored declarations.
@@ -201,7 +202,7 @@ pub(crate) enum DeclarationContext {
     Page,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum DeclarationProvenance {
     Parsed {
         name: CssParsedOrigin,
@@ -219,7 +220,8 @@ impl PartialEq for CssDeclaration {
             && self.declaration_context() == other.declaration_context()
             && self.body() == other.body()
             && self.importance() == other.importance()
-            && self.position() == other.position()
+            && Provenance::new(&self.occurrence.payload.provenance)
+                == Provenance::new(&other.occurrence.payload.provenance)
     }
 }
 

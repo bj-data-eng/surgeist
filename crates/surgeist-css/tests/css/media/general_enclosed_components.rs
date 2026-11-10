@@ -223,7 +223,7 @@ fn constructor_errors_preserve_component_syntax_and_depth_failures() {
 }
 
 #[test]
-fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
+fn equality_compares_spelling_but_not_origin_or_snapshot_identity() {
     let first = enclosed("future(01.00000000000000000000000001)");
     let second = enclosed("future(01.00000000000000000000000001)");
     assert_eq!(first, second);
@@ -234,7 +234,13 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
     };
     assert!(!left.source().same_snapshot(right.source()));
     assert_ne!(first, enclosed("future(01.00000000000000000000000002)"));
-    assert_ne!(enclosed("future(1)"), enclosed("future(1"));
+    // The delimiter that EOF implied has the same spelling as the written one; only its
+    // origin records the recovery.
+    assert_eq!(enclosed("future(1)"), enclosed("future(1"));
+    assert!(!surgeist_css::source::same_provenance(
+        &enclosed("future(1)"),
+        &enclosed("future(1")
+    ));
     let supplied = surgeist_css::query::CssGeneralEnclosed::try_function(
         "future",
         CssComponentValues::try_new(
@@ -251,15 +257,18 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
             .unwrap()
             .as_css()
     );
-    assert_ne!(first, supplied);
-    // Parsed numeric components and supplied tokens differ even though both
-    // spell the exact same number; programmatic token parsing leaks no origin.
-    assert_ne!(
-        CssComponentValues::parse(&CssParser::default(), "1")
-            .unwrap()
-            .items()[0],
-        CssComponentValue::try_token("1").unwrap()
-    );
+    // A parsed value equals the supplied one of the same spelling; only the
+    // provenance comparison tells them apart, as programmatic token parsing
+    // leaks no origin.
+    assert_eq!(first, supplied);
+    assert!(!surgeist_css::source::same_provenance(&first, &supplied));
+    let parsed = CssComponentValues::parse(&CssParser::default(), "1").unwrap();
+    let token = CssComponentValue::try_token("1").unwrap();
+    assert_eq!(parsed.items()[0], token);
+    assert!(!surgeist_css::source::same_provenance(
+        &parsed.items()[0],
+        &token
+    ));
 }
 
 #[test]

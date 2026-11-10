@@ -415,7 +415,9 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
             );
         }
     }
-    assert_ne!(first, same);
+    // The feature name's case is spelling: `==` ignores it and `same_provenance` compares it.
+    assert_eq!(first, same);
+    assert!(!surgeist_css::source::same_provenance(&first, &same));
     assert!(
         !query("(width:+001.5PX)")
             .cssom_equals(&query("(width:1.5px)"), Default::default())

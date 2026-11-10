@@ -9,6 +9,7 @@ use crate::query::CssQueryComparison;
 use crate::query::container::CssContainerGeneralEnclosed;
 use crate::query::supports::construction::SupportsLexical;
 use crate::source::CssSourcePosition;
+use crate::source::Verbatim;
 
 /// A leaf of a style query: a style feature, or any other enclosure.
 #[derive(Clone, Debug, PartialEq)]
@@ -51,7 +52,7 @@ pub enum CssContainerStyleFeature {
 /// Whitespace tokens count as values; comments alone do not.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerStyleValue {
-    lexical: SupportsLexical,
+    lexical: Verbatim<SupportsLexical>,
 }
 
 /// An admitted range operand, retaining its lexical value and contextual identity.
@@ -204,7 +205,9 @@ impl CssContainerStyleRange {
 
 impl CssContainerStyleValue {
     pub(crate) fn new(lexical: SupportsLexical) -> Self {
-        Self { lexical }
+        Self {
+            lexical: lexical.into(),
+        }
     }
 }
 

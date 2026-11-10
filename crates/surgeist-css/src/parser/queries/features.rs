@@ -51,12 +51,12 @@ pub(super) struct ParsedMediaFeature<'i> {
 impl ParsedMediaFeature<'_> {
     pub(super) fn into_syntax(self, component: CssComponentValue) -> MediaFeatureSyntax {
         MediaFeatureSyntax {
-            component,
-            name: self.name,
+            component: component.into(),
+            name: self.name.into(),
             name_text: self.name_text,
             canonical_name: None,
             shape: self.shape,
-            separators: self.separators,
+            separators: self.separators.into(),
         }
     }
 }
@@ -103,7 +103,7 @@ pub(super) fn construct_when_media_feature(
     let invalid = || {
         CssConditionConstructionError::from(
             crate::query::when::ConditionConstructionKind::InvalidMediaFeatureGrammar {
-                origin: component.origin().clone(),
+                origin: component.origin().clone().into(),
             },
         )
     };

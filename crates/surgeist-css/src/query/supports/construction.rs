@@ -9,6 +9,7 @@ use crate::query::CssCondition;
 use crate::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
 use crate::selector::CssNamespaceContext;
 use crate::serialization::CssSerializationError;
+use crate::source::Provenance;
 use crate::source::{
     CssRetainedSources, CssSourcePosition, CssSourceRetention, CssSourceRetentionError,
 };
@@ -73,13 +74,13 @@ pub struct CssSupportsConstructionError {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum SupportsConstructionKind {
-    InvalidConditionGrammar { origin: CssValueOrigin },
-    InvalidDeclarationGrammar { origin: CssValueOrigin },
-    InvalidName { origin: CssValueOrigin },
-    InvalidBodyGrammar { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
+    InvalidConditionGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidDeclarationGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidName { origin: Provenance<CssValueOrigin> },
+    InvalidBodyGrammar { origin: Provenance<CssValueOrigin> },
+    RecoveredInput { origin: Provenance<CssValueOrigin> },
     Component(CssComponentValueError),
-    WorkerUnavailable { origin: CssValueOrigin },
+    WorkerUnavailable { origin: Provenance<CssValueOrigin> },
 }
 impl CssSupportsConstructionError {
     crate::diagnostic::error::kind_predicates! { kind;
@@ -114,7 +115,7 @@ impl CssSupportsConstructionError {
             | SupportsConstructionKind::InvalidName { origin }
             | SupportsConstructionKind::InvalidBodyGrammar { origin }
             | SupportsConstructionKind::RecoveredInput { origin }
-            | SupportsConstructionKind::WorkerUnavailable { origin } => origin,
+            | SupportsConstructionKind::WorkerUnavailable { origin } => origin.inner(),
             SupportsConstructionKind::Component(error) => error.origin(),
         }
     }
@@ -197,6 +198,16 @@ impl PartialEq for SupportsLexical {
         self.items() == other.items()
     }
 }
+impl crate::source::VerbatimEq for SupportsLexical {
+    fn verbatim_eq(&self, other: &Self) -> bool {
+        crate::component::values::verbatim_items_eq(self.items(), other.items())
+    }
+}
+impl crate::source::LayoutEq for SupportsLexical {
+    fn layout_eq(&self, other: &Self) -> bool {
+        crate::component::values::layout_items_eq(self.items(), other.items())
+    }
+}
 impl SupportsLexical {
     pub(crate) fn root(values: CssComponentValues) -> Self {
         let length = values.items().len();
@@ -277,7 +288,7 @@ fn construct<T: Send>(
             .map_err(|_| {
                 CssSupportsConstructionError::from(
                     crate::query::supports::construction::SupportsConstructionKind::WorkerUnavailable {
-                        origin: CssValueOrigin::Programmatic,
+                        origin: CssValueOrigin::Programmatic.into(),
                     },
                 )
             })?;
@@ -514,7 +525,7 @@ fn css_supports_declaration(
     if let Some(origin) = property_values.first_implicit_origin() {
         return Err(CssSupportsConstructionError::from(
             SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             },
         ));
     }
@@ -528,7 +539,8 @@ fn css_supports_declaration(
                     .first()
                     .map_or(CssValueOrigin::Programmatic, |component| {
                         component.origin().clone()
-                    }),
+                    })
+                    .into(),
             },
         ));
     }
@@ -536,7 +548,7 @@ fn css_supports_declaration(
     if let Some(origin) = value.first_implicit_origin() {
         return Err(CssSupportsConstructionError::from(
             SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             },
         ));
     }
@@ -548,7 +560,7 @@ fn css_supports_declaration(
     }) {
         return Err(CssSupportsConstructionError::from(
             SupportsConstructionKind::InvalidDeclarationGrammar {
-                origin: component.origin().clone(),
+                origin: component.origin().clone().into(),
             },
         ));
     }

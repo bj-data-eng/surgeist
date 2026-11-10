@@ -17,6 +17,7 @@ use surgeist_css::numeric::{CssCalculation, CssTime};
 use surgeist_css::property::{
     CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
 };
+use surgeist_css::source::same_provenance;
 use surgeist_css::values::animation::{
     CssAnimationComponents, CssAnimationIterationCount, CssAnimationList, CssDelayList,
     CssDurationList, CssEasing, CssTransitionList,
@@ -241,7 +242,8 @@ fn aggregate_identity_ignores_calculation_origins(property: CssKnownProperty) {
             "original source origins differ"
         );
         assert_eq!(left, right, "calculation equality ignores origins");
-        assert_ne!(left.components(), right.components());
+        assert_eq!(left.components(), right.components());
+        assert!(!same_provenance(left, right));
         assert_eq!(
             left.serialize_tokens(Default::default()).unwrap().as_css(),
             right.serialize_tokens(Default::default()).unwrap().as_css()

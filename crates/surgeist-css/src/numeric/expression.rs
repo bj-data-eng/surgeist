@@ -10,6 +10,7 @@ use crate::numeric::CssLengthUnit;
 use crate::numeric::{controlled_check, ordinary_expression, projection, units};
 use crate::parser::property_input::SiteExt;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use std::{borrow::Cow, fmt};
 
 #[cfg(test)]
@@ -651,7 +652,7 @@ pub(crate) enum CssNumericConstructionErrorKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssNumericConstructionError {
     kind: CssNumericConstructionErrorKind,
-    origin: Option<CssValueOrigin>,
+    origin: Provenance<Option<CssValueOrigin>>,
     source: Option<Box<CssComponentValueError>>,
     path: Option<Box<[usize]>>,
 }
@@ -705,7 +706,7 @@ impl CssNumericConstructionError {
     pub(crate) fn at(kind: CssNumericConstructionErrorKind, c: Option<&CssComponentValue>) -> Self {
         Self {
             kind,
-            origin: c.map(|c| c.origin().clone()),
+            origin: c.map(|c| c.origin().clone()).into(),
             source: None,
             path: None,
         }
@@ -713,7 +714,7 @@ impl CssNumericConstructionError {
     pub(crate) fn at_origin(kind: CssNumericConstructionErrorKind, origin: CssValueOrigin) -> Self {
         Self {
             kind,
-            origin: Some(origin),
+            origin: Some(origin).into(),
             source: None,
             path: None,
         }
@@ -725,7 +726,7 @@ impl CssNumericConstructionError {
             } else {
                 CssNumericConstructionErrorKind::Component(e.kind)
             },
-            origin: Some(e.origin().clone()),
+            origin: Some(e.origin().clone()).into(),
             source: Some(Box::new(e)),
             path: None,
         }
@@ -1167,10 +1168,10 @@ pub(crate) struct CssCalculationExpression {
     pub(crate) kind: NodeKind,
     pub(crate) admits_pure_context: bool,
     pub(crate) ty: CssNumericType,
-    pub(crate) origin: CssValueOrigin,
+    pub(crate) origin: Provenance<CssValueOrigin>,
     pub(crate) components: Option<CssComponentValues>,
     pub(crate) syntax: Vec<CssComponentValue>,
-    pub(crate) closing: Option<CssValueOrigin>,
+    pub(crate) closing: Provenance<Option<CssValueOrigin>>,
 }
 impl Clone for CssCalculationExpression {
     fn clone(&self) -> Self {
@@ -1285,16 +1286,16 @@ impl CssCalculationExpression {
         .unwrap_or_else(|never| match never {})
     }
 
-    /// Compares checked numeric structure and authored spelling while
-    /// excluding diagnostic source coordinates and the redundant raw root
-    /// graph: the specified serializer's shortening identity.
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
+    /// Compares checked numeric structure, grouping and authored spelling while
+    /// excluding source origins and the redundant raw root graph: the specified
+    /// serializer's shortening identity. `==` compares values instead.
+    pub(crate) fn same_authored_form(&self, other: &Self) -> bool {
         Self::structural_eq_with(
             true,
             false,
             vec![(self, other)],
-            |a, b| a.structural_eq_ignoring_origin(b),
-            |a, b| Ok::<_, std::convert::Infallible>(a.structural_eq_ignoring_origin(b)),
+            |a, b| a.same_spelling(b),
+            |a, b| Ok::<_, std::convert::Infallible>(a.same_spelling(b)),
             |pending, value| {
                 pending.push(value);
                 Ok(())
@@ -1314,7 +1315,7 @@ impl CssCalculationExpression {
             false,
             false,
             vec![(self, other)],
-            |a, b| a.structural_eq_ignoring_origin(b),
+            |a, b| a.same_spelling(b),
             |a, b| exact_numeric_leaf_identity(a, b, context),
             |pending, value| {
                 pending.push(value);
@@ -1342,14 +1343,8 @@ impl CssCalculationExpression {
             true,
             false,
             pending,
-            |a, b| {
-                a.token_structural_eq_ignoring_origin(b)
-                    .expect("checked numeric syntax token")
-            },
-            |a, b| {
-                Ok(a.token_structural_eq_ignoring_origin(b)
-                    .expect("checked numeric literal token"))
-            },
+            |a, b| a.same_spelling(b),
+            |a, b| Ok(a.same_spelling(b)),
             |pending, value| {
                 context.charge_generated_projection(1)?;
                 pending
@@ -2536,10 +2531,10 @@ fn parse_node<'a>(
         admits_pure_context: kind.admits_pure_context(),
         kind,
         ty,
-        origin: c.origin().clone(),
+        origin: c.origin().clone().into(),
         components: None,
         syntax,
-        closing,
+        closing: closing.into(),
     })
 }
 /// Intrinsic numeric leaves shared by owned projection and borrowed checks.
@@ -3879,17 +3874,17 @@ mod structural_comparison_tests {
         assert!(
             !value
                 .expression
-                .structural_eq(&checked("calc((1px + 2%))").expression),
+                .same_authored_form(&checked("calc((1px + 2%))").expression),
             "the specified shortening identity keeps the grouping"
         );
         assert!(
-            value.expression.structural_eq(&shifted.expression),
+            value.expression.same_authored_form(&shifted.expression),
             "the specified shortening identity ignores provenance"
         );
         assert!(
             !value
                 .expression
-                .structural_eq(&checked("calc(1.0px + 2%)").expression),
+                .same_authored_form(&checked("calc(1.0px + 2%)").expression),
             "the specified shortening identity keeps authored spelling"
         );
 

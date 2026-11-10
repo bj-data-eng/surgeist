@@ -145,7 +145,12 @@ fn parsed_tokens_keep_original_spans_and_canonicalize_only_when_requested() {
             u32::try_from(source[..start].encode_utf16().count()).unwrap()
         );
     }
-    assert_ne!(list.ranges()[0], CssLanguageRange::try_ident("en").unwrap());
+    let built = CssLanguageRange::try_ident("en").unwrap();
+    assert_eq!(list.ranges()[0], built);
+    assert!(!surgeist_css::source::same_provenance(
+        &list.ranges()[0],
+        &built
+    ));
     let direction_source = r":dir(\4c TR)";
     let report = CssSelector::parse(
         &CssParser::default(),

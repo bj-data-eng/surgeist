@@ -6,6 +6,7 @@ use crate::color::CssColorComponentName;
 use crate::property::CssPropertyName;
 use crate::query::media::CssMediaFeatureName;
 use crate::rule::{CssAtRuleName, CssDescriptorName};
+use crate::source::Provenance;
 /// Defines one documented `is_*` predicate per pattern of an error's private kind.
 ///
 /// `field` names the kind field; `*field` names a boxed one.
@@ -640,7 +641,7 @@ impl CssAtRuleSyntaxError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CssNamespaceRedeclarationError {
     pub(crate) prefix: Option<crate::rule::CssNamespacePrefix>,
-    pub(crate) previous_position: CssSourcePosition,
+    pub(crate) previous_position: Provenance<CssSourcePosition>,
 }
 
 impl CssNamespaceRedeclarationError {
@@ -653,7 +654,7 @@ impl CssNamespaceRedeclarationError {
     /// Returns the preceding retained declaration's at-keyword position.
     #[must_use]
     pub const fn previous_position(&self) -> CssSourcePosition {
-        self.previous_position
+        *self.previous_position.inner()
     }
 }
 
@@ -1275,7 +1276,7 @@ pub(crate) enum ErrorKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssError {
     pub(crate) kind: ErrorKind,
-    pub(crate) position: CssSourcePosition,
+    pub(crate) position: Provenance<CssSourcePosition>,
 }
 
 impl CssError {
@@ -1283,13 +1284,15 @@ impl CssError {
         &mut self,
         source: &crate::source::CssSourceSnapshot,
     ) {
-        self.position = source.position_or_walk(self.position.byte_offset().value());
+        self.position = source
+            .position_or_walk(self.position.byte_offset().value())
+            .into();
     }
 
     fn at(location: CssSourcePosition, kind: ErrorKind) -> Self {
         Self {
             kind,
-            position: location,
+            position: location.into(),
         }
     }
 
@@ -1307,7 +1310,7 @@ impl CssError {
     #[must_use]
     /// Returns the semantic authored-source position of the responsible token or missing token.
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 
     #[must_use]
@@ -1796,7 +1799,7 @@ impl ErrorKind {
 impl fmt::Display for CssError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.kind.describe(formatter)?;
-        write!(formatter, " at {}", self.position)
+        write!(formatter, " at {}", self.position.inner())
     }
 }
 
@@ -1895,7 +1898,13 @@ pub(crate) fn parser_unavailable(
 }
 
 fn depth_error(position: CssSourcePosition, kind: ErrorKind) -> GrammarFailure {
-    GrammarFailure::new(CssError { kind, position }, position)
+    GrammarFailure::new(
+        CssError {
+            kind,
+            position: position.into(),
+        },
+        position,
+    )
 }
 
 pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> CssError {
@@ -1903,7 +1912,7 @@ pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition
         kind: ErrorKind::LegacyNavigationTarget(CssLegacyNavigationTargetError {
             target: target.to_owned(),
         }),
-        position,
+        position: position.into(),
     }
 }
 
@@ -1915,9 +1924,9 @@ pub(crate) fn namespace_redeclaration(
     CssError {
         kind: ErrorKind::NamespaceRedeclaration(CssNamespaceRedeclarationError {
             prefix,
-            previous_position,
+            previous_position: previous_position.into(),
         }),
-        position,
+        position: position.into(),
     }
 }
 
@@ -1928,7 +1937,7 @@ pub(crate) fn implicit_eof(eof: CssSourcePosition) -> CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: EXPECT_CSS_SYNTAX,
         }),
-        position: eof,
+        position: eof.into(),
     }
 }
 
@@ -1937,7 +1946,7 @@ pub(crate) fn unterminated_at_rule(position: CssSourcePosition) -> CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: CssGrammarExpectation::new("a semicolon or block terminating an at-rule"),
         }),
-        position,
+        position: position.into(),
     }
 }
 
@@ -1947,7 +1956,7 @@ pub(crate) fn escape_parse_error(
 ) -> CssError {
     CssError {
         kind: ErrorKind::EscapeParseError(detail),
-        position,
+        position: position.into(),
     }
 }
 
@@ -1970,7 +1979,7 @@ pub(crate) fn unexpected_component_value_at(
     let encountered = CssTokenSummary::from_component(component);
     GrammarFailure::new(
         CssError {
-            position,
+            position: position.into(),
             kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
                 expectation: CssGrammarExpectation::new(expectation),
                 encountered,
@@ -2179,7 +2188,7 @@ pub(crate) fn selector_component_error(
     let position = origin.span().start();
     GrammarFailure::new(
         CssError {
-            position,
+            position: position.into(),
             kind: ErrorKind::InvalidSelector(CssSelectorError {
                 production: Some(SELECTOR_LIST),
                 expectation: EXPECT_SELECTOR,
@@ -2206,7 +2215,7 @@ pub(crate) fn invalid_component_value(
     GrammarFailure::new(
         CssError {
             kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
-            position,
+            position: position.into(),
         },
         location,
     )
@@ -2237,7 +2246,7 @@ pub(crate) fn invalid_when_prelude(
     });
     GrammarFailure::new(
         CssError {
-            position,
+            position: position.into(),
             kind: ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
                 production: production_for_at_rule(name),
@@ -2256,7 +2265,7 @@ pub(crate) fn invalid_free_else(source: &str, position: CssSourcePosition) -> Cs
         })
         .unwrap_or_else(|| "else".to_owned());
     CssError {
-        position,
+        position: position.into(),
         kind: ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
             name: CssAtRuleName::new(name),
             expected_context: CssGrammarExpectation::new(
@@ -2309,7 +2318,7 @@ pub(crate) fn invalid_at_rule_body_at(
 ) -> GrammarFailure {
     GrammarFailure::new(
         CssError {
-            position,
+            position: position.into(),
             kind: ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
                 production: CssProductionId::new(production),
@@ -3000,7 +3009,8 @@ mod tests {
             (
                 ErrorKind::NamespaceRedeclaration(CssNamespaceRedeclarationError {
                     prefix: None,
-                    previous_position: CssSourcePosition::from_byte_offset_in("@namespace '';", 0),
+                    previous_position: CssSourcePosition::from_byte_offset_in("@namespace '';", 0)
+                        .into(),
                 }),
                 CssErrorCode::NamespaceRedeclaration,
             ),

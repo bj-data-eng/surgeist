@@ -336,7 +336,7 @@ fn parse_typed_media_query<'i>(
     let syntax = MediaTypedSyntax {
         modifier: modifier_component.map(std::borrow::Cow::into_owned),
         media_type: component.into_owned(),
-        conjunction,
+        conjunction: conjunction.into(),
     };
     Ok(match media_type {
         ParsedMediaType::Known(ty) => {
@@ -502,7 +502,7 @@ impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_> {
                 CssConditionKind::Or(operands)
             },
             origin,
-            MediaConditionSyntax::Junction(operators),
+            MediaConditionSyntax::Junction(operators.into()),
         )
     }
 }
@@ -547,7 +547,9 @@ fn parse_media_in_parens<'i>(
                 Ok(inner) => {
                     return Ok(Some((
                         CssConditionKind::Parenthesized(Box::new(inner)),
-                        MediaConditionSyntax::Group { closing },
+                        MediaConditionSyntax::Group {
+                            closing: closing.into(),
+                        },
                     )));
                 }
                 Err(e) if media_committed(&e) => return Err(e),
@@ -833,7 +835,7 @@ fn construct_media(
     if let Some(origin) = values.first_implicit_origin() {
         return Err(CssMediaConstructionError::from(
             crate::query::media::construction::MediaConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             },
         ));
     }
@@ -884,13 +886,13 @@ fn construct_media(
         if condition_only {
             CssMediaConstructionError::from(
                 crate::query::media::construction::MediaConstructionKind::InvalidConditionGrammar {
-                    origin,
+                    origin: origin.into(),
                 },
             )
         } else {
             CssMediaConstructionError::from(
                 crate::query::media::construction::MediaConstructionKind::InvalidQueryGrammar {
-                    origin,
+                    origin: origin.into(),
                 },
             )
         }

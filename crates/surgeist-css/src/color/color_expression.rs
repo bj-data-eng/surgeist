@@ -15,6 +15,7 @@ use crate::numeric::projection::{
 use crate::numeric::{
     CssCalculationExpressionRef, CssCalculationType, CssNumericConstructionError,
 };
+use crate::source::Provenance;
 
 /// Checked authored expression in a relative color's result slot.
 impl crate::color::CssRelativeColorExpression {
@@ -169,7 +170,7 @@ fn construct_relative_color_expression<'input>(
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssProfileColorExpression {
     value: ProfileExpression,
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum ProfileExpression {
@@ -297,7 +298,10 @@ impl CssProfileColorExpression {
                 })
             }
         };
-        Ok(Self { value, origin })
+        Ok(Self {
+            value,
+            origin: origin.into(),
+        })
     }
     /// Returns a borrowed view of the classified expression.
     pub fn view(&self) -> CssProfileColorExpressionRef<'_> {

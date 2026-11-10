@@ -1,5 +1,6 @@
 //! Specified-phase keyframe matching, independent of authored occurrence equality.
 
+use crate::source::Provenance;
 use std::fmt;
 
 use crate::component::CssValueOrigin;
@@ -42,8 +43,8 @@ pub struct CssKeyframeSelectorComparisonError {
     cause: CssSerializationError,
     stage: CssKeyframeSelectorComparisonStage,
     selector_index: Option<usize>,
-    left_origin: Option<Box<CssValueOrigin>>,
-    right_origin: Option<Box<CssValueOrigin>>,
+    left_origin: Provenance<Option<Box<CssValueOrigin>>>,
+    right_origin: Provenance<Option<Box<CssValueOrigin>>>,
 }
 
 impl CssKeyframeSelectorComparisonError {
@@ -123,8 +124,8 @@ fn normalize<'a>(
             cause,
             stage,
             selector_index: index,
-            left_origin,
-            right_origin,
+            left_origin: left_origin.into(),
+            right_origin: right_origin.into(),
         }
     };
     context.charge_input(1).map_err(|e| failure(e, None))?;
@@ -273,8 +274,12 @@ impl<'query> CssKeyframeSelectorMatcher<'query> {
                 selector_index: Some(index),
                 left_origin: origin(&self.query.selectors()[index])
                     .cloned()
-                    .map(Box::new),
-                right_origin: origin(&other.selectors()[index]).cloned().map(Box::new),
+                    .map(Box::new)
+                    .into(),
+                right_origin: origin(&other.selectors()[index])
+                    .cloned()
+                    .map(Box::new)
+                    .into(),
             })?;
         }
         Ok(equal)

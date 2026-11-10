@@ -2,6 +2,7 @@
 use crate::component::CssComponentValue;
 use crate::rule::font_face::CssFontFaceFamily;
 use crate::rule::font_feature_values::{CssFontFeatureDisplayValue, CssFontFeatureValue};
+use crate::source::Provenance;
 use crate::source::{CssParsedOrigin, CssSourcePosition};
 
 /// A semantic construction failure for font-feature-values.
@@ -220,7 +221,7 @@ impl std::error::Error for CssFontFeatureValuesError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFeatureValueIndex {
     digits: Box<str>,
-    origin: Option<CssParsedOrigin>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssFontFeatureValueIndex {
     /// Accepts an optional ASCII sign and decimal digits; normalizes signs and leading zeroes.
@@ -245,7 +246,7 @@ impl CssFontFeatureValueIndex {
                 normalized
             }
             .into(),
-            origin: None,
+            origin: Provenance::new(None),
         })
     }
     /// Returns the normalized decimal digits without sign or leading zeroes (`0` for zero).
@@ -258,10 +259,10 @@ impl CssFontFeatureValueIndex {
     }
     /// Returns the original raw-source window of the index, or `None` when it was constructed programmatically.
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
     pub(crate) fn with_origin(mut self, origin: CssParsedOrigin) -> Self {
-        self.origin = Some(origin);
+        self.origin = Some(origin).into();
         self
     }
 }
@@ -269,7 +270,7 @@ impl From<u32> for CssFontFeatureValueIndex {
     fn from(value: u32) -> Self {
         Self {
             digits: value.to_string().into_boxed_str(),
-            origin: None,
+            origin: Provenance::new(None),
         }
     }
 }
@@ -370,8 +371,8 @@ impl CssFontFeatureValueKind {
 pub struct CssFontFeatureValueDefinition {
     name: CssFontFeatureValueName,
     value: CssFontFeatureValue,
-    parsed_name: Option<CssParsedOrigin>,
-    position: Option<CssSourcePosition>,
+    parsed_name: Provenance<Option<CssParsedOrigin>>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 impl CssFontFeatureValueDefinition {
     /// Creates a definition from a name and a value, with no parsed name origin or source position.
@@ -382,8 +383,8 @@ impl CssFontFeatureValueDefinition {
         Self {
             name,
             value,
-            parsed_name: None,
-            position: None,
+            parsed_name: Provenance::new(None),
+            position: Provenance::new(None),
         }
     }
     /// Returns the decoded feature-value name.
@@ -396,18 +397,18 @@ impl CssFontFeatureValueDefinition {
     }
     /// Returns the original raw-source window of the name, or `None` when it was constructed programmatically.
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
-        self.parsed_name.as_ref()
+        self.parsed_name.inner().as_ref()
     }
     /// Returns the source position of the definition, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
     pub(crate) fn with_parsed_name(mut self, origin: CssParsedOrigin) -> Self {
-        self.parsed_name = Some(origin);
+        self.parsed_name = Some(origin).into();
         self
     }
 }
@@ -417,7 +418,7 @@ impl CssFontFeatureValueDefinition {
 pub struct CssFontFeatureValueBlock {
     kind: CssFontFeatureValueKind,
     definitions: Vec<CssFontFeatureValueDefinition>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 impl CssFontFeatureValueBlock {
     /// Creates a block of one kind from its definitions, retained in the given order with duplicates, with no source position.
@@ -443,7 +444,7 @@ impl CssFontFeatureValueBlock {
         Ok(Self {
             kind,
             definitions,
-            position: None,
+            position: Provenance::new(None),
         })
     }
     /// Returns which feature-value block this is.
@@ -456,10 +457,10 @@ impl CssFontFeatureValueBlock {
     }
     /// Returns the source position of the block, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 }
@@ -467,16 +468,16 @@ impl CssFontFeatureValueBlock {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureDisplayOccurrence {
     value: CssFontFeatureDisplayValue,
-    parsed_name: Option<CssParsedOrigin>,
-    position: Option<CssSourcePosition>,
+    parsed_name: Provenance<Option<CssParsedOrigin>>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 impl CssFontFeatureDisplayOccurrence {
     /// Creates a font-display occurrence from its value, with no parsed name origin or source position.
     pub const fn new(value: CssFontFeatureDisplayValue) -> Self {
         Self {
             value,
-            parsed_name: None,
-            position: None,
+            parsed_name: Provenance::new(None),
+            position: Provenance::new(None),
         }
     }
     /// Returns the font-display value.
@@ -485,18 +486,18 @@ impl CssFontFeatureDisplayOccurrence {
     }
     /// Returns the original raw-source window of the descriptor name, or `None` when it was constructed programmatically.
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
-        self.parsed_name.as_ref()
+        self.parsed_name.inner().as_ref()
     }
     pub(crate) fn with_parsed_name(mut self, origin: CssParsedOrigin) -> Self {
-        self.parsed_name = Some(origin);
+        self.parsed_name = Some(origin).into();
         self
     }
     /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 }
@@ -514,7 +515,7 @@ pub enum CssFontFeatureValuesItem {
 pub struct CssFontFeatureValuesRule {
     families: Vec<CssFontFaceFamily>,
     items: Vec<CssFontFeatureValuesItem>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 impl CssFontFeatureValuesRule {
     /// Creates a rule from its family names and body items, retaining the items in the given order with no source position.
@@ -534,7 +535,7 @@ impl CssFontFeatureValuesRule {
         Ok(Self {
             families,
             items,
-            position: None,
+            position: Provenance::new(None),
         })
     }
     /// Returns the family names of the prelude, in authored order; the slice is never empty.
@@ -547,10 +548,10 @@ impl CssFontFeatureValuesRule {
     }
     /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 }
@@ -564,8 +565,8 @@ impl CssFontFeatureValuesRule {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureValuesFamilyList {
     families: Vec<CssFontFaceFamily>,
-    origin: crate::component::CssValueOrigin,
-    family_origins: Vec<CssParsedOrigin>,
+    origin: Provenance<crate::component::CssValueOrigin>,
+    family_origins: Provenance<Vec<CssParsedOrigin>>,
 }
 impl CssFontFeatureValuesFamilyList {
     /// Checks the nonempty literal list; existing literal values are not reparsed.
@@ -577,8 +578,8 @@ impl CssFontFeatureValuesFamilyList {
         }
         Ok(Self {
             families,
-            origin: crate::component::CssValueOrigin::Programmatic,
-            family_origins: Vec::new(),
+            origin: crate::component::CssValueOrigin::Programmatic.into(),
+            family_origins: Vec::new().into(),
         })
     }
     pub(crate) fn from_parsed(
@@ -589,8 +590,8 @@ impl CssFontFeatureValuesFamilyList {
         debug_assert!(!families.is_empty() && families.len() == family_origins.len());
         Self {
             families,
-            origin: crate::component::CssValueOrigin::Parsed(origin),
-            family_origins,
+            origin: crate::component::CssValueOrigin::Parsed(origin).into(),
+            family_origins: family_origins.into(),
         }
     }
     /// Returns literal names in input order.
@@ -601,7 +602,7 @@ impl CssFontFeatureValuesFamilyList {
     /// Returns the complete original input, or programmatic provenance.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
     /// Returns an original member occurrence; programmatic lists have none.
     #[must_use]

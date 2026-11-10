@@ -18,6 +18,7 @@ use crate::query::media::CssMediaLeaf;
 use crate::query::media::construction::MediaConditionSyntax;
 use crate::query::supports::CssSupportsLeaf;
 use crate::query::supports::construction::SupportsLexical;
+use crate::source::Provenance;
 use crate::source::{
     CssRetainedSources, CssSourcePosition, CssSourceRetention, CssSourceRetentionError,
 };
@@ -49,13 +50,13 @@ pub trait CssConditionLeaf: sealed::Sealed {
 /// A region of the shared lexical root of a component-list grammar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LexicalBacking {
-    lexical: SupportsLexical,
+    lexical: Provenance<SupportsLexical>,
     form: SupportsAuthoredForm,
 }
 
 /// The syntax a media condition kept for each operand and operator.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MediaBacking(MediaConditionSyntax);
+pub struct MediaBacking(Provenance<MediaConditionSyntax>);
 
 macro_rules! condition_leaf {
     ($backing:ty => $($leaf:ty),+) => {
@@ -93,7 +94,7 @@ condition_leaf!(MediaBacking => CssMediaLeaf);
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCondition<L: CssConditionLeaf> {
     kind: Box<CssConditionKind<L>>,
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
     backing: L::Backing,
 }
 
@@ -163,13 +164,13 @@ impl<L: CssConditionLeaf> CssCondition<L> {
     /// The original or programmatic origin of the condition's first operand or keyword.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 
     /// The parsed position of [`Self::origin`], or `None` for a constructed condition.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.origin)
+        crate::query::media::construction::parsed_position(self.origin.inner())
     }
 
     pub(crate) fn into_kind(self) -> CssConditionKind<L> {
@@ -191,14 +192,17 @@ impl<L: CssConditionLeaf<Backing = LexicalBacking>> CssCondition<L> {
         let origin = lexical.first_origin().clone();
         Self {
             kind: Box::new(kind),
-            origin,
-            backing: LexicalBacking { lexical, form },
+            origin: origin.into(),
+            backing: LexicalBacking {
+                lexical: lexical.into(),
+                form,
+            },
         }
     }
 
     /// The lexical region this condition selects from its shared root.
     pub(crate) fn lexical_region(&self) -> &SupportsLexical {
-        &self.backing.lexical
+        self.backing.lexical.inner()
     }
 
     pub(crate) fn authored_form(&self) -> SupportsAuthoredForm {
@@ -214,13 +218,13 @@ impl CssCondition<CssMediaLeaf> {
     ) -> Self {
         Self {
             kind: Box::new(kind),
-            origin,
-            backing: MediaBacking(syntax),
+            origin: origin.into(),
+            backing: MediaBacking(syntax.into()),
         }
     }
 
     pub(crate) fn media_syntax(&self) -> &MediaConditionSyntax {
-        &self.backing.0
+        self.backing.0.inner()
     }
 }
 
@@ -242,7 +246,7 @@ macro_rules! lexical_condition {
                 &self,
                 sources: &mut CssSourceRetention,
             ) -> Result<(), CssSourceRetentionError> {
-                sources.visit(&self.origin)?;
+                sources.visit(self.origin.inner())?;
                 sources.visit(self.lexical_region())
             }
         }
@@ -292,13 +296,13 @@ impl CssRetainedSources for CssCondition<CssMediaLeaf> {
         sources.visit(self.origin())?;
         match self.media_syntax() {
             MediaConditionSyntax::Feature(value) => {
-                sources.visit(&value.component)?;
-                sources.visit(&value.name)?;
-                for values in &value.separators {
+                sources.visit(value.component.inner())?;
+                sources.visit(value.name.inner())?;
+                for values in value.separators.inner() {
                     sources.visit(values.as_slice())?;
                 }
             }
-            MediaConditionSyntax::Group { closing } => sources.visit(closing)?,
+            MediaConditionSyntax::Group { closing } => sources.visit(closing.inner())?,
             MediaConditionSyntax::Junction(values) => sources.visit(values.as_slice())?,
             MediaConditionSyntax::Enclosed | MediaConditionSyntax::Not => {}
         }

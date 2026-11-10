@@ -119,8 +119,9 @@ immutable `CssSourceSnapshot`. UTF16 snapshots additionally retain the original
 shared units and exact normalized-scalar-boundary to original-unit mapping.
 Diagnostic coordinates continue to address normalized parser UTF8, with original
 unit intervals queried separately. Old rules and diagnostics keep their source
-after a consumer replaces an association. Source and syntax equality keep their
-existing text/semantic meaning; `same_snapshot` separately compares identity.
+after a consumer replaces an association. Syntax equality compares values and ignores
+origins, spans and spelling; `source::same_provenance` also compares them, and
+`same_snapshot` separately compares identity.
 
 `CssSourceStorageUsage` accounts for actual String/checkpoint/UTF16/map backing
 capacities. `CssSourceRetention` traverses retained CSS payloads under finite

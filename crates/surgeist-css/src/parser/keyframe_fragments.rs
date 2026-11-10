@@ -21,7 +21,10 @@ pub(crate) fn parse_keyframe_selector_list(
             state.retain_component_closures(openings);
             let origin = CssParsedOrigin::from_range(state.source_snapshot(), 0..source.len())
                 .expect("complete original selector input");
-            Ok(CssParsedKeyframeSelectors { selectors, origin })
+            Ok(CssParsedKeyframeSelectors {
+                selectors,
+                origin: origin.into(),
+            })
         })();
         finish(source, result, Vec::new(), &state)
     })
@@ -74,7 +77,10 @@ pub(crate) fn parse_keyframe_rule_with_context(
                 let end = grammar.rule_end.ok_or_else(unexpected)?;
                 let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
                     .ok_or_else(unexpected)?;
-                Ok(CssParsedKeyframeRule { block, origin })
+                Ok(CssParsedKeyframeRule {
+                    block,
+                    origin: origin.into(),
+                })
             });
         let diagnostics = std::mem::take(&mut grammar.diagnostics);
         finish(source, result, diagnostics, &state)

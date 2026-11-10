@@ -10,6 +10,7 @@ use crate::query::supports::CssSupportsDeclaration;
 use crate::query::{CssCondition, CssGeneralEnclosed};
 use crate::serialization::CssSerializationError;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use std::fmt;
 
 /// A leaf of a `@when` condition: one operand of a `<boolean-condition>` in
@@ -32,7 +33,7 @@ pub enum CssWhenLeaf {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssWhenMediaFeature {
     kind: CssWhenMediaFeatureKind,
-    component: Box<CssComponentValue>,
+    component: Provenance<Box<CssComponentValue>>,
 }
 /// Known typed feature syntax or a structurally valid feature with unknown truth.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,7 +48,7 @@ impl CssWhenMediaFeature {
     pub(crate) fn new(kind: CssWhenMediaFeatureKind, component: CssComponentValue) -> Self {
         Self {
             kind,
-            component: Box::new(component),
+            component: Box::new(component).into(),
         }
     }
     /// Checks the actual function and its single feature, without opaque fallback.
@@ -69,7 +70,7 @@ impl CssWhenMediaFeature {
     /// Returns the original `media()` function component.
     #[must_use]
     pub const fn component(&self) -> &CssComponentValue {
-        &self.component
+        self.component.inner()
     }
     /// Returns the origin of the `media()` function component.
     #[must_use]
@@ -93,12 +94,12 @@ pub struct CssConditionConstructionError {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ConditionConstructionKind {
-    InvalidConditionGrammar { origin: CssValueOrigin },
-    InvalidMediaFeatureGrammar { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
-    WrongOuterComponent { origin: CssValueOrigin },
+    InvalidConditionGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidMediaFeatureGrammar { origin: Provenance<CssValueOrigin> },
+    RecoveredInput { origin: Provenance<CssValueOrigin> },
+    WrongOuterComponent { origin: Provenance<CssValueOrigin> },
     Component(CssComponentValueError),
-    WorkerUnavailable { origin: CssValueOrigin },
+    WorkerUnavailable { origin: Provenance<CssValueOrigin> },
 }
 impl CssConditionConstructionError {
     crate::diagnostic::error::kind_predicates! { kind;
@@ -131,7 +132,7 @@ impl CssConditionConstructionError {
             | ConditionConstructionKind::InvalidMediaFeatureGrammar { origin }
             | ConditionConstructionKind::RecoveredInput { origin }
             | ConditionConstructionKind::WrongOuterComponent { origin }
-            | ConditionConstructionKind::WorkerUnavailable { origin } => origin,
+            | ConditionConstructionKind::WorkerUnavailable { origin } => origin.inner(),
             ConditionConstructionKind::Component(error) => error.origin(),
         }
     }
@@ -186,7 +187,7 @@ pub(crate) fn reject_recovered(
     if let Some(origin) = values.first_implicit_origin() {
         return Err(CssConditionConstructionError::from(
             crate::query::when::ConditionConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             },
         ));
     }
@@ -213,7 +214,9 @@ fn construct<T: Send>(
             })
             .map_err(|_| {
                 CssConditionConstructionError::from(
-                    crate::query::when::ConditionConstructionKind::WorkerUnavailable { origin },
+                    crate::query::when::ConditionConstructionKind::WorkerUnavailable {
+                        origin: origin.into(),
+                    },
                 )
             })?;
         match worker.join() {

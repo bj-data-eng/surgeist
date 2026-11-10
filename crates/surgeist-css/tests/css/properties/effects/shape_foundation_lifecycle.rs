@@ -623,7 +623,11 @@ fn aggregate_equality_ignores_raw_origins_but_retains_order_affinity_and_omissio
     let b = CssParser::default()
         .parse_block_contents(format!("/*different source*/ clip-path:{text}!important"));
     assert!(b.is_clean());
-    assert_ne!(a.value_components(), b.syntax()[0].value_components());
+    assert_eq!(a.value_components(), b.syntax()[0].value_components());
+    assert!(!surgeist_css::source::same_provenance(
+        a.value_components(),
+        b.syntax()[0].value_components()
+    ));
     assert_eq!(clip(&a), clip(&b.syntax()[0]));
     for other in [
         "shape(nonzero from 0px 0px, curve to 1px 2px with 3px 4px, arc by 5px 6px of 7px)",

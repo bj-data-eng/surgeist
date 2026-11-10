@@ -186,13 +186,13 @@ impl CssCanonicalBuilder {
                 };
                 let kind = value.serialization_type();
                 let reverse_solidus = matches!(value.data, TokenData::Delim('\\'));
-                (value.spelling.text, kind, reverse_solidus)
+                (value.spelling.text.into_inner(), kind, reverse_solidus)
             }
         };
         self.emitter.token(
             &Lexeme {
-                text,
-                origin: origin.clone(),
+                text: text.into(),
+                origin: origin.clone().into(),
             },
             kind,
             reverse_solidus,
@@ -318,18 +318,18 @@ impl Emitter {
                         .previous_origin
                         .clone()
                         .expect("a preceding token requires a separator"),
-                    after: spelling.origin.clone(),
+                    after: spelling.origin.inner().clone(),
                 },
             )?;
         }
         self.append(
             &spelling.text,
-            CssSerializedOrigin::Token(spelling.origin.clone()),
+            CssSerializedOrigin::Token(spelling.origin.inner().clone()),
         )?;
         self.previous = Some(kind);
-        self.previous_origin = Some(spelling.origin.clone());
+        self.previous_origin = Some(spelling.origin.inner().clone());
         self.previous_hex_escape = ends_with_hex_escape(&spelling.text);
-        self.last_origin = Some(spelling.origin.clone());
+        self.last_origin = Some(spelling.origin.inner().clone());
         self.reverse_solidus = reverse_solidus;
         self.cdo_prefix = if spelling.text.as_ref() == "<" {
             1
@@ -344,9 +344,9 @@ impl Emitter {
     fn suffix(&mut self, spelling: &Lexeme) -> Result<(), CssComponentValueError> {
         self.append(
             &spelling.text,
-            CssSerializedOrigin::Token(spelling.origin.clone()),
+            CssSerializedOrigin::Token(spelling.origin.inner().clone()),
         )?;
-        self.last_origin = Some(spelling.origin.clone());
+        self.last_origin = Some(spelling.origin.inner().clone());
         self.previous_hex_escape = ends_with_hex_escape(&spelling.text);
         Ok(())
     }
@@ -402,7 +402,7 @@ impl Emitter {
                     token.serialization_type(),
                     matches!(token.data, TokenData::Delim('\\')),
                 )?;
-                if let Some(ending) = &token.implicit_end {
+                if let Some(ending) = token.implicit_end.inner() {
                     self.suffix(ending)?;
                 }
             }

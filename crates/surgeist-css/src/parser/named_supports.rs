@@ -23,6 +23,7 @@ use crate::query::supports::{
     CssSupportsTestDeclarations, CssSupportsTestItem,
 };
 use crate::rule::CssSupportsConditionRule;
+use crate::source::Provenance;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, DocumentExt, SyntaxCursor, SyntaxRange, TokenKind,
@@ -265,7 +266,7 @@ pub(crate) fn construct_test_body(
     if let Some(issue) = issues.into_iter().next() {
         return Err(CssSupportsConstructionError::from(
             crate::query::supports::construction::SupportsConstructionKind::InvalidBodyGrammar {
-                origin: issue.origin().clone(),
+                origin: issue.origin().clone().into(),
             },
         ));
     }
@@ -493,8 +494,8 @@ fn partition(
             } else if !recover {
                 return Ok(CssSupportsTestBody {
                     items: std::mem::take(&mut frame.items),
-                    local_recovery: Vec::new(),
-                    recovery_origin: None,
+                    local_recovery: Vec::new().into(),
+                    recovery_origin: Provenance::new(None),
                 });
             }
             continue;
@@ -555,14 +556,14 @@ fn partition(
                         None
                     },
                     name: name.to_owned(),
-                    recovery: retained_component_recovery(components.items()),
-                    terminator,
+                    recovery: retained_component_recovery(components.items()).into(),
+                    terminator: terminator.into(),
                 });
             } else if !recover {
                 return Ok(CssSupportsTestBody {
                     items: std::mem::take(&mut frame.items),
-                    local_recovery: Vec::new(),
-                    recovery_origin: None,
+                    local_recovery: Vec::new().into(),
+                    recovery_origin: Provenance::new(None),
                 });
             }
             continue;
@@ -632,8 +633,8 @@ fn partition(
         if !recover {
             return Ok(CssSupportsTestBody {
                 items: std::mem::take(&mut frame.items),
-                local_recovery: Vec::new(),
-                recovery_origin: None,
+                local_recovery: Vec::new().into(),
+                recovery_origin: Provenance::new(None),
             });
         }
     }

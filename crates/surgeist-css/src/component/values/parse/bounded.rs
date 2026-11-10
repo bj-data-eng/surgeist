@@ -167,8 +167,8 @@ fn consume_snapshot(
         }
         let raw = &source.as_str()[range.clone()];
         let spelling = Lexeme {
-            text: copied(raw, Some(control), &origin)?,
-            origin: CssValueOrigin::Parsed(origin.clone()),
+            text: copied(raw, Some(control), &origin)?.into(),
+            origin: CssValueOrigin::Parsed(origin.clone()).into(),
         };
         // The same EOF terminations as direct collection. An escaped EOF adds
         // no code point inside a string (Syntax 3 §4.3.5), so its closure keeps
@@ -201,11 +201,12 @@ fn consume_snapshot(
         let implicit_end = implicit_text
             .map(|text| -> Result<Lexeme, CssComponentValueError> {
                 Ok(Lexeme {
-                    text: copied(text, Some(control), &origin)?,
+                    text: copied(text, Some(control), &origin)?.into(),
                     origin: CssValueOrigin::ImplicitClosure {
                         opening: origin.clone(),
                         at: range_origin(source, range.end..range.end),
-                    },
+                    }
+                    .into(),
                 })
             })
             .transpose()?;
@@ -214,18 +215,18 @@ fn consume_snapshot(
             ComponentData::Comment {
                 content: copied(&raw[2..end], Some(control), &origin)?,
                 spelling,
-                implicit_end,
+                implicit_end: implicit_end.into(),
             }
         } else {
             ComponentData::Token(ValueToken {
                 data: token_data_bounded(token.kind, raw, &records, control, &origin)?,
                 spelling,
-                implicit_end,
+                implicit_end: implicit_end.into(),
             })
         };
         stack.push(CssComponentValue {
             data,
-            parsed: Some(origin),
+            parsed: Some(origin).into(),
         })?;
     }
     let items = stack.finish(source.as_str().len())?;

@@ -159,7 +159,7 @@ fn validate(
     if let Some(origin) = values.first_implicit_origin() {
         return Err(CssSupportsConstructionError::from(
             crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             },
         ));
     }
@@ -216,7 +216,7 @@ pub(crate) fn construct_supports_declaration_with_context(
 fn invalid_condition(origin: &CssValueOrigin) -> CssSupportsConstructionError {
     CssSupportsConstructionError::from(
         crate::query::supports::construction::SupportsConstructionKind::InvalidConditionGrammar {
-            origin: origin.clone(),
+            origin: origin.clone().into(),
         },
     )
 }
@@ -492,7 +492,7 @@ pub(super) fn declaration(
     let invalid = || {
         CssSupportsConstructionError::from(
             crate::query::supports::construction::SupportsConstructionKind::InvalidDeclarationGrammar {
-                origin: lexical.first_origin().clone(),
+                origin: lexical.first_origin().clone().into(),
             },
         )
     };

@@ -3,7 +3,6 @@
 //! order; the numeric owner alone schedules and admits graph work slots.
 
 use crate::color::CssColor;
-use crate::component::CssComponentValue;
 use crate::numeric::{CssAngleOrZero, CssCalculation, CssNumeric, CssNumericRoot, CssRange};
 #[cfg(test)]
 use crate::property::CssKnownPropertyValueRef;
@@ -124,10 +123,6 @@ impl<T: BoundedStructuralEquality> BoundedStructuralEquality for [T] {
     }
 }
 
-fn token_equal(a: &CssComponentValue, b: &CssComponentValue) -> bool {
-    a.token_structural_eq_ignoring_origin(b)
-        .expect("checked primitive numeric token")
-}
 impl<T: CssNumericRoot, R: CssRange<T>> BoundedStructuralEquality for CssNumeric<T, R> {
     fn bounded_eq(
         &self,
@@ -136,7 +131,7 @@ impl<T: CssNumericRoot, R: CssRange<T>> BoundedStructuralEquality for CssNumeric
     ) -> EqualityResult {
         match (self.literal(), other.literal()) {
             (Some(a), Some(b)) => {
-                Ok(a.structural_kind_eq(b) && token_equal(a.component(), b.component()))
+                Ok(a.structural_kind_eq(b) && a.component().same_spelling(b.component()))
             }
             (None, None) => self
                 .calculation()
@@ -169,7 +164,7 @@ impl BoundedStructuralEquality for CssBoxSize {
                 // The size owner compares retained tokens and expression
                 // structure, rather than normalized numeric coefficients.
                 match (a.literal_component(), b.literal_component()) {
-                    (Some(a), Some(b)) => Ok(token_equal(a, b)),
+                    (Some(a), Some(b)) => Ok(a.same_spelling(b)),
                     (None, None) => a
                         .calculation()
                         .expect("checked size math")
@@ -230,7 +225,7 @@ impl BoundedStructuralEquality for CssAngleOrZero {
     ) -> EqualityResult {
         match (self, other) {
             (Self::Angle(a), Self::Angle(b)) => a.bounded_eq(b, context),
-            (Self::Zero(a), Self::Zero(b)) => Ok(token_equal(a.component(), b.component())),
+            (Self::Zero(a), Self::Zero(b)) => Ok(a.component().same_spelling(b.component())),
             _ => Ok(false),
         }
     }
@@ -581,7 +576,7 @@ impl BoundedStructuralEquality for CssAngularColorStopPosition {
         match (self, other) {
             (Self::Angle(a), Self::Angle(b)) => a.bounded_eq(b, context),
             (Self::Percentage(a), Self::Percentage(b)) => a.bounded_eq(b, context),
-            (Self::Zero(a), Self::Zero(b)) => Ok(token_equal(a.component(), b.component())),
+            (Self::Zero(a), Self::Zero(b)) => Ok(a.component().same_spelling(b.component())),
             (Self::Calculation(a), Self::Calculation(b)) => {
                 a.expression.specified_inverse_eq(&b.expression, context)
             }

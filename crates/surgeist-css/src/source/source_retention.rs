@@ -966,7 +966,7 @@ impl CssRetainedSources for CssImportRule {
         sources.visit(&self.syntax.prelude.target)?;
         sources.visit(&self.syntax.prelude.layer)?;
         sources.visit(&self.syntax.prelude.supports)?;
-        sources.visit(&self.syntax.prelude.semicolon)?;
+        sources.visit(self.syntax.prelude.semicolon.inner())?;
         if let CssImportTarget::Url(value) = self.target() {
             sources.visit(value.url())?;
         }
@@ -1002,7 +1002,7 @@ impl CssRetainedSources for CssMediaQuery {
             Self::Typed(value) => {
                 sources.visit(&value.syntax.modifier)?;
                 sources.visit(&value.syntax.media_type)?;
-                sources.visit(&value.syntax.conjunction)?;
+                sources.visit(value.syntax.conjunction.inner())?;
                 if let Some(value) = value.condition() {
                     sources.visit(value)?;
                 }
