@@ -77,6 +77,7 @@ mod backend;
 pub mod declarations;
 mod error;
 mod idl;
+mod owner;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
