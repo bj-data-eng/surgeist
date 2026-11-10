@@ -41,14 +41,85 @@ fn main() {
     let doc = args.get(1).map_or("table-heavy", String::as_str);
     let rounds: usize = args.get(2).and_then(|r| r.parse().ok()).unwrap_or(5);
     let show_usage = args.get(3).is_some_and(|a| a == "usage");
-    let text = match doc {
+    let text = if let Some(n) = doc.strip_prefix("nest:") {
+        let depth: usize = n.parse().expect("count");
+        let mut html = String::from("<!DOCTYPE html><html><body>");
+        for run in 0..4 {
+            for _ in 0..depth {
+                html.push_str("<div>");
+            }
+            html.push_str(&format!("<p>Leaf of run {run}</p>"));
+            for _ in 0..depth {
+                html.push_str("</div>");
+            }
+        }
+        html.push_str("</body></html>");
+        html
+    } else if let Some(n) = doc.strip_prefix("attrs:") {
+        let count: usize = n.parse().expect("count");
+        let mut html = String::from("<!DOCTYPE html><html><body>");
+        for element in 0..count {
+            html.push_str(&format!("<div id=\"e{element}\""));
+            for attribute in 0..24_usize {
+                html.push_str(&format!(" data-a{attribute}=\"value {element} {attribute}\""));
+            }
+            html.push_str(">content</div>");
+        }
+        html.push_str("</body></html>");
+        html
+    } else if let Some(n) = doc.strip_prefix("diag:") {
+        let count: usize = n.parse().expect("count");
+        let mut html = String::from("<!DOCTYPE html><html><body>");
+        for index in 0..count {
+            html.push_str(&format!("</span><p class=\"a\" class=\"b\">text &bogus; &#x110000; {index}</i><table>stray {index}<tr><td>cell</table></b>"));
+        }
+        html.push_str("</body></html>");
+        html
+    } else if let Some(n) = doc.strip_prefix("sections:") {
+        let count: usize = n.parse().expect("count");
+        let mut html = String::from("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Ordinary</title><style>body{margin:0}</style></head><body>");
+        for section in 0..count {
+            html.push_str(&format!("<section id=\"s{section}\" class=\"part\"><h2>Section {section}</h2><p>Paragraph with <b>bold</b>, <i>italic</i> and <a href=\"/p/{section}\">a link</a>. Entities &amp; &lt;markup&gt; &copy; stay text.</p><ul>"));
+            for item in 0..6_usize {
+                html.push_str(&format!("<li class=\"item\"><span>Item {item}</span> of section {section}</li>"));
+            }
+            html.push_str("</ul><p>Closing paragraph of the section.</p></section>");
+        }
+        html.push_str("</body></html>");
+        html
+    } else if let Some(n) = doc.strip_prefix("tables:") {
+        let n: usize = n.parse().expect("count");
+        let mut html = String::from("<!DOCTYPE html><html><body>");
+        for table in 0..n {
+            use std::fmt::Write as _;
+            let _ = write!(html, "<table id=\"t{table}\"><caption>Table {table}</caption><thead><tr>");
+            for column in 0..16_usize {
+                let _ = write!(html, "<th scope=\"col\">C{column}</th>");
+            }
+            html.push_str("</tr></thead><tbody>");
+            for row in 0..60_usize {
+                html.push_str("<tr>");
+                for column in 0..16_usize {
+                    if column == 3 && row % 7 == 0 {
+                        let _ = write!(html, "<td colspan=\"2\">{row}:{column}</td>");
+                    } else {
+                        let _ = write!(html, "<td>{row}:{column}</td>");
+                    }
+                }
+                html.push_str("</tr>");
+            }
+            html.push_str("</tbody></table>");
+        }
+        html.push_str("</body></html>");
+        html
+    } else { match doc {
         "ordinary" => documents::ordinary(),
         "deeply-nested" => documents::deeply_nested(),
         "many-attributes" => documents::many_attributes(),
         "table-heavy" => documents::table_heavy(),
         "many-diagnostics" => documents::many_diagnostics(),
         other => panic!("unknown document {other}"),
-    };
+    } };
     let source = HtmlSource::utf8(text.as_str());
     let mut times = Vec::new();
     let mut last = None;
