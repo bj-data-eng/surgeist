@@ -402,7 +402,7 @@ impl SessionStorage {
             .is_some();
         let (namespace, namespace_slot) = if namespace_present {
             let slot = self.field_slot(c, StringLocation::Namespace(source))?;
-            let (namespace, slot) = self.copy_registered_field(c, slot)?;
+            let (namespace, slot) = self.copy_registered_literal_field(c, slot, false)?;
             (Namespace::from_uri(namespace), Some(slot))
         } else {
             (Namespace::none(), None)
@@ -579,7 +579,7 @@ impl SessionStorage {
                     c,
                     StringLocation::AttributeNamespace(original_container, position),
                 )?;
-                let (value, slot) = self.copy_registered_field(c, slot)?;
+                let (value, slot) = self.copy_registered_literal_field(c, slot, false)?;
                 (Namespace::from_uri(value), Some(slot))
             } else {
                 (Namespace::none(), None)
@@ -589,7 +589,7 @@ impl SessionStorage {
                     c,
                     StringLocation::AttributePrefix(original_container, position),
                 )?;
-                let (value, slot) = self.copy_registered_field(c, slot)?;
+                let (value, slot) = self.copy_registered_literal_field(c, slot, true)?;
                 (Some(value), Some(slot))
             } else {
                 (None, None)
@@ -1148,6 +1148,44 @@ impl SessionStorage {
         self.retire_registered_string(c, slot)
     }
     /// Copy a registered field without aliasing its native backing or ticket.
+    /// As [`Self::copy_registered_field`] for a namespace URI, or for an attribute prefix when
+    /// `prefix`: a value that is one of the parse's literals registers a row that shares the
+    /// literal's string and keeps the copy of the field's origin group.
+    pub(super) fn copy_registered_literal_field(
+        &mut self,
+        c: &mut ParseControl,
+        source: usize,
+        prefix: bool,
+    ) -> Result<(DocumentString, usize), SessionError> {
+        control_field_owner(&self.payloads, c, source)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(source)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            std::mem::size_of_val(value.code_units()) as u64,
+        )?;
+        let literal = if prefix {
+            Literal::of_prefix_units(value.code_units())
+        } else {
+            Literal::of_uri_units(value.code_units())
+        };
+        let Some(literal) = literal else {
+            return self.copy_registered_field(c, source);
+        };
+        let origins = origins
+            .as_ref()
+            .map(|origins| {
+                self.evidence
+                    .as_mut()
+                    .ok_or(SessionError::WrongToken)?
+                    .copy_group(c, origins)
+            })
+            .transpose()?;
+        self.register_literal_copy(c, literal, origins)
+    }
     pub(super) fn copy_registered_field(
         &mut self,
         c: &mut ParseControl,

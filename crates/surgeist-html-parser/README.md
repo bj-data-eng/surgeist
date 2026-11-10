@@ -30,8 +30,10 @@ parser indexes current text tickets and textarea metadata with actual admitted
 capacity and cleanup.
 
 A parse keeps each attribute bank, element-name component and Text datum as the
-construction created it: equal values are separate allocations, except the
-namespace and prefix literals, which one parse creates once and shares. Source
+construction created it: equal values are separate allocations. The exception is
+the namespace URIs (HTML, SVG, MathML, XLink, XML, XMLNS) and the attribute prefixes
+(xlink, xml, xmlns): a parse creates each once and every element, attribute,
+clone and fragment-context namespace or prefix with that value shares it. Source
 locations, node identities and construction history remain per occurrence.
 
 The document profile is fresh ordinary Disabled execution. Fragments retain

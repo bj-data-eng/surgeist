@@ -33,20 +33,38 @@ impl Literal {
     }
     /// The literal that is the namespace `uri`, if it is one.
     pub(super) fn of_uri(uri: &str) -> Option<Self> {
-        [
-            Self::HtmlNamespace,
-            Self::SvgNamespace,
-            Self::MathMlNamespace,
-            Self::XlinkNamespace,
-            Self::XmlNamespace,
-            Self::XmlnsNamespace,
-        ]
-        .into_iter()
-        .find(|literal| literal.bytes() == uri.as_bytes())
+        Self::URIS
+            .into_iter()
+            .find(|literal| literal.bytes() == uri.as_bytes())
     }
+    /// The literal that is the namespace URI of `units`, if it is one.
+    pub(super) fn of_uri_units(units: &[u16]) -> Option<Self> {
+        Self::URIS.into_iter().find(|literal| literal.is(units))
+    }
+    /// The literal that is the attribute prefix of `units`, if it is one.
+    pub(super) fn of_prefix_units(units: &[u16]) -> Option<Self> {
+        Self::PREFIXES.into_iter().find(|literal| literal.is(units))
+    }
+    fn is(self, units: &[u16]) -> bool {
+        let bytes = self.bytes();
+        bytes.len() == units.len()
+            && bytes
+                .iter()
+                .zip(units)
+                .all(|(&byte, &unit)| u16::from(byte) == unit)
+    }
+    const URIS: [Self; 6] = [
+        Self::HtmlNamespace,
+        Self::SvgNamespace,
+        Self::MathMlNamespace,
+        Self::XlinkNamespace,
+        Self::XmlNamespace,
+        Self::XmlnsNamespace,
+    ];
+    const PREFIXES: [Self; 3] = [Self::XlinkPrefix, Self::XmlPrefix, Self::XmlnsPrefix];
     /// The literal that is the attribute prefix `prefix`, if it is one.
     pub(super) fn of_prefix(prefix: &str) -> Option<Self> {
-        [Self::XlinkPrefix, Self::XmlPrefix, Self::XmlnsPrefix]
+        Self::PREFIXES
             .into_iter()
             .find(|literal| literal.bytes() == prefix.as_bytes())
     }
@@ -61,36 +79,85 @@ impl SessionStorage {
         literal: Literal,
     ) -> Result<(DocumentString, usize), SessionError> {
         self.require(control)?;
+        let Some(first) = self.first_literal(control, literal)? else {
+            let frozen = literal_string(control, literal.bytes())?;
+            let (value, slot) = self.register_string(control, frozen, None)?;
+            self.cache_literal(control, literal, slot)?;
+            return Ok((value, slot));
+        };
+        // The origin group is a fact of each occurrence, as for any created string.
+        let units = self.literal_len(control, first)?;
+        let group = if !control.detail().records_graph() {
+            None
+        } else if let Some(evidence) = &mut self.evidence {
+            Some(evidence.rule_group(control, units)?)
+        } else {
+            None
+        };
+        self.register_shared_occurrence(control, first, group)
+    }
+    /// As [`Self::register_literal`] for a copy of a registered field whose value is `literal`,
+    /// which keeps the origin group the copy made of the field's own.
+    pub(super) fn register_literal_copy(
+        &mut self,
+        control: &mut ParseControl,
+        literal: Literal,
+        origins: Option<OriginGroupRef>,
+    ) -> Result<(DocumentString, usize), SessionError> {
+        let Some(first) = self.first_literal(control, literal)? else {
+            let frozen = literal_string(control, literal.bytes())?;
+            let (value, slot) = self.register_group_string_owned(control, frozen, origins)?;
+            self.cache_literal(control, literal, slot)?;
+            return Ok((value, slot));
+        };
+        self.register_shared_occurrence(control, first, origins)
+    }
+    /// The row of the first registration of `literal` in this parse, if there was one.
+    fn first_literal(
+        &self,
+        control: &mut ParseControl,
+        literal: Literal,
+    ) -> Result<Option<usize>, SessionError> {
+        match self.payloads.literals.get(literal as usize) {
+            Some(entry) => Ok(*entry),
+            None => Err(latch_registry_row(control)),
+        }
+    }
+    fn literal_len(&self, control: &mut ParseControl, row: usize) -> Result<usize, SessionError> {
+        match self.payloads.values.get(row) {
+            Some(RetainedPayload::String { value, .. }) => Ok(value.len()),
+            _ => Err(latch_registry_row(control)),
+        }
+    }
+    /// Records the row of a literal's first registration, whose ticket is shared from then on.
+    fn cache_literal(
+        &mut self,
+        control: &mut ParseControl,
+        literal: Literal,
+        slot: usize,
+    ) -> Result<(), SessionError> {
+        let Some(RetainedPayload::String { allocation, .. }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        allocation.mark_shared();
         let Some(entry) = self.payloads.literals.get_mut(literal as usize) else {
             return Err(latch_registry_row(control));
         };
-        let Some(first) = *entry else {
-            let frozen = literal_string(control, literal.bytes())?;
-            let (value, slot) = self.register_string(control, frozen, None)?;
-            let Some(RetainedPayload::String { allocation, .. }) =
-                self.payloads.values.get_mut(slot)
-            else {
-                return Err(latch_registry_row(control));
-            };
-            allocation.mark_shared();
-            let Some(entry) = self.payloads.literals.get_mut(literal as usize) else {
-                return Err(latch_registry_row(control));
-            };
-            *entry = Some(slot);
-            return Ok((value, slot));
-        };
+        *entry = Some(slot);
+        Ok(())
+    }
+    /// Registers a row that shares the string of the first registration at `first`.
+    fn register_shared_occurrence(
+        &mut self,
+        control: &mut ParseControl,
+        first: usize,
+        group: Option<OriginGroupRef>,
+    ) -> Result<(DocumentString, usize), SessionError> {
         let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(first) else {
             return Err(latch_registry_row(control));
         };
         let value = value.clone();
-        // The origin group is a fact of each occurrence, as for any created string.
-        let group = if !control.detail().records_graph() {
-            None
-        } else if let Some(evidence) = &mut self.evidence {
-            Some(evidence.rule_group(control, value.len())?)
-        } else {
-            None
-        };
         let prepared = self.prepare_payload_slot_owned(control)?;
         let allocation = control.share_document_string(&value)?;
         self.push_string_row(control, prepared, value, allocation, group, false)
