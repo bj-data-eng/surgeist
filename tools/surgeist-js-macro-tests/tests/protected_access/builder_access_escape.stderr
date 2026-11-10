@@ -1,9 +1,0 @@
-error[E0499]: cannot borrow `builder` as mutable more than once at a time
- --> tests/protected_access/builder_access_escape.rs:8:13
-  |
-7 |     let mut escaped = builder.context();
-  |                       ------- first mutable borrow occurs here
-8 |     let _ = builder.build();
-  |             ^^^^^^^ second mutable borrow occurs here
-9 |     escaped.eval(Source::from_bytes("42")).unwrap();
-  |     ------- first borrow later used here

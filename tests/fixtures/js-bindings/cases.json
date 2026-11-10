@@ -1,0 +1,34 @@
+[
+  {
+    "name": "canonical-dom-identity-and-live-mutation",
+    "source": "dom-identity.js",
+    "requires": ["native-document"],
+    "result": true
+  },
+  {
+    "name": "domstring-preserves-isolated-surrogates",
+    "source": "dom-utf16.js",
+    "requires": ["native-document"],
+    "result": true
+  },
+  {
+    "name": "microtask-checkpoint-drains-nested-fifo-work",
+    "source": "microtask-order.js",
+    "requires": ["queueMicrotask", "host-checkpoint"],
+    "before": "[\"sync-start\",\"sync-end\"]",
+    "observe": "JSON.stringify(bindingEvents)",
+    "after": "[\"sync-start\",\"sync-end\",\"outer\",\"peer\",\"inner\"]"
+  },
+  {
+    "name": "clone-graph-preserves-cycles-aliases-and-date-values",
+    "source": "clone-graph.js",
+    "requires": ["structuredClone"],
+    "result": true
+  },
+  {
+    "name": "clone-transfer-preserves-list-order-aliases-and-failure-prefix",
+    "source": "clone-transfer.js",
+    "requires": ["structuredClone-with-transfer"],
+    "result": true
+  }
+]

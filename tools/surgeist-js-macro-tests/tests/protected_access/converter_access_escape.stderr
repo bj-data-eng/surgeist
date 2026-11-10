@@ -1,9 +1,0 @@
-error: lifetime may not live long enough
- --> tests/protected_access/converter_access_escape.rs:7:17
-  |
-5 | impl<'a> TryFromJs for Escaping<'a> {
-  |      -- lifetime `'a` defined here
-6 |     fn try_from_js(_: &JsValue, access: ContextAccess<'_>) -> JsResult<Self> {
-  |                                 ------ has type `ContextAccess<'1>`
-7 |         Ok(Self(access))
-  |                 ^^^^^^ this usage requires that `'1` must outlive `'a`
