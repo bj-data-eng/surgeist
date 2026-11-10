@@ -38,25 +38,63 @@ impl Drop for ContentRecord {
     }
 }
 
-struct DraftState {
-    attempt: AttemptId,
-    records: Records,
+enum Observation {
+    Open,
+    Frozen,
+}
+enum BaselineCustody {
+    Retained {
+        old: Records,
+        observation: Observation,
+    },
+    DraftOnly,
+}
+enum Custody {
+    Canonical,
+    Transaction {
+        attempt: AttemptId,
+        baseline: BaselineCustody,
+    },
 }
 struct HistoryState {
-    committed: Option<Records>,
-    draft: Option<DraftState>,
-    active: Option<AttemptId>,
+    records: Records,
     next_attempt: u64,
+    custody: Custody,
+}
+#[cfg(test)]
+impl HistoryState {
+    fn canonical_for_test(&self) -> impl Iterator<Item = &ContentRecord> {
+        let (records, excluded) = match &self.custody {
+            Custody::Canonical => (&self.records, None),
+            Custody::Transaction {
+                baseline: BaselineCustody::Retained { old, .. },
+                ..
+            } => (old, None),
+            Custody::Transaction {
+                attempt,
+                baseline: BaselineCustody::DraftOnly,
+            } => (&self.records, Some(*attempt)),
+        };
+        records
+            .iter()
+            .filter(move |record| Some(record.introduced_by) != excluded)
+    }
+}
+struct HistoryContents {
+    // Actual records and backing drop before the owning observation ends.
+    state: Mutex<HistoryState>,
+    cleanup_tail: Option<super::cpu::MaintenancePhase>,
 }
 struct HistoryInner {
+    contents: HistoryContents,
     cpu: RendererCpu,
-    state: Mutex<HistoryState>,
     // The known Arc payload is explicit; opaque Arc/allocator headers are not.
     _hold: CpuHold,
 }
 impl HistoryInner {
     fn lock(&self) -> MutexGuard<'_, HistoryState> {
-        self.state
+        self.contents
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -66,16 +104,11 @@ impl HistoryInner {
 }
 impl Drop for HistoryInner {
     fn drop(&mut self) {
-        let state = self
-            .state
-            .get_mut()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let committed = state.committed.take();
-        let draft = state.draft.take();
-        self.cpu.at(RenderCpuScope::Cleanup).maintenance_phase(|| {
-            drop(committed);
-            drop(draft);
-        });
+        self.contents.cleanup_tail = Some(
+            self.cpu
+                .at(RenderCpuScope::Cleanup)
+                .begin_maintenance_phase(),
+        );
     }
 }
 
@@ -86,12 +119,9 @@ pub(crate) struct ImageHistory {
 impl ImageHistory {
     #[cfg(test)]
     pub(crate) fn identities_for_test(&self) -> std::collections::HashSet<ImageContentIdentity> {
-        self.inner
-            .lock()
-            .committed
-            .as_ref()
-            .expect("canonical history is observable outside publication")
-            .iter()
+        let state = self.inner.lock();
+        state
+            .canonical_for_test()
             .map(|record| record.identity.clone())
             .collect()
     }
@@ -110,13 +140,15 @@ impl ImageHistory {
             )?;
             Ok(Self {
                 inner: Arc::new(HistoryInner {
+                    contents: HistoryContents {
+                        state: Mutex::new(HistoryState {
+                            records,
+                            next_attempt: 1,
+                            custody: Custody::Canonical,
+                        }),
+                        cleanup_tail: None,
+                    },
                     cpu: cpu.clone(),
-                    state: Mutex::new(HistoryState {
-                        committed: Some(records),
-                        draft: None,
-                        active: None,
-                        next_attempt: 1,
-                    }),
                     _hold: hold,
                 }),
             })
@@ -130,7 +162,7 @@ impl ImageHistory {
         let account = self.inner.cpu.at(RenderCpuScope::ImageHistory);
         account.phase(|| {
             let mut state = self.inner.lock();
-            if state.active.is_some() || state.draft.is_some() {
+            if !matches!(state.custody, Custody::Canonical) {
                 return Err(RenderAccountingError::Invariant.into());
             }
             let attempt = AttemptId(state.next_attempt);
@@ -140,24 +172,29 @@ impl ImageHistory {
                 .ok_or(RenderAccountingError::Setup(
                     RenderAccountingSetupError::IdentityExhausted,
                 ))?;
-            let committed = state
-                .committed
-                .as_ref()
-                .ok_or(RenderAccountingError::Invariant)?;
             let mut records = AccountedVec::new_in(
                 &self.inner.storage(),
-                committed.len(),
+                state.records.len(),
                 RenderResource::RetainedCpuBytes,
             )?;
-            for record in committed {
+            for record in &state.records {
                 records.append_slot()?.write(record.try_clone(forward)?);
             }
-            state.draft = Some(DraftState { attempt, records });
-            state.active = Some(attempt);
+            let old = std::mem::replace(&mut state.records, records);
+            state.custody = Custody::Transaction {
+                attempt,
+                baseline: BaselineCustody::Retained {
+                    old,
+                    observation: Observation::Open,
+                },
+            };
             state.next_attempt = next;
             Ok(HistoryDraft {
-                inner: Some(Arc::clone(&self.inner)),
-                attempt,
+                lease: HistoryLease {
+                    inner: Arc::clone(&self.inner),
+                    attempt,
+                    disposition: LeaseDisposition::Rollback,
+                },
             })
         })
     }
@@ -182,101 +219,104 @@ impl HistoryObserver {
         let account = inner.cpu.at(RenderCpuScope::ImageHistory);
         account.phase(|| {
             let mut state = inner.lock();
-            if state.active != Some(self.attempt) {
+            if !matches!(
+                &state.custody,
+                Custody::Transaction {
+                    attempt,
+                    baseline: BaselineCustody::Retained {
+                        observation: Observation::Open,
+                        ..
+                    },
+                } if *attempt == self.attempt
+            ) {
                 return Err(RenderAccountingError::Invariant.into());
             }
-            let draft = state
-                .draft
-                .as_mut()
-                .filter(|draft| draft.attempt == self.attempt)
-                .ok_or(RenderAccountingError::Invariant)?;
-            observe(&inner.cpu, &mut draft.records, self.attempt, image, forward)
+            observe(&inner.cpu, &mut state.records, self.attempt, image, forward)
         })
     }
 }
 
 pub(crate) struct HistoryDraft {
-    inner: Option<Arc<HistoryInner>>,
-    attempt: AttemptId,
+    lease: HistoryLease,
 }
 impl HistoryDraft {
     pub(crate) fn observer(&self) -> HistoryObserver {
         HistoryObserver {
-            inner: Arc::downgrade(self.inner.as_ref().expect("owned history draft")),
-            attempt: self.attempt,
+            inner: Arc::downgrade(&self.lease.inner),
+            attempt: self.lease.attempt,
         }
     }
 
     /// Freezes observation and gives one guard sole old/draft rollback custody.
-    pub(crate) fn into_publication(mut self) -> Result<HistoryPublication> {
-        let inner = self.inner.as_ref().expect("owned history draft");
-        let (old, draft) = {
-            let mut state = inner.lock();
-            if state.active != Some(self.attempt)
-                || state.committed.is_none()
-                || !matches!(&state.draft, Some(draft) if draft.attempt == self.attempt)
-            {
-                return Err(RenderAccountingError::Invariant.into());
+    pub(crate) fn into_publication(self) -> Result<HistoryPublication> {
+        {
+            let mut state = self.lease.inner.lock();
+            match &mut state.custody {
+                Custody::Transaction {
+                    attempt,
+                    baseline: BaselineCustody::Retained { observation, .. },
+                } if *attempt == self.lease.attempt && matches!(observation, Observation::Open) => {
+                    *observation = Observation::Frozen;
+                }
+                _ => return Err(RenderAccountingError::Invariant.into()),
             }
-            (
-                state.committed.take(),
-                state.draft.take().map(|draft| draft.records),
-            )
-        };
-        Ok(HistoryPublication {
-            inner: self.inner.take().expect("owned history draft"),
-            attempt: self.attempt,
-            old,
-            draft,
-        })
-    }
-}
-impl Drop for HistoryDraft {
-    fn drop(&mut self) {
-        let Some(inner) = self.inner.take() else {
-            return;
-        };
-        let draft = {
-            let mut state = inner.lock();
-            // Only this nonclone guard can end its active transaction.
-            debug_assert_eq!(state.active.map(|id| id.0), Some(self.attempt.0));
-            state.active = None;
-            state.draft.take()
-        };
-        if let Some(draft) = draft {
-            let _ = dispose(&inner.cpu, draft.records);
         }
+        Ok(HistoryPublication { lease: self.lease })
     }
 }
 
 pub(crate) struct HistoryPublication {
-    inner: Arc<HistoryInner>,
-    attempt: AttemptId,
-    old: Option<Records>,
-    draft: Option<Records>,
+    lease: HistoryLease,
 }
 impl HistoryPublication {
     /// Retires duplicate old metadata before interval extraction. The complete
     /// draft keeps every old canonical record and its shared payload lease live.
     /// A later failure can still restore baseline membership without allocation.
-    pub(crate) fn retire_old(mut self) -> Result<HistoryCommit> {
-        if let Some(old) = self.old.take() {
-            dispose(&self.inner.cpu, old)?;
-        }
-        self.inner.cpu.ensure_healthy()?;
-        Ok(HistoryCommit { publication: self })
+    pub(crate) fn retire_old(self) -> Result<HistoryCommit> {
+        let old = {
+            let mut state = self.lease.inner.lock();
+            let baseline = match &mut state.custody {
+                Custody::Transaction { attempt, baseline } if *attempt == self.lease.attempt => {
+                    baseline
+                }
+                _ => return Err(RenderAccountingError::Invariant.into()),
+            };
+            // Rearm rollback before disposal can fault or return. An invalid
+            // protocol phase retains its complete original baseline custody.
+            match std::mem::replace(baseline, BaselineCustody::DraftOnly) {
+                BaselineCustody::Retained {
+                    old,
+                    observation: Observation::Frozen,
+                } => old,
+                unexpected => {
+                    *baseline = unexpected;
+                    return Err(RenderAccountingError::Invariant.into());
+                }
+            }
+        };
+        dispose(&self.lease.inner.cpu, old)?;
+        self.lease.inner.cpu.ensure_healthy()?;
+        Ok(HistoryCommit { lease: self.lease })
     }
 }
-impl Drop for HistoryPublication {
-    fn drop(&mut self) {
-        let Some(mut records) = self.draft.take() else {
-            return;
-        };
-        if let Some(old) = self.old.take() {
-            let _ = dispose(&self.inner.cpu, old);
-        }
+
+enum LeaseDisposition {
+    Rollback,
+    Complete,
+}
+/// The single owning participant moves whole between consuming phase carriers.
+/// Its mandatory Arc is never extracted or replaced during a live operation.
+struct HistoryLease {
+    inner: Arc<HistoryInner>,
+    attempt: AttemptId,
+    disposition: LeaseDisposition,
+}
+impl HistoryLease {
+    fn restore_baseline(&self) {
         let cleanup = self.inner.cpu.at(RenderCpuScope::Cleanup);
         cleanup.maintenance_phase(|| {
+            let mut state = self.inner.lock();
+            let records = &mut state.records;
             // Work overflow faults the lifetime owner but cannot veto restoration.
             let mut write = 0;
             for read in 0..records.len() {
@@ -291,30 +331,68 @@ impl Drop for HistoryPublication {
             }
             records.truncate(write);
         });
-        let mut state = self.inner.lock();
-        debug_assert_eq!(state.active.map(|id| id.0), Some(self.attempt.0));
-        debug_assert!(state.committed.is_none() && state.draft.is_none());
-        state.committed = Some(records);
-        state.active = None;
+        // Keep the transaction unavailable to begin until Cleanup has ended.
+        self.inner.lock().custody = Custody::Canonical;
+    }
+}
+impl Drop for HistoryLease {
+    fn drop(&mut self) {
+        if matches!(self.disposition, LeaseDisposition::Complete) {
+            return;
+        }
+        let old = {
+            let mut state = self.inner.lock();
+            let baseline = match &mut state.custody {
+                Custody::Transaction { attempt, baseline } if *attempt == self.attempt => {
+                    std::mem::replace(baseline, BaselineCustody::DraftOnly)
+                }
+                _ => {
+                    // A mismatched owner cannot steal canonical or another
+                    // transaction's records. Preserve them and latch the fault.
+                    self.inner
+                        .cpu
+                        .at(RenderCpuScope::Cleanup)
+                        .note_fault(RenderAccountingError::Invariant);
+                    return;
+                }
+            };
+            match baseline {
+                BaselineCustody::Retained {
+                    old,
+                    observation: Observation::Open,
+                } => {
+                    let abandoned = std::mem::replace(&mut state.records, old);
+                    state.custody = Custody::Canonical;
+                    drop(state);
+                    let _ = dispose(&self.inner.cpu, abandoned);
+                    return;
+                }
+                BaselineCustody::Retained {
+                    old,
+                    observation: Observation::Frozen,
+                } => old,
+                BaselineCustody::DraftOnly => {
+                    drop(state);
+                    self.restore_baseline();
+                    return;
+                }
+            }
+        };
+        let _ = dispose(&self.inner.cpu, old);
+        self.restore_baseline();
     }
 }
 
 /// Old metadata is gone, but this still owns rollback until finalization finishes.
 pub(crate) struct HistoryCommit {
-    publication: HistoryPublication,
+    lease: HistoryLease,
 }
 impl HistoryCommit {
-    /// The final barrier moves only an existing vector header. No record copies,
+    /// The final barrier authorizes the existing vector header. No record copies,
     /// admission, filtering, phase completion or report extraction remains here.
     pub(crate) fn commit(mut self) {
-        let mut state = self.publication.inner.lock();
-        debug_assert_eq!(
-            state.active.map(|id| id.0),
-            Some(self.publication.attempt.0)
-        );
-        debug_assert!(state.committed.is_none() && state.draft.is_none());
-        state.committed = self.publication.draft.take();
-        state.active = None;
+        self.lease.inner.lock().custody = Custody::Canonical;
+        self.lease.disposition = LeaseDisposition::Complete;
     }
 }
 
