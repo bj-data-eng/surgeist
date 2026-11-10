@@ -3292,12 +3292,6 @@ fn resolve_auto_optional<S: LayoutScalar>(
 trait SizeOptionExt {
     type Scalar: LayoutScalar;
     fn clamp_min_before_max_optional(self, min: Self, max: Self) -> Self;
-    fn clamp_optional(self, min: Self, max: Self) -> Self
-    where
-        Self: Sized,
-    {
-        self.clamp_min_before_max_optional(min, max)
-    }
     fn max_optional(self, other: Self) -> Self;
 }
 
@@ -3309,16 +3303,6 @@ trait SizeExt {
         min: Size<Option<Self::Scalar>>,
         max: Size<Option<Self::Scalar>>,
     ) -> Self;
-    fn clamp_optional(
-        self,
-        min: Size<Option<Self::Scalar>>,
-        max: Size<Option<Self::Scalar>>,
-    ) -> Self
-    where
-        Self: Sized,
-    {
-        self.clamp_min_before_max_optional(min, max)
-    }
 }
 
 impl<S: LayoutScalar> SizeExt for Size<S> {

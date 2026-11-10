@@ -4,6 +4,7 @@ use crate::geometry::{
     FlowAxes, LogicalAxis, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis,
     PhysicalProgression,
 };
+use crate::layout_math::MaxBeforeMinOptionalSizeClampExt;
 use crate::output::PhysicalBaseline;
 use crate::scroll::{ScrollContributionAccumulatorOf, UsedOverflow};
 use crate::sizing::resolve::{
@@ -1292,7 +1293,7 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
             .physical_size(logical_known)
             .apply_aspect_ratio(child_style.aspect_ratio)
     }
-    .clamp_optional(min_size, max_size);
+    .clamp_max_before_min_optional(min_size, max_size);
 
     Ok(GridItemSizing {
         known,
