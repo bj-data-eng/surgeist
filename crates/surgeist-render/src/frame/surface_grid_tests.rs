@@ -11,7 +11,7 @@ fn opaque_mask(bounds: Rect) -> ResolvedLayerAlphaMask {
     ResolvedLayerAlphaMask::try_new(white_image(), bounds).unwrap()
 }
 
-fn plan(scene: &Scene, dpr: f64) -> GpuRenderGraph {
+fn plan(scene: &Scene, dpr: f64) -> crate::accounting::OwnedBox<GpuRenderGraph> {
     let account = crate::accounting::Account::for_test();
     let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
     let context = FrameContext::try_new(
@@ -25,7 +25,7 @@ fn plan(scene: &Scene, dpr: f64) -> GpuRenderGraph {
     else {
         panic!("the resolved mask requires graph execution");
     };
-    graph.into_inner()
+    graph
 }
 
 #[test]

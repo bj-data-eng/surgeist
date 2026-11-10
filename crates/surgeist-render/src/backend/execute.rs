@@ -4,7 +4,7 @@
 ))]
 use super::present;
 use super::{Backend, DeviceSlotIdentity, create_headless_texture};
-use crate::accounting::{Account, Generation, GpuObjectKind, OwnedGpu, RenderPhase};
+use crate::accounting::{Account, Generation, GpuObjectKind, OwnedBox, OwnedGpu, RenderPhase};
 
 use crate::pass::{
     BasePreparableGraph, CompositionPreparableGraph, GraphExternalOutputView, PreparedGraph,
@@ -58,6 +58,31 @@ pub(crate) enum ExactSurfaceGraph {
     Base(BasePreparableGraph),
     Composition(CompositionPreparableGraph),
     Backdrop(crate::pass::BackdropPreparableGraph),
+}
+
+#[cfg(test)]
+thread_local! {
+    static HOLD_EXACT_PREPARATION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn hold_exact_preparation_for_test() -> impl Drop {
+    struct Reset(bool);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            HOLD_EXACT_PREPARATION.set(self.0);
+        }
+    }
+    Reset(HOLD_EXACT_PREPARATION.replace(true))
+}
+
+/// A deterministic downstream wait with the real prepared graph and native
+/// acquisitions live. Native work can otherwise complete on its first poll.
+#[cfg(test)]
+async fn exact_preparation_wait_for_test() {
+    if HOLD_EXACT_PREPARATION.get() {
+        std::future::pending::<()>().await;
+    }
 }
 
 impl ExactSurfaceGraph {
@@ -350,7 +375,7 @@ impl Backend {
     fn prepare_exact_surface_graph_resources(
         &mut self,
         identity: DeviceSlotIdentity,
-        graph: ExactSurfaceGraph,
+        graph: &ExactSurfaceGraph,
         account: &Account,
     ) -> Result<PreparedGraph<'_>> {
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {
@@ -482,7 +507,7 @@ impl SurfaceFrameCommit {
 pub(crate) async fn render_exact_headless_graph_surface(
     backend: &mut Backend,
     surface: &Surface,
-    graph: ExactSurfaceGraph,
+    graph: OwnedBox<ExactSurfaceGraph>,
     account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let (device_identity, physical_size, selected_working_format) =
@@ -520,7 +545,13 @@ pub(crate) async fn render_exact_headless_graph_surface(
         Some(account),
     )?;
     let mut prepared =
-        backend.prepare_exact_surface_graph_resources(device_identity, graph, account)?;
+        backend.prepare_exact_surface_graph_resources(device_identity, &graph, account)?;
+    // Preparation owns independent requests and shallow execution facts. Dispose
+    // the actual source before any asynchronous execution or acquisition wait.
+    drop(graph);
+    account.cpu()?.ensure_healthy()?;
+    #[cfg(test)]
+    exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != surface.options.format
         || prepared.working_format() != selected_working_format
@@ -647,7 +678,7 @@ fn exact_headless_graph_target(
 pub(crate) async fn render_exact_presented_graph_surface(
     backend: &mut Backend,
     surface: &mut Surface,
-    graph: ExactSurfaceGraph,
+    graph: OwnedBox<ExactSurfaceGraph>,
     account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let (device_identity, physical_size, output_format, selected_working_format) =
@@ -683,7 +714,13 @@ pub(crate) async fn render_exact_presented_graph_surface(
         (ready.device.clone(), ready.queue.clone())
     };
     let prepared =
-        backend.prepare_exact_surface_graph_resources(device_identity, graph, account)?;
+        backend.prepare_exact_surface_graph_resources(device_identity, &graph, account)?;
+    // Preparation owns independent requests and shallow execution facts. Dispose
+    // the actual source before any asynchronous execution or acquisition wait.
+    drop(graph);
+    account.cpu()?.ensure_healthy()?;
+    #[cfg(test)]
+    exact_preparation_wait_for_test().await;
     if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != output_format
         || prepared.working_format() != selected_working_format

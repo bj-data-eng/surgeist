@@ -2543,7 +2543,7 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
 
     let preparation = match crate::pass::BasePreparableGraph::try_from_lowered(lowered) {
         Ok(preparable) => crate::pass::PreparedGraph::try_prepare_base(
-            preparable,
+            &preparable,
             policy,
             &capabilities,
             (ready.device_for_test(), ready.queue_for_test()),

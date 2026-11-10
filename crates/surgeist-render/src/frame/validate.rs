@@ -520,7 +520,7 @@ mod repeated_proof_edge_tests {
         FilterAmount, FilterList, FilterOp, Layer, Rect, Scene, Size,
     };
 
-    fn graph(backdrop: bool) -> GpuRenderGraph {
+    fn graph(backdrop: bool) -> crate::accounting::OwnedBox<GpuRenderGraph> {
         let setup = Account::for_test();
         let mut scene = Scene::new();
         if backdrop {
@@ -553,9 +553,13 @@ mod repeated_proof_edge_tests {
             let FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap() else {
                 panic!("backdrop selects a graph")
             };
-            graph.into_inner()
+            graph
         } else {
-            forced_base_graph_for_test(commands, context).unwrap()
+            crate::accounting::OwnedBox::new(
+                forced_base_graph_for_test(commands, context).unwrap(),
+                &setup.storage(),
+            )
+            .unwrap()
         }
     }
 

@@ -1445,7 +1445,7 @@ pub(crate) fn frame_plan_result_observation_for_test(
             has_partial_plan: false,
         },
         Ok(FramePlan::GpuGraph(graph)) => FramePlanResultObservation {
-            plan: Some(observe_graph_frame_plan(graph.into_inner())),
+            plan: Some(observe_graph_frame_plan(&graph)),
             error_code: None,
             unresolved_resource: None,
             has_partial_plan: false,
@@ -1501,7 +1501,7 @@ fn observe_direct_frame_plan(plan: DirectVelloPlan) -> FramePlanObservation {
 }
 
 #[cfg(test)]
-fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
+fn observe_graph_frame_plan(graph: &GpuRenderGraph) -> FramePlanObservation {
     let root_descriptor = graph
         .resources
         .iter()
@@ -1525,7 +1525,7 @@ fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
             }
         })
         .collect();
-    let resolved_alpha_mask_device_extents = graph_resolved_alpha_mask_device_extents(&graph);
+    let resolved_alpha_mask_device_extents = graph_resolved_alpha_mask_device_extents(graph);
     let vello_spans = graph
         .vello_spans
         .iter()
@@ -1551,8 +1551,8 @@ fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
             SemanticCompositeKind::SpanSourceOver | SemanticCompositeKind::DropShadow => None,
         })
         .collect();
-    let complete = graph_frame_plan_is_complete(&graph);
-    let finite = graph_frame_plan_is_finite(&graph);
+    let complete = graph_frame_plan_is_complete(graph);
+    let finite = graph_frame_plan_is_finite(graph);
     let graph_to_vello_reentry = graph.passes.iter().any(|pass| {
         matches!(pass.intent, SemanticPassIntent::VelloCapture { .. }) && !pass.reads.is_empty()
     });
@@ -1570,7 +1570,7 @@ fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
             .iter()
             .all(|composite| composite.source_captured_before_outer_semantics);
     let antialiasing = graph.vello_spans.first().map(|span| span.antialiasing);
-    let base_color = graph_base_color(&graph);
+    let base_color = graph_base_color(graph);
 
     FramePlanObservation {
         route: FramePlanRouteObservation::GpuGraph,

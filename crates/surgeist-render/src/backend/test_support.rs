@@ -35,10 +35,9 @@ use crate::{
         },
     },
     pass::{
-        BackdropPreparableGraph, BasePreparableGraph, ColorFilterPreparableGraph,
-        CompositionPreparableGraph, CorePassCacheRequestsForTest, GraphExternalOutputView,
-        LayerCompositeCacheRequestsForTest, LoweredGraphPlan, PreparedGraph,
-        SpatialFilterPreparableGraph,
+        BackdropPreparableGraph, ColorFilterPreparableGraph, CorePassCacheRequestsForTest,
+        GraphExternalOutputView, LayerCompositeCacheRequestsForTest, LoweredGraphPlan,
+        PreparedGraph, SpatialFilterPreparableGraph,
     },
     renderer::ResourceCacheBudget,
     resource::{
@@ -61,8 +60,6 @@ use crate::{BlendMode, Extend, ImageQuality, LayerComposition, Point, Rect};
 /// Test-owned exact graph ingress for real production and fixture preparation stages.
 #[must_use = "an exact test surface graph must enter its GPU transaction"]
 pub(crate) enum ExactSurfaceGraph {
-    Base(BasePreparableGraph),
-    Composition(CompositionPreparableGraph),
     ColorFilter(ColorFilterPreparableGraph),
     SpatialFilter(SpatialFilterPreparableGraph),
     Backdrop(BackdropPreparableGraph),
@@ -76,8 +73,6 @@ enum ExactSurfaceGraphStage {
 impl ExactSurfaceGraph {
     fn working_format(&self) -> WorkingFormat {
         match self {
-            Self::Base(preparable) => preparable.working_format(),
-            Self::Composition(preparable) => preparable.working_format(),
             Self::ColorFilter(preparable) => preparable.working_format(),
             Self::SpatialFilter(preparable) => preparable.working_format(),
             Self::Backdrop(preparable) => preparable.working_format(),
@@ -86,8 +81,6 @@ impl ExactSurfaceGraph {
 
     fn output_format(&self) -> Format {
         match self {
-            Self::Base(preparable) => preparable.output_format(),
-            Self::Composition(preparable) => preparable.output_format(),
             Self::ColorFilter(preparable) => preparable.output_format(),
             Self::SpatialFilter(preparable) => preparable.output_format(),
             Self::Backdrop(preparable) => preparable.output_format(),
@@ -96,20 +89,13 @@ impl ExactSurfaceGraph {
 
     fn known_output_extent(&self, account: &Account) -> Result<Option<PhysicalSize>> {
         match self {
-            Self::Base(preparable) => preparable.output_extent(account).map(Some),
-            Self::Composition(_) | Self::ColorFilter(_) | Self::SpatialFilter(_) => Ok(None),
+            Self::ColorFilter(_) | Self::SpatialFilter(_) => Ok(None),
             Self::Backdrop(preparable) => preparable.output_extent(account).map(Some),
         }
     }
 
     fn into_stage(self) -> ExactSurfaceGraphStage {
         match self {
-            Self::Base(preparable) => {
-                ExactSurfaceGraphStage::Production(execute::ExactSurfaceGraph::Base(preparable))
-            }
-            Self::Composition(preparable) => ExactSurfaceGraphStage::Production(
-                execute::ExactSurfaceGraph::Composition(preparable),
-            ),
             Self::Backdrop(preparable) => {
                 ExactSurfaceGraphStage::Production(execute::ExactSurfaceGraph::Backdrop(preparable))
             }
@@ -191,9 +177,7 @@ impl Backend {
                     account,
                 )
             }
-            ExactSurfaceGraph::Base(_)
-            | ExactSurfaceGraph::Composition(_)
-            | ExactSurfaceGraph::Backdrop(_) => {
+            ExactSurfaceGraph::Backdrop(_) => {
                 return Err(Error::new(
                     BackendErrorCode::RenderFailed,
                     "a production exact graph entered the test filter preparation stage",
@@ -217,7 +201,10 @@ pub(crate) async fn render_exact_headless_graph_surface(
     let graph = match graph.into_stage() {
         ExactSurfaceGraphStage::Production(production) => {
             return execute::render_exact_headless_graph_surface(
-                backend, surface, production, account,
+                backend,
+                surface,
+                crate::accounting::OwnedBox::new(production, &account.storage())?,
+                account,
             )
             .await;
         }
@@ -403,7 +390,10 @@ pub(crate) async fn render_exact_presented_graph_surface(
     let graph = match graph.into_stage() {
         ExactSurfaceGraphStage::Production(production) => {
             return execute::render_exact_presented_graph_surface(
-                backend, surface, production, account,
+                backend,
+                surface,
+                crate::accounting::OwnedBox::new(production, &account.storage())?,
+                account,
             )
             .await;
         }
