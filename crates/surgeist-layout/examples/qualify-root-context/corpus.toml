@@ -2392,3 +2392,50 @@ inline_offset = 0
 [[matching_publications]]
 edition = "scriptless-order"
 sources = ["html/flex/fri03_order_modified_flex.html"]
+
+[[records]]
+source = "html/grid/fri03_order_modified_grid.html"
+source_sha256 = "d410f7e7f1730790f189cf446da9d9676990b3940d0e6636b134944b6edf867f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "b5b65f92432fd710515a66be069f79996987ca29395038d58bc7f8a1182a64da"
+content_box_ltr = "67bdfa1876acdb4e9ef0ce2ab16ee0dee74db3b734d9a426124b8ea9b782081e"
+border_box_rtl = "df12dd3079205a3627a8a91ac0b42f78fc3bfafd37fcfbdb16c6a014783a8642"
+content_box_rtl = "0bed378d6334f2c124614c6e59baac0d3aa3a1cfb7d7b60170bc66c1ea359ead"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/fri03_order_modified_lanes.html"
+source_sha256 = "befc87c3a0767853dd66a4f7a29b14184bd0e71260fd43f6ee63e9408be11dcf"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "0e218000856b85d1153b89cc6cb6bebcd6a076ff8fd303e96ef2a82bf960f50f"
+content_box_ltr = "c21127bbc283292703199f1a3443e565a6ebbb6c09db209de66b640269f24400"
+border_box_rtl = "79cff689510e102f4d374c96e9a4696bdf2d2c97767458613d48886fc55bb736"
+content_box_rtl = "b3967c16a5629153180544c41b3baa7cc3b7884b12ad2fead498a10a54238fb8"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid-lanes"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[matching_publications]]
+edition = "grid-order"
+sources = [
+  "html/grid/fri03_order_modified_grid.html",
+  "html/grid-lanes/fri03_order_modified_lanes.html",
+]

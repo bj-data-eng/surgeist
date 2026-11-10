@@ -614,7 +614,9 @@ fn grid_item_order_variants_match_browser() {
         include_str!("browser_parity/xml/grid/fri03_order_modified_grid__content_box_rtl.xml"),
     ];
 
-    let mut goldens = Vec::with_capacity(fixtures.len());
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/grid");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden = support::Golden::parse(fixture).expect("settled grid-order fixture parses");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
@@ -681,12 +683,9 @@ fn grid_item_order_variants_match_browser() {
                 .collect::<Vec<_>>(),
             expected_x,
         );
-        goldens.push(golden);
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
-    for golden in goldens {
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
-    }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
@@ -706,7 +705,9 @@ fn grid_lanes_item_order_variants_match_browser() {
         ),
     ];
 
-    let mut goldens = Vec::with_capacity(fixtures.len());
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/grid-lanes");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden =
             support::Golden::parse(fixture).expect("settled grid-lanes order fixture parses");
@@ -775,12 +776,9 @@ fn grid_lanes_item_order_variants_match_browser() {
                 .collect::<Vec<_>>(),
             expected_x,
         );
-        goldens.push(golden);
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
-    for golden in goldens {
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
-    }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
