@@ -284,3 +284,5 @@ fn sideways_flex_binding_refuses_changed_browser_environment() {
     Golden::parse_with_flex_composition(xml, &rebuilt.to_string(), SOURCE, SOURCE_BYTES, &output)
         .expect("a rebuilt qualifier can replay the same browser environment");
 }
+
+include!("flex_composition_script_custody_tests.rs");

@@ -824,3 +824,5 @@ fn matching_capture_binding_authenticates_inputs_without_a_policy_identity() {
     fixture.metadata.inputs = fixture.inputs.clone();
     assert!(bind(&fixture).is_err());
 }
+
+include!("capture_authority_script_custody_tests.rs");
