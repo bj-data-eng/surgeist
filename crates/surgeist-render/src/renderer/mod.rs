@@ -366,7 +366,6 @@ impl Renderer {
     /// return their typed diagnostic without changing committed resources.
     pub fn set_surface_resizing(&mut self, surface: &mut Surface, resizing: bool) -> Result<()> {
         self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
-        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
         self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
         surface.ensure_available(SurfaceIoOperation::Rendering)?;
 
@@ -520,7 +519,6 @@ impl Renderer {
         )))]
         let _ = attachment;
         self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Resume)?;
-        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Resume)?;
         match &surface.backend {
             #[cfg(any(
                 feature = "render-window",
@@ -581,7 +579,9 @@ impl Renderer {
                     }
                 }
             }
-            SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => unreachable!(),
+            SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => {
+                Err(unsupported_surface_backend())
+            }
         }
     }
 
@@ -756,44 +756,6 @@ impl Renderer {
         Ok(backend)
     }
 
-    fn validate_surface_operation_backend(
-        &self,
-        surface: &Surface,
-        operation: SurfaceDiagnosticOperation,
-    ) -> Result<()> {
-        let supported = match operation {
-            SurfaceDiagnosticOperation::Readback => matches!(
-                surface.backend,
-                SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. }
-            ),
-            SurfaceDiagnosticOperation::Resume => {
-                #[cfg(any(
-                    feature = "render-window",
-                    all(feature = "render-web", target_arch = "wasm32")
-                ))]
-                {
-                    matches!(surface.backend, SurfaceBackend::Presented { .. })
-                }
-                #[cfg(not(any(
-                    feature = "render-window",
-                    all(feature = "render-web", target_arch = "wasm32")
-                )))]
-                {
-                    false
-                }
-            }
-            SurfaceDiagnosticOperation::Rendering => true,
-        };
-        if supported {
-            Ok(())
-        } else {
-            Err(Error::new(
-                BackendErrorCode::UnsupportedBackend,
-                "surface backend does not support this operation",
-            ))
-        }
-    }
-
     fn validate_surface_device_terminal(
         &mut self,
         surface: &Surface,
@@ -841,6 +803,13 @@ fn runtime_surface_unavailable_reason(
         return Some(RuntimeCapabilityUnavailableReason::SurfaceUnavailable { state });
     }
     None
+}
+
+fn unsupported_surface_backend() -> Error {
+    Error::new(
+        BackendErrorCode::UnsupportedBackend,
+        "surface backend does not support this operation",
+    )
 }
 
 fn surface_identity_mismatch(

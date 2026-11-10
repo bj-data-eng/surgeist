@@ -49,65 +49,62 @@ impl Renderer {
     ) -> Result<ReadbackOutput> {
         let account = attempt.account().clone();
         self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Readback)?;
-        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Readback)?;
-        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Readback)?;
-        surface.ensure_available(SurfaceIoOperation::Readback)?;
-        let (device_identity, texture, physical_size) = match &surface.backend {
-            SurfaceBackend::ContractOnly { physical_size }
-                if physical_size.width() == 0 || physical_size.height() == 0 =>
-            {
-                return ReadbackOutput::empty(*physical_size, &account);
-            }
-            SurfaceBackend::ContractOnly { .. } => {
-                return Err(Error::runtime_unavailable(
+        match &surface.backend {
+            SurfaceBackend::ContractOnly { physical_size } => {
+                surface.ensure_available(SurfaceIoOperation::Readback)?;
+                if physical_size.width() == 0 || physical_size.height() == 0 {
+                    return ReadbackOutput::empty(*physical_size, &account);
+                }
+                Err(Error::runtime_unavailable(
                     RuntimeCapabilityUnavailable::readback_adapter_unavailable(),
                     "no compatible wgpu adapter is available",
-                ));
-            }
-            SurfaceBackend::Headless {
-                physical_size,
-                resources: HeadlessResources::Empty,
-                ..
-            } => {
-                return ReadbackOutput::empty(*physical_size, &account);
-            }
-            SurfaceBackend::Headless {
-                resources: HeadlessResources::Pending,
-                ..
-            } => {
-                return Err(Error::runtime_unavailable(
-                    RuntimeCapabilityUnavailable::readback_uninitialized(),
-                    "headless surface has no published texture",
-                ));
+                ))
             }
             SurfaceBackend::Headless {
                 device_identity,
-                resources: HeadlessResources::Ready { texture, .. },
+                resources,
                 physical_size,
-            } => (*device_identity, texture, *physical_size),
+            } => {
+                let device_identity = *device_identity;
+                let backend = self.surface_backend_for_device(
+                    device_identity,
+                    SurfaceDiagnosticOperation::Readback,
+                )?;
+                surface.ensure_available(SurfaceIoOperation::Readback)?;
+                let texture = match resources {
+                    HeadlessResources::Empty => {
+                        return ReadbackOutput::empty(*physical_size, &account);
+                    }
+                    HeadlessResources::Pending => {
+                        return Err(Error::runtime_unavailable(
+                            RuntimeCapabilityUnavailable::readback_uninitialized(),
+                            "headless surface has no published texture",
+                        ));
+                    }
+                    HeadlessResources::Ready { texture, .. } => texture,
+                };
+                if let Some(error) =
+                    backend.terminal_error(device_identity, RuntimeOperation::SurfaceReadback)
+                {
+                    return Err(error);
+                }
+                attempt.attach_generation(backend.generation(device_identity)?)?;
+                read_texture_rgba(
+                    backend,
+                    device_identity,
+                    texture,
+                    *physical_size,
+                    RuntimeOperation::SurfaceReadback,
+                    &account,
+                )
+                .await
+            }
             #[cfg(any(
                 feature = "render-window",
                 all(feature = "render-web", target_arch = "wasm32")
             ))]
-            SurfaceBackend::Presented { .. } => unreachable!(),
-        };
-        self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceReadback)?;
-        let Some(backend) = self.backend.as_mut() else {
-            return Err(Error::runtime_unavailable(
-                RuntimeCapabilityUnavailable::readback_adapter_unavailable(),
-                "no compatible wgpu adapter is available",
-            ));
-        };
-        attempt.attach_generation(backend.generation(device_identity)?)?;
-        read_texture_rgba(
-            backend,
-            device_identity,
-            texture,
-            physical_size,
-            RuntimeOperation::SurfaceReadback,
-            &account,
-        )
-        .await
+            SurfaceBackend::Presented { .. } => Err(unsupported_surface_backend()),
+        }
     }
 
     pub(super) fn finish_readback(

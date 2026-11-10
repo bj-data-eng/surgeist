@@ -145,7 +145,6 @@ impl Renderer {
         surface: &Surface,
     ) -> Result<DeviceSlotIdentity> {
         self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
-        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
         self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
         surface.ensure_available(SurfaceIoOperation::Rendering)?;
         surface.ensure_renderable()?;
