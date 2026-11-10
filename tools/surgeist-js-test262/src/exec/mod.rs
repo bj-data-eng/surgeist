@@ -827,10 +827,25 @@ mod tests {
 
         let result = test.run_once(&harness, false, 0, OptimizerOptions::empty(), false);
         assert_eq!(result.result, TestOutcomeResult::Failed);
+        let (cause, annotation) = result.result_text.split_once(" (native").unwrap();
         assert_eq!(
-            result.result_text.as_ref(),
+            cause,
             "TypeError: a context that can block must be the only active context in its current thread"
         );
+        if annotation != ")" {
+            let location = annotation
+                .strip_prefix(" at ")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            let (file_and_line, column) = location.rsplit_once(':').unwrap();
+            let (file, line) = file_and_line.rsplit_once(':').unwrap();
+            assert!(!file.is_empty());
+            assert!(line.bytes().all(|byte| byte.is_ascii_digit()));
+            assert!(column.bytes().all(|byte| byte.is_ascii_digit()));
+            assert!(line.parse::<u32>().unwrap() > 0);
+            assert!(column.parse::<u32>().unwrap() > 0);
+        }
         drop(blocker);
 
         assert!(

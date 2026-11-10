@@ -35,10 +35,26 @@ fn headers_registration_preserves_global_and_explicit_realm_constructor_identity
     ));
 
     let previous = context.enter_realm(other).unwrap();
+    let input = context.eval(Source::from_bytes("[['x', 'y']]")).unwrap();
+    let instance = local
+        .constructor()
+        .construct(&[input], None, context.access())
+        .unwrap();
+    assert!(JsObject::equals(
+        &instance.prototype().unwrap().unwrap(),
+        &local.prototype(),
+    ));
+    context
+        .register_global_property(
+            js_string!("testProjectedHeadersInstance"),
+            instance,
+            surgeist_js::property::Attribute::all(),
+        )
+        .unwrap();
     assert_eq!(
         context
             .eval(Source::from_bytes(
-                "[...new Headers([['x', 'y']])][0].join(':')"
+                "[...testProjectedHeadersInstance][0].join(':')"
             ))
             .unwrap(),
         JsValue::from(js_string!("x:y"))
