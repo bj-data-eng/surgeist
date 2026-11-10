@@ -197,7 +197,7 @@ mod staging_stores {
     use super::*;
     use crate::{
         Operation, ProfileMode, Scope, Tariff,
-        in_place::{FORCE, Force},
+        in_place::{FORCE, Force, ONE_WORK, ONE_WORK_DECLINED},
     };
 
     crate::dimensions! {
@@ -256,7 +256,10 @@ mod staging_stores {
     ///
     /// `variant` 0 is a plain operation, 1 profiles it, and 2 profiles it and
     /// opens an interval, which records the batch peak of every resource.
-    fn operation(seed: u64, variant: u64) -> (Operation<Wk, Rs>, Vec<Scope>) {
+    /// `chain` makes every scope the child of the previous one, with up to five
+    /// children, so the chain from the last scope can be longer than the hops
+    /// the journal-free pass holds; otherwise parents are random.
+    fn operation(seed: u64, variant: u64, chain: bool) -> (Operation<Wk, Rs>, Vec<Scope>) {
         let random = Random(std::cell::Cell::new(seed));
         let limit_set = |random: &Random| Limits::from_fn(|_| cap(random), |_| cap(random));
         let mut operation = if variant == 0 {
@@ -274,8 +277,12 @@ mod staging_stores {
             operation = operation.with_checkpoint_limit(1).unwrap();
         }
         let mut scopes = vec![operation.root()];
-        for _ in 0..random.below(5) {
-            let parent = scopes[random.below(scopes.len() as u64) as usize];
+        for _ in 0..random.below(if chain { 6 } else { 5 }) {
+            let parent = if chain {
+                scopes[scopes.len() - 1]
+            } else {
+                scopes[random.below(scopes.len() as u64) as usize]
+            };
             let limits = limit_set(&random);
             let tariffs = Tariffs::from_fn(
                 |_| Tariff::new(work(&random), scale(&random)),
@@ -286,13 +293,14 @@ mod staging_stores {
         (operation, scopes)
     }
 
-    fn batch(random: &Random) -> Vec<Change<Wk, Rs>> {
+    /// A batch of fewer than `longest` changes.
+    fn batch(random: &Random, longest: u64) -> Vec<Change<Wk, Rs>> {
         let amount = |random: &Random| match random.below(10) {
             0 => u64::MAX / 2,
             1 => 0,
             _ => random.below(9),
         };
-        (0..random.below(11))
+        (0..random.below(longest))
             .map(|_| match random.below(3) {
                 0 => Change::Work(work(random), amount(random)),
                 1 => Change::Acquire(resource(random), amount(random)),
@@ -320,18 +328,24 @@ mod staging_stores {
         result
     }
 
-    /// Every batch is accepted or refused the same way by the in-place store
-    /// and by the dense store, and leaves the same usage, peaks and direct
-    /// custody, including batches too large for the journal.
-    #[test]
-    fn the_in_place_and_dense_stores_agree_on_random_batches() {
+    /// Runs random batches through `store` and through the dense store on twin
+    /// operations. Every batch is accepted or refused the same way, with the same
+    /// refusal, and leaves the same usage, peaks, direct custody, profile and
+    /// interval report. Returns the number of accepted and refused batches.
+    fn agree(
+        seeds: std::ops::RangeInclusive<u64>,
+        chain: bool,
+        longest: u64,
+        store: Force,
+    ) -> (usize, usize) {
         let mut accepted = 0;
         let mut refused = 0;
-        for seed in 1..=600_u64 {
+        for seed in seeds {
             let variant = seed % 3;
-            let (mut fast, scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant);
+            let (mut fast, scopes) =
+                operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant, chain);
             let (mut slow, slow_scopes) =
-                operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant);
+                operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant, chain);
             let intervals = (variant == 2).then(|| {
                 (
                     fast.begin_checkpoint().unwrap(),
@@ -344,13 +358,13 @@ mod staging_stores {
             for _ in 0..40 {
                 let position = random.below(scopes.len() as u64) as usize;
                 let (scope, twin) = (scopes[position], slow_scopes[position]);
-                let changes = batch(&random);
+                let changes = batch(&random, longest);
                 assert_eq!(
-                    anonymous(with(Force::InPlace, || fast.check_batch(scope, &changes))),
+                    anonymous(with(store, || fast.check_batch(scope, &changes))),
                     anonymous(with(Force::Dense, || slow.check_batch(twin, &changes))),
                     "seed {seed}: check"
                 );
-                let result = with(Force::InPlace, || fast.apply_batch(scope, &changes));
+                let result = with(store, || fast.apply_batch(scope, &changes));
                 assert_eq!(
                     anonymous(result),
                     anonymous(with(Force::Dense, || slow.apply_batch(twin, &changes))),
@@ -406,7 +420,46 @@ mod staging_stores {
                 assert_eq!(observed(&fast), observed(&slow), "seed {seed}: profile");
             }
         }
+        (accepted, refused)
+    }
+
+    /// Every batch is accepted or refused the same way by the in-place store
+    /// and by the dense store, including batches too large for the journal.
+    #[test]
+    fn the_in_place_and_dense_stores_agree_on_random_batches() {
+        let (accepted, refused) = agree(1..=600, false, 11, Force::InPlace);
         assert!(accepted > 1_000 && refused > 1_000, "{accepted} {refused}");
+    }
+
+    /// Batches of at most one change, which the journal-free pass commits when
+    /// every scope on a chain of up to four accepts and the operation has no
+    /// profile and no checkpoint limit, agree with the dense store on random
+    /// trees and on chains longer than the pass holds. The pass commits changes
+    /// and declines others to the general path, and the dense store never tries
+    /// it.
+    #[test]
+    fn the_journal_free_pass_agrees_with_the_dense_store_on_single_changes() {
+        for store in [Force::Auto, Force::InPlace] {
+            for chain in [false, true] {
+                let (committed, declined) = (ONE_WORK.get(), ONE_WORK_DECLINED.get());
+                let (accepted, refused) = agree(1..=900, chain, 2, store);
+                assert!(accepted > 300 && refused > 300, "{accepted} {refused}");
+                let committed = ONE_WORK.get().saturating_sub(committed);
+                let declined = ONE_WORK_DECLINED.get().saturating_sub(declined);
+                assert!(committed > 150, "the pass committed {committed}");
+                assert!(declined > 150, "the pass declined {declined}");
+            }
+        }
+    }
+
+    /// Batches of up to four changes use the mid-sized journal; they agree with
+    /// the dense store on random trees and on chains.
+    #[test]
+    fn the_mid_journal_agrees_with_the_dense_store_on_short_batches() {
+        for chain in [false, true] {
+            let (accepted, refused) = agree(1..=900, chain, 5, Force::InPlace);
+            assert!(accepted > 300 && refused > 300, "{accepted} {refused}");
+        }
     }
 
     /// An open interval records the batch peak of every resource, including a
@@ -496,5 +549,376 @@ mod staging_stores {
         let acquires = vec![Change::<BigWork, BigResource>::Acquire(BigResource::R0, 1); 5];
         assert!(!preferred(&acquires, 5));
         assert!(preferred(&acquires, 3));
+    }
+
+    /// A chain of `depth` scopes below the root. Every child's tariff scales
+    /// work `A` into work `B` by `scale` and passes the other dimensions on.
+    fn linked(
+        depth: usize,
+        scale: u64,
+        caps: impl Fn(usize) -> Limits<Wk, Rs>,
+    ) -> (Operation<Wk, Rs>, Vec<Scope>) {
+        let mut operation =
+            Operation::<Wk, Rs>::new("root", caps(0), depth.saturating_add(1)).unwrap();
+        let mut scopes = vec![operation.root()];
+        for level in 1..=depth {
+            let tariffs = Tariffs::from_fn(
+                |dimension| match dimension {
+                    Wk::A => Tariff::new(Wk::B, scale),
+                    other => Tariff::new(other, 1),
+                },
+                |dimension| Tariff::new(dimension, scale),
+            );
+            let parent = scopes[level - 1];
+            scopes.push(
+                operation
+                    .child(parent, "child", caps(level), tariffs)
+                    .unwrap(),
+            );
+        }
+        (operation, scopes)
+    }
+
+    fn uncapped(_: usize) -> Limits<Wk, Rs> {
+        Limits::unlimited()
+    }
+
+    fn work_usage(operation: &Operation<Wk, Rs>, scopes: &[Scope], dimension: Wk) -> Vec<u64> {
+        scopes
+            .iter()
+            .map(|&scope| operation.usage(scope).unwrap().work(dimension))
+            .collect()
+    }
+
+    fn refusal(
+        scope: Scope,
+        change: Change<Wk, Rs>,
+        current: u64,
+        reason: crate::RefusalReason,
+    ) -> Result<(), Error<Wk, Rs>> {
+        Err(Error::Refused(crate::Refusal {
+            scope,
+            item: 0,
+            change,
+            current,
+            reason,
+        }))
+    }
+
+    /// Applies `change` and checks that the journal-free pass was tried once,
+    /// and that it committed the change exactly when `committed` is set; a
+    /// declined change is admitted or refused by the general path.
+    fn through_the_pass(
+        operation: &mut Operation<Wk, Rs>,
+        scope: Scope,
+        change: Change<Wk, Rs>,
+        committed: bool,
+    ) -> Result<(), Error<Wk, Rs>> {
+        let (taken, declined) = (ONE_WORK.get(), ONE_WORK_DECLINED.get());
+        let result = operation.apply(scope, change);
+        let (took, declines) = (
+            ONE_WORK.get().saturating_sub(taken),
+            ONE_WORK_DECLINED.get().saturating_sub(declined),
+        );
+        assert_eq!((took, declines), if committed { (1, 0) } else { (0, 1) });
+        result
+    }
+
+    /// A one-change work batch below a three-scope chain is refused at the
+    /// first scope along the path, from the leaf towards the root, whose cap
+    /// the change exceeds, with the amount that scope sees.
+    #[test]
+    fn the_journal_free_pass_refuses_at_the_origin_and_at_each_ancestor() {
+        // Leaf A cap 5; middle B cap 10 after a factor of 3; root B cap 12.
+        let caps = |level: usize| match level {
+            0 => Limits::from_fn(|_| 12, |_| u64::MAX),
+            1 => Limits::from_fn(|_| 10, |_| u64::MAX),
+            _ => Limits::from_fn(|_| 5, |_| u64::MAX),
+        };
+        let (mut operation, scopes) = linked(2, 3, caps);
+        let leaf = scopes[2];
+        // 6 exceeds the leaf's cap of 5, before any tariff applies.
+        assert_eq!(
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 6), false),
+            refusal(
+                leaf,
+                Change::Work(Wk::A, 6),
+                0,
+                crate::RefusalReason::Limit { limit: 5 }
+            )
+        );
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 0]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [0, 0, 0]);
+        // 2 passes the leaf (2 <= 5), reaches the middle as 6 of B (6 <= 10)
+        // and the root as 6 of B (6 <= 12).
+        through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 2), true).unwrap();
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 2]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [6, 6, 0]);
+        // 2 more reaches the middle as 6 on 6 held: 12 exceeds its cap of 10.
+        assert_eq!(
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 2), false),
+            refusal(
+                scopes[1],
+                Change::Work(Wk::B, 6),
+                6,
+                crate::RefusalReason::Limit { limit: 10 }
+            )
+        );
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 2]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [6, 6, 0]);
+        // Work B directly at the middle: 6 held and 4 more reach 10, the cap;
+        // the root then holds 10 and a change of 3 more reaches 13 > 12.
+        through_the_pass(&mut operation, scopes[1], Change::Work(Wk::B, 4), true).unwrap();
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [10, 10, 0]);
+        assert_eq!(
+            through_the_pass(&mut operation, scopes[1], Change::Work(Wk::B, 0), true),
+            Ok(())
+        );
+        assert_eq!(
+            through_the_pass(&mut operation, scopes[0], Change::Work(Wk::B, 3), false),
+            refusal(
+                scopes[0],
+                Change::Work(Wk::B, 3),
+                10,
+                crate::RefusalReason::Limit { limit: 12 }
+            )
+        );
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [10, 10, 0]);
+    }
+
+    /// An addition past the largest count, and a tariff product past it, are
+    /// typed refusals that leave every scope as it was.
+    #[test]
+    fn the_journal_free_pass_refuses_overflow_of_the_sum_and_of_the_tariff() {
+        let (mut operation, scopes) = linked(2, 1, uncapped);
+        let leaf = scopes[2];
+        through_the_pass(
+            &mut operation,
+            leaf,
+            Change::Work(Wk::C, u64::MAX - 1),
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::C, 2), false),
+            refusal(
+                leaf,
+                Change::Work(Wk::C, 2),
+                u64::MAX - 1,
+                crate::RefusalReason::Overflow
+            )
+        );
+        assert_eq!(
+            work_usage(&operation, &scopes, Wk::C),
+            [u64::MAX - 1, u64::MAX - 1, u64::MAX - 1]
+        );
+        // A factor of u64::MAX / 3 on 4 overflows when the leaf projects the
+        // change into its parent; the leaf's own addition fits and is not kept.
+        let (mut operation, scopes) = linked(2, u64::MAX / 3, uncapped);
+        let leaf = scopes[2];
+        assert_eq!(
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 4), false),
+            refusal(
+                leaf,
+                Change::Work(Wk::A, 4),
+                0,
+                crate::RefusalReason::Overflow
+            )
+        );
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 0]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [0, 0, 0]);
+    }
+
+    /// A tariff of scale zero passes a zero amount on, so ancestors keep their
+    /// usage and the check against their caps still runs.
+    #[test]
+    fn the_journal_free_pass_projects_through_a_tariff_of_scale_zero() {
+        let caps = |level: usize| match level {
+            0 => Limits::from_fn(|_| 0, |_| u64::MAX),
+            _ => Limits::unlimited(),
+        };
+        let (mut operation, scopes) = linked(2, 0, caps);
+        through_the_pass(&mut operation, scopes[2], Change::Work(Wk::A, 9), true).unwrap();
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 9]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [0, 0, 0]);
+    }
+
+    /// A chain of more than four scopes is admitted by the journal, with the
+    /// same result; so is a batch of one change when the operation is
+    /// profiled, which must observe the admission.
+    #[test]
+    fn the_journal_free_pass_leaves_long_chains_and_profiled_operations_to_the_journal() {
+        // Only the root is capped, at 6 of B: a leaf change of 3 reaches it as 6.
+        let caps = |level: usize| match level {
+            0 => Limits::from_fn(|_| 6, |_| u64::MAX),
+            _ => Limits::unlimited(),
+        };
+        let (mut operation, scopes) = linked(5, 2, caps);
+        let leaf = scopes[5];
+        let (before, declined) = (ONE_WORK.get(), ONE_WORK_DECLINED.get());
+        operation.apply(leaf, Change::Work(Wk::A, 3)).unwrap();
+        // 1 more reaches the root as 2 on 6 held, the sixth hop of the chain.
+        assert_eq!(
+            operation.apply(leaf, Change::Work(Wk::A, 1)),
+            refusal(
+                scopes[0],
+                Change::Work(Wk::B, 2),
+                6,
+                crate::RefusalReason::Limit { limit: 6 }
+            )
+        );
+        assert_eq!(
+            ONE_WORK.get(),
+            before,
+            "a chain of six scopes took the pass"
+        );
+        assert_eq!(ONE_WORK_DECLINED.get(), declined.saturating_add(2));
+        assert_eq!(work_usage(&operation, &scopes, Wk::A), [0, 0, 0, 0, 0, 3]);
+        assert_eq!(work_usage(&operation, &scopes, Wk::B), [6, 6, 6, 6, 6, 0]);
+
+        let mut profiled = Operation::<Wk, Rs>::with_profile(
+            "root",
+            Limits::unlimited(),
+            1,
+            ProfileMode::Summary { timing: false },
+        )
+        .unwrap();
+        let root = profiled.root();
+        profiled.apply(root, Change::Work(Wk::A, 1)).unwrap();
+        assert_eq!(ONE_WORK.get(), before);
+        assert_eq!(ONE_WORK_DECLINED.get(), declined.saturating_add(2));
+        let report = profiled.snapshot().unwrap().unwrap();
+        assert_eq!(report.scopes[0].accepted_batches, 1);
+    }
+
+    /// A parent that names no scope is a latched defect. The pass declines
+    /// and leaves usage as it was.
+    #[test]
+    fn the_journal_free_pass_declines_a_missing_ancestor() {
+        let (mut operation, scopes) = linked(2, 1, uncapped);
+        operation.scopes[2].parent = Some(Parent {
+            index: 9,
+            tariffs: Tariffs::identity(),
+        });
+        let leaf = scopes[2];
+        assert_eq!(
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 1), false),
+            Err(Error::Defect(Defect::ScopeEntry))
+        );
+        assert_eq!(operation.scopes[2].usage.work(Wk::A), 0);
+        assert_latched(operation, Defect::ScopeEntry);
+    }
+
+    /// A change that a scope refuses, below an ancestor that names no scope, is
+    /// the latched defect the dense admission reports, not the refusal at the
+    /// first scope: the pass declines every refusal and the general path reads
+    /// the whole chain first.
+    #[test]
+    fn the_journal_free_pass_declines_a_refusal_below_a_missing_ancestor() {
+        let build = || {
+            let caps = |level: usize| match level {
+                2 => Limits::from_fn(|_| 5, |_| u64::MAX),
+                _ => Limits::unlimited(),
+            };
+            let (mut operation, scopes) = linked(2, 1, caps);
+            operation.scopes[2].parent = Some(Parent {
+                index: 9,
+                tariffs: Tariffs::identity(),
+            });
+            (operation, scopes[2])
+        };
+        let change = Change::Work(Wk::A, 6);
+        let (mut passing, leaf) = build();
+        let result = through_the_pass(&mut passing, leaf, change, false);
+        assert_eq!(result, Err(Error::Defect(Defect::ScopeEntry)));
+        let (mut dense, twin) = build();
+        assert_eq!(
+            anonymous(with(Force::Dense, || dense.apply(twin, change))),
+            anonymous(result)
+        );
+        assert_eq!(passing.scopes[2].usage, dense.scopes[2].usage);
+        assert_latched(passing, Defect::ScopeEntry);
+    }
+
+    /// A chain of four scopes is the longest the pass holds: it commits on the
+    /// root's accept and declines a refusal at the root; a chain of five is
+    /// declined whatever the outcome, with the same results.
+    #[test]
+    fn the_journal_free_pass_holds_four_scopes_and_declines_five() {
+        let caps = |level: usize| match level {
+            0 => Limits::from_fn(|_| 6, |_| u64::MAX),
+            _ => Limits::unlimited(),
+        };
+        for (depth, committed) in [(3, true), (4, false)] {
+            let (mut operation, scopes) = linked(depth, 2, caps);
+            let leaf = scopes[depth];
+            // 3 reaches every ancestor as 6 of B, the root's cap.
+            through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 3), committed).unwrap();
+            let mut expected = vec![6; depth];
+            expected.insert(depth, 0);
+            assert_eq!(work_usage(&operation, &scopes, Wk::B), expected);
+            // 1 more reaches the root as 2 on 6 held.
+            assert_eq!(
+                through_the_pass(&mut operation, leaf, Change::Work(Wk::A, 1), false),
+                refusal(
+                    scopes[0],
+                    Change::Work(Wk::B, 2),
+                    6,
+                    crate::RefusalReason::Limit { limit: 6 }
+                )
+            );
+            assert_eq!(work_usage(&operation, &scopes, Wk::B), expected);
+            assert_eq!(
+                work_usage(&operation, &scopes, Wk::A)[depth],
+                3,
+                "depth {depth}"
+            );
+        }
+    }
+
+    /// Single acquisitions and releases are admitted with the short journal:
+    /// peaks include the amount reached, and each refusal reason carries the
+    /// value the refused scope held.
+    #[test]
+    fn a_single_resource_change_refuses_with_each_reason_and_keeps_peaks() {
+        let caps = |level: usize| match level {
+            0 => Limits::from_fn(|_| u64::MAX, |_| 20),
+            _ => Limits::unlimited(),
+        };
+        let (mut operation, scopes) = linked(2, 2, caps);
+        let leaf = scopes[2];
+        // A factor of 2 doubles the amount at each level: 3, 6 and 12.
+        operation.apply(leaf, Change::Acquire(Rs::X, 3)).unwrap();
+        let live: Vec<_> = scopes
+            .iter()
+            .map(|&scope| operation.usage(scope).unwrap().live(Rs::X))
+            .collect();
+        assert_eq!(live, [12, 6, 3]);
+        // 3 more reach the root as 12 on 12 held: 24 exceeds the cap of 20.
+        assert_eq!(
+            operation.apply(leaf, Change::Acquire(Rs::X, 3)),
+            refusal(
+                scopes[0],
+                Change::Acquire(Rs::X, 12),
+                12,
+                crate::RefusalReason::Limit { limit: 20 }
+            )
+        );
+        // Releasing more than the leaf holds underflows at the origin's direct
+        // custody, which holds 3.
+        assert_eq!(
+            operation.apply(leaf, Change::Release(Rs::X, 4)),
+            refusal(
+                leaf,
+                Change::Release(Rs::X, 4),
+                3,
+                crate::RefusalReason::Underflow
+            )
+        );
+        operation.apply(leaf, Change::Release(Rs::X, 3)).unwrap();
+        for (scope, peak) in scopes.iter().zip([12, 6, 3]) {
+            let usage = operation.usage(*scope).unwrap();
+            assert_eq!((usage.live(Rs::X), usage.peak(Rs::X)), (0, peak));
+        }
     }
 }
