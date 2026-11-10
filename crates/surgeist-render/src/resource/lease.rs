@@ -32,11 +32,7 @@ struct FrameLeaseOwner<'a> {
 
 /// Mandatory real cleanup transactions run even after the first health fault.
 fn cleanup_phase<T>(cpu: &CpuAccount, run: impl FnOnce() -> T) -> T {
-    let mut result = None;
-    cpu.maintenance_phase(|| {
-        result = Some(run());
-    });
-    result.expect("maintenance phase executes its transaction exactly once")
+    cpu.maintenance_phase(run)
 }
 
 impl ResourceManagerState {
