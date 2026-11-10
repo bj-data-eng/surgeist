@@ -78,6 +78,18 @@ python3 crates/surgeist-html/tools/generate_vocabulary.py --write
 python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 ```
 
+The same tool generates a perfect hash over the UTF-16 units of the 113
+element names and of the 89 event handler names
+(`KnownHtmlElement::from_units`, `KnownHtmlEventHandler::from_local_units`;
+no allocation, work bounded by the longest name). From the retained
+[syntax capture](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)
+it generates the MathML and SVG names that tree construction adjusts or tests
+by name (`KnownMathmlElement`, `KnownSvgElement`), the SVG tag name adjustment
+table (`SVG_TAG_NAME_ADJUSTMENTS`) and the integration point, special and scope
+groups. `ElementKey` reduces a namespace and local name to one 32-bit integer
+(namespace, known tag, name classes) over these vocabularies; a name outside
+them has the unknown key of its namespace, which does not identify the name.
+
 The [incorporation notice](../../licenses/whatwg/NOTICE.md#html-vocabulary-incorporation--2026-10-11)
 identifies the exact edition, upstream license and source adaptations.
 

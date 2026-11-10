@@ -10,4 +10,5 @@ mod many_attributes;
 mod recoverable_input;
 mod reports;
 mod select_options;
+mod svg_tag_adjustment;
 mod unrelated_work;

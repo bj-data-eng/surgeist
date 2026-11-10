@@ -10,10 +10,17 @@ semantics from the non-normative index. No Cargo build-time generation occurs.
 Input portions incorporated into code are copyright WHATWG (Apple, Google,
 Mozilla, Microsoft), BSD 3-Clause under the exact licenses/whatwg/LICENSE. See
 licenses/whatwg/NOTICE.md for edition identity and source adaptations.
+
+The generator also owns the perfect hashes over UTF-16 code units that recognize the
+closed element and event handler names, and the foreign element names that the tree
+construction algorithm tests, taken from the retained syntax capture of the same
+edition. The hash is a hash-and-displace scheme with a seed found by a deterministic
+search, so the output is reproducible. Its lookup is in src/internal/values/name_hash.rs.
 """
 
 import argparse
 import hashlib
+import html
 from html.parser import HTMLParser
 from pathlib import Path
 import re
@@ -24,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[3]
 CAPTURE = "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md"
 REVISION = "877d6146487f15b15bc8dd0e3c625063a37b456a"
 ORIGINAL_SHA256 = "877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f"
+SYNTAX_CAPTURE = "references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md"
+SYNTAX_CAPTURE_SHA256 = "db1eaacc388d494736080301dd18e9147feb39f2651e2bc7fbeed36ee2cfb214"
 SNAPSHOT = f"https://html.spec.whatwg.org/commit-snapshots/{REVISION}/"
 OUTPUT = ROOT / "crates/surgeist-html/src/vocabulary.rs"
 BEGIN = "// BEGIN GENERATED VOCABULARY\n"
@@ -116,12 +125,15 @@ def array(values):
     return "&[" + ", ".join(values) + "]"
 
 
-def enum_definition(name, namespace, names, description):
+def enum_definition(name, namespace, names, description, hash=None):
+    if len({variant(local) for local in names}) != len(names):
+        raise ValueError(f"{name}: enum variant collision")
     values = "\n".join(f"        {variant(local)} => {rust_string(local)}," for local in names)
+    hash_argument = f"{hash}, " if hash else ""
     return f'''#[rustfmt::skip]
 vocabulary! {{
     /// {description}
-    {name}, {namespace}, [
+    {name}, {namespace}, {hash_argument}[
 {values}
     ]
 }}
@@ -136,6 +148,244 @@ def table(parser, caption, columns, count):
     if len(rows) != count + 1 or any(len(row) != columns for row in rows):
         raise ValueError(f"{caption}: changed table shape or inventory count")
     return rows[1:]
+
+MASK64 = (1 << 64) - 1
+
+
+def hash_units(units, seed):
+    """The 64-bit hash of UTF-16 code units; src/internal/values/name_hash.rs computes the same."""
+    state = (seed ^ 0xCBF29CE484222325) & MASK64
+    for unit in units:
+        state = ((state ^ unit) * 0x100000001B3) & MASK64
+    state ^= state >> 30
+    state = (state * 0xBF58476D1CE4E5B9) & MASK64
+    state ^= state >> 27
+    state = (state * 0x94D049BB133111EB) & MASK64
+    state ^= state >> 31
+    return state
+
+
+def hash_parts(state):
+    """The bucket selector and the two displacement inputs of a hash."""
+    selector = ((state << 21) | (state >> 43)) & 0xFFFFFFFF
+    return selector, state & 0xFFFFFFFF, state >> 32
+
+
+def displaced(first, second, d1, d2, count):
+    return ((d2 + first * d1 + second) & 0xFFFFFFFF) % count
+
+
+def perfect_hash(names):
+    """Find the least seed whose hash-and-displace table maps each name to its own slot.
+
+    Returns (seed, longest, displacements, slots) where slots[i] is the index in `names`
+    of the name stored in slot i. The search is deterministic.
+    """
+    count = len(names)
+    if count == 0 or len(set(names)) != count:
+        raise ValueError("a perfect hash needs distinct names")
+    units = [[ord(char) for char in name] for name in names]
+    if any(ord(char) > 0x7F for name in names for char in name):
+        raise ValueError("a vocabulary name that is not ASCII needs explicit handling: recognition compares units with bytes")
+    buckets = max(1, -(-count // 4))
+    for seed in range(1 << 16):
+        parts = [hash_parts(hash_units(name, seed)) for name in units]
+        grouped = [[] for _ in range(buckets)]
+        for index, (selector, first, second) in enumerate(parts):
+            grouped[selector % buckets].append(index)
+        order = sorted(range(buckets), key=lambda bucket: (-len(grouped[bucket]), bucket))
+        slots = [None] * count
+        displacements = [(0, 0)] * buckets
+        for bucket in order:
+            members = grouped[bucket]
+            if not members:
+                continue
+            found = None
+            for d1 in range(count):
+                for d2 in range(count):
+                    targets = [displaced(parts[m][1], parts[m][2], d1, d2, count) for m in members]
+                    if len(set(targets)) == len(targets) and all(slots[t] is None for t in targets):
+                        found = (d1, d2, targets)
+                        break
+                if found:
+                    break
+            if found is None:
+                break
+            d1, d2, targets = found
+            displacements[bucket] = (d1, d2)
+            for member, target in zip(members, targets):
+                slots[target] = member
+        else:
+            if any(slot is None for slot in slots):
+                raise ValueError("perfect hash left a slot empty")
+            longest = max(len(name) for name in units)
+            for index, name in enumerate(units):
+                selector, first, second = hash_parts(hash_units(name, seed))
+                d1, d2 = displacements[selector % buckets]
+                if slots[displaced(first, second, d1, d2, count)] != index:
+                    raise ValueError("perfect hash lookup disagrees with its construction")
+            return seed, longest, displacements, slots
+    raise ValueError("no seed gives a perfect hash")
+
+
+def hash_definition(constant, names):
+    seed, longest, displacements, slots = perfect_hash(names)
+    pairs = ", ".join(f"({d1}, {d2})" for d1, d2 in displacements)
+    entries = ", ".join(str(slot) for slot in slots)
+    return f"""#[rustfmt::skip]
+const {constant}: NameHash = NameHash::new({seed}, {longest}, &[{pairs}], &[{entries}]);
+"""
+
+
+def unescape(text):
+    return html.unescape(text)
+
+
+FOREIGN_NAME = re.compile(r"\[(MathML|SVG) <code>([^<]+)</code>\]")
+
+
+def foreign_names(text):
+    """The (namespace, name) pairs of the linked foreign element names in `text`, in order."""
+    return [(namespace, unescape(name)) for namespace, name in FOREIGN_NAME.findall(text)]
+
+
+def list_after(lines, marker):
+    """The bullet lines that follow the unique line containing `marker`."""
+    found = [number for number, line in enumerate(lines) if marker in line]
+    if len(found) != 1:
+        raise ValueError(f"expected one line containing {marker!r}, found {len(found)}")
+    start = found[0] + 1
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    end = start
+    while end < len(lines) and lines[end].startswith("- "):
+        end += 1
+    if end == start:
+        raise ValueError(f"no list follows {marker!r}")
+    return lines[start:end]
+
+
+def generate_foreign(syntax_text):
+    """The SVG tag adjustments and the foreign element names of the tree construction algorithm."""
+    if f"Source revision `{REVISION}`" not in syntax_text:
+        raise ValueError("retained syntax capture does not identify the selected HTML edition")
+    stripped = re.sub(r'<a id="[^"]*"></a>', "", syntax_text)
+    lines = stripped.splitlines()
+
+    heading = "<th> Tag name </th><th> Element name      </th>"
+    tables = [line for line in lines if heading in line]
+    if len(tables) != 1:
+        raise ValueError("expected one SVG tag name adjustment table")
+    adjustments = [
+        (unescape(original), unescape(adjusted))
+        for original, adjusted in re.findall(r"<td> <code>([^<]+)</code> </td><td> <code>([^<]+)</code>", tables[0])
+    ]
+    if len(adjustments) != 37 or len({original for original, _ in adjustments}) != 37:
+        raise ValueError("changed SVG tag name adjustment table")
+    if any(original != adjusted.lower() for original, adjusted in adjustments):
+        raise ValueError("an SVG tag name adjustment changes more than letter case")
+
+    def only(namespace, pairs):
+        if any(found != namespace for found, _ in pairs):
+            raise ValueError(f"unexpected namespace in {pairs}")
+        return [name for _, name in pairs]
+
+    text_points = list_after(lines, "A node is a <strong>MathML text integration point</strong>")
+    html_points = list_after(lines, "A node is an <strong>HTML integration point</strong>")
+    scope = list_after(lines, "have a particular element in scope</strong>")
+    special = [line for line in lines if line.startswith("The following elements have varying levels of special parsing rules")]
+    script = [
+        line for line in lines
+        if line.startswith("<strong>An end tag whose tag name is &#34;script&#34;") and "[SVG <code>script</code>]" in line
+    ]
+    if len(special) != 1 or len(script) != 1:
+        raise ValueError("changed special element paragraph or SVG script end tag rule")
+
+    mathml_text = only("MathML", foreign_names("\n".join(text_points)))
+    html_integration = foreign_names("\n".join(html_points))
+    mathml_conditional = list(dict.fromkeys(only("MathML", [p for p in html_integration if p[0] == "MathML"])))
+    svg_integration = only("SVG", [p for p in html_integration if p[0] == "SVG"])
+    scope_pairs = foreign_names("\n".join(scope))
+    special_pairs = foreign_names(special[0])
+    svg_script = only("SVG", foreign_names(script[0]))
+    if mathml_text != ["mi", "mo", "mn", "ms", "mtext"]:
+        raise ValueError(f"changed MathML text integration points: {mathml_text}")
+    if mathml_conditional != ["annotation-xml"] or svg_integration != ["foreignObject", "desc", "title"]:
+        raise ValueError("changed HTML integration points")
+    if svg_script != ["script"]:
+        raise ValueError("changed SVG script element")
+    mathml_special = only("MathML", [p for p in special_pairs if p[0] == "MathML"])
+    svg_special = only("SVG", [p for p in special_pairs if p[0] == "SVG"])
+    mathml_scope = only("MathML", [p for p in scope_pairs if p[0] == "MathML"])
+    svg_scope = only("SVG", [p for p in scope_pairs if p[0] == "SVG"])
+    if mathml_special != mathml_text + mathml_conditional or svg_special != svg_integration:
+        raise ValueError("the special elements are no longer the integration points")
+    if mathml_scope != mathml_special or svg_scope != svg_special:
+        raise ValueError("the scope boundaries differ from the special foreign elements")
+
+    mathml_names = mathml_special
+    svg_names = [adjusted for _, adjusted in adjustments]
+    for name in svg_special + svg_script:
+        if name not in svg_names:
+            svg_names.append(name)
+    return {
+        "adjustments": adjustments,
+        "mathml": mathml_names,
+        "svg": svg_names,
+        "mathml_text": mathml_text,
+        "svg_integration": svg_integration,
+        "mathml_special": mathml_special,
+        "svg_special": svg_special,
+        "mathml_scope": mathml_scope,
+        "svg_scope": svg_scope,
+    }
+
+
+def group_definition(constant, enum, names, description):
+    values = ", ".join(f"{enum}::{variant(name)}" for name in names)
+    return f"""/// {description}
+pub const {constant}: [{enum}; {len(names)}] = [{values}];
+"""
+
+
+def foreign_definitions(foreign):
+    output = "\n" + enum_definition(
+        "KnownMathmlElement", "mathml", foreign["mathml"],
+        "MathML element names that the pinned tree construction algorithm tests by name.", "MATHML_NAME_HASH")
+    output += "\n" + enum_definition(
+        "KnownSvgElement", "svg", foreign["svg"],
+        "SVG element names that the pinned tree construction algorithm adjusts or tests by name.", "SVG_NAME_HASH")
+    output += "\n" + hash_definition("MATHML_NAME_HASH", foreign["mathml"])
+    output += hash_definition("SVG_NAME_HASH", foreign["svg"])
+    pairs = ", ".join(
+        f"({rust_string(original)}, KnownSvgElement::{variant(adjusted)})" for original, adjusted in foreign["adjustments"])
+    output += f"""
+/// The pinned SVG tag name adjustment table (rules for parsing tokens in foreign content,
+/// 13.2.6.5): each lowercase tag name of an SVG element and the mixed-case element name
+/// it becomes, in the table's order.
+#[rustfmt::skip]
+pub const SVG_TAG_NAME_ADJUSTMENTS: &[(&str, KnownSvgElement)] = &[{pairs}];
+
+"""
+    output += "#[rustfmt::skip]\n" + group_definition(
+        "MATHML_TEXT_INTEGRATION_POINTS", "KnownMathmlElement", foreign["mathml_text"],
+        "The MathML elements that are MathML text integration points (13.2.6).")
+    output += "\n#[rustfmt::skip]\n" + group_definition(
+        "SVG_HTML_INTEGRATION_POINTS", "KnownSvgElement", foreign["svg_integration"],
+        "The SVG elements that are HTML integration points by name (13.2.6). A MathML `annotation-xml`\n/// is one only with a matching `encoding` attribute.")
+    output += "\n#[rustfmt::skip]\n" + group_definition(
+        "MATHML_SPECIAL_ELEMENTS", "KnownMathmlElement", foreign["mathml_special"],
+        "The MathML elements in the special category (13.2.4.2).")
+    output += "\n#[rustfmt::skip]\n" + group_definition(
+        "SVG_SPECIAL_ELEMENTS", "KnownSvgElement", foreign["svg_special"],
+        "The SVG elements in the special category (13.2.4.2).")
+    output += "\n#[rustfmt::skip]\n" + group_definition(
+        "MATHML_SCOPE_BOUNDARIES", "KnownMathmlElement", foreign["mathml_scope"],
+        "The MathML elements among the element types of the default scope (13.2.4.2).")
+    output += "\n#[rustfmt::skip]\n" + group_definition(
+        "SVG_SCOPE_BOUNDARIES", "KnownSvgElement", foreign["svg_scope"],
+        "The SVG elements among the element types of the default scope (13.2.4.2).")
+    return output
 
 
 def generate():
@@ -175,13 +425,23 @@ def generate():
         raise ValueError("event handler content attribute names require explicit handling")
     if set(handler_scopes) != {"HTML elements", "body"}:
         raise ValueError("event handler applicability requires explicit handling")
-    output = "// Generated by tools/generate_vocabulary.py from retained non-normative indexes.\n\n"
+    syntax_raw = (ROOT / SYNTAX_CAPTURE).read_bytes()
+    if hashlib.sha256(syntax_raw).hexdigest() != SYNTAX_CAPTURE_SHA256:
+        raise ValueError("retained syntax capture is not the pinned input")
+    foreign = generate_foreign(syntax_raw.decode("utf-8"))
+    output = "// Generated by tools/generate_vocabulary.py from retained non-normative indexes and\n"
+    output += "// the retained syntax capture of the same edition.\n\n"
     output += enum_definition("KnownHtmlElement", "html", element_names,
-                              "Individually named HTML elements in the pinned modern element index.")
+                              "Individually named HTML elements in the pinned modern element index.",
+                              "ELEMENT_NAME_HASH")
     output += "\n" + enum_definition("KnownHtmlAttribute", "none", attribute_names,
                                     "Local names in the pinned ordinary attribute index; contextual rows remain separate.")
     output += "\n" + enum_definition("KnownHtmlEventHandler", "none", handler_names,
-                                    "Event handler content attributes in the pinned event handler index.")
+                                    "Event handler content attributes in the pinned event handler index.",
+                                    "EVENT_HANDLER_NAME_HASH")
+    output += "\n" + hash_definition("ELEMENT_NAME_HASH", element_names)
+    output += hash_definition("EVENT_HANDLER_NAME_HASH", handler_names)
+    output += foreign_definitions(foreign)
     output += "\nimpl KnownHtmlEventHandler {\n"
     output += "    /// The elements this event handler content attribute applies to, as the index states.\n"
     output += "    #[rustfmt::skip]\n    pub fn applicability(self) -> HtmlEventHandlerApplicability {\n        match self {\n"
@@ -196,6 +456,8 @@ pub const VOCABULARY_SOURCE: VocabularySource = VocabularySource {{
     original_html_sha256: {rust_string(ORIGINAL_SHA256)},
     retained_capture: {rust_string(CAPTURE)},
     retained_capture_sha256: {rust_string(hashlib.sha256(raw).hexdigest())},
+    retained_syntax_capture: {rust_string(SYNTAX_CAPTURE)},
+    retained_syntax_capture_sha256: {rust_string(hashlib.sha256(syntax_raw).hexdigest())},
     elements_url: {rust_string(SNAPSHOT + "#elements-3")},
     attributes_url: {rust_string(SNAPSHOT + "#attributes-3")},
 }};
@@ -268,7 +530,7 @@ def main():
         if current != expected:
             print("HTML vocabulary inventory differs; regenerate with --write", file=sys.stderr)
             return 1
-        print("HTML vocabulary inventory matches retained source (111 rows / 113 HTML names; 180 rows / 144 attribute names; 89 event handler names)")
+        print("HTML vocabulary inventory matches retained source (111 rows / 113 HTML names; 180 rows / 144 attribute names; 89 event handler names; 37 SVG tag adjustments; 6 MathML and 40 SVG foreign names)")
     else:
         OUTPUT.write_text(expected)
         print("generated HTML vocabulary inventory")

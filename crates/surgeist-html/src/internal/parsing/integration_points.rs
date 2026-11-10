@@ -5,8 +5,10 @@
 //! retained prefix metadata does not change that identity (issue #1175).
 
 use crate::{
-    internal::values::DocumentString, internal::values::semantic_input::HtmlAttributeInput,
+    internal::values::DocumentString,
+    internal::values::semantic_input::HtmlAttributeInput,
     internal::values::semantic_input::HtmlNameInput,
+    vocabulary::{KnownMathmlElement, MATHML_TEXT_INTEGRATION_POINTS, SVG_HTML_INTEGRATION_POINTS},
 };
 use std::convert::Infallible;
 
@@ -47,13 +49,13 @@ pub fn html_integration_point_rule<E>(
         return Ok(Never);
     };
     if compare(namespace, "http://www.w3.org/2000/svg", Exact)? {
-        for expected in ["foreignObject", "desc", "title"] {
-            if compare(local, expected, Exact)? {
+        for known in SVG_HTML_INTEGRATION_POINTS {
+            if compare(local, known.local_name(), Exact)? {
                 return Ok(Always);
             }
         }
     } else if compare(namespace, "http://www.w3.org/1998/Math/MathML", Exact)?
-        && compare(local, "annotation-xml", Exact)?
+        && compare(local, KnownMathmlElement::AnnotationXml.local_name(), Exact)?
     {
         return Ok(EncodingAttribute);
     }
@@ -146,9 +148,21 @@ pub fn mathml_text_integration_point<E>(
 ) -> Result<bool, E> {
     Ok(compare(HtmlMathmlTextPointTest::Namespace(
         "http://www.w3.org/1998/Math/MathML",
-    ))? && compare(HtmlMathmlTextPointTest::Local(&[
-        "mi", "mo", "mn", "ms", "mtext",
-    ]))?)
+    ))? && compare(HtmlMathmlTextPointTest::Local(&MATHML_TEXT_POINT_NAMES))?)
+}
+
+const MATHML_TEXT_POINT_NAMES: [&str; MATHML_TEXT_INTEGRATION_POINTS.len()] =
+    local_names(&MATHML_TEXT_INTEGRATION_POINTS);
+
+/// The canonical spellings of a group of MathML elements.
+const fn local_names<const N: usize>(group: &[KnownMathmlElement; N]) -> [&'static str; N] {
+    let mut names = [""; N];
+    let mut position = 0;
+    while position < N {
+        names[position] = group[position].local_name();
+        position += 1;
+    }
+    names
 }
 
 /// Classifies MathML text integration points from an exact expanded name.

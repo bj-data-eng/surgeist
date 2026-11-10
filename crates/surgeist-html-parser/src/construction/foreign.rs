@@ -15,6 +15,7 @@ use super::*;
 use surgeist_html::{
     construction::ConstructionNodeKind,
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    vocabulary::SVG_TAG_NAME_ADJUSTMENTS,
 };
 
 const XLINK: &str = "http://www.w3.org/1999/xlink";
@@ -24,9 +25,9 @@ const XMLNS: &str = "http://www.w3.org/2000/xmlns/";
 fn lookup(
     c: &mut ParseControl,
     name: &DocumentString,
-    table: &'static [(&str, &str)],
+    table: impl IntoIterator<Item = (&'static str, &'static str)>,
 ) -> Result<Option<(&'static str, usize)>, SessionError> {
-    for &(original, adjusted) in table {
+    for (original, adjusted) in table {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(c, Some(name), original)? {
             return Ok(Some((adjusted, 0)));
@@ -301,7 +302,9 @@ impl SessionStorage {
     ) -> Result<(QualifiedName, usize, Option<usize>, Option<usize>), SessionError> {
         let classified = (|| {
             let adjustment = match foreign {
-                ForeignNamespace::Svg => lookup(c, original.value.text(), SVG_ATTRIBUTES)?,
+                ForeignNamespace::Svg => {
+                    lookup(c, original.value.text(), SVG_ATTRIBUTES.iter().copied())?
+                }
                 ForeignNamespace::Context => None,
                 ForeignNamespace::MathMl => {
                     if exact_ascii(c, Some(original.value.text()), "definitionurl")? {
@@ -957,51 +960,18 @@ impl ForeignNamespace {
         name: &DocumentString,
     ) -> Result<Option<(&'static str, usize)>, SessionError> {
         if self == Self::Svg {
-            lookup(c, name, SVG_NAMES)
+            lookup(
+                c,
+                name,
+                SVG_TAG_NAME_ADJUSTMENTS
+                    .iter()
+                    .map(|&(original, element)| (original, element.local_name())),
+            )
         } else {
             Ok(None)
         }
     }
 }
-const SVG_NAMES: &[(&str, &str)] = &[
-    ("altglyph", "altGlyph"),
-    ("altglyphdef", "altGlyphDef"),
-    ("altglyphitem", "altGlyphItem"),
-    ("animatecolor", "animateColor"),
-    ("animatemotion", "animateMotion"),
-    ("animatetransform", "animateTransform"),
-    ("clippath", "clipPath"),
-    ("feblend", "feBlend"),
-    ("fecolormatrix", "feColorMatrix"),
-    ("fecomponenttransfer", "feComponentTransfer"),
-    ("fecomposite", "feComposite"),
-    ("feconvolvematrix", "feConvolveMatrix"),
-    ("fediffuselighting", "feDiffuseLighting"),
-    ("fedisplacementmap", "feDisplacementMap"),
-    ("fedistantlight", "feDistantLight"),
-    ("fedropshadow", "feDropShadow"),
-    ("feflood", "feFlood"),
-    ("fefunca", "feFuncA"),
-    ("fefuncb", "feFuncB"),
-    ("fefuncg", "feFuncG"),
-    ("fefuncr", "feFuncR"),
-    ("fegaussianblur", "feGaussianBlur"),
-    ("feimage", "feImage"),
-    ("femerge", "feMerge"),
-    ("femergenode", "feMergeNode"),
-    ("femorphology", "feMorphology"),
-    ("feoffset", "feOffset"),
-    ("fepointlight", "fePointLight"),
-    ("fespecularlighting", "feSpecularLighting"),
-    ("fespotlight", "feSpotLight"),
-    ("fetile", "feTile"),
-    ("feturbulence", "feTurbulence"),
-    ("foreignobject", "foreignObject"),
-    ("glyphref", "glyphRef"),
-    ("lineargradient", "linearGradient"),
-    ("radialgradient", "radialGradient"),
-    ("textpath", "textPath"),
-];
 const SVG_ATTRIBUTES: &[(&str, &str)] = &[
     ("attributename", "attributeName"),
     ("attributetype", "attributeType"),

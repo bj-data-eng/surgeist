@@ -42,10 +42,15 @@ The HTML crate's [vocabulary source](../../crates/surgeist-html/src/vocabulary.r
 incorporates portions of the selected edition's non-normative element and
 attribute indexes into ordinary Rust source under the upstream BSD 3-Clause
 provision. The [offline generator](../../crates/surgeist-html/tools/generate_vocabulary.py)
-reads the retained [index capture](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md).
+reads the retained [index capture](../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md)
+and the retained [syntax capture](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md).
+From the syntax capture it incorporates the SVG tag name adjustment table and
+the lists of MathML and SVG elements that are text integration points, HTML
+integration points, special elements and default scope boundaries.
 Adaptations expand the grouped heading names, collapse printed whitespace,
-preserve contextual attribute rows, and resolve local references to the exact
-HTML edition. Source revision and hashes are embedded in the generated records.
+preserve contextual attribute rows, resolve local references to the exact
+HTML edition, and turn the foreign names and tables into enums and constants.
+Source revision and hashes of both captures are embedded in the generated records.
 The unchanged [upstream LICENSE](LICENSE) supplies the copyright, conditions
 and disclaimer. These inventories do not replace the defining HTML clauses or
 assert complete native HTML or browser conformance.
