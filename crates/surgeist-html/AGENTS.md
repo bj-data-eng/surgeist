@@ -19,7 +19,7 @@ actual current state rather than continuing to return an initial value.
 ## Module Layout
 
 The crate root only declares public modules (`values`, `microsyntax`,
-`vocabulary`, `attributes`, `elements`, `focus`, `security`, `parsing`,
+`vocabulary`, `attributes`, `elements`, `focus`, `scripting`, `security`, `parsing`,
 `construction`, `bounded`). Each re-exports its items from the private
 `src/internal/` implementation tree by explicit lists, so every public item has
 exactly one path and a new `pub` item in an implementation file is not public

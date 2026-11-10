@@ -778,6 +778,74 @@ impl HostedRuntime {
     }
 }
 
+#[cfg(feature = "document-scripting")]
+impl HostedRuntime {
+    pub(crate) fn with_script_target<R>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
+    ) -> Result<R, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let (h, t, c, g) = state.find_global(target.global, cancel, || Ok(()))?;
+        state.step(cancel)?;
+        let host = &state.hosts[h];
+        let top = &host.top_levels[t];
+        let group = top.group.as_ref().ok_or(DomHostedRuntimeError::Protocol)?;
+        let global = &group.clusters[c].agent.globals[g];
+        if host.id != target.host
+            || top
+                .top
+                .as_ref()
+                .is_none_or(|top| top.id != target.navigable)
+            || group.context != target.context
+            || !global.settings.ready
+            || global.settings.document != Some(target.document)
+        {
+            return Err(DomHostedRuntimeError::Inactive);
+        }
+        let canonical = dom
+            .raw()
+            .hosted_navigable(target.navigable)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        if canonical.parent().is_some()
+            || canonical.is_retiring()
+            || canonical.host() != target.host
+            || canonical.browsing_context() != target.context
+            || canonical.global() != target.global
+            || canonical.active_entry() != target.entry
+            || canonical.current_entry() != target.entry
+            || canonical.active_document() != Some(target.document)
+        {
+            return Err(DomHostedRuntimeError::Inactive);
+        }
+        use_target(&state.source, dom).map_err(DomHostedRuntimeError::Dom)
+    }
+
+    pub(crate) fn retain_script_payload(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        bytes: usize,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomHostedRuntimeRetention, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        state
+            .source
+            .retain_runtime_payload(dom.raw_mut(), bytes, cancel)
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+    }
+}
+
 impl HostedRuntime {
     /// Read actual settings joined to the current canonical Document.
     pub fn settings(

@@ -140,6 +140,7 @@ pub enum DomHtmlCaptureResource {
 pub enum DomHtmlCaptureError {
     Source(DomError),
     Host(DomHostError),
+    StaleScriptingObservation,
     Capture(HtmlCaptureError),
     ElementValues(HtmlCaptureElementError<Infallible>),
     Context(HtmlSemanticContextError),
@@ -185,6 +186,7 @@ impl std::error::Error for DomHtmlCaptureError {
             | Self::Cancelled
             | Self::AllocationFailed
             | Self::RepresentationExhausted
+            | Self::StaleScriptingObservation
             | Self::UnmappedSubject => None,
         }
     }
@@ -405,6 +407,7 @@ fn add_document(
     builder: &mut HtmlCaptureBuilder,
     snapshot: &DomSnapshot,
     document: DocumentId,
+    scripting: Option<crate::DomDocumentScriptingObservation>,
     registries: &mut StagedRegistries,
     control: &mut Control<'_>,
 ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
@@ -417,7 +420,13 @@ fn add_document(
         registries,
         control,
     )?;
-    let subject = builder.add_document(metadata.mode(), environment.scripting(), registry)?;
+    let scripting = scripting
+        .filter(|observation| observation.basis().document() == document)
+        .map_or_else(
+            || environment.scripting(),
+            |observation| observation.status(),
+        );
+    let subject = builder.add_document(metadata.mode(), scripting, registry)?;
     builder.establish_document_nonce_environment(
         &subject,
         HtmlNonceDocumentEnvironment::new(
@@ -495,6 +504,33 @@ fn registry_input(
     Ok(HtmlCaptureRegistryInput::Registry(captured))
 }
 
+/// A canonical snapshot paired with an owner-sampled scripting fact.
+pub struct DomScriptingCapture<'a> {
+    snapshot: &'a DomSnapshot,
+    scripting: crate::DomDocumentScriptingObservation,
+}
+
+impl DomScriptingCapture<'_> {
+    /// Capture the observed Document using the selected revision's scripting
+    /// fact. Any supplemental Documents use their own canonical environment.
+    pub fn html_capture(
+        &self,
+        host: Option<&DomHostCapture>,
+        capture_limits: HtmlCaptureLimits,
+        adapter_limits: DomHtmlCaptureLimits,
+        cancellation: &AtomicBool,
+    ) -> Result<DomHtmlCapture, DomHtmlCaptureError> {
+        self.snapshot.capture_html(
+            self.scripting.basis().document(),
+            host,
+            Some(self.scripting),
+            capture_limits,
+            adapter_limits,
+            cancellation,
+        )
+    }
+}
+
 impl DomSnapshot {
     /// Captures every managed node belonging to this exact document, including
     /// detached roots, plus the actual shadow association/ancestor closure.
@@ -504,6 +540,40 @@ impl DomSnapshot {
         &self,
         document: DocumentId,
         host: Option<&DomHostCapture>,
+        capture_limits: HtmlCaptureLimits,
+        adapter_limits: DomHtmlCaptureLimits,
+        cancellation: &AtomicBool,
+    ) -> Result<DomHtmlCapture, DomHtmlCaptureError> {
+        self.capture_html(
+            document,
+            host,
+            None,
+            capture_limits,
+            adapter_limits,
+            cancellation,
+        )
+    }
+
+    /// Select an immutable scripting observation for this exact snapshot.
+    pub fn with_document_scripting(
+        &self,
+        scripting: crate::DomDocumentScriptingObservation,
+    ) -> Result<DomScriptingCapture<'_>, DomHtmlCaptureError> {
+        if self.stamp() != scripting.basis().store() {
+            return Err(DomHtmlCaptureError::StaleScriptingObservation);
+        }
+        self.require_complete_source()?;
+        Ok(DomScriptingCapture {
+            snapshot: self,
+            scripting,
+        })
+    }
+
+    fn capture_html(
+        &self,
+        document: DocumentId,
+        host: Option<&DomHostCapture>,
+        scripting: Option<crate::DomDocumentScriptingObservation>,
         capture_limits: HtmlCaptureLimits,
         adapter_limits: DomHtmlCaptureLimits,
         cancellation: &AtomicBool,
@@ -624,6 +694,7 @@ impl DomSnapshot {
                     &mut builder,
                     self,
                     DocumentId(entry),
+                    scripting,
                     &mut registries,
                     &mut control,
                 )?;

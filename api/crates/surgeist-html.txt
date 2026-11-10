@@ -6219,6 +6219,15 @@ pub fn surgeist_html::parsing::fragment_insertion_mode(name: &impl surgeist_html
 pub fn surgeist_html::parsing::fragment_tokenizer_state(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, effective: surgeist_html::parsing::HtmlParserScriptingMode) -> surgeist_html::parsing::HtmlFragmentTokenizerState
 pub fn surgeist_html::parsing::is_html_integration_point(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::values::HtmlAttributesInput + ?core::marker::Sized) -> bool
 pub fn surgeist_html::parsing::is_mathml_text_integration_point(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> bool
+pub mod surgeist_html::scripting
+pub enum surgeist_html::scripting::HtmlScriptingEngine
+pub surgeist_html::scripting::HtmlScriptingEngine::NoEngine
+pub surgeist_html::scripting::HtmlScriptingEngine::Supported
+pub struct surgeist_html::scripting::HtmlScriptingPolicy
+pub surgeist_html::scripting::HtmlScriptingPolicy::automation_allows: bool
+pub surgeist_html::scripting::HtmlScriptingPolicy::user_allows: bool
+impl surgeist_html::scripting::HtmlScriptingPolicy
+pub fn surgeist_html::scripting::HtmlScriptingPolicy::document_enabled(self, engine: surgeist_html::scripting::HtmlScriptingEngine, active_sandbox: &surgeist_html::attributes::sandbox::HtmlSandboxFlags, browsing_context: surgeist_html::security::nonce::HtmlBrowsingContextPresence) -> bool
 pub mod surgeist_html::security
 pub mod surgeist_html::security::csp
 pub enum surgeist_html::security::csp::HtmlCspAssociationCause

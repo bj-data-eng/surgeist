@@ -203,6 +203,7 @@ pub enum DomHostedError {
     StaleBasis,
     IncompleteOperation,
     UnsupportedProfile,
+    ScriptingDisabled,
     PendingDocumentObligations,
     CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspIssuerBusy,
@@ -2045,5 +2046,40 @@ impl SourceObservation {
         self.shared
             .upgrade()
             .map_or(0, |shared| shared.runtime_bytes.load(Ordering::Relaxed))
+    }
+}
+
+/// Association published by the canonical hosted issuer for one live Document.
+/// Runtime must separately authenticate its engine and policy before observing it.
+#[derive(Debug)]
+pub struct DomDocumentScriptBinding {
+    pub(crate) source: DomHostedSourceId,
+    pub(crate) host: DomHostedHostId,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) document: crate::DocumentId,
+}
+
+/// Current settings facts supplied by the trusted scripting adapter.
+/// DOM independently qualifies the native association and sandbox.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDocumentScriptingFacts {
+    pub engine: surgeist_html::scripting::HtmlScriptingEngine,
+    pub policy: surgeist_html::scripting::HtmlScriptingPolicy,
+}
+
+/// Immutable scripting fact for one exact canonical Document revision.
+/// This observation cannot grant execution or keep a script owner alive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDocumentScriptingObservation {
+    pub(crate) basis: crate::DomDocumentStamp,
+    pub(crate) status: surgeist_html_semantics::HtmlScriptingStatus,
+}
+
+impl DomDocumentScriptingObservation {
+    pub const fn basis(self) -> crate::DomDocumentStamp {
+        self.basis
+    }
+    pub const fn status(self) -> surgeist_html_semantics::HtmlScriptingStatus {
+        self.status
     }
 }

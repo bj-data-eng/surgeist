@@ -166,6 +166,8 @@ mod command;
 mod coord;
 mod descriptor;
 mod diagnostic;
+#[cfg(feature = "document-scripting")]
+pub mod document_scripting;
 mod dom_dialog;
 mod dom_event;
 mod dom_host;

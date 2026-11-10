@@ -212,6 +212,9 @@ pub use host::{
 };
 pub use hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
 pub use hosted::{
+    DomDocumentScriptBinding, DomDocumentScriptingFacts, DomDocumentScriptingObservation,
+};
+pub use hosted::{
     DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,
     DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,
     DomHostedChildRemovalRequest, DomHostedChildRequest, DomHostedChildStep, DomHostedCreation,
@@ -267,7 +270,7 @@ pub use select::{
 };
 pub use semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,
-    DomSlotSemanticLimits,
+    DomScriptingCapture, DomSlotSemanticLimits,
 };
 pub use shadow::{DomShadowRootInit, DomShadowRootState};
 pub use slot::{

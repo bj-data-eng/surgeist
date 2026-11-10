@@ -232,6 +232,17 @@ association readiness.
 The [hosted Style custody withdrawal](docs/explanation.md#hosted-style-custody-withdrawal)
 front joins an idle bound root to its original hosted destruction Cleanup.
 
+The optional `document-scripting` feature attaches a bindings process and realm
+to an authenticated native top-level Document. The host-defined child-count
+callable reads the original Session's current DOM. Entry releases native loans
+before running guest code and leaves queued jobs for an explicit checked
+checkpoint. Stop disposes of the queue and returns custody of the native Session.
+The default Runtime uses the native no-script profile. A live owner can sample
+scripting for the current DOM revision; historical captures preserve the sampled
+fact with their exact snapshot. This slice covers the hosted entry and read path.
+Guest-backed Source event servicing is pending. Standard DOM wrappers and parser
+execution belong to their own contributions.
+
 ## Start
 
 From a prepared checkout with the [prerequisites](docs/getting-started.md#prerequisites),

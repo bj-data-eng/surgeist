@@ -1954,3 +1954,116 @@ impl DomHostedSource {
         })
     }
 }
+
+impl DomHostedSource {
+    fn script_document<'dom>(
+        &self,
+        dom: &'dom Dom,
+        host: DomHostedHostId,
+        global: DomHostedGlobalId,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<&'dom DomDocumentMetadata, DomHostedError> {
+        check_cancel(cancel)?;
+        dom.validate_hosted_source(self)?;
+        dom.require_source_idle()?;
+        if dom.global_document(global)? != document {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let node = dom.state.node(dom.owner, document.node())?;
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        if association.host != host {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        association.source.validate_issuer(self.id())?;
+        Ok(metadata)
+    }
+
+    /// Publish that this Document now requires a qualified live scripting host.
+    /// The trusted Runtime supplies already-established engine and hook custody.
+    pub fn attach_document_script_host(
+        &self,
+        dom: &mut Dom,
+        host: DomHostedHostId,
+        global: DomHostedGlobalId,
+        document: DocumentId,
+        facts: DomDocumentScriptingFacts,
+        cancel: &AtomicBool,
+    ) -> Result<DomDocumentScriptBinding, DomHostedError> {
+        use surgeist_html_semantics::HtmlScriptingStatus;
+        let metadata = self.script_document(dom, host, global, document, cancel)?;
+        if metadata.document_environment().scripting() != HtmlScriptingStatus::Disabled {
+            return Err(DomHostedError::WrongPhase);
+        }
+        if document_script_status(metadata, Some(facts))? != HtmlScriptingStatus::Enabled {
+            return Err(DomHostedError::ScriptingDisabled);
+        }
+        let mut draft = Draft::new(dom, DomBatch::new().owner, cancel)?;
+        let mut metadata = draft.document_metadata_mut(Key::Existing(document.node()), cancel)?;
+        metadata.require_script_host();
+        metadata.commit(cancel)?;
+        let prepared = draft.finish(dom, cancel)?;
+        dom.publish(prepared, cancel)?;
+        Ok(DomDocumentScriptBinding {
+            source: self.id(),
+            host,
+            global,
+            document,
+        })
+    }
+
+    /// Observe scripting for the current complete canonical revision. Runtime
+    /// authenticates the actual live engine before each observation.
+    pub fn observe_document_scripting(
+        &self,
+        dom: &Dom,
+        binding: &DomDocumentScriptBinding,
+        facts: Option<DomDocumentScriptingFacts>,
+        cancel: &AtomicBool,
+    ) -> Result<DomDocumentScriptingObservation, DomHostedError> {
+        if binding.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let metadata =
+            self.script_document(dom, binding.host, binding.global, binding.document, cancel)?;
+        let status = document_script_status(metadata, facts)?;
+        Ok(DomDocumentScriptingObservation {
+            basis: dom.snapshot().document(binding.document)?.stamp(),
+            status,
+        })
+    }
+}
+
+fn document_script_status(
+    metadata: &DomDocumentMetadata,
+    facts: Option<DomDocumentScriptingFacts>,
+) -> Result<surgeist_html_semantics::HtmlScriptingStatus, DomHostedError> {
+    use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
+    use surgeist_html_semantics::HtmlScriptingStatus;
+    let browsing_context = metadata.document_environment().browsing_context();
+    if browsing_context == HtmlBrowsingContextPresence::Absent {
+        return Ok(HtmlScriptingStatus::Disabled);
+    }
+    let Some(facts) = facts else {
+        return Ok(HtmlScriptingStatus::Unavailable);
+    };
+    let inputs = metadata
+        .hosted_inputs
+        .as_ref()
+        .ok_or(DomHostedError::UnsupportedProfile)?;
+    if facts
+        .policy
+        .document_enabled(facts.engine, &inputs.0.active_sandbox, browsing_context)
+    {
+        Ok(HtmlScriptingStatus::Enabled)
+    } else {
+        Ok(HtmlScriptingStatus::Disabled)
+    }
+}

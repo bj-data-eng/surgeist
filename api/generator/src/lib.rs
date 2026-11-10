@@ -86,6 +86,7 @@ enum ApiProfile {
     CssCorpus,
     RenderText,
     RenderPaint,
+    DocumentScripting,
 }
 
 impl ApiTarget {
@@ -129,12 +130,22 @@ impl ApiTarget {
         }
     }
 
+    fn document_scripting(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-runtime".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::DocumentScripting,
+        }
+    }
+
     fn audit_name(&self) -> String {
         match self.profile {
             ApiProfile::Default => self.name.clone(),
             ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
             ApiProfile::RenderText => format!("{} [render-text]", self.name),
             ApiProfile::RenderPaint => format!("{} [render-paint]", self.name),
+            ApiProfile::DocumentScripting => format!("{} [document-scripting]", self.name),
         }
     }
 
@@ -208,6 +219,12 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 crate_targets.push(ApiTarget::render_paint(
                     path.clone(),
                     root.join("api/crates/surgeist-render.render-paint.txt"),
+                ));
+            }
+            if name == "surgeist-runtime" {
+                crate_targets.push(ApiTarget::document_scripting(
+                    path.clone(),
+                    root.join("api/crates/surgeist-runtime.document-scripting.txt"),
                 ));
             }
             crate_targets.push(ApiTarget::new(name, path, artifact));
@@ -319,6 +336,9 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
         ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
         ApiProfile::RenderText => builder.no_default_features(true).features(["render-text"]),
         ApiProfile::RenderPaint => builder.no_default_features(true).features(["render-paint"]),
+        ApiProfile::DocumentScripting => builder
+            .no_default_features(true)
+            .features(["document-scripting"]),
     };
     let rustdoc_json = builder
         .build()
