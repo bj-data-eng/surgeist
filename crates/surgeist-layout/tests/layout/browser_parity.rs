@@ -466,12 +466,9 @@ fn normalized_flex_collapse_chrome_variants_match_reviewed_geometry() {
 
 #[test]
 fn runs_browser_parity_smoke_fixture_against_surgeist_layout() {
-    let golden = support::Golden::parse(include_str!(
-        "browser_parity/xml/block/block_basic__border_box_ltr.xml"
-    ))
-    .expect("browser parity fixture should parse");
-
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml");
+    assert_registered_originals_match(&[original]);
 }
 
 fn clear_browser_control_observations(expectation: &mut support::Expectation) {
@@ -934,16 +931,11 @@ fn assert_calc_fixture_family_matches(family: &str) {
     )
     .unwrap_or_else(|error| panic!("{error}"));
 
-    for fixture in fixtures
+    let originals = fixtures
         .into_iter()
         .filter_map(|(relative, fixture)| paths.contains(&relative).then_some(fixture))
-    {
-        let golden = support::Golden::parse_file(&fixture)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", fixture.display()));
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} failed layout comparison: {error}", fixture.display())
-        });
-    }
+        .collect::<Vec<_>>();
+    assert_registered_originals_match(&originals);
 }
 
 fn calc_fixture_family_paths(
@@ -2277,6 +2269,32 @@ fn registered_outputs_for_originals(
             output.clone()
         })
         .collect()
+}
+
+fn assert_registered_originals_match(originals: &[PathBuf]) {
+    assert!(
+        !originals.is_empty(),
+        "original selection must not be empty"
+    );
+    let edition = registered_current_edition().expect("current captures must authenticate");
+    let selected = registered_outputs_for_originals(&edition, originals);
+    let run = edition.execute_selected(&selected).unwrap();
+    assert_eq!(run.cases.len(), originals.len());
+    for case in &run.cases {
+        assert!(
+            case.raw.as_ref().is_ok_and(Vec::is_empty),
+            "{}: {:?}",
+            case.output,
+            case.raw
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
 }
 
 fn selected_current_outputs(
