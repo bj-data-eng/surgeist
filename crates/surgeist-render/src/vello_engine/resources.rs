@@ -546,7 +546,7 @@ impl VelloResourceLease {
         ScopeResolvedVelloResourceLease { lease: self }
     }
 
-    fn into_committed_resources(mut self) -> Result<CommittedVelloResources> {
+    fn into_committed_resources(self) -> Result<CommittedVelloResources> {
         self.pending.commit()
     }
 
@@ -807,15 +807,23 @@ impl PendingVelloResources {
         frame_scope.ensure_commit_ready_iter(leases)
     }
 
-    fn commit(&mut self) -> Result<CommittedVelloResources> {
-        self.ensure_commit_ready()?;
+    fn commit(mut self) -> Result<CommittedVelloResources> {
+        let leases = self
+            .buffers
+            .values()
+            .map(|managed| &managed.lease)
+            .chain(self.images.values().map(|managed| &managed.lease));
+        let mut readiness = Ok(());
+        let frame_scope = self.frame_scope.take_if(|frame_scope| {
+            readiness = frame_scope.ensure_commit_ready_iter(leases);
+            readiness.is_ok()
+        });
+        readiness?;
+        let mut frame_scope = frame_scope
+            .ok_or_else(|| render_failed("internal Vello resource frame was already resolved"))?;
         let atlas_handle = self.persistent_image_atlas.resource();
         #[cfg(test)]
         let atlas_outcome = self.persistent_image_atlas.commit_outcome();
-        let mut frame_scope = self
-            .frame_scope
-            .take()
-            .expect("a pending Vello commit must own its resource frame");
 
         for (_, managed) in self.buffers.drain() {
             match self.clean_retention {
@@ -1277,6 +1285,10 @@ mod tests {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "resources/collection_tests.rs"]
 mod collection_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "resources/individual_commit_tests.rs"]
+mod individual_commit_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod gradient_extent_tests {
