@@ -4,7 +4,23 @@ use crate::accounting::{Account, OwnedBox, RenderPhase, RenderWork};
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
+#[cfg(not(test))]
 use crate::backend::render_exact_presented_graph_surface;
+#[cfg(all(
+    test,
+    any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    )
+))]
+use crate::backend::render_renderer_exact_presented_graph_surface as render_exact_presented_graph_surface;
+#[cfg(not(test))]
+use crate::backend::{ExactSurfaceGraph, render_exact_headless_graph_surface};
+#[cfg(test)]
+use crate::backend::{
+    RendererExactSurfaceGraph as ExactSurfaceGraph,
+    render_renderer_exact_headless_graph_surface as render_exact_headless_graph_surface,
+};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -15,8 +31,7 @@ use crate::{
     RenderRoute, Result, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Surface,
     UnsupportedPrimitive,
     backend::{
-        DeviceCapabilities, DeviceSlotIdentity, ExactSurfaceGraph, SurfaceFrameCommit,
-        render_exact_headless_graph_surface, render_internal_vello_surface,
+        DeviceCapabilities, DeviceSlotIdentity, SurfaceFrameCommit, render_internal_vello_surface,
     },
     command::RenderCommands,
     encode::encode_vello_scene,
@@ -214,6 +229,25 @@ impl Renderer {
         })
     }
 
+    #[cfg(test)]
+    pub(super) async fn execute_exact_graph_for_test(
+        &mut self,
+        surface: &mut Surface,
+        graph: OwnedBox<ExactSurfaceGraph>,
+        parameters: Parameters,
+        device_identity: DeviceSlotIdentity,
+        account: &Account,
+    ) -> Result<SurfaceFrameCommit> {
+        self.execute_render_frame(
+            surface,
+            PreparedRendererExecution::ExactGraph(graph),
+            parameters,
+            device_identity,
+            account,
+        )
+        .await
+    }
+
     async fn execute_render_frame(
         &mut self,
         surface: &mut Surface,
@@ -252,21 +286,11 @@ impl Renderer {
                     ))]
                     {
                         if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
-                            render_exact_presented_graph_surface(
-                                backend,
-                                surface,
-                                graph.into_inner(),
-                                account,
-                            )
-                            .await
+                            render_exact_presented_graph_surface(backend, surface, graph, account)
+                                .await
                         } else {
-                            render_exact_headless_graph_surface(
-                                backend,
-                                surface,
-                                graph.into_inner(),
-                                account,
-                            )
-                            .await
+                            render_exact_headless_graph_surface(backend, surface, graph, account)
+                                .await
                         }
                     }
                     #[cfg(not(any(
@@ -274,13 +298,7 @@ impl Renderer {
                         all(feature = "render-web", target_arch = "wasm32")
                     )))]
                     {
-                        render_exact_headless_graph_surface(
-                            backend,
-                            surface,
-                            graph.into_inner(),
-                            account,
-                        )
-                        .await
+                        render_exact_headless_graph_surface(backend, surface, graph, account).await
                     }
                 }
             }

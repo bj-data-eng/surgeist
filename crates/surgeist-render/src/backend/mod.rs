@@ -6,6 +6,22 @@ mod present;
 mod test_support;
 mod texture;
 
+// Renderer dispatch exercises the production boxed ingress in test builds too;
+// the wider filter fixture ingress below remains test-owned.
+#[cfg(all(
+    test,
+    any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    )
+))]
+pub(crate) use execute::render_exact_presented_graph_surface as render_renderer_exact_presented_graph_surface;
+#[cfg(test)]
+pub(crate) use execute::{
+    ExactSurfaceGraph as RendererExactSurfaceGraph, hold_exact_preparation_for_test,
+    render_exact_headless_graph_surface as render_renderer_exact_headless_graph_surface,
+};
+
 pub(crate) use device::{
     DeviceCapabilities, DeviceSignal, DeviceSlotIdentity, DeviceState, DeviceTerminalSignal,
 };

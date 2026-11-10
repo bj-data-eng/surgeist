@@ -952,6 +952,7 @@ fn filter_step_order_is_exact(
     result.is_some()
 }
 #[must_use]
+#[derive(Clone)]
 pub(crate) struct BaseExecutionFacts {
     pub(super) working_format: WorkingFormat,
     pub(super) output_format: Format,
@@ -1076,8 +1077,8 @@ impl BasePreparableGraph {
         }))
     }
 
-    pub(super) fn into_parts(self) -> (LoweredGraphPlan, BaseExecutionFacts) {
-        (self.lowered, self.execution)
+    pub(super) fn parts(&self) -> (&LoweredGraphPlan, &BaseExecutionFacts) {
+        (&self.lowered, &self.execution)
     }
 
     pub(crate) const fn working_format(&self) -> WorkingFormat {
@@ -1118,6 +1119,10 @@ impl CompositionPreparableGraph {
         Ok(Self { closed })
     }
 
+    pub(super) fn closed(&self) -> &ClosedExecutableGraph {
+        &self.closed
+    }
+
     pub(super) fn into_closed(self) -> ClosedExecutableGraph {
         self.closed
     }
@@ -1153,10 +1158,6 @@ impl ColorFilterPreparableGraph {
                 .facts
                 .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
-
-    pub(super) fn into_closed(self) -> ClosedExecutableGraph {
-        self.closed
-    }
 }
 
 #[must_use]
@@ -1180,10 +1181,6 @@ impl SpatialFilterPreparableGraph {
                 .closed
                 .facts
                 .proves_exact_facts_for(&self.closed.lowered, account)?)
-    }
-
-    pub(super) fn into_closed(self) -> ClosedExecutableGraph {
-        self.closed
     }
 }
 
@@ -1236,10 +1233,6 @@ impl BackdropPreparableGraph {
             .ok_or_else(|| preparation_error("the backdrop root output resource is missing"));
         proof.finish()?;
         result
-    }
-
-    pub(super) fn into_closed(self) -> ClosedExecutableGraph {
-        self.closed
     }
 }
 #[derive(Clone)]

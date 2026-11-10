@@ -5933,7 +5933,7 @@ impl<'device> PreparedGraph<'device> {
         let selected_working_format = preparable.working_format();
         let prepared = Self::try_prepare_inner(
             GraphPreparationSource::ColorFilter {
-                preparable,
+                preparable: &preparable,
                 operation_limits: None,
             },
             selected_working_format,
@@ -5961,7 +5961,7 @@ impl<'device> PreparedGraph<'device> {
     ) -> Result<Self> {
         let selected_working_format = preparable.working_format();
         let prepared = Self::try_prepare_inner(
-            GraphPreparationSource::SpatialFilter(preparable),
+            GraphPreparationSource::SpatialFilter(&preparable),
             selected_working_format,
             capabilities,
             (device, queue),
@@ -5997,7 +5997,7 @@ impl<'device> PreparedGraph<'device> {
         let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
         let prepared = Self::try_prepare_inner(
             GraphPreparationSource::ColorFilter {
-                preparable,
+                preparable: &preparable,
                 operation_limits: Some(operation_limits),
             },
             selected_working_format,

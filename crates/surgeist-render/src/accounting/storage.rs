@@ -181,8 +181,9 @@ impl<T> Drop for BackedValue<T> {
 /// One explicit fixed-size heap payload. The value is disposed before its
 /// admission; nested values retain their independent backing guards.
 pub(crate) struct OwnedBox<T> {
-    value: Option<Box<T>>,
-    hold: Option<Hold>,
+    // Rust destroys fields in order, including during payload unwind.
+    value: Box<T>,
+    allocation: AllocationCleanup,
 }
 impl<T> OwnedBox<T> {
     pub(crate) fn new(value: T, account: &StorageAccount) -> Result<Self> {
@@ -190,41 +191,34 @@ impl<T> OwnedBox<T> {
             let hold =
                 account.acquire(RenderResource::RetainedCpuBytes, std::mem::size_of::<T>())?;
             Ok(Self {
-                value: Some(Box::new(value)),
-                hold: Some(hold),
+                value: Box::new(value),
+                allocation: AllocationCleanup {
+                    hold,
+                    completion: None,
+                },
             })
         })
-    }
-    pub(crate) fn into_inner(mut self) -> T {
-        let value = self.value.take().expect("owned box payload");
-        self.hold
-            .take()
-            .expect("owned box admission")
-            .dispose(|| *value)
     }
 }
 impl<T> Drop for OwnedBox<T> {
     fn drop(&mut self) {
-        if let Some(hold) = self.hold.take() {
-            let value = self.value.take();
-            hold.dispose(|| drop(value));
-        }
+        self.allocation.begin_cleanup();
     }
 }
 impl<T> Deref for OwnedBox<T> {
     type Target = T;
     fn deref(&self) -> &T {
-        self.value.as_ref().expect("owned box payload")
+        &self.value
     }
 }
 impl<T> DerefMut for OwnedBox<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.value.as_mut().expect("owned box payload")
+        &mut self.value
     }
 }
 impl<T: std::fmt::Debug> std::fmt::Debug for OwnedBox<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.value.as_ref().expect("owned box payload").fmt(f)
+        self.value.fmt(f)
     }
 }
 impl<T: PartialEq> PartialEq for OwnedBox<T> {
@@ -242,15 +236,15 @@ struct SharedValueData<T> {
     // allocation release/phase completion, then separate import cleanup.
     value: T,
     _backing: Option<Hold>,
-    _allocation: SharedAllocation,
+    _allocation: AllocationCleanup,
     _import: Option<CpuImport>,
 }
-struct SharedAllocation {
+struct AllocationCleanup {
     // This field releases before the trailing completion marker ends the phase.
     hold: Hold,
     completion: Option<super::cpu::MaintenancePhase>,
 }
-impl SharedAllocation {
+impl AllocationCleanup {
     fn begin_cleanup(&mut self) {
         if let Hold::Renderer(hold) = &self.hold {
             self.completion = Some(hold.account().begin_maintenance_phase());
@@ -287,7 +281,7 @@ impl<T> SharedValue<T> {
             Ok(Self(std::sync::Arc::new(SharedValueData {
                 value,
                 _backing: backing,
-                _allocation: SharedAllocation {
+                _allocation: AllocationCleanup {
                     hold: allocation,
                     completion: None,
                 },
@@ -300,6 +294,15 @@ impl<T> SharedValue<T> {
     /// Ordinary `PartialEq` remains content equality.
     pub(crate) fn same_allocation(&self, other: &Self) -> bool {
         std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+    #[cfg(test)]
+    pub(crate) fn allocation_liveness_for_test(&self) -> impl Fn() -> bool + use<T> {
+        let weak = std::sync::Arc::downgrade(&self.0);
+        move || weak.strong_count() != 0
+    }
+    #[cfg(test)]
+    pub(crate) const fn allocation_size_for_test() -> usize {
+        std::mem::size_of::<SharedValueData<T>>()
     }
     pub(crate) fn from_accounted(
         values: AccountedVec<T>,
@@ -1078,7 +1081,182 @@ mod tests {
     }
 
     #[test]
-    fn boxed_payload_releases_fixed_allocation_when_moved_back_inline() {
+    fn boxed_payload_projects_the_actual_value_and_releases_after_disposal() {
+        use crate::accounting::{RenderClock, RenderProfile};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        };
+        use std::time::Duration;
+        static TIME: AtomicU64 = AtomicU64::new(0);
+        fn now() -> Duration {
+            Duration::from_millis(TIME.load(Ordering::SeqCst))
+        }
+        fn forbidden_clock() -> Duration {
+            panic!("untimed boxed payload read the clock")
+        }
+        struct Probe {
+            cpu: RendererCpu,
+            drops: Arc<AtomicUsize>,
+            live: Arc<AtomicU64>,
+            unwind: bool,
+        }
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                self.live.store(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    Ordering::SeqCst,
+                );
+                self.drops.fetch_add(1, Ordering::SeqCst);
+                TIME.fetch_add(7, Ordering::SeqCst);
+                assert!(!self.unwind, "boxed payload destructor unwind");
+            }
+        }
+        for profile in [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Summary { timing: true },
+        ] {
+            let timed = matches!(profile, RenderProfile::Summary { timing: true });
+            for exit in 0..3 {
+                let unwind = exit == 2;
+                TIME.store(0, Ordering::SeqCst);
+                let cpu = RendererCpu::new(
+                    RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_clock(RenderClock::Host(if timed { now } else { forbidden_clock })),
+                )
+                .unwrap();
+                let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+                let mut value = OwnedBox::new(73u32, &storage).unwrap();
+                assert_eq!(*value, 73);
+                *value = 91;
+                let equal = OwnedBox::new(91u32, &storage).unwrap();
+                assert_eq!(value, equal);
+                assert_eq!(format!("{value:?}"), "91");
+                drop((value, equal));
+                let drops = Arc::new(AtomicUsize::new(0));
+                let live = Arc::new(AtomicU64::new(0));
+                let baseline = cpu
+                    .snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes);
+                let value = OwnedBox::new(
+                    Probe {
+                        cpu: cpu.clone(),
+                        drops: drops.clone(),
+                        live: live.clone(),
+                        unwind,
+                    },
+                    &storage,
+                )
+                .unwrap();
+                let interval = cpu.begin_interval().unwrap();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _value = value;
+                    if exit == 1 {
+                        Err(crate::Error::new(
+                            crate::BackendErrorCode::RenderFailed,
+                            "boxed owner caller failed",
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }));
+                assert_eq!(result.is_err(), unwind);
+                if !unwind {
+                    assert_eq!(result.unwrap().is_err(), exit == 1);
+                }
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+                assert_eq!(
+                    live.load(Ordering::SeqCst),
+                    std::mem::size_of::<Probe>() as u64 + baseline
+                );
+                let interval = interval.finish().unwrap();
+                assert_eq!(
+                    interval.scope_elapsed(RenderCpuScope::FrameBacking),
+                    timed.then_some(Duration::from_millis(7))
+                );
+                assert_eq!(
+                    interval.usage().live(RenderResource::RetainedCpuBytes),
+                    baseline
+                );
+                assert_eq!(cpu.snapshot().unwrap().fault(), None);
+            }
+        }
+    }
+
+    #[test]
+    fn boxed_constructor_refusal_destroys_incoming_value_once_and_preserves_cause() {
+        use crate::accounting::RenderLimits;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        struct Probe(Arc<AtomicUsize>);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let baseline = RendererCpu::new(RenderAccountingOptions::new())
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        for entry_failure in [false, true] {
+            let cpu = RendererCpu::new(
+                RenderAccountingOptions::new()
+                    .with_limits(RenderLimits::new().with_retained_bytes(baseline)),
+            )
+            .unwrap();
+            let account = cpu.at(RenderCpuScope::FrameBacking);
+            if entry_failure {
+                account.note_fault(RenderAccountingError::Invariant);
+            }
+            let drops = Arc::new(AtomicUsize::new(0));
+            let error = OwnedBox::new(Probe(drops.clone()), &StorageAccount::Renderer(account))
+                .err()
+                .unwrap();
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            if entry_failure {
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Invariant)
+                );
+            } else {
+                assert!(
+                    matches!(error.accounting_diagnostic(), Some(RenderAccountingError::CpuRefused { current, amount, .. }) if current == baseline && amount == std::mem::size_of::<Probe>() as u64)
+                );
+            }
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                baseline
+            );
+        }
+    }
+
+    #[test]
+    fn boxed_payload_retains_fixed_allocation_until_its_owner_drops() {
+        eprintln!(
+            "boxed native layout: wrapper={}, former optional-box/hold fields={}, payload u32={}, exact graph={}, semantic graph={}, FramePlan={}, VelloScene={}",
+            std::mem::size_of::<OwnedBox<u32>>(),
+            std::mem::size_of::<(Option<Box<u32>>, Option<Hold>)>(),
+            std::mem::size_of::<u32>(),
+            std::mem::size_of::<crate::backend::RendererExactSurfaceGraph>(),
+            std::mem::size_of::<crate::frame::GpuRenderGraph>(),
+            std::mem::size_of::<crate::frame::FramePlan>(),
+            std::mem::size_of::<crate::vello_engine::scene::VelloScene>(),
+        );
         let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let baseline = cpu
             .snapshot()
@@ -1094,7 +1272,8 @@ mod tests {
                 .live(RenderResource::RetainedCpuBytes),
             baseline + 4
         );
-        assert_eq!(OwnedBox::into_inner(value), 73);
+        assert_eq!(*value, 73);
+        drop(value);
         assert_eq!(
             cpu.snapshot()
                 .unwrap()

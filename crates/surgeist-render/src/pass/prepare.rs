@@ -1,4 +1,7 @@
 use super::{PassMap, PassSet};
+#[cfg(test)]
+#[path = "prepare_boxed_tests.rs"]
+mod boxed_tests;
 use crate::accounting::{
     Account, AccountedVec, Generation, GenerationClass, OwnedGpu, RenderPhase, RenderWork,
     SharedValue,
@@ -137,7 +140,7 @@ pub(super) struct RuntimeGraphPreparationPlan {
 
 impl RuntimeGraphPreparationPlan {
     fn try_derive(
-        lowered: LoweredGraphPlan,
+        lowered: &LoweredGraphPlan,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         device: &wgpu::Device,
@@ -154,7 +157,7 @@ impl RuntimeGraphPreparationPlan {
     }
 
     fn try_derive_with_color_filter_limits(
-        lowered: LoweredGraphPlan,
+        lowered: &LoweredGraphPlan,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         device: &wgpu::Device,
@@ -167,21 +170,17 @@ impl RuntimeGraphPreparationPlan {
                 "the lowered graph working format does not match immutable device policy",
             ));
         }
-        let mut prepared_resources = prepare_runtime_resources(&lowered, capabilities, account)?;
-        let pass_facts = analyze_runtime_passes(
-            &lowered,
-            &prepared_resources.resource_by_id,
-            device,
-            account,
-        )?;
+        let mut prepared_resources = prepare_runtime_resources(lowered, capabilities, account)?;
+        let pass_facts =
+            analyze_runtime_passes(lowered, &prepared_resources.resource_by_id, device, account)?;
         validate_prepared_graph_lifetimes(
-            &lowered,
+            lowered,
             &prepared_resources.resource_by_id,
             &pass_facts,
             account,
         )?;
         let passes = prepare_runtime_pass_requests(
-            &lowered,
+            lowered,
             &prepared_resources.resource_by_id,
             &pass_facts,
             color_filter_limits,
@@ -918,19 +917,19 @@ impl ExecutableGraphDispatchEligibility {
     }
 }
 
-pub(super) enum GraphPreparationSource {
-    Base(BasePreparableGraph),
-    Composition(ClosedExecutableGraph),
+pub(super) enum GraphPreparationSource<'source> {
+    Base(&'source BasePreparableGraph),
+    Composition(&'source ClosedExecutableGraph),
     ColorFilter {
-        preparable: ColorFilterPreparableGraph,
+        preparable: &'source ColorFilterPreparableGraph,
         operation_limits: Option<ColorFilterOperationBufferLimits>,
     },
-    SpatialFilter(SpatialFilterPreparableGraph),
-    Backdrop(BackdropPreparableGraph),
+    SpatialFilter(&'source SpatialFilterPreparableGraph),
+    Backdrop(&'source BackdropPreparableGraph),
 }
 
-type GraphPreparationParts = (
-    LoweredGraphPlan,
+type GraphPreparationParts<'source> = (
+    &'source LoweredGraphPlan,
     Option<BaseExecutionFacts>,
     Option<SharedValue<ClosedExecutableGraphFacts>>,
     Option<SharedValue<ClosedExecutableGraphFacts>>,
@@ -938,7 +937,7 @@ type GraphPreparationParts = (
     Option<SharedValue<ClosedExecutableGraphFacts>>,
 );
 
-impl GraphPreparationSource {
+impl<'source> GraphPreparationSource<'source> {
     const fn color_filter_operation_limits(&self) -> Option<ColorFilterOperationBufferLimits> {
         match self {
             Self::ColorFilter {
@@ -950,26 +949,52 @@ impl GraphPreparationSource {
         }
     }
 
-    fn into_parts(self) -> GraphPreparationParts {
+    fn parts(self) -> GraphPreparationParts<'source> {
         match self {
             Self::Base(preparable) => {
-                let (lowered, execution) = preparable.into_parts();
-                (lowered, Some(execution), None, None, None, None)
+                let (lowered, execution) = preparable.parts();
+                (lowered, Some(execution.clone()), None, None, None, None)
             }
-            Self::Composition(closed) => {
-                (closed.lowered, None, Some(closed.facts), None, None, None)
-            }
+            Self::Composition(closed) => (
+                &closed.lowered,
+                None,
+                Some(closed.facts.clone()),
+                None,
+                None,
+                None,
+            ),
             Self::ColorFilter { preparable, .. } => {
-                let closed = preparable.into_closed();
-                (closed.lowered, None, None, Some(closed.facts), None, None)
+                let closed = &preparable.closed;
+                (
+                    &closed.lowered,
+                    None,
+                    None,
+                    Some(closed.facts.clone()),
+                    None,
+                    None,
+                )
             }
             Self::SpatialFilter(preparable) => {
-                let closed = preparable.into_closed();
-                (closed.lowered, None, None, None, Some(closed.facts), None)
+                let closed = &preparable.closed;
+                (
+                    &closed.lowered,
+                    None,
+                    None,
+                    None,
+                    Some(closed.facts.clone()),
+                    None,
+                )
             }
             Self::Backdrop(preparable) => {
-                let closed = preparable.into_closed();
-                (closed.lowered, None, None, None, None, Some(closed.facts))
+                let closed = &preparable.closed;
+                (
+                    &closed.lowered,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(closed.facts.clone()),
+                )
             }
         }
     }
@@ -1345,7 +1370,7 @@ fn realize_copy_backdrop_for_preparation<'a>(
 
 impl<'device> PreparedGraph<'device> {
     pub(crate) fn try_prepare_base(
-        preparable: BasePreparableGraph,
+        preparable: &BasePreparableGraph,
         policy: EffectQualityPolicy,
         capabilities: &DeviceCapabilities,
         (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
@@ -1366,7 +1391,7 @@ impl<'device> PreparedGraph<'device> {
     }
 
     pub(crate) fn try_prepare_base_with_working_format(
-        preparable: BasePreparableGraph,
+        preparable: &BasePreparableGraph,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
@@ -1392,7 +1417,7 @@ impl<'device> PreparedGraph<'device> {
     }
 
     pub(crate) fn try_prepare_composition(
-        preparable: CompositionPreparableGraph,
+        preparable: &CompositionPreparableGraph,
         capabilities: &DeviceCapabilities,
         (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
@@ -1401,7 +1426,7 @@ impl<'device> PreparedGraph<'device> {
     ) -> Result<Self> {
         let selected_working_format = preparable.working_format();
         let prepared = Self::try_prepare_inner(
-            GraphPreparationSource::Composition(preparable.into_closed()),
+            GraphPreparationSource::Composition(preparable.closed()),
             selected_working_format,
             capabilities,
             (device, queue),
@@ -1418,7 +1443,7 @@ impl<'device> PreparedGraph<'device> {
     }
 
     pub(crate) fn try_prepare_backdrop(
-        preparable: BackdropPreparableGraph,
+        preparable: &BackdropPreparableGraph,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
@@ -1456,7 +1481,7 @@ impl<'device> PreparedGraph<'device> {
             PrePreparationGraphClassification::ExactBase(preparable) if pass_cache_phase.1 => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 let prepared = Self::try_prepare_inner(
-                    GraphPreparationSource::Base(preparable),
+                    GraphPreparationSource::Base(&preparable),
                     selected_working_format,
                     capabilities,
                     (device, queue),
@@ -1472,7 +1497,7 @@ impl<'device> PreparedGraph<'device> {
                 Ok(prepared)
             }
             PrePreparationGraphClassification::ExactBase(preparable) => Self::try_prepare_base(
-                preparable,
+                &preparable,
                 policy,
                 capabilities,
                 (device, queue),
@@ -1483,7 +1508,7 @@ impl<'device> PreparedGraph<'device> {
             PrePreparationGraphClassification::ExactComposition(closed) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 Self::try_prepare_inner(
-                    GraphPreparationSource::Composition(closed),
+                    GraphPreparationSource::Composition(&closed),
                     selected_working_format,
                     capabilities,
                     (device, queue),
@@ -1496,7 +1521,7 @@ impl<'device> PreparedGraph<'device> {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 let prepared = Self::try_prepare_inner(
                     GraphPreparationSource::ColorFilter {
-                        preparable,
+                        preparable: &preparable,
                         operation_limits: None,
                     },
                     selected_working_format,
@@ -1516,7 +1541,7 @@ impl<'device> PreparedGraph<'device> {
             PrePreparationGraphClassification::ExactSpatialFilter(preparable) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 let prepared = Self::try_prepare_inner(
-                    GraphPreparationSource::SpatialFilter(preparable),
+                    GraphPreparationSource::SpatialFilter(&preparable),
                     selected_working_format,
                     capabilities,
                     (device, queue),
@@ -1534,7 +1559,7 @@ impl<'device> PreparedGraph<'device> {
             PrePreparationGraphClassification::ExactBackdrop(preparable) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 Self::try_prepare_backdrop(
-                    preparable,
+                    &preparable,
                     selected_working_format,
                     capabilities,
                     (device, queue),
@@ -1553,7 +1578,7 @@ impl<'device> PreparedGraph<'device> {
     }
 
     pub(super) fn try_prepare_inner(
-        source: GraphPreparationSource,
+        source: GraphPreparationSource<'_>,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
@@ -1572,7 +1597,7 @@ impl<'device> PreparedGraph<'device> {
                 color_filter_execution,
                 spatial_filter_execution,
                 backdrop_execution,
-            ) = source.into_parts();
+            ) = source.parts();
             let plan = match color_filter_operation_limits {
                 Some(limits) => RuntimeGraphPreparationPlan::try_derive_with_color_filter_limits(
                     lowered,

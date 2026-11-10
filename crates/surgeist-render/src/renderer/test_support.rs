@@ -990,7 +990,7 @@ impl From<super::frame::ForcedGraphCaptureObservationForTest> for ForcedGraphCap
 struct ForcedGraphPreparationForTest {
     device_identity: DeviceSlotIdentity,
     normalized: RenderCommands,
-    preparable: super::pass::BasePreparableGraph,
+    graph: crate::accounting::OwnedBox<RendererExactSurfaceGraph>,
     output_extent: PhysicalSize,
     captures: Vec<ForcedGraphCaptureForTest>,
 }
@@ -1200,7 +1200,7 @@ impl Renderer {
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         account: &Account,
-    ) -> Result<RendererFrameDispatch> {
+    ) -> Result<super::pass::ColorFilterPreparableGraph> {
         let preparable = super::pass::color_filter_preparable_graph_for_test(
             graph,
             output_format,
@@ -1208,12 +1208,7 @@ impl Renderer {
             capabilities,
             account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(
-            crate::accounting::OwnedBox::new(
-                ExactSurfaceGraph::ColorFilter(preparable),
-                &account.storage(),
-            )?,
-        ))
+        Ok(preparable)
     }
 
     fn classify_spatial_filter_fixture_dispatch(
@@ -1223,7 +1218,7 @@ impl Renderer {
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         account: &Account,
-    ) -> Result<RendererFrameDispatch> {
+    ) -> Result<super::pass::SpatialFilterPreparableGraph> {
         let preparable = super::pass::spatial_filter_preparable_graph_from_graph_for_test(
             graph,
             output_format,
@@ -1231,12 +1226,7 @@ impl Renderer {
             capabilities,
             account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(
-            crate::accounting::OwnedBox::new(
-                ExactSurfaceGraph::SpatialFilter(preparable),
-                &account.storage(),
-            )?,
-        ))
+        Ok(preparable)
     }
 
     fn classify_bounded_backdrop_fixture_dispatch(
@@ -1246,7 +1236,7 @@ impl Renderer {
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         account: &Account,
-    ) -> Result<RendererFrameDispatch> {
+    ) -> Result<super::pass::BackdropPreparableGraph> {
         let preparable = super::pass::backdrop_preparable_graph_from_graph_for_test(
             graph,
             output_format,
@@ -1254,12 +1244,7 @@ impl Renderer {
             capabilities,
             account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(
-            crate::accounting::OwnedBox::new(
-                ExactSurfaceGraph::Backdrop(preparable),
-                &account.storage(),
-            )?,
-        ))
+        Ok(preparable)
     }
 
     /// Test-only entry for forcing ordinary commands through the exact
@@ -1297,7 +1282,7 @@ impl Renderer {
                 let ForcedGraphPreparationForTest {
                     device_identity,
                     normalized,
-                    preparable,
+                    graph,
                     output_extent,
                     captures,
                 } = account.phase(crate::RenderPhase::FramePrepare, || {
@@ -1318,12 +1303,12 @@ impl Renderer {
                     )
                     .await?;
                 let frame = renderer
-                    .execute_fixture_graph_for_test(
+                    .execute_exact_graph_for_test(
                         surface,
+                        graph,
+                        parameters,
                         device_identity,
-                        ExactSurfaceGraph::Base(preparable),
                         account,
-                        true,
                     )
                     .await?;
                 drop(normalized);
@@ -1438,25 +1423,17 @@ impl Renderer {
             &capabilities,
             account,
         )?;
-        let preparable = match dispatch {
-            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
-                ExactSurfaceGraph::Base(preparable) => preparable,
-                ExactSurfaceGraph::Composition(_)
-                | ExactSurfaceGraph::ColorFilter(_)
-                | ExactSurfaceGraph::SpatialFilter(_)
-                | ExactSurfaceGraph::Backdrop(_) => {
-                    return Err(Error::new(
-                        BackendErrorCode::RenderFailed,
-                        "the private forced graph is outside the exact executable base graph subset",
-                    ));
-                }
-            },
-            _ => {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "the private forced graph is outside the exact executable base graph subset",
-                ));
-            }
+        let RendererFrameDispatch::ExactGraph(graph) = dispatch else {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "the private forced graph is outside the exact executable base graph subset",
+            ));
+        };
+        let RendererExactSurfaceGraph::Base(preparable) = &*graph else {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "the private forced graph is outside the exact executable base graph subset",
+            ));
         };
         let output_extent = preparable.output_extent(account)?;
         let prepared_grids = preparable.capture_grids_for_test();
@@ -1478,7 +1455,7 @@ impl Renderer {
         Ok(ForcedGraphPreparationForTest {
             device_identity,
             normalized,
-            preparable,
+            graph,
             output_extent,
             captures: captures
                 .into_iter()
@@ -1618,33 +1595,13 @@ impl Renderer {
                     "the private color-filter fixture lost immutable device capabilities",
                 )
             })?;
-        let preparable = match self.classify_color_filter_fixture_dispatch(
+        let preparable = self.classify_color_filter_fixture_dispatch(
             &graph,
             runtime_surface_format(surface),
             working_format,
             &capabilities,
             account,
-        )? {
-            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
-                ExactSurfaceGraph::ColorFilter(preparable) => preparable,
-                ExactSurfaceGraph::Base(_)
-                | ExactSurfaceGraph::Composition(_)
-                | ExactSurfaceGraph::SpatialFilter(_)
-                | ExactSurfaceGraph::Backdrop(_) => {
-                    return Err(Error::new(
-                        BackendErrorCode::RenderFailed,
-                        "the private color-filter fixture left its exact renderer dispatch route",
-                    ));
-                }
-            },
-            RendererFrameDispatch::DirectVello(_) => {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "the private color-filter fixture left its exact renderer dispatch route",
-                ));
-            }
-            RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
-        };
+        )?;
         let output_extent = preparable.output_extent(account)?;
         let source_spatial = preparable.first_color_spatial_for_test().ok_or_else(|| {
             Error::new(
@@ -1753,33 +1710,13 @@ impl Renderer {
                     "the private spatial-filter fixture lost immutable device capabilities",
                 )
             })?;
-        let preparable = match self.classify_spatial_filter_fixture_dispatch(
+        let preparable = self.classify_spatial_filter_fixture_dispatch(
             &graph,
             runtime_surface_format(surface),
             working_format,
             &capabilities,
             account,
-        )? {
-            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
-                ExactSurfaceGraph::SpatialFilter(preparable) => preparable,
-                ExactSurfaceGraph::Base(_)
-                | ExactSurfaceGraph::Composition(_)
-                | ExactSurfaceGraph::ColorFilter(_)
-                | ExactSurfaceGraph::Backdrop(_) => {
-                    return Err(Error::new(
-                        BackendErrorCode::RenderFailed,
-                        "the private spatial-filter fixture left its exact renderer dispatch route",
-                    ));
-                }
-            },
-            RendererFrameDispatch::DirectVello(_) => {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "the private spatial-filter fixture left its exact renderer dispatch route",
-                ));
-            }
-            RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
-        };
+        )?;
         let output_extent = preparable.output_extent(account)?;
         let (source_spatial, result_spatial) =
             preparable.first_filter_spatial_for_test().ok_or_else(|| {
@@ -1887,30 +1824,13 @@ impl Renderer {
                     "the private bounded-backdrop fixture lost immutable device capabilities",
                 )
             })?;
-        let preparable = match self.classify_bounded_backdrop_fixture_dispatch(
+        let preparable = self.classify_bounded_backdrop_fixture_dispatch(
             &graph,
             runtime_surface_format(surface),
             working_format,
             &capabilities,
             account,
-        )? {
-            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
-                ExactSurfaceGraph::Backdrop(preparable) => preparable,
-                _ => {
-                    return Err(Error::new(
-                        BackendErrorCode::RenderFailed,
-                        "the private bounded-backdrop fixture left its exact renderer dispatch route",
-                    ));
-                }
-            },
-            RendererFrameDispatch::DirectVello(_) => {
-                return Err(Error::new(
-                    BackendErrorCode::RenderFailed,
-                    "the private bounded-backdrop fixture left its exact renderer dispatch route",
-                ));
-            }
-            RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
-        };
+        )?;
         let output_extent = preparable.output_extent(account)?;
         let (parent_spatial, capture_spatial) =
             preparable.backdrop_spatial_for_test().ok_or_else(|| {
