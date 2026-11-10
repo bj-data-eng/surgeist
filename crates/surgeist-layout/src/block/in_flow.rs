@@ -589,7 +589,8 @@ where
             } else {
                 crate::output::NamedBaselineDemand::None
             });
-        let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
+        let avoids_float_exclusions =
+            block_child_avoids_float_exclusions(&child_style, constants.flow_axes.writing_mode());
         let inherits_float_exclusions = physical_float_context
             && float_context::shares_parent_context(
                 tree.node_input(child),
@@ -1418,22 +1419,19 @@ pub(super) fn child_margin_can_collapse_with_parent<S: LayoutScalar>(
 
 fn block_child_avoids_float_exclusions<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
+    parent_writing_mode: crate::WritingMode,
 ) -> bool {
     style.display != crate::Display::None
         && !style.display.is_inline_level()
         && style.common.position != Position::Absolute
         && style.float.is_none()
-        && (style.block_flow_context == crate::BlockFlowContext::Independent
-            || style.common.item_is_replaced
-            || style.common.item_is_table
-            || matches!(
-                style.display,
-                crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes
-            )
-            || style
-                .common
-                .overflow
-                .establishes_independent_formatting_context())
+        && super::flow_root::establishes_flow_root(
+            style.display,
+            style.float,
+            style.block_flow_context,
+            &style.common,
+            parent_writing_mode,
+        )
 }
 
 fn parent_inline_size_can_shrink<S: LayoutScalar>(

@@ -22,7 +22,7 @@ use crate::{
     AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, BoxSizing, CollapsibleMarginOf,
     ComputeInputOf, ComputeOutputOf, ContentSizingRequestOf, DefaultScalar, Edges, LayoutScalar,
     LayoutTree, LengthResolutionOf, LengthResolutionStatus, NodeInputOf, NonNegativeFiniteOf,
-    PhysicalBlockMarginCollapseOf, Position, RunMode, Size, SizingMode, SizingOperation,
+    PhysicalBlockMarginCollapseOf, RunMode, Size, SizingMode, SizingOperation,
 };
 
 #[cfg(test)]
@@ -513,9 +513,10 @@ where
     let prevents_margin_collapse = input.parent_formatting_context()
         != crate::ParentFormattingContext::BlockFlow
         || style.display != crate::Display::Block
-        || style.item_is_replaced
-        || style.overflow.establishes_independent_formatting_context()
-        || style.position == Position::Absolute
+        || crate::block::flow_root::node_establishes_flow_root(
+            style,
+            input.containing_flow_axes().writing_mode(),
+        )
         || padding.at_physical_side(block_start) > S::ZERO
         || padding.at_physical_side(block_end) > S::ZERO
         || border.at_physical_side(block_start) > S::ZERO

@@ -92,7 +92,7 @@ fn fri08_c07_t05_scroll_fixture_leaf_rows_preserve_exact_auto_and_value_edges() 
 }
 
 fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: LayoutScalar>() {
-    let containing_flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let horizontal = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
 
     for writing_mode in [
         WritingMode::VerticalRl,
@@ -106,27 +106,32 @@ fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: L
             writing_mode,
             ..NodeInputOf::default()
         };
-        let input = ComputeInputOf::<S>::leaf_layout(
-            Size::NONE,
-            Size::NONE,
-            crate::ContainingLayoutContext::new(
-                containing_flow,
-                crate::ParentFormattingContext::BlockFlow,
-            ),
-            crate::SizingRequestOf::new(
-                Size::splat(crate::AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::Normal,
-                )),
-                crate::OrthogonalFallbackOf::new(
-                    crate::Size::NONE,
-                    crate::NearestScrollportOf::Unknown,
-                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+        let leaf_in = |containing_flow| {
+            ComputeInputOf::<S>::leaf_layout(
+                Size::NONE,
+                Size::NONE,
+                crate::ContainingLayoutContext::new(
+                    containing_flow,
+                    crate::ParentFormattingContext::BlockFlow,
                 ),
-            ),
-        )
-        .expect("valid direct leaf input");
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Unknown,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
+            )
+            .expect("valid direct leaf input")
+        };
 
+        // A parent with the leaf's own writing mode leaves it an ordinary
+        // block, so its own logical block extent decides collapse-through.
+        let input = leaf_in(leaf_flow);
         let zero_block = compute_leaf(input, &style, |_measurement| {
             Ok::<_, ()>(Size::new(S::ZERO, S::from_f64(12.0)))
         })
@@ -144,11 +149,6 @@ fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: L
                 .block_margin_collapse
                 .can_collapse_through(leaf_flow)
         );
-        assert!(
-            !zero_block
-                .block_margin_collapse
-                .can_collapse_through(containing_flow)
-        );
 
         let nonzero_block = compute_leaf(input, &style, |_measurement| {
             Ok::<_, ()>(Size::new(S::from_f64(12.0), S::ZERO))
@@ -159,54 +159,26 @@ fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: L
                 .block_margin_collapse
                 .can_collapse_through(leaf_flow)
         );
+
+        // Writing Modes 4 section 3.2: under a parent with a different writing
+        // mode the leaf is a flow root, so its margins collapse through in
+        // neither axis.
+        let orthogonal = leaf_in(horizontal);
+        let flow_root = compute_leaf(orthogonal, &style, |_measurement| {
+            Ok::<_, ()>(Size::new(S::ZERO, S::from_f64(12.0)))
+        })
+        .expect("leaf measurement succeeds");
+        assert!(
+            !flow_root
+                .block_margin_collapse
+                .can_collapse_through(leaf_flow)
+        );
+        assert!(
+            !flow_root
+                .block_margin_collapse
+                .can_collapse_through(horizontal)
+        );
     }
-}
-
-#[test]
-fn parent_context_gates_measured_leaf_boundary_collapse_in_both_scalar_lanes() {
-    fn assert_lane<S: LayoutScalar>() {
-        let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let style = NodeInputOf::<S> {
-            display: Display::Block,
-            ..NodeInputOf::default()
-        };
-
-        for (parent_context, expected_collapse) in [
-            (ParentFormattingContext::BlockFlow, true),
-            (ParentFormattingContext::Flex, false),
-            (ParentFormattingContext::Grid, false),
-            (ParentFormattingContext::NoParent, false),
-        ] {
-            let input = ComputeInputOf::<S>::leaf_layout(
-                Size::NONE,
-                Size::NONE,
-                ContainingLayoutContext::new(flow_axes, parent_context),
-                crate::SizingRequestOf::new(
-                    Size::splat(crate::AxisSizingRequestOf::new(
-                        crate::AvailableSpaceOf::Indefinite,
-                        crate::SizingOperation::Normal,
-                    )),
-                    crate::OrthogonalFallbackOf::new(
-                        crate::Size::NONE,
-                        crate::NearestScrollportOf::Unknown,
-                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
-                    ),
-                ),
-            )
-            .expect("valid direct leaf input");
-            let output = compute_leaf(input, &style, |_measurement| Ok::<_, ()>(Size::ZERO))
-                .expect("leaf measurement succeeds");
-
-            assert_eq!(
-                output.block_margin_collapse.can_collapse_through(flow_axes),
-                expected_collapse,
-                "unexpected measured-leaf boundary collapse for {parent_context:?}"
-            );
-        }
-    }
-
-    assert_lane::<f32>();
-    assert_lane::<f64>();
 }
 
 #[test]

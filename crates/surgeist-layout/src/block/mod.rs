@@ -44,6 +44,7 @@ pub(crate) mod entry;
 pub(crate) mod float_context;
 mod float_text;
 mod floats;
+pub(crate) mod flow_root;
 pub(crate) mod fragment_margins;
 pub(crate) mod fragment_minimum;
 mod in_flow;
@@ -1098,14 +1099,13 @@ impl<S: LayoutScalar> Constants<S> {
         let is_root = input.run_mode() == RunMode::PerformRootLayout;
         let boundary_margins_can_collapse =
             input.parent_formatting_context() == ParentFormattingContext::BlockFlow;
-        let blocks_margin_collapse = !style.float.is_none()
-            || style.block_flow_context == crate::BlockFlowContext::Independent
-            || style.common.item_is_replaced
-            || style.common.item_is_table
-            || style
-                .common
-                .overflow
-                .establishes_independent_formatting_context();
+        let blocks_margin_collapse = flow_root::establishes_flow_root(
+            style.display,
+            style.float,
+            style.block_flow_context,
+            &style.common,
+            input.containing_flow_axes().writing_mode(),
+        );
         let is_margin_collapsing_block = style.display == super::Display::Block;
         let ratio_dependent_block = input.sizing_mode() == SizingMode::InherentSize
             && automatic_block_depends_on_ratio(&style.common);
