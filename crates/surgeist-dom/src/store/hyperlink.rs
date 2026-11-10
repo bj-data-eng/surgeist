@@ -74,10 +74,7 @@ impl Draft {
         if metadata.document_environment().has_ever_had_navigable() {
             return Err(failure(Failure::EnvironmentMismatch));
         }
-        let native = matches!(
-            metadata.creation_cause(),
-            crate::DomDocumentCreationCause::Native
-        );
+        let native = metadata.native_field_inputs();
         if native
             && (metadata.encoding().code_units() != [85, 84, 70, 45, 56]
                 || metadata.url().code_units()

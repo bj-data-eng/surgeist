@@ -1,10 +1,10 @@
-# Document creation and import
+# Document construction, cloning and import
 
 These creation paths use the same [canonical tree and publication owner](canonical-tree.md). They establish different causes and metadata; [completed parser-report installation](html-installation.md#completed-parser-reports) transfers retained history separately.
 
 ## Native XML document
 
-Native `create_document()` establishes an XML document with `application/xml`
+Native `create_document()` establishes a base Document interface with XML type and `application/xml`
 content type, `UTF-8` encoding, `about:blank` URL, no-quirks mode, declarative
 shadow roots disabled and a known-null custom element registry. A checked
 document view exposes these canonical values through `metadata()`. Each native
@@ -16,6 +16,50 @@ privately with the rest of the batch, and old snapshots retain them. Ordinary
 doctype edits do not change document mode. There is no general host-metadata or
 registry-object setter; qualified [completed-report transfer](html-installation.md#completed-parser-reports) has its own contract.
 Native environment proof also survives captures.
+
+## Ordinary Document constructor
+
+`DomHostedSource::document_constructor_context` issues a move-only context for
+one ordinary `Document` constructor invocation. The trusted Runtime adapter
+supplies the interface constructor's actual callee Global after its required
+NewTarget/prototype selection. Prototype selection and any throwing getter
+precede native construction; this native front does not implement that adapter.
+The context does not equate arbitrary caller, prototype or object realms.
+
+`construct_document(context)` is available through Batch and Source. At actual
+execution, the canonical owner rechecks the original issuer, Global generation
+and current associated Document, then copies its origin identity internally.
+The new base Document retains the native XML defaults above. Its creation Global
+is recorded through the separate relevant-global relation; it acquires no Window,
+browsing context, hosted settings, registry or copied policy history. Descendant
+creation follows its actual owner Document's relevant Global. Neither an origin
+value, an immutable capture, an unrelated Document nor a Host execution scope can
+supply this constructor authority. Contexts do not keep an expired issuer alive.
+
+## Live canonical cloning
+
+`clone_node(node, subtree)` on Batch and Source reads the live canonical operand
+and uses the shared iterative clone executor. Captured `import_node` remains a
+separate cause. Direct ShadowRoot cloning and Document/ShadowRoot import are
+`NotSupported`. Clones receive fresh identities; a Document's node-document is
+itself and ordinary descendant copies belong to that new Document.
+
+Document cloning preserves its actual interface independently of XML/HTML type,
+and copies encoding, content type, URL, origin, type, mode and declarative-shadow
+permission. Only a scoped registry is copied; the currently admitted native
+registry producer supplies Global registries, which become null in the clone.
+Actual URL/encoding producer records travel with those copied fields, without
+copying parser, hosting, focus, Range, policy, CSSOM or task history. New document
+state is established independently, including known-null focus/active Range.
+
+Input and Textarea dirty state, Script started history, Template contents and
+clonable shadow roots keep their owning cloning hooks. Template contents retain
+their separate inert owner. A connected copied descendant can reach a real
+Source service boundary. Ordinary Batch execution then refuses atomically;
+Source retains the original root, cursor and mandatory effects across published
+suspension, cancellation and reacquisition. The root's single creation ticket is
+finalized only after those tails finish. Dropping an unpublished refused lease
+rolls back its private work; dropping a published lease preserves its obligation.
 
 ## HTML document skeleton
 
@@ -43,8 +87,8 @@ new Document()'s associated-global origin semantics.
 ## DOMImplementation XML creator
 
 `create_xml_document(associated_document, namespace, qualified_name, doctype)`
-implements the separate DOMImplementation XML creator. The new Document keeps
-XML class and default metadata. A nonempty qualified name creates an exact
+implements the separate DOMImplementation XML creator. The new Document explicitly
+implements XMLDocument, independently of its XML type, and keeps default metadata. A nonempty qualified name creates an exact
 namespaced root; an empty name creates no root. A supplied actual DocumentType
 is moved and adopted through the ordinary canonical operations before the root
 is appended. Its identity survives, including when it came from another Document

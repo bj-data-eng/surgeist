@@ -574,6 +574,23 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Execute one authenticated standard Document constructor, retaining its
+    /// original context through admission refusal without caller replay.
+    pub fn construct_document(context: crate::DomDocumentConstructorContext) -> Self {
+        Self {
+            command: Command::ConstructDocument(context.data),
+        }
+    }
+    /// Clone one live canonical node, including a Document, under one original
+    /// Source operation. Mandatory descendant hooks retain their exact cursor.
+    pub fn clone_node(source: NodeId, subtree: bool) -> Self {
+        Self {
+            command: Command::CloneNode {
+                source: source.into(),
+                subtree,
+            },
+        }
+    }
     /// Request one `create_document` operation on the canonical owner.
     pub fn create_document() -> Self {
         Self::create(Creation::Document, None)

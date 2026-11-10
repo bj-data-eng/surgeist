@@ -1925,3 +1925,32 @@ impl crate::DomHostedSource {
         dom.admit_hosted_runtime_work(steps, cancel)
     }
 }
+
+impl DomHostedSource {
+    /// Issue one constructor invocation for this actual Global's current
+    /// associated Document. For the ordinary Document constructor, the trusted
+    /// Runtime adapter supplies the callee interface constructor's Global after
+    /// resolving NewTarget/prototype behavior. A generic caller Global, Host
+    /// scope or historical Document is not this operation-specific authority.
+    pub fn document_constructor_context(
+        &self,
+        dom: &Dom,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<crate::DomDocumentConstructorContext, DomHostedError> {
+        check_cancel(cancel)?;
+        if self.id().owner != dom.owner() || global.source() != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let issuer = self.observe();
+        issuer.validate(global.source, Role::Global, global.slot, global.generation)?;
+        let document = dom.dispatch_global_document(global, cancel)?;
+        Ok(crate::DomDocumentConstructorContext {
+            data: crate::hosted::DocumentConstructorContext {
+                issuer,
+                global,
+                document,
+            },
+        })
+    }
+}

@@ -24,12 +24,18 @@ pub(super) fn parsed_document_inputs_match(
         crate::DomDocumentCreationCause::ParsedOffline {
             url: actual,
             encoding: actual_encoding,
+        }
+        | crate::DomDocumentCreationCause::Cloned {
+            url: Some(actual),
+            encoding: Some(actual_encoding),
         } => Ok(actual == url && actual_encoding == encoding),
         crate::DomDocumentCreationCause::ParsedTemplateOwner => {
             let facts = established.ok_or(HtmlBaseMissing::DocumentFacts)?;
             Ok(facts.document_url() == Some(url) && facts.encoding() == Some(encoding))
         }
-        crate::DomDocumentCreationCause::Native
+        crate::DomDocumentCreationCause::Constructed { .. }
+        | crate::DomDocumentCreationCause::Cloned { .. }
+        | crate::DomDocumentCreationCause::Native
         | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
         | crate::DomDocumentCreationCause::ParsedFragmentParser => {
             Err(HtmlBaseMissing::DocumentFacts)
@@ -216,10 +222,7 @@ impl Draft {
         {
             return Err(failure(Failure::EnvironmentMismatch));
         }
-        let environment_matches = if matches!(
-            metadata.creation_cause(),
-            crate::DomDocumentCreationCause::Native
-        ) {
+        let environment_matches = if metadata.native_field_inputs() {
             self.base_ascii(metadata.encoding(), "UTF-8", cancel)?
                 && self.base_ascii(metadata.url(), "about:blank", cancel)?
                 && url.matches_about_blank()

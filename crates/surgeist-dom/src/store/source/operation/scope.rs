@@ -98,6 +98,8 @@ impl OperationRoot {
             Command::Insert { parent, .. } | Command::ReplaceChild { parent, .. } => {
                 existing(parent)
             }
+            Command::ConstructDocument(context) => Some(context.document.node()),
+            Command::CloneNode { source, .. } => existing(source),
             Command::Import { document, .. } | Command::Adopt { document, .. } => {
                 existing(document)
             }

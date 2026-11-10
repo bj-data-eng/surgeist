@@ -194,8 +194,8 @@ pub use dialog::{DomCloseWatcherId, DomDialog, DomDialogToggleTracker};
 pub use dispatch::{DomDispatchAssociation, DomDispatchCustody, DomDispatchCustodyLimits};
 pub use document::DomNativeInputPlatform;
 pub use document::{
-    DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentMetadata,
-    DomFocusedAreaDesignation, DomOpaqueOrigin, DomRegistryBinding,
+    DomDocumentClass, DomDocumentCreationCause, DomDocumentEnvironment, DomDocumentInterface,
+    DomDocumentMetadata, DomFocusedAreaDesignation, DomOpaqueOrigin, DomRegistryBinding,
 };
 pub use element::{DomElement, DomElementDefinition};
 pub use fullscreen::{
@@ -208,6 +208,7 @@ pub use host::{
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
     DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
 };
+pub use hosted::{DomDocumentConstructorContext, DomDocumentConstructorError};
 pub use hosted::{
     DomHostedBrowsingContextId, DomHostedChildHistoryPublication, DomHostedChildHistoryRequest,
     DomHostedChildPreparation, DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication,

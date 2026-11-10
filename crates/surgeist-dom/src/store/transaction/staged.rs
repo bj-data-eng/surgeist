@@ -705,6 +705,8 @@ impl DraftNode {
                 let native = matches!(
                     metadata.creation_cause(),
                     crate::DomDocumentCreationCause::Native
+                        | crate::DomDocumentCreationCause::Constructed { .. }
+                        | crate::DomDocumentCreationCause::Cloned { .. }
                         | crate::DomDocumentCreationCause::HostedInitialAboutBlank { .. }
                 );
                 let usage = storage::document_metadata(metadata)?;
