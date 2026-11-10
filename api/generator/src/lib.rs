@@ -878,6 +878,79 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "runs pinned nightly rustdoc on an isolated feature fixture; select explicitly with offline Cargo and one build job"]
+    fn runtime_audits_keep_document_scripting_separate_from_default() {
+        let fixture = TempFixture::new("surgeist-api-runtime-rustdoc");
+        fixture.file(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/surgeist-runtime\"]\nresolver = \"2\"\n",
+        );
+        fixture.file(
+            "crates/surgeist-runtime/Cargo.toml",
+            concat!(
+                "[package]\nname = \"surgeist-runtime\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+                "[features]\ndefault = [\"native-default\"]\nnative-default = []\n",
+                "document-scripting = []\nunrequested = []\n",
+            ),
+        );
+        fixture.file(
+            "crates/surgeist-runtime/src/lib.rs",
+            concat!(
+                "#![forbid(unsafe_code)]\n",
+                "pub struct NativeSession;\n",
+                "#[cfg(feature = \"native-default\")]\npub struct DefaultOnly;\n",
+                "#[cfg(feature = \"document-scripting\")]\npub struct ScriptHost;\n",
+                "#[cfg(feature = \"unrequested\")]\npub struct UnrequestedOnly;\n",
+            ),
+        );
+
+        run(fixture.path(), ["generator", "--crate", "surgeist-runtime"]).unwrap();
+
+        let default_path = fixture.path().join("api/crates/surgeist-runtime.txt");
+        let script_path = fixture
+            .path()
+            .join("api/crates/surgeist-runtime.document-scripting.txt");
+        let default_api = std::fs::read_to_string(&default_path).unwrap();
+        assert!(
+            script_path.is_file(),
+            "Runtime selection must generate its document scripting audit"
+        );
+        let script_api = std::fs::read_to_string(&script_path).unwrap();
+        assert!(default_api.starts_with("# surgeist-runtime public API\n"));
+        assert!(script_api.starts_with("# surgeist-runtime [document-scripting] public API\n"));
+        for api in [&default_api, &script_api] {
+            assert!(api
+                .lines()
+                .any(|line| line == "pub struct surgeist_runtime::NativeSession"));
+            assert!(!api.contains("UnrequestedOnly"));
+        }
+        assert!(default_api
+            .lines()
+            .any(|line| line == "pub struct surgeist_runtime::DefaultOnly"));
+        assert!(!default_api.contains("ScriptHost"));
+        assert!(script_api
+            .lines()
+            .any(|line| line == "pub struct surgeist_runtime::ScriptHost"));
+        assert!(!script_api.contains("DefaultOnly"));
+
+        std::fs::remove_file(&script_path).unwrap();
+        let error = run(
+            fixture.path(),
+            ["generator", "--check", "--crate", "surgeist-runtime"],
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stale API artifacts: surgeist-runtime [document-scripting]"
+        );
+        assert!(
+            !script_path.exists(),
+            "check must not recreate the missing audit"
+        );
+        assert_eq!(std::fs::read_to_string(default_path).unwrap(), default_api);
+    }
+
+    #[test]
     fn ignores_matching_files_under_crates_directory() {
         let fixture = TempFixture::new("surgeist-api-target-files");
         fixture.file("Cargo.toml", "[package]\nname = \"surgeist\"\n");
