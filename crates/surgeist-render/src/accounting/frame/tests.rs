@@ -463,6 +463,167 @@ fn rejected_frame_setup_preserves_previous_report_and_cpu_lifetime_usage() {
     }
 }
 
+#[test]
+fn consumed_phase_slot_stays_inert_after_owned_cleanup() {
+    use std::{
+        future::Future,
+        sync::{
+            Arc,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        },
+        task::{Context, Poll, Wake, Waker},
+        time::Duration,
+    };
+    // These clocks belong only to this test, including its payload destructor.
+    static TIME: AtomicU64 = AtomicU64::new(0);
+    static CLOCK_READS: AtomicUsize = AtomicUsize::new(0);
+    fn clock() -> Duration {
+        CLOCK_READS.fetch_add(1, Ordering::SeqCst);
+        Duration::from_millis(TIME.load(Ordering::SeqCst))
+    }
+    struct CleanupValue(Arc<AtomicUsize>);
+    impl Drop for CleanupValue {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            TIME.fetch_add(7, Ordering::SeqCst);
+        }
+    }
+    #[derive(Default)]
+    struct WakeCount(AtomicUsize);
+    impl Wake for WakeCount {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let options = RenderAccountingOptions::new()
+        .with_clock(RenderClock::Host(clock))
+        .with_profile(RenderProfile::Summary { timing: true });
+    let cpu = RendererCpu::new(options).unwrap();
+    let mut fixture = FrameFixture::new(&cpu, options);
+    let drops = Arc::new(AtomicUsize::new(0));
+    let polls = AtomicUsize::new(0);
+    let wakes = Arc::new(WakeCount::default());
+    let waker = Waker::from(wakes.clone());
+    let finished = pollster::block_on(fixture.run(async |attempt| {
+        let account = attempt.account();
+        let inner_account = account.clone();
+        let cleanup_count = drops.clone();
+        // The real payload and its accounted backing live across suspension.
+        let mut slot = std::pin::pin!(Some(async {
+            let mut values = inner_account.temporary::<CleanupValue>(1)?;
+            values.push(CleanupValue(cleanup_count))?;
+            inner_account.work(RenderWork::CommandsEmitted, 1)?;
+            TIME.store(5, Ordering::SeqCst);
+            std::future::poll_fn(|_| {
+                polls.fetch_add(1, Ordering::SeqCst);
+                Poll::<()>::Pending
+            })
+            .await;
+            drop(values);
+            Ok::<_, Error>(())
+        }));
+        account
+            .ledger
+            .with_async_phase(
+                account.scopes[RenderPhase::FramePrepare.index()],
+                async || {
+                    let mut context = Context::from_waker(&waker);
+                    let baseline = cpu.snapshot().unwrap().usage();
+                    let mut present = PhaseFuture {
+                        future: slot.as_mut(),
+                    };
+                    assert!(
+                        std::pin::Pin::new(&mut present)
+                            .poll(&mut context)
+                            .is_pending()
+                    );
+                    assert_eq!(polls.load(Ordering::SeqCst), 1);
+                    assert_eq!(account.work_count(RenderWork::CommandsEmitted)?, 1);
+                    assert_eq!(drops.load(Ordering::SeqCst), 0);
+                    assert_eq!(
+                        cpu.snapshot()
+                            .unwrap()
+                            .usage()
+                            .live(RenderResource::ScratchCpuBytes),
+                        baseline.live(RenderResource::ScratchCpuBytes)
+                            + std::mem::size_of::<CleanupValue>() as u64
+                    );
+                    drop(present);
+                    assert!(slot.as_ref().get_ref().is_none());
+                    assert_eq!(drops.load(Ordering::SeqCst), 1);
+                    assert_eq!(TIME.load(Ordering::SeqCst), 12);
+                    let cleaned = cpu.snapshot().unwrap().usage();
+                    assert_eq!(
+                        cleaned.live(RenderResource::ScratchCpuBytes),
+                        baseline.live(RenderResource::ScratchCpuBytes)
+                    );
+                    let work = <RenderWork as surgeist_ledger::Dimension>::from_fn(|unit| {
+                        account.work_count(unit).unwrap()
+                    });
+                    let reads = CLOCK_READS.load(Ordering::SeqCst);
+                    // This is the SAME slot after actual guard-owned destruction.
+                    let mut consumed = PhaseFuture {
+                        future: slot.as_mut(),
+                    };
+                    for _ in 0..2 {
+                        assert!(
+                            std::pin::Pin::new(&mut consumed)
+                                .poll(&mut context)
+                                .is_pending()
+                        );
+                    }
+                    drop(consumed);
+                    assert_eq!(CLOCK_READS.load(Ordering::SeqCst), reads);
+                    assert_eq!(wakes.0.load(Ordering::SeqCst), 0);
+                    assert_eq!(polls.load(Ordering::SeqCst), 1);
+                    assert_eq!(drops.load(Ordering::SeqCst), 1);
+                    assert_eq!(TIME.load(Ordering::SeqCst), 12);
+                    assert_eq!(cpu.snapshot().unwrap().usage(), cleaned);
+                    assert_eq!(
+                        <RenderWork as surgeist_ledger::Dimension>::from_fn(|unit| {
+                            account.work_count(unit).unwrap()
+                        }),
+                        work
+                    );
+                    assert_eq!(account.latched_fault(), None);
+                    Ok::<_, Error>(())
+                },
+            )
+            .await
+            .map_err(|error| account.error(error))?
+    }))
+    .unwrap();
+    let (result, _, report, fault) = finished.into_parts();
+    result.unwrap();
+    assert_eq!(fault, None);
+    assert_eq!(cpu.fault(), None);
+    assert_eq!(report.cleanup_fault(), None);
+    assert_eq!(report.accounting_diagnostic(), None);
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+    let attempt = report.attempt().unwrap();
+    assert_eq!(attempt.usage().work(RenderWork::CommandsEmitted), 1);
+    assert_eq!(attempt.phase_count(RenderPhase::FramePrepare), 1);
+    assert_eq!(
+        attempt.phase_elapsed(RenderPhase::FramePrepare),
+        Some(Duration::from_millis(12))
+    );
+    assert_eq!(attempt.elapsed(), Some(Duration::from_millis(12)));
+    let cpu_interval = report.renderer_cpu().unwrap();
+    assert_eq!(
+        cpu_interval.usage().live(RenderResource::ScratchCpuBytes),
+        0
+    );
+    assert_eq!(
+        cpu_interval.scope_elapsed(RenderCpuScope::FrameBacking),
+        Some(Duration::from_millis(7))
+    );
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+}
+
 static PHASE_CLEANUP_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn phase_cleanup_clock() -> std::time::Duration {
     std::time::Duration::from_millis(PHASE_CLEANUP_TIME.load(std::sync::atomic::Ordering::SeqCst))
