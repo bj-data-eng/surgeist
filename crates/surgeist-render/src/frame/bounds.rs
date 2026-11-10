@@ -2,12 +2,13 @@ use super::FrameContext;
 use crate::accounting::{Account, RenderWork};
 use crate::{
     command::{
-        RenderClip, RenderCommand, RenderCommands, RenderLayerMask, commands_bounds_for_planning,
+        NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
+        commands_bounds_for_planning,
     },
     error::{Error, Result},
     filter::{DevicePixelConversionPolicy, FilterOutset, FilterRegionPlan, FilterSourceBounds},
     geometry::{PhysicalSize, Point, Rect, Transform},
-    text::TextRunBoundsKind,
+    text::{TextGlyph, TextRunBounds, TextRunBoundsKind},
 };
 #[cfg(test)]
 use crate::{geometry::Size, paint::Color, renderer::Antialiasing};
@@ -287,27 +288,51 @@ impl SemanticSourceContribution {
         account: &Account,
     ) -> Result<SemanticCommandContribution> {
         match command {
-            command @ RenderCommand::PreparedGlyphRun { .. } => {
-                let RenderCommand::PreparedGlyphRun {
-                    run: ref outline,
-                    transform,
-                    ..
-                } = command
-                else {
-                    unreachable!()
-                };
-                let bounds = match outline.bounds().ink_rect() {
+            RenderCommand::PreparedGlyphRun {
+                run,
+                transform,
+                paint,
+            } => {
+                let bounds = match run.bounds().ink_rect() {
                     None => SemanticSourceBounds::exactly_empty(),
                     Some(rect) => SemanticSourceBounds::try_from_rect(rect)?,
                 }
                 .try_transform(transform, "prepared outline transform")?;
-                SemanticCommandContribution::try_new(command, bounds, current_parent)
+                SemanticCommandContribution::try_new(
+                    RenderCommand::PreparedGlyphRun {
+                        run,
+                        transform,
+                        paint,
+                    },
+                    bounds,
+                    current_parent,
+                )
             }
-            command @ RenderCommand::TextRun { .. } => {
-                Self::try_from_text_run(command, current_parent)
+            RenderCommand::TextRun {
+                font,
+                size,
+                transform,
+                paint,
+                glyphs,
+                bounds,
+            } => {
+                let source_bounds = Self::text_source_bounds(&glyphs, bounds, transform)?;
+                SemanticCommandContribution::try_new(
+                    RenderCommand::TextRun {
+                        font,
+                        size,
+                        transform,
+                        paint,
+                        glyphs,
+                        bounds,
+                    },
+                    source_bounds,
+                    current_parent,
+                )
             }
-            command @ RenderCommand::Layer { .. } => Self::try_from_layer(
-                command,
+            RenderCommand::Layer { layer, children } => Self::try_from_layer(
+                layer,
+                children,
                 current_parent,
                 domain,
                 context,
@@ -324,25 +349,16 @@ impl SemanticSourceContribution {
         }
     }
 
-    fn try_from_text_run(
-        command: RenderCommand,
-        current_parent: SemanticSourceBounds,
-    ) -> Result<SemanticCommandContribution> {
-        let RenderCommand::TextRun {
-            transform,
-            ref glyphs,
-            bounds,
-            ..
-        } = command
-        else {
-            unreachable!("text contribution helper received a non-text command");
-        };
-        let source_bounds = if glyphs.is_empty() || bounds.kind() == TextRunBoundsKind::Empty {
-            SemanticSourceBounds::exactly_empty()
-                .try_transform(transform, "text source transform")?
+    fn text_source_bounds(
+        glyphs: &[TextGlyph],
+        bounds: TextRunBounds,
+        transform: Transform,
+    ) -> Result<SemanticSourceBounds> {
+        if glyphs.is_empty() || bounds.kind() == TextRunBoundsKind::Empty {
+            SemanticSourceBounds::exactly_empty().try_transform(transform, "text source transform")
         } else if bounds.kind() == TextRunBoundsKind::Unspecified {
             SemanticSourceBounds::wholly_unresolved()
-                .try_transform(transform, "text source transform")?
+                .try_transform(transform, "text source transform")
         } else {
             let ink_bounds = bounds.ink_rect().ok_or_else(|| {
                 Error::invalid_value(
@@ -352,26 +368,19 @@ impl SemanticSourceContribution {
                 )
             })?;
             SemanticSourceBounds::try_from_rect(ink_bounds)?
-                .try_transform(transform, "text source transform")?
-        };
-        SemanticCommandContribution::try_new(command, source_bounds, current_parent)
+                .try_transform(transform, "text source transform")
+        }
     }
 
     fn try_from_layer(
-        command: RenderCommand,
+        mut layer: NormalizedLayer,
+        children: RenderCommands,
         current_parent: SemanticSourceBounds,
         domain: SemanticContributionDomain,
         context: FrameContext,
         local_to_surface: Transform,
         account: &Account,
     ) -> Result<SemanticCommandContribution> {
-        let RenderCommand::Layer {
-            mut layer,
-            children,
-        } = command
-        else {
-            unreachable!("layer contribution helper received a non-layer command");
-        };
         let layer_to_surface = layer.transform.then(local_to_surface)?;
         let singular_source = linear_transform_is_rank_deficient(layer_to_surface)?;
         if singular_source && layer.clip.is_some() {
@@ -1447,5 +1456,259 @@ mod operation_domain_tests {
                 .rect(),
             Rect::new(2.0, 1.0, 3.0, 2.0),
         );
+    }
+}
+
+#[cfg(test)]
+mod command_contribution_tests {
+    use super::*;
+    use crate::{
+        Capabilities, FontData, FontRef, GlyphRunLimits, GlyphSynthesis, Layer,
+        RenderAccountingContext, Scene, TextGlyph, TextInstance, TextPaint, TextRun, TextRunBounds,
+    };
+
+    fn context() -> FrameContext {
+        FrameContext::try_new(
+            Size::new(32.0, 32.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap()
+    }
+
+    fn contribute(
+        commands: RenderCommands,
+        account: &Account,
+    ) -> Result<SemanticSourceContribution> {
+        let context = context();
+        SemanticSourceContribution::try_from_commands(
+            commands,
+            context.initial_parent_contribution(),
+            SemanticContributionDomain::RootOutputBounded(context.output_bounds),
+            context,
+            Transform::identity(),
+            account,
+        )
+    }
+
+    fn add_text(scene: &mut Scene, bounds: TextRunBounds, glyphs: &[TextGlyph]) {
+        scene.text_run(
+            TextRun::try_new(
+                FontRef::new(71_u64).named("contribution text"),
+                10.0,
+                Transform::translation(2.0, 3.0).unwrap(),
+                TextPaint::try_fill(Color::BLACK.into()).unwrap(),
+                glyphs,
+                bounds,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn native_text_preserves_transformed_ink_unresolved_state_and_shared_payloads() {
+        let glyphs = [TextGlyph::try_new(58, 0.0, 8.0, 10.0).unwrap()];
+        for (bounds, empty_glyphs, retained, unresolved) in [
+            (
+                TextRunBounds::try_ink(Rect::new(1.0, 2.0, 4.0, 5.0)).unwrap(),
+                false,
+                true,
+                false,
+            ),
+            (TextRunBounds::empty(), false, false, false),
+            (TextRunBounds::unspecified(), false, true, true),
+            (TextRunBounds::unspecified(), true, false, false),
+        ] {
+            let account = Account::for_test();
+            let mut scene = Scene::new();
+            add_text(&mut scene, bounds, if empty_glyphs { &[] } else { &glyphs });
+            let normalized = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+            let actual = contribute(normalized.clone(), &account).unwrap();
+            assert_eq!(actual.commands.len(), usize::from(retained));
+            assert_eq!(
+                actual.source_bounds.contains_unresolved_content(),
+                unresolved
+            );
+            if retained {
+                let (
+                    RenderCommand::TextRun {
+                        font,
+                        paint,
+                        glyphs,
+                        ..
+                    },
+                    RenderCommand::TextRun {
+                        font: original_font,
+                        paint: original_paint,
+                        glyphs: original_glyphs,
+                        ..
+                    },
+                ) = (&actual.commands[0], &normalized[0])
+                else {
+                    panic!("retained text must preserve its complete normalized payload");
+                };
+                assert_eq!(actual.commands[0], normalized[0]);
+                assert!(std::ptr::eq(&**font, &**original_font));
+                assert!(std::ptr::eq(&**paint, &**original_paint));
+                assert!(std::ptr::eq(&**glyphs, &**original_glyphs));
+                if !unresolved {
+                    assert_eq!(
+                        actual
+                            .source_bounds
+                            .known_non_empty_extent()
+                            .unwrap()
+                            .rect(),
+                        Rect::new(3.0, 5.0, 4.0, 5.0)
+                    );
+                }
+            } else {
+                assert!(actual.source_bounds.is_exactly_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn prepared_ink_preserves_transformed_geometry_and_original_preparation() {
+        let font = FontData::try_from_bytes(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let instance = TextInstance::try_new(10.0, vec![], GlyphSynthesis::none()).unwrap();
+        let run = font
+            .prepare_glyph_run(
+                &instance,
+                &[TextGlyph::try_new(58, 0.0, 8.0, 10.0).unwrap()],
+                GlyphRunLimits::new(1, 16, 1 << 20, 1 << 20),
+                &mut RenderAccountingContext::default(),
+            )
+            .unwrap();
+        let account = Account::for_test();
+        let mut scene = Scene::new();
+        scene.prepared_glyph_run(
+            run.clone(),
+            Transform::translation(2.0, 3.0).unwrap(),
+            TextPaint::try_fill(Color::BLACK.into()).unwrap(),
+        );
+        let normalized = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+        let actual = contribute(normalized.clone(), &account).unwrap();
+        assert_eq!(
+            actual
+                .source_bounds
+                .known_non_empty_extent()
+                .unwrap()
+                .rect(),
+            Rect::new(2.0, 3.0, 10.0, 10.0)
+        );
+        assert_eq!(actual.commands, normalized);
+        let (
+            RenderCommand::PreparedGlyphRun {
+                run: retained,
+                paint,
+                ..
+            },
+            RenderCommand::PreparedGlyphRun {
+                run: original,
+                paint: original_paint,
+                ..
+            },
+        ) = (&actual.commands[0], &normalized[0])
+        else {
+            panic!("prepared contribution must retain its normalized payload");
+        };
+        assert!(retained.is_same_preparation(&run));
+        assert!(std::ptr::eq(&**retained, &**original));
+        assert!(std::ptr::eq(&**paint, &**original_paint));
+    }
+
+    #[test]
+    fn nested_contributions_keep_exact_visit_prefix_order_and_fresh_retry_across_profiles() {
+        use crate::accounting::{
+            FrameAttempt, FrameReportSlot, RenderAccountingError, RenderAccountingOptions,
+            RenderAttemptStatus, RenderLimits, RenderPhase, RenderProfile, RenderQuantity,
+            RenderRefusalReason, RendererCpu,
+        };
+        let mut scene = Scene::new();
+        scene.fill(Rect::new(1.0, 1.0, 2.0, 2.0), Color::BLACK);
+        scene.layer(Layer::new().isolated(), |scene| {
+            scene.fill(Rect::new(5.0, 4.0, 3.0, 2.0), Color::BLACK);
+        });
+        scene.fill(Rect::new(10.0, 1.0, 2.0, 2.0), Color::BLACK);
+        let original_account = Account::for_test();
+        let normalized = scene
+            .normalize(Capabilities::CURRENT, &original_account)
+            .unwrap();
+        // Three root dispatches, one child scan, one child dispatch, and three fill-bound visits.
+        for profile in [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Summary { timing: true },
+        ] {
+            let options = RenderAccountingOptions::new().with_profile(profile);
+            let cpu = RendererCpu::new(options).unwrap();
+            for limit in [7, 8] {
+                let bounded = options.with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CommandVisits, limit)
+                        .unwrap(),
+                );
+                let attempt =
+                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, bounded).unwrap();
+                let result =
+                    contribute(normalized.clone(), &attempt.account().at(RenderPhase::Plan));
+                assert_eq!(
+                    attempt
+                        .account()
+                        .work_count(RenderWork::CommandVisits)
+                        .unwrap(),
+                    limit
+                );
+                let (report, fault) = if limit == 7 {
+                    let error = result.unwrap_err();
+                    let Some(RenderAccountingError::Refused(refusal)) =
+                        error.accounting_diagnostic()
+                    else {
+                        panic!("the last fill bounds visit must refuse");
+                    };
+                    // The configured work limit belongs to the root attempt;
+                    // work is still submitted from the Plan account.
+                    assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                    assert_eq!(
+                        refusal.quantity(),
+                        RenderQuantity::Work(RenderWork::CommandVisits)
+                    );
+                    assert_eq!(refusal.current(), 7);
+                    assert_eq!(refusal.amount(), 1);
+                    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 7 });
+                    attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic())
+                } else {
+                    let actual = result.unwrap();
+                    assert_eq!(actual.commands, normalized);
+                    assert_eq!(
+                        actual
+                            .source_bounds
+                            .known_non_empty_extent()
+                            .unwrap()
+                            .rect(),
+                        Rect::new(1.0, 1.0, 11.0, 5.0)
+                    );
+                    drop(actual);
+                    attempt.finish(RenderAttemptStatus::Succeeded, None)
+                };
+                assert_eq!(fault, None);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::CommandVisits),
+                    limit
+                );
+                assert_eq!(cpu.snapshot().unwrap().fault(), None);
+            }
+        }
+        assert_eq!(scene.len(), 3);
     }
 }
