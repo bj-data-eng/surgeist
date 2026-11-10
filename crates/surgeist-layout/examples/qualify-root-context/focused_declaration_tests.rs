@@ -28,8 +28,8 @@ struct Prepared {
 }
 
 fn prepared(bytes: &[u8], source: &str, mode: QualificationMode) -> Result<Prepared> {
-    let mut input = DeclarationInput::parse(bytes)?;
-    select_records(&mut input.declaration, Some(source), mode)?;
+    let input = DeclarationInput::focused(bytes, source, mode)?;
+    let mode = input.execution_mode(mode);
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let invocation = Invocation::new(owner)?;
     let root = TemporaryCorpus(invocation.root.clone());
@@ -46,7 +46,7 @@ fn appended() -> Vec<u8> {
     [DECLARATION, UNRELATED.as_bytes()].concat()
 }
 
-fn edit_record(bytes: &[u8], source: &str, from: &str, to: &str) -> Vec<u8> {
+pub(super) fn edit_record(bytes: &[u8], source: &str, from: &str, to: &str) -> Vec<u8> {
     let text = std::str::from_utf8(bytes).unwrap();
     let start = text.find(&format!("source = \"{source}\"")).unwrap();
     let end = text[start..]
@@ -177,13 +177,7 @@ fn focused_declaration_validates_complete_catalogue_before_selecting_known_sourc
 
 #[test]
 fn focused_declaration_readonly_inventory_refuses_changed_resource_without_repair() {
-    let mut input = DeclarationInput::parse(DECLARATION).unwrap();
-    select_records(
-        &mut input.declaration,
-        Some(BASIC),
-        QualificationMode::Regular,
-    )
-    .unwrap();
+    let input = DeclarationInput::focused(DECLARATION, BASIC, QualificationMode::Regular).unwrap();
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let invocation = Invocation::new(owner).unwrap();
     let root = TemporaryCorpus(invocation.root.clone());
@@ -210,5 +204,138 @@ fn focused_declaration_readonly_inventory_refuses_changed_resource_without_repai
         .is_err()
     );
     assert_eq!(fs::read(resource).unwrap(), b"div { width: 1px; }\n");
+    invocation.check_terminal().unwrap();
+}
+
+#[test]
+fn focused_declaration_refuses_lossy_numbers_before_selection() {
+    for value in ["nan", "inf", "-inf"] {
+        for replacement in [
+            format!("inline_offset = {value}"),
+            format!(
+                "inline_offset = 0\nroot_size = {{ kind = \"fixed\", width = {value}, height = 20 }}"
+            ),
+            format!(
+                "inline_offset = 0\nroot_size = {{ kind = \"fixed\", width = 20, height = {value} }}"
+            ),
+            format!(
+                "inline_offset = 0\nroot_size = {{ kind = \"flex-pair\", item_width = {value}, item_height = 20 }}"
+            ),
+            format!(
+                "inline_offset = 0\nroot_size = {{ kind = \"flex-pair\", item_width = 20, item_height = {value} }}"
+            ),
+        ] {
+            let changed = edit_record(DECLARATION, BASIC, "inline_offset = 0", &replacement);
+            for source in [BASIC, FLEX_COMPOSITION_SOURCE] {
+                assert!(
+                    DeclarationInput::focused(&changed, source, QualificationMode::Regular)
+                        .is_err(),
+                    "{replacement} must refuse before selecting {source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn focused_declaration_refuses_selected_and_unselected_optional_nonfinite_offsets() {
+    for value in ["nan", "inf", "-inf"] {
+        let changed = edit_record(
+            DECLARATION,
+            BASIC,
+            "inline_offset = 0",
+            &format!("inline_offset = 0\nblock_offset = {value}"),
+        );
+        for source in [BASIC, FLEX_COMPOSITION_SOURCE] {
+            assert!(
+                DeclarationInput::focused(&changed, source, QualificationMode::Regular).is_err(),
+                "{value} must refuse before selecting {source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn focused_declaration_equal_cyclic_closures_keep_requested_roots_distinct() {
+    let grid = "html/qualification/fixed-grid.html";
+    let inline = "html/qualification/fixed-inline-grid.html";
+    let cyclic = edit_record(
+        DECLARATION,
+        grid,
+        "[records.expected]",
+        "[records.relation]\npeer = \"fixed-inline-grid\"\nworld_phase_change = false\n[records.expected]",
+    );
+    let mode = QualificationMode::ElementScrollSizeDiagnostics;
+    let first = DeclarationInput::focused(&cyclic, grid, mode).unwrap();
+    let second = DeclarationInput::focused(&cyclic, inline, mode).unwrap();
+    assert_eq!(
+        serde_json::to_value(&first.declaration.records).unwrap(),
+        serde_json::to_value(&second.declaration.records).unwrap()
+    );
+    assert_eq!(first.declaration.records.len(), 2);
+    assert_ne!(first.bytes(), second.bytes());
+    let a: serde_json::Value = serde_json::from_slice(first.bytes()).unwrap();
+    let b: serde_json::Value = serde_json::from_slice(second.bytes()).unwrap();
+    assert_eq!(a["requested_source"], grid);
+    assert_eq!(b["requested_source"], inline);
+}
+
+#[test]
+fn focused_declaration_aliases_normalize_before_binding_profile_and_bytes() {
+    let implicit = DeclarationInput::focused(
+        DECLARATION,
+        FLEX_COMPOSITION_SOURCE,
+        QualificationMode::Regular,
+    )
+    .unwrap();
+    let explicit = DeclarationInput::focused(
+        DECLARATION,
+        FLEX_COMPOSITION_SOURCE,
+        QualificationMode::FlexCompositionCapture,
+    )
+    .unwrap();
+    assert_eq!(implicit.bytes(), explicit.bytes());
+    assert_eq!(
+        implicit.execution_mode(QualificationMode::Regular),
+        QualificationMode::FlexCompositionCapture
+    );
+    let value: serde_json::Value = serde_json::from_slice(implicit.bytes()).unwrap();
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["mode"], "flex-composition-capture");
+    assert_eq!(value["requested_source"], FLEX_COMPOSITION_SOURCE);
+    assert_eq!(
+        value["records"],
+        serde_json::to_value(&implicit.declaration.records).unwrap()
+    );
+    assert_eq!(implicit.declaration_path(), FOCUSED_DECLARATION);
+}
+
+#[test]
+fn focused_declaration_execution_refuses_mode_or_typed_record_identity_mismatch() {
+    let mut input =
+        DeclarationInput::focused(DECLARATION, BASIC, QualificationMode::Regular).unwrap();
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let invocation = Invocation::new(owner).unwrap();
+    let root = TemporaryCorpus(invocation.root.clone());
+    let error = prepare_inventory(
+        &root.0,
+        owner,
+        &input,
+        QualificationMode::NumericDiagnostics,
+    )
+    .err()
+    .unwrap();
+    assert!(error.to_string().contains("mode differs from execution"));
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 0);
+    input.declaration.records[0].source_sha256 = Sha256Digest::from_bytes(b"changed record");
+    let error = prepare_inventory(&root.0, owner, &input, QualificationMode::Regular)
+        .err()
+        .unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("records differ from their identity")
+    );
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 0);
     invocation.check_terminal().unwrap();
 }

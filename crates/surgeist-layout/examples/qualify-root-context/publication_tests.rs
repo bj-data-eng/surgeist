@@ -356,7 +356,7 @@ fn declaration_with_appended_original() -> Vec<u8> {
     let prefix = edition_input(DECLARATION).unwrap();
     let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join(ORIGINAL);
     let source_hash = Sha256Digest::from_bytes(fs::read(owner.join(APPENDED_ORIGINAL)).unwrap());
-    let mut bytes = prefix.bytes.to_vec();
+    let mut bytes = prefix.bytes().to_vec();
     let mut suffix = format!(
         "\n[[records]]\nsource = {APPENDED_ORIGINAL:?}\nsource_sha256 = \"{}\"\n",
         source_hash.as_str()
@@ -439,7 +439,8 @@ fn focused_geometry_requires_only_its_selected_predecessors() {
 fn appended_semantic_publication_preserves_sealed_source_and_rejects_shadows() {
     let source = "html/grid/grid_absolute_resolved_insets.html";
     let digest = "a".repeat(64);
-    let prefix = edition_input(DECLARATION).unwrap().bytes;
+    let retained = edition_input(DECLARATION).unwrap();
+    let prefix = retained.bytes();
     let mut annotation = format!("\n[[semantic_publications]]\nsource = {source:?}\n");
     for (variant, _) in fixture_cases() {
         annotation.push_str(&format!(
@@ -489,12 +490,12 @@ fn appended_semantic_publication_preserves_sealed_source_and_rejects_shadows() {
 fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
     let current = edition_input(DECLARATION).unwrap();
     assert_eq!(
-        Sha256Digest::from_bytes(current.bytes).as_str(),
+        Sha256Digest::from_bytes(current.bytes()).as_str(),
         DECLARATION_PREFIX_SHA256
     );
     let grown = declaration_with_appended_original();
     let edition = edition_input(&grown).unwrap();
-    assert_eq!(edition.bytes, current.bytes);
+    assert_eq!(edition.bytes(), current.bytes());
     assert_eq!(
         edition.declaration.expected().unwrap(),
         current.declaration.expected().unwrap()
@@ -521,7 +522,7 @@ fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
     .unwrap();
     assert_eq!(checked.expected_inputs, original.expected_inputs);
     assert_eq!(case_identities(&checked), case_identities(&original));
-    assert_eq!(fs::read(&manifest).unwrap(), current.bytes);
+    assert_eq!(fs::read(&manifest).unwrap(), current.bytes());
     assert_eq!(
         fs::metadata(&manifest).unwrap().modified().unwrap(),
         modified
@@ -546,7 +547,7 @@ fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
 #[test]
 fn sealed_edition_refuses_short_edited_reordered_or_missing_prefix() {
     let source = edition_input(DECLARATION).unwrap();
-    let prefix = source.bytes;
+    let prefix = source.bytes();
     assert!(edition_input(b"schema_version = 3\n").is_err());
     let short = &prefix[..prefix.len() - 1];
     assert!(DeclarationInput::parse(short).is_ok());
@@ -588,7 +589,7 @@ fn complete_current_declaration_refuses_appended_duplicate_and_prior_source_shad
             APPENDED_ORIGINAL,
             prefix.declaration.records[0].source.as_str(),
         );
-    let shadow = [prefix.bytes, shadow_suffix.as_bytes()].concat();
+    let shadow = [prefix.bytes(), shadow_suffix.as_bytes()].concat();
     assert!(DeclarationInput::parse(&shadow).is_err());
     assert!(
         edition_input(&shadow)
@@ -746,7 +747,7 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         InputAccess::ReadOnly,
     )
     .unwrap();
-    assert_eq!(input.bytes, declaration);
+    assert_eq!(input.bytes(), declaration);
     assert_eq!(input.declaration.records.len(), 1);
     assert_eq!(
         input.declaration.records[0].source.as_str(),

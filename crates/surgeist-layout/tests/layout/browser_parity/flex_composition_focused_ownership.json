@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/flex/fri07_flex_composition__border_box_ltr.xml": "77e77d9b216ec2bd829872e2939f491d9b7c076b4d7b1ff955dc6568846f438b",
+    "xml/flex/fri07_flex_composition__border_box_rtl.xml": "bc1fbbbfd3966701c9c942ab7c96d8b785a917c43ff6b2456c8d6abdd687954a",
+    "xml/flex/fri07_flex_composition__content_box_ltr.xml": "a9bd1dbcd76f3707e72670fa5f7e629006e1fc3cdf16f3166340ca29802ce9e1",
+    "xml/flex/fri07_flex_composition__content_box_rtl.xml": "55543d965928c159239c26a1ed5a4d1d3c0440e94f9ec2a86b839908074ea5bd",
+    "xml/generation-reports/all.json": "60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82"
+  }
+}

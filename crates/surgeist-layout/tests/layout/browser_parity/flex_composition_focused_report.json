@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-focused",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "99ae97e2b279e43f9d75e7e332225071d9fb5ef02423eccb709dd804252ceb16",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "46a310eef500f5e961cf8b67d181256e76eb973c84baf1daa6e33d879cca409b",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "focused-declaration.json": "d901ced458487d4b2a2e0ecd7690ba47ad615e8e257173b23cb12a803cbff163",
+      "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+      "historical/flex/fri07_flex_composition__border_box_ltr.xml": "09a174bfe03193e014f6680cfa73f097ec4c8e7c0c17868156c3fd8b9854965d",
+      "historical/flex/fri07_flex_composition__border_box_rtl.xml": "c9c8461e6b44db290d61228610b7c2e2cc9bf3652bf5537fd5d459a150f503cf",
+      "historical/flex/fri07_flex_composition__content_box_ltr.xml": "0d36c79ae01d8c28d85c7407321c3aa7b333dd3a83872b6dbe4656759ba2518f",
+      "historical/flex/fri07_flex_composition__content_box_rtl.xml": "590fd515632d780269e6c0cbd8c386dfc0c02ebe314b067a16b4b318bac11c09",
+      "html/flex/fri07_flex_composition.html": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
+      "observation-request.json": "76a68988a035d2db7ac4e3ad9ba7cfcd5a013acfc2ddae94b4112b5b74e6116c",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
+      "semantic/flex-composition-collapse-policy.md": "171dff9f34e0de4b4b1104009b18e9a12fa9610dbebd94f707e63f62078f820a",
+      "semantic/flex-composition-ltr-native.json": "240a1fcae707b8f9c43e93388a310320d7d117c5148c8ea21069e6f01d28141a",
+      "semantic/flex-composition-rtl-native.json": "c9c8024b63447230291bae870a8cc743ee0be950f33d50f2d83ebb58d552f08a",
+      "semantic/flex-composition-scrollbar-policy.md": "7de645b24bf2d03ebe3ee0c914deb6751d2662b817671aedcea433d35ae1b383",
+      "tests/layout/browser_parity/captured/flex-composition-differences/gutter-control.json": "edcff878101c01973ca991b95a8f7ada4dce5859f9074c63fc1afa91581a71b7"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 4,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "fri07_flex_composition__border_box_ltr",
+      "source": "html/flex/fri07_flex_composition.html",
+      "output": "xml/flex/fri07_flex_composition__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
+      "linked_resources": {},
+      "job_sha256": "23fc9901447affc1d844e12e2814a5c7aa7d221887052aaecfad00bbc0c1de61",
+      "output_sha256": "77e77d9b216ec2bd829872e2939f491d9b7c076b4d7b1ff955dc6568846f438b"
+    },
+    {
+      "name": "fri07_flex_composition__border_box_rtl",
+      "source": "html/flex/fri07_flex_composition.html",
+      "output": "xml/flex/fri07_flex_composition__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
+      "linked_resources": {},
+      "job_sha256": "23fc9901447affc1d844e12e2814a5c7aa7d221887052aaecfad00bbc0c1de61",
+      "output_sha256": "bc1fbbbfd3966701c9c942ab7c96d8b785a917c43ff6b2456c8d6abdd687954a"
+    },
+    {
+      "name": "fri07_flex_composition__content_box_ltr",
+      "source": "html/flex/fri07_flex_composition.html",
+      "output": "xml/flex/fri07_flex_composition__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
+      "linked_resources": {},
+      "job_sha256": "23fc9901447affc1d844e12e2814a5c7aa7d221887052aaecfad00bbc0c1de61",
+      "output_sha256": "a9bd1dbcd76f3707e72670fa5f7e629006e1fc3cdf16f3166340ca29802ce9e1"
+    },
+    {
+      "name": "fri07_flex_composition__content_box_rtl",
+      "source": "html/flex/fri07_flex_composition.html",
+      "output": "xml/flex/fri07_flex_composition__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
+      "linked_resources": {},
+      "job_sha256": "23fc9901447affc1d844e12e2814a5c7aa7d221887052aaecfad00bbc0c1de61",
+      "output_sha256": "55543d965928c159239c26a1ed5a4d1d3c0440e94f9ec2a86b839908074ea5bd"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}

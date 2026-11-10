@@ -8,6 +8,9 @@ const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.htm
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
 const SCRIPT_CUSTODY_REPORT: &str = include_str!("flex_composition_script_custody_report.json");
+const FOCUSED_REPORT: &str = include_str!("flex_composition_focused_report.json");
+const FOCUSED_REPORT_SHA256: &str =
+    "60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82";
 
 // Each report binds an environment qualified by the same collapse-disabled
 // gutter control. The original producer and its witness remain immutable.
@@ -149,49 +152,92 @@ fn require_control_environment(
     published: bool,
 ) -> Result<(), Error> {
     let mut admitted = false;
-    for (report, digest) in [
-        (control_report, RETAINED_REPORT_SHA256),
-        (SCRIPT_CUSTODY_REPORT, SCRIPT_CUSTODY_REPORT_SHA256),
+    for (report, digest, declaration) in [
+        (control_report, RETAINED_REPORT_SHA256, "corpus.toml"),
+        (
+            SCRIPT_CUSTODY_REPORT,
+            SCRIPT_CUSTODY_REPORT_SHA256,
+            "corpus.toml",
+        ),
+        (
+            FOCUSED_REPORT,
+            FOCUSED_REPORT_SHA256,
+            "focused-declaration.json",
+        ),
     ] {
         if sha256(report.as_bytes()) != digest {
             return Err(invalid("gutter control report identity changed"));
         }
         let witness = capture_authority::unique_json(report).map_err(invalid)?;
         let sealed = &witness["metadata"];
-        let same_environment = [
-            "engine_version",
-            "browser_executable",
-            "browser_executable_sha256",
-            "browser_provenance",
-        ]
-        .into_iter()
-        .all(|key| current[key] == sealed[key])
-            && [
-                "browser-owner.toml",
-                "fonts/Ahem.ttf",
-                "observation-request.json",
-                "scripts/gentest/test_base_style.css",
-                capture_authority::ROOT_HELPER_INPUT,
-            ]
-            .into_iter()
-            .all(|key| current["inputs"][key] == sealed["inputs"][key]);
-        // A focused contract and declaration must belong to the same witness
-        // as its helper. A publication verifies its distinct contract upstream.
-        let lineage_matches = if published {
-            metadata.generator == capture_authority::FIXED_GENERATOR
-                && metadata.source_imports.is_empty()
-        } else {
-            ["generator", "contract_sha256", "source_imports"]
-                .into_iter()
-                .all(|key| current[key] == sealed[key])
-                && current["inputs"]["corpus.toml"] == sealed["inputs"]["corpus.toml"]
-        };
-        admitted |= same_environment && lineage_matches;
+        admitted |= environment_matches(current, metadata, sealed, declaration, published);
     }
     if !admitted {
         return Err(invalid("capture environment changed"));
     }
     Ok(())
+}
+
+fn environment_matches(
+    current: &serde_json::Value,
+    metadata: &CaptureMetadata,
+    sealed: &serde_json::Value,
+    declaration: &str,
+    published: bool,
+) -> bool {
+    let same_environment = [
+        "engine_version",
+        "browser_executable",
+        "browser_executable_sha256",
+        "browser_provenance",
+    ]
+    .into_iter()
+    .all(|key| current[key] == sealed[key])
+        && [
+            "browser-owner.toml",
+            "fonts/Ahem.ttf",
+            "observation-request.json",
+            "scripts/gentest/test_base_style.css",
+            capture_authority::ROOT_HELPER_INPUT,
+        ]
+        .into_iter()
+        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
+    if published {
+        // Publication owns and verifies its distinct declaration and contract.
+        return same_environment
+            && metadata.generator == capture_authority::FIXED_GENERATOR
+            && metadata.source_imports.is_empty();
+    }
+    let digest = |value: &serde_json::Value| {
+        value
+            .get("inputs")?
+            .get(declaration)?
+            .as_str()
+            .filter(|value| {
+                value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+            .map(str::to_owned)
+    };
+    let declaration_matches = match (digest(current), digest(sealed)) {
+        (Some(current), Some(sealed)) => current == sealed,
+        _ => false,
+    };
+    let other = if declaration == "corpus.toml" {
+        "focused-declaration.json"
+    } else {
+        "corpus.toml"
+    };
+    same_environment
+        && declaration_matches
+        && current["inputs"] == sealed["inputs"]
+        && current["inputs"].get(other).is_none()
+        && sealed["inputs"].get(other).is_none()
+        && ["generator", "contract_sha256", "source_imports"]
+            .into_iter()
+            .all(|key| current[key] == sealed[key])
 }
 
 pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Result<(), Error> {
@@ -255,5 +301,42 @@ mod tests {
                 .to_string()
                 .contains("gutter control report identity changed")
         );
+    }
+    #[test]
+    fn published_environment_can_use_a_qualified_focused_witness_without_its_declaration_format() {
+        let witness = capture_authority::unique_json(FOCUSED_REPORT).unwrap();
+        // This tests environment suitability only; the publication owner checks
+        // the report's independent contract before reaching this boundary.
+        let mut current = capture_authority::unique_json(include_str!(
+            "captured/flex-composition-qualification/xml/generation-reports/all.json"
+        ))
+        .unwrap()["metadata"]
+            .clone();
+        current["inputs"][capture_authority::ROOT_HELPER_INPUT] =
+            witness["metadata"]["inputs"][capture_authority::ROOT_HELPER_INPUT].clone();
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        assert!(environment_matches(
+            &current,
+            &metadata,
+            &witness["metadata"],
+            "focused-declaration.json",
+            true
+        ));
+        assert!(!environment_matches(
+            &current,
+            &metadata,
+            &witness["metadata"],
+            "focused-declaration.json",
+            false
+        ));
+        current["generator"] = serde_json::json!("unowned-generator");
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        assert!(!environment_matches(
+            &current,
+            &metadata,
+            &witness["metadata"],
+            "focused-declaration.json",
+            true
+        ));
     }
 }

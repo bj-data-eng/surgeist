@@ -286,3 +286,4 @@ fn sideways_flex_binding_refuses_changed_browser_environment() {
 }
 
 include!("flex_composition_script_custody_tests.rs");
+include!("flex_composition_focused_tests.rs");

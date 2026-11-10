@@ -9,16 +9,17 @@ import { fileURLToPath } from 'node:url';
 
 const corpus = new URL('../', import.meta.url);
 const crate = new URL('../../../', corpus);
-const reportFile = new URL('flex_composition_script_custody_report.json', corpus);
+const reportFile = new URL('flex_composition_focused_report.json', corpus);
 const reportBytes = readFileSync(reportFile);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-assert.equal(hash(reportBytes), 'cd167f9ecd34d142423885080df4f839ccf94b81c5ba80eb70ea868770547024');
+assert.equal(hash(reportBytes), '60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82');
 
 const controlFile = new URL('captured/flex-composition-differences/gutter-control.json', corpus);
 const controlBytes = readFileSync(controlFile);
 assert.equal(hash(controlBytes), 'edcff878101c01973ca991b95a8f7ada4dce5859f9074c63fc1afa91581a71b7');
 
 const report = JSON.parse(reportBytes);
+assert.equal(hash(readFileSync(new URL('flex_composition_focused_declaration.json', corpus))), report.metadata.inputs['focused-declaration.json']);
 const source = new URL('html/flex/fri07_flex_composition.html', corpus);
 const browser = new URL(report.metadata.browser_executable, crate);
 const manifestBytes = readFileSync(new URL('corpus.toml', corpus));

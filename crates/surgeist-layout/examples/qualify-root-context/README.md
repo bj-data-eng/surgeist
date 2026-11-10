@@ -92,6 +92,14 @@ shadowed source keys anywhere in the complete current declaration. Current
 capture commands select records from the canonical declaration according to
 their request profile. The fixed-edition check covers only its sealed records.
 
+Focused captures validate that complete catalogue first, then materialize
+`focused-declaration.json` from the requested source, normalized capture mode
+and complete selected typed records. Diagnostic selection includes the allowed
+outgoing transitive peer closure. The input binds all selected metadata and
+historical/policy identities; an unrelated catalogue append leaves it unchanged.
+Runtime selection and the derived bytes share the same private state. Retained
+`corpus.toml` receipts use their authenticated original bytes.
+
 Both modes still compare the whole current canonical file with the current
 executable before and after validation. Shared helper/base/font/browser-owner
 freshness and all original source/import/history/certificate/Native/report gates
