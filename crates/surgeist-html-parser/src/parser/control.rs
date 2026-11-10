@@ -37,6 +37,7 @@ pub(crate) use finalization::{
 mod string_extension;
 mod text_append;
 pub(crate) use construction::ConstructionAllocation;
+pub(crate) mod tally;
 
 const WORK_COUNT: usize = 8;
 /// One value per [`HtmlParseWorkCategory`]; a lookup cannot be out of range.
@@ -804,6 +805,7 @@ impl ParseControl {
         Err(self.latch_stop(reason))
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), HtmlParseStop> {
+        tally::checkpoint();
         if let Some(first) = &self.stopped {
             return Err(first.reason);
         }
@@ -1051,6 +1053,7 @@ impl ParseControl {
             *slot = Some((parent, ordinal));
         }
     }
+    #[track_caller]
     pub(crate) fn charge(
         &mut self,
         category: HtmlParseWorkCategory,
@@ -1059,17 +1062,20 @@ impl ParseControl {
         self.charge_many(&[(category, units)])
     }
     /// Charges the inspection of one stored UTF-16 code unit: its two bytes.
+    #[track_caller]
     pub(crate) fn charge_unit_inspection(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, UNIT_BYTES)
     }
     /// Charges comparing one stored UTF-16 code unit with one byte of an ASCII
     /// literal: the two bytes of the unit and the one byte of the literal.
+    #[track_caller]
     pub(crate) fn charge_unit_literal_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, UNIT_LITERAL_PAIR_BYTES)
     }
     /// Compares a stored string with an ASCII literal as an ASCII case-insensitive match, charging
     /// one record visit and then one literal comparison per paired unit, exactly as far as the
     /// comparison proceeds. A length mismatch is decided after the record visit alone.
+    #[track_caller]
     pub(crate) fn ascii_case_insensitive_literal_matches(
         &mut self,
         value: &surgeist_html::values::DocumentString,
@@ -1089,9 +1095,11 @@ impl ParseControl {
         Ok(true)
     }
     /// Charges comparing one byte of each of two byte sequences.
+    #[track_caller]
     pub(crate) fn charge_byte_pair_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, BYTE_PAIR_BYTES)
     }
+    #[track_caller]
     fn charge_many<const N: usize>(
         &mut self,
         charges: &[(HtmlParseWorkCategory, u64); N],
@@ -1100,7 +1108,9 @@ impl ParseControl {
         self.charge_changes(&changes)
     }
     /// Charges work changes, which name schema work dimensions, as one batch.
+    #[track_caller]
     pub(crate) fn charge_changes(&mut self, changes: &[HtmlChange]) -> Result<(), HtmlParseStop> {
+        tally::site(std::panic::Location::caller());
         self.checkpoint()?;
         self.admit_work(changes)
     }
@@ -1176,12 +1186,14 @@ impl ParseControl {
         let result = self.accounts_mut()?.charge(batch);
         result.map_err(|error| self.storage_stop(error, requests, batch))
     }
+    #[track_caller]
     pub(crate) fn acquire(
         &mut self,
         resource: HtmlParseResource,
         units: u64,
     ) -> Result<(), HtmlParseStop> {
         // One request is its own batch: nothing to sum.
+        tally::site(std::panic::Location::caller());
         self.checkpoint()?;
         let Some(dimension) = resource.dimension().filter(|_| resource.storage()) else {
             return self.fail(HtmlParseStop::InternalInvariant(
@@ -1253,6 +1265,7 @@ impl ParseControl {
         ])
     }
     /// Coupled logical allocations admit atomically in resource precedence order.
+    #[track_caller]
     pub(crate) fn acquire_many(
         &mut self,
         requests: &[(HtmlParseResource, u64)],
@@ -1260,6 +1273,7 @@ impl ParseControl {
         if let &[(resource, units)] = requests {
             return self.acquire(resource, units);
         }
+        tally::site(std::panic::Location::caller());
         self.admit_storage(requests)
     }
     /// Admits an immutable provider graph retained by this original owner.
@@ -1339,6 +1353,7 @@ impl ParseControl {
     /// Nonmutating logical preflight before actual storage reservations. The
     /// session rechecks with `acquire_many` immediately before graph mutation;
     /// no logical acquisition may intervene between that commit and mutation.
+    #[track_caller]
     pub(crate) fn check_acquire_many(
         &mut self,
         requests: &[(HtmlParseResource, u64)],
@@ -1838,6 +1853,7 @@ impl ParseControl {
         drop(allocation);
         Ok(())
     }
+    #[track_caller]
     pub(crate) fn release(
         &mut self,
         resource: HtmlParseResource,
@@ -1925,6 +1941,11 @@ impl ParseControl {
         plan: ReservationPlan,
         admitted: &mut u64,
     ) -> Result<(), HtmlParseStop> {
+        tally::list(|c| {
+            c.reservations += 1;
+            c.reserved_new_bytes += plan.new_bytes;
+            c.reserved_old_bytes += plan.old_bytes;
+        });
         self.checkpoint()?;
         // A reservation never shrinks the allocation it replaces.
         self.preflight_capacity(plan.old_bytes, plan.new_bytes, true)?;
@@ -2564,6 +2585,7 @@ impl<T> OwnedVec<T> {
         index: usize,
         control: &mut ParseControl,
     ) -> Result<Option<&mut T>, HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(self.vector.get_mut(index))
@@ -2575,6 +2597,7 @@ impl<T> OwnedVec<T> {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<&mut [T], HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(&mut self.vector)
@@ -2614,6 +2637,8 @@ impl<T> OwnedVec<T> {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<Option<T>, HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
+        tally::list(|c| c.pops += 1);
         self.require_owner(control)?;
         if self.vector.is_empty() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -2831,6 +2856,11 @@ impl<T> OwnedVec<T> {
         value: T,
         growth: Growth,
     ) -> Result<(), HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
+        tally::list(|c| {
+            c.pushes += 1;
+            c.push_bytes += size_of::<T>() as u64;
+        });
         control.checkpoint()?;
         let bytes = size_of::<T>() as u64;
         self.prepare(control, 1, bytes, 1, growth)?;
@@ -2872,6 +2902,11 @@ impl<T> OwnedVec<T> {
         other_value: U,
         first_held: bool,
     ) -> Result<(), HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
+        tally::list(|c| {
+            c.pushes += 1;
+            c.push_bytes += size_of::<T>() as u64;
+        });
         let bytes = size_of::<T>()
             .checked_add(size_of::<U>())
             .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::CapacityMismatch))?;
@@ -2939,6 +2974,11 @@ impl<T> OwnedVec<T> {
         value: T,
         growth: Growth,
     ) -> Result<(), (HtmlParseStop, T)> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
+        tally::list(|c| {
+            c.pushes += 1;
+            c.push_bytes += size_of::<T>() as u64;
+        });
         let admission = (|| {
             control.checkpoint()?;
             let bytes = size_of::<T>() as u64;
@@ -3000,6 +3040,11 @@ impl<T: Copy> OwnedVec<T> {
         values: &[T],
         growth: Growth,
     ) -> Result<(), HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
+        tally::list(|c| {
+            c.extends += 1;
+            c.extend_bytes += std::mem::size_of_val(values) as u64;
+        });
         control.checkpoint()?;
         self.prepare(control, values.len(), 0, 0, growth)?;
         // A zero-sized element has no byte stride; refuse it when this is compiled.

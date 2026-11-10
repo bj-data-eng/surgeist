@@ -98,15 +98,19 @@ impl Accounts {
     }
 
     pub(crate) fn work(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        super::tally::ledger(0, changes.len());
         self.ledger.apply(self.work, changes)
     }
     pub(crate) fn charge(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        super::tally::ledger(1, changes.len());
         self.ledger.apply(self.charging, changes)
     }
     pub(crate) fn check(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        super::tally::ledger(2, changes.len());
         self.ledger.check(self.charging, changes)
     }
     pub(crate) fn live(&self, resource: HtmlResource) -> Result<u64, LedgerError> {
+        super::tally::ledger(3, 0);
         self.ledger
             .read(self.charging, |usage| usage.live(resource))
     }

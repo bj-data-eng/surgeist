@@ -47,7 +47,9 @@ const fn amount_of(change: HtmlChange) -> u64 {
 }
 
 impl ParseControl {
+    #[track_caller]
     pub(super) fn accounts_mut(&mut self) -> Result<&mut Accounts, HtmlParseStop> {
+        super::tally::site_if_unset(std::panic::Location::caller());
         if self.accounts.is_none() {
             // Setup latched its fault when it failed, so the stop exists.
             return Err(match &self.stopped {
@@ -76,12 +78,14 @@ impl ParseControl {
     }
 
     /// Applies a batch of work to the scope that receives work.
+    #[track_caller]
     pub(super) fn admit_work(&mut self, changes: &[HtmlChange]) -> Result<(), HtmlParseStop> {
         let result = self.accounts_mut()?.work(changes);
         result.map_err(|error| self.work_stop(error, changes))
     }
 
     /// Applies a batch of resource changes to the charging scope.
+    #[track_caller]
     pub(super) fn admit_resources(
         &mut self,
         changes: &[HtmlChange],
@@ -93,6 +97,7 @@ impl ParseControl {
 
     /// Checks a batch of resource changes the way admission would, committing
     /// nothing.
+    #[track_caller]
     pub(super) fn check_resources(
         &mut self,
         changes: &[HtmlChange],
@@ -103,6 +108,7 @@ impl ParseControl {
     }
 
     /// The live value of a resource.
+    #[track_caller]
     pub(super) fn live(&mut self, resource: HtmlParseResource) -> Result<u64, HtmlParseStop> {
         let Some(dimension) = resource.dimension() else {
             let credits = self.accounts_mut()?.credits();
@@ -120,6 +126,7 @@ impl ParseControl {
 
     /// Records `value` as the largest reached by a gauge resource, in a batch
     /// with `changes`, the gauge last.
+    #[track_caller]
     pub(super) fn gauge_changes(
         &mut self,
         resource: HtmlResource,

@@ -122,3 +122,12 @@ pub use parser::tree_builder::prologue::{HtmlPrologueDiagnostic, HtmlPrologueMod
 
 pub use construction::context::HtmlParseOpaqueOrigin;
 pub use construction::fragment_document::HtmlParseFragmentParserDocument;
+
+#[doc(hidden)]
+pub fn tally_report() -> String {
+    parser::control::tally::report()
+}
+#[doc(hidden)]
+pub fn tally_reset() {
+    parser::control::tally::reset()
+}
