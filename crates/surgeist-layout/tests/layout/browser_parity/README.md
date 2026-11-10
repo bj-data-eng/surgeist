@@ -57,8 +57,8 @@ retained association, transformed coordinates, current offsets, snap selection,
 CSSOM, host scrollbar UI, or runtime events.
 
 Current source pins, import rules, artifact inventory, and expected outcome counts
-are declared in `corpus.toml`. Ordinary Cargo test runs compare every checked-in
-fixture through the full parity runner, without launching a browser or regenerating
+are declared in `corpus.toml`. Ordinary Cargo test runs compare the original XML
+and registered current editions without launching a browser or regenerating
 fixtures. Generation infrastructure changes must preserve XML bytes and complete
 per-fixture outcomes unless browser expectation changes are separately intended.
 
@@ -73,6 +73,12 @@ evidence, and registered current outputs run separately even when their names
 match an original. Any mismatch or incomplete observation fails. Historical
 missing-root-context errors remain raw failures; a current capture never turns
 them into historical passes.
+
+The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
+records the complete raw numeric differences from all 36 source-qualified
+original axis captures. It is separate from matching editions. Use the
+[diagnostic check](../../../examples/qualify-root-context/README.md#grid-lanes-original-diagnostics)
+to replay those comparisons.
 
 The ordinary default-feature test target runs all registered editions.
 

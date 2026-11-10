@@ -172,15 +172,16 @@ to that predecessor. `root-context-v4` itself has no terminal.
 
 ## Matching geometry editions
 
-The catalogue's `matching_publications` tables name cohorts of original,
-Generated box sources. The [box-controls edition](../../tests/layout/browser_parity/captured/box-controls/qualification.json)
+The catalogue's `matching_publications` tables name cohorts of Generated box
+sources. The [box-controls edition](../../tests/layout/browser_parity/captured/box-controls/qualification.json)
 contains four originals across both box modes and directions, for sixteen cases.
 The [scriptless-order edition](../../tests/layout/browser_parity/captured/scriptless-order/qualification.json)
 contains the original scriptless Flex order fixture across all four variants.
-Each case requires unchanged complete historical observations, declared root context, finite coordinates and
-sizes for every box, and a complete Native comparison with zero raw differences.
-Raw fields and qualification remain separate outputs. Matching cohorts require
-no difference policy or authored Native oracle.
+Each case requires the declared root context, finite coordinates and sizes for
+every box, and a complete Native comparison with zero raw differences. Original
+sources must preserve their pinned historical observations. Authored sources
+are read from this example's fixture directory and carry no historical
+predecessor. Raw fields and qualification remain separate outputs.
 
 Publication requires an absent `tests/layout/browser_parity/captured/box-controls`
 directory, the verified original source import, and the cached pinned browser.
@@ -193,10 +194,29 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 
 Publication uses the same Generator lifecycle and retains failed candidates without a
 qualification terminal. Checking uses retained inputs and requires no browser.
-Both commands authenticate source, resource, history, report, ledger and current
-owner identities. Registration separately pins the complete terminal digest;
-an existing capture directory alone establishes no authority. Each named cohort
+Both commands authenticate the source, resources, report, ledger and current
+owner, including the retained history for original sources. Registration
+separately pins the complete terminal digest. An existing capture directory
+alone establishes no authority. Each named cohort
 retains its published membership and bytes.
+
+## Grid Lanes original diagnostics
+
+The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
+binds all nine original axis fixtures in both box modes and directions. It
+retains each original source and historical capture, the new browser
+observation, and the full numeric difference list for that case. It grants no
+matching authority.
+
+Check the retained edition without a browser:
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-grid-lanes-original-diagnostics
+~~~
+
+The check authenticates the retained inputs and outputs and replays every
+comparison. Numeric differences are recorded in the receipt; incomplete
+comparisons or changes to the pinned evidence fail the check.
 
 ## Grid static-position edition
 
