@@ -125,7 +125,7 @@ pub use construction::fragment_document::HtmlParseFragmentParserDocument;
 
 #[doc(hidden)]
 pub fn tally_report() -> String {
-    parser::control::tally::report()
+    format!("{}{}", parser::control::tally::report(), construction::payload_registry::tally_sizes())
 }
 #[doc(hidden)]
 pub fn tally_reset() {

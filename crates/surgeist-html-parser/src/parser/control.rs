@@ -1419,12 +1419,14 @@ impl ParseControl {
     /// Reserves the consumer's actual vector. Only the construction owner may
     /// hold its mutable storage; engine operations receive no vector escape.
     /// Logical admission and actual record copies/writes remain caller duties.
+    #[track_caller]
     pub(crate) fn reserve_vector<T>(
         &mut self,
         vector: &mut Vec<T>,
         allocation: &mut VectorCapacity<T>,
         additional: usize,
     ) -> Result<(), HtmlParseStop> {
+        tally::rsite(std::panic::Location::caller(), false);
         self.checkpoint()?;
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(HtmlParseStop::InternalInvariant(
@@ -1459,6 +1461,7 @@ impl ParseControl {
     }
     /// Geometric growth of an actual vector. Spare capacity is submitted and
     /// charged, never counted as live entries.
+    #[track_caller]
     pub(crate) fn reserve_vector_geometric<T>(
         &mut self,
         vector: &mut Vec<T>,
@@ -1471,6 +1474,7 @@ impl ParseControl {
     /// `final_len`: spare capacity never exceeds that length, so a vector that
     /// fills reaches exactly the capacity an exact policy would have retained.
     /// A required length above `final_len` is still reserved in full.
+    #[track_caller]
     pub(crate) fn reserve_vector_geometric_toward<T>(
         &mut self,
         vector: &mut Vec<T>,
@@ -1478,6 +1482,7 @@ impl ParseControl {
         additional: usize,
         final_len: usize,
     ) -> Result<(), HtmlParseStop> {
+        tally::rsite(std::panic::Location::caller(), true);
         self.checkpoint()?;
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(HtmlParseStop::InternalInvariant(
@@ -1941,11 +1946,7 @@ impl ParseControl {
         plan: ReservationPlan,
         admitted: &mut u64,
     ) -> Result<(), HtmlParseStop> {
-        tally::list(|c| {
-            c.reservations += 1;
-            c.reserved_new_bytes += plan.new_bytes;
-            c.reserved_old_bytes += plan.old_bytes;
-        });
+        tally::reservation(plan.old_bytes, plan.new_bytes);
         self.checkpoint()?;
         // A reservation never shrinks the allocation it replaces.
         self.preflight_capacity(plan.old_bytes, plan.new_bytes, true)?;
@@ -2804,6 +2805,7 @@ impl<T> OwnedVec<T> {
         control: &mut ParseControl,
         additional: usize,
     ) -> Result<(), HtmlParseStop> {
+        let _label = tally::Label::enter(std::any::type_name::<T>());
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let plan = match control.geometric_plan(&self.vector, additional) {
@@ -2859,6 +2861,7 @@ impl<T> OwnedVec<T> {
         let _label = tally::Label::enter(std::any::type_name::<T>());
         tally::list(|c| {
             c.pushes += 1;
+            c.exact_pushes += u64::from(matches!(growth, Growth::Exact));
             c.push_bytes += size_of::<T>() as u64;
         });
         control.checkpoint()?;

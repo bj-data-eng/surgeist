@@ -571,6 +571,7 @@ impl PayloadStorage {
             }
         };
         let list = row_list(&row);
+        crate::parser::control::tally::row(format!("{:?}", std::mem::discriminant(&row)));
         let slot = self.values.len();
         self.prepared_entries = prepared_entries;
         self.selectedcontent_rows = selectedcontent_rows;
@@ -1154,4 +1155,42 @@ impl PayloadStorage {
         );
         refused.map_or(Ok(()), Err)
     }
+}
+
+pub(crate) fn tally_sizes() -> String {
+    use std::mem::size_of;
+    let mut out = String::new();
+    macro_rules! s {
+        ($t:ty) => {
+            out.push_str(&format!("SIZE {} = {}\n", stringify!($t), size_of::<$t>()));
+        };
+    }
+    s!(RetainedPayload);
+    s!(pending_association::DocumentCapture);
+    s!(pending_association::CapturedContext);
+    s!(dialog::DialogMetadata);
+    s!(style::StyleMetadata);
+    s!(associated::HyperlinkMetadata);
+    s!(associated::ImageMetadata);
+    s!(crate::HtmlParseBaseFacts);
+    s!(base::BaseValue);
+    s!(context::ShadowState);
+    s!(HtmlParseDocumentState);
+    s!(template::DocumentState);
+    s!(meta::MetaHistory);
+    s!(dialog::InteractionHistory);
+    s!(context::ElementCreationState);
+    s!(template::TemplateMetadata);
+    s!(SvgScriptState);
+    s!(ScriptMetadata);
+    s!(FormAssociationState);
+    s!(TextareaState);
+    s!(OutputState);
+    s!(InputState);
+    s!(SelectMetadata);
+    s!(AttributeStorage);
+    s!(csp::State);
+    s!(StringLocation);
+    s!(DocumentStringAllocation);
+    out
 }

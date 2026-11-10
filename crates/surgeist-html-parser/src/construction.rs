@@ -165,7 +165,7 @@ use token_payload::{
 };
 pub(crate) use token_payload::{release_token_kind, validate_token_kind};
 mod node_joins;
-mod payload_registry;
+pub(crate) mod payload_registry;
 mod session_error;
 mod string_storage;
 use node_joins::{Join, NodeJoins, cell_slot, joined_cell};

@@ -5,6 +5,7 @@ use std::{cell::RefCell, collections::BTreeMap, panic::Location};
 pub(crate) struct ListCounts {
     pub(crate) ops: u64,
     pub(crate) pushes: u64,
+    pub(crate) exact_pushes: u64,
     pub(crate) push_bytes: u64,
     pub(crate) pops: u64,
     pub(crate) extends: u64,
@@ -23,6 +24,9 @@ pub(crate) struct ListCounts {
 struct State {
     label: Option<&'static str>,
     site: Option<&'static Location<'static>>,
+    rsite: Option<(&'static Location<'static>, bool)>,
+    rows: BTreeMap<String, u64>,
+    rsites: BTreeMap<(&'static str, u32, bool), ListCounts>,
     lists: BTreeMap<&'static str, ListCounts>,
     sites: BTreeMap<(&'static str, u32), ListCounts>,
     work_calls: u64,
@@ -67,6 +71,31 @@ pub(crate) fn site_if_unset(location: &'static Location<'static>) {
     });
 }
 
+pub(crate) fn rsite(location: &'static Location<'static>, geometric: bool) {
+    STATE.with(|s| s.borrow_mut().rsite = Some((location, geometric)));
+}
+
+pub(crate) fn reservation(old: u64, new: u64) {
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let st = &mut *s;
+        let c = if let Some(label) = st.label {
+            st.lists.entry(label).or_default()
+        } else if let Some((loc, g)) = st.rsite.take() {
+            st.rsites.entry((loc.file(), loc.line(), g)).or_default()
+        } else {
+            st.rsites.entry(("<unattributed>", 0, false)).or_default()
+        };
+        c.reservations += 1;
+        c.reserved_new_bytes += new;
+        c.reserved_old_bytes += old;
+    });
+}
+
+pub(crate) fn row(name: String) {
+    STATE.with(|s| *s.borrow_mut().rows.entry(name).or_default() += 1);
+}
+
 pub(crate) fn checkpoint() {
     STATE.with(|s| s.borrow_mut().checkpoints += 1);
 }
@@ -74,9 +103,8 @@ pub(crate) fn checkpoint() {
 pub(crate) fn list(f: impl FnOnce(&mut ListCounts)) {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
-        if let Some(label) = s.label {
-            f(s.lists.entry(label).or_default());
-        }
+        let label = s.label.unwrap_or("<unlabeled>");
+        f(s.lists.entry(label).or_default());
     });
 }
 
@@ -133,12 +161,12 @@ pub(crate) fn report() -> String {
         );
         let mut lists: Vec<_> = s.lists.iter().collect();
         lists.sort_by_key(|(_, c)| std::cmp::Reverse(c.ledger_work + c.ledger_charge + c.ledger_check));
-        let _ = writeln!(out, "LISTS name | ops pushes push_bytes pops extends extend_bytes reservations reserved_new_bytes reserved_old_bytes | ledger work charge check changes live");
+        let _ = writeln!(out, "LISTS name | ops pushes exact_pushes push_bytes pops extends extend_bytes reservations reserved_new_bytes reserved_old_bytes | ledger work charge check changes live");
         for (name, c) in lists {
             let _ = writeln!(
                 out,
-                "LIST {name} | {} {} {} {} {} {} {} {} {} | {} {} {} {} {}",
-                c.ops, c.pushes, c.push_bytes, c.pops, c.extends, c.extend_bytes, c.reservations,
+                "LIST {name} | {} {} {} {} {} {} {} {} {} {} | {} {} {} {} {}",
+                c.ops, c.pushes, c.exact_pushes, c.push_bytes, c.pops, c.extends, c.extend_bytes, c.reservations,
                 c.reserved_new_bytes, c.reserved_old_bytes, c.ledger_work, c.ledger_charge, c.ledger_check, c.ledger_changes, c.ledger_live
             );
         }
@@ -147,6 +175,15 @@ pub(crate) fn report() -> String {
         let _ = writeln!(out, "SITES file:line | work charge check changes");
         for ((file, line), c) in sites.iter() {
             let _ = writeln!(out, "SITE {file}:{line} | {} {} {} {} {}", c.ledger_work, c.ledger_charge, c.ledger_check, c.ledger_changes, c.ledger_live);
+        }
+        for (k, v) in &s.rows {
+            let _ = writeln!(out, "ROW {k} {v}");
+        }
+        let _ = writeln!(out, "RSITES file:line geometric | reservations new_bytes old_bytes");
+        let mut rs: Vec<_> = s.rsites.iter().collect();
+        rs.sort_by_key(|(_, c)| std::cmp::Reverse(c.reserved_new_bytes));
+        for ((file, line, g), c) in rs {
+            let _ = writeln!(out, "RSITE {file}:{line} {g} | {} {} {}", c.reservations, c.reserved_new_bytes, c.reserved_old_bytes);
         }
         out
     })
