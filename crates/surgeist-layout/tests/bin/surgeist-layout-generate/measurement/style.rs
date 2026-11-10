@@ -290,6 +290,27 @@ pub(super) struct Track {
     #[serde(default, deserialize_with = "present")]
     line_names: Option<Vec<Vec<String>>>,
 }
+
+fn explicit_template_tracks(tracks: Option<&[Track]>) -> Option<&[Track]> {
+    match tracks {
+        // The whole-template keyword denotes zero explicit tracks.
+        Some(
+            [
+                Track {
+                    kind: TrackKind::Scalar,
+                    unit: Some(Unit::None),
+                    value: None,
+                    name: None,
+                    arguments: None,
+                    names: None,
+                    line_names: None,
+                },
+            ],
+        ) => Some(&[]),
+        _ => tracks,
+    }
+}
+
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum TrackKind {
@@ -1286,10 +1307,16 @@ impl Style {
             }
         }
         for (field, tracks) in [
-            ("gridTemplateRows", &self.grid_template_rows),
-            ("gridTemplateColumns", &self.grid_template_columns),
-            ("gridAutoRows", &self.grid_auto_rows),
-            ("gridAutoColumns", &self.grid_auto_columns),
+            (
+                "gridTemplateRows",
+                explicit_template_tracks(self.grid_template_rows.as_deref()),
+            ),
+            (
+                "gridTemplateColumns",
+                explicit_template_tracks(self.grid_template_columns.as_deref()),
+            ),
+            ("gridAutoRows", self.grid_auto_rows.as_deref()),
+            ("gridAutoColumns", self.grid_auto_columns.as_deref()),
         ] {
             if let Some(tracks) = tracks {
                 for (index, track) in tracks.iter().enumerate() {
@@ -1585,14 +1612,14 @@ impl Style {
             &mut attrs,
             "grid-template-rows",
             "gridTemplateRows",
-            self.grid_template_rows.as_deref(),
+            explicit_template_tracks(self.grid_template_rows.as_deref()),
             context,
         )?;
         self.track_attr(
             &mut attrs,
             "grid-template-columns",
             "gridTemplateColumns",
-            self.grid_template_columns.as_deref(),
+            explicit_template_tracks(self.grid_template_columns.as_deref()),
             context,
         )?;
         if let Some(rows) = &self.grid_template_areas {
