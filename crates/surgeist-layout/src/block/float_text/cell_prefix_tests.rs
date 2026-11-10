@@ -11,6 +11,14 @@ fn cell_binding() -> TextParagraphBinding<u32> {
 }
 
 fn cell_binding_for(value: &str, original_count: usize) -> TextParagraphBinding<u32> {
+    cell_binding_with_inner_override(value, original_count, false)
+}
+
+fn cell_binding_with_inner_override(
+    value: &str,
+    original_count: usize,
+    inner_override: bool,
+) -> TextParagraphBinding<u32> {
     assert_eq!(value.encode_utf16().count(), original_count);
     let mut style = crate::test_support::text::ahem_style(10.0, 10.0);
     style.white_space = text::WhiteSpace::Preserve;
@@ -37,6 +45,12 @@ fn cell_binding_for(value: &str, original_count: usize) -> TextParagraphBinding<
         },
     ];
     for origin in 0..original_count {
+        if inner_override && origin == 1 {
+            events.push(E::Control {
+                control: 2,
+                affinity: text::Affinity::Before,
+            });
+        }
         if origin > 0 {
             events.push(E::Connection(origin - 1));
         }
@@ -75,16 +89,25 @@ fn cell_binding_for(value: &str, original_count: usize) -> TextParagraphBinding<
                     kind: text::ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
-            controls: vec![
-                text::ParagraphControl {
-                    at: 0,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
-                },
-                text::ParagraphControl {
-                    at: original_count,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
-                },
-            ],
+            controls: {
+                let mut controls = vec![
+                    text::ParagraphControl {
+                        at: 0,
+                        kind: text::ParagraphControlKind::InlineBoundaryStart,
+                    },
+                    text::ParagraphControl {
+                        at: original_count,
+                        kind: text::ParagraphControlKind::InlineBoundaryEnd,
+                    },
+                ];
+                if inner_override {
+                    controls.push(text::ParagraphControl {
+                        at: 1,
+                        kind: text::ParagraphControlKind::RightToLeftOverride,
+                    });
+                }
+                controls
+            },
             boundary_policies: (0..original_count - 1)
                 .map(|index| text::ParagraphBoundaryPolicy {
                     definition: text::ParagraphBoundaryDefinition::Connection(index),
@@ -168,16 +191,24 @@ fn cell_binding_for(value: &str, original_count: usize) -> TextParagraphBinding<
     }
     let controls = prepared
         .control_views()
-        .zip([20, 21])
-        .map(|(view, node)| TextControlBinding {
-            node,
+        .map(|view| TextControlBinding {
+            node: match view.kind() {
+                text::ParagraphControlKind::InlineBoundaryStart => 20,
+                text::ParagraphControlKind::InlineBoundaryEnd => 21,
+                text::ParagraphControlKind::RightToLeftOverride => 22,
+                _ => panic!("the Cell fixture declares only its actual controls"),
+            },
             occurrence: view.handle(),
         })
         .collect();
-    let nodes = std::iter::once(20)
-        .chain(origins.iter().map(|row| row.node))
-        .chain(std::iter::once(21))
-        .collect();
+    let mut nodes = vec![20];
+    for (index, row) in origins.iter().enumerate() {
+        if inner_override && index == 1 {
+            nodes.push(22);
+        }
+        nodes.push(row.node);
+    }
+    nodes.push(21);
     TextParagraphBinding {
         prepared,
         container: 0,
@@ -498,3 +529,6 @@ fn multi_original_cell_interior_float_keeps_actual_prefix_f32() {
 fn multi_original_cell_interior_float_keeps_actual_prefix_f64() {
     cell_prefix_for::<f64>(cell_binding_for("AA", 2));
 }
+
+#[cfg(test)]
+mod absorbed_control;
