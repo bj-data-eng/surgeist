@@ -62,6 +62,13 @@ pub(super) fn runtime_surface_format(surface: &Surface) -> Format {
     surface.options.format
 }
 
+fn rendering_adapter_unavailable() -> Error {
+    Error::runtime_unavailable(
+        RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+        "no compatible wgpu adapter is available",
+    )
+}
+
 #[must_use = "the renderer dispatch boundary must resolve to exactly one execution route"]
 pub(super) enum RendererFrameDispatch {
     DirectVello(RenderCommands),
@@ -151,16 +158,10 @@ impl Renderer {
         self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceRendering)?;
 
         let Some(device_identity) = surface.device_identity() else {
-            return Err(Error::runtime_unavailable(
-                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
-                "no compatible wgpu adapter is available",
-            ));
+            return Err(rendering_adapter_unavailable());
         };
         if self.backend.is_none() {
-            return Err(Error::runtime_unavailable(
-                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
-                "no compatible wgpu adapter is available",
-            ));
+            return Err(rendering_adapter_unavailable());
         }
         Ok(device_identity)
     }
@@ -259,8 +260,8 @@ impl Renderer {
             let backend = self
                 .backend
                 .as_mut()
-                .expect("surface preflight confirmed the renderer backend is available");
-            match execution {
+                .ok_or_else(rendering_adapter_unavailable)?;
+            let frame = match execution {
                 PreparedRendererExecution::DirectVello(vello_scene) => {
                     let transaction = backend.begin_gpu_operation(
                         device_identity,
@@ -300,13 +301,12 @@ impl Renderer {
                         render_exact_headless_graph_surface(backend, surface, graph, account).await
                     }
                 }
+            };
+            if frame.is_err() {
+                backend.observe_device_terminal(device_identity);
             }
+            frame
         };
-        if frame.is_err()
-            && let Some(backend) = self.backend.as_mut()
-        {
-            backend.observe_device_terminal(device_identity);
-        }
         let frame = match frame {
             Err(error) if error.code() == ErrorCode::SurfaceOutdated => {
                 self.configure_presented_surface_if_needed(surface, Some(account))
