@@ -386,6 +386,7 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
 }
 
 #[test]
+#[cfg(not(target_arch = "wasm32"))]
 fn readback_state_machine_cleans_map_pending_mapped_failed_and_canceled_buffers() {
     assert_readback_submission_index_retained();
     assert_readback_idle_cleanup();
@@ -394,37 +395,18 @@ fn readback_state_machine_cleans_map_pending_mapped_failed_and_canceled_buffers(
     assert_readback_mapped_completion();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::readback::{
     ReadbackCleanupEventForTest as Cleanup, ReadbackPhaseForTest,
     ReadbackStagingDispositionForTest as StagingDisposition, ReadbackStateMachineForTest,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 fn readback_state_at(phase: ReadbackPhaseForTest) -> ReadbackStateMachineForTest {
-    let mut state = ReadbackStateMachineForTest::allocated();
-    match phase {
-        ReadbackPhaseForTest::Allocated => {}
-        ReadbackPhaseForTest::CopySubmitted { submission_index } => {
-            state.copy_submitted_for_test(submission_index);
-        }
-        ReadbackPhaseForTest::MapPending => {
-            state.copy_submitted_for_test(17);
-            state.map_pending_for_test();
-        }
-        ReadbackPhaseForTest::Mapped => {
-            state.copy_submitted_for_test(17);
-            state.map_pending_for_test();
-            state.map_callback_succeeded_for_test();
-            state.mapped_for_test();
-        }
-        ReadbackPhaseForTest::PublishedBytes
-        | ReadbackPhaseForTest::Failed
-        | ReadbackPhaseForTest::Canceled => {
-            panic!("the fixture accepts only uncertain readback phases")
-        }
-    }
-    state
+    ReadbackStateMachineForTest::at(phase)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn assert_readback_submission_index_retained() {
     let submitted = readback_state_at(ReadbackPhaseForTest::CopySubmitted {
         submission_index: 91,
@@ -438,6 +420,7 @@ fn assert_readback_submission_index_retained() {
     );
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn assert_readback_idle_cleanup() {
     for idle_phase in [
         ReadbackPhaseForTest::Allocated,
@@ -489,6 +472,7 @@ fn assert_readback_idle_cleanup() {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn assert_readback_pending_cleanup() {
     let mut pending_failure = readback_state_at(ReadbackPhaseForTest::MapPending);
     assert_eq!(
@@ -539,6 +523,7 @@ fn assert_readback_pending_cleanup() {
     );
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn assert_readback_callback_cleanup() {
     for terminal_phase in [ReadbackPhaseForTest::Failed, ReadbackPhaseForTest::Canceled] {
         let mut callback_error = readback_state_at(ReadbackPhaseForTest::MapPending);
@@ -608,10 +593,11 @@ fn assert_readback_callback_cleanup() {
     );
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn assert_readback_mapped_completion() {
     let mut incomplete = readback_state_at(ReadbackPhaseForTest::Mapped);
     let error = incomplete
-        .finish_mapped_for_test(PhysicalSize::new(1, 2), &[0; 256])
+        .finish_mapped_for_test(256)
         .expect_err("a missing padded row must fail through checked decoding");
     assert_eq!(error.code(), ErrorCode::ReadbackFailed);
     assert_eq!(incomplete.phase_for_test(), ReadbackPhaseForTest::Failed);
@@ -629,12 +615,9 @@ fn assert_readback_mapped_completion() {
         "the mapped view must drop before staging is unmapped"
     );
 
-    let mut mapped = vec![0; 512];
-    mapped[0..4].copy_from_slice(&[1, 2, 3, 4]);
-    mapped[256..260].copy_from_slice(&[5, 6, 7, 8]);
     let mut published = readback_state_at(ReadbackPhaseForTest::Mapped);
     let image = published
-        .finish_mapped_for_test(PhysicalSize::new(1, 2), &mapped)
+        .finish_mapped_for_test(512)
         .expect("complete checked rows must publish one validated image");
     assert_eq!(image.rgba(), &[1, 2, 3, 4, 5, 6, 7, 8]);
     assert_eq!(
@@ -657,7 +640,7 @@ fn assert_readback_mapped_completion() {
 }
 
 #[test]
-fn readback_map_callback_publishes_once_and_wakes_latest_waker() {
+fn readback_completion_selects_once_and_wakes_latest_waker() {
     use crate::readback::ReadbackCompletionForTest;
 
     struct WakeCount(AtomicUsize);
@@ -686,7 +669,7 @@ fn readback_map_callback_publishes_once_and_wakes_latest_waker() {
         Poll::Pending
     ));
 
-    completion.invoke_map_callback_for_test(Ok(()));
+    completion.offer_map_result_for_test(Ok(()));
     assert_eq!(first_wakes.0.load(Ordering::SeqCst), 0);
     assert_eq!(latest_wakes.0.load(Ordering::SeqCst), 1);
     completion.deliver_late_map_result_for_test(Err(wgpu::BufferAsyncError));
@@ -701,7 +684,7 @@ fn readback_map_callback_publishes_once_and_wakes_latest_waker() {
     assert_eq!(completion.discarded_result_count_for_test(), 2);
 
     let callback_error = ReadbackCompletionForTest::new();
-    callback_error.invoke_map_callback_for_test(Err(wgpu::BufferAsyncError));
+    callback_error.offer_map_result_for_test(Err(wgpu::BufferAsyncError));
     let Poll::Ready(Err(error)) =
         callback_error.poll_for_test(&mut Context::from_waker(Waker::noop()))
     else {

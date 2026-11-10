@@ -24,10 +24,6 @@ pub(crate) struct PendingReadbackSubmission {
 }
 
 impl PendingReadbackSubmission {
-    pub(crate) fn submission_index(&self) -> wgpu::SubmissionIndex {
-        self.submission_index.clone()
-    }
-
     pub(crate) async fn finish(
         self,
         operation: RuntimeOperation,

@@ -3,7 +3,7 @@
 use super::*;
 use crate::accounting::{
     ReadbackFixture, RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity,
-    RendererCpu,
+    RenderWork, RendererCpu,
 };
 
 #[test]
