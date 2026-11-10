@@ -5,7 +5,7 @@ fn script_custody_flex_compare_variant(index: usize) {
 
     assert_eq!(
         sha256(SCRIPT_CUSTODY_REPORT.as_bytes()),
-        "95ccc99f5ee77ed7a706275bbcce575c5fca7314e87b3eb1fe0de7fdaf2a3bdf"
+        "cd167f9ecd34d142423885080df4f839ccf94b81c5ba80eb70ea868770547024"
     );
     let inputs = Inputs::load(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
     let (variant, xml) = VARIANTS[index];

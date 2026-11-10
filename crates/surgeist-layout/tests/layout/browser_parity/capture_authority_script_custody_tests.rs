@@ -68,7 +68,7 @@ fn script_custody_flex_terminal_admits_the_current_flex_producer() {
     script_custody_flex_terminal_helper_controls(
         "flex-composition",
         &[(
-            "eef8d2108e8a1c50a510e283a97e0484a0b130cd7bcf69a790fd329e66b46686",
+            "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
             true,
         )],
     );
@@ -79,7 +79,7 @@ fn script_custody_flex_terminal_admits_the_current_prepared_range_producer() {
     script_custody_flex_terminal_helper_controls(
         "prepared-ranges",
         &[(
-            "eef8d2108e8a1c50a510e283a97e0484a0b130cd7bcf69a790fd329e66b46686",
+            "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
             true,
         )],
     );

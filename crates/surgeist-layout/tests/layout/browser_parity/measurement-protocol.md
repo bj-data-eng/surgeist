@@ -85,12 +85,24 @@ does not establish Native font or geometry parity.
 
 The adapter authenticates the exact captured base sheet, profile hash
 `5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6`.
-The helper authenticates the original direct-body DIV source, one helper and
-base LINK. It replaces only that exact live LINK in place with one owned STYLE
-containing unchanged captured bytes, including the data-URI font. Every variant
-checks the retained owner, text, CSSOM rules and complete sheet inventory.
-Repeated setup retains that owner; a marker cannot authorize replacement or
-repair changed source. Additional/adopted/opaque/changed sheets refuse.
+The helper authenticates the original direct-body DIV source and one base LINK.
+It replaces only that exact live LINK in place with one owned STYLE containing
+unchanged captured bytes, including the data-URI font. Every variant checks the
+retained owner, text, CSSOM rules and complete sheet inventory. Repeated setup
+retains that owner; a marker cannot authorize replacement or repair changed
+source. Additional/adopted/opaque/changed sheets refuse.
+
+The source script profile permits zero scripts, or one src-only helper in HEAD
+with no non-whitespace text. The live script census must match the source.
+The helper profile retains the original node, attributes, exact text and
+resolved URL. Each variant checks
+these facts before and after description. Failed reconfiguration retains those
+owners and refuses mutation; restoration permits full revalidation.
+
+The Subgrid body, atomic percentage and BR font-band profiles use
+[profile-owned helper predicates](../../bin/surgeist-layout-generate/measurement/).
+Preparation and captured-input validation share those predicates. Generic root
+helper recognition does not grant specialized eligibility.
 
 The closed profile has no extra scripts/frames or HTML inline declarations.
 Body declarations and extra body content are limited to the literal-indent and

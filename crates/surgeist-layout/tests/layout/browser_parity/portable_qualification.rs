@@ -571,38 +571,38 @@ impl AdmittedRegistry {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
-    "10d7d03d6534fe06e4d66f98d2ad74fd6e56675c798a3aacc6ebc790154e6a00";
+    "801abc2424a4bd97f5d0fa4d1518fbe9fe060fa74135849c57ad01429f11f1d0";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "7739607e8f25170b128e636d957a16f5a1f8e05b2431aeec3bd0f4c6c278d24e";
+    "b49a365a7d2cae81852ebc3d61086119ac94b04b9363583fdbbd80b9837c3c3b";
 
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
-    "f55b946cf9626a88989ee2598de26cbaa079498d17aebfa3fda441c99a44a1a5";
+    "dc30448e413b58865816a7e04c52acc8a2e518d04d27c6e9b26d45afa24ef43e";
 
 const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
-    "3a07b79e5c6d5b2fe11a9b00b96f69838fbeb03a12f46960c4b45ce355233671";
+    "2604d4f621d508f4466c01a6d652152729bb7384e1a3981591d48e8add55e89e";
 
 const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
-    "da941b887ea95f37c61dbe19e88985396aec9f02d0066e113f3d6c4848c08790";
+    "a62a47ffdd66a267579819bf03208d0e13ae3b0268e75ac9f71a92d84cc54149";
 
 const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
-    "8324b35a2520d5f863d75b514418491c1c362dedc86b3f23b89c022bbed291c2";
+    "996f40a0fb869a7af9b2a530f1ed8eb35b5882920e9220df381af20ce8dbd87a";
 
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
-    "c9f7b4fb0b97275842a1ba027e3006f63e6f73f81fa04b7cbc179e383d25fbac";
+    "ab5e855ac082238860e925b6b85fd92a99b2a6e49664adcc8daae1042e33c267";
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
-    "1f641fd40e947203fdb7db547d9376968199e1a2239a0fd10d055851f6140d9d";
+    "a566dc1542149d992ff31142c46966b772089efa69ff3a518b6380a495126397";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
-    "061f5f4e425e0cd19c2c3abfa471b0a7d08ed52dff856e586573f08a46a70094";
+    "b76c52ed64f9b63201681259db84ad3d8f3e2ef3d2e47da87c9337a054c9eb9f";
 
 const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "c13507fa022b56d7722cd2d867c934e855add0a9e281725fa5f79b232a1c0e17";
+    "3bfc85f72d277f94a3af430cfdced7d32d2accd57139bd0abd85dc0625c69394";
 
 const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "aff93886a683264ce2a57382d509906370fb2678a805e40ea4fd17a2156b2c20";
+    "183019eea4508e1eefb999d7d66dbd257b1b10c0112ad0d07dbcd66a0d6ea731";
 
 const REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "e6455283c62319e2eb4e97f3eade237ef9375c93382796ca080f3e10f020ea62";
+    "0957cf7d3a81b133579619f1bf8832c13508d9cd9aa4e3d86df388f97f43350a";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -615,10 +615,16 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 }
 
 // Register only a complete publisher terminal after reviewed capture/check.
-const REGISTERED_MATCHING: &[(&str, &str)] = &[(
-    "box-controls",
-    "6583efca2515a24b1d97edb7873a4a97df8f1dbd3e7119e124c4e0746542b2ea",
-)];
+const REGISTERED_MATCHING: &[(&str, &str)] = &[
+    (
+        "scriptless-order",
+        "9b6957c7042f1732e57035d6e7ceb9bbb78cbe9de94189a8b8cd1313e882fa9a",
+    ),
+    (
+        "box-controls",
+        "eb95dfdcacc6352d990230e39bc133744f7a316dc918ae0a42eb5a2d74bbb69c",
+    ),
+];
 
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let mut editions = vec![

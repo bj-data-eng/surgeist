@@ -1,16 +1,27 @@
 //! Admission of the decoded image from the fixed sideways Flex capture.
 
 use super::{Error, Golden, Node, TestTree, Viewport, capture_authority, layout, one_child};
-use capture_authority::{CaptureMetadata, CapturedArtifact, RootCaptureProfile, sha256};
+use capture_authority::{CaptureMetadata, CapturedArtifact, sha256};
 
 pub(super) const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
+const SCRIPT_CUSTODY_REPORT: &str = include_str!("flex_composition_script_custody_report.json");
 
-// This report is the browser environment witness pinned by the gutter control.
+// Each report binds an environment qualified by the same collapse-disabled
+// gutter control. The original producer and its witness remain immutable.
 const RETAINED_REPORT_SHA256: &str =
     "65bb238d03aae80b366fa1f481be42137799466f74c1a35fafdb40d2460478a2";
+const SCRIPT_CUSTODY_REPORT_SHA256: &str =
+    "cd167f9ecd34d142423885080df4f839ccf94b81c5ba80eb70ea868770547024";
+pub(crate) const RETAINED_HELPER_SHA256: &str =
+    "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
+
+pub(crate) fn accepts_helper(digest: &str) -> bool {
+    digest == RETAINED_HELPER_SHA256
+        || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+}
 
 pub(super) struct Capture<'a> {
     pub report: &'a str,
@@ -57,10 +68,7 @@ pub(super) fn bind(
         || !metadata
             .inputs
             .get(capture_authority::ROOT_HELPER_INPUT)
-            .is_some_and(|digest| {
-                capture_authority::root_helper_profile(digest).ok()
-                    == Some(RootCaptureProfile::RootContextFlexCompositionV1)
-            })
+            .is_some_and(|digest| accepts_helper(digest))
     {
         return Err(invalid("source or capture profile changed"));
     }
@@ -140,39 +148,47 @@ fn require_control_environment(
     control_report: &str,
     published: bool,
 ) -> Result<(), Error> {
-    if sha256(control_report.as_bytes()) != RETAINED_REPORT_SHA256 {
-        return Err(invalid("gutter control report identity changed"));
-    }
-    let retained = capture_authority::unique_json(control_report).map_err(invalid)?;
-    let sealed = &retained["metadata"];
-    // The publication checks its own contract before admitting the report.
-    // The pinned gutter control independently fixes its measurement environment.
-    let same_environment = [
-        "engine_version",
-        "browser_executable",
-        "browser_executable_sha256",
-        "browser_provenance",
-    ]
-    .into_iter()
-    .all(|key| current[key] == sealed[key])
-        && [
-            "browser-owner.toml",
-            "fonts/Ahem.ttf",
-            "observation-request.json",
-            "scripts/gentest/test_base_style.css",
-            capture_authority::ROOT_HELPER_INPUT,
+    let mut admitted = false;
+    for (report, digest) in [
+        (control_report, RETAINED_REPORT_SHA256),
+        (SCRIPT_CUSTODY_REPORT, SCRIPT_CUSTODY_REPORT_SHA256),
+    ] {
+        if sha256(report.as_bytes()) != digest {
+            return Err(invalid("gutter control report identity changed"));
+        }
+        let witness = capture_authority::unique_json(report).map_err(invalid)?;
+        let sealed = &witness["metadata"];
+        let same_environment = [
+            "engine_version",
+            "browser_executable",
+            "browser_executable_sha256",
+            "browser_provenance",
         ]
         .into_iter()
-        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
-    let lineage_matches = if published {
-        metadata.generator == capture_authority::FIXED_GENERATOR
-            && metadata.source_imports.is_empty()
-    } else {
-        ["generator", "contract_sha256", "source_imports"]
+        .all(|key| current[key] == sealed[key])
+            && [
+                "browser-owner.toml",
+                "fonts/Ahem.ttf",
+                "observation-request.json",
+                "scripts/gentest/test_base_style.css",
+                capture_authority::ROOT_HELPER_INPUT,
+            ]
             .into_iter()
-            .all(|key| current[key] == sealed[key])
-    };
-    if !same_environment || !lineage_matches {
+            .all(|key| current["inputs"][key] == sealed["inputs"][key]);
+        // A focused contract and declaration must belong to the same witness
+        // as its helper. A publication verifies its distinct contract upstream.
+        let lineage_matches = if published {
+            metadata.generator == capture_authority::FIXED_GENERATOR
+                && metadata.source_imports.is_empty()
+        } else {
+            ["generator", "contract_sha256", "source_imports"]
+                .into_iter()
+                .all(|key| current[key] == sealed[key])
+                && current["inputs"]["corpus.toml"] == sealed["inputs"]["corpus.toml"]
+        };
+        admitted |= same_environment && lineage_matches;
+    }
+    if !admitted {
         return Err(invalid("capture environment changed"));
     }
     Ok(())

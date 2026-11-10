@@ -394,8 +394,43 @@ function rootContextStyleInventory(ownedStyle, preload, preloadSource) {
       preload.outerHTML === preloadSource));
 }
 
+function rootContextScriptAttributes(script) {
+  return JSON.stringify(Array.from(script.attributes, attribute =>
+    [attribute.name, attribute.value]).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function rootContextSourceScriptProfile(parsed, helperUrl) {
+  const scripts = Array.from(parsed.querySelectorAll('script'));
+  if (scripts.length === 0) return { kind: 'absent' };
+  const script = scripts[0];
+  if (scripts.length !== 1 || script.parentElement !== parsed.head ||
+      script.attributes.length !== 1 || script.attributes[0].name !== 'src' ||
+      script.textContent.trim()) return null;
+  try {
+    if (new URL(script.getAttribute('src'), document.baseURI).href !== helperUrl) return null;
+  } catch (_) {
+    return null;
+  }
+  return { kind: 'helper', attributes: rootContextScriptAttributes(script),
+    text: script.textContent, url: helperUrl };
+}
+
+function rootContextScriptInventory(profile, owner) {
+  const scripts = Array.from(document.querySelectorAll('script'));
+  if (profile.kind === 'absent') return owner === null && scripts.length === 0;
+  return profile.kind === 'helper' && scripts.length === 1 && scripts[0] === owner &&
+    owner.isConnected && owner.parentElement === document.head &&
+    rootContextScriptAttributes(owner) === profile.attributes &&
+    owner.textContent === profile.text && owner.src === profile.url;
+}
+
 function configureRootContextCapture(source, baseStyle, helperReference, styleReference, preparedFontReference, compositionProfile) {
-  const reject = reason => { rootContextCapture = { reason }; };
+  const previous = rootContextCapture;
+  // Failed reconfiguration retains the authenticated owners for revalidation
+  // after restoration, but the refusal prevents every intervening capture.
+  const reject = reason => {
+    rootContextCapture = previous?.ownedStyle ? { ...previous, reason } : { reason };
+  };
   try {
     const parsed = new DOMParser().parseFromString(source, 'text/html');
     if (parsed.doctype?.name.toLowerCase() !== 'html' ||
@@ -408,7 +443,6 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     if (parsed.querySelector('style, iframe, frame, object, embed, base')) return reject('SourceFrameOrStyle');
     if (Array.from(parsed.querySelectorAll('*')).some(node =>
         Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
-    const scripts = Array.from(parsed.querySelectorAll('script'));
     const links = Array.from(parsed.querySelectorAll('link'));
     const preparedRanges = typeof preparedFontReference === 'string';
     const flexComposition = compositionProfile === 'fixed-sideways-root-v1';
@@ -419,9 +453,8 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     const stylesheets = links.filter(link => link !== sourcePreload);
     const helperUrl = new URL(helperReference, document.baseURI).href;
     const styleUrl = new URL(styleReference, document.baseURI).href;
-    if (scripts.length !== 1 || scripts[0].textContent.trim() ||
-        new URL(scripts[0].getAttribute('src') || '', document.baseURI).href !== helperUrl ||
-        stylesheets.length !== 1 || stylesheets[0].rel !== 'stylesheet' ||
+    const scriptProfile = rootContextSourceScriptProfile(parsed, helperUrl);
+    if (!scriptProfile || stylesheets.length !== 1 || stylesheets[0].rel !== 'stylesheet' ||
         Array.from(stylesheets[0].attributes).some(attribute => !['rel', 'type', 'href'].includes(attribute.name)) ||
         (stylesheets[0].hasAttribute('type') && stylesheets[0].getAttribute('type') !== 'text/css') ||
         stylesheets[0].parentElement !== parsed.head ||
@@ -433,13 +466,16 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     const expectedSheet = new CSSStyleSheet();
     expectedSheet.replaceSync(baseStyle);
     const rules = Array.from(expectedSheet.cssRules, rule => rule.cssText);
-    const previous = rootContextCapture;
+    const sameProof = previous?.ownedStyle && previous.source === source &&
+      previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
+      previous.styleUrl === styleUrl && previous.fontUrl === fontUrl && previous.flexComposition === flexComposition;
+    const scriptOwner = sameProof ? previous.scriptOwner :
+      scriptProfile.kind === 'helper' ? document.scripts[0] : null;
+    if (!rootContextScriptInventory(scriptProfile, scriptOwner)) return reject('ScriptChanged');
     let ownedStyle;
     let bodyChildren;
     let preload;
-    if (previous && !previous.reason && previous.source === source &&
-        previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
-        previous.styleUrl === styleUrl && previous.fontUrl === fontUrl && previous.flexComposition === flexComposition) {
+    if (sameProof) {
       // Repeated setup retains the same authenticated owner; a marker alone
       // never authorizes a replacement sheet or repairs a changed document.
       ownedStyle = previous.ownedStyle;
@@ -481,7 +517,8 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
       sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
       body: parsed.body, bodyChildren, rules, helperUrl, styleUrl, fontUrl, preload,
-      preloadSource: sourcePreload?.outerHTML, preparedRanges, flexComposition };
+      preloadSource: sourcePreload?.outerHTML, preparedRanges, flexComposition,
+      scriptProfile, scriptOwner };
   } catch (_) {
     reject('SourceQualificationUnavailable');
   }
@@ -554,8 +591,7 @@ function captureRootContext(root) {
   if (!rootContextBodySequence(body, root) || body.innerHTML !== proof.body.innerHTML ||
       proof.bodyChildren.length !== body.childNodes.length ||
       proof.bodyChildren.some((node, index) => body.childNodes[index] !== node)) fail('BodySiblings');
-  const scripts = Array.from(document.scripts);
-  if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
+  if (!rootContextScriptInventory(proof.scriptProfile, proof.scriptOwner)) fail('ScriptChanged');
   const sheets = Array.from(document.styleSheets);
   if (document.adoptedStyleSheets.length !== 0) fail('AdoptedStylesheet');
   if (sheets.length !== 1 ||

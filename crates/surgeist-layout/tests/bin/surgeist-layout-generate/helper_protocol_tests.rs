@@ -201,6 +201,20 @@ fn named_grid_placements_omit_absent_occurrences() {
 }
 
 #[test]
+fn root_script_profiles_preserve_source_absence_and_exact_live_custody() {
+    // These controlled DOM facts exercise the actual profile/inventory guards;
+    // the real-browser qualifier separately checks parsing and reconfiguration.
+    let observed = run_node(
+        include_str!("script_custody_tests.js"),
+        json!({"helperSource": TEST_HELPER_SOURCE}),
+    );
+    assert_eq!(
+        observed,
+        json!({"sourceProfiles": ["absent", "helper"], "restored": true}),
+    );
+}
+
+#[test]
 fn prepared_transparent_inline_profile_preserves_or_refuses_actual_context() {
     // Execute the exact producer with DOM computed-style facts. No Text provider
     // or browser-output geometry is substituted by this focused profile test.

@@ -123,13 +123,39 @@ covers 15 source families/60 artifacts and 43 distinct comparisons in ten XML
 callers under grid::tests::browser_controls; that prefix also selects additional
 Native/support tests. No automatic lookup alias is installed by these commands.
 
+## Derive current terminal authority
+
+Use the named derivation command to revalidate a stored Exact, Specialized or
+Matching edition without capturing new browser observations:
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --derive-published-qualification grid-static-position-differences > /tmp/grid-static-position-qualification.json
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --derive-published-qualification prepared-range-qualification > /tmp/prepared-range-qualification.json
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --derive-published-qualification box-controls > /tmp/box-controls-qualification.json
+~~~
+
+The command retains the producing helper and all source, history, XML, report,
+ledger and case identities. It runs the same complete source, observation,
+Native and freshness checks as the edition's browser-free checker, then emits a
+candidate terminal to standard output. The existing terminal remains unchanged;
+only derivation permits that terminal to have stale validation authority.
+A changed or missing retained input still refuses. Keep candidate files outside
+capture roots because the complete artifact census rejects extra files.
+Derivation never installs a terminal or changes its registration pin. Requalify
+Grid static-position before checking the older `root-context-v4` predecessor
+relationship. The historical `canonical-box-differences` predecessor remains
+byte-preserved and refuses current derivation: `wrapping-world-corner-differences`
+owns its live source record. Wire-schema fixture checks grant no live authority
+to that predecessor. `root-context-v4` itself has no terminal.
+
 ## Matching geometry editions
 
 The catalogue's `matching_publications` tables name cohorts of original,
 Generated box sources. The [box-controls edition](../../tests/layout/browser_parity/captured/box-controls/qualification.json)
 contains four originals across both box modes and directions, for sixteen cases.
-Each case requires its unchanged
-complete historical observations, declared root context, finite coordinates and
+The [scriptless-order edition](../../tests/layout/browser_parity/captured/scriptless-order/qualification.json)
+contains the original scriptless Flex order fixture across all four variants.
+Each case requires unchanged complete historical observations, declared root context, finite coordinates and
 sizes for every box, and a complete Native comparison with zero raw differences.
 Raw fields and qualification remain separate outputs. Matching cohorts require
 no difference policy or authored Native oracle.

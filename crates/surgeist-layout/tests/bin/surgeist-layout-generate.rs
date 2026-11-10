@@ -4,6 +4,8 @@ mod adapter;
 mod atomic_paragraph_metrics;
 #[path = "surgeist-layout-generate/browser_profile.rs"]
 mod browser_profile;
+#[path = "surgeist-layout-generate/measurement/capture_helper_identity.rs"]
+mod capture_helper_identity;
 #[path = "surgeist-layout-generate/cli.rs"]
 mod cli;
 #[path = "surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]

@@ -307,7 +307,7 @@
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/subgrid/subgrid_gap_percentage_border_bottom.html": "db5cc28750958aa0df6c0692caafd131d284858e435e9fb0a1f6330527deb568",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
     "tests/layout/browser_parity/xml/subgrid/subgrid_gap_percentage_border_bottom__border_box_ltr.xml": "d843805defb38f2bd2a0636f011cddf62748093ee9c658c136d12493f93d526e",
     "tests/layout/browser_parity/xml/subgrid/subgrid_gap_percentage_border_bottom__border_box_rtl.xml": "f9c5422586daec1c1ab24142127cdede6c94651dd9d239acbfbb5690f9e1f846",
     "tests/layout/browser_parity/xml/subgrid/subgrid_gap_percentage_border_bottom__content_box_ltr.xml": "8476029b36326901e7084d79201a18a03d13337d6fdbfc7533b347d25361074d",
@@ -316,7 +316,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-flex-composition-v1",
-    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+    "validator_profile": "root-context-script-custody-v1",
+    "validator_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
   }
 }

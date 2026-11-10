@@ -416,7 +416,7 @@ function rootContextSourceScriptProfile(parsed, helperUrl) {
 }
 
 function rootContextScriptInventory(profile, owner) {
-  const scripts = Array.from(document.scripts);
+  const scripts = Array.from(document.querySelectorAll('script'));
   if (profile.kind === 'absent') return owner === null && scripts.length === 0;
   return profile.kind === 'helper' && scripts.length === 1 && scripts[0] === owner &&
     owner.isConnected && owner.parentElement === document.head &&

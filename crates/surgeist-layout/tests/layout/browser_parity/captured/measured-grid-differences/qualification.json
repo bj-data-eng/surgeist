@@ -10566,7 +10566,7 @@
     "tests/layout/browser_parity/html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html": "e9bab3162eab10027b7a16db497797857bf6909689913c5723fd72ce0d017e26",
     "tests/layout/browser_parity/html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html": "7cd6ccad2b32ff3e6eeb38e007a659197df1d415f48364f4f7a4e67fc93aae6a",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
     "tests/layout/browser_parity/xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr.xml": "a8ab8b7fd53501eef62b53aa2c796ccc9144bf7c7d7dcf92dd9ba0ef3c2d8a80",
     "tests/layout/browser_parity/xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl.xml": "4a1bf6ebe922dbb3d3feb0e8e13385530854a3577a0bd1ee2c6f2b5b54af059c",
     "tests/layout/browser_parity/xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr.xml": "a2555f0f9a872d8a6e984b8d422468bd57edda3c68258b38bd8a95893131ac80",
@@ -10599,7 +10599,7 @@
   "capture_validation": {
     "producer_profile": "root-context-v4",
     "producer_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
-    "validator_profile": "root-context-flex-composition-v1",
-    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+    "validator_profile": "root-context-script-custody-v1",
+    "validator_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
   }
 }

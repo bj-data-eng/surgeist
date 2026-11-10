@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/flex/fri03_order_modified_flex__border_box_ltr.xml": "30d634295e2dfeca658d105266c53c2008001db540bbb613fbc3ca707595d3b6",
+    "xml/flex/fri03_order_modified_flex__border_box_rtl.xml": "5ee29f34ce877c2eb12a6b1869d38109d22d82e67b3ab1e6e138779ed942c6cc",
+    "xml/flex/fri03_order_modified_flex__content_box_ltr.xml": "c789633c586ad3757b1d8450f96aa19db4feeb32121692dd981dafaf498c97bf",
+    "xml/flex/fri03_order_modified_flex__content_box_rtl.xml": "aa14552f48d52d8ccbbdf208369a95f7fc4bd4bb1fbad3370019bed2acfa0b56",
+    "xml/generation-reports/all.json": "6c56827ed7ce62d1453e24715db713dfe1c76a80c16afb6675388b918ef2776f"
+  }
+}

@@ -8,3 +8,10 @@ pub(crate) const HELPER_SHA256: &str =
 pub(crate) const SCRIPT_PATH: &str = "scripts/gentest/prepared_atomic_percentage.js";
 pub(crate) const SCRIPT: &str = include_str!("prepared_atomic_percentage.js");
 pub(crate) const REQUEST: &[u8] = include_bytes!("prepared_atomic_percentage_request.json");
+
+/// The retained producer and the source-script-custody producer qualified for
+/// this observation profile. Other globally known helpers grant no capability.
+pub(crate) fn accepts_helper(digest: &str) -> bool {
+    digest == HELPER_SHA256
+        || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+}

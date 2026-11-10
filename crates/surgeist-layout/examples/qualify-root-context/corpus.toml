@@ -2388,3 +2388,7 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[[matching_publications]]
+edition = "scriptless-order"
+sources = ["html/flex/fri03_order_modified_flex.html"]

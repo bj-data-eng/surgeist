@@ -1,7 +1,3 @@
-// Frozen helper bytes exercise source-profile admission independently of the
-// canonical resource.
-const SCRIPT_CUSTODY_ADMISSION_CANDIDATE: &str = include_str!("script_custody_candidate_helper.js");
-
 fn script_custody_admission_requires_candidate(
     request: BoxObservationRequest,
     source_path: &str,
@@ -12,8 +8,8 @@ fn script_custody_admission_requires_candidate(
     use surgeist_generator::Sha256Digest;
 
     assert_eq!(
-        Sha256Digest::from_bytes(SCRIPT_CUSTODY_ADMISSION_CANDIDATE.as_bytes()).as_str(),
-        "eef8d2108e8a1c50a510e283a97e0484a0b130cd7bcf69a790fd329e66b46686"
+        Sha256Digest::from_bytes(TEST_HELPER_SOURCE.as_bytes()).as_str(),
+        "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
     );
     assert_eq!(
         Sha256Digest::from_bytes(source.as_bytes()).as_str(),
@@ -30,13 +26,28 @@ fn script_custody_admission_requires_candidate(
             request,
         )
     };
-    let modified = format!("{SCRIPT_CUSTODY_ADMISSION_CANDIDATE}\ndescribeElement = () => null;\n");
+    let retained = include_str!(
+        "../../layout/browser_parity/captured/original-subgrid-body-qualification/scripts/gentest/test_helper.js"
+    );
+    setup(retained).expect("the retained producer remains admissible");
+    for other_profile_helper in [
+        include_str!(
+            "../../layout/browser_parity/captured/canonical-box-differences/scripts/gentest/test_helper.js"
+        ),
+        include_str!(
+            "../../layout/browser_parity/captured/prepared-range-differences/scripts/gentest/test_helper.js"
+        ),
+    ] {
+        assert!(
+            matches!(setup(other_profile_helper), Err(AdapterError::Preparation(reason)) if reason == refusal)
+        );
+    }
+    let modified = format!("{TEST_HELPER_SOURCE}\ndescribeElement = () => null;\n");
     assert!(matches!(
         setup(&modified),
         Err(AdapterError::Preparation(reason)) if reason == refusal
     ));
-    setup(SCRIPT_CUSTODY_ADMISSION_CANDIDATE)
-        .expect("the script-custody helper must preserve fresh profile setup");
+    setup(TEST_HELPER_SOURCE).expect("the script-custody helper must preserve fresh profile setup");
 }
 
 #[test]

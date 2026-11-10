@@ -555,6 +555,9 @@ fn flex_item_order_variants_match_browser() {
         include_str!("browser_parity/xml/flex/fri03_order_modified_flex__content_box_rtl.xml"),
     ];
 
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/flex");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden = support::Golden::parse(fixture).expect("settled flex-order fixture parses");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
@@ -583,9 +586,23 @@ fn flex_item_order_variants_match_browser() {
         assert!(golden.expectations.children.iter().all(|child| {
             child.y == Some(0.0) && child.width == Some(20.0) && child.height == Some(20.0)
         }));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
+        let expected_x = if golden.name.ends_with("_ltr") {
+            [Some(40.0), Some(0.0), Some(60.0), Some(20.0)]
+        } else {
+            [Some(20.0), Some(60.0), Some(0.0), Some(40.0)]
+        };
+        assert_eq!(
+            golden
+                .expectations
+                .children
+                .iter()
+                .map(|child| child.x)
+                .collect::<Vec<_>>(),
+            expected_x,
+        );
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]

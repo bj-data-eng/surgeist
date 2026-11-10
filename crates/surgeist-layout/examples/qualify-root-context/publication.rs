@@ -64,19 +64,22 @@ fn publication_request(mode: QualificationMode) -> Result<(Edition, InputAccess)
         QualificationMode::Publish => (Edition::RootContextV4, InputAccess::Prepare),
         QualificationMode::CheckPublished => (Edition::RootContextV4, InputAccess::ReadOnly),
         QualificationMode::PublishExact(edition) => (Edition::Exact(edition), InputAccess::Prepare),
-        QualificationMode::CheckPublishedExact(edition) | QualificationMode::Derive(edition) => {
+        QualificationMode::CheckPublishedExact(edition)
+        | QualificationMode::DeriveExact(edition) => {
             (Edition::Exact(edition), InputAccess::ReadOnly)
         }
         QualificationMode::PublishSpecialized(profile) => {
             (Edition::Specialized(profile), InputAccess::Prepare)
         }
-        QualificationMode::CheckPublishedSpecialized(profile) => {
+        QualificationMode::CheckPublishedSpecialized(profile)
+        | QualificationMode::DeriveSpecialized(profile) => {
             (Edition::Specialized(profile), InputAccess::ReadOnly)
         }
         QualificationMode::PublishMatching(edition) => {
             (Edition::Matching(edition), InputAccess::Prepare)
         }
-        QualificationMode::CheckPublishedMatching(edition) => {
+        QualificationMode::CheckPublishedMatching(edition)
+        | QualificationMode::DeriveMatching(edition) => {
             (Edition::Matching(edition), InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
@@ -84,6 +87,10 @@ fn publication_request(mode: QualificationMode) -> Result<(Edition, InputAccess)
 }
 
 pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
+    run_with_output(owner, mode, &mut std::io::stdout())
+}
+
+fn run_with_output(owner: &Path, mode: QualificationMode, output: &mut dyn Write) -> Result<()> {
     require_current_inputs(owner)?;
     let (edition, access) = publication_request(mode)?;
     let parent = edition_parent(owner)?;
@@ -142,13 +149,29 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     match access {
         InputAccess::Prepare => with_new_edition(&parent, edition, |root| {
             CorpusLocation::new(owner, root)?;
-            finish(owner, root, &input, &origin, access, edition, mode)
+            finish(
+                owner,
+                root,
+                &input,
+                &origin,
+                access,
+                edition,
+                PublicationInvocation { mode, output },
+            )
         }),
         InputAccess::ReadOnly => {
             let root = parent.join(edition.name());
             require_directory(&root)?;
             CorpusLocation::new(owner, &root)?;
-            finish(owner, &root, &input, &origin, access, edition, mode)
+            finish(
+                owner,
+                &root,
+                &input,
+                &origin,
+                access,
+                edition,
+                PublicationInvocation { mode, output },
+            )
         }
     }
 }
@@ -238,6 +261,11 @@ pub(super) fn verified_exact_predecessors(
         .collect())
 }
 
+struct PublicationInvocation<'a> {
+    mode: QualificationMode,
+    output: &'a mut dyn Write,
+}
+
 fn finish(
     owner: &Path,
     root: &Path,
@@ -245,8 +273,9 @@ fn finish(
     origin: &Origin,
     access: InputAccess,
     edition: Edition,
-    mode: QualificationMode,
+    invocation: PublicationInvocation<'_>,
 ) -> Result<()> {
+    let PublicationInvocation { mode, output } = invocation;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -264,7 +293,7 @@ fn finish(
     }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
-    let derive_terminal = matches!(mode, QualificationMode::Derive(_));
+    let derive_terminal = mode.derives_terminal();
     let geometry_predecessors = if edition == Edition::RootContextV4 {
         verified_exact_predecessors(owner, PublishedEdition::GridStaticPosition)?
     } else {
@@ -398,22 +427,20 @@ fn finish(
             terminal_cases,
         )?
         .to_bytes()?;
-        match access {
-            InputAccess::Prepare => {
-                emit_terminal(root, &snapshot.expected_inputs, &bytes)?;
-            }
-            InputAccess::ReadOnly if derive_terminal => {
-                std::io::stdout().lock().write_all(&bytes)?;
-            }
+        let publication = match access {
+            InputAccess::Prepare => TerminalPublication::Create,
             InputAccess::ReadOnly => {
-                if stored_terminal.as_deref() != Some(bytes.as_slice()) {
-                    return Err(
-                        "terminal qualification differs from complete current derivation".into(),
-                    );
+                let stored = stored_terminal
+                    .as_deref()
+                    .ok_or("missing retained qualification terminal")?;
+                if derive_terminal {
+                    TerminalPublication::Derive(stored)
+                } else {
+                    TerminalPublication::Check(stored)
                 }
-                check_input_census(root, &snapshot.expected_inputs, Some(&bytes))?;
             }
-        }
+        };
+        publish_terminal(root, &snapshot.expected_inputs, publication, &bytes, output)?;
     }
     eprintln!(
         "qualify-root-context: durable edition validated at {}; registration is a separate reviewed change",
@@ -918,6 +945,39 @@ fn canonical_input<'a>(
     }
     input.declaration.records = selected_records;
     Ok(input)
+}
+
+enum TerminalPublication<'a> {
+    Create,
+    Check(&'a [u8]),
+    Derive(&'a [u8]),
+}
+
+/// Emit a fully validated candidate without changing the retained terminal or
+/// admitting an additional artifact inside the capture directory.
+fn publish_terminal(
+    root: &Path,
+    expected: &BTreeMap<RelativePath, Sha256Digest>,
+    publication: TerminalPublication<'_>,
+    candidate: &[u8],
+    output: &mut dyn Write,
+) -> Result<()> {
+    match publication {
+        TerminalPublication::Create => emit_terminal(root, expected, candidate),
+        TerminalPublication::Check(stored) => {
+            if stored != candidate {
+                return Err(
+                    "terminal qualification differs from complete current derivation".into(),
+                );
+            }
+            check_input_census(root, expected, Some(candidate))
+        }
+        TerminalPublication::Derive(stored) => {
+            check_input_census(root, expected, Some(stored))?;
+            output.write_all(candidate)?;
+            check_input_census(root, expected, Some(stored))
+        }
+    }
 }
 
 // A failed write or final census must not leave terminal authority behind. The
