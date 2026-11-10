@@ -1896,23 +1896,8 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     assert!(storage.effects.current.is_none());
     assert_eq!(c.stop(), None);
     assert_eq!(binding(&owner), DocumentRef::Captured(document));
-    // Release is charged work in the running state (the pops in
-    // construction/token_payload.rs release_token_attributes). With no spare
-    // work a refusal latches the stop, after which terminal cleanup charges
-    // nothing and the retry succeeds.
-    match owner.release(&mut c) {
-        Ok(()) => {}
-        Err(SessionError::Stop(
-            stop @ HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::WorkCredits,
-                ..
-            },
-        )) => {
-            assert_eq!(c.stop(), Some(stop));
-            owner.release(&mut c).unwrap();
-        }
-        Err(other) => panic!("release refused for another reason: {other:?}"),
-    }
+    // The release of an owner that holds no token needs no work beyond the exact budget.
+    owner.release(&mut c).unwrap();
     storage_zero(&c);
 }
 

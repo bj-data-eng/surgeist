@@ -96,6 +96,8 @@ pub(crate) use transaction::CopyObservation;
 mod tree;
 mod value_sharing;
 mod value_sharing_ingress;
+#[cfg(test)]
+mod value_sharing_lifecycle_tests;
 mod view_transition;
 use crate::view_transition::*;
 pub(crate) use bank::owned::{EmptyPath, OwnedBank};

@@ -760,6 +760,17 @@ mod tests {
     fn limits() -> HtmlParseLimits {
         super::super::tests::limits()
     }
+
+    #[test]
+    fn an_unpublishable_history_latches_the_registry_row_as_the_first_stop() {
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(c.stop(), None);
+        assert_eq!(Unpublishable.latch(&mut c), SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
     fn zero(c: &ParseControl) {
         super::super::tests::storage_zero(c);
         assert_eq!(

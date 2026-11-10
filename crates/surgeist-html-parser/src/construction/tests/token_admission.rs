@@ -30,6 +30,44 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
     storage_zero(&c);
 }
 #[test]
+fn external_text_alias_and_native_backing_holder_reject_without_consuming_owners() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let mut text = Some(owned_text(&mut c, &[0x61]));
+    let alias = text.as_ref().unwrap().value.text().clone();
+    assert!(matches!(
+        session.insert_text(&mut c, &root, None, &mut text, None),
+        Err(SessionError::AliasedPayload)
+    ));
+    assert!(text.is_some());
+    drop(alias);
+    let inserted = session
+        .insert_text(&mut c, &root, None, &mut text, None)
+        .unwrap()
+        .unwrap();
+    let HtmlNodeKind::Text(value) = &session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(inserted._node.index)
+        .expect("retained construction position")
+        .kind()
+    else {
+        panic!("text")
+    };
+    let alias = value.clone();
+    let mut frozen = session.freeze(&mut c).unwrap();
+    // A native string that another holder still keeps cannot be released: the ticket of a string
+    // that does not share its block requires the block to be unheld.
+    let aliased = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
+    );
+    assert_eq!(frozen.release(&mut c), Err(SessionError::Stop(aliased)));
+    assert_eq!(c.stop(), Some(aliased));
+    drop(alias);
+}
+#[test]
 fn foreign_token_owner_preserves_input_and_original_ledger_for_cleanup() {
     let mut c = control();
     let mut foreign = control();

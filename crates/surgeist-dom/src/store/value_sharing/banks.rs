@@ -388,6 +388,18 @@ impl Banks {
         )
     }
     #[cfg(test)]
+    pub(super) fn exhaust_qualifiers(&mut self) {
+        self.next = None;
+    }
+    #[cfg(test)]
+    pub(super) fn leave_last_qualifier(&mut self) {
+        self.next = Some(u64::MAX);
+    }
+    #[cfg(test)]
+    pub(super) fn next_qualifier(&self) -> Option<u64> {
+        self.next
+    }
+    #[cfg(test)]
     pub(super) fn first_allocation_bytes() -> usize {
         let slots = Vec::<Option<Entry>>::with_capacity(SLOTS);
         let inverse = Vec::<Before>::with_capacity(SLOTS);

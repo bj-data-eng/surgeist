@@ -517,3 +517,479 @@ fn reentrant_admission_cannot_commit_an_underpriced_bank_shape() {
     ));
     assert_raw(&f);
 }
+
+#[test]
+fn callbacks_have_no_pool_lock_and_owned_closing_survives_qualifier_exhaustion() {
+    let f = fixture();
+    let mut steps = 0usize;
+    let mut step = || {
+        assert!(
+            f.pool.0.try_lock().is_ok(),
+            "work callback outside pool lock"
+        );
+        steps += 1;
+        Ok(())
+    };
+    let mut global = |_| {
+        assert!(
+            f.pool.0.try_lock().is_ok(),
+            "admission callback outside pool lock"
+        );
+        Ok(())
+    };
+    let mut admission = Admission {
+        global: &mut global,
+        step: &mut step,
+    };
+    let session = f.pool.attach(&mut admission).unwrap();
+    assert!(session.ensure_active(&mut admission).unwrap().is_some());
+    let mark = session.checkpoint(&mut admission).unwrap();
+    let bank = value(&f, &[6], 1);
+    session.offer_bank(&bank, None, &mut admission).unwrap();
+    lock(&f.pool.0).banks.exhaust_qualifiers();
+    mark.restore();
+    let ready = session.prepare_close(&[], &mut admission).unwrap();
+    session.close(ready, &[]).commit();
+    let bypassed = f.pool.attach(&mut admission).unwrap();
+    assert!(matches!(
+        bypassed.probe_bank(bank.entries(), &mut admission).unwrap(),
+        BankProbe::Bypassed
+    ));
+    assert!(steps > 0);
+    assert_raw(&f);
+}
+
+#[test]
+fn bank_reuse_preserves_raw_units_and_cancellation_error_and_releases_owner() {
+    let f = fixture();
+    let session = active_session(&f);
+    let original = value(&f, &[0xd800, 0, 0xdc00], 3);
+    offer(&session, &original);
+    let equal = value(&f, &[0xd800, 0, 0xdc00], 1);
+    let selected = hit(&session, &equal);
+    assert_eq!(
+        selected.storage().entries()[0].value().code_units(),
+        [0xd800, 0, 0xdc00]
+    );
+    assert!(selected.storage().same_storage(&original));
+    drop(selected);
+    let baseline = f.ledger.total();
+    let cancelled = AtomicBool::new(true);
+    let error = session
+        .probe_bank(
+            equal.entries(),
+            &mut Admission {
+                global: &mut |_| Ok(()),
+                step: &mut || crate::store::check_cancel(&cancelled),
+            },
+        )
+        .err()
+        .unwrap();
+    assert!(matches!(error, DomError::Cancelled));
+    assert_eq!(f.ledger.total(), baseline);
+    // No session or mark retains the semantic pool owner after Dom/Owner drop.
+    let weak = Arc::downgrade(&f.pool.0);
+    let owner_bytes = size_of::<Mutex<State>>();
+    drop(f.pool);
+    assert!(weak.upgrade().is_none());
+    assert!(f.ledger.total().bytes() >= owner_bytes); // live session's known Weak body
+    drop(session);
+}
+
+#[test]
+fn unique_repeated_and_mixed_streams_report_bounded_actual_owner_overhead() {
+    for mode in ["unique", "repeated", "mixed"] {
+        for count in [0usize, 32, 256, 2048] {
+            let f = fixture();
+            let baseline = f.ledger.total();
+            let session = active_session(&f);
+            let hot_bank = value(&f, &[0xd800, 60_000], 7);
+            let mut steps = 0usize;
+            let mut peak = baseline.bytes();
+            for i in 0..count {
+                let row = u16::try_from(i).unwrap();
+                let bank = if mode == "repeated" || mode == "mixed" {
+                    if i == 0 {
+                        hot_bank.clone()
+                    } else {
+                        value(&f, &[0xd800, 60_000], 1)
+                    }
+                } else {
+                    value(&f, &[0xd800, row], 1)
+                };
+                let mut admission = Admission {
+                    global: &mut |next| {
+                        peak = peak.max(next.bytes());
+                        Ok(())
+                    },
+                    step: &mut || {
+                        steps += 1;
+                        Ok(())
+                    },
+                };
+                match session.probe_bank(bank.entries(), &mut admission).unwrap() {
+                    BankProbe::Hit(selected) => {
+                        assert_ne!(mode, "unique");
+                        assert!(selected.storage().same_storage(&hot_bank));
+                    }
+                    BankProbe::Miss(miss) => session
+                        .offer_bank(&bank, Some(miss), &mut admission)
+                        .unwrap(),
+                    BankProbe::Bypassed => panic!("small eligible stream stays available"),
+                }
+                assert_raw(&f);
+            }
+            {
+                let state = lock(&f.pool.0);
+                let (bank_bytes, weak, current_entries, saved_entries) = state.banks.inspect();
+                assert!(bank_bytes <= 256 * 1024);
+                // These are actual controlled occurrence receipts, not a
+                // physical-dedup or total-DOM-memory measurement. Current and
+                // saved entries retain Weak occurrences; either may already
+                // refer to a value whose last strong holder died.
+                eprintln!(
+                    "value-sharing-overhead mode={mode} count={count} bank_raw_bytes={bank_bytes} bank_current_weak_entries={current_entries} bank_saved_weak_entries={saved_entries} weak_occurrences={weak} pair_receipt_bytes={} authority_bytes={} prospective_ledger_peak={peak} stream_work={steps}",
+                    state.storage.usage().bytes(),
+                    size_of::<Mutex<State>>()
+                );
+            }
+            drop(session);
+            assert_eq!(f.ledger.total(), baseline);
+            assert_raw(&f);
+        }
+    }
+}
+
+#[test]
+fn empty_reserved_banks_are_real_candidates_and_oversized_inputs_bypass_boundedly() {
+    let f = fixture();
+    let session = active_session(&f);
+    let baseline = f.ledger.total();
+    let absent = AttributeStorage::default();
+    admitted(|a| session.offer_bank(&absent, None, a)).unwrap();
+    assert_eq!(f.ledger.total(), baseline);
+    assert_eq!(lock(&f.pool.0).banks.inspect(), (0, 0, 0, 0));
+    let reserved = AttributeStorage::from_entries(Vec::with_capacity(7));
+    assert_eq!(reserved.entries().len(), 0);
+    offer(&session, &reserved);
+    let selected = hit(
+        &session,
+        &AttributeStorage::from_entries(Vec::with_capacity(1)),
+    );
+    assert!(selected.storage().same_storage(&reserved));
+    assert_eq!(selected.storage().capacity(), reserved.capacity());
+    drop(selected);
+    // Fresh absent input remains absent; production ingress returns before
+    // probing it. A directly offered absent leaf never becomes an entry.
+    assert!(absent.payload().is_none());
+
+    let stable = f.ledger.total();
+    let mut probe_steps = None;
+    for length in [8193, 65_536] {
+        let large = vec![0xd800; length];
+        let bank = value(&f, &large, 1);
+        let mut steps = 0;
+        assert!(matches!(
+            session
+                .probe_bank(
+                    bank.entries(),
+                    &mut Admission {
+                        global: &mut |_| panic!(
+                            "oversized borrowed bank has no candidate allocation"
+                        ),
+                        step: &mut || {
+                            steps += 1;
+                            Ok(())
+                        },
+                    }
+                )
+                .unwrap(),
+            BankProbe::Bypassed
+        ));
+        // One attribute and its four presence/extent classifiers plus the
+        // fixed ten-unit local name; no oversized value units are inspected.
+        assert!(steps <= 1 + 4 + "data-value".len());
+        if let Some(previous) = probe_steps {
+            assert_eq!(steps, previous);
+        }
+        probe_steps = Some(steps);
+        assert_eq!(f.ledger.total(), stable);
+    }
+    assert_raw(&f);
+}
+
+#[test]
+fn dormant_attachment_defers_roots_and_cold_reset_only_aborts_its_own_pair() {
+    let f = fixture();
+    let baseline = f.ledger.total();
+    let session = f
+        .pool
+        .attach(&mut Admission {
+            global: &mut |_| Ok(()),
+            step: &mut || panic!("attaching does not acquire a root"),
+        })
+        .unwrap();
+    assert!(session.is_dormant());
+    let attached = f.ledger.total();
+    assert_eq!(
+        attached.bytes(),
+        baseline.bytes() + size_of::<Mutex<State>>()
+    );
+    let cold = session
+        .checkpoint(&mut Admission {
+            global: &mut |_| panic!("cold checkpoint has no new authority"),
+            step: &mut || panic!("cold checkpoint has no root/mark work"),
+        })
+        .unwrap();
+    assert!(cold.root.is_none());
+    let absent = AttributeStorage::default();
+    admitted(|a| session.offer_bank(&absent, None, a)).unwrap();
+    assert!(session.is_dormant());
+    assert!(lock(&f.pool.0).roots.is_none());
+    assert_eq!(f.ledger.total(), attached);
+    let bank = value(&f, &[4], 1);
+    offer(&session, &bank); // the actual first eligible leaf front activates
+    let first = session.active_id().unwrap();
+    let active = admitted(|a| session.checkpoint(a)).unwrap();
+    let later = value(&f, &[5], 1);
+    offer(&session, &later);
+    active.restore();
+    drop(hit(&session, &bank));
+    // Core validates the owning transaction's original cold journal mark
+    // before invoking this reset. The leaf aborts only this attachment's ID.
+    session.reset_dormant();
+    assert!(session.is_dormant());
+    assert!(lock(&f.pool.0).roots.is_none());
+    assert_eq!(f.ledger.total(), attached);
+    drop(cold); // acceptance of the old cold boundary has no reset side effect
+    let other = active_session(&f);
+    let other_id = other.active_id().unwrap();
+    assert_ne!(first, other_id);
+    session.reset_dormant();
+    assert!(lock(&f.pool.0).active(other_id));
+    assert!(matches!(
+        admitted(|a| session.probe_bank(bank.entries(), a)).unwrap(),
+        BankProbe::Bypassed
+    ));
+    assert!(!session.is_dormant());
+    session.reset_dormant();
+    assert!(session.is_dormant());
+    assert!(lock(&f.pool.0).active(other_id));
+    drop(other);
+    drop(session);
+    assert_eq!(f.ledger.total(), baseline);
+}
+
+#[test]
+fn acquisition_errors_cancel_and_unwind_reset_without_lock_or_partial_authority() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let f = fixture();
+    let session = admitted(|a| f.pool.attach(a)).unwrap();
+    let baseline = f.ledger.total();
+    let bank = value(&f, &[7], 1);
+    for failure in [0, 1, 2] {
+        let mut entered = false;
+        let attempt = catch_unwind(AssertUnwindSafe(|| {
+            session.offer_bank(
+                &bank,
+                None,
+                &mut Admission {
+                    global: &mut |_| panic!("acquisition retains no new authority"),
+                    step: &mut || {
+                        entered = true;
+                        assert!(f.pool.0.try_lock().is_ok());
+                        assert!(session.phase.try_lock().is_ok());
+                        session
+                            .offer_bank(
+                                &bank,
+                                None,
+                                &mut Admission {
+                                    global: &mut |_| panic!("acquiring reentry cannot admit"),
+                                    step: &mut || panic!("acquiring reentry cannot spend work"),
+                                },
+                            )
+                            .unwrap();
+                        match failure {
+                            0 => Err(DomError::SourceWorkLimit { limit: 71 }),
+                            1 => Err(DomError::Cancelled),
+                            _ => std::panic::panic_any(71u8),
+                        }
+                    },
+                },
+            )
+        }));
+        assert!(entered);
+        match (failure, attempt) {
+            (0, Ok(Err(DomError::SourceWorkLimit { limit: 71 })))
+            | (1, Ok(Err(DomError::Cancelled))) => {}
+            (2, Err(error)) => assert_eq!(error.downcast_ref::<u8>(), Some(&71)),
+            _ => panic!("the original acquisition failure must survive unchanged"),
+        }
+        assert!(session.is_dormant());
+        assert!(lock(&f.pool.0).roots.is_none());
+        assert!(!lock(&f.pool.0).banks.occupied());
+        assert_eq!(f.ledger.total(), baseline);
+    }
+    admitted(|a| session.offer_bank(&bank, None, a)).unwrap();
+    assert!(session.active_id().is_some());
+    session.reset_dormant();
+    assert_eq!(f.ledger.total(), baseline);
+}
+
+#[test]
+fn dormant_close_and_suspended_empty_mark_preserve_distinct_authority() {
+    let f = fixture();
+    let baseline = f.ledger.total();
+    let dormant = admitted(|a| f.pool.attach(a)).unwrap();
+    let ready = dormant
+        .prepare_close(
+            &[],
+            &mut Admission {
+                global: &mut |_| panic!("dormant close does not allocate"),
+                step: &mut || panic!("dormant close has no seal work"),
+            },
+        )
+        .unwrap();
+    dormant.close(ready, &[]).commit();
+    assert_eq!(f.ledger.total(), baseline);
+    let session = admitted(|a| f.pool.attach(a)).unwrap();
+    let bank = value(&f, &[8], 1);
+    admitted(|a| session.offer_bank(&bank, None, a)).unwrap();
+    let id = session.active_id().unwrap();
+    let outer = admitted(|a| session.checkpoint(a)).unwrap();
+    lock(&f.pool.0).banks.exhaust_qualifiers();
+    let suspended = admitted(|a| session.checkpoint(a)).unwrap();
+    assert!(suspended.root.is_none());
+    assert!(
+        !session.is_dormant(),
+        "an empty suspended token is not cold authority"
+    );
+    suspended.restore();
+    assert!(lock(&f.pool.0).active(id));
+    assert!(lock(&f.pool.0).roots.as_ref().unwrap().suspended);
+    outer.restore();
+    assert!(lock(&f.pool.0).active(id));
+    session.reset_dormant();
+    assert!(session.is_dormant());
+    assert!(lock(&f.pool.0).roots.is_none());
+    drop(session);
+    assert_eq!(f.ledger.total(), baseline);
+}
+
+#[test]
+fn optional_bank_exhaustion_does_not_break_a_style_attribute_source_edit() {
+    use crate::{
+        Dom, DomBatch, DomLimits, DomSourceEdit, DomSourceProgress, DomSourceRequest,
+        DomStyleInlineCspObservation,
+    };
+    use surgeist_html::values::Namespace;
+    let cancel = AtomicBool::new(false);
+    let mut dom = Dom::new(
+        DomLimits::new(
+            32,
+            1_000_000,
+            128,
+            0,
+            0,
+            32,
+            8_000_000,
+            DomNameLimits::new(32_000_000, 4096, 1_000_000, 32_000_000).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut setup = DomBatch::new();
+    let document = setup.create_document();
+    let style = setup.create_element_ns(&document, Namespace::html(), "style");
+    setup.set_attribute(&style, "type", "text/plain");
+    let text = setup.create_text(&document, "a{}");
+    setup.insert_before(&text, &style, None);
+    setup.insert_before(&style, &document, None);
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let document = commit.document(&document).unwrap();
+    let style = commit.created(&style).unwrap().unwrap();
+    let mut enable = DomBatch::new();
+    enable.set_attribute(style, "type", "text/css");
+    dom.apply(enable, &cancel).unwrap();
+    let limits =
+        || crate::DomSourceLimits::new(128_000_000, 1_000_000, 20_000_000, 64, 4096, 4096, 4);
+    let owner = Arc::downgrade(&dom.value_sharing.0);
+    // Leave exactly one optional DOM-bank root qualifier for the real first eligible operation.
+    // Its later marks may bypass, but cleanup of that acquired root must never issue another
+    // qualifier.
+    {
+        let owner = owner.upgrade().unwrap();
+        let mut state = lock(&owner);
+        assert!(state.roots.is_none() && !state.banks.occupied());
+        state.banks.leave_last_qualifier();
+    }
+    {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::set_attribute(style, "media", "screen"),
+                limits(),
+                &cancel,
+            )
+            .unwrap();
+        {
+            let owner = owner.upgrade().unwrap();
+            let state = lock(&owner);
+            assert!(
+                state.roots.is_none() && !state.banks.occupied(),
+                "Source attachment stays dormant before eligible formation"
+            );
+            assert_eq!(state.banks.next_qualifier(), Some(u64::MAX));
+        }
+        let operation = lease.operation();
+        loop {
+            match lease.advance(&cancel).unwrap() {
+                DomSourceProgress::Complete(done) => {
+                    assert_eq!(done.operation(), operation);
+                    break;
+                }
+                DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
+                    let observation = DomStyleInlineCspObservation::evaluated(
+                        request.source(),
+                        Arc::new(vec!["style-src 'none'".into()]),
+                        19,
+                        false,
+                    );
+                    lease
+                        .accept_inline_csp(&request, &observation, &cancel)
+                        .unwrap();
+                }
+                _ => panic!("a style attribute edit asks only for inline CSP"),
+            }
+        }
+    }
+    assert!(dom.pending_source_edit().is_none());
+    assert_eq!(
+        lock(&owner.upgrade().unwrap()).banks.next_qualifier(),
+        None,
+        "the actual first eligible activation consumed the last optional root qualifier"
+    );
+    let snapshot = dom.snapshot();
+    assert_eq!(
+        snapshot
+            .node(style)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .attribute(&DocumentString::from("media")),
+        Some(&DocumentString::from("screen"))
+    );
+    // Future optional activity bypasses rather than demanding a fresh bank qualifier. Native
+    // value formation still publishes exact literal data.
+    let mut later = DomBatch::new();
+    let node = later.create_element_ns(document, Namespace::html(), "div");
+    later.set_attribute(&node, "data-value", "later");
+    let commit = dom.apply(later, &cancel).unwrap();
+    let node = commit.created(&node).unwrap().unwrap();
+    assert_eq!(
+        dom.snapshot()
+            .node(node)
+            .unwrap()
+            .attribute(&DocumentString::from("data-value")),
+        Some(&DocumentString::from("later"))
+    );
+}

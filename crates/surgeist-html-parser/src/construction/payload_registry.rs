@@ -709,7 +709,12 @@ impl PayloadStorage {
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
     #[cfg(test)]
-    fn assert_joins_match_registry(&self) {
+    ///
+    /// A latched registry-row stop does not name its row. When one is latched, an attribute join
+    /// that names a row a lost edit emptied is accepted, at most one such join; every other join
+    /// and every other stop is still checked.
+    fn assert_joins_match_registry(&self, registry_row_stop: bool) {
+        let mut tolerated = 0;
         let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
         let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();
         for (slot, row) in self.values.iter().enumerate() {
@@ -735,6 +740,19 @@ impl PayloadStorage {
             // row that was current when it was written.
             let mut cell = *cell;
             *cell.rows.get_mut(Join::StyleOrder) = joined.rows.copy(Join::StyleOrder);
+            if registry_row_stop
+                && tolerated == 0
+                && cell.get(Join::Attributes).is_none()
+                && joined.get(Join::Attributes).is_some_and(|slot| {
+                    matches!(
+                        self.values.get(slot),
+                        Some(RetainedPayload::Attributes(None))
+                    )
+                })
+            {
+                tolerated += 1;
+                *cell.rows.get_mut(Join::Attributes) = joined.rows.copy(Join::Attributes);
+            }
             if let Some(slot) = joined.get(Join::StyleOrder) {
                 assert!(
                     matches!(self.values.get(slot), Some(RetainedPayload::StyleOrder(_))),
@@ -758,7 +776,12 @@ impl PayloadStorage {
         owner: &ControlIdentity,
     ) -> Result<(), SessionError> {
         #[cfg(test)]
-        self.assert_joins_match_registry();
+        self.assert_joins_match_registry(matches!(
+            control.stop(),
+            Some(crate::parser::control::HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::RegistryRow
+            ))
+        ));
         let Self {
             mut values,
             allocation,
