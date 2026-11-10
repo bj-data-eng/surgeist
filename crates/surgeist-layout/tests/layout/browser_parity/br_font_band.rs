@@ -4,7 +4,7 @@ use super::{
 };
 
 pub(crate) use crate::horizontal_br_font_band_profile::{
-    HELPER_SHA256, REQUEST, SCRIPT, SCRIPT_PATH, SOURCE, SOURCE_SHA256,
+    REQUEST, SCRIPT, SCRIPT_PATH, SOURCE, SOURCE_SHA256,
 };
 
 pub(crate) fn horizontal_evidence() -> SpecializedEvidence {

@@ -1,6 +1,9 @@
 use super::*;
 use serde_json::json;
 
+const CURRENT_TERMINAL_FIXTURE: &str =
+    include_str!("captured/relative-inset-differences/qualification.json");
+
 const SETTINGS: &str = r#"{"source":"test","version":"1","version_output":"1","cache_root":"tmp/browser","provenance_format":"test/{version}","launch":{"batch_size":1,"navigation_timeout_ms":10,"dom_poll_interval_ms":1,"arguments":[]}}"#;
 struct Fixture {
     metadata: CaptureMetadata,
@@ -386,12 +389,9 @@ fn settings_witness_rejects_duplicate_unknown_and_incomplete_wire_shapes() {
 
 #[test]
 fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
-    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(ARTIFACT_ROOT)
-        .join(TERMINAL);
-    let raw = std::fs::read_to_string(file).expect("published terminal fixture");
-    let terminal = Qualification::parse(&raw).expect("valid emitted terminal");
-    assert_eq!(terminal.edition, EDITION);
+    let raw = CURRENT_TERMINAL_FIXTURE;
+    let terminal = Qualification::parse(raw).expect("valid emitted terminal");
+    assert_eq!(terminal.edition, RELATIVE_INSET_EDITION);
     assert_eq!(terminal.to_bytes().unwrap(), raw.as_bytes());
     for (pointer, value) in [
         ("/cases/0/identity/capture_sha256", json!("a".repeat(64))),
@@ -399,7 +399,7 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
         ("/records/0/sha256", json!("a".repeat(64))),
         ("/declaration/sha256", json!("a".repeat(64))),
     ] {
-        let mut changed: Value = serde_json::from_str(&raw).unwrap();
+        let mut changed: Value = serde_json::from_str(raw).unwrap();
         *changed.pointer_mut(pointer).unwrap() = value;
         assert!(
             Qualification::parse(&changed.to_string()).is_err(),
@@ -440,10 +440,7 @@ fn specialized_terminal_requires_complete_current_and_historical_bindings() {
         "specialized_publication": "prepared-range"
     });
     let record_sha = semantic_record_digest(&projection).unwrap();
-    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(ARTIFACT_ROOT)
-        .join(TERMINAL);
-    let mut terminal: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+    let mut terminal: Value = serde_json::from_str(CURRENT_TERMINAL_FIXTURE).unwrap();
     let mut template = terminal["cases"][0]["identity"].clone();
     template["source"] = json!(SOURCE);
     template["source_sha256"] = json!(retained[SOURCE]);
@@ -508,7 +505,7 @@ fn specialized_terminal_requires_complete_current_and_historical_bindings() {
 
 #[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
-    const VALIDATOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
+    const VALIDATOR: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(ARTIFACT_ROOT)
@@ -518,7 +515,7 @@ fn current_terminal_requires_distinct_producer_and_validator_authority() {
     terminal["capture_validation"] = json!({
         "producer_profile": "root-context-v4",
         "producer_helper_sha256": HELPER,
-        "validator_profile": "root-context-flex-composition-v1",
+        "validator_profile": "root-context-script-custody-v1",
         "validator_helper_sha256": VALIDATOR,
     });
     terminal["current_owner_inputs"]["tests/layout/browser_parity/scripts/gentest/test_helper.js"] =
@@ -675,7 +672,7 @@ fn live_owner_bindings_require_the_exact_specialized_request() {
 fn matching_terminal_wire_requires_policy_free_complete_original_bindings() {
     // This exercises the terminal wire consumer only. Actual capture bytes,
     // observations and comparison are authenticated again during admission.
-    let raw = include_str!("captured/canonical-box-differences/qualification.json");
+    let raw = CURRENT_TERMINAL_FIXTURE;
     let original = Qualification::parse(raw).unwrap();
     let mut terminal: Value = serde_json::from_str(raw).unwrap();
     terminal["edition"] = json!("box-controls");
@@ -824,3 +821,204 @@ fn matching_capture_binding_authenticates_inputs_without_a_policy_identity() {
     fixture.metadata.inputs = fixture.inputs.clone();
     assert!(bind(&fixture).is_err());
 }
+
+#[test]
+fn script_custody_validator_preserves_every_qualified_producer_profile_and_current_owner() {
+    const QUALIFIED: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
+    assert_eq!(sha256(ROOT_HELPER), QUALIFIED);
+    for (producer, profile) in [
+        (
+            "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+            "root-context-v4",
+        ),
+        (
+            "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0",
+            "root-context-prepared-range-v1",
+        ),
+        (
+            "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+            "root-context-flex-composition-v1",
+        ),
+        (QUALIFIED, "root-context-script-custody-v1"),
+    ] {
+        let retained = BTreeMap::from([
+            (ROOT_HELPER_INPUT.to_owned(), producer.to_owned()),
+            ("origin/source-receipt.json".to_owned(), "a".repeat(64)),
+        ]);
+        let before = retained.clone();
+        let validation = CaptureValidation::from_retained(&retained).unwrap();
+        assert_eq!(
+            serde_json::to_value(validation).unwrap(),
+            json!({
+                "producer_profile":profile,"producer_helper_sha256":producer,
+                "validator_profile":"root-context-script-custody-v1","validator_helper_sha256":QUALIFIED,
+            })
+        );
+        let owners =
+            current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json")
+                .unwrap();
+        assert_eq!(owners[ROOT_HELPER_OWNER], QUALIFIED);
+        assert_eq!(retained, before);
+    }
+    let unknown = BTreeMap::from([(ROOT_HELPER_INPUT.to_owned(), "0".repeat(64))]);
+    assert!(CaptureValidation::from_retained(&unknown).is_err());
+    assert!(CaptureValidation::from_retained(&BTreeMap::new()).is_err());
+}
+
+#[test]
+fn script_custody_validator_updates_schema_only_without_changing_producing_identity() {
+    // This pure wire-schema control includes the superseded canonical fixture.
+    // It grants no live publication authority and installs no terminal bytes.
+    const QUALIFIED: &str = "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4";
+    const PRIOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
+    let owner = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for edition in [
+        "canonical-box-differences",
+        "measured-grid-differences",
+        "flex-text-differences",
+        "grid-static-position-differences",
+        "relative-inset-differences",
+        "wrapping-world-corner-differences",
+        "prepared-range-qualification",
+        "flex-composition-qualification",
+        "original-subgrid-body-qualification",
+        "prepared-atomic-percentage-qualification",
+        "horizontal-br-font-band-qualification",
+        "vertical-br-font-band-qualification",
+        "empty-line-br-font-band-qualification",
+        "box-controls",
+    ] {
+        let path = owner
+            .join("tests/layout/browser_parity/captured")
+            .join(edition)
+            .join(TERMINAL);
+        let stored = std::fs::read(&path).unwrap();
+        // Deserialize only as fixture data; it is not current admission authority.
+        let mut candidate: Qualification = serde_json::from_slice(&stored).unwrap();
+        candidate.capture_validation.validator_profile =
+            RootCaptureProfile::RootContextFlexCompositionV1;
+        candidate.capture_validation.validator_helper_sha256 = PRIOR.to_owned();
+        candidate
+            .current_owner_inputs
+            .insert(ROOT_HELPER_OWNER.to_owned(), PRIOR.to_owned());
+        let stale = serde_json::to_value(&candidate).unwrap();
+        assert!(
+            Qualification::parse(&stale.to_string()).is_err(),
+            "{edition}: stale validator must refuse"
+        );
+        candidate.capture_validation =
+            CaptureValidation::from_retained(&candidate.retained_inputs).unwrap();
+        candidate
+            .current_owner_inputs
+            .insert(ROOT_HELPER_OWNER.to_owned(), QUALIFIED.to_owned());
+        let mut expected = stale;
+        expected["capture_validation"]["validator_profile"] =
+            json!("root-context-script-custody-v1");
+        expected["capture_validation"]["validator_helper_sha256"] = json!(QUALIFIED);
+        expected["current_owner_inputs"][ROOT_HELPER_OWNER] = json!(QUALIFIED);
+        let bytes = candidate.to_bytes().unwrap();
+        let current = Qualification::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(current).unwrap(),
+            expected,
+            "{edition}: producing identities must stay exact"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), stored);
+    }
+}
+
+#[test]
+fn script_custody_admission_binds_each_specialized_producer_without_global_profile_grants() {
+    // Pure verified-input binding controls; these report copies do not claim a
+    // browser publication. The real capture owner separately verifies the bytes.
+    let owner = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (profile, evidence) in [
+        (
+            SpecializedProfile::OriginalSubgridBody,
+            original_subgrid_body::evidence(),
+        ),
+        (
+            SpecializedProfile::PreparedAtomicPercentage,
+            prepared_atomic_percentage_evidence(),
+        ),
+        (
+            SpecializedProfile::HorizontalBrFontBand,
+            super::super::br_font_band::horizontal_evidence(),
+        ),
+        (
+            SpecializedProfile::VerticalBrFontBand,
+            super::super::br_font_band::vertical_evidence(),
+        ),
+        (
+            SpecializedProfile::EmptyLineBrFontBand,
+            super::super::br_font_band::empty_line_evidence(),
+        ),
+    ] {
+        let root = owner.join(profile.artifact_root());
+        let report = unique_json(
+            &std::fs::read_to_string(root.join("xml/generation-reports/all.json")).unwrap(),
+        )
+        .unwrap();
+        for generated in report["generated"].as_array().unwrap() {
+            let mut fixture = Fixture::new(&"a".repeat(64));
+            fixture.metadata = serde_json::from_value(report["metadata"].clone()).unwrap();
+            fixture.artifact = serde_json::from_value(generated.clone()).unwrap();
+            fixture.case.name.clone_from(&fixture.artifact.name);
+            fixture.case.source.clone_from(&fixture.artifact.source);
+            fixture.case.variant.clone_from(&fixture.artifact.variant);
+            fixture
+                .case
+                .output
+                .path
+                .clone_from(&fixture.artifact.output);
+            fixture
+                .case
+                .output
+                .sha256
+                .clone_from(&fixture.artifact.output_sha256);
+            fixture.xml = sha256(&std::fs::read(root.join(&fixture.artifact.output)).unwrap());
+            fixture.inputs = fixture.metadata.inputs.clone();
+            fixture.policy = evidence.policy_digest();
+            let request = fixture.inputs[OBSERVATION_REQUEST].clone();
+            let bind = |fixture: &Fixture| {
+                fixture.with_observation(profile.observation_request(), Some(&request))
+            };
+            let retained = bind(&fixture).expect("the retained producer remains admissible");
+            let old_helper = fixture.inputs[ROOT_HELPER_INPUT].clone();
+            fixture.inputs.insert(
+                ROOT_HELPER_INPUT.to_owned(),
+                crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256.to_owned(),
+            );
+            fixture.metadata.inputs = fixture.inputs.clone();
+            let current = bind(&fixture)
+                .expect("the script-custody producer binds through its owning profile");
+            assert_eq!(
+                current.projection().inputs[ROOT_HELPER_INPUT],
+                crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+            );
+            assert_eq!(retained.projection().inputs[ROOT_HELPER_INPUT], old_helper);
+            assert_eq!(
+                retained.projection().source_sha256,
+                current.projection().source_sha256
+            );
+            for helper in [
+                "0".repeat(64),
+                ROOT_CONTEXT_V4_HELPER_SHA256.to_owned(),
+                PREPARED_RANGE_HELPER_SHA256.to_owned(),
+            ] {
+                fixture.inputs.insert(ROOT_HELPER_INPUT.to_owned(), helper);
+                fixture.metadata.inputs = fixture.inputs.clone();
+                assert!(
+                    bind(&fixture).is_err(),
+                    "{}: an unknown or other-profile helper cannot grant suitability",
+                    profile.edition()
+                );
+            }
+            fixture.inputs.remove(ROOT_HELPER_INPUT);
+            fixture.metadata.inputs = fixture.inputs.clone();
+            assert!(bind(&fixture).is_err());
+        }
+    }
+}
+
+include!("capture_authority_script_custody_tests.rs");

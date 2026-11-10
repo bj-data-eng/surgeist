@@ -969,7 +969,7 @@
     "tests/layout/browser_parity/html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
     "tests/layout/browser_parity/html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4",
     "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
     "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
     "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
@@ -986,7 +986,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-flex-composition-v1",
-    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+    "validator_profile": "root-context-script-custody-v1",
+    "validator_helper_sha256": "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
   }
 }

@@ -15,6 +15,15 @@ pub(crate) fn source_digest(source: &str) -> Option<&'static str> {
         .find_map(|(path, digest)| (*path == source).then_some(digest))
 }
 
+pub(crate) const HELPER_SHA256: &str =
+    "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
 pub(crate) const SCRIPT_PATH: &str = "scripts/gentest/empty_line_br_font_band.js";
 pub(crate) const SCRIPT: &str = include_str!("empty_line_br_font_band.js");
 pub(crate) const REQUEST: &[u8] = include_bytes!("empty_line_br_font_band_request.json");
+
+/// The retained producer and the source-script-custody producer qualified for
+/// this observation profile. Other globally known helpers grant no capability.
+pub(crate) fn accepts_helper(digest: &str) -> bool {
+    digest == HELPER_SHA256
+        || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+}

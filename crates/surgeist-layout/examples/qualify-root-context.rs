@@ -7,6 +7,8 @@ mod adapter;
 mod atomic_paragraph_metrics;
 #[path = "../tests/bin/surgeist-layout-generate/browser_profile.rs"]
 mod browser_profile;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/capture_helper_identity.rs"]
+mod capture_helper_identity;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]
 mod empty_line_br_font_band_profile;
 #[path = "../tests/bin/surgeist-layout-generate/envelope.rs"]
@@ -61,17 +63,6 @@ fn parse_arguments(
             None,
             QualificationMode::PublishExact(PublishedEdition::CanonicalBoxes),
         )),
-        [mode] if mode == "--derive-canonical-box-qualification" => Ok((
-            None,
-            QualificationMode::Derive(PublishedEdition::CanonicalBoxes),
-        )),
-        [mode] if mode == "--derive-measured-grid-qualification" => Ok((
-            None,
-            QualificationMode::Derive(PublishedEdition::MeasuredGrid),
-        )),
-        [mode] if mode == "--derive-flex-text-qualification" => {
-            Ok((None, QualificationMode::Derive(PublishedEdition::FlexText)))
-        }
         [mode] if mode == "--check-published-canonical-box-differences" => Ok((
             None,
             QualificationMode::CheckPublishedExact(PublishedEdition::CanonicalBoxes),
@@ -100,10 +91,6 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedExact(PublishedEdition::GridStaticPosition),
         )),
-        [mode] if mode == "--derive-grid-static-position-qualification" => Ok((
-            None,
-            QualificationMode::Derive(PublishedEdition::GridStaticPosition),
-        )),
         [mode] if mode == "--publish-relative-inset-differences" => Ok((
             None,
             QualificationMode::PublishExact(PublishedEdition::RelativeInsets),
@@ -112,10 +99,6 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedExact(PublishedEdition::RelativeInsets),
         )),
-        [mode] if mode == "--derive-relative-inset-qualification" => Ok((
-            None,
-            QualificationMode::Derive(PublishedEdition::RelativeInsets),
-        )),
         [mode] if mode == "--publish-wrapping-world-corner-differences" => Ok((
             None,
             QualificationMode::PublishExact(PublishedEdition::WrappingWorldCorners),
@@ -123,10 +106,6 @@ fn parse_arguments(
         [mode] if mode == "--check-published-wrapping-world-corner-differences" => Ok((
             None,
             QualificationMode::CheckPublishedExact(PublishedEdition::WrappingWorldCorners),
-        )),
-        [mode] if mode == "--derive-wrapping-world-corner-qualification" => Ok((
-            None,
-            QualificationMode::Derive(PublishedEdition::WrappingWorldCorners),
         )),
         [mode] if mode == "--publish-prepared-range-qualification" => Ok((
             None,
@@ -185,6 +164,10 @@ fn parse_arguments(
             QualificationMode::CheckPublishedSpecialized(
                 SpecializedProfile::PreparedAtomicPercentage,
             ),
+        )),
+        [command, name] if command == "--derive-published-qualification" => Ok((
+            None,
+            support::named_derivation_mode(name).ok_or("unknown terminal qualification edition")?,
         )),
         [command, name]
             if command == "--publish-matching-geometry"
@@ -254,7 +237,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --derive-published-qualification <edition> | --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --publish-relative-inset-differences | --check-published-relative-inset-differences | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -310,18 +293,6 @@ mod tests {
                 "--check-published-canonical-box-differences",
                 QualificationMode::CheckPublishedExact(PublishedEdition::CanonicalBoxes),
             ),
-            (
-                "--derive-canonical-box-qualification",
-                QualificationMode::Derive(PublishedEdition::CanonicalBoxes),
-            ),
-            (
-                "--derive-measured-grid-qualification",
-                QualificationMode::Derive(PublishedEdition::MeasuredGrid),
-            ),
-            (
-                "--derive-flex-text-qualification",
-                QualificationMode::Derive(PublishedEdition::FlexText),
-            ),
         ] {
             assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));
             assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
@@ -361,17 +332,14 @@ mod tests {
             [
                 "--publish-grid-static-position-differences",
                 "--check-published-grid-static-position-differences",
-                "--derive-grid-static-position-qualification",
             ],
             [
                 "--publish-relative-inset-differences",
                 "--check-published-relative-inset-differences",
-                "--derive-relative-inset-qualification",
             ],
             [
                 "--publish-wrapping-world-corner-differences",
                 "--check-published-wrapping-world-corner-differences",
-                "--derive-wrapping-world-corner-qualification",
             ],
         ] {
             let modes = flags.map(|flag| {
@@ -385,8 +353,6 @@ mod tests {
                 mode
             });
             assert_ne!(modes[0], modes[1]);
-            assert_ne!(modes[0], modes[2]);
-            assert_ne!(modes[1], modes[2]);
         }
     }
 

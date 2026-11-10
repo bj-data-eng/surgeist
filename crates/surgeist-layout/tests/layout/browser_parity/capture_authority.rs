@@ -71,19 +71,23 @@ pub(crate) enum RootCaptureProfile {
     RootContextPreparedRangeV1,
     #[serde(rename = "root-context-flex-composition-v1")]
     RootContextFlexCompositionV1,
+    #[serde(rename = "root-context-script-custody-v1")]
+    RootContextScriptCustodyV1,
 }
 
 const PREPARED_RANGE_HELPER_SHA256: &str =
     "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
-const FLEX_COMPOSITION_HELPER_SHA256: &str =
-    "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
-const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextFlexCompositionV1;
+use crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256;
+const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextScriptCustodyV1;
 
 pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     match digest {
         ROOT_CONTEXT_V4_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextV4),
         PREPARED_RANGE_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextPreparedRangeV1),
-        FLEX_COMPOSITION_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextFlexCompositionV1),
+        flex_composition::RETAINED_HELPER_SHA256 => {
+            Ok(RootCaptureProfile::RootContextFlexCompositionV1)
+        }
+        SCRIPT_CUSTODY_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextScriptCustodyV1),
         _ => Err(changed("unsupported retained root proof helper")),
     }
 }
@@ -604,6 +608,15 @@ pub(crate) fn capture_binding_from_verified_inputs(
             {
                 return Err(changed("original subgrid body capture profile"));
             }
+            if !full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .is_some_and(|digest| crate::original_subgrid_body_profile::accepts_helper(digest))
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed(
+                    "original subgrid body input: scripts/gentest/test_helper.js",
+                ));
+            }
             for (path, expected) in [
                 (
                     original_subgrid_body::SOURCE,
@@ -614,7 +627,6 @@ pub(crate) fn capture_binding_from_verified_inputs(
                     original_subgrid_body::PROOF_SCRIPT_PATH,
                     proof_sha256.as_str(),
                 ),
-                (ROOT_HELPER_INPUT, original_subgrid_body::HELPER_SHA256),
             ] {
                 if full_inputs.get(path).map(String::as_str) != Some(expected)
                     || excluded_specs.contains(path)
@@ -635,11 +647,19 @@ pub(crate) fn capture_binding_from_verified_inputs(
             {
                 return Err(changed("prepared atomic percentage capture profile"));
             }
+            if !full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .is_some_and(|digest| atomic_percentage::accepts_helper(digest))
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed(
+                    "prepared atomic percentage input: scripts/gentest/test_helper.js",
+                ));
+            }
             for (path, expected) in [
                 (atomic_percentage::SOURCE, atomic_percentage::SOURCE_SHA256),
                 (OBSERVATION_REQUEST, request_sha256),
                 (atomic_percentage::SCRIPT_PATH, proof_sha256.as_str()),
-                (ROOT_HELPER_INPUT, atomic_percentage::HELPER_SHA256),
                 (
                     "scripts/gentest/test_base_style.css",
                     pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
@@ -668,11 +688,18 @@ pub(crate) fn capture_binding_from_verified_inputs(
             {
                 return Err(changed("horizontal BR font-band capture profile"));
             }
+            if !full_inputs.get(ROOT_HELPER_INPUT).is_some_and(|digest| {
+                crate::horizontal_br_font_band_profile::accepts_helper(digest)
+            }) || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed(
+                    "horizontal BR font-band input: scripts/gentest/test_helper.js",
+                ));
+            }
             for (path, expected) in [
                 (horizontal_br::SOURCE, horizontal_br::SOURCE_SHA256),
                 (OBSERVATION_REQUEST, request_sha256),
                 (horizontal_br::SCRIPT_PATH, proof_sha256.as_str()),
-                (ROOT_HELPER_INPUT, horizontal_br::HELPER_SHA256),
                 (
                     "scripts/gentest/test_base_style.css",
                     pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
@@ -699,11 +726,19 @@ pub(crate) fn capture_binding_from_verified_inputs(
             {
                 return Err(changed("vertical BR font-band capture profile"));
             }
+            if !full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .is_some_and(|digest| vertical_br::accepts_helper(digest))
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed(
+                    "vertical BR font-band input: scripts/gentest/test_helper.js",
+                ));
+            }
             for (path, expected) in [
                 (case.source.as_str(), source_sha256),
                 (OBSERVATION_REQUEST, request_sha256),
                 (vertical_br::SCRIPT_PATH, proof_sha256.as_str()),
-                (ROOT_HELPER_INPUT, vertical_br::HELPER_SHA256),
                 (
                     "scripts/gentest/test_base_style.css",
                     pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
@@ -733,11 +768,19 @@ pub(crate) fn capture_binding_from_verified_inputs(
             {
                 return Err(changed("empty-line BR font-band capture profile"));
             }
+            if !full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .is_some_and(|digest| empty_line_br::accepts_helper(digest))
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed(
+                    "empty-line BR font-band input: scripts/gentest/test_helper.js",
+                ));
+            }
             for (path, expected) in [
                 (case.source.as_str(), source_sha256),
                 (OBSERVATION_REQUEST, request_sha256),
                 (empty_line_br::SCRIPT_PATH, proof_sha256.as_str()),
-                (ROOT_HELPER_INPUT, vertical_br::HELPER_SHA256),
                 (
                     "scripts/gentest/test_base_style.css",
                     pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
@@ -783,14 +826,10 @@ pub(crate) fn capture_binding_from_verified_inputs(
             } else {
                 artifact.linked_resources.is_empty()
             };
-            let helper = full_inputs
-                .get(ROOT_HELPER_INPUT)
-                .and_then(|hash| root_helper_profile(hash).ok());
-            let helper_matches = match helper {
-                Some(RootCaptureProfile::RootContextFlexCompositionV1) => true,
-                Some(RootCaptureProfile::RootContextPreparedRangeV1) => ranges,
-                _ => false,
-            };
+            let helper_matches = full_inputs.get(ROOT_HELPER_INPUT).is_some_and(|digest| {
+                flex_composition::accepts_helper(digest)
+                    || ranges && digest == PREPARED_RANGE_HELPER_SHA256
+            });
             if case.source != source
                 || request_sha256 != sha256(request)
                 || !resources_match
@@ -1078,7 +1117,7 @@ impl SpecializedProfile {
         }
     }
 
-    fn from_edition(edition: &str) -> Option<Self> {
+    pub(crate) fn from_edition(edition: &str) -> Option<Self> {
         [
             Self::PreparedRange,
             Self::FlexComposition,

@@ -41,12 +41,12 @@ pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<Varia
             "scripts/gentest/test_base_style.css",
             pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256.to_owned(),
         ),
-        (
-            capture_authority::ROOT_HELPER_INPUT,
-            profile::HELPER_SHA256.to_owned(),
-        ),
     ];
     if metadata.schema_version != 4
+        || !metadata
+            .inputs
+            .get(capture_authority::ROOT_HELPER_INPUT)
+            .is_some_and(|digest| profile::accepts_helper(digest))
         || inputs
             .iter()
             .any(|(path, digest)| metadata.inputs.get(*path) != Some(digest))

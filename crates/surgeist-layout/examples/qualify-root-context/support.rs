@@ -62,7 +62,9 @@ pub(super) enum QualificationMode {
     CheckPublished,
     PublishExact(PublishedEdition),
     CheckPublishedExact(PublishedEdition),
-    Derive(PublishedEdition),
+    DeriveExact(PublishedEdition),
+    DeriveSpecialized(SpecializedProfile),
+    DeriveMatching(&'static str),
     PublishSpecialized(SpecializedProfile),
     CheckPublishedSpecialized(SpecializedProfile),
     PublishMatching(&'static str),
@@ -70,9 +72,18 @@ pub(super) enum QualificationMode {
 }
 
 impl QualificationMode {
+    fn derives_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::DeriveExact(_) | Self::DeriveSpecialized(_) | Self::DeriveMatching(_)
+        )
+    }
+
     fn matching_edition(self) -> Option<&'static str> {
         match self {
-            Self::PublishMatching(edition) | Self::CheckPublishedMatching(edition) => Some(edition),
+            Self::PublishMatching(edition)
+            | Self::CheckPublishedMatching(edition)
+            | Self::DeriveMatching(edition) => Some(edition),
             _ => None,
         }
     }
@@ -88,9 +99,9 @@ impl QualificationMode {
 
     fn specialized_profile(self) -> Option<SpecializedProfile> {
         match self {
-            Self::PublishSpecialized(profile) | Self::CheckPublishedSpecialized(profile) => {
-                Some(profile)
-            }
+            Self::PublishSpecialized(profile)
+            | Self::CheckPublishedSpecialized(profile)
+            | Self::DeriveSpecialized(profile) => Some(profile),
             _ => None,
         }
     }
@@ -99,48 +110,59 @@ impl QualificationMode {
         match self {
             Self::PreparedRangeCapture
             | Self::PublishSpecialized(SpecializedProfile::PreparedRange)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedRange) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedRange)
+            | Self::DeriveSpecialized(SpecializedProfile::PreparedRange) => {
                 BoxObservationRequest::PreparedRanges
             }
             Self::FlexCompositionCapture
             | Self::PublishSpecialized(SpecializedProfile::FlexComposition)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::FlexComposition) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::FlexComposition)
+            | Self::DeriveSpecialized(SpecializedProfile::FlexComposition) => {
                 BoxObservationRequest::FlexComposition
             }
             Self::OriginalSubgridBodyCapture
             | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody)
+            | Self::DeriveSpecialized(SpecializedProfile::OriginalSubgridBody) => {
                 BoxObservationRequest::OriginalSubgridBody
             }
             Self::PreparedAtomicPercentageCapture
             | Self::PublishSpecialized(SpecializedProfile::PreparedAtomicPercentage)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedAtomicPercentage) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedAtomicPercentage)
+            | Self::DeriveSpecialized(SpecializedProfile::PreparedAtomicPercentage) => {
                 BoxObservationRequest::PreparedAtomicPercentage
             }
             Self::HorizontalBrFontBandCapture
             | Self::PublishSpecialized(SpecializedProfile::HorizontalBrFontBand)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::HorizontalBrFontBand) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::HorizontalBrFontBand)
+            | Self::DeriveSpecialized(SpecializedProfile::HorizontalBrFontBand) => {
                 BoxObservationRequest::HorizontalBrFontBand
             }
             Self::VerticalBrFontBandCapture
             | Self::PublishSpecialized(SpecializedProfile::VerticalBrFontBand)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::VerticalBrFontBand) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::VerticalBrFontBand)
+            | Self::DeriveSpecialized(SpecializedProfile::VerticalBrFontBand) => {
                 BoxObservationRequest::VerticalBrFontBand
             }
             Self::EmptyLineBrFontBandCapture
             | Self::PublishSpecialized(SpecializedProfile::EmptyLineBrFontBand)
-            | Self::CheckPublishedSpecialized(SpecializedProfile::EmptyLineBrFontBand) => {
+            | Self::CheckPublishedSpecialized(SpecializedProfile::EmptyLineBrFontBand)
+            | Self::DeriveSpecialized(SpecializedProfile::EmptyLineBrFontBand) => {
                 BoxObservationRequest::EmptyLineBrFontBand
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishExact(PublishedEdition::FlexText)
             | Self::CheckPublishedExact(PublishedEdition::FlexText)
-            | Self::Derive(PublishedEdition::FlexText) => BoxObservationRequest::FlexContentText,
+            | Self::DeriveExact(PublishedEdition::FlexText) => {
+                BoxObservationRequest::FlexContentText
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishExact(PublishedEdition::MeasuredGrid)
             | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
-            | Self::Derive(PublishedEdition::MeasuredGrid) => BoxObservationRequest::MeasuredLeaf,
+            | Self::DeriveExact(PublishedEdition::MeasuredGrid) => {
+                BoxObservationRequest::MeasuredLeaf
+            }
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -278,7 +300,9 @@ fn select_records(
                 | QualificationMode::CheckPublished
                 | QualificationMode::PublishExact(_)
                 | QualificationMode::CheckPublishedExact(_)
-                | QualificationMode::Derive(_)
+                | QualificationMode::DeriveExact(_)
+                | QualificationMode::DeriveSpecialized(_)
+                | QualificationMode::DeriveMatching(_)
                 | QualificationMode::PublishSpecialized(_)
                 | QualificationMode::PublishMatching(_)
                 | QualificationMode::CheckPublishedMatching(_)
@@ -395,6 +419,16 @@ fn declared_named_font_counts(record: &Record) -> Option<(usize, usize)> {
 }
 
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
+pub(super) fn named_derivation_mode(name: &str) -> Option<QualificationMode> {
+    if let Ok(edition) = serde_json::from_value(serde_json::Value::String(name.to_owned())) {
+        Some(QualificationMode::DeriveExact(edition))
+    } else if let Some(profile) = SpecializedProfile::from_edition(name) {
+        Some(QualificationMode::DeriveSpecialized(profile))
+    } else {
+        declared_matching_edition(name).map(QualificationMode::DeriveMatching)
+    }
+}
+
 pub(super) fn declared_matching_edition(name: &str) -> Option<&'static str> {
     static CATALOGUE: std::sync::OnceLock<Option<Declaration>> = std::sync::OnceLock::new();
     CATALOGUE
@@ -568,7 +602,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublished
             | QualificationMode::PublishExact(_)
             | QualificationMode::CheckPublishedExact(_)
-            | QualificationMode::Derive(_)
+            | QualificationMode::DeriveExact(_)
+            | QualificationMode::DeriveSpecialized(_)
+            | QualificationMode::DeriveMatching(_)
             | QualificationMode::PublishSpecialized(_)
             | QualificationMode::PublishMatching(_)
             | QualificationMode::CheckPublishedMatching(_)
@@ -1202,7 +1238,9 @@ fn validate_corpus(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
         | QualificationMode::CheckPublishedExact(_)
-        | QualificationMode::Derive(_)
+        | QualificationMode::DeriveExact(_)
+        | QualificationMode::DeriveSpecialized(_)
+        | QualificationMode::DeriveMatching(_)
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::PublishMatching(_)
         | QualificationMode::CheckPublishedMatching(_)
@@ -1426,7 +1464,9 @@ fn inventory_with_retained_helper(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
         | QualificationMode::CheckPublishedExact(_)
-        | QualificationMode::Derive(_)
+        | QualificationMode::DeriveExact(_)
+        | QualificationMode::DeriveSpecialized(_)
+        | QualificationMode::DeriveMatching(_)
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::PublishMatching(_)
         | QualificationMode::CheckPublishedMatching(_)

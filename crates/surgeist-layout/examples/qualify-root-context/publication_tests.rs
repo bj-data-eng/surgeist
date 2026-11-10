@@ -866,3 +866,275 @@ fn matching_cli_dispatches_the_named_cohort_to_the_publication_owner() {
     }
     assert!(matching_input(DECLARATION, "unknown-controls").is_err());
 }
+
+#[test]
+fn generic_derivation_dispatches_every_stored_terminal_category_and_request() {
+    use PublishedEdition as Exact;
+    use SpecializedProfile as Specialized;
+    let cases = [
+        (
+            "canonical-box-differences",
+            Edition::Exact(Exact::CanonicalBoxes),
+            BoxObservationRequest::Geometry,
+            4,
+        ),
+        (
+            "measured-grid-differences",
+            Edition::Exact(Exact::MeasuredGrid),
+            BoxObservationRequest::MeasuredLeaf,
+            28,
+        ),
+        (
+            "flex-text-differences",
+            Edition::Exact(Exact::FlexText),
+            BoxObservationRequest::FlexContentText,
+            4,
+        ),
+        (
+            "grid-static-position-differences",
+            Edition::Exact(Exact::GridStaticPosition),
+            BoxObservationRequest::Geometry,
+            8,
+        ),
+        (
+            "relative-inset-differences",
+            Edition::Exact(Exact::RelativeInsets),
+            BoxObservationRequest::Geometry,
+            4,
+        ),
+        (
+            "wrapping-world-corner-differences",
+            Edition::Exact(Exact::WrappingWorldCorners),
+            BoxObservationRequest::Geometry,
+            4,
+        ),
+        (
+            "prepared-range-qualification",
+            Edition::Specialized(Specialized::PreparedRange),
+            BoxObservationRequest::PreparedRanges,
+            4,
+        ),
+        (
+            "flex-composition-qualification",
+            Edition::Specialized(Specialized::FlexComposition),
+            BoxObservationRequest::FlexComposition,
+            4,
+        ),
+        (
+            "original-subgrid-body-qualification",
+            Edition::Specialized(Specialized::OriginalSubgridBody),
+            BoxObservationRequest::OriginalSubgridBody,
+            4,
+        ),
+        (
+            "prepared-atomic-percentage-qualification",
+            Edition::Specialized(Specialized::PreparedAtomicPercentage),
+            BoxObservationRequest::PreparedAtomicPercentage,
+            4,
+        ),
+        (
+            "horizontal-br-font-band-qualification",
+            Edition::Specialized(Specialized::HorizontalBrFontBand),
+            BoxObservationRequest::HorizontalBrFontBand,
+            4,
+        ),
+        (
+            "vertical-br-font-band-qualification",
+            Edition::Specialized(Specialized::VerticalBrFontBand),
+            BoxObservationRequest::VerticalBrFontBand,
+            12,
+        ),
+        (
+            "empty-line-br-font-band-qualification",
+            Edition::Specialized(Specialized::EmptyLineBrFontBand),
+            BoxObservationRequest::EmptyLineBrFontBand,
+            8,
+        ),
+        (
+            "box-controls",
+            Edition::Matching("box-controls"),
+            BoxObservationRequest::Geometry,
+            16,
+        ),
+    ];
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for (name, expected, request, count) in cases {
+        let arguments = vec![
+            "--derive-published-qualification".to_owned(),
+            name.to_owned(),
+        ];
+        let (fixture, mode) = crate::parse_arguments(&arguments).unwrap();
+        assert_eq!(fixture, None);
+        assert!(mode.derives_terminal());
+        assert_eq!(mode.box_observations(), request);
+        let (edition, access) = publication_request(mode).unwrap();
+        assert_eq!(edition, expected);
+        assert!(matches!(access, InputAccess::ReadOnly));
+        let root = owner.join(PARENT).join(name);
+        let retained = fs::read(root.join("corpus.toml")).unwrap();
+        let input = match edition {
+            Edition::Exact(exact) => canonical_input(&root, &retained, exact, access).unwrap(),
+            Edition::Specialized(profile) => specialized_input(&retained, profile).unwrap(),
+            Edition::Matching(edition) => matching_input(&retained, edition).unwrap(),
+            Edition::RootContextV4 => unreachable!("root-context-v4 has no terminal"),
+        };
+        assert_eq!(input.declaration.expected().unwrap().generated(), count);
+        assert_eq!(fs::read(root.join("corpus.toml")).unwrap(), retained);
+    }
+    for arguments in [
+        vec!["--derive-published-qualification"],
+        vec!["--derive-published-qualification", "unknown-edition"],
+        vec!["--derive-published-qualification", "../box-controls"],
+        vec!["--derive-published-qualification", "root-context-v4"],
+        vec![
+            "--derive-published-qualification",
+            "box-controls",
+            "candidate.json",
+        ],
+        vec![
+            "--derive-published-qualification",
+            "box-controls",
+            "--fixture",
+            "html/other.html",
+        ],
+    ] {
+        let arguments: Vec<_> = arguments.into_iter().map(str::to_owned).collect();
+        assert!(crate::parse_arguments(&arguments).is_err());
+    }
+}
+
+#[test]
+fn generic_derivation_emits_exact_candidate_without_installing_or_changing_capture_inputs() {
+    let root = Directory::new();
+    let source = RelativePath::new("original.html").unwrap();
+    let original = b"unchanged producing source bytes";
+    let stored = b"previous terminal authority bytes";
+    let candidate = b"new fully derived terminal authority bytes\n";
+    fs::write(root.0.join(source.as_str()), original).unwrap();
+    fs::write(root.0.join(authority::TERMINAL), stored).unwrap();
+    let expected = BTreeMap::from([(source.clone(), Sha256Digest::from_bytes(original))]);
+    let mut output = Vec::new();
+    publish_terminal(
+        &root.0,
+        &expected,
+        TerminalPublication::Derive(stored),
+        candidate,
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output, candidate);
+    assert_eq!(fs::read(root.0.join(authority::TERMINAL)).unwrap(), stored);
+    assert_eq!(fs::read(root.0.join(source.as_str())).unwrap(), original);
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 2);
+
+    output.clear();
+    assert!(
+        publish_terminal(
+            &root.0,
+            &expected,
+            TerminalPublication::Check(stored),
+            candidate,
+            &mut output
+        )
+        .is_err()
+    );
+    assert!(output.is_empty());
+    fs::write(
+        root.0.join(authority::TERMINAL),
+        b"changed retained authority",
+    )
+    .unwrap();
+    assert!(
+        publish_terminal(
+            &root.0,
+            &expected,
+            TerminalPublication::Derive(stored),
+            candidate,
+            &mut output
+        )
+        .is_err()
+    );
+    assert!(output.is_empty());
+    fs::write(root.0.join(authority::TERMINAL), stored).unwrap();
+    fs::remove_file(root.0.join(source.as_str())).unwrap();
+    assert!(
+        publish_terminal(
+            &root.0,
+            &expected,
+            TerminalPublication::Derive(stored),
+            candidate,
+            &mut output
+        )
+        .is_err()
+    );
+    assert!(output.is_empty());
+}
+
+#[test]
+fn generic_derivation_output_failure_preserves_existing_terminal() {
+    struct BrokenOutput;
+    impl Write for BrokenOutput {
+        fn write(&mut self, _bytes: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("candidate output unavailable"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let root = Directory::new();
+    let stored = b"previous terminal authority bytes";
+    fs::write(root.0.join(authority::TERMINAL), stored).unwrap();
+    assert!(
+        publish_terminal(
+            &root.0,
+            &BTreeMap::new(),
+            TerminalPublication::Derive(stored),
+            b"candidate",
+            &mut BrokenOutput
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(root.0.join(authority::TERMINAL)).unwrap(), stored);
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 1);
+}
+
+#[test]
+fn superseded_canonical_terminal_refuses_current_live_record_authority() {
+    const SOURCE: &str = "html/flex/fri07_collapsed_strut_wrapping.html";
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = owner.join(authority::ARTIFACT_ROOT);
+    let retained = fs::read(root.join("corpus.toml")).unwrap();
+    let input = canonical_input(
+        &root,
+        &retained,
+        PublishedEdition::CanonicalBoxes,
+        InputAccess::ReadOnly,
+    )
+    .unwrap();
+    let predecessor = input
+        .declaration
+        .records
+        .iter()
+        .find(|record| record.source.as_str() == SOURCE)
+        .unwrap();
+    let current = Declaration::parse(DECLARATION).unwrap();
+    let live = current
+        .records
+        .iter()
+        .find(|record| record.source.as_str() == SOURCE)
+        .unwrap();
+    assert_eq!(predecessor.source_sha256, live.source_sha256);
+    assert_eq!(predecessor.historical_sha256, live.historical_sha256);
+    assert_ne!(
+        serde_json::to_value(&predecessor.semantic_specifications).unwrap(),
+        serde_json::to_value(&live.semantic_specifications).unwrap()
+    );
+    let selected = BTreeMap::from([(
+        SOURCE.to_owned(),
+        serde_json::to_value(predecessor).unwrap(),
+    )]);
+    let refused = current.check_live_records(&selected).unwrap_err();
+    assert!(refused.to_string().contains("selected live record changed"));
+    assert!(refused.to_string().contains(SOURCE));
+    assert_eq!(fs::read(root.join("corpus.toml")).unwrap(), retained);
+}

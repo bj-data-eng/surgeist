@@ -156,3 +156,32 @@ fn changed_native_atomic_custody_preserves_raw_box_and_range_differences() {
     );
     assert!(qualified.unwrap_err().to_string().contains("custody"));
 }
+
+#[test]
+fn script_custody_admission_atomic_input_map_accepts_closed_producers_and_preserves_other_pins() {
+    let (xml, report, source) = artifacts();
+    parse(&xml, &report, &source).expect("the retained atomic producer remains admissible");
+    let mut report = capture_authority::unique_json(&report).unwrap();
+    report["metadata"]["inputs"][capture_authority::ROOT_HELPER_INPUT] =
+        serde_json::json!(crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256);
+    parse(&xml, &report.to_string(), &source)
+        .expect("the script-custody atomic producer remains admissible");
+    for helper in [
+        "0".repeat(64),
+        "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee".to_owned(),
+        "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0".to_owned(),
+    ] {
+        let mut invalid = report.clone();
+        invalid["metadata"]["inputs"][capture_authority::ROOT_HELPER_INPUT] =
+            serde_json::json!(helper);
+        assert!(parse(&xml, &invalid.to_string(), &source).is_err());
+    }
+    let mut missing = report.clone();
+    missing["metadata"]["inputs"]
+        .as_object_mut()
+        .unwrap()
+        .remove(capture_authority::ROOT_HELPER_INPUT);
+    assert!(parse(&xml, &missing.to_string(), &source).is_err());
+    report["metadata"]["inputs"]["fonts/Ahem.ttf"] = serde_json::json!("0".repeat(64));
+    assert!(parse(&xml, &report.to_string(), &source).is_err());
+}

@@ -1,5 +1,7 @@
 #[path = "layout/browser_parity/atomic_paragraph_metrics.rs"]
 mod atomic_paragraph_metrics;
+#[path = "bin/surgeist-layout-generate/measurement/capture_helper_identity.rs"]
+mod capture_helper_identity;
 #[path = "bin/surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]
 mod empty_line_br_font_band_profile;
 #[path = "layout/browser_parity/fixture_variants.rs"]

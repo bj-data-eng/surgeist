@@ -12,9 +12,7 @@ use super::{
 };
 
 use crate::original_subgrid_body_profile as profile;
-pub(crate) use profile::{
-    HELPER_SHA256, REQUEST, SCRIPT_PATH as PROOF_SCRIPT_PATH, SOURCE, SOURCE_SHA256,
-};
+pub(crate) use profile::{REQUEST, SCRIPT_PATH as PROOF_SCRIPT_PATH, SOURCE, SOURCE_SHA256};
 pub(crate) const PROOF_SCRIPT: &[u8] = profile::SCRIPT.as_bytes();
 
 const STEM: &str = "subgrid_gap_percentage_border_bottom";

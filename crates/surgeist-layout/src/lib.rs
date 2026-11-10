@@ -266,6 +266,9 @@ pub use fragmentation::{
     FragmentationStage, FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
     PageProgression, resolve_fragmentation,
 };
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/capture_helper_identity.rs"]
+mod capture_helper_identity;
 mod geometry;
 mod grid;
 #[cfg(test)]

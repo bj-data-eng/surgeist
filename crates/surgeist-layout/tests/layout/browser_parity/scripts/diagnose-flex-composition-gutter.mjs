@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 
 const corpus = new URL('../', import.meta.url);
 const crate = new URL('../../../', corpus);
-const reportFile = new URL('captured/flex-composition-differences/xml/generation-reports/all.json', corpus);
+const reportFile = new URL('flex_composition_script_custody_report.json', corpus);
 const reportBytes = readFileSync(reportFile);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-assert.equal(hash(reportBytes), '65bb238d03aae80b366fa1f481be42137799466f74c1a35fafdb40d2460478a2');
+assert.equal(hash(reportBytes), 'cd167f9ecd34d142423885080df4f839ccf94b81c5ba80eb70ea868770547024');
 
 const controlFile = new URL('captured/flex-composition-differences/gutter-control.json', corpus);
 const controlBytes = readFileSync(controlFile);

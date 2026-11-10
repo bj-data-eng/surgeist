@@ -139,9 +139,12 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 
 Publication uses the already-acquired pinned browser and refuses an existing
 edition directory. The check is read-only and browser-free.
-`--derive-canonical-box-qualification` runs the same capture and source checks
-and writes derived terminal bytes to standard output. It leaves the edition
-directory untouched.
+`--derive-published-qualification <edition>` runs the same complete source,
+observation, Native and freshness checks for stored Exact, Specialized or Matching
+editions and writes candidate terminal bytes to standard output. It retains the
+producing helper and leaves the edition directory untouched. Keep redirected
+candidates outside capture roots; derivation neither installs a terminal nor
+updates its registration pin.
 
 A successful publication emits terminal authority only after all source, capture, raw,
 Native, qualification and freshness checks pass; registration is a separately

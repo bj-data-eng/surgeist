@@ -538,41 +538,45 @@ fn helper_setup_expression(
         ));
     }
     if request == BoxObservationRequest::OriginalSubgridBody
-        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
-            != original_subgrid_body_profile::HELPER_SHA256
+        && !original_subgrid_body_profile::accepts_helper(
+            surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str(),
+        )
     {
         return Err(AdapterError::Preparation(
             "original subgrid body capture helper changed".into(),
         ));
     }
     if request == BoxObservationRequest::PreparedAtomicPercentage
-        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
-            != prepared_atomic_percentage_profile::HELPER_SHA256
+        && !prepared_atomic_percentage_profile::accepts_helper(
+            surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str(),
+        )
     {
         return Err(AdapterError::Preparation(
             "prepared atomic percentage capture helper changed".into(),
         ));
     }
     if request == BoxObservationRequest::HorizontalBrFontBand
-        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
-            != horizontal_br_font_band_profile::HELPER_SHA256
+        && !horizontal_br_font_band_profile::accepts_helper(
+            surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str(),
+        )
     {
         return Err(AdapterError::Preparation(
             "horizontal break font-band capture helper changed".into(),
         ));
     }
     if request == BoxObservationRequest::VerticalBrFontBand
-        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
-            != vertical_br_font_band_profile::HELPER_SHA256
+        && !vertical_br_font_band_profile::accepts_helper(
+            surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str(),
+        )
     {
         return Err(AdapterError::Preparation(
             "vertical break font-band capture helper changed".into(),
         ));
     }
     if request == BoxObservationRequest::EmptyLineBrFontBand {
-        if surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
-            != vertical_br_font_band_profile::HELPER_SHA256
-        {
+        if !empty_line_br_font_band_profile::accepts_helper(
+            surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str(),
+        ) {
             return Err(AdapterError::Preparation(
                 "empty-line break capture helper changed".into(),
             ));
@@ -659,6 +663,8 @@ fn helper_setup_expression(
 mod tests {
     use super::*;
     use surgeist_generator::browser::{CaseSpec, FixtureStatus};
+
+    include!("script_custody_admission_tests.rs");
 
     fn fixture() -> FixtureSpec {
         FixtureSpec::new(
@@ -1165,8 +1171,17 @@ mod tests {
                 BoxObservationRequest::OriginalSubgridBody,
             )
         };
+        let retained_helper = include_str!(
+            "../../layout/browser_parity/captured/original-subgrid-body-qualification/scripts/gentest/test_helper.js"
+        );
+        assert_eq!(
+            surgeist_generator::Sha256Digest::from_bytes(retained_helper.as_bytes()).as_str(),
+            original_subgrid_body_profile::HELPER_SHA256
+        );
+        assert!(setup(retained_helper).is_ok());
+        assert_ne!(retained_helper, TEST_HELPER_SOURCE);
+        let changed = format!("{retained_helper}\ndescribeElement = () => null;\n");
         assert!(setup(TEST_HELPER_SOURCE).is_ok());
-        let changed = format!("{TEST_HELPER_SOURCE}\ndescribeElement = () => null;\n");
         assert!(matches!(
             setup(&changed),
             Err(AdapterError::Preparation(reason))

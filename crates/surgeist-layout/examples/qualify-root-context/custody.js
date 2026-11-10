@@ -98,12 +98,163 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
     return actualPristine(ctx);
   }
 
+  function foreignNamespaceScriptCustody(ctx) {
+    const scriptCount = document.querySelectorAll('script').length;
+    const htmlScriptCount = document.scripts.length;
+    const extra = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+    extra.setAttribute('type', 'application/json');
+    extra.textContent = '{}';
+    document.head.appendChild(extra);
+    try {
+      require(extra.isConnected && document.querySelectorAll('script').length === scriptCount + 1 &&
+        Array.from(document.querySelectorAll('script')).includes(extra) &&
+        document.scripts.length === htmlScriptCount,
+        'actual SVG script changes the full script census without changing the HTML script census');
+      refused('Root context: ScriptChanged');
+      repeat(ctx);
+      refused('Root context: ScriptChanged');
+    } finally {
+      extra.remove();
+    }
+    pristineAgain(ctx);
+  }
+
+  function scriptSourceCustody(ctx) {
+    const source = new DOMParser().parseFromString(ctx.args[0], 'text/html');
+    const scripts = Array.from(source.querySelectorAll('script'));
+    require(scripts.length <= 1, 'closed source script profile');
+    const scriptOwner = document.scripts[0];
+    require(document.scripts.length === scripts.length,
+      'source script profile matches the live census');
+    repeat(ctx);
+    actualPristine(ctx);
+
+    function changed(mutate, restore) {
+      try {
+        mutate();
+        refused('Root context: ScriptChanged');
+        repeat(ctx);
+        refused('Root context: ScriptChanged');
+      } finally {
+        restore();
+      }
+      pristineAgain(ctx);
+    }
+
+    if (scriptOwner) {
+      const clone = scriptOwner.cloneNode(true);
+      require(clone !== scriptOwner && clone.outerHTML === scriptOwner.outerHTML,
+        'script clone has the same source attributes and text');
+      changed(() => {
+        scriptOwner.replaceWith(clone);
+        require(document.scripts.length === 1 && document.scripts[0] === clone &&
+          clone.src === scriptOwner.src, 'same-URL script owner replacement executed');
+      }, () => clone.replaceWith(scriptOwner));
+
+      changed(() => scriptOwner.setAttribute('data-surgeist-custody-probe', 'changed'),
+        () => scriptOwner.removeAttribute('data-surgeist-custody-probe'));
+      const nextSibling = scriptOwner.nextSibling;
+      changed(() => scriptOwner.remove(),
+        () => document.head.insertBefore(scriptOwner, nextSibling));
+      const originalText = scriptOwner.textContent;
+      changed(() => { scriptOwner.textContent = originalText + ' '; },
+        () => { scriptOwner.textContent = originalText; });
+      const originalReference = scriptOwner.getAttribute('src');
+      changed(() => {
+        const resolved = scriptOwner.src;
+        scriptOwner.setAttribute('src', resolved.replace('/test_helper.js', '/./test_helper.js'));
+        require(scriptOwner.src === resolved && scriptOwner.getAttribute('src') !== originalReference,
+          'same resolved URL has a changed source attribute');
+      }, () => scriptOwner.setAttribute('src', originalReference));
+
+      for (const [name, value] of [['type', 'application/json'], ['async', ''], ['defer', '']]) {
+        const malformed = new DOMParser().parseFromString(ctx.args[0], 'text/html');
+        const sourceScript = malformed.querySelector('script');
+        sourceScript.setAttribute(name, value);
+        scriptOwner.setAttribute(name, value);
+        const args = ctx.args.slice();
+        args[0] = '<!DOCTYPE html>' + malformed.documentElement.outerHTML;
+        try {
+          require(sourceScript.getAttribute(name) === scriptOwner.getAttribute(name),
+            'malformed source and live script carry the same attribute');
+          configureRootContextCapture(...args);
+          refused('Root context: SourceResources');
+          repeat(ctx);
+          refused('Root context: ScriptChanged');
+        } finally {
+          scriptOwner.removeAttribute(name);
+        }
+        pristineAgain(ctx);
+      }
+    }
+
+    // Even the expected helper URL cannot authorize a DOM script when the
+    // original source has none. This data block never executes or loads code.
+    const extra = document.createElement('script');
+    extra.type = 'application/json';
+    extra.src = new URL(ctx.args[2], document.baseURI).href;
+    changed(() => {
+      document.head.appendChild(extra);
+      require(document.scripts.length === scripts.length + 1 &&
+        Array.from(document.scripts).includes(extra), 'actual script census mutation executed');
+    }, () => extra.remove());
+  }
+
+  function postMeasurementScriptCustody(ctx) {
+    const pristine = envelope(ctx.pristine);
+    const root = document.querySelector('#test-root');
+    const originalDescribe = describeElement;
+    const scriptCount = document.scripts.length;
+    for (let target = 0; target < keys.length; target += 1) {
+      const extra = document.createElement('script');
+      extra.type = 'application/json';
+      extra.src = new URL(ctx.args[2], document.baseURI).href;
+      let describedRoots = 0;
+      let mutations = 0;
+      describeElement = function (...args) {
+        const actual = originalDescribe.apply(this, args);
+        if (args[0] === root && describedRoots++ === target) {
+          document.head.appendChild(extra);
+          mutations += 1;
+        }
+        return actual;
+      };
+      try {
+        const observed = envelope(measure());
+        require(mutations === 1 && describedRoots === target + 1 && extra.isConnected &&
+          document.scripts.length === scriptCount + 1 &&
+          Array.from(document.scripts).includes(extra),
+          'post-measurement script mutation executed for variant ' + target);
+        for (let index = 0; index < keys.length; index += 1) {
+          const key = keys[index];
+          if (index < target) {
+            require(JSON.stringify(observed[key]) === JSON.stringify(pristine[key]),
+              key + ': earlier real description remains pristine');
+          } else {
+            require(observed[key]?.layoutInput === 'unsupported' &&
+              observed[key].unsupportedReason === 'Root context: ScriptChanged' &&
+              JSON.stringify(Object.keys(observed[key]).sort()) ===
+                JSON.stringify(['layoutInput', 'unsupportedReason']),
+              key + ': post-measurement script mutation must refuse');
+          }
+        }
+      } finally {
+        describeElement = originalDescribe;
+        extra.remove();
+      }
+      actualPristine(ctx);
+    }
+  }
+
   if (mode === 'stylesheet') {
     getTestData = function () {
       const ctx = context();
+      foreignNamespaceScriptCustody(ctx);
       const { owner, originalText, pristine } = ctx;
       repeat(ctx);
       require(measure() === pristine, 'successful repeated setup preserves complete envelope');
+      scriptSourceCustody(ctx);
+      postMeasurementScriptCustody(ctx);
 
       const sheet = owner.sheet;
       const ruleIndex = sheet.cssRules.length;
@@ -140,7 +291,7 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
       try {
         require(document.styleSheets.length === 1 &&
           document.styleSheets[0].ownerNode === clone, 'cloned owner is actually selected');
-        refused('Root context: StylesheetSource');
+        refused('Root context: StylesheetInventory');
       } finally {
         clone.replaceWith(owner);
       }
