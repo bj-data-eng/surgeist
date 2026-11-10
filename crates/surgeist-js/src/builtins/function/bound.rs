@@ -76,7 +76,7 @@ impl BoundFunction {
                 this: this.clone().into_stored(),
                 args: args.iter().cloned().map(JsValue::into_stored).collect(),
             },
-        )
+        )?
         .upcast())
     }
 

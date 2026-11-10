@@ -15,7 +15,7 @@ impl Drop for DropProbe {
 
 #[test]
 fn registration_after_cancellation_cannot_revive_a_token_or_execute_the_rejected_callback() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let timer_calls = Rc::new(Cell::new(0));
     let called = timer_calls.clone();
     let timer = TimeoutJob::with_realm(
@@ -66,7 +66,7 @@ fn registration_after_cancellation_cannot_revive_a_token_or_execute_the_rejected
 
 #[test]
 fn registration_after_timer_disposal_cannot_rearm_the_surviving_token() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let timer = TimeoutJob::with_realm(
         |_| Ok(JsValue::undefined()),
         owner.realm().clone(),
@@ -94,7 +94,7 @@ fn registration_after_timer_disposal_cannot_rearm_the_surviving_token() {
 
 #[test]
 fn ordinary_cancellation_runs_registered_callbacks_once_and_keeps_the_token_revoked() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let timer = TimeoutJob::with_realm(
         |_| Ok(JsValue::undefined()),
         owner.realm().clone(),

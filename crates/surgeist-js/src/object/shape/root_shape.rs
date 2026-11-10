@@ -1,4 +1,4 @@
-use crate::Runtime;
+use crate::{JsResult, Runtime};
 
 use super::SharedShape;
 
@@ -13,12 +13,11 @@ pub struct RootShape {
 
 impl RootShape {
     /// Creates a root shape on the given runtime.
-    #[must_use]
-    pub fn new(runtime: Runtime) -> Self {
-        Self {
-            shape: SharedShape::root(&runtime.heap),
+    pub fn new(runtime: Runtime) -> JsResult<Self> {
+        Ok(Self {
+            shape: SharedShape::root(&runtime.heap)?,
             runtime,
-        }
+        })
     }
 
     pub(crate) const fn runtime(&self) -> &Runtime {

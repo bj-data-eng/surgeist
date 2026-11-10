@@ -27,10 +27,10 @@ use std::ops::Deref;
 /// # };
 /// # fn main() -> JsResult<()> {
 /// // Create default `Context`
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 ///
 /// // Create a new empty `JsMap`.
-/// let map = JsMap::new(context.access());
+/// let map = JsMap::new(context.access()).unwrap();
 ///
 /// // Set key-value pairs for the `JsMap`.
 /// map.set(js_string!("Key-1"), js_string!("Value-1"), context.access())?;
@@ -49,7 +49,7 @@ use std::ops::Deref;
 /// # };
 /// # fn main() -> JsResult<()> {
 /// // Create a default `Context`
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 ///
 /// // Create an array of two `[key, value]` pairs
 /// let js_array = JsArray::new(context.access())?;
@@ -89,15 +89,15 @@ impl JsMap {
     /// #    Context, JsValue,
     /// # };
     /// # // Create a new context.
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create a new empty `JsMap`.
-    /// let map = JsMap::new(context.access());
+    /// let map = JsMap::new(context.access()).unwrap();
     /// ```
     #[inline]
-    pub fn new(context: ContextAccess<'_>) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        let map = Self::create_map(context);
-        Self { inner: map }
+        let map = Self::create_map(context)?;
+        Ok(Self { inner: map })
     }
 
     /// Create a new [`JsMap`] object from a [`JsObject`] that has an `@@Iterator` field.
@@ -110,7 +110,7 @@ impl JsMap {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Create a default `Context`
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create an array of two `[key, value]` pairs
     /// let js_array = JsArray::new(context.access())?;
     ///
@@ -127,7 +127,7 @@ impl JsMap {
     pub fn from_js_iterable(iterable: &JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
         // Create a new map object.
-        let map = Self::create_map(context);
+        let map = Self::create_map(context)?;
 
         // Let adder be Get(map, "set") per spec. This action should not fail with default map.
         let adder = map
@@ -150,8 +150,8 @@ impl JsMap {
     /// ```
     /// # use surgeist_js::{object::builtins::JsMap, Context, JsObject, JsResult};
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let some_object = JsObject::from(JsMap::new(context.access()));
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let some_object = JsObject::from(JsMap::new(context.access()).unwrap());
     /// let js_map = JsMap::from_object(some_object)?;
     /// # Ok(())
     /// # }
@@ -164,7 +164,7 @@ impl JsMap {
     /// #    Context, JsResult, JsValue,
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// let some_object = JsArray::new(context.access())?;
     ///
     /// // `some_object` is an Array object, not a map object
@@ -184,17 +184,17 @@ impl JsMap {
     }
 
     // Utility function to generate the default `Map` object.
-    fn create_map(context: &mut Context) -> JsObject {
+    fn create_map(context: &mut Context) -> JsResult<JsObject> {
         // Get default Map prototype
-        let prototype = context.intrinsics().constructors().map().prototype();
+        let prototype = context.intrinsics().constructors().map().prototype()?;
 
         // Create a default map object with [[MapData]] as a new empty list
-        JsObject::from_proto_and_data_with_shared_shape(
+        Ok(JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
             OrderedMap::new(),
-        )
-        .upcast()
+        )?
+        .upcast())
     }
 
     /// Returns a new [`JsMapIterator`] object that yields the `[key, value]` pairs within the [`JsMap`] in insertion order.
@@ -227,8 +227,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     ///
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     /// js_map.set(2, 4, context.access())?;
@@ -264,8 +264,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     ///
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     ///
@@ -291,8 +291,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     /// js_map.set(js_string!("hello"), js_string!("world"), context.access())?;
     ///
@@ -324,8 +324,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     ///
     /// let retrieved_value = js_map.get(js_string!("foo"), context.access())?;
@@ -352,8 +352,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     /// js_map.set(js_string!("hello"), js_string!("world"), context.access())?;
     ///
@@ -379,8 +379,8 @@ impl JsMap {
     /// #    Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
-    /// let js_map = JsMap::new(context.access());
+    /// # let context = &mut Context::builder().build().unwrap();
+    /// let js_map = JsMap::new(context.access()).unwrap();
     /// js_map.set(js_string!("foo"), js_string!("bar"), context.access())?;
     ///
     /// let has_key = js_map.has(js_string!("foo"), context.access())?;

@@ -25,7 +25,7 @@ fn try_from_js_derive() {
         Ok(v / 2)
     }
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let obj = context
         .eval(Source::from_bytes(br#"({ a: "hello", bBB: 42, c: 120 })"#))
         .unwrap();

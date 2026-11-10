@@ -25,7 +25,7 @@ fn undefined() {
 
 #[test]
 fn variant_conversion_preserves_object_identity_and_number_normalization() {
-    let object = JsObject::with_null_proto(&crate::Runtime::default());
+    let object = JsObject::with_null_proto(&crate::Runtime::default()).unwrap();
     let value = JsValue::from(JsVariant::Object(object.clone()));
     assert_eq!(value.variant(), JsVariant::Object(object));
 
@@ -42,7 +42,7 @@ fn variant_conversion_preserves_object_identity_and_number_normalization() {
 #[test]
 fn get_set_field() {
     run_test_actions([TestAction::assert_context(|ctx| {
-        let obj = &JsObject::with_object_proto(ctx.intrinsics());
+        let obj = &JsObject::with_object_proto(ctx.intrinsics()).unwrap();
         // Create string and convert it to a Value
         let s = JsValue::new(js_str!("bar"));
         obj.set(js_str!("foo"), s, false, ctx.access()).unwrap();
@@ -171,11 +171,11 @@ fn hash_rational() {
 
 #[test]
 fn hash_object() {
-    let object1 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()));
+    let object1 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()).unwrap());
     assert_eq!(object1, object1);
     assert_eq!(object1, object1.clone());
 
-    let object2 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()));
+    let object2 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()).unwrap());
     assert_ne!(object1, object2);
 
     assert_eq!(hash_value(&object1), hash_value(&object1.clone()));
@@ -1587,9 +1587,9 @@ mod js_value_macro {
 
     #[test]
     fn container_literals_reject_foreign_objects() {
-        let context = &mut Context::default();
-        let foreign = Context::default();
-        let object = JsObject::with_null_proto(foreign.runtime());
+        let context = &mut Context::builder().build().unwrap();
+        let foreign = Context::builder().build().unwrap();
+        let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
         let errors = [
             js_value!([1, object.clone()], context.access()).unwrap_err(),
             js_value!({ key: object.clone() }, context.access()).unwrap_err(),
@@ -1605,7 +1605,7 @@ mod js_value_macro {
 
     #[test]
     fn container_literals_evaluate_values_and_computed_keys_in_order() -> JsResult<()> {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let mut order = Vec::new();
         let mut mark = |event, value| {
             order.push(event);
@@ -1627,7 +1627,7 @@ mod js_value_macro {
 
     #[test]
     fn embedded_rust_expressions_can_break_the_callers_loop() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let mut iterations = 0;
         for number in 0..3 {
             let _ = js_value!([{
@@ -1651,7 +1651,7 @@ mod js_value_macro {
             }
         }
 
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         for nested in [false, true] {
             let order = RefCell::new(Vec::new());
             let first = |probe: &Probe<'_>| {
@@ -1792,7 +1792,7 @@ mod js_value_macro {
             field_1: js_string!("Hello"),
             field_2: 42,
         };
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let o = t
             .try_into_js(context.access())
             .expect("Failed to convert value to js.");

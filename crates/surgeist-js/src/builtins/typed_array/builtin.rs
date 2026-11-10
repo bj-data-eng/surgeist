@@ -35,126 +35,126 @@ impl IntrinsicObject for BuiltinTypedArray {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let get_buffer = BuiltInBuilder::callable(realm, Self::buffer)
             .name(js_string!("get buffer"))
-            .build();
+            .build()?;
 
         let get_byte_length = BuiltInBuilder::callable(realm, Self::byte_length)
             .name(js_string!("get byteLength"))
-            .build();
+            .build()?;
 
         let get_byte_offset = BuiltInBuilder::callable(realm, Self::byte_offset)
             .name(js_string!("get byteOffset"))
-            .build();
+            .build()?;
 
         let get_length = BuiltInBuilder::callable(realm, Self::length)
             .name(js_string!("get length"))
-            .build();
+            .build()?;
 
         let get_to_string_tag = BuiltInBuilder::callable(realm, Self::to_string_tag)
             .name(js_string!("get [Symbol.toStringTag]"))
-            .build();
+            .build()?;
 
         let values_function = BuiltInBuilder::callable(realm, Self::values)
             .name(js_string!("values"))
             .length(0)
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::iterator(),
                 values_function.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("buffer"),
                 Some(get_buffer),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
+            )?
             .accessor(
                 js_string!("byteLength"),
                 Some(get_byte_length),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
+            )?
             .accessor(
                 js_string!("byteOffset"),
                 Some(get_byte_offset),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
+            )?
             .accessor(
                 StaticJsStrings::LENGTH,
                 Some(get_length),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
+            )?
             .accessor(
                 JsSymbol::to_string_tag(),
                 Some(get_to_string_tag),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::of, js_string!("of"), 0)
-            .method(Self::at, js_string!("at"), 1)
-            .method(Self::copy_within, js_string!("copyWithin"), 2)
-            .method(Self::entries, js_string!("entries"), 0)
-            .method(Self::every, js_string!("every"), 1)
-            .method(Self::fill, js_string!("fill"), 1)
-            .method(Self::filter, js_string!("filter"), 1)
-            .method(Self::find, js_string!("find"), 1)
-            .method(Self::find_index, js_string!("findIndex"), 1)
-            .method(Self::find_last, js_string!("findLast"), 1)
-            .method(Self::find_last_index, js_string!("findLastIndex"), 1)
-            .method(Self::for_each, js_string!("forEach"), 1)
-            .method(Self::includes, js_string!("includes"), 1)
-            .method(Self::index_of, js_string!("indexOf"), 1)
-            .method(Self::join, js_string!("join"), 1)
-            .method(Self::keys, js_string!("keys"), 0)
-            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)
-            .method(Self::map, js_string!("map"), 1)
-            .method(Self::reduce, js_string!("reduce"), 1)
-            .method(Self::reduceright, js_string!("reduceRight"), 1)
-            .method(Self::reverse, js_string!("reverse"), 0)
-            .method(Self::set, js_string!("set"), 1)
-            .method(Self::slice, js_string!("slice"), 2)
-            .method(Self::some, js_string!("some"), 1)
-            .method(Self::sort, js_string!("sort"), 1)
-            .method(Self::subarray, js_string!("subarray"), 2)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_reversed, js_string!("toReversed"), 0)
-            .method(Self::to_sorted, js_string!("toSorted"), 1)
-            .method(Self::with, js_string!("with"), 2)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::of, js_string!("of"), 0)?
+            .method(Self::at, js_string!("at"), 1)?
+            .method(Self::copy_within, js_string!("copyWithin"), 2)?
+            .method(Self::entries, js_string!("entries"), 0)?
+            .method(Self::every, js_string!("every"), 1)?
+            .method(Self::fill, js_string!("fill"), 1)?
+            .method(Self::filter, js_string!("filter"), 1)?
+            .method(Self::find, js_string!("find"), 1)?
+            .method(Self::find_index, js_string!("findIndex"), 1)?
+            .method(Self::find_last, js_string!("findLast"), 1)?
+            .method(Self::find_last_index, js_string!("findLastIndex"), 1)?
+            .method(Self::for_each, js_string!("forEach"), 1)?
+            .method(Self::includes, js_string!("includes"), 1)?
+            .method(Self::index_of, js_string!("indexOf"), 1)?
+            .method(Self::join, js_string!("join"), 1)?
+            .method(Self::keys, js_string!("keys"), 0)?
+            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)?
+            .method(Self::map, js_string!("map"), 1)?
+            .method(Self::reduce, js_string!("reduce"), 1)?
+            .method(Self::reduceright, js_string!("reduceRight"), 1)?
+            .method(Self::reverse, js_string!("reverse"), 0)?
+            .method(Self::set, js_string!("set"), 1)?
+            .method(Self::slice, js_string!("slice"), 2)?
+            .method(Self::some, js_string!("some"), 1)?
+            .method(Self::sort, js_string!("sort"), 1)?
+            .method(Self::subarray, js_string!("subarray"), 2)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_reversed, js_string!("toReversed"), 0)?
+            .method(Self::to_sorted, js_string!("toSorted"), 1)?
+            .method(Self::with, js_string!("with"), 2)?
             // 23.2.3.29 %TypedArray%.prototype.toString ( )
             // The initial value of the %TypedArray%.prototype.toString data property is the same
             // built-in function object as the Array.prototype.toString method defined in 23.1.3.30.
             .property(
                 js_string!("toString"),
-                realm.intrinsics().objects().array_prototype_to_string(),
+                realm.intrinsics().objects().array_prototype_to_string()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("values"),
                 values_function,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -260,9 +260,7 @@ impl BuiltinTypedArray {
 
         // 7. NOTE: source is not an Iterable so assume it is already an array-like object.
         // 8. Let arrayLike be ! ToObject(source).
-        let array_like = source
-            .to_object(context.access())
-            .js_expect("ToObject cannot fail here")?;
+        let array_like = source.to_object(context.access())?;
 
         // 9. Let len be ? LengthOfArrayLike(arrayLike).
         let len = array_like.length_of_array_like(context)?;
@@ -304,7 +302,7 @@ impl BuiltinTypedArray {
         context: &mut Context,
     ) -> JsResult<JsObject> {
         let constructor =
-            kind.standard_constructor()(context.intrinsics().constructors()).constructor();
+            kind.standard_constructor()(context.intrinsics().constructors()).constructor()?;
 
         Self::create(&constructor, &[length.into()], context).map(JsObject::upcast)
     }
@@ -395,9 +393,7 @@ impl BuiltinTypedArray {
         }
 
         // 8. Return ! Get(O, ! ToString(𝔽(k))).
-        Ok(o.upcast()
-            .get(k, context.access())
-            .js_expect("Get cannot fail here")?)
+        o.upcast().get(k, context.access())
     }
 
     /// `get %TypedArray%.prototype.buffer`
@@ -765,8 +761,7 @@ impl BuiltinTypedArray {
         for k in start_index..end_index {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Perform ! Set(O, Pk, value, true).
-            ta.set(k, value.clone(), true, context.access())
-                .js_expect("Set cannot fail here")?;
+            ta.set(k, value.clone(), true, context.access())?;
 
             // c. Set k to k + 1.
         }
@@ -817,9 +812,7 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Let selected be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).#
             let selected = callback_fn
@@ -847,8 +840,7 @@ impl BuiltinTypedArray {
         // 11. For each element e of kept, do
         for (n, e) in kept.iter().enumerate() {
             // a. Perform ! Set(A, ! ToString(𝔽(n)), e, true).
-            a.set(n, e.clone(), true, context.access())
-                .js_expect("Set cannot fail here")?;
+            a.set(n, e.clone(), true, context.access())?;
             // b. Set n to n + 1.
         }
 
@@ -1035,9 +1027,7 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Perform ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
             callback_fn.call(
@@ -1103,9 +1093,7 @@ impl BuiltinTypedArray {
         let ta = ta.upcast();
         for k in k..len {
             // a. Let elementK be ! Get(O, ! ToString(𝔽(k))).
-            let element_k = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let element_k = ta.get(k, context.access())?;
 
             // b. If SameValueZero(searchElement, elementK) is true, return true.
             if JsValue::same_value_zero(args.get_or_undefined(0), &element_k) {
@@ -1175,7 +1163,7 @@ impl BuiltinTypedArray {
             // b.i. Let elementK be ! Get(O, ! ToString(𝔽(k))).
             //   ii. Let same be IsStrictlyEqual(searchElement, elementK).
             //   iii. If same is true, return 𝔽(k).
-            if let Some(element_k) = ta.try_get(k, context).js_expect("Get cannot fail here")?
+            if let Some(element_k) = ta.try_get(k, context)?
                 && args.get_or_undefined(0).strict_equals(&element_k)
             {
                 return Ok(k.into());
@@ -1228,9 +1216,7 @@ impl BuiltinTypedArray {
             }
 
             // b. Let element be ! Get(O, ! ToString(𝔽(k))).
-            let element = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let element = ta.get(k, context.access())?;
 
             // c. If element is undefined, let next be the empty String; otherwise, let next be ! ToString(element).
             // d. Set R to the string-concatenation of R and next.
@@ -1308,7 +1294,7 @@ impl BuiltinTypedArray {
             // b.i. Let elementK be ! Get(O, ! ToString(𝔽(k))).
             //   ii. Let same be IsStrictlyEqual(searchElement, elementK).
             //   iii. If same is true, return 𝔽(k).
-            if let Some(element_k) = ta.try_get(k, context).js_expect("Get cannot fail here")?
+            if let Some(element_k) = ta.try_get(k, context)?
                 && args.get_or_undefined(0).strict_equals(&element_k)
             {
                 return Ok(k.into());
@@ -1399,9 +1385,7 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Let mappedValue be ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
             let mapped_value = callback_fn.call(
@@ -1470,17 +1454,14 @@ impl BuiltinTypedArray {
             // b. Set accumulator to ! Get(O, Pk).
             // c. Set k to k + 1.
             k += 1;
-            ta.get(0, context.access())
-                .js_expect("Get cannot fail here")?
+            ta.get(0, context.access())?
         };
 
         // 10. Repeat, while k < len,
         for k in k..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Set accumulator to ? Call(callbackfn, undefined, « accumulator, kValue, 𝔽(k), O »).
             accumulator = callback_fn.call(
@@ -1543,9 +1524,7 @@ impl BuiltinTypedArray {
         } else {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Set accumulator to ! Get(O, Pk).
-            let accumulator = ta
-                .get(len - 1, context.access())
-                .js_expect("Get cannot fail here")?;
+            let accumulator = ta.get(len - 1, context.access())?;
 
             // c. Set k to k - 1.
             (accumulator, len - 1)
@@ -1555,9 +1534,7 @@ impl BuiltinTypedArray {
         for k in (0..k).rev() {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Set accumulator to ? Call(callbackfn, undefined, « accumulator, kValue, 𝔽(k), O »).
             accumulator = callback_fn.call(
@@ -1607,20 +1584,14 @@ impl BuiltinTypedArray {
             // b. Let upperP be ! ToString(𝔽(upper)).
             // c. Let lowerP be ! ToString(𝔽(lower)).
             // d. Let lowerValue be ! Get(O, lowerP).
-            let lower_value = ta
-                .get(lower, context.access())
-                .js_expect("Get cannot fail here")?;
+            let lower_value = ta.get(lower, context.access())?;
             // e. Let upperValue be ! Get(O, upperP).
-            let upper_value = ta
-                .get(upper, context.access())
-                .js_expect("Get cannot fail here")?;
+            let upper_value = ta.get(upper, context.access())?;
 
             // f. Perform ! Set(O, lowerP, upperValue, true).
-            ta.set(lower, upper_value, true, context.access())
-                .js_expect("Set cannot fail here")?;
+            ta.set(lower, upper_value, true, context.access())?;
             // g. Perform ! Set(O, upperP, lowerValue, true).
-            ta.set(upper, lower_value, true, context.access())
-                .js_expect("Set cannot fail here")?;
+            ta.set(upper, lower_value, true, context.access())?;
 
             // h. Set lower to lower + 1.
             lower += 1;
@@ -1656,13 +1627,9 @@ impl BuiltinTypedArray {
             // a. Let from be ! ToString(𝔽(length - k - 1)).
             // b. Let Pk be ! ToString(𝔽(k)).
             // c. Let fromValue be ! Get(O, from).
-            let value = ta
-                .get(len - k - 1, context.access())
-                .js_expect("cannot fail per the spec")?;
+            let value = ta.get(len - k - 1, context.access())?;
             // d. Perform ! Set(A, Pk, fromValue, true).
-            new_array
-                .set(k, value, true, context.access())
-                .js_expect("cannot fail per the spec")?;
+            new_array.set(k, value, true, context.access())?;
             // e. Set k to k + 1.
         }
 
@@ -2107,14 +2074,10 @@ impl BuiltinTypedArray {
             for (n, k) in (start_index..end_index).enumerate() {
                 // 1. Let Pk be ! ToString(𝔽(k)).
                 // 2. Let kValue be ! Get(O, Pk).
-                let k_value = src
-                    .get(k, context.access())
-                    .js_expect("Get cannot fail here")?;
+                let k_value = src.get(k, context.access())?;
 
                 // 3. Perform ! Set(A, ! ToString(𝔽(n)), kValue, true).
-                target
-                    .set(n, k_value, true, context.access())
-                    .js_expect("Set cannot fail here")?;
+                target.set(n, k_value, true, context.access())?;
 
                 // 4. Set k to k + 1.
                 // 5. Set n to n + 1.
@@ -2220,9 +2183,7 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta
-                .get(k, context.access())
-                .js_expect("Get cannot fail here")?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Let testResult be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
             // d. If testResult is true, return true.
@@ -2287,8 +2248,7 @@ impl BuiltinTypedArray {
         // 9. Repeat, while j < len,
         for (j, item) in sorted.into_iter().enumerate() {
             // a. Perform ! Set(obj, ! ToString(𝔽(j)), sortedList[j], true).
-            ta.set(j, item, true, context.access())
-                .js_expect("cannot fail per spec")?;
+            ta.set(j, item, true, context.access())?;
 
             // b. Set j to j + 1.
         }
@@ -2343,9 +2303,7 @@ impl BuiltinTypedArray {
         //  10. Repeat, while j < len;
         for (j, item) in sorted.into_iter().enumerate() {
             // a. Perform ! Set(A, ! ToString(𝔽(j)), sortedList[j], true).
-            new_array
-                .set(j, item, true, context.access())
-                .js_expect("cannot fail per spec")?;
+            new_array.set(j, item, true, context.access())?;
 
             // b. Set j to j + 1.
         }
@@ -2641,13 +2599,10 @@ impl BuiltinTypedArray {
                 numeric_value.clone()
             } else {
                 // c. Else, let fromValue be ! Get(O, Pk).
-                ta.get(k, context.access())
-                    .js_expect("cannot fail per the spec")?
+                ta.get(k, context.access())?
             };
             // d. Perform ! Set(A, Pk, fromValue, true).
-            new_array
-                .set(k, value, true, context.access())
-                .js_expect("cannot fail per the spec")?;
+            new_array.set(k, value, true, context.access())?;
 
             // e. Set k to k + 1.
         }
@@ -2783,7 +2738,7 @@ impl BuiltinTypedArray {
                 .intrinsics()
                 .constructors()
                 .array_buffer()
-                .constructor()
+                .constructor()?
                 .into(),
             byte_length,
             None,
@@ -2794,7 +2749,7 @@ impl BuiltinTypedArray {
         let array = TypedArray::new(&buffer, T::ERASED, 0, Some(byte_length), Some(length));
         // Keep the buffer rooted while publishing the view and its edge.
         let array =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, array);
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, array)?;
         Ok(array.upcast())
     }
 
@@ -2920,7 +2875,7 @@ impl BuiltinTypedArray {
                     .intrinsics()
                     .constructors()
                     .array_buffer()
-                    .constructor()
+                    .constructor()?
                     .into(),
                 byte_length,
                 None,
@@ -2994,7 +2949,7 @@ impl BuiltinTypedArray {
                 Some(byte_length),
                 Some(element_length),
             ),
-        )
+        )?
         .upcast();
 
         // 17. Return unused.

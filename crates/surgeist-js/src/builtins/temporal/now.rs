@@ -45,7 +45,7 @@ impl IntrinsicObject for Now {
         // is not a function object.
         // does not have a [[Construct]] internal method; it cannot be used as a constructor with the new operator.
         // does not have a [[Call]] internal method; it cannot be invoked as a function.
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::NOW_TAG,
@@ -62,8 +62,8 @@ impl IntrinsicObject for Now {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().now()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().now()?)
     }
 }
 

@@ -6,6 +6,92 @@ fn register(ctx: &mut surgeist_js::Context) {
 }
 
 #[test]
+fn headers_registration_preserves_global_and_explicit_realm_constructor_identity() {
+    use crate::fetch::headers::JsHeaders;
+    use surgeist_js::{Context, JsObject, JsValue, Source, js_string};
+
+    let mut context = Context::builder().build().unwrap();
+    let other = context.create_realm().unwrap();
+    assert!(context.get_global_class::<JsHeaders>().unwrap().is_none());
+    assert!(other.get_class::<JsHeaders>().unwrap().is_none());
+    register(&mut context);
+    let global = context.get_global_class::<JsHeaders>().unwrap().unwrap();
+    assert!(other.get_class::<JsHeaders>().unwrap().is_none());
+
+    crate::fetch::register(TestFetcher::default(), Some(other.clone()), &mut context).unwrap();
+    let local = other.get_class::<JsHeaders>().unwrap().unwrap();
+    assert!(!JsObject::equals(
+        &global.constructor(),
+        &local.constructor()
+    ));
+    assert!(!JsObject::equals(&global.prototype(), &local.prototype()));
+    assert!(JsObject::equals(
+        &context
+            .get_global_class::<JsHeaders>()
+            .unwrap()
+            .unwrap()
+            .constructor(),
+        &global.constructor(),
+    ));
+
+    let previous = context.enter_realm(other).unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "[...new Headers([['x', 'y']])][0].join(':')"
+            ))
+            .unwrap(),
+        JsValue::from(js_string!("x:y"))
+    );
+    context.enter_realm(previous).unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "[...new Headers([['a', 'b']])][0].join(':')"
+            ))
+            .unwrap(),
+        JsValue::from(js_string!("a:b"))
+    );
+}
+
+#[test]
+fn headers_iterator_missing_registration_preserves_its_existing_guest_error() {
+    use crate::fetch::headers_iterator::HeadersIterator;
+    use surgeist_js::{Context, JsNativeErrorKind, JsObject, Source};
+
+    let mut context = Context::builder().build().unwrap();
+    register(&mut context);
+    let installed = context
+        .realm()
+        .get_class::<HeadersIterator>()
+        .unwrap()
+        .unwrap();
+    let removed = context
+        .realm()
+        .unregister_class::<HeadersIterator>()
+        .unwrap()
+        .unwrap();
+    assert!(JsObject::equals(
+        &installed.constructor(),
+        &removed.constructor()
+    ));
+    assert!(
+        context
+            .realm()
+            .get_class::<HeadersIterator>()
+            .unwrap()
+            .is_none()
+    );
+
+    let error = context
+        .eval(Source::from_bytes("[...new Headers([['x', 'y']])]"))
+        .unwrap_err();
+    let error = error.as_native().unwrap();
+    assert_eq!(error.kind(), &JsNativeErrorKind::Error);
+    assert_eq!(error.message(), "Headers Iterator not registered");
+}
+
+#[test]
 fn headers_are_iterable() {
     run_test_actions([
         TestAction::harness(),

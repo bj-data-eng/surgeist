@@ -9,7 +9,7 @@ use icu_locale::Locale;
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    Context, JsArgs, JsData, JsExpect, JsNativeError, JsResult, JsString, JsValue,
+    Context, JsArgs, JsData, JsNativeError, JsResult, JsString, JsValue,
     builtins::{
         Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject, OrdinaryObject,
         intl::options::EmptyPreferences,
@@ -56,27 +56,27 @@ impl Service for ListFormat {
 
 impl IntrinsicObject for ListFormat {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.ListFormat"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::format, js_string!("format"), 1)
-            .method(Self::format_to_parts, js_string!("formatToParts"), 1)
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
+            )?
+            .method(Self::format, js_string!("format"), 1)?
+            .method(Self::format_to_parts, js_string!("formatToParts"), 1)?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -185,7 +185,7 @@ impl BuiltInConstructor for ListFormat {
                 style,
                 native: formatter,
             },
-        );
+        )?;
 
         // 19. Return listFormat.
         Ok(list_format.into())
@@ -381,39 +381,34 @@ impl ListFormat {
             .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
 
         // 2. Let result be ! ArrayCreate(0).
-        let result = Array::array_create(0, None, context)
-            .js_expect("creating an empty array with default proto must not fail")?;
+        let result = Array::array_create(0, None, context)?;
 
         // 3. Let n be 0.
         // 4. For each Record { [[Type]], [[Value]] } part in parts, do
         for (n, part) in parts.0.into_iter().enumerate() {
             // a. Let O be OrdinaryObjectCreate(%Object.prototype%).
-            let o = context
-                .intrinsics()
-                .templates()
-                .ordinary_object()
-                .create(OrdinaryObject, vec![]);
+            let o = context.intrinsics().templates().ordinary_object().create(
+                OrdinaryObject,
+                vec![],
+                crate::object::AllocationOrigin::TrustedConstruction,
+            )?;
 
             // b. Perform ! CreateDataPropertyOrThrow(O, "type", part.[[Type]]).
             o.create_data_property_or_throw(
                 js_string!("type"),
                 js_string!(part.typ()),
                 context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
+            )?;
 
             // c. Perform ! CreateDataPropertyOrThrow(O, "value", part.[[Value]]).
             o.create_data_property_or_throw(
                 js_string!("value"),
                 js_string!(part.value()),
                 context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
+            )?;
 
             // d. Perform ! CreateDataPropertyOrThrow(result, ! ToString(n), O).
-            result
-                .create_data_property_or_throw(n, o, context.access())
-                .js_expect("operation must not fail per the spec")?;
+            result.create_data_property_or_throw(n, o, context.access())?;
 
             // e. Increment n by 1.
         }
@@ -447,47 +442,41 @@ impl ListFormat {
             })?;
 
         // 3. Let options be OrdinaryObjectCreate(%Object.prototype%).
-        let options = context
-            .intrinsics()
-            .templates()
-            .ordinary_object()
-            .create(OrdinaryObject, vec![]);
+        let options = context.intrinsics().templates().ordinary_object().create(
+            OrdinaryObject,
+            vec![],
+            crate::object::AllocationOrigin::TrustedConstruction,
+        )?;
 
         // 4. For each row of Table 11, except the header row, in table order, do
         //     a. Let p be the Property value of the current row.
         //     b. Let v be the value of lf's internal slot whose name is the Internal Slot value of the current row.
         //     c. Assert: v is not undefined.
         //     d. Perform ! CreateDataPropertyOrThrow(options, p, v).
-        options
-            .create_data_property_or_throw(
-                js_string!("locale"),
-                js_string!(lf.locale.to_string()),
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("type"),
-                match lf.typ {
-                    ListFormatType::Conjunction => js_string!("conjunction"),
-                    ListFormatType::Disjunction => js_string!("disjunction"),
-                    ListFormatType::Unit => js_string!("unit"),
-                },
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("style"),
-                match lf.style {
-                    ListLength::Wide => js_string!("long"),
-                    ListLength::Short => js_string!("short"),
-                    ListLength::Narrow => js_string!("narrow"),
-                    _ => unreachable!(),
-                },
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
+        options.create_data_property_or_throw(
+            js_string!("locale"),
+            js_string!(lf.locale.to_string()),
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("type"),
+            match lf.typ {
+                ListFormatType::Conjunction => js_string!("conjunction"),
+                ListFormatType::Disjunction => js_string!("disjunction"),
+                ListFormatType::Unit => js_string!("unit"),
+            },
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("style"),
+            match lf.style {
+                ListLength::Wide => js_string!("long"),
+                ListLength::Short => js_string!("short"),
+                ListLength::Narrow => js_string!("narrow"),
+                _ => unreachable!(),
+            },
+            context.access(),
+        )?;
 
         // 5. Return options.
         Ok(options.into())

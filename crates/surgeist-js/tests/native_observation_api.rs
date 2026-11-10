@@ -168,7 +168,7 @@ fn a_preexisting_native_waiter_receives_retirement_without_action_admission_or_g
 fn actual_guest_settlement_keeps_its_value_identity_and_completed_observer_after_final_job_drop() {
     let executor = Rc::new(ManualExecutor::default());
     let mut owner = context(executor.clone());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let promise = JsPromise::from_task(
         move |_| {
@@ -219,7 +219,7 @@ fn foreign_runtime_future_registration_is_rejected_before_native_observation_is_
     let mut original = context(Rc::new(ManualExecutor::default()));
     let mut receiver = context(Rc::new(ManualExecutor::default()));
     assert!(!original.runtime().same_heap(receiver.runtime()));
-    let (promise, _) = JsPromise::new_pending(original.access());
+    let (promise, _) = JsPromise::new_pending(original.access()).unwrap();
     let refused = promise
         .clone()
         .into_js_future(receiver.access())

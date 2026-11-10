@@ -9,7 +9,7 @@ use icu_locale::{Locale, extensions::unicode};
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    Context, JsArgs, JsData, JsExpect, JsNativeError, JsResult, JsString, JsValue,
+    Context, JsArgs, JsData, JsNativeError, JsResult, JsString, JsValue,
     builtins::{
         BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject, OrdinaryObject,
         options::get_option,
@@ -72,33 +72,33 @@ impl IntrinsicObject for Collator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let compare = BuiltInBuilder::callable(realm, Self::compare)
             .name(js_string!("get compare"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.Collator"),
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("compare"),
                 Some(compare),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
+            )?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -132,7 +132,18 @@ impl BuiltInConstructor for Collator {
         let new_target = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| context.intrinsics().constructors().collator().constructor())
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context
+                                .intrinsics()
+                                .constructors()
+                                .collator()
+                                .constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -291,7 +302,7 @@ impl BuiltInConstructor for Collator {
                 collator,
                 bound_compare: None,
             },
-        );
+        )?;
 
         // 31. Return collator.
         Ok(collator.into())
@@ -351,7 +362,7 @@ impl Collator {
         //     c. Set collator.[[BoundCompare]] to F.
         let cached = collator.borrow()?.data().bound_compare.clone();
         let bound_compare = if let Some(f) = cached {
-            JsFunction::from_record(f)
+            JsFunction::from_record(f)?
         } else {
             let bound_compare = FunctionObjectBuilder::new(
                 context.realm(),
@@ -427,11 +438,11 @@ impl Collator {
             })?;
 
         // 3. Let options be OrdinaryObjectCreate(%Object.prototype%).
-        let options = context
-            .intrinsics()
-            .templates()
-            .ordinary_object()
-            .create(OrdinaryObject, vec![]);
+        let options = context.intrinsics().templates().ordinary_object().create(
+            OrdinaryObject,
+            vec![],
+            crate::object::AllocationOrigin::TrustedConstruction,
+        )?;
 
         // 4. For each row of Table 4, except the header row, in table order, do
         //     a. Let p be the Property value of the current row.
@@ -443,67 +454,53 @@ impl Collator {
         //     d. If v is not undefined, then
         //         i. Perform ! CreateDataPropertyOrThrow(options, p, v).
         // 5. Return options.
-        options
-            .create_data_property_or_throw(
-                js_string!("locale"),
-                js_string!(collator.locale.to_string()),
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("usage"),
-                match collator.usage {
-                    Usage::Search => js_string!("search"),
-                    Usage::Sort => js_string!("sort"),
-                },
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("sensitivity"),
-                match collator.sensitivity {
-                    Sensitivity::Base => js_string!("base"),
-                    Sensitivity::Accent => js_string!("accent"),
-                    Sensitivity::Case => js_string!("case"),
-                    Sensitivity::Variant => js_string!("variant"),
-                },
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("ignorePunctuation"),
-                collator.ignore_punctuation,
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("collation"),
-                collator
-                    .collation
-                    .map(|co| js_string!(co.as_str()))
-                    .unwrap_or(js_string!("default")),
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
-        options
-            .create_data_property_or_throw(
-                js_string!("numeric"),
-                collator.numeric,
-                context.access(),
-            )
-            .js_expect("operation must not fail per the spec")?;
+        options.create_data_property_or_throw(
+            js_string!("locale"),
+            js_string!(collator.locale.to_string()),
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("usage"),
+            match collator.usage {
+                Usage::Search => js_string!("search"),
+                Usage::Sort => js_string!("sort"),
+            },
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("sensitivity"),
+            match collator.sensitivity {
+                Sensitivity::Base => js_string!("base"),
+                Sensitivity::Accent => js_string!("accent"),
+                Sensitivity::Case => js_string!("case"),
+                Sensitivity::Variant => js_string!("variant"),
+            },
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("ignorePunctuation"),
+            collator.ignore_punctuation,
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("collation"),
+            collator
+                .collation
+                .map(|co| js_string!(co.as_str()))
+                .unwrap_or(js_string!("default")),
+            context.access(),
+        )?;
+        options.create_data_property_or_throw(
+            js_string!("numeric"),
+            collator.numeric,
+            context.access(),
+        )?;
         if let Some(kf) = collator.case_first {
-            options
-                .create_data_property_or_throw(
-                    js_string!("caseFirst"),
-                    js_string!(kf.as_str()),
-                    context.access(),
-                )
-                .js_expect("operation must not fail per the spec")?;
+            options.create_data_property_or_throw(
+                js_string!("caseFirst"),
+                js_string!(kf.as_str()),
+                context.access(),
+            )?;
         }
 
         // 5. Return options.

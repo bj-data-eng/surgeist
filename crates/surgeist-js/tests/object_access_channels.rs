@@ -100,6 +100,7 @@ fn close_refusal(block_iterator: bool) {
             NativeFunction::from_fn_ptr(|_, _, mut access| {
                 let target = access
                     .global_object()
+                    .unwrap()
                     .get(js_string!("blockedTarget"), access.reborrow())?
                     .as_object()
                     .unwrap();
@@ -246,7 +247,7 @@ fn thenable_realm_access_refusal_cannot_publish_a_fallback_job() {
     let executor = Rc::new(RecordingExecutor::default());
     let mut context = recording_context(executor.clone());
     let callback = ordinary_handler(&mut context);
-    let thenable = JsObject::with_null_proto(context.runtime());
+    let thenable = JsObject::with_null_proto(context.runtime()).unwrap();
     thenable
         .set(js_string!("then"), callback.clone(), true, context.access())
         .unwrap();

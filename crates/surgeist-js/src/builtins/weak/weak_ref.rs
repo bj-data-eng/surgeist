@@ -31,18 +31,18 @@ struct WeakRefTarget(#[heap_trace(skip)] ObjectEdge);
 pub(crate) struct WeakRef;
 
 impl IntrinsicObject for WeakRef {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("WeakRef"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::deref, js_string!("deref"), 0)
+            )?
+            .method(Self::deref, js_string!("deref"), 0)?
             .build()?;
 
         Ok(())
@@ -96,7 +96,7 @@ impl BuiltInConstructor for WeakRef {
             context.root_shape(),
             prototype,
             WeakRefTarget(target.edge()),
-        );
+        )?;
 
         // 4. Perform AddToKeptObjects(target).
         context.kept_alive.push(target);

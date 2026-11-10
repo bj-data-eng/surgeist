@@ -124,8 +124,12 @@ pub struct JsFunction {
 }
 
 impl JsFunction {
-    pub(crate) fn from_record(record: ObjectEdge) -> Self {
-        Self::from_object(JsObject::from_inner(record)).expect("stored function object is callable")
+    pub(crate) fn from_record(record: ObjectEdge) -> Result<Self, crate::error::RootingError> {
+        let object = record
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)?;
+        Self::from_object(object).ok_or(crate::error::RootingError::NotCallable)
     }
 
     pub(crate) fn into_record(self) -> ObjectEdge {
@@ -142,9 +146,12 @@ impl JsFunction {
     /// Mainly used to initialize objects before a [`Context`] is available to do so.
     ///
     /// [`Context`]: crate::Context
-    pub(crate) fn empty_intrinsic_function(runtime: &crate::Runtime, constructor: bool) -> Self {
-        Self {
-            inner: JsObject::from_proto_and_data(
+    pub(crate) fn empty_intrinsic_function(
+        runtime: &crate::Runtime,
+        constructor: bool,
+    ) -> JsResult<Self> {
+        Ok(Self {
+            inner: JsObject::<NativeFunctionObject>::new_unique_with_vtable(
                 runtime,
                 None,
                 NativeFunctionObject {
@@ -153,9 +160,11 @@ impl JsFunction {
                     constructor: constructor.then_some(ConstructorKind::Base),
                     realm: None,
                 },
-            )
-            .expect("empty intrinsic function has no external heap edges"),
-        }
+                <NativeFunctionObject as crate::object::JsData>::internal_methods,
+                crate::object::AllocationOrigin::TrustedConstruction,
+            )?
+            .upcast(),
+        })
     }
 
     /// Creates a [`JsFunction`] from a [`JsObject`], or returns `None` if the object is not a function.
@@ -217,5 +226,53 @@ impl TryFromJs for JsFunction {
                 .with_message("value is not a Function object")
                 .into())
         }
+    }
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    use crate::{Context, error::RootingError};
+    use surgeist_js_gc::heap::AccessError;
+
+    #[test]
+    fn stored_function_projection_preserves_heap_refusal_and_identity_on_retry() {
+        let context = Context::builder().build().unwrap();
+        let function = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()))
+            .to_js_function(context.realm())
+            .unwrap();
+        let edge = function.clone().into_record();
+        context
+            .runtime()
+            .heap
+            .read(|_| {
+                assert_eq!(
+                    JsFunction::from_record(edge.clone()).unwrap_err(),
+                    RootingError::Access(AccessError::HeapBorrowed)
+                );
+            })
+            .unwrap();
+
+        let restored = JsFunction::from_record(edge).unwrap();
+        assert_eq!(restored.inner.identity(), function.inner.identity());
+    }
+
+    #[test]
+    fn stored_function_projection_distinguishes_expiry_from_noncallability() {
+        let context = Context::builder().build().unwrap();
+        let ordinary = JsObject::with_null_proto(context.runtime()).unwrap();
+        assert_eq!(
+            JsFunction::from_record(ordinary.into_record()).unwrap_err(),
+            RootingError::NotCallable
+        );
+
+        let expired = {
+            let runtime = crate::Runtime::default();
+            JsObject::with_null_proto(&runtime).unwrap().into_record()
+        };
+        assert_eq!(
+            JsFunction::from_record(expired).unwrap_err(),
+            RootingError::Expired
+        );
     }
 }

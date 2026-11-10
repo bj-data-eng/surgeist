@@ -192,7 +192,7 @@ impl Context {
     ///
     /// ```
     /// use surgeist_js::{Context, JsValue, Source, execution::ExecutionOptions};
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let outcome = context.with_execution(ExecutionOptions::new(128), |mut context| {
     ///     context.eval(Source::from_bytes("40 + 2"))
     /// })?;
@@ -205,7 +205,7 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
     ///     let _: Context = std::mem::take(&mut access);
     ///     Ok(())
@@ -214,16 +214,16 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
-    ///     let _: Context = std::mem::replace(&mut access, Context::default());
+    ///     let _: Context = std::mem::replace(&mut access, Context::builder().build().unwrap());
     ///     Ok(())
     /// });
     /// ```
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
     ///     let _: &mut Context = &mut *access;
     ///     Ok(())
@@ -235,13 +235,13 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.with_execution(ExecutionOptions::new(128), |access| Ok(access));
     /// ```
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let mut saved = None;
     /// let _ = owner.with_execution(ExecutionOptions::new(128), |access| {
     ///     saved = Some(access);
@@ -273,7 +273,7 @@ impl Context {
     ///
     /// ```
     /// use surgeist_js::{Context, Source, execution::{ExecutionOptions, ExecutionTermination}};
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let task = context.execution_task(ExecutionOptions::new(128), async |mut context| {
     ///     context.eval(Source::from_bytes("40 + 2"))
     /// })?;
@@ -291,7 +291,7 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
     ///     let _: Context = std::mem::take(&mut access);
     ///     Ok(())
@@ -300,16 +300,16 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
-    ///     let _: Context = std::mem::replace(&mut access, Context::default());
+    ///     let _: Context = std::mem::replace(&mut access, Context::builder().build().unwrap());
     ///     Ok(())
     /// });
     /// ```
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
     ///     let _: &mut Context = &mut *access;
     ///     Ok(())
@@ -321,13 +321,13 @@ impl Context {
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let _ = owner.execution_task(ExecutionOptions::new(128), async |access| Ok(access));
     /// ```
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, execution::ExecutionOptions};
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let mut saved = None;
     /// let task = owner.execution_task(ExecutionOptions::new(128), async |access| {
     ///     saved = Some(access);

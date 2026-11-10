@@ -184,6 +184,7 @@ fn function(source: &str, context: &mut Context) -> JsFunction {
 fn value(name: &str, context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }
@@ -300,7 +301,7 @@ fn later_discard_or_refusal_of_an_async_generator_await_releases_only_its_actual
     for refused in [false, true] {
         let executor = Rc::new(Executor::default());
         let mut context = context(executor.clone());
-        let (gate, resolvers) = JsPromise::new_pending(context.access());
+        let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
         context
             .register_global_property(js_string!("remainingGate"), gate, Attribute::all())
             .unwrap();
@@ -368,8 +369,8 @@ fn later_fanout_discard_or_refusal_cannot_erase_a_generators_actual_new_successo
         for refused in [false, true] {
             let executor = Rc::new(Executor::default());
             let mut context = context(executor.clone());
-            let (first_gate, first_resolvers) = JsPromise::new_pending(context.access());
-            let (second_gate, second_resolvers) = JsPromise::new_pending(context.access());
+            let (first_gate, first_resolvers) = JsPromise::new_pending(context.access()).unwrap();
+            let (second_gate, second_resolvers) = JsPromise::new_pending(context.access()).unwrap();
             context
                 .register_global_property(
                     js_string!("remainingFirstGate"),

@@ -48,7 +48,7 @@ async fn yield_once() {
 }
 #[test]
 fn a_panicking_async_job_poll_restores_its_caller_realm() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let original = context.realm().clone();
     let selected = context.create_realm().unwrap();
     assert_ne!(selected, original);
@@ -81,7 +81,7 @@ fn a_panicking_async_job_poll_restores_its_caller_realm() {
 }
 #[test]
 fn interleaved_async_jobs_restore_each_selected_realm_after_pending_and_ready() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let original = context.realm().clone();
     let first = context.create_realm().unwrap();
     let second = context.create_realm().unwrap();
@@ -134,7 +134,7 @@ fn interleaved_async_jobs_restore_each_selected_realm_after_pending_and_ready() 
 }
 #[test]
 fn selected_realm_async_polls_preserve_a_live_guest_callers_frames_and_return() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let selected = context.create_realm().unwrap();
     context
         .register_global_builtin_callable(
@@ -274,7 +274,7 @@ fn selected_realm_poll_cleanup_preserves_transferred_guest_await_continuations()
 }
 #[test]
 fn an_async_job_without_selected_realm_preserves_deliberate_changes_across_polls() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let selected = context.create_realm().unwrap();
     let expected = selected.clone();
     let mut job = NativeAsyncJob::new(move |_| {
@@ -306,7 +306,7 @@ fn an_async_job_without_selected_realm_preserves_deliberate_changes_across_polls
 }
 #[test]
 fn selected_realm_job_rejects_a_real_competing_lease_before_callback_entry() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let realm = context.realm().clone();
     let called = Rc::new(Cell::new(false));
     let c = called.clone();
@@ -336,8 +336,8 @@ fn selected_realm_job_rejects_a_real_competing_lease_before_callback_entry() {
 }
 #[test]
 fn rebinding_the_callers_holder_reference_keeps_the_async_jobs_original_custody() {
-    let mut context = Context::default();
-    let mut peer = Context::default();
+    let mut context = Context::builder().build().unwrap();
+    let mut peer = Context::builder().build().unwrap();
     let caller = context.realm().clone();
     let selected = context.create_realm().unwrap();
     let mut job = NativeAsyncJob::with_realm(
@@ -501,7 +501,7 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
     let busy: JsError = EngineError::ContextAccessBusy.into();
     let panic: JsError = PanicError::new("async host failure").into();
     let nested: JsError = JsNativeError::aggregate(vec![busy.clone()]).into();
-    let mut foreign_context = Context::default();
+    let mut foreign_context = Context::builder().build().unwrap();
     let foreign = JsError::from_opaque(
         foreign_context
             .eval(Source::from_bytes("new Error('foreign async completion')"))
@@ -530,6 +530,7 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
         .unwrap();
         context
             .global_object()
+            .unwrap()
             .set(
                 js_string!("promise"),
                 promise.clone(),
@@ -602,6 +603,7 @@ fn async_promise_success_and_catchable_error_use_the_ordinary_guest_paths() {
     .unwrap();
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("failure"),
             failure.clone(),
@@ -643,7 +645,7 @@ impl Drop for JobDrop {
 
 #[test]
 fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
-    let mut control = Context::default();
+    let mut control = Context::builder().build().unwrap();
     let baseline = control
         .with_execution(ExecutionOptions::new(256), |mut access| {
             access.eval(Source::from_bytes("globalThis.committed = 20"))?;
@@ -656,7 +658,7 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
             limit: 256
         }))
     );
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let receipt_slot = Rc::new(RefCell::new(None));
     let dropped_before_publication = Rc::new(Cell::new(false));
     let resumed_after_stop = Rc::new(Cell::new(false));
@@ -845,7 +847,7 @@ fn source_graph_and_dynamic_import_loader_owned_stages_can_lease() {
 fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
     let busy: JsError = EngineError::ContextAccessBusy.into();
     let nested: JsError = JsNativeError::aggregate(vec![busy.clone()]).into();
-    let mut foreign_context = Context::default();
+    let mut foreign_context = Context::builder().build().unwrap();
     let foreign = JsError::from_opaque(
         foreign_context
             .eval(Source::from_bytes("new Error('foreign loader completion')"))
@@ -880,6 +882,7 @@ fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
             };
             context
                 .global_object()
+                .unwrap()
                 .set(
                     js_string!("loaded"),
                     promise.clone(),

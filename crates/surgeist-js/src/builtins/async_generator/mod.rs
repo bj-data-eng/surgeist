@@ -72,14 +72,14 @@ pub struct AsyncGenerator {
 
 impl IntrinsicObject for AsyncGenerator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .prototype(
                 realm
                     .intrinsics()
                     .objects()
                     .iterator_prototypes()
-                    .async_iterator(),
-            )
+                    .async_iterator()?,
+            )?
             .static_method(Self::next, js_string!("next"), 1)?
             .static_method(Self::r#return, js_string!("return"), 1)?
             .static_method(Self::throw, js_string!("throw"), 1)?
@@ -94,7 +94,7 @@ impl IntrinsicObject for AsyncGenerator {
                     .intrinsics()
                     .constructors()
                     .async_generator_function()
-                    .prototype(),
+                    .prototype()?,
                 Attribute::CONFIGURABLE,
             )?
             .build()?;
@@ -102,8 +102,8 @@ impl IntrinsicObject for AsyncGenerator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().async_generator()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().async_generator()?)
     }
 }
 
@@ -127,7 +127,11 @@ impl AsyncGenerator {
 
             // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
             let promise_capability = PromiseCapability::new(
-                &context.intrinsics().constructors().promise().constructor(),
+                &context
+                    .intrinsics()
+                    .constructors()
+                    .promise()
+                    .constructor()?,
                 context,
             )
             .js_expect("cannot fail with promise constructor")?;
@@ -172,7 +176,7 @@ impl AsyncGenerator {
         if state == AsyncGeneratorState::Completed {
             // a. Let iteratorResult be CreateIterResultObject(undefined, true).
             let iterator_result =
-                create_iter_result_object_trusted(JsValue::undefined(), true, context);
+                create_iter_result_object_trusted(JsValue::undefined(), true, context)?;
 
             // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
             cap.resolve()
@@ -217,7 +221,11 @@ impl AsyncGenerator {
 
             // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
             let promise_capability = PromiseCapability::new(
-                &context.intrinsics().constructors().promise().constructor(),
+                &context
+                    .intrinsics()
+                    .constructors()
+                    .promise()
+                    .constructor()?,
                 context,
             )
             .js_expect("cannot fail with promise constructor")?;
@@ -302,7 +310,11 @@ impl AsyncGenerator {
 
             // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
             let promise_capability = PromiseCapability::new(
-                &context.intrinsics().constructors().promise().constructor(),
+                &context
+                    .intrinsics()
+                    .constructors()
+                    .promise()
+                    .constructor()?,
                 context,
             )
             .js_expect("cannot fail with promise constructor")?;
@@ -441,56 +453,36 @@ impl AsyncGenerator {
                 .js_expect("1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.")?;
             next.capability.to_capability()?
         };
-        // 3. Remove the first element from generator.[[AsyncGeneratorQueue]].
+        // Prepare the settlement argument while the original request is retained.
+        let (argument, rejected) = match completion {
+            Err(error) => (error.into_opaque(context.access())?, true),
+            Ok(value) => {
+                let iterator_result = if let Some(realm) = realm {
+                    let old_realm = context.enter_realm(realm)?;
+                    let iterator_result = create_iter_result_object_trusted(value, done, context);
+                    // Restore the caller's realm even when construction refuses,
+                    // preserving the initiating construction failure.
+                    let restored = context.enter_realm(old_realm);
+                    iterator_result.and_then(|value| restored.map(|_| value))?
+                } else {
+                    create_iter_result_object_trusted(value, done, context)?
+                };
+                (iterator_result, false)
+            }
+        };
+        // 3. Remove the first element only after argument preparation succeeds.
         let next = generator
             .borrow_mut()?
             .data_mut()
             .queue
             .pop_front()
             .js_expect("1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.")?;
-
-        // 5. Let value be completion.[[Value]].
-        match completion {
-            // 6. If completion is a throw completion, then
-            Err(e) => {
-                // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « value »).
-                promise_capability.reject().call(
-                    &JsValue::undefined(),
-                    &[e.into_opaque(context.access())?],
-                    context.access(),
-                )?;
-            }
-
-            // 7. Else,
-            Ok(value) => {
-                // a. Assert: completion is a normal completion.
-                // b. If realm is present, then
-                let iterator_result = if let Some(realm) = realm {
-                    // i. Let oldRealm be the running execution context's Realm.
-                    // ii. Set the running execution context's Realm to realm.
-                    let old_realm = context.enter_realm(realm)?;
-
-                    // iii. Let iteratorResult be CreateIteratorResultObject(value, done).
-                    let iterator_result = create_iter_result_object_trusted(value, done, context);
-
-                    // iv. Set the running execution context's Realm to oldRealm.
-                    context.enter_realm(old_realm)?;
-
-                    iterator_result
-                } else {
-                    // c. Else,
-                    //     i. Let iteratorResult be CreateIteratorResultObject(value, done).
-                    create_iter_result_object_trusted(value, done, context)
-                };
-
-                // d. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
-                promise_capability.resolve().call(
-                    &JsValue::undefined(),
-                    &[iterator_result],
-                    context.access(),
-                )?;
-            }
-        }
+        let settle = if rejected {
+            promise_capability.reject()
+        } else {
+            promise_capability.resolve()
+        };
+        settle.call(&JsValue::undefined(), &[argument], context.access())?;
         // The removed stored request is disposed with no generator borrow held.
         drop(next);
         // 8. Return unused.
@@ -685,7 +677,11 @@ impl AsyncGenerator {
 
         // 7. Let promiseCompletion be Completion(PromiseResolve(%Promise%, completion.[[Value]])).
         let promise_completion = Promise::promise_resolve(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             value,
             context,
         );

@@ -11,7 +11,7 @@
 //! use surgeist_js_test_host::console::DefaultLogger;
 //!
 //! // Create the context.
-//! let mut context = Context::default();
+//! let mut context = Context::builder().build().unwrap();
 //!
 //! // Register the Console object to the context. The DefaultLogger simply
 //! // write errors to STDERR and all other logs to STDOUT.
@@ -43,7 +43,7 @@
 //! use surgeist_js::{js_string, property::Attribute, Context, Source};
 //!
 //! // Create the context.
-//! let mut context = Context::default();
+//! let mut context = Context::builder().build().unwrap();
 //!
 //! // Register all objects in the context. To conditionally register extensions,
 //! // call `register()` directly on the extension.
@@ -296,7 +296,7 @@ pub(crate) mod test {
     #[track_caller]
     #[allow(unused)]
     pub(crate) fn run_test_actions(actions: impl IntoIterator<Item = TestAction>) {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         register(ConsoleExtension::default(), None, context)
             .expect("failed to register WebAPI objects");
         run_test_actions_with(actions, context);

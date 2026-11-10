@@ -49,32 +49,34 @@ impl UriFunctions {
     pub(crate) fn uninit(
         runtime: &crate::Runtime,
         roots: &mut crate::realm::BootstrapRoots,
-    ) -> Self {
-        Self {
-            decode_uri: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+    ) -> crate::JsResult<Self> {
+        Ok(Self {
+            decode_uri: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             decode_uri_component: roots
-                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            encode_uri: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            encode_uri: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             encode_uri_component: roots
-                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-        }
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+        })
     }
 }
 
 impl UriFunctions {
-    pub(crate) fn decode_uri(&self) -> JsFunction {
+    pub(crate) fn decode_uri(&self) -> Result<JsFunction, crate::error::RootingError> {
         JsFunction::from_record(self.decode_uri.clone())
     }
 
-    pub(crate) fn decode_uri_component(&self) -> JsFunction {
+    pub(crate) fn decode_uri_component(&self) -> Result<JsFunction, crate::error::RootingError> {
         JsFunction::from_record(self.decode_uri_component.clone())
     }
 
-    pub(crate) fn encode_uri(&self) -> JsFunction {
+    pub(crate) fn encode_uri(&self) -> Result<JsFunction, crate::error::RootingError> {
         JsFunction::from_record(self.encode_uri.clone())
     }
 
-    pub(crate) fn encode_uri_component(&self) -> JsFunction {
+    pub(crate) fn encode_uri_component(&self) -> Result<JsFunction, crate::error::RootingError> {
         JsFunction::from_record(self.encode_uri_component.clone())
     }
 }
@@ -85,15 +87,19 @@ pub(crate) struct DecodeUri;
 
 impl IntrinsicObject for DecodeUri {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri)?
             .name(Self::NAME)
             .length(1)
             .build()?;
 
         Ok(())
     }
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().uri_functions().decode_uri().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
+            .objects()
+            .uri_functions()
+            .decode_uri()
+            .map(Into::into)?)
     }
 }
 
@@ -105,19 +111,19 @@ pub(crate) struct DecodeUriComponent;
 
 impl IntrinsicObject for DecodeUriComponent {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri_component)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri_component)?
             .name(Self::NAME)
             .length(1)
             .build()?;
 
         Ok(())
     }
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
             .objects()
             .uri_functions()
-            .decode_uri_component()
-            .into()
+            .decode_uri_component()?
+            .into())
     }
 }
 
@@ -129,15 +135,19 @@ pub(crate) struct EncodeUri;
 
 impl IntrinsicObject for EncodeUri {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri)?
             .name(Self::NAME)
             .length(1)
             .build()?;
 
         Ok(())
     }
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().uri_functions().encode_uri().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
+            .objects()
+            .uri_functions()
+            .encode_uri()
+            .map(Into::into)?)
     }
 }
 
@@ -148,19 +158,19 @@ pub(crate) struct EncodeUriComponent;
 
 impl IntrinsicObject for EncodeUriComponent {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri_component)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri_component)?
             .name(Self::NAME)
             .length(1)
             .build()?;
 
         Ok(())
     }
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
             .objects()
             .uri_functions()
-            .encode_uri_component()
-            .into()
+            .encode_uri_component()?
+            .into())
     }
 }
 

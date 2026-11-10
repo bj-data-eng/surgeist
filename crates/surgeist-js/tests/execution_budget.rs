@@ -20,7 +20,7 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
 
     let source = r#""\u0100optimizerLeft" + "\u0101optimizerRight""#;
     let expected = JsValue::from(js_string!("\u{100}optimizerLeft\u{101}optimizerRight"));
-    let mut unoptimized = Context::default();
+    let mut unoptimized = Context::builder().build().unwrap();
     unoptimized.set_optimizer_options(OptimizerOptions::empty());
     let parsed = unoptimized
         .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(128))
@@ -33,7 +33,7 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
         let options = ExecutionOptions::new(128)
             .with_interner_utf16_limit(source_units)
             .with_profile(profile);
-        let mut control = Context::default();
+        let mut control = Context::builder().build().unwrap();
         control.set_optimizer_options(OptimizerOptions::empty());
         let admitted_source = control
             .eval_with_budget(Source::from_bytes(source), options)
@@ -44,7 +44,7 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
             source_units
         );
 
-        let mut optimized = Context::default();
+        let mut optimized = Context::builder().build().unwrap();
         optimized.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
         let refused_output = optimized
             .eval_with_budget(Source::from_bytes(source), options)
@@ -72,7 +72,7 @@ fn interner_publication_admits_index_and_retained_units_together() {
     let input = r#""\uD800""#;
     let mut refused_index = 0;
     for limit in [3, 4] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let evaluation = context
             .eval_with_budget(
                 Source::from_bytes(input),
@@ -108,7 +108,7 @@ fn interner_publication_admits_index_and_retained_units_together() {
 fn interner_byte_refusal_precedes_the_first_lookup_probe() {
     use surgeist_js_parser::frontend::InternerLimitKind;
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let evaluation = context
         .eval_with_budget(
             Source::from_bytes("frontendBudgetName;"),
@@ -135,7 +135,7 @@ fn nested_eval_interner_refusal_bypasses_guest_catch() {
     // eval name and publishes 17 UTF-8 bytes for the string literal. Its eval
     // then tries to hash the identifier in a fresh interner.
     let limit = 4 + 4 + 17;
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let evaluation = context
         .eval_with_budget(
             Source::from_bytes("try { eval('hiddenRuntimeName') } catch { 99 }"),
@@ -155,7 +155,7 @@ fn nested_eval_interner_refusal_bypasses_guest_catch() {
 
 #[test]
 fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     for (source, limit) in [("break missing;", 0), ("a:while(false){continue a;}", 1)] {
         let refused = context
             .eval_with_budget(
@@ -210,7 +210,7 @@ fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
 #[test]
 fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         // Four early-error walks each admit the list, item and empty statement.
         for limit in [0, 11, 12] {
             let outcome = context
@@ -240,7 +240,7 @@ fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
 
 #[test]
 fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let body = ";".repeat(512);
     let script = format!(
         "globalThis.entered = true; try {{ eval('{body}'); }}
@@ -313,7 +313,7 @@ fn direct_eval_charges_the_contextual_new_target_check() {
     // the expression and finally the new.target node that proves the syntax error.
     let exact = parse_visits + 5;
     for limit in [exact - 1, exact] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes(SCRIPT),
@@ -350,7 +350,7 @@ fn direct_eval_charges_the_contextual_new_target_check() {
 
 #[test]
 fn parser_diagnostics_preserve_source_spellings_and_error_positions() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let err = context
         .eval(Source::from_bytes(r#"let x = 0 'A😀\uD800é';"#))
         .unwrap_err();
@@ -416,7 +416,7 @@ fn diagnostic_limits_preserve_the_admitted_prefix_and_bypass_guest_catch() {
     ];
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         for (input_limit, output_limit, units, bytes, expected) in cases {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let evaluation = context
                 .eval_with_budget(
                     Source::from_bytes(SCRIPT),
@@ -454,7 +454,7 @@ fn diagnostic_limits_preserve_the_admitted_prefix_and_bypass_guest_catch() {
 
 #[test]
 fn label_diagnostics_charge_the_message_prefix_and_source_name() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let prefix = u64::try_from("undefined break target: ".len()).unwrap();
     let limit = prefix + 1;
     let evaluation = context
@@ -490,7 +490,7 @@ fn template_limits_share_head_and_tail_and_admit_astral_output_together() {
             ),
             (20, 13, None),
         ] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let evaluation = context
                 .eval_with_budget(
                     Source::from_bytes(SCRIPT),
@@ -523,7 +523,7 @@ fn template_limits_share_head_and_tail_and_admit_astral_output_together() {
 fn template_budget_refuses_before_the_invalid_braced_escape_is_diagnosed() {
     for (script, tagged) in [(r"`\u{z}`", false), (r"(s => s[0])`\u{z}`", true)] {
         for input in [9, 10] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let evaluation = context
                 .eval_with_budget(
                     Source::from_bytes(script),
@@ -561,7 +561,7 @@ fn template_normalization_and_cooking_charge_crlf_and_cached_lookahead() {
         ("`a\r\nb\\\r\nc`", 12, 10, &[0x61, 0x0A, 0x62, 0x63][..]),
         (r"`\0x`", 6, 5, &[0, 0x78][..]),
     ] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let evaluation = context
             .eval_with_budget(
                 Source::from_bytes(script),
@@ -582,7 +582,7 @@ fn template_normalization_and_cooking_charge_crlf_and_cached_lookahead() {
 #[test]
 fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
     const SOURCE: &str = "let pending = 40; { let extra = 2; pending + extra; }";
-    let mut completed = Context::default();
+    let mut completed = Context::builder().build().unwrap();
     let full = completed
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(128))
         .unwrap();
@@ -591,7 +591,7 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
     assert!(work > 1);
 
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let limit = work - 1;
         let refused = context
             .eval_with_budget(
@@ -620,7 +620,7 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
         assert_eq!(retry, JsValue::new(42));
         let retried_id =
             surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false).unique_id();
-        let mut uninterrupted = Context::default();
+        let mut uninterrupted = Context::builder().build().unwrap();
         uninterrupted.eval(Source::from_bytes(SOURCE)).unwrap();
         let uninterrupted_id =
             surgeist_js_ast::scope::Scope::new(uninterrupted.realm().scope().clone(), false)
@@ -631,7 +631,7 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
 
 #[test]
 fn scope_preparation_has_separate_analysis_compilation_and_installation_phases() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let evaluation = context
         .eval_with_budget(
             Source::from_bytes("{}"),
@@ -706,7 +706,7 @@ fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
         "globalThis.C = (async function* () {}).constructor;",
     ] {
         for allowed in [inner_reads - 1, inner_reads] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             context.eval(Source::from_bytes(setup)).unwrap();
             let limit = outer_reads + allowed;
             let outcome = context
@@ -762,7 +762,7 @@ fn dynamic_function_only_parses_an_empty_parameter_list_when_an_argument_supplie
         ("Function('')", 0),
         ("Function('', '')", 1),
     ] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(Source::from_bytes(script), ExecutionOptions::new(64))
             .unwrap();
@@ -776,7 +776,7 @@ fn dynamic_function_only_parses_an_empty_parameter_list_when_an_argument_supplie
 
 #[test]
 fn dynamic_function_body_preserves_utf16_literals_and_wrapped_error_lines() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let result = context
         .eval(Source::from_bytes(
             r#"Function("return '\uD83D\uDE00\uD800'")()"#,
@@ -802,7 +802,7 @@ fn dynamic_function_charges_direct_eval_metadata_before_publication() {
     // The empty formal parameter list takes one visit. The body search then
     // visits the list, item, statement, expression, call and direct callee.
     for (limit, published) in [(6, false), (7, true)] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes(SCRIPT),
@@ -839,7 +839,7 @@ fn dynamic_function_charges_direct_eval_metadata_before_publication() {
 #[test]
 fn dynamic_function_charges_private_name_validation_before_publication() {
     let input = "typeof Function('class C { #a; #b; m() { return this.#b; } }')";
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     for limit in [3, 4] {
         let evaluation = context
             .eval_with_budget(
@@ -867,7 +867,7 @@ fn dynamic_function_charges_private_name_validation_before_publication() {
 #[test]
 fn dynamic_function_private_parameters_charge_resolution_before_publication() {
     let input = "typeof Function('x = class { #a; #b; m() { return this.#b; } }', '')";
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     // Two declaration operations, three parameter metadata checks, and two
     // comparisons to resolve the access to the second private name.
     for limit in [6, 7] {
@@ -904,7 +904,7 @@ fn direct_eval_private_name_refusal_reaches_the_host() {
         }
     })().m();";
     for limit in [1, 2] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let evaluation = context
             .eval_with_budget(
                 Source::from_bytes(input),
@@ -947,7 +947,7 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
             "Redeclaration of formal parameter `a`",
         ),
     ] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let options = ExecutionOptions::new(128);
         let record_limit = records - 1;
         let denied = context
@@ -1002,7 +1002,7 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
 
 #[test]
 fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     for limit in [0, 4, 5] {
         let outcome = context
             .eval_with_budget(
@@ -1031,7 +1031,7 @@ fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
 
 #[test]
 fn nested_eval_grammar_refusal_bypasses_guest_catch() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let body = ";".repeat(512);
     let script = format!(
         "globalThis.entered = true; try {{ eval('{body}'); }}
@@ -1075,7 +1075,7 @@ fn nested_eval_grammar_refusal_bypasses_guest_catch() {
 #[test]
 fn buffered_token_limits_refuse_before_guest_execution() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let options = ExecutionOptions::new(64).with_profile(profile);
         let probe = context
             .eval_with_budget(Source::from_bytes("1;"), options.with_token_probe_limit(0))
@@ -1117,7 +1117,7 @@ fn buffered_token_limits_refuse_before_guest_execution() {
 
 #[test]
 fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenization() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let input = "/*x*/1";
     let refused = context
         .eval_with_budget(
@@ -1148,7 +1148,7 @@ fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenizat
 #[test]
 fn lookahead_refusal_preserves_the_partial_source_and_profile_equivalence() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes("/*x*/1"),
@@ -1173,7 +1173,7 @@ fn lookahead_refusal_preserves_the_partial_source_and_profile_equivalence() {
 
 #[test]
 fn a_host_callback_cannot_swallow_the_first_lookahead_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("swallowLookaheadStop"),
@@ -1218,7 +1218,7 @@ fn a_host_callback_cannot_swallow_the_first_lookahead_stop() {
 fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
     let input = "'😀';\r\n/*x*/";
     for (limit, expected) in [(11, 11), (10, 10)] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes(input),
@@ -1257,7 +1257,7 @@ fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
 
 #[test]
 fn astral_retention_refusal_leaves_both_consumption_dimensions_unchanged() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(
             Source::from_bytes("'😀'"),
@@ -1278,7 +1278,7 @@ fn astral_retention_refusal_leaves_both_consumption_dimensions_unchanged() {
 
 #[test]
 fn consumption_is_checked_first_when_both_frontend_caps_are_exhausted() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(
             Source::from_bytes("1"),
@@ -1300,7 +1300,7 @@ fn consumption_is_checked_first_when_both_frontend_caps_are_exhausted() {
 
 #[test]
 fn nested_eval_shares_the_retained_source_budget_and_preserves_the_host_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let padding = " ".repeat(128);
     let script = format!(
         "globalThis.entered = true; try {{ eval('{padding}1'); }}
@@ -1360,7 +1360,7 @@ fn a_source_limit_stops_before_the_next_utf8_byte_and_before_dispatch() {
         },
         None,
     );
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(2))
         .unwrap();
@@ -1386,7 +1386,7 @@ fn lookahead_and_eof_report_only_the_reader_calls_that_occurred() {
         },
         None,
     );
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(source, ExecutionOptions::new(64))
         .unwrap();
@@ -1397,7 +1397,7 @@ fn lookahead_and_eof_report_only_the_reader_calls_that_occurred() {
 
 #[test]
 fn utf16_surrogate_inspection_has_its_own_source_read_admission() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     // Quote, high surrogate, low surrogate, quote.
     let source = Source::from_utf16(&[0x27, 0xD83D, 0xDE00, 0x27]);
     let outcome = context
@@ -1446,7 +1446,7 @@ fn nested_eval_preserves_source_units_and_attributes_decoder_attempts() {
     ];
     for script in ["eval(src)", "(0, eval)(src)"] {
         for (source, scope_name, expected, attempts) in &sources {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             context
                 .register_global_property(js_string!("src"), source.clone(), Attribute::default())
                 .unwrap();
@@ -1487,7 +1487,7 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
         "try { eval(src); } catch { globalThis.caught = true; }",
         "try { (0, eval)(src); } catch { globalThis.caught = true; }",
     ] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .register_global_property(js_string!("src"), 1, Attribute::default())
             .unwrap();
@@ -1500,7 +1500,7 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
             for units in [2, source.len()] {
                 let admitted_units = u64::try_from(units).unwrap();
                 let limit = outer.report.source_reads().unwrap() + admitted_units;
-                let mut context = Context::default();
+                let mut context = Context::builder().build().unwrap();
                 context
                     .register_global_property(
                         js_string!("src"),
@@ -1555,7 +1555,7 @@ fn interrupted_utf8_reads_cannot_retry_past_the_source_budget() {
     }
 
     let reads = Cell::new(0);
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(
             Source::from_reader(InterruptedReader(&reads), None),
@@ -1583,7 +1583,7 @@ fn opaque_decoder_runs_only_for_admitted_calls() {
         },
         None,
     );
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(
             source,
@@ -1617,7 +1617,7 @@ fn opaque_decoder_runs_only_for_admitted_calls() {
 #[test]
 fn opaque_decoder_rejects_code_points_outside_unicode() {
     let source = Source::from_decoder(|| Ok(Some(u32::MAX)), None);
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(1))
         .unwrap();
@@ -1635,7 +1635,7 @@ fn opaque_decoder_rejects_code_points_outside_unicode() {
 #[test]
 fn opaque_decoder_preserves_surrogate_source_units() {
     let mut input = [0x27, 0xD800, 0x27].into_iter();
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let result = context
         .eval(Source::from_decoder(|| Ok(input.next()), None))
         .unwrap();
@@ -1648,7 +1648,7 @@ fn opaque_decoder_preserves_surrogate_source_units() {
 #[test]
 fn guest_parser_entry_points_share_the_outer_source_cap() {
     for builtin in ["eval", "Function", "JSON.parse", "parseModule"] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .register_global_builtin_callable(
                 js_string!("parseModule"),
@@ -1714,7 +1714,7 @@ fn guest_parser_entry_points_share_the_outer_source_cap() {
 
 #[test]
 fn a_host_callback_cannot_swallow_the_first_source_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("swallowSourceStop"),
@@ -1816,7 +1816,7 @@ use surgeist_js::{
 
 #[test]
 fn an_empty_script_admits_its_return_check_and_return() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
 
     // The empty script emits only CheckReturn and Return.
     let denied = context
@@ -1839,7 +1839,7 @@ fn an_empty_script_admits_its_return_check_and_return() {
 
 #[test]
 fn a_host_stop_preserves_prior_effects_and_bypasses_guest_handlers() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let source = "globalThis.started = true;
         try { while (true) {} }
         catch { globalThis.caught = true; }
@@ -1866,7 +1866,7 @@ fn a_host_stop_preserves_prior_effects_and_bypasses_guest_handlers() {
 
 #[test]
 fn reentrant_evaluation_cannot_hide_the_first_instruction_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("reenter"),
@@ -1918,7 +1918,7 @@ fn reentrant_evaluation_cannot_hide_the_first_instruction_stop() {
 
 #[test]
 fn a_nested_legacy_stop_preserves_the_callers_pending_throw() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.runtime_limits_mut().set_loop_iteration_limit(0);
     context
         .register_global_builtin_callable(
@@ -2031,7 +2031,7 @@ fn an_inline_await_stop_reaches_the_executor_and_releases_the_generator() {
 
 #[test]
 fn bounded_profiling_preserves_admission_and_reports_trace_loss() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let source = Source::from_bytes("");
     let outcome = context
         .eval_with_budget(
@@ -2065,7 +2065,7 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
         })
     }
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     for timing in [false, true] {
         TICKS.set(0);
         let outcome = context
@@ -2116,7 +2116,7 @@ fn an_instruction_stop_preserves_an_async_generator_return_already_given_to_a_jo
     // Sweep the checkpoints of this small call so the fixture exercises the
     // stop between closing the generator and returning from its VM frame.
     for limit in 0..128 {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .eval(Source::from_bytes(
                 "globalThis.generator = (async function* () {
@@ -2155,7 +2155,7 @@ fn an_instruction_stop_preserves_an_async_generator_return_already_given_to_a_jo
 
 #[test]
 fn an_instruction_stop_before_async_return_registration_discards_the_unowned_queue() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes(
             "const value = Promise.resolve(7);
@@ -2200,7 +2200,7 @@ fn preparation_and_first_instruction_refusals_report_no_execution_effect() {
             ("let =", ExecutionOptions::new(32)),
             ("42", ExecutionOptions::new(0)),
         ] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let outcome = context
                 .eval_with_budget(Source::from_bytes(source), options.with_profile(profile))
                 .unwrap();
@@ -2213,7 +2213,7 @@ fn preparation_and_first_instruction_refusals_report_no_execution_effect() {
 
 #[test]
 fn an_instruction_stop_retains_execution_effect_status() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .eval_with_budget(
             Source::from_bytes("globalThis.retainedEffect = 41; while (true) {}"),
@@ -2231,7 +2231,7 @@ fn an_instruction_stop_retains_execution_effect_status() {
 
 #[test]
 fn nested_preparation_refusal_cannot_clear_execution_effect_status() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_callable(
             js_string!("nestedRefusal"),
@@ -2256,7 +2256,7 @@ fn nested_preparation_refusal_cannot_clear_execution_effect_status() {
 fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
     const SOURCE: &str = "let pending = seed + 2; (class {}); pending";
     fn seeded() -> Context {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.eval(Source::from_bytes("let seed = 40;")).unwrap();
         context
     }
@@ -2344,7 +2344,7 @@ fn optimizer_work_boundaries_preserve_results_and_first_refusal() {
     ];
     for profile in modes {
         for limit in [EXACT - 1, EXACT] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
             let outcome = context
                 .eval_with_budget(
@@ -2379,7 +2379,7 @@ fn optimizer_work_boundaries_preserve_results_and_first_refusal() {
 #[test]
 fn disabled_optimizer_ignores_a_zero_optimizer_budget() {
     use surgeist_js::optimizer::OptimizerOptions;
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.set_optimizer_options(OptimizerOptions::empty());
     let result = context
         .eval_with_budget(
@@ -2394,7 +2394,7 @@ fn disabled_optimizer_ignores_a_zero_optimizer_budget() {
 #[test]
 fn optimizer_refusal_keeps_lexical_names_and_script_effects_private() {
     use surgeist_js::optimizer::OptimizerOptions;
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
     let source = "let pendingOptimizer = 1 + 2; pendingOptimizer";
     let outcome = context
@@ -2437,7 +2437,7 @@ fn caught_optimizer_refusal_remains_the_operation_first_stop() {
         let _ = context.eval(Source::from_bytes("1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16"));
         Ok(JsValue::new(42))
     }
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
     context
         .register_global_builtin_callable(
@@ -2490,7 +2490,7 @@ fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
     for (source, expected) in cases {
         let mut usage = None;
         for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
             let outcome = context
                 .eval_with_budget(
@@ -2504,7 +2504,7 @@ fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
                 assert_eq!(admitted, usage);
             }
             usage = Some(admitted);
-            let mut refused_context = Context::default();
+            let mut refused_context = Context::builder().build().unwrap();
             refused_context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
             let limit = admitted - 1;
             let refused = refused_context
@@ -2530,7 +2530,7 @@ fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
 #[test]
 fn unlimited_optimizer_preserves_bigint_power_guards_and_zero_results() {
     use surgeist_js::optimizer::OptimizerOptions;
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
     let source = "let ranged = false; try { 1n ** 18446744073709551616n; } catch (error) { ranged = error instanceof RangeError; } ranged && 0n ** 18446744073709551616n === 0n && 0n ** 0n === 1n";
     let result = context
@@ -2550,7 +2550,7 @@ fn optimizer_phase_timing_is_selected_by_the_operation_profile() {
         })
     }
     for timing in [false, true] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes("1 + 2"),
@@ -2586,6 +2586,7 @@ fn construct_selected_function(
 ) -> JsResult<JsValue> {
     let constructor = context
         .global_object()
+        .unwrap()
         .get(js_string!("SelectedConstructor"), context.reborrow())?
         .as_object()
         .unwrap();
@@ -2600,7 +2601,7 @@ fn construct_selected_function(
 }
 
 fn selected_constructor_context(expression: &str, callback: NativeFunction) -> Context {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let constructor = context.eval(Source::from_bytes(expression)).unwrap();
     context
         .register_global_property(
@@ -2694,7 +2695,7 @@ fn non_script_eval_preparation_uses_the_operation_scope_budget() {
         "eval('let privateEval = 1; privateEval')",
         "(0, eval)('let privateEval = 1; privateEval')",
     ] {
-        let mut control = Context::default();
+        let mut control = Context::builder().build().unwrap();
         control
             .register_global_builtin_callable(
                 js_string!("eval"),
@@ -2707,7 +2708,7 @@ fn non_script_eval_preparation_uses_the_operation_scope_budget() {
             .unwrap();
         assert_eq!(control.result.unwrap(), JsValue::new(42));
         let limit = control.report.scope_work().unwrap();
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .eval_with_budget(
                 Source::from_bytes(source),
@@ -2747,7 +2748,7 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
         Ok(JsValue::new(42))
     }
     fn context(callback: NativeFunction) -> Context {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .register_global_builtin_callable(js_string!("prepareNested"), 0, callback)
             .unwrap();
@@ -2877,6 +2878,7 @@ fn assert_private_frontdoor_boundary(
             assert!(
                 !context
                     .global_object()
+                    .unwrap()
                     .has_own_property(name, context.access())
                     .unwrap(),
                 "{source}: refused global variable was published"
@@ -2919,7 +2921,11 @@ fn non_script_eval_exact_boundaries_preserve_profiles_and_fresh_retry() {
         "eval('\"use strict\"; var pendingEvalName = 1; 42')",
         "(0, eval)('\"use strict\"; var pendingEvalName = 1; 42')",
     ] {
-        assert_private_frontdoor_boundary(Context::default, source, Some("pendingEvalName"));
+        assert_private_frontdoor_boundary(
+            || Context::builder().build().unwrap(),
+            source,
+            Some("pendingEvalName"),
+        );
     }
 }
 
@@ -2935,7 +2941,7 @@ fn compilation_profile_work(source: &str) -> u64 {
             .map(|&dimension| usage.work(dimension))
             .sum()
     }
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
     let outcome = context
         .eval_with_budget(
@@ -2992,9 +2998,11 @@ fn compiler_json_lowering_records_additional_literal_work() {
     ) -> JsResult<JsValue> {
         let input = context
             .global_object()
+            .unwrap()
             .get(js_string!("selectedJsonInput"), context.reborrow())?;
         let json = context
             .global_object()
+            .unwrap()
             .get(js_string!("JSON"), context.reborrow())?
             .as_object()
             .unwrap();
@@ -3017,7 +3025,7 @@ fn compiler_json_lowering_records_additional_literal_work() {
                 .map(|&dimension| usage.work(dimension))
                 .sum()
         }
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
         context
             .register_global_property(
@@ -3058,7 +3066,7 @@ fn compiler_json_lowering_records_additional_literal_work() {
 
 fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool) {
     fn context() -> Context {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
         context
     }
@@ -3210,7 +3218,7 @@ fn compiler_json_exact_boundaries_preserve_reviver_sources_and_proto_data() {
 #[test]
 fn compiler_class_anonymous_queries_charge_parenthesized_searches() {
     fn searches(source: &str) -> u64 {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
         let outcome = context
             .eval_with_budget(
@@ -3268,7 +3276,7 @@ fn compiler_class_anonymous_queries_charge_parenthesized_searches() {
 #[test]
 fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
     fn searches(wrappers: usize) -> u64 {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
         let source = format!(
             "export default {}function() {{}}{};",
@@ -3343,7 +3351,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
 #[test]
 fn compiler_source_position_queries_charge_the_actual_start_path() {
     fn visits(expression: &str) -> u64 {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
         let source = format!("try {{ throw {expression}; }} catch {{}} 42;");
         let outcome = context
@@ -3539,7 +3547,7 @@ mod async_operation_regressions {
                 first_stop: Rc::default(),
                 results: Rc::default(),
             };
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let _ = context.insert_data(probe.clone());
             context
                 .register_global_builtin_callable(
@@ -3641,7 +3649,7 @@ mod async_operation_regressions {
 
     fn assert_job_preserves_its_closures_first_stop(reusable: bool, returns_guest_error: bool) {
         const LIMIT: u64 = 64;
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let caller_realm = context.realm().clone();
         let target_realm = context.create_realm().unwrap();
         assert_ne!(target_realm, caller_realm);
@@ -3759,7 +3767,7 @@ mod async_operation_regressions {
 
     fn assert_panicking_native_job_restores_its_caller_realm(reusable: bool) {
         use std::panic::{AssertUnwindSafe, catch_unwind};
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let caller_realm = context.realm().clone();
         let target_realm = context.create_realm().unwrap();
         assert_ne!(target_realm, caller_realm);
@@ -3802,7 +3810,7 @@ mod async_operation_regressions {
         use surgeist_js::object::builtins::JsFunction;
 
         for host_function_call in [true, false] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let caller_realm = context.realm().clone();
             let fresh_function = JsFunction::from_object(
                 context
@@ -3854,6 +3862,7 @@ mod async_operation_regressions {
                 if host_function_call {
                     let function = context
                         .global_object()
+                        .unwrap()
                         .get(js_string!("panicWrapper"), context.reborrow())?;
                     JsFunction::from_object(function.as_object().unwrap())
                         .unwrap()
@@ -3949,7 +3958,7 @@ mod async_operation_regressions {
     }
 
     fn assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(reusable: bool) {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let caller_realm = context.realm().clone();
         let selected_realm = context.create_realm().unwrap();
         assert_ne!(selected_realm, caller_realm);
@@ -3996,7 +4005,7 @@ mod async_operation_regressions {
                 .build()
                 .unwrap()
         } else {
-            Context::default()
+            Context::builder().build().unwrap()
         };
         let caller_realm = context.realm().clone();
         let caught_expected_panic = Rc::new(Cell::new(false));
@@ -4167,7 +4176,7 @@ mod async_operation_regressions {
 
     #[test]
     fn dropping_an_unpolled_script_future_creates_no_frames_or_effects() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let script = Script::parse(
             Source::from_bytes("globalThis.unpolledEffect = 1;"),
             None,
@@ -4194,7 +4203,7 @@ mod async_operation_regressions {
             task::{Context as TaskContext, Poll, Waker},
         };
 
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let committed = Rc::new(Cell::new(0_u32));
         let _ = context.insert_data(committed.clone());
         context

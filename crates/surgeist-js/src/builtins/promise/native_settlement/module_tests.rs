@@ -189,7 +189,7 @@ fn an_explicit_module_notice_upgrades_prior_generic_retirement_through_the_activ
 
 #[test]
 fn module_terminal_status_survives_late_successor_handoff_and_settlement() {
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let owner = Association::new(&context).unwrap();
     let predecessor = JobObserver::new();
     owner.bind_job(&predecessor, true).unwrap();
@@ -231,7 +231,7 @@ fn selected_delivery(prepared: &PreparedHandoff) -> Arc<Dependency> {
 
 #[test]
 fn abandoned_follow_preparation_cannot_deliver_a_module_notice_to_the_valid_successor() {
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let owner = Association::new(&context).unwrap();
     let obsolete = Association::new(&context).unwrap();
     let prepared = Association::prepare_follow(&owner, &obsolete).unwrap();
@@ -262,7 +262,7 @@ fn abandoned_follow_preparation_cannot_deliver_a_module_notice_to_the_valid_succ
 
 #[test]
 fn replaced_follow_epoch_cannot_deliver_a_module_notice_to_the_committed_successor() {
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let owner = Association::new(&context).unwrap();
     let obsolete = Association::new(&context).unwrap();
     let prepared = Association::prepare_follow(&owner, &obsolete).unwrap();
@@ -403,6 +403,7 @@ fn native_association_finds_a_retained_module_cause_at_the_last_vertex_of_a_foll
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("moduleCauseEffects"), context.access())
             .unwrap(),
         1.into()

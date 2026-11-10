@@ -61,7 +61,7 @@ pub(crate) struct SegmentIterator {
 
 impl IntrinsicObject for SegmentIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Segmenter String Iterator"),
@@ -73,8 +73,8 @@ impl IntrinsicObject for SegmentIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().segment()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().iterator_prototypes().segment()?)
     }
 }
 
@@ -82,27 +82,33 @@ impl SegmentIterator {
     /// [`CreateSegmentIterator ( segmenter, string )`][spec]
     ///
     /// [spec]: https://tc39.es/ecma402/#sec-createsegmentiterator
-    pub(crate) fn create(segmenter: JsObject, string: JsString, context: &mut Context) -> JsObject {
-        // 1. Let internalSlotsList be « [[IteratingSegmenter]], [[IteratedString]], [[IteratedStringNextSegmentCodeUnitIndex]] ».
-        // 2. Let iterator be OrdinaryObjectCreate(%SegmentIteratorPrototype%, internalSlotsList).
-        // 3. Set iterator.[[IteratingSegmenter]] to segmenter.
-        // 4. Set iterator.[[IteratedString]] to string.
-        // 5. Set iterator.[[IteratedStringNextSegmentCodeUnitIndex]] to 0.
-        // 6. Return iterator.
-        JsObject::from_proto_and_data_with_shared_shape(
-            context.root_shape(),
-            context
-                .intrinsics()
-                .objects()
-                .iterator_prototypes()
-                .segment(),
-            Self {
-                segmenter: segmenter.edge(),
-                string,
-                next_segment_index: 0,
-            },
+    pub(crate) fn create(
+        segmenter: JsObject,
+        string: JsString,
+        context: &mut Context,
+    ) -> JsResult<JsObject> {
+        Ok(
+            // 1. Let internalSlotsList be « [[IteratingSegmenter]], [[IteratedString]], [[IteratedStringNextSegmentCodeUnitIndex]] ».
+            // 2. Let iterator be OrdinaryObjectCreate(%SegmentIteratorPrototype%, internalSlotsList).
+            // 3. Set iterator.[[IteratingSegmenter]] to segmenter.
+            // 4. Set iterator.[[IteratedString]] to string.
+            // 5. Set iterator.[[IteratedStringNextSegmentCodeUnitIndex]] to 0.
+            // 6. Return iterator.
+            JsObject::from_proto_and_data_with_shared_shape(
+                context.root_shape(),
+                context
+                    .intrinsics()
+                    .objects()
+                    .iterator_prototypes()
+                    .segment()?,
+                Self {
+                    segmenter: segmenter.edge(),
+                    string,
+                    next_segment_index: 0,
+                },
+            )?
+            .upcast(),
         )
-        .upcast()
     }
     /// [`%SegmentIteratorPrototype%.next ( )`][spec]
     ///
@@ -148,11 +154,7 @@ impl SegmentIterator {
             drop(iter);
             // 7. If endIndex is not finite, then
             //     a. Return CreateIterResultObject(undefined, true).
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
         // 8. Set iterator.[[IteratedStringNextSegmentCodeUnitIndex]] to endIndex.
         iter.next_segment_index = end;
@@ -163,10 +165,6 @@ impl SegmentIterator {
         let segment_data = create_segment_data_object(string, start..end, is_word_like, context)?;
 
         // 10. Return CreateIterResultObject(segmentData, false).
-        Ok(create_iter_result_object_trusted(
-            segment_data.into(),
-            false,
-            context,
-        ))
+        create_iter_result_object_trusted(segment_data.into(), false, context)
     }
 }

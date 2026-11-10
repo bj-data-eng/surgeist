@@ -55,8 +55,8 @@ pub(crate) struct SetIterator {
 
 impl IntrinsicObject for SetIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
@@ -68,8 +68,8 @@ impl IntrinsicObject for SetIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().set()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().iterator_prototypes().set()?)
     }
 }
 
@@ -92,13 +92,13 @@ impl SetIterator {
         }
         let set_iterator = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().objects().iterator_prototypes().set(),
+            context.intrinsics().objects().iterator_prototypes().set()?,
             Self {
                 iterated_set: Some(SetIteration::new(&set)?),
                 next_index: 0,
                 iteration_kind: kind,
             },
-        );
+        )?;
         Ok(set_iterator.into())
     }
 
@@ -156,18 +156,14 @@ impl SetIterator {
         };
 
         let Some(element) = element else {
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
         let item = match kind {
             PropertyNameKind::KeyAndValue => {
-                Array::create_array_from_list([element.clone(), element], context).into()
+                Array::create_array_from_list([element.clone(), element], context)?.into()
             }
             _ => element,
         };
-        Ok(create_iter_result_object_trusted(item, false, context))
+        create_iter_result_object_trusted(item, false, context)
     }
 }

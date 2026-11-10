@@ -122,7 +122,7 @@ impl LinkAttempt {
                     .iter()
                     .any(|namespace| namespace.module == *module)
                 {
-                    namespaces.push(NamespacePreparation::new(module, context));
+                    namespaces.push(NamespacePreparation::new(module, context)?);
                 }
             }
         }
@@ -531,7 +531,7 @@ struct NamespacePreparation {
 }
 
 impl NamespacePreparation {
-    fn new(module: &Module, context: &mut Context) -> Self {
+    fn new(module: &Module, context: &mut Context) -> JsResult<Self> {
         let existing = module.inner.namespace.borrow().clone();
         let object = if let Some(existing) = existing {
             JsObject::from_inner(existing)
@@ -541,12 +541,12 @@ impl NamespacePreparation {
                 .into_iter()
                 .filter(|name| module.resolve_export(name, &mut HashSet::default()).is_ok())
                 .collect();
-            super::super::ModuleNamespace::create(module.clone(), names, context)
+            super::super::ModuleNamespace::create(module.clone(), names, context)?
         };
-        Self {
+        Ok(Self {
             module: module.clone(),
             object,
-        }
+        })
     }
 
     /// Preserve the identity of any namespace created by an admitted callback.
@@ -891,7 +891,7 @@ mod tests {
 
     #[test]
     fn a_profile_clock_can_reenter_module_linking_without_an_interior_borrow() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let module = Module::parse(
             Source::from_bytes("export function ready() { return 42; }"),
             None,
@@ -939,7 +939,7 @@ mod tests {
 
     #[test]
     fn a_clock_realm_edit_survives_group_conflict_and_retained_module_retry() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let module = Module::parse(
             Source::from_bytes("export function answer() { return callbackOwned + 1; }"),
             None,

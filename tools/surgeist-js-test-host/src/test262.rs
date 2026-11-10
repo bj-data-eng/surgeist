@@ -98,7 +98,7 @@ pub fn register_js262(
     console: bool,
     mut context: ContextAccess<'_>,
 ) -> JsResult<JsObject> {
-    let global_obj = context.global_object();
+    let global_obj = context.global_object()?;
 
     let agent = agent_obj(handles, console, context.reborrow())?;
 
@@ -409,7 +409,7 @@ fn register_js262_worker(
                 .as_callable()
                 .ok_or_else(|| JsNativeError::typ().with_message("argument is not callable"))?;
 
-            let buffer = JsSharedArrayBuffer::from_buffer(array, context.reborrow());
+            let buffer = JsSharedArrayBuffer::from_buffer(array, context.reborrow())?;
             callable.call(&JsValue::undefined(), &[buffer.into()], context.reborrow())
         },
         AgentCapture::new(WorkerBroadcasts(RefCell::new(rx))),

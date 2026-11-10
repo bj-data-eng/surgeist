@@ -20,9 +20,10 @@ use crate::{
         intrinsics::{Intrinsics, StandardConstructor},
     },
     environments::{DeclarativeEnvironment, DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef},
+    error::{EngineResourceError, RootingError},
     module::{Module, ModuleEdge},
     object::{
-        NativeObject, ObjectEdge,
+        AllocationOrigin, NativeObject, ObjectEdge,
         shape::{RootShape, SharedShape},
     },
 };
@@ -30,7 +31,7 @@ use rustc_hash::FxHashMap;
 use surgeist_js::JsValue;
 use surgeist_js::property::{Attribute, PropertyDescriptor, PropertyKey};
 use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
+use surgeist_js_gc::heap::{AccessError, RecordRef, Rooted, Trace as HeapTrace};
 
 /// Representation of a Realm.
 ///
@@ -133,14 +134,30 @@ pub(crate) struct BootstrapRoots {
 }
 
 impl BootstrapRoots {
-    pub(crate) fn retain(&mut self, object: JsObject) -> ObjectEdge {
+    pub(crate) fn retain(&mut self, object: JsObject) -> JsResult<ObjectEdge> {
+        Self::reserve(&mut self.objects)?;
         let edge = object.edge();
         self.objects.push(object);
-        edge
+        Ok(edge)
     }
 
-    pub(crate) fn retain_shape(&mut self, shape: SharedShape) {
+    pub(crate) fn retain_shape(&mut self, shape: SharedShape) -> JsResult<()> {
+        Self::reserve(&mut self.shapes)?;
         self.shapes.push(shape);
+        Ok(())
+    }
+
+    fn reserve<T>(values: &mut Vec<T>) -> JsResult<()> {
+        values
+            .len()
+            .checked_add(1)
+            .and_then(|length| length.checked_mul(std::mem::size_of::<T>()))
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(EngineResourceError::SizeOverflow)?;
+        values
+            .try_reserve(1)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        Ok(())
     }
 }
 
@@ -172,13 +189,11 @@ impl Realm {
     #[inline]
     pub fn create(hooks: &dyn HostHooks, root_shape: &RootShape) -> JsResult<Self> {
         let mut roots = BootstrapRoots::default();
-        let intrinsics = Intrinsics::uninit(root_shape, &mut roots).ok_or_else(|| {
-            JsNativeError::typ().with_message("failed to create the realm intrinsics")
-        })?;
+        let intrinsics = Intrinsics::uninit(root_shape, &mut roots)?;
 
-        let global_object = hooks.create_global_object(&intrinsics);
+        let global_object = hooks.create_global_object(&intrinsics)?;
         let global_this = hooks
-            .create_global_this(&intrinsics)
+            .create_global_this(&intrinsics)?
             .unwrap_or_else(|| global_object.clone());
         if ![&global_object, &global_this]
             .into_iter()
@@ -192,7 +207,7 @@ impl Realm {
             .runtime()
             .heap
             .allocate(DeclarativeEnvironment::global())
-            .expect("global environment has valid heap edges");
+            .map_err(|error| AllocationOrigin::TrustedConstruction.access_error(error.reason))?;
         let scope = Scope::new_global();
 
         let realm = Self {
@@ -203,15 +218,17 @@ impl Realm {
                     intrinsics,
                     environment: environment.record_ref(),
                     scope,
-                    global_object: roots.retain(global_object),
-                    global_this: roots.retain(global_this),
+                    global_object: roots.retain(global_object)?,
+                    global_this: roots.retain(global_this)?,
                     parser_identifier: Cell::new(0),
                     template_map: RefCell::default(),
                     loaded_modules: RefCell::default(),
                     host_classes: RefCell::default(),
                     host_defined: RefCell::default(),
                 })
-                .expect("realm has valid heap edges"),
+                .map_err(|error| {
+                    AllocationOrigin::TrustedConstruction.access_error(error.reason)
+                })?,
         };
 
         drop(roots);
@@ -267,22 +284,28 @@ impl Realm {
     }
 
     /// Checks if this `Realm` has the class `C` registered into its class map.
-    #[must_use]
-    pub fn has_class<C: Class>(&self) -> bool {
-        self.inner
+    ///
+    /// Returns a host access error if the registry is mutably borrowed.
+    pub fn has_class<C: Class>(&self) -> Result<bool, RootingError> {
+        Ok(self
+            .inner
             .host_classes
-            .borrow()
-            .contains_key(&TypeId::of::<C>())
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+            .contains_key(&TypeId::of::<C>()))
     }
 
     /// Gets the constructor and prototype of the class `C` if it is registered in the class map.
-    #[must_use]
-    pub fn get_class<C: Class>(&self) -> Option<ClassConstructor> {
+    ///
+    /// Absence returns `Ok(None)`. Registry and root-acquisition failures remain errors.
+    pub fn get_class<C: Class>(&self) -> Result<Option<ClassConstructor>, RootingError> {
         self.inner
             .host_classes
-            .borrow()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
             .get(&TypeId::of::<C>())
             .map(ClassConstructor::from_stored)
+            .transpose()
     }
 
     pub(crate) fn environment(&self) -> DeclarativeEnvironmentRef {
@@ -299,12 +322,20 @@ impl Realm {
         &self.inner.scope
     }
 
-    pub(crate) fn global_object(&self) -> JsObject {
-        JsObject::from_inner(self.inner.global_object.clone())
+    pub(crate) fn global_object(&self) -> Result<JsObject, RootingError> {
+        self.inner
+            .global_object
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)
     }
 
-    pub(crate) fn global_this(&self) -> JsObject {
-        JsObject::from_inner(self.inner.global_this.clone())
+    pub(crate) fn global_this(&self) -> Result<JsObject, RootingError> {
+        self.inner
+            .global_this
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)
     }
 
     pub(crate) fn insert_loaded_module(&self, specifier: JsString, module: &Module) {
@@ -388,7 +419,7 @@ impl Realm {
         V: Into<JsValue>,
     {
         let context = context.into_owner();
-        self.global_object().define_property_or_throw(
+        self.global_object()?.define_property_or_throw(
             key,
             PropertyDescriptor::builder()
                 .value(value)
@@ -401,26 +432,55 @@ impl Realm {
     }
 
     /// Register a class `C` in this realm.
+    ///
+    /// Replaces an existing registration after validating the receiving runtime.
+    /// Access and storage-reservation failures leave the previous entry intact.
     pub fn register_class<C: Class>(&self, spec: ClassConstructor) -> JsResult<()> {
         let runtime = self.runtime();
         spec.constructor().check_runtime(&runtime)?;
         spec.prototype().check_runtime(&runtime)?;
-        self.inner
-            .host_classes
-            .borrow_mut()
-            .insert(TypeId::of::<C>(), spec.stored());
+        let previous = {
+            let mut classes = self
+                .inner
+                .host_classes
+                .try_borrow_mut()
+                .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+            let key = TypeId::of::<C>();
+            if !classes.contains_key(&key) {
+                classes
+                    .len()
+                    .checked_add(1)
+                    .ok_or(EngineResourceError::SizeOverflow)?;
+                classes
+                    .try_reserve(1)
+                    .map_err(|_| EngineResourceError::Allocation)?;
+            }
+            classes.insert(key, spec.stored())
+        };
+        drop(previous);
         Ok(())
     }
 
     /// Unregister a class `C` in this realm.
-    #[must_use]
-    pub fn unregister_class<C: Class>(&self) -> Option<ClassConstructor> {
-        self.inner
-            .host_classes
-            .borrow_mut()
-            .remove(&TypeId::of::<C>())
-            .as_ref()
-            .map(ClassConstructor::from_stored)
+    ///
+    /// Restores both returned roots before removing the entry. Access or restoration
+    /// failure leaves the registration present.
+    pub fn unregister_class<C: Class>(&self) -> Result<Option<ClassConstructor>, RootingError> {
+        let (removed, restored) = {
+            let mut classes = self
+                .inner
+                .host_classes
+                .try_borrow_mut()
+                .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+            let key = TypeId::of::<C>();
+            let Some(stored) = classes.get(&key) else {
+                return Ok(None);
+            };
+            let restored = ClassConstructor::from_stored(stored)?;
+            (classes.remove(&key), restored)
+        };
+        drop(removed);
+        Ok(Some(restored))
     }
 
     pub(crate) fn identity(&self) -> surgeist_js_gc::heap::ObjectId {
@@ -460,7 +520,7 @@ mod tests {
 
     #[test]
     fn builtin_function_slots_are_ordered_and_isolated_between_realms() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let source = "Array.prototype.slice";
         let first = context.eval(Source::from_bytes(source)).unwrap();
         let second_realm = context.create_realm().unwrap();
@@ -492,8 +552,8 @@ mod tests {
 
     #[test]
     fn realm_host_data_retains_local_edges_and_rejects_foreign_edges() {
-        let mut owner = Context::default();
-        let other = Context::default();
+        let mut owner = Context::builder().build().unwrap();
+        let other = Context::builder().build().unwrap();
         let buffer = JsArrayBuffer::new(8, owner.access()).unwrap();
         let buffer_edge = buffer.edge();
         let view = JsDataView::from_js_array_buffer(buffer, None, None, owner.access()).unwrap();
@@ -515,3 +575,6 @@ mod tests {
         assert!(buffer_edge.is_live().unwrap());
     }
 }
+
+#[cfg(test)]
+mod construction_tests;

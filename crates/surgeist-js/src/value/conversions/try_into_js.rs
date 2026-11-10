@@ -209,7 +209,7 @@ where
     T: TryIntoJs,
 {
     fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
-        let set = crate::object::JsSet::new(context.reborrow());
+        let set = crate::object::JsSet::new(context.reborrow())?;
         for value in self {
             let value = value.try_into_js(context.reborrow())?;
             set.add(value, context.reborrow())?;
@@ -224,7 +224,7 @@ where
     V: TryIntoJs,
 {
     fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
-        let map = crate::object::JsMap::new(context.reborrow());
+        let map = crate::object::JsMap::new(context.reborrow())?;
         for (key, value) in self {
             let key = key.try_into_js(context.reborrow())?;
             let value = value.try_into_js(context.reborrow())?;
@@ -246,7 +246,7 @@ mod try_into_js_tests {
             assert!(expect_err.is_err());
         }
 
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let context = &mut context;
 
         let int = (1 << 55) + 17i64;
@@ -264,7 +264,7 @@ mod try_into_js_tests {
 
     #[test]
     fn int_tuple() -> JsResult<()> {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let context = &mut context;
 
         let tuple_initial = (
@@ -293,7 +293,7 @@ mod try_into_js_tests {
 
     #[test]
     fn string() -> JsResult<()> {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let context = &mut context;
 
         let s_init = "String".to_string();
@@ -305,7 +305,7 @@ mod try_into_js_tests {
 
     #[test]
     fn vec() -> JsResult<()> {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let context = &mut context;
 
         let vec_init = vec![(-4i64, 2u64), (15, 15), (32, 23)];

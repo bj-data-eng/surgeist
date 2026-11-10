@@ -93,7 +93,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{js_string, JsResult, object::{builtins::{JsUint8Array, JsArrayBuffer}}, property::{PropertyKey}, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array_buffer8 = JsArrayBuffer::new(8, context.access())?;
     /// let array = JsUint8Array::from_array_buffer(array_buffer8, context.access())?;
     /// assert_eq!(
@@ -150,7 +150,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array}, JsNativeError, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context.access())?;
     /// assert_eq!(
     ///     Err(JsNativeError::typ()
@@ -179,7 +179,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, JsValue, object::{builtins::{JsUint8Array}}, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
     /// array.copy_within(3, 1, Some(3), context.access())?;
     /// assert_eq!(array.get(0, context.access())?, JsValue::new(1.0));
@@ -311,7 +311,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array}, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
     /// let subarray2_6 = array.subarray(2, 6, context.access())?;
     /// assert_eq!(subarray2_6.length(context.access())?, 4);
@@ -454,7 +454,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, object::{builtins::{JsUint8Array, JsArray, JsArrayBuffer}}, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array_buffer8 = JsArrayBuffer::new(8, context.access())?;
     /// let initialized8_array = JsUint8Array::from_array_buffer(array_buffer8, context.access())?;
     /// initialized8_array.set_values(
@@ -539,7 +539,7 @@ impl JsTypedArray {
     /// ```
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data: Vec<u8> = (0..=255).collect();
     /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
@@ -598,7 +598,7 @@ impl JsTypedArray {
     /// ```
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data: Vec<u8> = (0..=255).collect();
     /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
@@ -649,7 +649,7 @@ impl JsTypedArray {
     /// ```
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data: Vec<u8> = (0..=255).collect();
     /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
@@ -717,7 +717,7 @@ impl JsTypedArray {
     /// # }
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context.access())?;
     /// let num_to_modify = Counter(Rc::new(Cell::new(0)));
     ///
@@ -771,7 +771,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array}, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data: Vec<u8> = (0..=255).collect();
     /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
@@ -999,7 +999,7 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, js_string, object::{builtins::{JsUint8Array}}, Context};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
     /// let tag = array.to_string_tag(context.access())?.to_string(context.access())?;
     /// assert_eq!(tag, js_string!("Uint8Array"));
@@ -1107,7 +1107,7 @@ macro_rules! JsTypedArrayType {
                     .intrinsics()
                     .constructors()
                     .$constructor_object()
-                    .constructor()
+                    .constructor()?
                     .into();
                 let object = crate::builtins::typed_array::$constructor_function::constructor(
                     &new_target,
@@ -1139,7 +1139,7 @@ macro_rules! JsTypedArrayType {
                     .intrinsics()
                     .constructors()
                     .$constructor_object()
-                    .constructor()
+                    .constructor()?
                     .into();
                 let object = crate::builtins::typed_array::$constructor_function::constructor(
                     &new_target,
@@ -1172,7 +1172,7 @@ macro_rules! JsTypedArrayType {
                     .intrinsics()
                     .constructors()
                     .$constructor_object()
-                    .constructor()
+                    .constructor()?
                     .into();
                 let object = crate::builtins::typed_array::$constructor_function::constructor(
                     &new_target,
@@ -1208,7 +1208,7 @@ macro_rules! JsTypedArrayType {
             /// ```compile_fail
             /// use surgeist_js::{Context, object::builtins::JsUint8Array};
             ///
-            /// let mut owner = Context::default();
+            /// let mut owner = Context::builder().build().unwrap();
             /// let array = JsUint8Array::from_iter([1u8], owner.access()).unwrap();
             /// let escaped = {
             ///     let mut access = owner.access();
@@ -1305,7 +1305,7 @@ impl JsUint8Array {
     /// # use surgeist_js::{Context, JsResult, object::builtins::JsUint8Array};
     /// # fn main() -> JsResult<()> {
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data: Vec<u8> = (0..=255).collect();
     /// let array = JsUint8Array::from_iter(data.clone(), context.access())?;
     /// let bytes = array.to_vec(context.access())?;
@@ -1482,7 +1482,7 @@ pub fn js_typed_array_from_kind(
 
 #[test]
 fn typed_iterators_uint8() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
 
     let array = JsUint8Array::from_iter(vec.clone(), context.access()).unwrap();
@@ -1496,7 +1496,7 @@ fn typed_iterators_uint8() {
 
 #[test]
 fn uint8_array_to_vec_roundtrip() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let data: Vec<u8> = (0..=255).collect();
     let array = JsUint8Array::from_iter(data.clone(), context.access()).unwrap();
     let bytes = array.to_vec(context.access()).unwrap();
@@ -1505,7 +1505,7 @@ fn uint8_array_to_vec_roundtrip() {
 
 #[test]
 fn typed_iterators_uint32() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u32, 2, 0xFFFF, 4, 0xFF12_3456, 6, 7, 8];
 
     let array = JsUint32Array::from_iter(vec.clone(), context.access()).unwrap();
@@ -1519,7 +1519,7 @@ fn typed_iterators_uint32() {
 
 #[test]
 fn typed_iterators_f32() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![0.1f32, 0.2, 0.3, 0.4, 1.1, 9.99999];
 
     let array = JsFloat32Array::from_iter(vec.clone(), context.access()).unwrap();
@@ -1546,7 +1546,7 @@ mod iterator_access_tests {
     #[test]
     fn typed_iterator_preparation_preserves_array_and_buffer_access_errors() {
         for borrow_array in [true, false] {
-            let context = &mut Context::default();
+            let context = &mut Context::builder().build().unwrap();
             let buffer = JsArrayBuffer::from_byte_block(vec![7, 11], context.access()).unwrap();
             let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
             let alias: JsObject = if borrow_array {
@@ -1572,7 +1572,7 @@ mod iterator_access_tests {
     #[test]
     fn typed_iterator_item_access_error_is_yielded_once_without_consuming_the_array() {
         for borrow_array in [true, false] {
-            let context = &mut Context::default();
+            let context = &mut Context::builder().build().unwrap();
             let buffer = JsArrayBuffer::from_byte_block(vec![7, 11, 13], context.access()).unwrap();
             let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
             let alias: JsObject = if borrow_array {
@@ -1602,7 +1602,7 @@ mod iterator_access_tests {
 
     #[test]
     fn typed_iterators_keep_empty_and_initially_detached_views_empty() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let empty = JsUint8Array::from_iter([], context.access()).unwrap();
         assert!(empty.iter(context.access()).unwrap().next().is_none());
 
@@ -1616,7 +1616,7 @@ mod iterator_access_tests {
 
     #[test]
     fn typed_iterators_preserve_numeric_conversion_after_detachment() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let buffer = JsArrayBuffer::from_byte_block(vec![7, 11], context.access()).unwrap();
         let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
         let mut iterator = array.iter(context.access()).unwrap();
@@ -1641,7 +1641,7 @@ mod iterator_access_tests {
 
     #[test]
     fn typed_iterator_yields_the_bigint_conversion_error_once_after_detachment() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let bytes = [7_i64, 11].into_iter().flat_map(i64::to_ne_bytes).collect();
         let buffer = JsArrayBuffer::from_byte_block(bytes, context.access()).unwrap();
         let array = JsBigInt64Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
@@ -1658,8 +1658,8 @@ mod iterator_access_tests {
 
     #[test]
     fn typed_iterator_preparation_rejects_even_an_empty_foreign_view() {
-        let owner = &mut Context::default();
-        let foreign = &mut Context::default();
+        let owner = &mut Context::builder().build().unwrap();
+        let foreign = &mut Context::builder().build().unwrap();
         let array = JsUint8Array::from_iter([], owner.access()).unwrap();
         let error = array.iter(foreign.access()).err().unwrap();
         assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
@@ -1670,7 +1670,7 @@ mod iterator_access_tests {
 
 #[test]
 fn typed_array_to_string() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u8, 2, 3];
     let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
     assert_eq!(
@@ -1681,7 +1681,7 @@ fn typed_array_to_string() {
 
 #[test]
 fn typed_array_entries() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u8, 2];
     let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
     let entries = array.entries(context.access()).unwrap();
@@ -1720,7 +1720,7 @@ fn typed_array_entries() {
 
 #[test]
 fn typed_array_keys() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u8, 2];
     let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
     let keys = array.keys(context.access()).unwrap();
@@ -1759,7 +1759,7 @@ fn typed_array_keys() {
 
 #[test]
 fn typed_array_values() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let vec = vec![1u8, 2];
     let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
     let values = array.values(context.access()).unwrap();
@@ -1798,7 +1798,7 @@ fn typed_array_values() {
 
 #[test]
 fn typed_array_iterator() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let array = JsUint8Array::from_iter(vec![1u8, 2], context.access()).unwrap();
     let values = array.iterator(context.access()).unwrap();
     let mut values_vec = Vec::new();
@@ -1836,7 +1836,7 @@ fn typed_array_iterator() {
 
 #[test]
 fn typed_array_to_reversed() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context.access()).unwrap();
 
     let reversed = array.to_reversed(context.access()).unwrap();
@@ -1863,7 +1863,7 @@ fn typed_array_to_reversed() {
 
 #[test]
 fn typed_array_to_sorted() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context.access()).unwrap();
 
     let sorted = array.to_sorted(None, context.access()).unwrap();
@@ -1881,7 +1881,7 @@ fn typed_array_to_sorted() {
 
 #[test]
 fn typed_array_to_locale_string() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let array = JsUint8Array::from_iter(vec![1u8, 2, 3], context.access()).unwrap();
 
     let result = array

@@ -19,7 +19,7 @@
 //! "#;
 //!
 //! // Instantiate the execution context
-//! let mut context = Context::default();
+//! let mut context = Context::builder().build().unwrap();
 //!
 //! // Parse the source code
 //! match context.eval(Source::from_bytes(js_code)) {

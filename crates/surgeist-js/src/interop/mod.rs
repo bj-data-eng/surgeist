@@ -29,7 +29,7 @@ pub(crate) mod private {
 ///     }
 /// }
 ///
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 /// let total = Counter(Rc::new(Cell::new(0)));
 /// let add: fn(&Counter, i32) = |total, value| {
 ///     total.0.set(total.0.get() + value);
@@ -49,7 +49,7 @@ pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
 /// The result type must be `'static`.
 /// ```
 /// # use surgeist_js::{IntoJsFunction, Context, JsValue, NativeFunction};
-/// # let mut context = Context::default();
+/// # let mut context = Context::builder().build().unwrap();
 /// let f: fn(i32, i32) -> i32 = |a, b| a + b;
 /// let f = f.into_js_function();
 /// let result = f

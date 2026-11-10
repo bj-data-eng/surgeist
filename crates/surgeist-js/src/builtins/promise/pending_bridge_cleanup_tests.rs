@@ -146,7 +146,12 @@ fn pending_bridge_cleanup_disposes_both_callback_captures_before_resuming_its_fi
     let capabilities = context
         .with_execution(ExecutionOptions::new(4096), |access| {
             let context = access.into_owner();
-            let constructor = context.intrinsics().constructors().promise().constructor();
+            let constructor = context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()
+                .unwrap();
             Ok((
                 PromiseCapability::new(&constructor, context)?,
                 PromiseCapability::new(&constructor, context)?,

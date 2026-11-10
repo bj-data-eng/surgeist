@@ -131,6 +131,7 @@ fn native(promise: &JsPromise, context: &mut Context) -> JsFuture {
 fn count(name: &str, context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }
@@ -185,7 +186,7 @@ fn child_settlement(rejected: bool) {
             .register_global_property(surgeist_js::JsString::from(name), 0, Attribute::all())
             .unwrap();
     }
-    let guest_reason: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let guest_reason: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     context
         .register_global_property(
             js_string!("settlementGuestReason"),
@@ -193,7 +194,7 @@ fn child_settlement(rejected: bool) {
             Attribute::all(),
         )
         .unwrap();
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("settlementGate"), gate, Attribute::all())
         .unwrap();
@@ -255,7 +256,7 @@ fn child_settlement(rejected: bool) {
     // Register the authored observer first: the hook retains the first child reaction.
     let mut child_wait = native(&child_result, &mut context);
     let mut observation_wait = native(&observation, &mut context);
-    let hook_leaf: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let hook_leaf: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     let original: JsError = PanicError::new("authored child settlement publication failure")
         .with_source(
             JsNativeError::range()

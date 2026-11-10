@@ -79,7 +79,7 @@ pub(crate) fn get_options_object(options: &JsValue, context: &Context) -> JsResu
         // If options is undefined, then
         JsVariant::Undefined => {
             // a. Return OrdinaryObjectCreate(null).
-            Ok(JsObject::with_null_proto(context.runtime()))
+            JsObject::with_null_proto(context.runtime())
         }
         // 2. If Type(options) is Object, then
         JsVariant::Object(obj) => {

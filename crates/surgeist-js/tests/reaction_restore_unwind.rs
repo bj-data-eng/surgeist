@@ -176,7 +176,7 @@ fn restore_unwind(reject: bool) {
     let builder = builder.instructions_remaining(1_000_000);
     let mut context = builder.build().unwrap();
     let runtime = context.runtime().clone();
-    let (source, resolvers) = JsPromise::new_pending(context.access());
+    let (source, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let mut source_wait = source.clone().into_js_future(context.access()).unwrap();
     assert!(
         Pin::new(&mut source_wait)

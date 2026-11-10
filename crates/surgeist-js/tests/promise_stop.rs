@@ -25,6 +25,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
     let saved_value = JsValue::from(saved_object.clone());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("savedError"),
             saved_value.clone(),
@@ -94,7 +95,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
 
 #[test]
 fn retained_stop_prevents_sync_executor_error_materialization_from_mutating_saved_stack() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let saved_object = JsNativeError::error()
         .with_message("saved synchronous error")
         .into_opaque(context.access())
@@ -102,6 +103,7 @@ fn retained_stop_prevents_sync_executor_error_materialization_from_mutating_save
     let saved_value = JsValue::from(saved_object.clone());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("savedError"),
             saved_value.clone(),

@@ -25,7 +25,7 @@ impl SetClassPrototype {
         let prototype = match prototype.variant() {
             JsVariant::Object(proto) => Some(proto.clone()),
             JsVariant::Null => None,
-            JsVariant::Undefined => Some(context.intrinsics().constructors().object().prototype()),
+            JsVariant::Undefined => Some(context.intrinsics().constructors().object().prototype()?),
             _ => unreachable!(),
         };
 
@@ -34,7 +34,7 @@ impl SetClassPrototype {
             context.root_shape(),
             prototype,
             OrdinaryObject,
-        )
+        )?
         .upcast();
         let class = context.vm.get_register(class.into()).clone();
 

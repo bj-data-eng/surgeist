@@ -79,7 +79,7 @@ pub(crate) struct Eval;
 
 impl IntrinsicObject for Eval {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, Self::eval)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, Self::eval)?
             .name(Self::NAME)
             .length(1)
             .build()?;
@@ -87,8 +87,8 @@ impl IntrinsicObject for Eval {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().eval().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().eval().map(Into::into)?)
     }
 }
 

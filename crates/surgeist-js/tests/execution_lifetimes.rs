@@ -39,7 +39,7 @@ fn instruction_error(limit: u64) -> EngineError {
 
 #[test]
 fn synchronous_scope_returns_generic_values_and_reentry_uses_the_same_owner() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let denied_callback = Cell::new(false);
     let outcome = context
         .with_execution(ExecutionOptions::new(128), |mut context| {
@@ -87,7 +87,7 @@ fn setup_failure_never_invokes_sync_or_async_callbacks() {
         event_limit: usize::MAX,
         filter: EventFilter::All,
     });
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let called = Cell::new(false);
     assert!(matches!(
         context.with_execution(options, |_| {
@@ -112,7 +112,7 @@ fn setup_failure_never_invokes_sync_or_async_callbacks() {
 
 #[test]
 fn ordinary_guest_error_is_a_completed_result_without_an_abandoned_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |_| {
             Err::<(), _>(JsError::from_opaque(JsValue::new(23)).unwrap())
@@ -132,7 +132,7 @@ fn ordinary_guest_error_is_a_completed_result_without_an_abandoned_stop() {
 #[test]
 fn synchronous_scope_keeps_the_first_stop_over_swallowed_success_or_later_error() {
     for later_error in [false, true] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .with_execution(ExecutionOptions::new(32), |mut context| {
                 let first = context
@@ -168,7 +168,7 @@ fn synchronous_scope_keeps_the_first_stop_over_swallowed_success_or_later_error(
 
 #[test]
 fn independently_prepared_scripts_compose_across_awaits_on_one_reserved_context() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let first = Script::parse(
         Source::from_bytes("globalThis.partial = 20; partial"),
         None,
@@ -205,14 +205,16 @@ fn independently_prepared_scripts_compose_across_awaits_on_one_reserved_context(
 #[test]
 fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
     const SOURCE: &str = "let total = 0; for (let i = 0; i < 6; i++) total += i; total";
-    let control = Context::default()
+    let control = Context::builder()
+        .build()
+        .unwrap()
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(4096))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(15));
     let exact = control.report.instructions().unwrap();
     assert!(exact > 2);
     for limit in [exact, exact - 1] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let mut task = context
             .execution_task(ExecutionOptions::new(limit), async |mut context| {
                 let script = Script::parse(Source::from_bytes(SOURCE), None, context.reborrow())?;
@@ -276,7 +278,7 @@ impl Drop for PublicationProbe {
 
 #[test]
 fn unpolled_task_disposes_callback_captures_before_publishing_zero_work_abandonment() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let receipt_slot = Rc::new(RefCell::new(None));
     let drops = Rc::new(Cell::new(0));
     let unpublished_at_drop = Rc::new(Cell::new(false));
@@ -330,7 +332,7 @@ fn unpolled_task_disposes_callback_captures_before_publishing_zero_work_abandonm
 
 #[test]
 fn cancel_drops_polled_inner_work_before_publishing_and_keeps_committed_effects() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let receipt_slot = Rc::new(RefCell::new(None));
     let drops = Rc::new(Cell::new(0));
     let unpublished_at_drop = Rc::new(Cell::new(false));
@@ -429,7 +431,7 @@ fn canceling_suspended_script_keeps_transferred_jobs_and_skips_guest_cleanup() {
 
 #[test]
 fn completion_and_receipt_share_one_immutable_profile_body() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let receipt_slot = Rc::new(RefCell::new(None));
     let drops = Rc::new(Cell::new(0));
     let unpublished_at_drop = Rc::new(Cell::new(false));
@@ -490,7 +492,7 @@ fn completion_and_receipt_share_one_immutable_profile_body() {
 
 #[test]
 fn canceling_after_a_swallowed_stop_moves_it_into_abandoned_report() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let mut task = context.execution_task(ExecutionOptions::new(32), async |mut context| {
         let first = context.eval(Source::from_bytes(
             "globalThis.beforeStop = 7; try { while (true) {} } finally { globalThis.finalized = true; }",
@@ -530,7 +532,7 @@ fn canceling_after_a_swallowed_stop_moves_it_into_abandoned_report() {
 
 #[test]
 fn native_unwind_publishes_abandonment_immediately_while_task_is_retained() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("panicHost"),
@@ -588,7 +590,7 @@ impl Drop for DiscardedOutput {
 
 #[test]
 fn retained_stop_discards_generic_success_once_and_is_delivered_as_completed_error() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let output_drops = drops.clone();
     let mut task = context
@@ -616,7 +618,7 @@ fn retained_stop_discards_generic_success_once_and_is_delivered_as_completed_err
 
 #[test]
 fn panicking_discard_of_generic_success_still_publishes_the_first_stop_as_abandoned() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let output_drops = drops.clone();
     let mut task = context

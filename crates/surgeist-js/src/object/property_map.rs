@@ -8,6 +8,12 @@ use super::{
 };
 use crate::value::{JsVariant, StoredValue};
 use crate::{
+    JsResult,
+    error::{EngineResourceError, ObjectConstructionError, RootingError},
+    native_function::{CapturedValue, NativeCapture},
+    object::shape::property_table::PropertyTableInner,
+};
+use crate::{
     JsValue,
     property::{PropertyDescriptorBuilder, StoredPropertyDescriptor},
 };
@@ -477,168 +483,184 @@ impl PropertyMap {
         }
     }
 
-    pub(crate) fn shape(&self) -> Shape {
-        self.shape.upgrade().expect("live object retains its shape")
+    pub(crate) fn shape(&self) -> JsResult<Shape> {
+        self.shape
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or_else(|| RootingError::Expired.into())
+    }
+    pub(crate) fn set_prototype(&mut self, prototype: JsPrototype) -> JsResult<()> {
+        self.shape = ShapeRef::from(&self.shape()?.change_prototype_transition(prototype)?);
+        Ok(())
+    }
+    pub(crate) fn named_slot(&self, index: usize) -> JsResult<JsValue> {
+        let value = self
+            .storage
+            .get(index)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        Ok(JsValue::restore(&CapturedValue(value.clone()))?)
+    }
+    pub(crate) fn write_named_slot(&mut self, index: usize, value: JsValue) -> JsResult<()> {
+        *self
+            .storage
+            .get_mut(index)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)? = value.into_stored();
+        Ok(())
+    }
+    pub(crate) fn write_named_object_edge(
+        &mut self,
+        index: usize,
+        value: super::ObjectEdge,
+    ) -> JsResult<()> {
+        *self
+            .storage
+            .get_mut(index)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)? = StoredValue::Object(value);
+        Ok(())
+    }
+    pub(crate) fn initialize_named_slots(
+        &mut self,
+        slots: &mut PreparedNamedSlots,
+    ) -> JsResult<()> {
+        if !self.storage.is_empty() {
+            return Err(ObjectConstructionError::NamedSlotsAlreadyInitialized.into());
+        }
+        self.storage = std::mem::take(&mut slots.storage);
+        Ok(())
+    }
+    pub(crate) fn same_shape(&self, shape: &Shape) -> bool {
+        self.shape == ShapeRef::from(shape)
+    }
+    pub(crate) fn named_storage_mut(&mut self) -> &mut Vec<StoredValue> {
+        &mut self.storage
     }
 
-    pub(crate) fn set_prototype(&mut self, prototype: JsPrototype) {
-        self.shape = ShapeRef::from(&self.shape().change_prototype_transition(prototype));
-    }
-
-    /// Reads a named slot selected by the object's shape or inline cache.
-    pub(crate) fn named_slot(&self, index: usize) -> JsValue {
-        self.storage[index].to_value()
-    }
-
-    /// Writes a named slot selected by the object's shape or inline cache.
-    pub(crate) fn write_named_slot(&mut self, index: usize, value: JsValue) {
-        self.storage[index] = value.into_stored();
-    }
-
-    /// Links two privately prepared records without creating a callable JsObject.
-    pub(crate) fn write_named_object_edge(&mut self, index: usize, value: super::ObjectEdge) {
-        self.storage[index] = StoredValue::Object(value);
-    }
-
-    /// Installs the initial values for a shape prepared by a template or intrinsic.
-    pub(crate) fn initialize_named_slots(&mut self, values: impl IntoIterator<Item = JsValue>) {
-        debug_assert!(self.storage.is_empty());
-        self.storage = values.into_iter().map(JsValue::into_stored).collect();
-    }
-
-    /// Get the property with the given key from the [`PropertyMap`].
-    #[must_use]
-    pub fn get(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
+    pub fn get(&self, key: &PropertyKey) -> JsResult<Option<PropertyDescriptor>> {
         if let PropertyKey::Index(index) = key {
-            return self.indexed_properties.get(index.get());
+            return Ok(self.indexed_properties.get(index.get()));
         }
-        if let Some(slot) = self.shape().lookup(key) {
-            return Some(self.get_storage(slot));
-        }
-
-        None
+        self.shape()?
+            .lookup(key)?
+            .map(|slot| self.get_storage(slot))
+            .transpose()
     }
-
-    /// Get the property with the given key from the [`PropertyMap`].
-    #[must_use]
     pub(crate) fn get_with_slot(
         &self,
         key: &PropertyKey,
         out_slot: &mut Slot,
-    ) -> Option<PropertyDescriptor> {
+    ) -> JsResult<Option<PropertyDescriptor>> {
         if let PropertyKey::Index(index) = key {
-            return self.indexed_properties.get(index.get());
+            return Ok(self.indexed_properties.get(index.get()));
         }
-        if let Some(slot) = self.shape().lookup(key) {
+        if let Some(slot) = self.shape()?.lookup(key)? {
+            let descriptor = self.get_storage(slot)?;
             out_slot.index = slot.index;
-
-            // Remove all descriptor attributes, but keep inline caching bits.
             out_slot.attributes = (out_slot.attributes & SlotAttributes::INLINE_CACHE_BITS)
                 | slot.attributes
                 | SlotAttributes::FOUND;
-            return Some(self.get_storage(slot));
+            return Ok(Some(descriptor));
         }
-
-        None
+        Ok(None)
     }
-
-    /// Get the property with the given key from the [`PropertyMap`].
-    #[must_use]
-    pub(crate) fn get_storage(&self, Slot { index, attributes }: Slot) -> PropertyDescriptor {
+    pub(crate) fn get_storage(
+        &self,
+        Slot { index, attributes }: Slot,
+    ) -> JsResult<PropertyDescriptor> {
         let index = index as usize;
         let mut builder = PropertyDescriptor::builder()
             .configurable(attributes.contains(SlotAttributes::CONFIGURABLE))
             .enumerable(attributes.contains(SlotAttributes::ENUMERABLE));
         if attributes.is_accessor_descriptor() {
             if attributes.has_get() {
-                builder = builder.get(self.named_slot(index));
+                builder = builder.get(self.named_slot(index)?);
             }
             if attributes.has_set() {
-                builder = builder.set(self.named_slot(index + 1));
+                builder = builder.set(
+                    self.named_slot(
+                        index
+                            .checked_add(1)
+                            .ok_or(EngineResourceError::SizeOverflow)?,
+                    )?,
+                );
             }
         } else {
-            builder = builder.writable(attributes.contains(SlotAttributes::WRITABLE));
-            builder = builder.value(self.named_slot(index));
+            builder = builder
+                .writable(attributes.contains(SlotAttributes::WRITABLE))
+                .value(self.named_slot(index)?);
         }
-        builder.build()
+        Ok(builder.build())
     }
-
-    /// Insert the given property descriptor with the given key [`PropertyMap`].
-    pub fn insert(&mut self, key: &PropertyKey, property: PropertyDescriptor) -> bool {
-        let mut dummy_slot = Slot::new();
-        self.insert_with_slot(key, property, &mut dummy_slot)
+    pub fn insert(&mut self, key: &PropertyKey, property: PropertyDescriptor) -> JsResult<bool> {
+        self.insert_with_slot(key, property, &mut Slot::new())
     }
-
-    /// Insert the given property descriptor with the given key [`PropertyMap`].
     pub(crate) fn insert_with_slot(
         &mut self,
         key: &PropertyKey,
         property: PropertyDescriptor,
         out_slot: &mut Slot,
-    ) -> bool {
+    ) -> JsResult<bool> {
         if let PropertyKey::Index(index) = key {
-            return self.indexed_properties.insert(index.get(), property);
+            return Ok(self.indexed_properties.insert(index.get(), property));
         }
-
         let attributes = property.to_slot_attributes();
-
-        if let Some(slot) = self.shape().lookup(key) {
+        let shape = self.shape()?;
+        if let Some(slot) = shape.lookup(key)? {
             let index = slot.index as usize;
-
+            let end = index
+                .checked_add(slot.width() as usize)
+                .ok_or(EngineResourceError::SizeOverflow)?;
+            if self.storage.get(index..end).is_none() {
+                return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+            }
             if slot.attributes != attributes {
-                let key = TransitionKey {
+                if !slot.attributes.is_accessor_descriptor() && attributes.is_accessor_descriptor()
+                {
+                    self.storage
+                        .try_reserve(1)
+                        .map_err(|_| EngineResourceError::Allocation)?;
+                }
+                let transition = shape.change_attributes_transition(TransitionKey {
                     property_key: key.clone(),
                     attributes,
-                };
-                let transition = self.shape().change_attributes_transition(key);
-                self.shape = ShapeRef::from(&transition.shape);
+                })?;
                 match transition.action {
                     ChangeTransitionAction::Nothing => {}
                     ChangeTransitionAction::Remove => {
-                        self.storage.remove(slot.index as usize + 1);
+                        self.storage.remove(index + 1);
                     }
                     ChangeTransitionAction::Insert => {
-                        // insert after index which is (index + 1).
-                        self.storage.insert(index, StoredValue::Undefined);
+                        self.storage.insert(index + 1, StoredValue::Undefined);
                     }
                 }
+                self.shape = ShapeRef::from(&transition.shape);
             }
-
             if attributes.is_accessor_descriptor() {
-                if attributes.has_get() {
-                    self.write_named_slot(index, property.get().cloned().unwrap_or_default());
-                }
-                if attributes.has_set() {
-                    self.write_named_slot(index + 1, property.set().cloned().unwrap_or_default());
-                }
+                self.write_named_slot(index, property.get().cloned().unwrap_or_default())?;
+                self.write_named_slot(index + 1, property.set().cloned().unwrap_or_default())?;
             } else {
-                self.write_named_slot(index, property.expect_value().clone());
+                self.write_named_slot(index, property.value().cloned().unwrap_or_default())?;
             }
             out_slot.index = slot.index;
             out_slot.attributes =
                 (out_slot.attributes & SlotAttributes::INLINE_CACHE_BITS) | attributes;
-            return true;
+            return Ok(true);
         }
-
-        let transition_key = TransitionKey {
+        let index =
+            u32::try_from(self.storage.len()).map_err(|_| EngineResourceError::SizeOverflow)?;
+        self.storage
+            .try_reserve(attributes.width() as usize)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        let new_shape = shape.insert_property_transition(TransitionKey {
             property_key: key.clone(),
             attributes,
-        };
-        self.shape = ShapeRef::from(&self.shape().insert_property_transition(transition_key));
-
-        // Make Sure that if we are inserting, it has the correct slot index.
-        debug_assert_eq!(
-            self.shape().lookup(key),
-            Some(Slot {
-                index: self.storage.len() as u32,
-                attributes
-            })
-        );
-
-        out_slot.index = self.storage.len() as u32;
+        })?;
+        if new_shape.lookup(key)? != Some(Slot { index, attributes }) {
+            return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+        }
+        self.shape = ShapeRef::from(&new_shape);
+        out_slot.index = index;
         out_slot.attributes =
             (out_slot.attributes & SlotAttributes::INLINE_CACHE_BITS) | attributes;
-
         if attributes.is_accessor_descriptor() {
             self.storage
                 .push(property.get().cloned().unwrap_or_default().into_stored());
@@ -648,27 +670,27 @@ impl PropertyMap {
             self.storage
                 .push(property.value().cloned().unwrap_or_default().into_stored());
         }
-
-        false
+        Ok(false)
     }
-
-    /// Remove the property with the given key from the [`PropertyMap`].
-    pub fn remove(&mut self, key: &PropertyKey) -> bool {
+    pub fn remove(&mut self, key: &PropertyKey) -> JsResult<bool> {
         if let PropertyKey::Index(index) = key {
-            return self.indexed_properties.remove(index.get());
+            return Ok(self.indexed_properties.remove(index.get()));
         }
-        if let Some(slot) = self.shape().lookup(key) {
-            // shift all elements when removing.
-            if slot.attributes.is_accessor_descriptor() {
-                self.storage.remove(slot.index as usize + 1);
+        let shape = self.shape()?;
+        if let Some(slot) = shape.lookup(key)? {
+            let index = slot.index as usize;
+            let end = index
+                .checked_add(slot.width() as usize)
+                .ok_or(EngineResourceError::SizeOverflow)?;
+            if self.storage.get(index..end).is_none() {
+                return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
             }
-            self.storage.remove(slot.index as usize);
-
-            self.shape = ShapeRef::from(&self.shape().remove_property_transition(key));
-            return true;
+            let new_shape = shape.remove_property_transition(key)?;
+            self.storage.drain(index..end);
+            self.shape = ShapeRef::from(&new_shape);
+            return Ok(true);
         }
-
-        false
+        Ok(false)
     }
 
     /// Overrides all the indexed properties, setting it to dense storage.
@@ -828,16 +850,11 @@ impl PropertyMap {
 
     /// Returns `true` if the given key is contained in the [`PropertyMap`].
     #[inline]
-    #[must_use]
-    pub fn contains_key(&self, key: &PropertyKey) -> bool {
+    pub fn contains_key(&self, key: &PropertyKey) -> JsResult<bool> {
         if let PropertyKey::Index(index) = key {
-            return self.indexed_properties.contains_key(index.get());
+            return Ok(self.indexed_properties.contains_key(index.get()));
         }
-        if self.shape().lookup(key).is_some() {
-            return true;
-        }
-
-        false
+        Ok(self.shape()?.lookup(key)?.is_some())
     }
 }
 
@@ -1036,5 +1053,69 @@ impl ExactSizeIterator for IndexPropertyValues<'_> {
             Self::SparseProperty(map) => map.len(),
             Self::SparseElement(map) => map.len(),
         }
+    }
+}
+
+/// Prepared storage retains the original live roots until publication or refusal
+/// cleanup finishes. Stored edges alone are not a preparation root bank.
+pub(crate) struct PreparedNamedSlots {
+    pub(super) storage: Vec<StoredValue>,
+    pub(super) _roots: Vec<JsValue>,
+}
+mod named_slot_source {
+    pub trait Sealed {}
+    impl Sealed for Vec<crate::JsValue> {}
+    impl<const N: usize> Sealed for [crate::JsValue; N] {}
+}
+/// Closed engine storage sources cannot run authored iterator code during
+/// template preparation. Live values remain owned until publication completes.
+pub(crate) trait NamedSlotSource: named_slot_source::Sealed {
+    fn into_values(self) -> JsResult<Vec<JsValue>>;
+}
+impl NamedSlotSource for Vec<JsValue> {
+    fn into_values(self) -> JsResult<Vec<JsValue>> {
+        Ok(self)
+    }
+}
+impl<const N: usize> NamedSlotSource for [JsValue; N] {
+    fn into_values(self) -> JsResult<Vec<JsValue>> {
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(N)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        values.extend(self);
+        Ok(values)
+    }
+}
+impl PreparedNamedSlots {
+    pub(crate) fn new(values: impl NamedSlotSource, expected: usize) -> JsResult<Self> {
+        let roots = values.into_values()?;
+        if roots.len() != expected {
+            return Err(ObjectConstructionError::NamedSlotCount {
+                expected,
+                actual: roots.len(),
+            }
+            .into());
+        }
+        let mut storage = Vec::new();
+        storage
+            .try_reserve_exact(expected)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        storage.extend(roots.iter().cloned().map(JsValue::into_stored));
+        Ok(Self {
+            storage,
+            _roots: roots,
+        })
+    }
+}
+
+pub(crate) struct PreparedNamedProperties {
+    pub(super) table: PropertyTableInner,
+    pub(super) slots: PreparedNamedSlots,
+}
+impl PreparedNamedProperties {
+    pub(crate) fn new(table: PropertyTableInner, values: Vec<JsValue>) -> JsResult<Self> {
+        let slots = PreparedNamedSlots::new(values, table.required_slots as usize)?;
+        Ok(Self { table, slots })
     }
 }

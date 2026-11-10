@@ -23,12 +23,11 @@ impl JsArray {
     ///
     /// # Errors
     ///
-    /// Returns a `PanicError` if creating the array fails due to an engine bug.
+    /// Returns the exact construction failure if the array cannot be created.
     #[inline]
     pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        let inner = Array::array_create(0, None, context)
-            .js_expect("creating an empty array with the default prototype must not fail")?;
+        let inner = Array::array_create(0, None, context)?;
 
         Ok(Self { inner })
     }
@@ -52,7 +51,7 @@ impl JsArray {
             })
             .collect::<JsResult<ThinVec<_>>>()?;
         Ok(Self {
-            inner: Array::create_array_with_dense_elements(elements, context),
+            inner: Array::create_array_with_dense_elements(elements, context)?,
         })
     }
 
@@ -401,7 +400,7 @@ impl JsArray {
     /// ```
     /// # use surgeist_js::{Context, JsValue};
     /// # use surgeist_js::object::builtins::JsArray;
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access())?;
     ///
     /// // Insert elements at index 1 without removing
@@ -565,23 +564,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_array_factory_preserves_its_heap_refusal_without_panic_wrapping() {
+        let context = &mut Context::builder().build().unwrap();
+        let runtime = context.runtime().clone();
+        runtime
+            .heap
+            .read(|_| {
+                let error = JsArray::new(context.access()).unwrap_err();
+                assert_eq!(
+                    error.as_engine(),
+                    Some(&crate::error::EngineError::Rooting(
+                        crate::error::RootingError::Access(
+                            surgeist_js_gc::heap::AccessError::HeapBorrowed
+                        )
+                    ))
+                );
+            })
+            .unwrap();
+
+        assert_eq!(
+            JsArray::new(context.access())
+                .unwrap()
+                .length(context.access())
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn from_iter_rejects_foreign_objects_and_retains_peer_objects() {
         use crate::JsNativeErrorKind;
 
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let peer = Context::builder()
             .runtime(context.runtime().clone())
             .build()
             .unwrap();
-        let foreign = Context::default();
-        let foreign_object = JsObject::with_null_proto(foreign.runtime());
+        let foreign = Context::builder().build().unwrap();
+        let foreign_object = JsObject::with_null_proto(foreign.runtime()).unwrap();
         let error = JsArray::from_iter([JsValue::from(1), foreign_object.into()], context.access())
             .unwrap_err();
         let error = error.as_native().expect("a native runtime admission error");
         assert_eq!(error.kind(), &JsNativeErrorKind::Type);
         assert_eq!(error.message(), "object belongs to a different runtime");
 
-        let peer_object = JsObject::with_null_proto(peer.runtime());
+        let peer_object = JsObject::with_null_proto(peer.runtime()).unwrap();
         let identity = peer_object.edge();
         let array =
             JsArray::from_iter([JsValue::from(1), peer_object.into()], context.access()).unwrap();
@@ -597,7 +624,7 @@ mod tests {
 
     #[test]
     fn splice_remove() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array.splice(1, Some(1), &[], context.access()).unwrap();
@@ -608,7 +635,7 @@ mod tests {
 
     #[test]
     fn splice_insert() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array
@@ -626,7 +653,7 @@ mod tests {
 
     #[test]
     fn splice_replace() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array
@@ -639,7 +666,7 @@ mod tests {
 
     #[test]
     fn splice_from_start() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array.splice(0, Some(1), &[], context.access()).unwrap();
@@ -650,7 +677,7 @@ mod tests {
 
     #[test]
     fn splice_empty_array() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let array = JsArray::new(context.access()).unwrap();
 
         let removed = array.splice(0, Some(0), &[], context.access()).unwrap();

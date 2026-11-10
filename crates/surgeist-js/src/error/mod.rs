@@ -22,6 +22,8 @@ pub(crate) use publication::{RealmOwnershipMismatch, check_realm_ownership};
 pub use rooting::RootingError;
 mod object_access;
 pub use object_access::ObjectAccessError;
+mod object_construction;
+pub use object_construction::ObjectConstructionError;
 #[cfg(test)]
 mod tests;
 
@@ -83,7 +85,7 @@ use thiserror::Error;
 /// ```
 /// # use surgeist_js::{js_str, Context, JsValue};
 /// use surgeist_js::js_error;
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 ///
 /// let error = js_error!("error!").unwrap();
 /// assert!(error.as_opaque().is_some());
@@ -751,6 +753,9 @@ pub enum EngineError {
     /// A live object refused the required access or native projection.
     #[error("ObjectAccessError: {0}")]
     ObjectAccess(#[from] ObjectAccessError),
+    /// Trusted object preparation could not establish its representation.
+    #[error("ObjectConstructionError: {0}")]
+    ObjectConstruction(#[from] ObjectConstructionError),
     /// Value rendering refused access, output or invalid represented data.
     #[error("ValueRenderError: {0}")]
     ValueRender(#[from] crate::value::ValueRenderError),
@@ -816,6 +821,7 @@ impl EngineError {
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
             EngineError::ObjectAccess(error) => ErasedEngineError::ObjectAccess(error),
+            EngineError::ObjectConstruction(error) => ErasedEngineError::ObjectConstruction(error),
             EngineError::ValueRender(error) => ErasedEngineError::ValueRender(error),
             EngineError::JobContextRequired { required } => {
                 ErasedEngineError::JobContextRequired { required }
@@ -862,6 +868,7 @@ enum StoredErrorRepr {
     InvalidEntryPermit,
     ContextAccessBusy,
     ObjectAccess(#[heap_trace(skip)] ObjectAccessError),
+    ObjectConstruction(#[heap_trace(skip)] ObjectConstructionError),
     ValueRender(#[heap_trace(skip)] crate::value::ValueRenderError),
     JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
     JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
@@ -927,6 +934,9 @@ impl StoredJsError {
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
             StoredErrorRepr::ObjectAccess(error) => Repr::Engine(EngineError::ObjectAccess(*error)),
+            StoredErrorRepr::ObjectConstruction(error) => {
+                Repr::Engine(EngineError::ObjectConstruction(*error))
+            }
             StoredErrorRepr::ValueRender(error) => Repr::Engine(EngineError::ValueRender(*error)),
             StoredErrorRepr::JobContextRequired(required) => {
                 Repr::Engine(EngineError::JobContextRequired {
@@ -1112,6 +1122,9 @@ impl JsError {
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
             Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
             Repr::Engine(EngineError::ObjectAccess(error)) => StoredErrorRepr::ObjectAccess(error),
+            Repr::Engine(EngineError::ObjectConstruction(error)) => {
+                StoredErrorRepr::ObjectConstruction(error)
+            }
             Repr::Engine(EngineError::ValueRender(error)) => StoredErrorRepr::ValueRender(error),
             Repr::Engine(EngineError::JobContextRequired { required }) => {
                 StoredErrorRepr::JobContextRequired(required)
@@ -1227,7 +1240,7 @@ impl JsError {
     /// # use surgeist_js::{Context, JsError, JsNativeError};
     /// # use surgeist_js::builtins::error::Error;
     /// # use surgeist_js::error::{EngineError, RuntimeLimitError};
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let error: JsError =
     ///     JsNativeError::eval().with_message("invalid script").into();
     /// let error_val = error.into_opaque(context.access()).unwrap();
@@ -1304,7 +1317,7 @@ impl JsError {
     ///
     /// ```rust
     /// # use surgeist_js::{Context, JsError, JsNativeError, JsNativeErrorKind};
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// // create a new, opaque Error object
     /// let error: JsError = JsNativeError::typ().with_message("type error!").into();
@@ -1512,7 +1525,7 @@ impl JsError {
     /// ```rust
     /// # use surgeist_js::{js_string, Context, JsError, JsNativeError, JsSymbol, JsValue};
     /// # use std::error::Error;
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let cause = JsError::from_opaque(JsSymbol::new(Some(js_string!("error!"))).unwrap().into()).unwrap();
     ///
     /// let native_error: JsError = JsNativeError::typ()
@@ -2172,7 +2185,7 @@ impl JsNativeError {
     /// ```rust
     /// # use surgeist_js::{Context, JsNativeError, js_string};
     /// # use surgeist_js::builtins::error::Error;
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let error = JsNativeError::error().with_message("error!");
     /// let error_obj = error.into_opaque(context.access()).unwrap();
@@ -2225,25 +2238,26 @@ impl JsNativeError {
             JsNativeErrorKind::Uri => (constructors.uri_error().prototype(), ErrorKind::Uri),
         };
 
+        let prototype = prototype?;
         let o = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
             Error::with_stack(tag, stack.0.clone()),
-        )
+        )?
         .upcast();
 
         o.create_non_enumerable_data_property_or_throw(
             js_string!("message"),
             js_string!(message.as_ref()),
             context,
-        );
+        )?;
 
         if let Some(cause) = cause {
             o.create_non_enumerable_data_property_or_throw(
                 js_string!("cause"),
                 cause.into_opaque_preflighted(context)?,
                 context,
-            );
+            )?;
         }
 
         if let JsNativeErrorKind::Aggregate(errors) = kind {
@@ -2251,7 +2265,7 @@ impl JsNativeError {
                 .into_iter()
                 .map(|error| error.into_opaque_preflighted(context))
                 .collect::<JsResult<Vec<_>>>()?;
-            let errors = Array::create_array_from_list(errors, context);
+            let errors = Array::create_array_from_list(errors, context)?;
             o.define_property_or_throw(
                 js_string!("errors"),
                 PropertyDescriptor::builder()
@@ -2260,8 +2274,7 @@ impl JsNativeError {
                     .writable(true)
                     .value(errors),
                 context.access(),
-            )
-            .expect("The spec guarantees this succeeds for a newly created object ");
+            )?;
         }
         Ok(o)
     }
@@ -2467,6 +2480,9 @@ pub enum ErasedEngineError {
     /// A live object refused the required access or native projection.
     #[error("ObjectAccessError: {0}")]
     ObjectAccess(#[from] ObjectAccessError),
+    /// Trusted object preparation could not establish its representation.
+    #[error("ObjectConstructionError: {0}")]
+    ObjectConstruction(#[from] ObjectConstructionError),
     /// Value rendering refused access, output or invalid represented data.
     #[error("ValueRenderError: {0}")]
     ValueRender(#[from] crate::value::ValueRenderError),
@@ -2712,8 +2728,8 @@ mod job_identity_storage_tests {
 
     #[test]
     fn stored_required_context_identity_survives_owner_destruction_without_rebinding() {
-        let owner = Context::default();
-        let peer = Context::default();
+        let owner = Context::builder().build().unwrap();
+        let peer = Context::builder().build().unwrap();
         let required = owner.id();
         assert_ne!(required, peer.id());
         let error: JsError = EngineError::JobContextRequired {

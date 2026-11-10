@@ -983,7 +983,11 @@ impl SourceTextModule {
             return JsPromise::from_object(capability.promise().clone());
         }
         let capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
         let promise = capability
@@ -1516,10 +1520,13 @@ impl SourceTextModule {
 
         // 3. Let capability be ! NewPromiseCapability(%Promise%).
         let capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
-        )
-        .expect("cannot fail for the %Promise% intrinsic");
+        )?;
         let promise = capability
             .promise
             .clone()
@@ -1540,8 +1547,7 @@ impl SourceTextModule {
                 module_self.clone(),
             ),
         )
-        .build()
-        .expect("async module reaction retains its current runtime");
+        .build()?;
 
         // 6. Let rejectedClosure be a new Abstract Closure with parameters (error) that captures module and performs the following steps when called:
         // 7. Let onRejected be CreateBuiltinFunction(rejectedClosure, 0, "", « »).
@@ -1558,8 +1564,7 @@ impl SourceTextModule {
                 module_self.clone(),
             ),
         )
-        .build()
-        .expect("async module reaction retains its current runtime");
+        .build()?;
 
         // 8. Perform PerformPromiseThen(capability.[[Promise]], onFulfilled, onRejected).
         let lifecycle = ReactionLifecycle::for_completion(

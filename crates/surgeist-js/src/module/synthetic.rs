@@ -474,17 +474,15 @@ impl SyntheticModule {
         let (environments, codeblock) = match &*self.state.borrow() {
             ModuleStatus::Unlinked | ModuleStatus::Preparing { .. } => {
                 let (promise, ResolvingFunctions { reject, .. }) =
-                    JsPromise::new_pending(context.access());
-                reject
-                    .call(
-                        &JsValue::undefined(),
-                        &[JsNativeError::typ()
-                            .with_message("cannot evaluate unlinked synthetic module")
-                            .into_opaque(context.access())?
-                            .into()],
-                        context.access(),
-                    )
-                    .js_expect("native resolving functions cannot throw")?;
+                    JsPromise::new_pending(context.access())?;
+                reject.call(
+                    &JsValue::undefined(),
+                    &[JsNativeError::typ()
+                        .with_message("cannot evaluate unlinked synthetic module")
+                        .into_opaque(context.access())?
+                        .into()],
+                    context.access(),
+                )?;
                 return Ok(promise);
             }
             ModuleStatus::Linked {
@@ -529,24 +527,28 @@ impl SyntheticModule {
             .pop_frame()
             .js_expect("there should be a frame")?;
 
+        // Receiving admission selects the initializer's actual host failure
+        // before later promise preparation can itself refuse.
+        let result = result.map_err(|error| context.runtime().admit_error(error));
+        let result = match result {
+            Err(error) if !error.is_catchable() => return Err(error),
+            result => result,
+        };
+
         // 13. Let pc be ! NewPromiseCapability(%Promise%).
         let (promise, ResolvingFunctions { resolve, reject }) =
-            JsPromise::new_pending(context.access());
+            JsPromise::new_pending(context.access())?;
 
         match result {
             // 15. Perform ! pc.[[Resolve]](result).
             Ok(()) => resolve.call(&JsValue::undefined(), &[], context.access()),
             // 14. IfAbruptRejectPromise(result, pc).
-            Err(error) => {
-                let error = context.runtime().admit_error(error);
-                reject.call(
-                    &JsValue::undefined(),
-                    &[error.into_opaque(context.access())?],
-                    context.access(),
-                )
-            }
-        }
-        .js_expect("default resolving functions cannot throw")?;
+            Err(error) => reject.call(
+                &JsValue::undefined(),
+                &[error.into_opaque(context.access())?],
+                context.access(),
+            ),
+        }?;
 
         self.state.borrow_mut().transition(|state| match state {
             ModuleStatus::Linked { environment, .. } => ModuleStatus::Evaluated {

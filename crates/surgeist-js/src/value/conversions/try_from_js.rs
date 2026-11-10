@@ -247,7 +247,7 @@ impl_try_from_js_integer!(i8, u8, i16, u16, i32, u32, i64, u64, usize, i128, u12
 
 #[test]
 fn integer_floating_js_value_to_integer() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     assert_eq!(
         i8::try_from_js(&JsValue::from(4.0), context.access()),
@@ -462,7 +462,7 @@ fn js_map_into_rust_map() -> JsResult<()> {
     use surgeist_js::Source;
 
     let js_code = "new Map([['a', 1], ['b', 3], ['aboba', 42024]])";
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
 
     let js_value = context.eval(Source::from_bytes(js_code))?;
 

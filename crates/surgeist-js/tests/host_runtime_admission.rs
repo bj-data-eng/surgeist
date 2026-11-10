@@ -6,8 +6,8 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, ContextAccess, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
-    NativeFunction, Source,
+    Context, ContextAccess, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsResult,
+    JsString, JsValue, NativeFunction, Source,
     builtins::{
         error::{Error, ErrorKind},
         iterable::create_iter_result_object,
@@ -32,7 +32,7 @@ fn peer_context(context: &Context) -> Context {
 
 #[test]
 fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_callable(
             js_string!("captureArguments"),
@@ -65,7 +65,7 @@ fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() 
 
 #[test]
 fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let caller = context.realm().clone();
     let other = context.create_realm().unwrap();
     let destination = context.create_realm().unwrap();
@@ -78,14 +78,14 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
 
     for target in [&caller, &other] {
         let previous = context.enter_realm(target.clone()).unwrap();
-        let expected = context.global_object();
+        let expected = context.global_object().unwrap();
         context.enter_realm(previous).unwrap();
         let function = FunctionObjectBuilder::new(
             target,
             NativeFunction::from_fn_with_captures(
                 |_, args, (target, destination), mut context| {
                     assert!(context.realm() == target);
-                    let object = context.global_object();
+                    let object = context.global_object().unwrap();
                     context.enter_realm(destination.clone())?;
                     context.runtime().collect().unwrap();
                     if args.is_empty() {
@@ -135,7 +135,7 @@ fn assert_foreign_runtime(error: JsError) {
 
 #[test]
 fn a_cold_script_retains_its_literal_in_a_fresh_peer_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
     let script = Script::parse(
         Source::from_bytes("'surgeist-owner-literal'"),
@@ -152,7 +152,7 @@ fn a_cold_script_retains_its_literal_in_a_fresh_peer_context() {
 
 #[test]
 fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
     peer.eval(Source::from_bytes("'surgeist-peer-literal'"))
         .unwrap();
@@ -173,9 +173,9 @@ fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
 
 #[test]
 fn a_cached_script_reuses_code_only_within_its_runtime() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let script = Script::parse(Source::from_bytes("42"), None, owner.access()).unwrap();
 
     let code = script.codeblock(owner.access()).unwrap();
@@ -192,7 +192,7 @@ fn a_cached_script_reuses_code_only_within_its_runtime() {
 
 #[test]
 fn direct_eval_inside_a_compiled_class_resolves_only_its_own_symbols() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let value = context
         .eval(Source::from_bytes(
             "class Box {
@@ -207,7 +207,7 @@ fn direct_eval_inside_a_compiled_class_resolves_only_its_own_symbols() {
 
 #[test]
 fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
     peer.enter_realm(owner.realm().clone()).unwrap();
     let alpha = Script::parse(
@@ -235,7 +235,7 @@ fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
 
 #[test]
 fn script_preparation_defers_explicit_realm_bindings_until_evaluation() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let initial = context.realm().clone();
     let target = context.create_realm().unwrap();
     let name = js_string!("surgeistExplicitRealmBinding");
@@ -310,7 +310,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
     };
 
     let mut observer = Context::builder().job_executor(executor).build().unwrap();
-    let buffer = JsSharedArrayBuffer::from_buffer(backing, observer.access());
+    let buffer = JsSharedArrayBuffer::from_buffer(backing, observer.access()).unwrap();
     observer
         .register_global_property(js_string!("buffer"), buffer, Attribute::all())
         .unwrap();
@@ -363,7 +363,7 @@ fn dropping_a_direct_executor_releases_job_captures() {
         }
     }
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let dropped = Rc::new(Cell::new(false));
     let probe = Probe(dropped.clone());
     Rc::new(SimpleJobExecutor::new())
@@ -462,8 +462,8 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
         }
     }
 
-    let foreign = Context::default();
-    let diagnostic = JsError::from_opaque(foreign.global_object().into()).unwrap();
+    let foreign = Context::builder().build().unwrap();
+    let diagnostic = JsError::from_opaque(foreign.global_object().unwrap().into()).unwrap();
     let panic = PanicError::new("compile hook panic").with_source(diagnostic);
     for error in [
         panic.clone().into(),
@@ -488,9 +488,9 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
 
 #[test]
 fn aggregate_conversion_preserves_an_engine_member_with_a_foreign_diagnostic() {
-    let mut context = Context::default();
-    let foreign = Context::default();
-    let diagnostic = JsError::from_opaque(foreign.global_object().into()).unwrap();
+    let mut context = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
+    let diagnostic = JsError::from_opaque(foreign.global_object().unwrap().into()).unwrap();
     let engine = EngineError::from(PanicError::new("aggregate panic").with_source(diagnostic));
     let error = JsNativeError::aggregate(vec![engine.clone().into()])
         .into_opaque(context.access())
@@ -500,7 +500,7 @@ fn aggregate_conversion_preserves_an_engine_member_with_a_foreign_diagnostic() {
 
 #[test]
 fn failed_aggregate_conversion_leaves_existing_error_stack_unmodified() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let prototype = context
         .eval(Source::from_bytes("Error.prototype"))
         .unwrap()
@@ -559,10 +559,10 @@ fn next_value(iterator: JsValue, context: &mut Context) -> JsValue {
 
 #[test]
 fn array_values_refuses_a_foreign_receiver_and_iterates_in_a_peer_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let mut foreign = Context::default();
-    let element: JsValue = JsObject::with_null_proto(owner.runtime()).into();
+    let mut foreign = Context::builder().build().unwrap();
+    let element: JsValue = JsObject::with_null_proto(owner.runtime()).unwrap().into();
     let array = JsArray::from_iter([element.clone()], owner.access()).unwrap();
 
     assert_foreign_runtime(array.values(foreign.access()).unwrap_err());
@@ -573,19 +573,19 @@ fn array_values_refuses_a_foreign_receiver_and_iterates_in_a_peer_context() {
 
 #[test]
 fn array_with_refuses_a_foreign_replacement_and_retains_a_peer_replacement() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let foreign = Context::default();
+    let foreign = Context::builder().build().unwrap();
     let array = JsArray::from_iter([1.into(), 2.into()], owner.access()).unwrap();
 
-    let foreign_replacement = JsObject::with_null_proto(foreign.runtime());
+    let foreign_replacement = JsObject::with_null_proto(foreign.runtime()).unwrap();
     assert_foreign_runtime(
         array
             .with(1, foreign_replacement.into(), owner.access())
             .unwrap_err(),
     );
 
-    let replacement: JsValue = JsObject::with_null_proto(peer.runtime()).into();
+    let replacement: JsValue = JsObject::with_null_proto(peer.runtime()).unwrap().into();
     let copy = array.with(1, replacement.clone(), peer.access()).unwrap();
     assert_eq!(array.get(1, owner.access()).unwrap(), 2.into());
     assert_eq!(copy.get(0, peer.access()).unwrap(), 1.into());
@@ -594,9 +594,9 @@ fn array_with_refuses_a_foreign_replacement_and_retains_a_peer_replacement() {
 
 #[test]
 fn typed_array_iterators_refuse_a_foreign_receiver_and_iterate_in_a_peer_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let array = JsUint8Array::from_iter([19], owner.access()).unwrap();
 
     for make_iterator in [
@@ -622,9 +622,9 @@ fn typed_array_iterators_refuse_a_foreign_receiver_and_iterate_in_a_peer_context
 
 #[test]
 fn typed_array_from_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buffer() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let foreign_buffer = JsArrayBuffer::new(1, foreign.access()).unwrap();
     assert_foreign_runtime(
         JsUint8Array::from_array_buffer(foreign_buffer, owner.access()).unwrap_err(),
@@ -638,9 +638,9 @@ fn typed_array_from_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buf
 
 #[test]
 fn typed_array_from_shared_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buffer() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = peer_context(&owner);
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     // Empty shared buffers also work on targets without lock-free 64-bit atomics.
     let foreign_buffer = JsSharedArrayBuffer::new(0, foreign.access()).unwrap();
     assert_foreign_runtime(
@@ -655,15 +655,15 @@ fn typed_array_from_shared_array_buffer_refuses_a_foreign_buffer_and_retains_a_p
 
 #[test]
 fn iterator_result_refuses_a_foreign_value_without_panicking() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let peer = peer_context(&owner);
-    let foreign = Context::default();
-    let foreign_value = JsObject::with_null_proto(foreign.runtime()).into();
+    let foreign = Context::builder().build().unwrap();
+    let foreign_value = JsObject::with_null_proto(foreign.runtime()).unwrap().into();
     assert_foreign_runtime(
         create_iter_result_object(foreign_value, false, owner.access()).unwrap_err(),
     );
 
-    let value: JsValue = JsObject::with_null_proto(peer.runtime()).into();
+    let value: JsValue = JsObject::with_null_proto(peer.runtime()).unwrap().into();
     let result = create_iter_result_object(value.clone(), true, owner.access())
         .unwrap()
         .as_object()
@@ -681,7 +681,7 @@ fn iterator_result_refuses_a_foreign_value_without_panicking() {
 #[test]
 fn dropping_parsed_or_compiled_scripts_preserves_the_realm_scope_identity_sequence() {
     let identities = [false, true].map(|compile| {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let script = Script::parse(
             Source::from_bytes("(() => 42); (class {});"),
             None,
@@ -701,7 +701,7 @@ fn dropping_parsed_or_compiled_scripts_preserves_the_realm_scope_identity_sequen
 
 #[test]
 fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let first = Script::parse(
         Source::from_bytes("let pending = 40; pending + 2"),
         None,
@@ -733,7 +733,7 @@ fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
 
 #[test]
 fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes("let occupied = 1;"))
         .unwrap();
@@ -755,7 +755,7 @@ fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation()
 
 #[test]
 fn installed_script_cache_survives_unrelated_realm_changes() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let script = Script::parse(Source::from_bytes("(() => 42)()"), None, context.access()).unwrap();
     let code = script.codeblock(context.access()).unwrap();
     assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
@@ -772,7 +772,7 @@ fn installed_script_cache_survives_unrelated_realm_changes() {
 
 #[test]
 fn an_older_captured_environment_reads_a_new_global_lexical_binding() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes(
             "globalThis.shadowed = 1;
@@ -798,7 +798,7 @@ fn an_older_captured_environment_reads_a_new_global_lexical_binding() {
 
 #[test]
 fn an_older_captured_environment_writes_a_new_global_lexical_binding() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes(
             "globalThis.shadowed = 1;
@@ -824,7 +824,7 @@ fn an_older_captured_environment_writes_a_new_global_lexical_binding() {
 
 #[test]
 fn typeof_in_an_older_captured_environment_observes_a_new_global_lexical_binding() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes(
             "globalThis.shadowed = 1;
@@ -853,7 +853,7 @@ fn typeof_in_an_older_captured_environment_observes_a_new_global_lexical_binding
 
 #[test]
 fn new_global_lexical_bindings_preserve_local_with_and_eval_resolution() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes(
             "globalThis.shadowed = 1;
@@ -894,8 +894,8 @@ fn new_global_lexical_bindings_preserve_local_with_and_eval_resolution() {
 #[cfg(feature = "annex-b")]
 #[test]
 fn annex_b_compilation_does_not_create_a_global_property() {
-    let mut context = Context::default();
-    let global = context.global_object();
+    let mut context = Context::builder().build().unwrap();
+    let global = context.global_object().unwrap();
     let name = js_string!("pendingAnnexFunction");
     let script = Script::parse(
         Source::from_bytes(
@@ -923,7 +923,7 @@ fn annex_b_compilation_does_not_create_a_global_property() {
 
 #[test]
 fn a_stale_pending_script_rebuilds_slots_without_replacing_installed_code() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let script = Script::parse(
         Source::from_bytes("let pending = seed + 2; pending"),
         None,
@@ -954,11 +954,11 @@ fn global_var_names_preserve_source_order_and_instantiate_once_in_a_proxy_global
         fn create_global_object(
             &self,
             _: &surgeist_js::context::intrinsics::Intrinsics,
-        ) -> JsObject {
-            self.0.clone()
+        ) -> JsResult<JsObject> {
+            Ok(self.0.clone())
         }
     }
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let global = owner
         .eval(Source::from_bytes(
             "globalThis.events = [];
@@ -1015,13 +1015,13 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
         fn create_global_object(
             &self,
             _: &surgeist_js::context::intrinsics::Intrinsics,
-        ) -> JsObject {
-            self.0.clone()
+        ) -> JsResult<JsObject> {
+            Ok(self.0.clone())
         }
     }
     struct CaughtConflict(JsError);
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let global = context
         .eval(Source::from_bytes(
             "globalThis.publicationMutationRuns = 0;
@@ -1134,8 +1134,8 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         fn create_global_object(
             &self,
             _: &surgeist_js::context::intrinsics::Intrinsics,
-        ) -> JsObject {
-            self.0.clone()
+        ) -> JsResult<JsObject> {
+            Ok(self.0.clone())
         }
     }
     #[derive(Default)]
@@ -1145,7 +1145,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         exposed_function: RefCell<Option<JsObject>>,
     }
 
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     owner
         .register_global_callable(
             js_string!("inspectPendingDeclaration"),
@@ -1154,6 +1154,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                 if args[1].as_string() != Some(js_string!("pendingAfterStop")) {
                     let reflect = context
                         .global_object()
+                        .unwrap()
                         .get(js_string!("Reflect"), context.reborrow())?
                         .as_object()
                         .unwrap();
@@ -1228,6 +1229,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .unwrap();
     let target = owner
         .global_object()
+        .unwrap()
         .get(js_string!("pendingTarget"), owner.access())
         .unwrap()
         .as_object()
@@ -1318,12 +1320,12 @@ fn proxy_global_with_a_guest_descriptor_trap() -> (Context, Context, JsObject) {
         fn create_global_object(
             &self,
             _: &surgeist_js::context::intrinsics::Intrinsics,
-        ) -> JsObject {
-            self.0.clone()
+        ) -> JsResult<JsObject> {
+            Ok(self.0.clone())
         }
     }
 
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let global = owner
         .eval(Source::from_bytes(
             "globalThis.refusedEntryTarget = {};
@@ -1340,6 +1342,7 @@ fn proxy_global_with_a_guest_descriptor_trap() -> (Context, Context, JsObject) {
         .unwrap();
     let target = owner
         .global_object()
+        .unwrap()
         .get(js_string!("refusedEntryTarget"), owner.access())
         .unwrap()
         .as_object()
@@ -1401,6 +1404,7 @@ fn assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
     assert_eq!(
         owner
             .global_object()
+            .unwrap()
             .get(js_string!("refusedEntryTrapRuns"), owner.access())
             .unwrap(),
         JsValue::new(0)
@@ -1446,8 +1450,8 @@ enum DirectGuestEntry {
 fn assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(entry: DirectGuestEntry) {
     use surgeist_js::error::RuntimeLimitError;
 
-    let mut context = Context::default();
-    let mut control = Context::default();
+    let mut context = Context::builder().build().unwrap();
+    let mut control = Context::builder().build().unwrap();
     let function_source = "(function(value) { this.value = value; return this; })";
     let function = context
         .eval(Source::from_bytes(function_source))

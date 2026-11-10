@@ -1,208 +1,367 @@
-use surgeist_js_gc::heap::Trace as HeapTrace;
-
+use super::{SharedShape, SharedShapeRef, TransitionKey};
+use crate::object::NamedSlotSource;
 use crate::{
-    JsValue, Runtime,
+    JsResult, Runtime,
+    error::{ObjectConstructionError, RootingError},
     object::{
-        IndexedProperties, JsObject, NativeObject, Object, PropertyMap, shape::slot::SlotAttributes,
+        AllocationOrigin, IndexedProperties, JsObject, NativeObject, Object, PreparedNamedSlots,
+        PropertyMap, shape::slot::SlotAttributes,
     },
     property::{Attribute, PropertyKey},
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
-use super::{SharedShape, SharedShapeRef, TransitionKey};
-
-/// Prepares a template of an object's properties and prototype.
-/// This is used to construct as many objects  as needed from a predefined [`SharedShape`].
 #[derive(Clone)]
 pub(crate) struct ObjectTemplateBuilder {
     shape: SharedShape,
 }
-
 impl ObjectTemplateBuilder {
-    /// Create a new [`ObjectTemplate`]
     pub(crate) fn new(root: &crate::object::shape::RootShape) -> Self {
         Self {
             shape: root.shape().clone(),
         }
     }
-
-    /// Create and [`ObjectTemplate`] with a prototype.
     pub(crate) fn with_prototype(
         root: &crate::object::shape::RootShape,
         prototype: JsObject,
-    ) -> Self {
-        let shape = root.shape().change_prototype_transition(Some(prototype));
-        Self { shape }
+    ) -> JsResult<Self> {
+        Ok(Self {
+            shape: root.shape().change_prototype_transition(Some(prototype))?,
+        })
     }
-
-    /// Set the prototype of the [`ObjectTemplate`].
-    ///
-    /// This assumes that the prototype has not been set yet.
-    pub(crate) fn set_prototype(&mut self, prototype: JsObject) -> &mut Self {
-        self.shape = self.shape.change_prototype_transition(Some(prototype));
-        self
+    pub(crate) fn set_prototype(&mut self, prototype: JsObject) -> JsResult<&mut Self> {
+        self.shape = self.shape.change_prototype_transition(Some(prototype))?;
+        Ok(self)
     }
-
-    /// Add a data property to the [`ObjectTemplate`].
-    ///
-    /// This assumes that the property with the given key was not previously set
-    /// and that it's a string or symbol.
-    pub(crate) fn property(&mut self, key: PropertyKey, attributes: Attribute) -> &mut Self {
-        debug_assert!(!matches!(&key, PropertyKey::Index(_)));
-
-        let attributes = SlotAttributes::from_bits_truncate(attributes.bits());
+    pub(crate) fn property(
+        &mut self,
+        key: PropertyKey,
+        attributes: Attribute,
+    ) -> JsResult<&mut Self> {
+        self.insert(key, SlotAttributes::from_bits_truncate(attributes.bits()))
+    }
+    fn insert(&mut self, key: PropertyKey, attributes: SlotAttributes) -> JsResult<&mut Self> {
+        if matches!(key, PropertyKey::Index(_)) {
+            return Err(ObjectConstructionError::IndexedTemplateKey.into());
+        }
+        if self.shape.lookup(&key)?.is_some() {
+            return Err(ObjectConstructionError::DuplicateTemplateProperty.into());
+        }
         self.shape = self.shape.insert_property_transition(TransitionKey {
             property_key: key,
             attributes,
-        });
-        self
+        })?;
+        Ok(self)
     }
-
-    /// Add a accessor property to the [`ObjectTemplate`].
-    ///
-    /// This assumes that the property with the given key was not previously set
-    /// and that it's a string or symbol.
     pub(crate) fn accessor(
         &mut self,
         key: PropertyKey,
         get: bool,
         set: bool,
         attributes: Attribute,
-    ) -> &mut Self {
-        // TODO: We don't support indexed keys.
-        debug_assert!(!matches!(&key, PropertyKey::Index(_)));
-
-        let attributes = {
-            let mut result = SlotAttributes::empty();
-            result.set(
-                SlotAttributes::CONFIGURABLE,
-                attributes.contains(Attribute::CONFIGURABLE),
-            );
-            result.set(
-                SlotAttributes::ENUMERABLE,
-                attributes.contains(Attribute::ENUMERABLE),
-            );
-
-            result.set(SlotAttributes::GET, get);
-            result.set(SlotAttributes::SET, set);
-
-            result
-        };
-
-        self.shape = self.shape.insert_property_transition(TransitionKey {
-            property_key: key,
-            attributes,
-        });
-        self
+    ) -> JsResult<&mut Self> {
+        if !get && !set {
+            return Err(ObjectConstructionError::InvalidAccessorLayout.into());
+        }
+        let mut flags = SlotAttributes::empty();
+        flags.set(
+            SlotAttributes::CONFIGURABLE,
+            attributes.contains(Attribute::CONFIGURABLE),
+        );
+        flags.set(
+            SlotAttributes::ENUMERABLE,
+            attributes.contains(Attribute::ENUMERABLE),
+        );
+        flags.set(SlotAttributes::GET, get);
+        flags.set(SlotAttributes::SET, set);
+        self.insert(key, flags)
     }
-
-    /// Retain the prepared shape until its containing realm is published.
-    pub(crate) fn build(self, roots: &mut crate::realm::BootstrapRoots) -> ObjectTemplate {
+    pub(crate) fn build(
+        self,
+        roots: &mut crate::realm::BootstrapRoots,
+    ) -> JsResult<ObjectTemplate> {
         let shape = SharedShapeRef::from(&self.shape);
-        roots.retain_shape(self.shape);
-        ObjectTemplate { shape }
+        roots.retain_shape(self.shape)?;
+        Ok(ObjectTemplate { shape })
     }
 }
 
-/// A prepared object shape stored in its realm.
 #[derive(Debug, HeapTrace)]
 pub(crate) struct ObjectTemplate {
     shape: SharedShapeRef,
 }
-
 impl ObjectTemplate {
-    pub(crate) fn shape(&self) -> SharedShape {
-        self.shape
-            .upgrade()
-            .expect("live realm retains its template")
+    pub(crate) fn shape(&self) -> Result<SharedShape, RootingError> {
+        self.shape.upgrade()?.ok_or(RootingError::Expired)
     }
-
-    pub(crate) fn has_prototype(&self, prototype: &JsObject) -> bool {
-        self.shape().has_prototype(prototype)
+    pub(crate) fn has_prototype(&self, prototype: &JsObject) -> Result<bool, RootingError> {
+        Ok(self.shape()?.has_prototype(prototype))
     }
-
     pub(crate) fn create<T: NativeObject>(
         &self,
         data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-    ) -> JsObject {
-        Self::create_on_shape(self.shape(), data, storage, IndexedProperties::default())
+        storage: impl NamedSlotSource,
+        origin: AllocationOrigin,
+    ) -> JsResult<JsObject> {
+        Self::create_on_shape(
+            self.shape()?,
+            data,
+            storage,
+            IndexedProperties::default(),
+            origin,
+        )
     }
-
-    pub(crate) fn try_create<T: NativeObject>(
-        &self,
-        data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-    ) -> crate::JsResult<JsObject> {
-        let shape = self.shape();
-        let runtime = Runtime {
-            heap: shape.heap().clone(),
-        };
-        let internal_methods = data.internal_methods();
-        let object = Self::object_on_shape(shape, data, storage, IndexedProperties::default());
-        JsObject::try_from_object_and_vtable(&runtime, object, internal_methods)
-    }
-
     pub(crate) fn create_unpublished<T: NativeObject>(
         &self,
         data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-    ) -> crate::JsResult<crate::object::UnpublishedObject<T>> {
-        let shape = self.shape();
+        storage: impl NamedSlotSource,
+        origin: AllocationOrigin,
+    ) -> JsResult<crate::object::UnpublishedObject<T>> {
+        let shape = self.shape()?;
         let runtime = Runtime {
             heap: shape.heap().clone(),
         };
+        let mut slots = PreparedNamedSlots::new(storage, shape.required_slots()?)?;
         let internal_methods = data.internal_methods();
-        let object = Self::object_on_shape(shape, data, storage, IndexedProperties::default());
-        crate::object::UnpublishedObject::from_object(&runtime, object, internal_methods)
+        let object = Self::object_on_shape(shape, data, &mut slots, IndexedProperties::default())?;
+        crate::object::UnpublishedObject::from_object(&runtime, object, internal_methods, origin)
     }
-
     pub(crate) fn create_with_prototype<T: NativeObject>(
         &self,
         prototype: JsObject,
         data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-    ) -> JsObject {
-        let shape = self.shape().change_prototype_transition(Some(prototype));
-        Self::create_on_shape(shape, data, storage, IndexedProperties::default())
-    }
-
-    /// Create an object from the [`ObjectTemplate`]
-    ///
-    /// The storage must match the properties provided. It does not apply to
-    /// the indexed properties.
-    pub(crate) fn create_with_indexed_properties<T: NativeObject>(
-        &self,
-        data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-        indexed_properties: IndexedProperties,
-    ) -> JsObject {
-        Self::create_on_shape(self.shape(), data, storage, indexed_properties)
-    }
-
-    fn create_on_shape<T: NativeObject>(
-        shape: SharedShape,
-        data: T,
-        storage: impl IntoIterator<Item = JsValue>,
-        indexed_properties: IndexedProperties,
-    ) -> JsObject {
+        storage: impl NamedSlotSource,
+        origin: AllocationOrigin,
+    ) -> JsResult<JsObject> {
+        let shape = self.shape()?;
         let runtime = Runtime {
             heap: shape.heap().clone(),
         };
-        let internal_methods = data.internal_methods();
-        let object = Self::object_on_shape(shape, data, storage, indexed_properties);
-        JsObject::from_object_and_vtable(&runtime, object, internal_methods)
+        // Payload capture edges must remain roots during the GC allocation used
+        // to prepare a different shape, before the final object exists.
+        runtime
+            .heap
+            .with_pending_edges(data, |data| {
+                let shape = shape
+                    .change_prototype_transition(Some(prototype))
+                    .map_err(|error| origin.shape_error(error))?;
+                Self::create_on_shape(shape, data, storage, IndexedProperties::default(), origin)
+            })
+            .map_err(|error| origin.access_error(error))?
     }
-
+    pub(crate) fn create_with_indexed_properties<T: NativeObject>(
+        &self,
+        data: T,
+        storage: impl NamedSlotSource,
+        indexed_properties: IndexedProperties,
+        origin: AllocationOrigin,
+    ) -> JsResult<JsObject> {
+        Self::create_on_shape(self.shape()?, data, storage, indexed_properties, origin)
+    }
+    fn create_on_shape<T: NativeObject>(
+        shape: SharedShape,
+        data: T,
+        storage: impl NamedSlotSource,
+        indexed_properties: IndexedProperties,
+        origin: AllocationOrigin,
+    ) -> JsResult<JsObject> {
+        let runtime = Runtime {
+            heap: shape.heap().clone(),
+        };
+        let mut slots = PreparedNamedSlots::new(storage, shape.required_slots()?)?;
+        let internal_methods = data.internal_methods();
+        let object = Self::object_on_shape(shape, data, &mut slots, indexed_properties)?;
+        JsObject::from_object_and_vtable(&runtime, object, internal_methods, origin)
+    }
     fn object_on_shape<T: NativeObject>(
         shape: SharedShape,
         data: T,
-        storage: impl IntoIterator<Item = JsValue>,
+        slots: &mut PreparedNamedSlots,
         indexed_properties: IndexedProperties,
-    ) -> Object {
+    ) -> JsResult<Object> {
         let shape = shape.into();
         let mut object = Object::new(PropertyMap::new(&shape, indexed_properties), data);
+        object.state.properties.initialize_named_slots(slots)?;
+        Ok(object)
+    }
+}
 
-        object.state.properties.initialize_named_slots(storage);
-        object
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        builtins::object::OrdinaryObject, error::EngineError, js_string, object::shape::RootShape,
+    };
+    use surgeist_js_gc::heap::AccessError;
+
+    #[test]
+    fn template_heap_refusal_keeps_authoritative_shape_and_allows_same_template_retry() {
+        let runtime = Runtime::default();
+        let root = RootShape::new(runtime.clone()).unwrap();
+        let shape = root
+            .shape()
+            .insert_property_transition(TransitionKey {
+                property_key: js_string!("value").into(),
+                attributes: SlotAttributes::CONFIGURABLE,
+            })
+            .unwrap();
+        let template = ObjectTemplate {
+            shape: SharedShapeRef::from(&shape),
+        };
+        runtime
+            .heap
+            .read(|_| {
+                let error = template
+                    .create(
+                        OrdinaryObject,
+                        [crate::JsValue::from(7)],
+                        AllocationOrigin::TrustedConstruction,
+                    )
+                    .unwrap_err();
+                assert_eq!(
+                    error.as_engine(),
+                    Some(&EngineError::Rooting(RootingError::Access(
+                        AccessError::HeapBorrowed
+                    )))
+                );
+            })
+            .unwrap();
+        let object = template
+            .create(
+                OrdinaryObject,
+                [crate::JsValue::from(7)],
+                AllocationOrigin::TrustedConstruction,
+            )
+            .unwrap();
+        assert_eq!(
+            object
+                .get_property(&js_string!("value").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&crate::JsValue::from(7))
+        );
+    }
+    #[test]
+    fn template_storage_count_refusal_does_not_poison_later_creation() {
+        let runtime = Runtime::default();
+        let root = RootShape::new(runtime).unwrap();
+        let shape = root
+            .shape()
+            .insert_property_transition(TransitionKey {
+                property_key: js_string!("value").into(),
+                attributes: SlotAttributes::CONFIGURABLE,
+            })
+            .unwrap();
+        let template = ObjectTemplate {
+            shape: SharedShapeRef::from(&shape),
+        };
+        let error = template
+            .create(OrdinaryObject, [], AllocationOrigin::TrustedConstruction)
+            .unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ObjectConstruction(
+                ObjectConstructionError::NamedSlotCount {
+                    expected: 1,
+                    actual: 0
+                }
+            ))
+        );
+        template
+            .create(
+                OrdinaryObject,
+                [crate::JsValue::from(1)],
+                AllocationOrigin::TrustedConstruction,
+            )
+            .unwrap();
+    }
+
+    // The authoritative template and weak cache retain the SAME actually collected
+    // shape identity, making their distinct expired/miss outcomes directly comparable.
+    #[test]
+    fn expired_template_refuses_while_stale_transition_cache_rebuilds_the_same_layout() {
+        use surgeist_js_gc::heap::AllocationCollection;
+
+        let runtime = Runtime::default();
+        runtime
+            .heap
+            .set_allocation_collection(AllocationCollection::Manual)
+            .unwrap();
+        let root = RootShape::new(runtime.clone()).unwrap();
+        let key = TransitionKey {
+            property_key: js_string!("value").into(),
+            attributes: SlotAttributes::CONFIGURABLE,
+        };
+        let shape = root
+            .shape()
+            .insert_property_transition(key.clone())
+            .unwrap();
+        let retired_identity = shape.identity();
+        let template = ObjectTemplate {
+            shape: SharedShapeRef::from(&shape),
+        };
+        let cached = root
+            .shape()
+            .forward_transitions()
+            .get_property(&key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.identity(), retired_identity);
+        drop(shape);
+        runtime.collect().unwrap();
+        assert!(!cached.is_live().unwrap());
+
+        assert_eq!(template.shape().unwrap_err(), RootingError::Expired);
+        let error = template
+            .create(
+                OrdinaryObject,
+                [crate::JsValue::from(11)],
+                AllocationOrigin::TrustedConstruction,
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::Rooting(RootingError::Expired))
+        );
+
+        let replacement = root
+            .shape()
+            .insert_property_transition(key.clone())
+            .unwrap();
+        assert_ne!(replacement.identity(), retired_identity);
+        let slot = replacement.lookup(&key.property_key).unwrap().unwrap();
+        assert_eq!(slot.index, 0);
+        assert_eq!(slot.attributes, SlotAttributes::CONFIGURABLE);
+        assert_eq!(
+            root.shape()
+                .forward_transitions()
+                .get_property(&key)
+                .unwrap()
+                .unwrap()
+                .identity(),
+            replacement.identity()
+        );
+        // A replacement cache entry must not silently rebind the stale authoritative
+        // template to a different allocation or generation.
+        assert_eq!(template.shape().unwrap_err(), RootingError::Expired);
+        let rebuilt = ObjectTemplate {
+            shape: SharedShapeRef::from(&replacement),
+        };
+        let object = rebuilt
+            .create(
+                OrdinaryObject,
+                [crate::JsValue::from(11)],
+                AllocationOrigin::TrustedConstruction,
+            )
+            .unwrap();
+        assert_eq!(
+            object
+                .get_property(&key.property_key)
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&crate::JsValue::from(11))
+        );
     }
 }

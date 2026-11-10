@@ -57,13 +57,14 @@ const WORKLOADS: &[Workload] = &[
 
 fn buffers(criterion: &mut Criterion) {
     for workload in WORKLOADS {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(OptimizerOptions::empty());
         context
             .eval(Source::from_bytes(workload.source))
             .expect("prepare buffer workload");
         let function = context
             .global_object()
+            .unwrap()
             .get(js_string!("run"), context.access())
             .expect("load buffer workload")
             .as_callable()

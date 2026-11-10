@@ -42,14 +42,14 @@ impl NativeCapture for IteratorRecord {
 
 impl IntrinsicObject for AsyncFromSyncIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .prototype(
                 realm
                     .intrinsics()
                     .objects()
                     .iterator_prototypes()
-                    .async_iterator(),
-            )
+                    .async_iterator()?,
+            )?
             .static_method(Self::next, js_string!("next"), 1)?
             .static_method(Self::r#return, js_string!("return"), 1)?
             .static_method(Self::throw, js_string!("throw"), 1)?
@@ -58,11 +58,11 @@ impl IntrinsicObject for AsyncFromSyncIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
             .objects()
             .iterator_prototypes()
-            .async_from_sync_iterator()
+            .async_from_sync_iterator()?)
     }
 }
 
@@ -76,7 +76,7 @@ impl AsyncFromSyncIterator {
     pub(crate) fn create(
         sync_iterator_record: IteratorRecord,
         context: &mut Context,
-    ) -> IteratorRecord {
+    ) -> JsResult<IteratorRecord> {
         // 1. Let asyncIterator be OrdinaryObjectCreate(%AsyncFromSyncIteratorPrototype%, « [[SyncIteratorRecord]] »).
         // 2. Set asyncIterator.[[SyncIteratorRecord]] to syncIteratorRecord.
         let async_iterator = JsObject::from_proto_and_data_with_shared_shape(
@@ -85,18 +85,15 @@ impl AsyncFromSyncIterator {
                 .intrinsics()
                 .objects()
                 .iterator_prototypes()
-                .async_from_sync_iterator(),
+                .async_from_sync_iterator()?,
             Self {
                 sync_iterator_record: sync_iterator_record.stored(),
             },
-        )
+        )?
         .upcast();
 
         // 3. Let nextMethod be ! Get(asyncIterator, "next").
-        let next_method = async_iterator
-            .get(js_string!("next"), context.access())
-            .expect("async from sync iterator prototype must have next method");
-
+        let next_method = async_iterator.get(js_string!("next"), context.access())?;
         // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: asyncIterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
         // 5. Return iteratorRecord.
         IteratorRecord::new(async_iterator, next_method)
@@ -124,7 +121,11 @@ impl AsyncFromSyncIterator {
 
         // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
 
@@ -171,7 +172,11 @@ impl AsyncFromSyncIterator {
 
         // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
 
@@ -189,7 +194,7 @@ impl AsyncFromSyncIterator {
                     args.get_or_undefined(0).clone(),
                     true,
                     context,
-                );
+                )?;
 
                 // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iterResult »).
                 promise_capability
@@ -257,7 +262,11 @@ impl AsyncFromSyncIterator {
 
         // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
 
@@ -359,7 +368,11 @@ impl AsyncFromSyncIterator {
 
         // 6. Let valueWrapper be Completion(PromiseResolve(%Promise%, value)).
         let value_wrapper = match Promise::promise_resolve(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             value,
             context,
         ) {
@@ -388,11 +401,11 @@ impl AsyncFromSyncIterator {
             NativeFunction::from_builtin_with_captures(
                 |_this, args, &done, context| {
                     // a. Return CreateIterResultObject(value, done).
-                    Ok(create_iter_result_object_trusted(
+                    create_iter_result_object_trusted(
                         args.get_or_undefined(0).clone(),
                         done,
                         context,
-                    ))
+                    )
                 },
                 done,
             ),

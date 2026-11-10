@@ -132,8 +132,8 @@ pub(crate) trait IntrinsicObject {
     /// be initialized to be accessible from ECMAScript.
     fn init(realm: &Realm) -> crate::JsResult<()>;
 
-    /// Gets the intrinsic object.
-    fn get(intrinsics: &Intrinsics) -> JsObject;
+    /// Gets the intrinsic object, preserving root-acquisition and required native-access failures.
+    fn get(intrinsics: &Intrinsics) -> JsResult<JsObject>;
 }
 
 /// A [built-in object].
@@ -164,28 +164,18 @@ pub(crate) trait BuiltInObject: IntrinsicObject {
 ///
 /// [built-in object]: https://tc39.es/ecma262/#sec-built-in-object
 pub(crate) trait BuiltInConstructor: BuiltInObject {
-    /// The minimum storage slots that need to be allocated for the constructor's
-    /// prototype object.
+    /// Initial reservation hint for authored prototype properties, excluding
+    /// the automatic constructor backlink.
     ///
-    /// This is always equivalent to the number of plain properties + 2 times the
-    /// number of properties that require accessor functions.
-    ///
-    /// Note that a "storage slot" is any `JsValue` that needs to be stored
-    /// in the prototype object; for accessors the storage count would need
-    /// to be increased by two, since accessors can have a getter and a setter
-    /// value.
+    /// Data properties use one slot and accessors use two. The prepared layout
+    /// determines the checked actual count; exceeding this hint is valid.
     const PROTOTYPE_STORAGE_SLOTS: usize;
 
-    /// The minimum storage slots that need to be allocated for the constructor
-    /// object.
+    /// Initial reservation hint for authored constructor properties, excluding
+    /// the automatic length, name and prototype properties.
     ///
-    /// This is always equivalent to the number of plain static properties + 2
-    /// times the number of static properties that require accessor functions.
-    ///
-    /// Note that a "storage slot" is any `JsValue` that needs to be stored
-    /// in the constructor object; for accessors the storage count would need
-    /// to be increased by two, since accessors can have a getter and a setter
-    /// value.
+    /// Data properties use one slot and accessors use two. The prepared layout
+    /// determines the checked actual count; exceeding this hint is valid.
     const CONSTRUCTOR_STORAGE_SLOTS: usize;
 
     /// The amount of arguments the constructor function takes.
@@ -205,8 +195,8 @@ pub(crate) trait BuiltInConstructor: BuiltInObject {
 fn global_binding<B: BuiltInObject>(context: &mut Context) -> JsResult<()> {
     let name = B::NAME;
     let attr = B::ATTRIBUTE;
-    let intrinsic = B::get(context.intrinsics());
-    let global_object = context.global_object();
+    let intrinsic = B::get(context.intrinsics())?;
+    let global_object = context.global_object()?;
 
     global_object.define_property_or_throw(
         name,
@@ -359,12 +349,12 @@ impl Realm {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-setdefaultglobalbindings
 pub(crate) fn set_default_global_bindings(context: &mut Context) -> JsResult<()> {
-    let global_object = context.global_object();
+    let global_object = context.global_object()?;
 
     global_object.define_property_or_throw(
         js_string!("globalThis"),
         PropertyDescriptor::builder()
-            .value(context.realm().global_this())
+            .value(context.realm().global_this()?)
             .writable(true)
             .enumerable(false)
             .configurable(true),

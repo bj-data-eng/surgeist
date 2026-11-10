@@ -13,7 +13,7 @@ use surgeist_js::{
 
 #[test]
 fn nested_guest_panic_in_async_job_restores_frames_and_realm_before_reentry() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let caller_realm = context.realm().clone();
     let selected_realm = context.create_realm().unwrap();
     assert_ne!(selected_realm, caller_realm);

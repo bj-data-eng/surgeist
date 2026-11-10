@@ -44,66 +44,66 @@ impl IntrinsicObject for Map {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let get_size = BuiltInBuilder::callable(realm, Self::get_size)
             .name(js_string!("get size"))
-            .build();
+            .build()?;
 
         let entries_function = BuiltInBuilder::callable(realm, Self::entries)
             .name(js_string!("entries"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_method(Self::group_by, js_string!("groupBy"), 2)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_method(Self::group_by, js_string!("groupBy"), 2)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("entries"),
                 entries_function.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::iterator(),
                 entries_function,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .method(Self::clear, js_string!("clear"), 0)
-            .method(Self::delete, js_string!("delete"), 1)
-            .method(Self::for_each, js_string!("forEach"), 1)
-            .method(Self::get, js_string!("get"), 1)
-            .method(Self::has, js_string!("has"), 1)
-            .method(Self::keys, js_string!("keys"), 0)
-            .method(Self::set, js_string!("set"), 2)
-            .method(Self::values, js_string!("values"), 0)
-            .method(Self::get_or_insert, js_string!("getOrInsert"), 2)
+            )?
+            .method(Self::clear, js_string!("clear"), 0)?
+            .method(Self::delete, js_string!("delete"), 1)?
+            .method(Self::for_each, js_string!("forEach"), 1)?
+            .method(Self::get, js_string!("get"), 1)?
+            .method(Self::has, js_string!("has"), 1)?
+            .method(Self::keys, js_string!("keys"), 0)?
+            .method(Self::set, js_string!("set"), 2)?
+            .method(Self::values, js_string!("values"), 0)?
+            .method(Self::get_or_insert, js_string!("getOrInsert"), 2)?
             .method(
                 Self::get_or_insert_computed,
                 js_string!("getOrInsertComputed"),
                 2,
-            )
+            )?
             .accessor(
                 js_string!("size"),
                 Some(get_size),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -149,7 +149,7 @@ impl BuiltInConstructor for Map {
             context.root_shape(),
             prototype,
             OrderedMap::new(),
-        )
+        )?
         .upcast();
 
         // 4. If iterable is either undefined or null, return map.
@@ -789,17 +789,17 @@ impl Map {
         }
 
         // 2. Let map be ! Construct(%Map%).
-        let proto = context.intrinsics().constructors().map().prototype();
+        let proto = context.intrinsics().constructors().map().prototype()?;
         let map = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             proto,
             OrderedMap::with_capacity(groups.len()),
-        );
+        )?;
 
         // 3. For each Record { [[Key]], [[Elements]] } g of groups, do
         for (key, elements) in groups {
             // a. Let elements be CreateArrayFromList(g.[[Elements]]).
-            let elements = Array::create_array_from_list(elements, context);
+            let elements = Array::create_array_from_list(elements, context)?;
 
             // b. Let entry be the Record { [[Key]]: g.[[Key]], [[Value]]: elements }.
             // c. Append entry to map.[[MapData]].

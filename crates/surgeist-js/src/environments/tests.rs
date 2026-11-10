@@ -17,7 +17,7 @@ fn cloned_and_captured_scopes_keep_outer_bindings_alive() {
 
     let mut stack = EnvironmentStack::new();
     let outer = stack.push_lexical(1, &global);
-    let object = JsObject::with_null_proto(&runtime);
+    let object = JsObject::with_null_proto(&runtime).unwrap();
     let object_edge = object.edge();
     stack.put_lexical_value(BindingLocatorScope::Stack(outer), 0, object.into(), &global);
     stack.push_lexical(0, &global);
@@ -52,7 +52,7 @@ fn cloned_and_captured_scopes_keep_outer_bindings_alive() {
 
 #[test]
 fn captured_name_reads_preserve_identity_and_initialization_after_collection() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("collect"),
@@ -179,7 +179,7 @@ fn private_module_captures_reject_foreign_scopes_and_code_identity() {
             })
             .unwrap()
     }
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let mut own = PreparedScopes::new(context.realm().scope());
     let mut foreign = PreparedScopes::new(context.realm().scope());
     let own_scope = module_scope(&mut own);

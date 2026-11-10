@@ -21,7 +21,7 @@ fn fresh_compilation(criterion: &mut Criterion) {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .expect("UTF-8 fixture name");
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(OptimizerOptions::empty());
         let context = RefCell::new(context);
 

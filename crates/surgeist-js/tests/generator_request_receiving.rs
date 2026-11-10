@@ -206,6 +206,7 @@ fn assert_counts(context: &mut Context, starts: i32, resumes: i32, catches: i32,
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(surgeist_js::JsString::from(name), context.access())
                 .unwrap(),
             JsValue::new(value),
@@ -291,7 +292,7 @@ fn sync_requests_refuse_foreign_payloads_before_resuming_or_replacing_a_yield() 
     for request in [Request::Next, Request::Return, Request::Throw] {
         let (mut owner, _) = context();
         let (foreign, _) = context();
-        let payload: JsValue = JsObject::with_null_proto(foreign.runtime()).into();
+        let payload: JsValue = JsObject::with_null_proto(foreign.runtime()).unwrap().into();
         let generator = sync_generator(&mut owner);
         let first =
             sync_request(Request::Next, &generator, JsValue::undefined(), &mut owner).unwrap();
@@ -312,7 +313,7 @@ fn async_requests_refuse_foreign_payloads_without_adding_a_waiting_request() {
     for request in [Request::Next, Request::Return, Request::Throw] {
         let (mut owner, executor) = context();
         let (foreign, _) = context();
-        let payload: JsValue = JsObject::with_null_proto(foreign.runtime()).into();
+        let payload: JsValue = JsObject::with_null_proto(foreign.runtime()).unwrap().into();
         let generator = async_generator(&mut owner, true);
         let first =
             async_request(Request::Next, &generator, JsValue::undefined(), &mut owner).unwrap();
@@ -344,7 +345,7 @@ fn sync_requests_accept_a_same_runtime_peer_and_preserve_its_object_payload() {
     let (mut owner, executor) = context();
     let mut peer = peer_context(&owner, executor);
     let peer_realm = peer.realm().clone();
-    let payload: JsValue = JsObject::with_null_proto(peer.runtime()).into();
+    let payload: JsValue = JsObject::with_null_proto(peer.runtime()).unwrap().into();
     let generator = sync_generator(&mut owner);
     let first = sync_request(Request::Next, &generator, JsValue::undefined(), &mut peer).unwrap();
     assert_result(first, 10.into(), false, &mut peer);
@@ -363,7 +364,7 @@ fn async_requests_accept_a_same_runtime_peer_and_preserve_its_object_payload() {
     let (mut owner, executor) = context();
     let mut peer = peer_context(&owner, executor.clone());
     let peer_realm = peer.realm().clone();
-    let payload: JsValue = JsObject::with_null_proto(peer.runtime()).into();
+    let payload: JsValue = JsObject::with_null_proto(peer.runtime()).unwrap().into();
     let generator = async_generator(&mut owner, false);
     let first = async_result(
         Request::Next,

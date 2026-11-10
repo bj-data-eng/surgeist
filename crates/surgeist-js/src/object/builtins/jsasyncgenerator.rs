@@ -43,7 +43,7 @@ impl JsAsyncGenerator {
     {
         let context = context.into_owner();
         context.with_generator_request(|context| {
-            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let (typed_promise, functions) = JsPromise::new_pending(context.access())?;
             let capability = PromiseCapability {
                 functions,
                 promise: JsObject::clone(&typed_promise).clone().upcast(),
@@ -66,7 +66,7 @@ impl JsAsyncGenerator {
     {
         let context = context.into_owner();
         context.with_generator_request(|context| {
-            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let (typed_promise, functions) = JsPromise::new_pending(context.access())?;
             let capability = PromiseCapability {
                 functions,
                 promise: JsObject::clone(&typed_promise).upcast(),
@@ -88,7 +88,7 @@ impl JsAsyncGenerator {
     {
         let context = context.into_owner();
         context.with_generator_request(|context| {
-            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let (typed_promise, functions) = JsPromise::new_pending(context.access())?;
             let capability = PromiseCapability {
                 functions,
                 promise: JsObject::clone(&typed_promise).clone().upcast(),

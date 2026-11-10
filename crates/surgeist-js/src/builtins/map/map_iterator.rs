@@ -55,8 +55,8 @@ pub(crate) struct MapIterator {
 
 impl IntrinsicObject for MapIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
@@ -68,8 +68,8 @@ impl IntrinsicObject for MapIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().map()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().iterator_prototypes().map()?)
     }
 }
 
@@ -97,9 +97,9 @@ impl MapIterator {
         };
         let map_iterator = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().objects().iterator_prototypes().map(),
+            context.intrinsics().objects().iterator_prototypes().map()?,
             iter,
-        );
+        )?;
         Ok(map_iterator.into())
     }
 
@@ -157,19 +157,15 @@ impl MapIterator {
         };
 
         let Some((key, value)) = element else {
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
         let item = match kind {
             PropertyNameKind::Key => key,
             PropertyNameKind::Value => value,
             PropertyNameKind::KeyAndValue => {
-                Array::create_array_from_list([key, value], context).into()
+                Array::create_array_from_list([key, value], context)?.into()
             }
         };
-        Ok(create_iter_result_object_trusted(item, false, context))
+        create_iter_result_object_trusted(item, false, context)
     }
 }

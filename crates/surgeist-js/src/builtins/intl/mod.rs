@@ -119,7 +119,7 @@ impl Intl {
 
 impl IntrinsicObject for Intl {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
@@ -127,7 +127,7 @@ impl IntrinsicObject for Intl {
             )?
             .static_property(
                 Collator::NAME,
-                realm.intrinsics().constructors().collator().constructor(),
+                realm.intrinsics().constructors().collator().constructor()?,
                 Collator::ATTRIBUTE,
             )?
             .static_property(
@@ -136,17 +136,21 @@ impl IntrinsicObject for Intl {
                     .intrinsics()
                     .constructors()
                     .list_format()
-                    .constructor(),
+                    .constructor()?,
                 ListFormat::ATTRIBUTE,
             )?
             .static_property(
                 Locale::NAME,
-                realm.intrinsics().constructors().locale().constructor(),
+                realm.intrinsics().constructors().locale().constructor()?,
                 Locale::ATTRIBUTE,
             )?
             .static_property(
                 Segmenter::NAME,
-                realm.intrinsics().constructors().segmenter().constructor(),
+                realm
+                    .intrinsics()
+                    .constructors()
+                    .segmenter()
+                    .constructor()?,
                 Segmenter::ATTRIBUTE,
             )?
             .static_property(
@@ -155,7 +159,7 @@ impl IntrinsicObject for Intl {
                     .intrinsics()
                     .constructors()
                     .plural_rules()
-                    .constructor(),
+                    .constructor()?,
                 PluralRules::ATTRIBUTE,
             )?
             .static_property(
@@ -164,7 +168,7 @@ impl IntrinsicObject for Intl {
                     .intrinsics()
                     .constructors()
                     .date_time_format()
-                    .constructor(),
+                    .constructor()?,
                 DateTimeFormat::ATTRIBUTE,
             )?
             .static_property(
@@ -173,7 +177,7 @@ impl IntrinsicObject for Intl {
                     .intrinsics()
                     .constructors()
                     .number_format()
-                    .constructor(),
+                    .constructor()?,
                 NumberFormat::ATTRIBUTE,
             )?
             .static_method(
@@ -186,8 +190,8 @@ impl IntrinsicObject for Intl {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().intl().upcast()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().intl()?.upcast())
     }
 }
 
@@ -220,7 +224,7 @@ impl Intl {
         Ok(JsValue::new(Array::create_array_from_list(
             ll.into_iter().map(|loc| js_string!(loc.to_string()).into()),
             context,
-        )))
+        )?))
     }
 }
 

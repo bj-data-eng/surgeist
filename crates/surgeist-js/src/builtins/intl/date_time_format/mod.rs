@@ -116,33 +116,33 @@ impl IntrinsicObject for DateTimeFormat {
         use crate::JsSymbol;
         let get_format = BuiltInBuilder::callable(realm, Self::get_format)
             .name(js_string!("get format"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .accessor(
                 js_string!("format"),
                 Some(get_format),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
+            )?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.DateTimeFormat"),
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -175,13 +175,18 @@ impl BuiltInConstructor for DateTimeFormat {
         let new_target_inner = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| {
-                    context
-                        .intrinsics()
-                        .constructors()
-                        .date_time_format()
-                        .constructor()
-                })
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context
+                                .intrinsics()
+                                .constructors()
+                                .date_time_format()
+                                .constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -219,7 +224,7 @@ impl BuiltInConstructor for DateTimeFormat {
             .intrinsics()
             .constructors()
             .date_time_format()
-            .constructor();
+            .constructor()?;
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.DateTimeFormat%, this) is true, then
         if new_target.is_undefined()
@@ -228,7 +233,7 @@ impl BuiltInConstructor for DateTimeFormat {
             let fallback_symbol = context
                 .intrinsics()
                 .objects()
-                .intl()
+                .intl()?
                 .borrow()?
                 .data()
                 .fallback_symbol();
@@ -266,7 +271,7 @@ impl DateTimeFormat {
         // 4. If dtf.[[BoundFormat]] is undefined, then
         // 5. Return dtf.[[BoundFormat]].
         if let Some(bound_format) = cached {
-            Ok(JsFunction::from_record(bound_format).into())
+            Ok(JsFunction::from_record(bound_format)?.into())
         } else {
             // a. Let F be a new built-in function object as defined in DateTime Format Functions (11.5.4).
             let bound_format = FunctionObjectBuilder::new(
@@ -1012,12 +1017,12 @@ fn unwrap_date_time_format(
         .intrinsics()
         .constructors()
         .date_time_format()
-        .constructor();
+        .constructor()?;
     if JsValue::ordinary_has_instance(&constructor.into(), dtf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()
-            .intl()
+            .intl()?
             .borrow()?
             .data()
             .fallback_symbol();

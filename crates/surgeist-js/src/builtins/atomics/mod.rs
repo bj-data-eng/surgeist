@@ -40,7 +40,7 @@ pub(crate) struct Atomics;
 
 impl IntrinsicObject for Atomics {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
+        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
@@ -68,8 +68,8 @@ impl IntrinsicObject for Atomics {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().atomics()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().atomics()?)
     }
 }
 
@@ -453,7 +453,7 @@ impl Atomics {
         // A host executor can reenter when an async completion is enqueued.
         let backing = buffer.borrow()?.data().clone();
         if ASYNC {
-            let (promise, resolvers) = JsPromise::new_pending(context.access());
+            let (promise, resolvers) = JsPromise::new_pending(context.access())?;
             let result = if access.kind == TypedArrayKind::BigInt64 {
                 futex::wait_async(
                     &backing,
@@ -487,7 +487,11 @@ impl Atomics {
                 .intrinsics()
                 .templates()
                 .wait_async()
-                .create(OrdinaryObject, vec![is_async.into(), value])
+                .create(
+                    OrdinaryObject,
+                    vec![is_async.into(), value],
+                    crate::object::AllocationOrigin::TrustedConstruction,
+                )?
                 .into())
         } else {
             let result = if access.kind == TypedArrayKind::BigInt64 {

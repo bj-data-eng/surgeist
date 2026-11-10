@@ -66,6 +66,7 @@ fn register(ctx: &mut Context) {
 fn await_response(ctx: &mut Context) {
     let response = ctx
         .global_object()
+        .unwrap()
         .get(js_str!("response"), ctx.access())
         .unwrap();
     response

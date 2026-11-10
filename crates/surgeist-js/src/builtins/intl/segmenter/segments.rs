@@ -21,7 +21,7 @@ pub(crate) struct Segments {
 
 impl IntrinsicObject for Segments {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_method(Self::containing, js_string!("containing"), 1)?
             .static_method(Self::iterator, JsSymbol::iterator(), 0)?
             .build()?;
@@ -29,8 +29,8 @@ impl IntrinsicObject for Segments {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().segments_prototype()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().segments_prototype()?)
     }
 }
 
@@ -38,21 +38,27 @@ impl Segments {
     /// [`CreateSegmentsObject ( segmenter, string )`][spec]
     ///
     /// [spec]: https://tc39.es/ecma402/#sec-createsegmentsobject
-    pub(crate) fn create(segmenter: JsObject, string: JsString, context: &mut Context) -> JsObject {
-        // 1. Let internalSlotsList be « [[SegmentsSegmenter]], [[SegmentsString]] ».
-        // 2. Let segments be OrdinaryObjectCreate(%SegmentsPrototype%, internalSlotsList).
-        // 3. Set segments.[[SegmentsSegmenter]] to segmenter.
-        // 4. Set segments.[[SegmentsString]] to string.
-        // 5. Return segments.
-        JsObject::from_proto_and_data_with_shared_shape(
-            context.root_shape(),
-            context.intrinsics().objects().segments_prototype(),
-            Self {
-                segmenter: segmenter.edge(),
-                string,
-            },
+    pub(crate) fn create(
+        segmenter: JsObject,
+        string: JsString,
+        context: &mut Context,
+    ) -> JsResult<JsObject> {
+        Ok(
+            // 1. Let internalSlotsList be « [[SegmentsSegmenter]], [[SegmentsString]] ».
+            // 2. Let segments be OrdinaryObjectCreate(%SegmentsPrototype%, internalSlotsList).
+            // 3. Set segments.[[SegmentsSegmenter]] to segmenter.
+            // 4. Set segments.[[SegmentsString]] to string.
+            // 5. Return segments.
+            JsObject::from_proto_and_data_with_shared_shape(
+                context.root_shape(),
+                context.intrinsics().objects().segments_prototype()?,
+                Self {
+                    segmenter: segmenter.edge(),
+                    string,
+                },
+            )?
+            .upcast(),
         )
-        .upcast()
     }
 
     /// [`%SegmentsPrototype%.containing ( index )`][spec]
@@ -133,6 +139,6 @@ impl Segments {
         // 4. Let string be segments.[[SegmentsString]].
         // 5. Return ! CreateSegmentIterator(segmenter, string).
         let segmenter = JsObject::from_inner(segments.segmenter.clone());
-        Ok(SegmentIterator::create(segmenter, segments.string.clone(), context).into())
+        Ok(SegmentIterator::create(segmenter, segments.string.clone(), context)?.into())
     }
 }

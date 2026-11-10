@@ -42,7 +42,7 @@ impl CallEval {
         //
         // 6. If ref is a Reference Record, IsPropertyReference(ref) is false, and ref.[[ReferencedName]] is "eval", then
         //     a. If SameValue(func, %eval%) is true, then
-        let eval = context.intrinsics().objects().eval();
+        let eval = context.intrinsics().objects().eval()?;
         if JsObject::equals(&object, &eval) {
             let arguments = context
                 .vm
@@ -96,6 +96,8 @@ pub(crate) struct CallEvalSpread;
 impl CallEvalSpread {
     #[inline(always)]
     pub(super) fn operation(index: IndexOperand, context: &mut Context) -> JsResult<()> {
+        // Acquire the intrinsic before consuming the represented call operands.
+        let eval = context.intrinsics().objects().eval()?;
         // Get the arguments that are stored as an array object on the stack.
         let arguments_array = context.vm.stack.pop();
         let arguments_array_object = arguments_array
@@ -121,7 +123,7 @@ impl CallEvalSpread {
         //
         // 6. If ref is a Reference Record, IsPropertyReference(ref) is false, and ref.[[ReferencedName]] is "eval", then
         //     a. If SameValue(func, %eval%) is true, then
-        let eval = context.intrinsics().objects().eval();
+
         if JsObject::equals(&object, &eval) {
             let _func = context.vm.stack.pop();
             let _this = context.vm.stack.pop();
@@ -561,7 +563,11 @@ impl ImportCall {
 
         // 5. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let cap = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
         let promise = cap.promise().clone();

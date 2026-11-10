@@ -29,17 +29,17 @@ impl IntrinsicObject for Iterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_constructor = BuiltInBuilder::callable(realm, Self::get_constructor)
             .name(js_string!("get constructor"))
-            .build();
+            .build()?;
         let set_constructor = BuiltInBuilder::callable(realm, Self::set_constructor)
             .name(js_string!("set constructor"))
-            .build();
+            .build()?;
         let get_to_string_tag = BuiltInBuilder::callable(realm, Self::get_to_string_tag)
             .name(js_string!("get [Symbol.toStringTag]"))
-            .build();
+            .build()?;
         let set_to_string_tag = BuiltInBuilder::callable(realm, Self::set_to_string_tag)
             .name(js_string!("set [Symbol.toStringTag]"))
-            .build();
-        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
+            .build()?;
+        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)?
             .static_method(Self::map, js_string!("map"), 1)?
             .static_method(Self::filter, js_string!("filter"), 1)?
@@ -73,8 +73,8 @@ impl IntrinsicObject for Iterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.constructors().iterator().prototype()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.constructors().iterator().prototype()?)
     }
 }
 
@@ -95,7 +95,7 @@ impl Iterator {
             .intrinsics()
             .constructors()
             .iterator()
-            .constructor()
+            .constructor()?
             .into())
     }
 
@@ -114,7 +114,7 @@ impl Iterator {
     ) -> JsResult<JsValue> {
         Self::setter_that_ignores_prototype_properties(
             this,
-            &context.intrinsics().constructors().iterator().prototype(),
+            &context.intrinsics().constructors().iterator().prototype()?,
             js_string!("constructor"),
             args.get_or_undefined(0),
             context,
@@ -151,7 +151,7 @@ impl Iterator {
     ) -> JsResult<JsValue> {
         Self::setter_that_ignores_prototype_properties(
             this,
-            &context.intrinsics().constructors().iterator().prototype(),
+            &context.intrinsics().constructors().iterator().prototype()?,
             JsSymbol::to_string_tag(),
             args.get_or_undefined(0),
             context,
@@ -219,7 +219,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.map called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(mapper) is false, then
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
@@ -240,7 +240,7 @@ impl Iterator {
         let result = IteratorHelper::create(
             iterator_helper::Map::new(iterated, mapper, context)?,
             context,
-        );
+        )?;
 
         // 9. Return result.
         Ok(result.into())
@@ -260,7 +260,7 @@ impl Iterator {
         )?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(predicate) is false, then
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
@@ -282,7 +282,7 @@ impl Iterator {
         let result = IteratorHelper::create(
             iterator_helper::Filter::new(iterated, predicate, context)?,
             context,
-        );
+        )?;
 
         // 9. Return result.
         Ok(result.into())
@@ -302,7 +302,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.take called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
@@ -346,7 +346,7 @@ impl Iterator {
         let result = IteratorHelper::create(
             iterator_helper::Take::new(iterated, integer_limit, context)?,
             context,
-        );
+        )?;
 
         // 13. Return result.
         Ok(result.into())
@@ -366,7 +366,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.drop called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o.clone(), JsValue::undefined());
+        let iterated = IteratorRecord::new(o.clone(), JsValue::undefined())?;
 
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
@@ -409,7 +409,7 @@ impl Iterator {
         let result = IteratorHelper::create(
             iterator_helper::Drop::new(iterated, integer_limit, context)?,
             context,
-        );
+        )?;
 
         // 13. Return result.
         Ok(result.into())
@@ -429,7 +429,7 @@ impl Iterator {
         )?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(mapper) is false, then
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
@@ -451,7 +451,7 @@ impl Iterator {
         let helper = IteratorHelper::create(
             iterator_helper::FlatMap::new(iterated, mapper, context)?,
             context,
-        );
+        )?;
 
         // 9. Return result.
         Ok(helper.into())
@@ -469,7 +469,7 @@ impl Iterator {
         )?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(obj.clone(), JsValue::undefined());
+        let iterated = IteratorRecord::new(obj.clone(), JsValue::undefined())?;
 
         let search_element = args.get_or_undefined(0);
 
@@ -540,7 +540,7 @@ impl Iterator {
         )?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(reducer) is false, then
         let Some(reducer) = args.get_or_undefined(0).as_callable() else {
@@ -618,7 +618,7 @@ impl Iterator {
         let items = iterated.into_list(context)?;
 
         // b. If value is done, return CreateArrayFromList(items).
-        Ok(Array::create_array_from_list(items, context).into())
+        Ok(Array::create_array_from_list(items, context)?.into())
     }
 
     /// `Iterator.prototype.forEach ( fn )`
@@ -635,7 +635,7 @@ impl Iterator {
         )?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(fn) is false, then
         let Some(func) = args.get_or_undefined(0).as_callable() else {
@@ -691,7 +691,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.some called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(predicate) is false, then
         let Some(predicate) = args.get_or_undefined(0).as_callable() else {
@@ -750,7 +750,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.every called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(predicate) is false, then
         let Some(predicate) = args.get_or_undefined(0).as_callable() else {
@@ -810,7 +810,7 @@ impl Iterator {
             .ok_or_else(|| js_error!(TypeError: "Iterator.prototype.find called on non-object"))?;
 
         // 3. Let iterated be the Iterator Record { [[Iterator]]: O, [[NextMethod]]: undefined, [[Done]]: false }.
-        let iterated = IteratorRecord::new(o, JsValue::undefined());
+        let iterated = IteratorRecord::new(o, JsValue::undefined())?;
 
         // 4. If IsCallable(predicate) is false, then
         let Some(predicate) = args.get_or_undefined(0).as_callable() else {

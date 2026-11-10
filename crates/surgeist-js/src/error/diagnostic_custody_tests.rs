@@ -46,8 +46,8 @@ fn assert_foreign_parent_was_replaced(error: &JsError) {
 
 #[test]
 fn admission_replaces_a_foreign_diagnostic_parent_and_releases_its_local_cause() {
-    let foreign = Context::default();
-    let receiving = Context::default();
+    let foreign = Context::builder().build().unwrap();
+    let receiving = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let source = panic_with_foreign_parent_and_local_cause(&foreign, &receiving, &drops);
 
@@ -76,8 +76,8 @@ fn admission_replaces_a_foreign_diagnostic_parent_and_releases_its_local_cause()
 
 #[test]
 fn an_unadmitted_alias_keeps_a_removed_diagnostic_cause_until_the_alias_is_dropped() {
-    let foreign = Context::default();
-    let receiving = Context::default();
+    let foreign = Context::builder().build().unwrap();
+    let receiving = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let source = panic_with_foreign_parent_and_local_cause(&foreign, &receiving, &drops);
     let unadmitted_alias = source.clone();
@@ -252,8 +252,8 @@ fn object_to_stored_panic_cycle_collects_after_its_last_external_error_root() {
 
 #[test]
 fn projection_retains_an_identity_that_is_hidden_once_but_visible_in_another_member() {
-    let foreign = Context::default();
-    let receiving = Context::default();
+    let foreign = Context::builder().build().unwrap();
+    let receiving = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let object = JsObject::new_unique(receiving.runtime(), None, DisposalProbe(drops.clone()))
         .unwrap()
@@ -293,7 +293,7 @@ fn projection_retains_an_identity_that_is_hidden_once_but_visible_in_another_mem
 #[test]
 fn checked_leaf_access_reports_a_heap_borrow_without_changing_identity_or_type() {
     let runtime = Runtime::default();
-    let object = JsObject::with_null_proto(&runtime);
+    let object = JsObject::with_null_proto(&runtime).unwrap();
     let identity = object.identity();
     let source: JsError = PanicError::new("borrowed heap")
         .with_source(JsError::from_opaque(object.into()).unwrap())
@@ -337,8 +337,8 @@ impl Drop for CollectReceiverOnDrop {
 
 #[test]
 fn final_foreign_runtime_disposal_reenters_after_surviving_local_roots_are_protected() {
-    let mut foreign = Context::default();
-    let receiving = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
+    let receiving = Context::builder().build().unwrap();
     let local_drops = Rc::new(Cell::new(0));
     let observed = Rc::new(Cell::new(None));
     let collection_succeeded = Rc::new(Cell::new(false));
@@ -356,6 +356,7 @@ fn final_foreign_runtime_disposal_reenters_after_surviving_local_roots_are_prote
     .upcast();
     foreign
         .global_object()
+        .unwrap()
         .set(
             crate::js_string!("diagnosticDisposalSentinel"),
             sentinel,
@@ -414,7 +415,7 @@ fn stored_diagnostics_preserve_all_engine_families_and_exact_context_identity() 
     use crate::error::{EngineResourceError, RuntimeLimitError};
     use crate::job::JobRetirement;
     use surgeist_js_ast::scope::ScopeStateError;
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let mut cases = vec![
         EngineError::Resource(EngineResourceError::Allocation),
         EngineError::Resource(EngineResourceError::SizeOverflow),
@@ -547,8 +548,8 @@ fn deep_causes_and_many_members_survive_clone_storage_and_ordered_restoration() 
 
 #[test]
 fn masked_stored_diagnostics_trace_and_restore_after_the_hidden_heaps_and_leaves_are_gone() {
-    let mut foreign = Context::default();
-    let mut receiving = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
+    let mut receiving = Context::builder().build().unwrap();
     receiving
         .runtime()
         .heap
@@ -566,6 +567,7 @@ fn masked_stored_diagnostics_trace_and_restore_after_the_hidden_heaps_and_leaves
     .upcast();
     foreign
         .global_object()
+        .unwrap()
         .set(
             crate::js_string!("maskedDiagnosticSentinel"),
             sentinel,

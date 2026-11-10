@@ -129,6 +129,7 @@ fn two_zero_delay_timeouts_both_fire() {
 
                 let order = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("order"), ctx.access())
                     .unwrap();
                 let order = order.as_object().unwrap();
@@ -159,6 +160,7 @@ fn set_timeout_basic() {
             TestAction::inspect_context(move |ctx| {
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 assert_eq!(called.as_boolean(), Some(false));
@@ -168,6 +170,7 @@ fn set_timeout_basic() {
 
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 assert_eq!(called.as_boolean(), Some(true));
@@ -196,6 +199,7 @@ fn set_timeout_cancel() {
 
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 let ctx = &ctx.host_access();
@@ -207,7 +211,7 @@ fn set_timeout_cancel() {
                 clock.forward(50);
                 assert!(event_loop.as_mut().await.is_none());
 
-                let global_object = ctx.with(|access| Ok(access.global_object())).unwrap();
+                let global_object = ctx.with(|access| Ok(access.global_object()?)).unwrap();
                 let called = ctx
                     .with(|access| global_object.get(js_str!("called"), access))
                     .unwrap();
@@ -220,6 +224,7 @@ fn set_timeout_cancel() {
                 clock.forward(100);
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 // Should still be false, as it was cancelled.
@@ -245,7 +250,7 @@ fn set_timeout_delay() {
             ),
             TestAction::inspect_context_async(async move |ctx| {
                 let job_executor = ctx.downcast_job_executor::<SimpleJobExecutor>().unwrap();
-                let global_object = ctx.global_object();
+                let global_object = ctx.global_object().unwrap();
                 let ctx = &ctx.host_access();
                 let mut event_loop = pin!(poll_once(job_executor.run_jobs_async(ctx)));
 
@@ -297,7 +302,7 @@ fn set_interval_delay() {
             ),
             TestAction::inspect_context_async(async |ctx| {
                 let clock = clock1;
-                let global_object = ctx.global_object();
+                let global_object = ctx.global_object().unwrap();
 
                 let job_executor = ctx.downcast_job_executor::<SimpleJobExecutor>().unwrap();
                 let ctx = &ctx.host_access();
@@ -361,6 +366,7 @@ fn set_interval_delay() {
                 ctx.run_jobs().unwrap();
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(3));
@@ -369,6 +375,7 @@ fn set_interval_delay() {
                 ctx.run_jobs().unwrap();
                 let called = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("called"), ctx.access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(3));
@@ -426,7 +433,7 @@ fn clear_all_cancels_pending_timers_and_intervals() {
                 );
 
                 // Neither callback should have produced an observable effect.
-                let global = ctx.with(|access| Ok(access.global_object())).unwrap();
+                let global = ctx.with(|access| Ok(access.global_object()?)).unwrap();
                 let timeout_fired = ctx
                     .with(|access| global.get(js_str!("timeout_fired"), access))
                     .unwrap();

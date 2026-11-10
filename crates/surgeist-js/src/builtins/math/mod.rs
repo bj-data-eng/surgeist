@@ -29,7 +29,7 @@ pub(crate) struct Math;
 impl IntrinsicObject for Math {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT;
-        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
+        let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(js_string!("E"), std::f64::consts::E, attribute)?
             .static_property(js_string!("LN10"), std::f64::consts::LN_10, attribute)?
             .static_property(js_string!("LN2"), std::f64::consts::LN_2, attribute)?
@@ -94,8 +94,8 @@ impl IntrinsicObject for Math {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().math()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().math()?)
     }
 }
 

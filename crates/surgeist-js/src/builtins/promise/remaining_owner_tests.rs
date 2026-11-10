@@ -150,7 +150,7 @@ impl Fixture {
                 }),
             )
             .unwrap();
-        let (source, resolvers) = JsPromise::new_pending(context.access());
+        let (source, resolvers) = JsPromise::new_pending(context.access()).unwrap();
         context
             .register_global_property(js_string!("ownerGate"), source.clone(), Attribute::all())
             .unwrap();
@@ -230,6 +230,7 @@ impl Fixture {
     fn after(&mut self) -> JsValue {
         self.context
             .global_object()
+            .unwrap()
             .get(js_string!("ownerAfter"), self.context.access())
             .unwrap()
     }

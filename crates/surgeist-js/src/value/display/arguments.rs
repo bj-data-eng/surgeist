@@ -24,7 +24,7 @@ pub(super) fn log_arguments_to(
     let reported_len = x
         .borrow()?
         .properties()
-        .get(&js_string!("length").into())
+        .get(&js_string!("length").into())?
         .and_then(|d| d.value().cloned())
         .and_then(|v| v.as_number())
         .map_or(0u32, |n| n.max(0.0) as u32);
@@ -52,7 +52,7 @@ pub(super) fn log_arguments_to(
             value::log_value_compact(f, &v, 0, print_internals, &mut HashSet::new())?;
         } else {
             let borrow = x.borrow()?;
-            if let Some(d) = borrow.properties().get(&i.into()) {
+            if let Some(d) = borrow.properties().get(&i.into())? {
                 match d.kind() {
                     DescriptorKind::Data { value, .. } => {
                         if let Some(v) = value {

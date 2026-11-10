@@ -24,7 +24,7 @@ fn materialized_engine(owner: &mut Context, error: JsError) -> EngineError {
 }
 
 fn foreign_opaque(foreign: &Context) -> JsError {
-    JsError::from_opaque(foreign.global_object().into()).unwrap()
+    JsError::from_opaque(foreign.global_object().unwrap().into()).unwrap()
 }
 
 fn foreign_native(foreign: &mut Context) -> JsNativeError {
@@ -39,8 +39,8 @@ fn foreign_native(foreign: &mut Context) -> JsNativeError {
 
 #[test]
 fn engine_in_native_cause_precedes_engine_aggregate_members_during_admission() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let error: JsError = JsNativeError::aggregate(vec![
         foreign_opaque(&foreign),
         PanicError::new("aggregate member must lose to cause").into(),
@@ -62,8 +62,8 @@ fn engine_in_native_cause_precedes_engine_aggregate_members_during_admission() {
 
 #[test]
 fn first_engine_aggregate_member_wins_in_authored_order_after_foreign_member() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let first = EngineError::from(PanicError::new("first authored engine member"));
     let error: JsError = JsNativeError::aggregate(vec![
         foreign_opaque(&foreign),
@@ -79,8 +79,8 @@ fn first_engine_aggregate_member_wins_in_authored_order_after_foreign_member() {
 
 #[test]
 fn selected_panic_sanitizes_foreign_diagnostic_despite_foreign_sibling() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let selected =
         PanicError::new("selected panic retains identity").with_source(foreign_opaque(&foreign));
     let error: JsError = JsNativeError::aggregate(vec![
@@ -104,8 +104,8 @@ fn selected_panic_sanitizes_foreign_diagnostic_despite_foreign_sibling() {
 
 #[test]
 fn diagnostic_engine_cannot_replace_enclosing_panic_when_sibling_is_foreign() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let selected = EngineError::from(
         PanicError::new("outer panic wins over its diagnostic")
             .with_source(EngineError::ContextAccessBusy),
@@ -123,8 +123,8 @@ fn diagnostic_engine_cannot_replace_enclosing_panic_when_sibling_is_foreign() {
 
 #[test]
 fn direct_panic_keeps_its_identity_while_foreign_diagnostic_becomes_type_error() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let selected =
         PanicError::new("direct panic diagnostic control").with_source(foreign_opaque(&foreign));
     let admitted = return_staged_error(&mut owner, selected.into());
@@ -138,7 +138,7 @@ fn direct_panic_keeps_its_identity_while_foreign_diagnostic_becomes_type_error()
 
 #[test]
 fn direct_panic_is_not_replaced_by_its_engine_diagnostic() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let selected = EngineError::from(
         PanicError::new("direct panic with engine diagnostic")
             .with_source(EngineError::InvalidEntryPermit),
@@ -149,8 +149,8 @@ fn direct_panic_is_not_replaced_by_its_engine_diagnostic() {
 
 #[test]
 fn engine_beneath_foreign_native_realm_is_found_before_later_engine_member() {
-    let mut owner = Context::default();
-    let mut foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let mut foreign = Context::builder().build().unwrap();
     let foreign_parent = foreign_native(&mut foreign).with_cause(JsNativeError::aggregate(vec![
         EngineError::ContextAccessBusy.into(),
     ]));
@@ -172,7 +172,7 @@ fn engine_beneath_foreign_native_realm_is_found_before_later_engine_member() {
 
 #[test]
 fn local_mixed_native_tree_is_preserved_with_cause_first_engine_selection() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let selected = EngineError::from(
         PanicError::new("local cause panic")
             .with_source(JsNativeError::error().with_message("local diagnostic")),
@@ -190,8 +190,8 @@ fn local_mixed_native_tree_is_preserved_with_cause_first_engine_selection() {
 
 #[test]
 fn foreign_native_realm_without_engine_remains_a_catchable_type_error() {
-    let mut owner = Context::default();
-    let mut foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let mut foreign = Context::builder().build().unwrap();
     let error: JsError = foreign_native(&mut foreign).into();
     let conversion_refusal = error.clone().into_opaque(owner.access()).unwrap_err();
     let admitted = return_staged_error(&mut owner, error);

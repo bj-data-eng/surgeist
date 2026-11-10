@@ -100,7 +100,7 @@ fn representations(error: &JsError, owner: &mut Context) {
 fn a_mutable_promise_alias_refuses_future_registration_without_faulting_or_consuming_the_job() {
     let executor = Rc::new(ManualExecutor::default());
     let mut owner = context(executor.clone());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let factories = Rc::new(Cell::new(0));
     let made = factories.clone();
@@ -161,7 +161,7 @@ fn a_mutable_promise_alias_refuses_future_registration_without_faulting_or_consu
 fn polling_under_a_mutable_promise_alias_returns_busy_and_recovers_the_original_settlement() {
     let executor = Rc::new(ManualExecutor::default());
     let mut owner = context(executor.clone());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let factories = Rc::new(Cell::new(0));
     let made = factories.clone();

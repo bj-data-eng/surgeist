@@ -94,94 +94,114 @@ impl IteratorPrototypes {
     pub(crate) fn uninit(
         runtime: &crate::Runtime,
         roots: &mut crate::realm::BootstrapRoots,
-    ) -> Self {
-        Self {
-            iterator: roots.retain(JsObject::with_null_proto(runtime)),
-            async_iterator: roots.retain(JsObject::with_null_proto(runtime)),
-            async_from_sync_iterator: roots.retain(JsObject::with_null_proto(runtime)),
-            array: roots.retain(JsObject::with_null_proto(runtime)),
-            set: roots.retain(JsObject::with_null_proto(runtime)),
-            string: roots.retain(JsObject::with_null_proto(runtime)),
-            regexp_string: roots.retain(JsObject::with_null_proto(runtime)),
-            map: roots.retain(JsObject::with_null_proto(runtime)),
+    ) -> crate::JsResult<Self> {
+        Ok(Self {
+            iterator: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            async_iterator: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            async_from_sync_iterator: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            array: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            set: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            string: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            regexp_string: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            map: roots.retain(JsObject::with_null_proto(runtime)?)?,
             #[cfg(feature = "intl")]
-            segment: roots.retain(JsObject::with_null_proto(runtime)),
-            iterator_helper: roots.retain(JsObject::with_null_proto(runtime)),
-            wrap_for_valid_iterator: roots.retain(JsObject::with_null_proto(runtime)),
-        }
+            segment: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            iterator_helper: roots.retain(JsObject::with_null_proto(runtime)?)?,
+            wrap_for_valid_iterator: roots.retain(JsObject::with_null_proto(runtime)?)?,
+        })
     }
 }
 
 impl IteratorPrototypes {
     /// Returns the `ArrayIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn array(&self) -> JsObject {
-        JsObject::from_inner(self.array.clone())
+    pub fn array(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.array
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `AsyncIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn async_iterator(&self) -> JsObject {
-        JsObject::from_inner(self.async_iterator.clone())
+    pub fn async_iterator(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.async_iterator
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `AsyncFromSyncIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn async_from_sync_iterator(&self) -> JsObject {
-        JsObject::from_inner(self.async_from_sync_iterator.clone())
+    pub fn async_from_sync_iterator(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.async_from_sync_iterator
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `SetIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn set(&self) -> JsObject {
-        JsObject::from_inner(self.set.clone())
+    pub fn set(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.set
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `StringIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn string(&self) -> JsObject {
-        JsObject::from_inner(self.string.clone())
+    pub fn string(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.string
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `RegExpStringIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn regexp_string(&self) -> JsObject {
-        JsObject::from_inner(self.regexp_string.clone())
+    pub fn regexp_string(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.regexp_string
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `MapIteratorPrototype` object.
     #[inline]
-    #[must_use]
-    pub fn map(&self) -> JsObject {
-        JsObject::from_inner(self.map.clone())
+    pub fn map(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.map
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `%SegmentIteratorPrototype%` object.
     #[inline]
-    #[must_use]
     #[cfg(feature = "intl")]
-    pub fn segment(&self) -> JsObject {
-        JsObject::from_inner(self.segment.clone())
+    pub fn segment(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.segment
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `%IteratorHelperPrototype%` object.
     #[inline]
-    #[must_use]
-    pub fn iterator_helper(&self) -> JsObject {
-        JsObject::from_inner(self.iterator_helper.clone())
+    pub fn iterator_helper(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.iterator_helper
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 
     /// Returns the `%WrapForValidIteratorPrototype%` object.
     #[inline]
-    #[must_use]
-    pub fn wrap_for_valid_iterator(&self) -> JsObject {
-        JsObject::from_inner(self.wrap_for_valid_iterator.clone())
+    pub fn wrap_for_valid_iterator(&self) -> Result<JsObject, crate::error::RootingError> {
+        self.wrap_for_valid_iterator
+            .upgrade()
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)
     }
 }
 
@@ -195,15 +215,18 @@ pub(crate) struct AsyncIterator;
 
 impl IntrinsicObject for AsyncIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_method(|v, _, _| Ok(v.clone()), JsSymbol::async_iterator(), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().async_iterator()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
+            .objects()
+            .iterator_prototypes()
+            .async_iterator()?)
     }
 }
 
@@ -221,7 +244,7 @@ pub fn create_iter_result_object(
 ) -> JsResult<JsValue> {
     let context = context.into_owner();
     context.runtime().check_value(&value)?;
-    Ok(create_iter_result_object_trusted(value, done, context))
+    create_iter_result_object_trusted(value, done, context)
 }
 
 /// Creates an iterator result from a value already admitted to this runtime.
@@ -229,19 +252,19 @@ pub(crate) fn create_iter_result_object_trusted(
     value: JsValue,
     done: bool,
     context: &Context,
-) -> JsValue {
+) -> JsResult<JsValue> {
     // 1. Assert: Type(done) is Boolean.
     // 2. Let obj be ! OrdinaryObjectCreate(%Object.prototype%).
     // 3. Perform ! CreateDataPropertyOrThrow(obj, "value", value).
     // 4. Perform ! CreateDataPropertyOrThrow(obj, "done", done).
-    let obj = context
-        .intrinsics()
-        .templates()
-        .iterator_result()
-        .create(OrdinaryObject, vec![value, done.into()]);
+    let obj = context.intrinsics().templates().iterator_result().create(
+        OrdinaryObject,
+        vec![value, done.into()],
+        crate::object::AllocationOrigin::TrustedConstruction,
+    )?;
 
     // 5. Return obj.
-    obj.into()
+    Ok(obj.into())
 }
 
 /// Iterator hint for `GetIterator`.
@@ -277,7 +300,7 @@ impl JsValue {
         let next_method = iterator_obj.get(js_string!("next"), context.access())?;
         // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: iterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
         // 5. Return iteratorRecord.
-        Ok(IteratorRecord::new(iterator_obj.clone(), next_method))
+        IteratorRecord::new(iterator_obj.clone(), next_method)
     }
 
     /// `GetIterator ( obj, kind )`
@@ -312,7 +335,7 @@ impl JsValue {
                     let sync_iterator_record =
                         self.get_iterator_from_method(&sync_method, context.access())?;
                     // iv. Return CreateAsyncFromSyncIterator(syncIteratorRecord).
-                    return Ok(AsyncFromSyncIterator::create(sync_iterator_record, context));
+                    return AsyncFromSyncIterator::create(sync_iterator_record, context);
                 };
 
                 Some(method)
@@ -464,15 +487,14 @@ impl IteratorRecord {
 
     /// Creates a new `IteratorRecord` with the given iterator object, next method and `done` flag.
     #[inline]
-    #[must_use]
-    pub fn new(iterator: JsObject, next_method: JsValue) -> Self {
-        let result = JsObject::with_null_proto(&iterator.runtime());
-        Self {
+    pub fn new(iterator: JsObject, next_method: JsValue) -> JsResult<Self> {
+        let result = JsObject::with_null_proto(&iterator.runtime())?;
+        Ok(Self {
             iterator,
             next_method,
             done: false,
             last_result: IteratorResult { object: result },
-        }
+        })
     }
 
     /// Get the `[[Iterator]]` field of the `IteratorRecord`.
@@ -757,7 +779,7 @@ pub(crate) fn get_iterator_direct(
     let next_method = obj.get(js_string!("next"), context.access())?;
     // 2. Let iteratorRecord be the Iterator Record { [[Iterator]]: obj, [[NextMethod]]: nextMethod, [[Done]]: false }.
     // 3. Return iteratorRecord.
-    Ok(IteratorRecord::new(obj.clone(), next_method))
+    IteratorRecord::new(obj.clone(), next_method)
 }
 
 /// `GetIteratorFlattenable ( obj, stringHandling )`

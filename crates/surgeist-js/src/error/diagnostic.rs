@@ -346,6 +346,9 @@ impl<'a> Diagnostic<'a> {
             StoredErrorRepr::ObjectAccess(error) => {
                 DiagnosticKind::Engine(DiagnosticEngine::ObjectAccess(*error))
             }
+            StoredErrorRepr::ObjectConstruction(error) => {
+                DiagnosticKind::Engine(DiagnosticEngine::ObjectConstruction(*error))
+            }
             StoredErrorRepr::ValueRender(error) => {
                 DiagnosticKind::Engine(DiagnosticEngine::ValueRender(*error))
             }
@@ -556,6 +559,9 @@ impl<'a> Diagnostic<'a> {
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
                 DiagnosticEngine::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
                 DiagnosticEngine::ObjectAccess(error) => ErasedEngineError::ObjectAccess(error),
+                DiagnosticEngine::ObjectConstruction(error) => {
+                    ErasedEngineError::ObjectConstruction(error)
+                }
                 DiagnosticEngine::ValueRender(error) => ErasedEngineError::ValueRender(error),
                 DiagnosticEngine::JobContextRequired { required } => {
                     ErasedEngineError::JobContextRequired {
@@ -786,6 +792,8 @@ pub enum DiagnosticEngine<'a> {
     ContextAccessBusy,
     /// A live object refused the required access or native projection.
     ObjectAccess(ObjectAccessError),
+    /// Trusted object preparation refused its required representation.
+    ObjectConstruction(ObjectConstructionError),
     /// Exact value rendering refusal.
     ValueRender(crate::value::ValueRenderError),
     /// Work requires the same exact Context identity.
@@ -1110,6 +1118,7 @@ impl fmt::Display for DiagnosticEngine<'_> {
                 f.write_str("ContextAccessBusy: host context access is already leased")
             }
             Self::ObjectAccess(error) => write!(f, "ObjectAccessError: {error}"),
+            Self::ObjectConstruction(error) => write!(f, "ObjectConstructionError: {error}"),
             Self::ValueRender(error) => write!(f, "ValueRenderError: {error}"),
             Self::JobContextRequired { required } => {
                 write!(f, "JobContextRequired: task requires Context {required}")

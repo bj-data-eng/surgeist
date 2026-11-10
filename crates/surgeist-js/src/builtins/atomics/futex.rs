@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn notify_selects_waiters_in_registration_order() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let backing = JsSharedArrayBuffer::new(4, context.access())
             .unwrap()
             .inner()
@@ -418,7 +418,7 @@ mod tests {
             }
         }
 
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let backing = JsSharedArrayBuffer::new(4, context.access())
             .unwrap()
             .inner()
@@ -568,7 +568,7 @@ mod publication_tests {
         backing: &SharedArrayBuffer,
         timeout: Option<Duration>,
     ) -> (JsResult<AtomicsWaitResult>, JsPromise) {
-        let (promise, functions) = JsPromise::new_pending(context.access());
+        let (promise, functions) = JsPromise::new_pending(context.access()).unwrap();
         let outcome = context
             .with_execution(ExecutionOptions::new(4096), |access| {
                 wait_async(

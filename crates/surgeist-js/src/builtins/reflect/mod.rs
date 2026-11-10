@@ -36,7 +36,7 @@ impl IntrinsicObject for Reflect {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let to_string_tag = JsSymbol::to_string_tag();
 
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_method(Self::apply, js_string!("apply"), 3)?
             .static_method(Self::construct, js_string!("construct"), 2)?
             .static_method(Self::define_property, js_string!("defineProperty"), 3)?
@@ -64,8 +64,8 @@ impl IntrinsicObject for Reflect {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().reflect()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().reflect()?)
     }
 }
 
@@ -348,7 +348,7 @@ impl Reflect {
             .map(Into::into)
             .collect();
 
-        Ok(Array::create_array_from_list(keys, context).into())
+        Ok(Array::create_array_from_list(keys, context)?.into())
     }
 
     /// Prevents new properties from ever being added to an object.

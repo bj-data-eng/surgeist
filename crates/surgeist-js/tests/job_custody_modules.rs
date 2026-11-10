@@ -218,6 +218,7 @@ impl NativeWait {
 fn watch_guest_rejection(promise: &JsPromise, context: &mut Context) {
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("custodySubject"),
             promise.clone(),
@@ -244,7 +245,7 @@ fn assert_guest_pending(promise: &JsPromise, context: &mut Context) {
 #[test]
 fn original_native_waiter_observes_drop_of_unstarted_assimilation_after_producer_completed() {
     let (mut context, executor) = context_with_manual_executor();
-    let (source, _resolvers) = JsPromise::new_pending(context.access());
+    let (source, _resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let target = ready_promise(source.into(), &mut context);
     let mut wait = NativeWait::subscribe_before_dispatch(&target, &mut context);
     watch_guest_rejection(&target, &mut context);
@@ -275,7 +276,7 @@ fn former_producer_owner_loss_does_not_retire_its_unstarted_assimilation_success
         .job_executor(executor.clone())
         .build()
         .unwrap();
-    let (source, _resolvers) = JsPromise::new_pending(context.access());
+    let (source, _resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let target = ready_promise(source.into(), &mut context);
     let mut wait = NativeWait::subscribe_before_dispatch(&target, &mut context);
     let mut producer = executor.take_async();
@@ -327,7 +328,7 @@ fn required_native_source_retirement_reaches_waiter_after_both_predecessors_comp
 #[test]
 fn drop_of_selected_unstarted_reaction_retires_target_without_rejecting_settled_source() {
     let (mut context, executor) = context_with_manual_executor();
-    let (source, resolvers) = JsPromise::new_pending(context.access());
+    let (source, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let target = ready_promise(source.clone().into(), &mut context);
     let mut wait = NativeWait::subscribe_before_dispatch(&target, &mut context);
     watch_guest_rejection(&target, &mut context);
@@ -501,9 +502,10 @@ fn late_native_adoption_retains_an_already_queued_guest_assimilation_obligation(
 #[test]
 fn late_adoption_preserves_reaction_pair_after_original_assimilation_completed() {
     let (mut context, executor) = context_with_manual_executor();
-    let (root, root_resolvers) = JsPromise::new_pending(context.access());
+    let (root, root_resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("adoptionRoot"),
             root.clone(),
@@ -968,7 +970,7 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
 #[test]
 fn native_promise_future_rejects_a_foreign_receiving_runtime_with_a_type_error() {
     let (mut owner, executor) = context_with_manual_executor();
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let promise = ready_promise(42.into(), &mut owner);
     let mut owner_wait = NativeWait::subscribe_before_dispatch(&promise, &mut owner);
 
@@ -994,7 +996,7 @@ fn native_promise_future_rejects_a_foreign_receiving_runtime_with_a_type_error()
 #[test]
 fn native_wait_registered_before_thenable_resolution_observes_assimilation_retirement() {
     let (mut context, executor) = context_with_manual_executor();
-    let (promise, resolvers) = JsPromise::new_pending(context.access());
+    let (promise, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let mut wait = NativeWait::subscribe_before_dispatch(&promise, &mut context);
     watch_guest_rejection(&promise, &mut context);
     let thenable = context

@@ -104,26 +104,26 @@ impl Service for Segmenter {
 
 impl IntrinsicObject for Segmenter {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.Segmenter"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
-            .method(Self::segment, js_string!("segment"), 1)
+            )?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
+            .method(Self::segment, js_string!("segment"), 1)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -216,8 +216,11 @@ impl BuiltInConstructor for Segmenter {
         let proto =
             get_prototype_from_constructor(new_target, StandardConstructors::segmenter, context)?;
 
-        let segmenter =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, segmenter);
+        let segmenter = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            proto,
+            segmenter,
+        )?;
 
         // 14. Return segmenter.
         Ok(segmenter.into())
@@ -316,7 +319,7 @@ impl Segmenter {
         let string = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Return ! CreateSegmentsObject(segmenter, string).
-        Ok(Segments::create(segmenter.clone(), string, context).into())
+        Ok(Segments::create(segmenter.clone(), string, context)?.into())
     }
 }
 

@@ -4,7 +4,7 @@ use surgeist_js::{Context, JsResult, JsValue};
 
 #[test]
 fn not_null() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let v: Nullable<i32> = JsValue::new(42)
         .try_js_into(context.access())
         .expect("Failed to convert value from js");
@@ -18,7 +18,7 @@ fn not_null() {
 
 #[test]
 fn null() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let v: Nullable<i32> = JsValue::null()
         .try_js_into(context.access())
         .expect("Failed to convert value from js");
@@ -32,7 +32,7 @@ fn null() {
 
 #[test]
 fn invalid() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let v: JsResult<Nullable<i32>> = JsValue::undefined().try_js_into(context.access());
 
     assert!(v.is_err());

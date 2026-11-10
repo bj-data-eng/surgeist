@@ -38,7 +38,7 @@ struct ExternalUnwind {
 
 #[test]
 fn exact_context_destruction_during_an_external_unwind_preserves_normal_owner_retirement() {
-    let mut original = Some(Context::default());
+    let mut original = Some(Context::builder().build().unwrap());
     let runtime = original.as_ref().unwrap().runtime().clone();
     let peer = Context::builder().runtime(runtime).build().unwrap();
     let required = original.as_ref().unwrap().id();

@@ -72,7 +72,7 @@ static TWO_E_63: LazyLock<BigInt> = LazyLock::new(|| {
 ///
 /// ```
 /// # use surgeist_js::{js_string, js_value, Context, JsError, JsValue};
-/// # let context = &mut Context::default();
+/// # let context = &mut Context::builder().build().unwrap();
 /// assert_eq!(js_value!( 1 ), JsValue::from(1));
 /// assert_eq!(js_value!( false ), JsValue::from(false));
 /// // Objects and arrays cannot be compared with simple equality.
@@ -96,7 +96,7 @@ pub use surgeist_js_macros::js_value;
 ///
 /// ```
 /// # use surgeist_js::{js_object, Context, JsError, JsValue};
-/// # let context = &mut Context::default();
+/// # let context = &mut Context::builder().build().unwrap();
 /// let value = js_object!({
 ///   // Comments are allowed inside. String literals will always be transformed to `JsString`.
 ///   "key": "value",
@@ -122,7 +122,7 @@ pub use surgeist_js_macros::js_object;
 ///
 /// ```
 /// # use surgeist_js::{js_string, Context, JsValue};
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 /// let value = JsValue::new(3);
 /// assert_eq!(value.to_string(context.access()), Ok(js_string!("3")));
 /// ```
@@ -360,7 +360,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()).unwrap());
     /// assert!(obj.is_object());
     ///
     /// let number = JsValue::new(42);
@@ -379,7 +379,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()).unwrap());
     /// assert!(obj.as_object().is_some());
     ///
     /// let number = JsValue::new(42);
@@ -398,7 +398,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()).unwrap());
     /// let inner = obj.into_object();
     /// assert!(inner.is_some());
     ///
@@ -423,7 +423,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, NativeFunction};
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
     /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.is_callable());
@@ -444,7 +444,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, NativeFunction};
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
     /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.as_callable().is_some());
@@ -466,7 +466,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, NativeFunction};
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
     /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.as_function().is_some());
@@ -487,7 +487,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, Source};
     ///
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// // Classes and regular functions are constructors.
     /// let class = context.eval(Source::from_bytes(b"(class {})")).unwrap();
     /// assert!(class.is_constructor());
@@ -511,7 +511,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, Source};
     ///
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let class = context.eval(Source::from_bytes(b"(class {})")).unwrap();
     /// assert!(class.as_constructor().is_some());
     ///
@@ -531,8 +531,8 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, object::builtins::JsPromise};
     ///
-    /// let context = &mut Context::default();
-    /// let (promise, _) = JsPromise::new_pending(context.access());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let (promise, _) = JsPromise::new_pending(context.access()).unwrap();
     /// let js_value = JsValue::from(promise);
     /// assert!(js_value.is_promise());
     ///
@@ -560,8 +560,8 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, object::builtins::JsPromise};
     ///
-    /// let context = &mut Context::default();
-    /// let (promise, _) = JsPromise::new_pending(context.access());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let (promise, _) = JsPromise::new_pending(context.access()).unwrap();
     /// let js_value = JsValue::from(promise);
     /// assert!(js_value.as_promise().is_some());
     ///
@@ -581,7 +581,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, js_string, object::builtins::JsRegExp};
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context.access()).unwrap();
     /// let js_value = JsValue::from(regexp);
     /// assert!(js_value.is_regexp());
@@ -602,7 +602,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue, js_string, object::builtins::JsRegExp};
     ///
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context.access()).unwrap();
     /// let js_value = JsValue::from(regexp);
     /// assert!(js_value.as_regexp().is_some());
@@ -1062,39 +1062,39 @@ impl JsValue {
             JsVariant::Undefined | JsVariant::Null => Err(JsNativeError::typ()
                 .with_message("cannot convert 'null' or 'undefined' to object")
                 .into()),
-            JsVariant::Boolean(boolean) => Ok(context
-                .intrinsics()
-                .templates()
-                .boolean()
-                .create(boolean, Vec::default())),
-            JsVariant::Integer32(integer) => Ok(context
-                .intrinsics()
-                .templates()
-                .number()
-                .create(f64::from(integer), Vec::default())),
-            JsVariant::Float64(rational) => Ok(context
-                .intrinsics()
-                .templates()
-                .number()
-                .create(rational, Vec::default())),
+            JsVariant::Boolean(boolean) => context.intrinsics().templates().boolean().create(
+                boolean,
+                Vec::default(),
+                crate::object::AllocationOrigin::TrustedConstruction,
+            ),
+            JsVariant::Integer32(integer) => context.intrinsics().templates().number().create(
+                f64::from(integer),
+                Vec::default(),
+                crate::object::AllocationOrigin::TrustedConstruction,
+            ),
+            JsVariant::Float64(rational) => context.intrinsics().templates().number().create(
+                rational,
+                Vec::default(),
+                crate::object::AllocationOrigin::TrustedConstruction,
+            ),
             JsVariant::String(string) => {
                 let len = string.len();
-                Ok(context
-                    .intrinsics()
-                    .templates()
-                    .string()
-                    .create(string, vec![len.into()]))
+                context.intrinsics().templates().string().create(
+                    string,
+                    vec![len.into()],
+                    crate::object::AllocationOrigin::TrustedConstruction,
+                )
             }
-            JsVariant::Symbol(symbol) => Ok(context
-                .intrinsics()
-                .templates()
-                .symbol()
-                .create(symbol, Vec::default())),
-            JsVariant::BigInt(bigint) => Ok(context
-                .intrinsics()
-                .templates()
-                .bigint()
-                .create(bigint, Vec::default())),
+            JsVariant::Symbol(symbol) => context.intrinsics().templates().symbol().create(
+                symbol,
+                Vec::default(),
+                crate::object::AllocationOrigin::TrustedConstruction,
+            ),
+            JsVariant::BigInt(bigint) => context.intrinsics().templates().bigint().create(
+                bigint,
+                Vec::default(),
+                crate::object::AllocationOrigin::TrustedConstruction,
+            ),
             JsVariant::Object(jsobject) => Ok(jsobject),
         }
     }
@@ -1105,13 +1105,13 @@ impl JsValue {
             JsVariant::Undefined | JsVariant::Null => Err(JsNativeError::typ()
                 .with_message("cannot convert 'null' or 'undefined' to object")
                 .into()),
-            JsVariant::Boolean(_) => Ok(constructors.boolean().prototype()),
+            JsVariant::Boolean(_) => Ok(constructors.boolean().prototype()?),
             JsVariant::Integer32(_) | JsVariant::Float64(_) => {
-                Ok(constructors.number().prototype())
+                Ok(constructors.number().prototype()?)
             }
-            JsVariant::String(_) => Ok(constructors.string().prototype()),
-            JsVariant::Symbol(_) => Ok(constructors.symbol().prototype()),
-            JsVariant::BigInt(_) => Ok(constructors.bigint().prototype()),
+            JsVariant::String(_) => Ok(constructors.string().prototype()?),
+            JsVariant::Symbol(_) => Ok(constructors.symbol().prototype()?),
+            JsVariant::BigInt(_) => Ok(constructors.bigint().prototype()?),
             JsVariant::Object(object) => Ok(object.clone()),
         }
     }
@@ -1619,7 +1619,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue};
     ///
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     ///
     /// let defined_value = JsValue::from(5);
     /// let undefined = JsValue::undefined();
@@ -1657,7 +1657,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{Context, JsValue};
     ///
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     ///
     /// let defined_value = JsValue::from(5);
     /// let undefined = JsValue::undefined();

@@ -24,16 +24,16 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/WeakMap
     #[inline]
-    pub fn new(context: ContextAccess<'_>) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        Self {
+        Ok(Self {
             inner: JsObject::from_proto_and_data_with_shared_shape(
                 context.root_shape(),
-                context.intrinsics().constructors().weak_map().prototype(),
+                context.intrinsics().constructors().weak_map().prototype()?,
                 NativeWeakMap::new(),
-            )
+            )?
             .upcast(),
-        }
+        })
     }
 
     /// Returns the value associated with the specified key in the `WeakMap`,

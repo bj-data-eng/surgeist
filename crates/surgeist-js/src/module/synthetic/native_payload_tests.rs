@@ -56,9 +56,9 @@ fn function(id: u32, value: &JsObject, restored: &Rc<RefCell<Vec<u32>>>) -> Nati
 #[test]
 fn stored_native_exports_preserve_duplicate_request_order_and_final_function_identity() {
     let mut context = context();
-    let first = JsObject::with_null_proto(context.runtime());
-    let second = JsObject::with_null_proto(context.runtime());
-    let third = JsObject::with_null_proto(context.runtime());
+    let first = JsObject::with_null_proto(context.runtime()).unwrap();
+    let second = JsObject::with_null_proto(context.runtime()).unwrap();
+    let third = JsObject::with_null_proto(context.runtime()).unwrap();
     let restored = Rc::new(RefCell::new(Vec::new()));
     let exports = vec![
         (js_string!("answer"), function(1, &first, &restored)),
@@ -131,4 +131,116 @@ fn stored_native_exports_preserve_duplicate_request_order_and_final_function_ide
         third
     );
     assert_ne!(first, second);
+}
+
+#[derive(Trace)]
+struct FailureCounter(#[heap_trace(skip)] Rc<std::cell::Cell<usize>>);
+
+#[derive(Trace)]
+struct PromiseAllocationCanary(#[heap_trace(skip)] Rc<std::cell::Cell<usize>>);
+
+impl Drop for PromiseAllocationCanary {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() + 1);
+    }
+}
+
+#[test]
+fn initializer_host_refusal_precedes_later_promise_allocation() {
+    use crate::error::{EngineError, RootingError};
+    use surgeist_js_gc::heap::{AccessError, AllocationCollection};
+
+    let mut context = context();
+    let runtime = context.runtime().clone();
+    runtime
+        .heap
+        .set_allocation_collection(AllocationCollection::Manual)
+        .unwrap();
+    let drops = Rc::new(std::cell::Cell::new(0));
+    let counter = runtime
+        .heap
+        .allocate(FailureCounter(drops.clone()))
+        .unwrap();
+    let steps = SyntheticModuleInitializer::from_fn_with_captures(
+        |module, counter, mut access| {
+            module.set_export(&js_string!("accepted"), JsValue::new(42))?;
+            let runtime = access.runtime().clone();
+            let canary = runtime
+                .heap
+                .allocate(PromiseAllocationCanary(counter.0.clone()))
+                .unwrap();
+            drop(canary);
+            // Any later GC allocation will collect the real unreachable canary.
+            runtime
+                .heap
+                .set_allocation_collection(AllocationCollection::BeforeAllocation)
+                .unwrap();
+            let refused = runtime
+                .heap
+                .read(|_| JsPromise::new_pending(access.reborrow()))
+                .unwrap();
+            let error = match refused {
+                Err(error) => error,
+                Ok(_) => panic!("a live heap read must refuse promise construction"),
+            };
+            assert_eq!(
+                error.as_engine(),
+                Some(&EngineError::Rooting(RootingError::Access(
+                    AccessError::HeapBorrowed
+                )))
+            );
+            Err(error)
+        },
+        counter,
+    );
+    let module = Module::synthetic(
+        &[js_string!("accepted")],
+        steps,
+        None,
+        None,
+        context.access(),
+    )
+    .unwrap();
+    module.link(context.access()).unwrap();
+    let invocation = context.vm.frame().invocation();
+    let error = module.evaluate(context.access()).unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::Rooting(RootingError::Access(
+            AccessError::HeapBorrowed
+        )))
+    );
+    assert_eq!(
+        context.vm.frame().invocation(),
+        invocation,
+        "the initializer frame is restored before returning its error"
+    );
+    assert_eq!(
+        drops.get(),
+        0,
+        "the admitted initializer failure prevents a later promise allocation"
+    );
+    let crate::module::ModuleKind::Synthetic(source) = module.kind() else {
+        unreachable!()
+    };
+    assert!(matches!(
+        &*source.state.borrow(),
+        ModuleStatus::Linked { .. }
+    ));
+    runtime
+        .heap
+        .set_allocation_collection(AllocationCollection::Manual)
+        .unwrap();
+    assert_eq!(
+        module
+            .get_value(js_string!("accepted"), context.access())
+            .unwrap(),
+        JsValue::new(42)
+    );
+    runtime.collect().unwrap();
+    assert_eq!(
+        drops.get(),
+        1,
+        "the canary was genuinely collectible and not an allocation proxy"
+    );
 }

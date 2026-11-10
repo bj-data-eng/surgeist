@@ -13,8 +13,8 @@ use surgeist_js::{
 
 #[test]
 fn repeated_holder_leases_and_reborrows_share_the_original_guest_state() {
-    let mut owner = Context::default();
-    let mut independent = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let mut independent = Context::builder().build().unwrap();
     {
         let holder = owner.host_access();
         holder
@@ -59,12 +59,14 @@ fn repeated_holder_leases_and_reborrows_share_the_original_guest_state() {
 
 #[test]
 fn nested_same_holder_is_busy_without_invoking_callback_or_charging_work() {
-    let control = Context::default()
+    let control = Context::builder()
+        .build()
+        .unwrap()
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
     let instructions = control.report.instructions().unwrap();
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let called = Cell::new(false);
     let outcome = owner
         .with_execution(ExecutionOptions::new(64), |context| {
@@ -101,7 +103,7 @@ fn nested_same_holder_is_busy_without_invoking_callback_or_charging_work() {
 
 #[test]
 fn holder_restores_its_lease_after_callback_panic_without_rolling_back_effects() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     {
         let holder = owner.host_access();
         let panic = catch_unwind(AssertUnwindSafe(|| {
@@ -140,7 +142,7 @@ fn holder_restores_its_lease_after_callback_panic_without_rolling_back_effects()
 
 #[test]
 fn consuming_access_into_holder_retains_the_selected_owner() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     {
         let mut access = owner.access();
         access
@@ -168,7 +170,7 @@ fn consuming_access_into_holder_retains_the_selected_owner() {
 
 #[test]
 fn retained_instruction_stop_wins_over_later_holder_busy_at_operation_completion() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let called = Cell::new(false);
     let outcome = owner
         .with_execution(ExecutionOptions::new(32), |context| {

@@ -8,7 +8,7 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AggregateError
 
 use crate::{
-    Context, JsArgs, JsExpect, JsResult, JsString, JsValue,
+    Context, JsArgs, JsResult, JsString, JsValue,
     builtins::{
         Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject,
         iterable::IteratorHint,
@@ -29,18 +29,18 @@ pub(crate) struct AggregateError;
 impl IntrinsicObject for AggregateError {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().error().constructor())
-            .inherits(Some(realm.intrinsics().constructors().error().prototype()))
-            .property(js_string!("name"), Self::NAME, attribute)
-            .property(js_string!("message"), js_string!(), attribute)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().error().constructor()?)?
+            .inherits(Some(realm.intrinsics().constructors().error().prototype()?))?
+            .property(js_string!("name"), Self::NAME, attribute)?
+            .property(js_string!("message"), js_string!(), attribute)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -70,13 +70,18 @@ impl BuiltInConstructor for AggregateError {
         let new_target = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| {
-                    context
-                        .intrinsics()
-                        .constructors()
-                        .aggregate_error()
-                        .constructor()
-                })
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context
+                                .intrinsics()
+                                .constructors()
+                                .aggregate_error()
+                                .constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -91,7 +96,7 @@ impl BuiltInConstructor for AggregateError {
             context.root_shape(),
             prototype,
             Error::with_caller_position(ErrorKind::Aggregate, context),
-        )
+        )?
         .upcast();
 
         // 3. If message is not undefined, then
@@ -101,7 +106,7 @@ impl BuiltInConstructor for AggregateError {
             let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
-            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
+            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context)?;
         }
 
         // 4. Perform ? InstallErrorCause(O, options).
@@ -126,11 +131,10 @@ impl BuiltInConstructor for AggregateError {
                 .configurable(true)
                 .enumerable(false)
                 .writable(true)
-                .value(Array::create_array_from_list(errors_list, context))
+                .value(Array::create_array_from_list(errors_list, context)?)
                 .build(),
             context.access(),
-        )
-        .js_expect("should not fail according to spec")?;
+        )?;
 
         // 5. Return O.
         Ok(o.into())

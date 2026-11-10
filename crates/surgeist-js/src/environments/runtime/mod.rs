@@ -820,7 +820,7 @@ impl Context {
         match locator.scope() {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
-                let obj = self.global_object();
+                let obj = self.global_object()?;
                 obj.has_property(key, self.access())
             }
             BindingLocatorScope::GlobalDeclarative => {
@@ -865,7 +865,7 @@ impl Context {
         match locator.scope() {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
-                let obj = self.global_object();
+                let obj = self.global_object()?;
                 obj.try_get(key, self)
             }
             BindingLocatorScope::GlobalDeclarative => {
@@ -897,7 +897,7 @@ impl Context {
         match locator.scope() {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
-                let obj = self.global_object();
+                let obj = self.global_object()?;
                 obj.set(key, value, strict, self.access())?;
             }
             BindingLocatorScope::GlobalDeclarative => {
@@ -928,7 +928,7 @@ impl Context {
         match locator.scope() {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
-                let obj = self.global_object();
+                let obj = self.global_object()?;
                 obj.__delete__(&key.into(), &mut self.into())
             }
             BindingLocatorScope::GlobalDeclarative => Ok(false),
@@ -1009,10 +1009,10 @@ mod object_environment_tests {
             .allocate(DeclarativeEnvironment::global())
             .unwrap();
         let mut stack = EnvironmentStack::new();
-        let older = JsObject::with_null_proto(&runtime);
+        let older = JsObject::with_null_proto(&runtime).unwrap();
         stack.push_object(older, &runtime.heap);
         stack.push_lexical(0, &global);
-        let nearer = JsObject::with_null_proto(&runtime);
+        let nearer = JsObject::with_null_proto(&runtime).unwrap();
         let nearer_identity = nearer.identity();
         stack.push_object(nearer, &runtime.heap);
         stack.push_lexical(0, &global);

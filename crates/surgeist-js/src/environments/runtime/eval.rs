@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn dropping_private_eval_storage_keeps_caller_slots_and_poisoning_unchanged() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let realm = context.realm();
         let global = realm.environment();
         let storage = PreparedEvalEnvironment::new(
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn eval_installation_appends_defaults_and_preserves_callback_owned_values() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let realm = context.realm();
         let global = realm.environment();
         let values = global.kind().as_global().unwrap();
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn eval_storage_rejects_changed_live_length_without_restoring_callback_state() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let realm = context.realm();
         let global = realm.environment();
         let values = global.kind().as_global().unwrap();

@@ -186,33 +186,33 @@ impl IntrinsicObject for Error {
 
         let get_stack = BuiltInBuilder::callable(realm, Self::get_stack)
             .name(js_string!("get stack"))
-            .build();
+            .build()?;
 
         let set_stack = BuiltInBuilder::callable(realm, Self::set_stack)
             .name(js_string!("set stack"))
-            .build();
+            .build()?;
 
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .property(js_string!("name"), Self::NAME, property_attribute)
-            .property(js_string!("message"), js_string!(), property_attribute)
-            .method(Self::to_string, js_string!("toString"), 0)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .property(js_string!("name"), Self::NAME, property_attribute)?
+            .property(js_string!("message"), js_string!(), property_attribute)?
+            .method(Self::to_string, js_string!("toString"), 0)?
             .accessor(
                 js_string!("stack"),
                 Some(get_stack),
                 Some(set_stack),
                 accessor_attribute,
-            );
+            )?;
 
         #[cfg(feature = "experimental")]
-        let builder = builder.static_method(Error::is_error, js_string!("isError"), 1);
+        let builder = builder.static_method(Error::is_error, js_string!("isError"), 1)?;
 
         builder.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -240,7 +240,14 @@ impl BuiltInConstructor for Error {
         let new_target = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| context.intrinsics().constructors().error().constructor())
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context.intrinsics().constructors().error().constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -253,7 +260,7 @@ impl BuiltInConstructor for Error {
             context.root_shape(),
             prototype,
             Error::with_caller_position(ErrorKind::Error, context),
-        )
+        )?
         .upcast();
 
         // 3. If message is not undefined, then
@@ -263,7 +270,7 @@ impl BuiltInConstructor for Error {
             let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
-            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
+            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context)?;
         }
 
         // 4. Perform ? InstallErrorCause(O, options).
@@ -286,7 +293,7 @@ impl Error {
             && let Some(cause) = options.try_get(js_string!("cause"), context)?
         {
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "cause", cause).
-            o.create_non_enumerable_data_property_or_throw(js_string!("cause"), cause, context);
+            o.create_non_enumerable_data_property_or_throw(js_string!("cause"), cause, context)?;
         }
 
         // 2. Return unused.
@@ -460,9 +467,14 @@ impl Error {
         let new_target = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| {
-                    constructor_fn(context.intrinsics().constructors()).constructor()
-                })
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            constructor_fn(context.intrinsics().constructors()).constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -473,13 +485,13 @@ impl Error {
             context.root_shape(),
             prototype,
             Error::with_caller_position(error_kind, context),
-        )
+        )?
         .upcast();
 
         let message = args.get_or_undefined(0);
         if !message.is_undefined() {
             let msg = message.to_string(context.access())?;
-            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
+            o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context)?;
         }
 
         Error::install_error_cause(&o, args.get_or_undefined(1), context)?;

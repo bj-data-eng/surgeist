@@ -37,7 +37,7 @@ where
 #[test]
 fn either() {
     let v = JsValue::new(123);
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
 
     assert_eq!(
         Either::<i32, i32>::try_from_js(&v, context.access()),

@@ -66,12 +66,12 @@ impl IntrinsicObject for String {
         let trim_start = BuiltInBuilder::callable(realm, Self::trim_start)
             .length(0)
             .name(js_string!("trimStart"))
-            .build();
+            .build()?;
 
         let trim_end = BuiltInBuilder::callable(realm, Self::trim_end)
             .length(0)
             .name(js_string!("trimEnd"))
-            .build();
+            .build()?;
 
         #[cfg(feature = "annex-b")]
         let trim_left = trim_start.clone();
@@ -80,62 +80,62 @@ impl IntrinsicObject for String {
         let trim_right = trim_end.clone();
 
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT;
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .property(js_string!("length"), 0, attribute)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .property(js_string!("length"), 0, attribute)?
             .property(
                 js_string!("trimStart"),
                 trim_start,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("trimEnd"),
                 trim_end,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::raw, js_string!("raw"), 1)
-            .static_method(Self::from_char_code, js_string!("fromCharCode"), 1)
-            .static_method(Self::from_code_point, js_string!("fromCodePoint"), 1)
-            .method(Self::char_at, js_string!("charAt"), 1)
-            .method(Self::char_code_at, js_string!("charCodeAt"), 1)
-            .method(Self::code_point_at, js_string!("codePointAt"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::concat, js_string!("concat"), 1)
-            .method(Self::repeat, js_string!("repeat"), 1)
-            .method(Self::slice, js_string!("slice"), 2)
-            .method(Self::starts_with, js_string!("startsWith"), 1)
-            .method(Self::ends_with, js_string!("endsWith"), 1)
-            .method(Self::includes, js_string!("includes"), 1)
-            .method(Self::index_of, js_string!("indexOf"), 1)
-            .method(Self::is_well_formed, js_string!("isWellFormed"), 0)
-            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)
-            .method(Self::locale_compare, js_string!("localeCompare"), 1)
-            .method(Self::r#match, js_string!("match"), 1)
-            .method(Self::normalize, js_string!("normalize"), 0)
-            .method(Self::pad_end, js_string!("padEnd"), 1)
-            .method(Self::pad_start, js_string!("padStart"), 1)
-            .method(Self::trim, js_string!("trim"), 0)
-            .method(Self::to_case::<false>, js_string!("toLowerCase"), 0)
-            .method(Self::to_case::<true>, js_string!("toUpperCase"), 0)
-            .method(Self::to_well_formed, js_string!("toWellFormed"), 0)
+            )?
+            .static_method(Self::raw, js_string!("raw"), 1)?
+            .static_method(Self::from_char_code, js_string!("fromCharCode"), 1)?
+            .static_method(Self::from_code_point, js_string!("fromCodePoint"), 1)?
+            .method(Self::char_at, js_string!("charAt"), 1)?
+            .method(Self::char_code_at, js_string!("charCodeAt"), 1)?
+            .method(Self::code_point_at, js_string!("codePointAt"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::concat, js_string!("concat"), 1)?
+            .method(Self::repeat, js_string!("repeat"), 1)?
+            .method(Self::slice, js_string!("slice"), 2)?
+            .method(Self::starts_with, js_string!("startsWith"), 1)?
+            .method(Self::ends_with, js_string!("endsWith"), 1)?
+            .method(Self::includes, js_string!("includes"), 1)?
+            .method(Self::index_of, js_string!("indexOf"), 1)?
+            .method(Self::is_well_formed, js_string!("isWellFormed"), 0)?
+            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)?
+            .method(Self::locale_compare, js_string!("localeCompare"), 1)?
+            .method(Self::r#match, js_string!("match"), 1)?
+            .method(Self::normalize, js_string!("normalize"), 0)?
+            .method(Self::pad_end, js_string!("padEnd"), 1)?
+            .method(Self::pad_start, js_string!("padStart"), 1)?
+            .method(Self::trim, js_string!("trim"), 0)?
+            .method(Self::to_case::<false>, js_string!("toLowerCase"), 0)?
+            .method(Self::to_case::<true>, js_string!("toUpperCase"), 0)?
+            .method(Self::to_well_formed, js_string!("toWellFormed"), 0)?
             .method(
                 Self::to_locale_case::<false>,
                 js_string!("toLocaleLowerCase"),
                 0,
-            )
+            )?
             .method(
                 Self::to_locale_case::<true>,
                 js_string!("toLocaleUpperCase"),
                 0,
-            )
-            .method(Self::substring, js_string!("substring"), 2)
-            .method(Self::split, js_string!("split"), 2)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .method(Self::match_all, js_string!("matchAll"), 1)
-            .method(Self::replace, js_string!("replace"), 2)
-            .method(Self::replace_all, js_string!("replaceAll"), 2)
-            .method(Self::iterator, JsSymbol::iterator(), 0)
-            .method(Self::search, js_string!("search"), 1)
-            .method(Self::at, js_string!("at"), 1);
+            )?
+            .method(Self::substring, js_string!("substring"), 2)?
+            .method(Self::split, js_string!("split"), 2)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
+            .method(Self::match_all, js_string!("matchAll"), 1)?
+            .method(Self::replace, js_string!("replace"), 2)?
+            .method(Self::replace_all, js_string!("replaceAll"), 2)?
+            .method(Self::iterator, JsSymbol::iterator(), 0)?
+            .method(Self::search, js_string!("search"), 1)?
+            .method(Self::at, js_string!("at"), 1)?;
 
         #[cfg(feature = "annex-b")]
         let builder = {
@@ -144,26 +144,26 @@ impl IntrinsicObject for String {
                     js_string!("trimLeft"),
                     trim_left,
                     Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-                )
+                )?
                 .property(
                     js_string!("trimRight"),
                     trim_right,
                     Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-                )
-                .method(Self::substr, js_string!("substr"), 2)
-                .method(Self::anchor, js_string!("anchor"), 1)
-                .method(Self::big, js_string!("big"), 0)
-                .method(Self::blink, js_string!("blink"), 0)
-                .method(Self::bold, js_string!("bold"), 0)
-                .method(Self::fixed, js_string!("fixed"), 0)
-                .method(Self::fontcolor, js_string!("fontcolor"), 1)
-                .method(Self::fontsize, js_string!("fontsize"), 1)
-                .method(Self::italics, js_string!("italics"), 0)
-                .method(Self::link, js_string!("link"), 1)
-                .method(Self::small, js_string!("small"), 0)
-                .method(Self::strike, js_string!("strike"), 0)
-                .method(Self::sub, js_string!("sub"), 0)
-                .method(Self::sup, js_string!("sup"), 0)
+                )?
+                .method(Self::substr, js_string!("substr"), 2)?
+                .method(Self::anchor, js_string!("anchor"), 1)?
+                .method(Self::big, js_string!("big"), 0)?
+                .method(Self::blink, js_string!("blink"), 0)?
+                .method(Self::bold, js_string!("bold"), 0)?
+                .method(Self::fixed, js_string!("fixed"), 0)?
+                .method(Self::fontcolor, js_string!("fontcolor"), 1)?
+                .method(Self::fontsize, js_string!("fontsize"), 1)?
+                .method(Self::italics, js_string!("italics"), 0)?
+                .method(Self::link, js_string!("link"), 1)?
+                .method(Self::small, js_string!("small"), 0)?
+                .method(Self::strike, js_string!("strike"), 0)?
+                .method(Self::sub, js_string!("sub"), 0)?
+                .method(Self::sup, js_string!("sup"), 0)?
         };
 
         builder.build()?;
@@ -171,8 +171,8 @@ impl IntrinsicObject for String {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -222,7 +222,7 @@ impl BuiltInConstructor for String {
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::string, context)?;
         // 4. Return ! StringCreate(s, ? GetPrototypeFromConstructor(NewTarget, "%String.prototype%")).
-        Ok(Self::string_create(string, prototype, context).into())
+        Ok(Self::string_create(string, prototype, context)?.into())
     }
 }
 
@@ -242,7 +242,11 @@ impl String {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-stringcreate
-    fn string_create(value: JsString, prototype: JsObject, context: &mut Context) -> JsObject {
+    fn string_create(
+        value: JsString,
+        prototype: JsObject,
+        context: &mut Context,
+    ) -> JsResult<JsObject> {
         // 7. Let length be the number of code unit elements in value.
         let len = value.len();
 
@@ -252,9 +256,12 @@ impl String {
         // 4. Set S.[[GetOwnProperty]] as specified in 10.4.3.1.
         // 5. Set S.[[DefineOwnProperty]] as specified in 10.4.3.2.
         // 6. Set S.[[OwnPropertyKeys]] as specified in 10.4.3.3.
-        let s =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, value)
-                .upcast();
+        let s = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            prototype,
+            value,
+        )?
+        .upcast();
 
         // 8. Perform ! DefinePropertyOrThrow(S, "length", PropertyDescriptor { [[Value]]: 𝔽(length),
         // [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: false }).
@@ -266,11 +273,10 @@ impl String {
                 .enumerable(false)
                 .configurable(false),
             context.access(),
-        )
-        .expect("length definition for a new string must not fail");
+        )?;
 
         // 9. Return S.
-        s
+        Ok(s)
     }
 
     /// Abstract operation `thisStringValue( value )`
@@ -1456,7 +1462,7 @@ impl String {
                         .intrinsics()
                         .constructors()
                         .collator()
-                        .constructor()
+                        .constructor()?
                         .into(),
                     args.get(1..).unwrap_or_default(),
                     context,
@@ -2004,13 +2010,13 @@ impl String {
         // 6. If lim = 0, return A.
         if lim == 0 {
             // a. Return ! CreateArrayFromList(« »).
-            return Ok(Array::create_array_from_list([], context).into());
+            return Ok(Array::create_array_from_list([], context)?.into());
         }
 
         // 7. If separator is undefined, then
         if separator.is_undefined() {
             // a. Return ! CreateArrayFromList(« S »).
-            return Ok(Array::create_array_from_list([this_str.into()], context).into());
+            return Ok(Array::create_array_from_list([this_str.into()], context)?.into());
         }
 
         // 8. Let separatorLength be the length of R.
@@ -2026,12 +2032,12 @@ impl String {
                 .map(|code| js_string!(std::slice::from_ref(&code)).into());
 
             // c. Return ! CreateArrayFromList(codeUnits).
-            return Ok(Array::create_array_from_list(head, context).into());
+            return Ok(Array::create_array_from_list(head, context)?.into());
         }
 
         // 10. If S is the empty String, return ! CreateArrayFromList(« S »).
         if this_str.is_empty() {
-            return Ok(Array::create_array_from_list([this_str.into()], context).into());
+            return Ok(Array::create_array_from_list([this_str.into()], context)?.into());
         }
 
         // 11. Let substrings be a new empty List.
@@ -2054,7 +2060,7 @@ impl String {
                 return Ok(Array::create_array_from_list(
                     substrings.into_iter().map(JsValue::from),
                     context,
-                )
+                )?
                 .into());
             }
             // d. Set i to j + separatorLength.
@@ -2070,7 +2076,7 @@ impl String {
 
         // 17. Return ! CreateArrayFromList(substrings).
         Ok(
-            Array::create_array_from_list(substrings.into_iter().map(JsValue::from), context)
+            Array::create_array_from_list(substrings.into_iter().map(JsValue::from), context)?
                 .into(),
         )
     }
@@ -2288,7 +2294,7 @@ impl String {
         // 2. Let s be ? ToString(O).
         let s = o.to_string(context.access())?;
 
-        Ok(StringIterator::create_string_iterator(s, context).into())
+        Ok(StringIterator::create_string_iterator(s, context)?.into())
     }
 }
 

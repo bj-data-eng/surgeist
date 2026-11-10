@@ -59,55 +59,55 @@ impl IntrinsicObject for PlainMonthDay {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_day = BuiltInBuilder::callable(realm, Self::get_day)
             .name(js_string!("get day"))
-            .build();
+            .build()?;
 
         let get_month_code = BuiltInBuilder::callable(realm, Self::get_month_code)
             .name(js_string!("get monthCode"))
-            .build();
+            .build()?;
 
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::PLAIN_MD_TAG,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("day"),
                 Some(get_day),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("monthCode"),
                 Some(get_month_code),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("calendarId"),
                 Some(get_calendar_id),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
-            .method(Self::with, js_string!("with"), 1)
-            .method(Self::equals, js_string!("equals"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .method(Self::to_plain_date, js_string!("toPlainDate"), 1)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
+            .method(Self::with, js_string!("with"), 1)?
+            .method(Self::equals, js_string!("equals"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
+            .method(Self::to_plain_date, js_string!("toPlainDate"), 1)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -516,7 +516,7 @@ pub(crate) fn create_temporal_month_day(
             .intrinsics()
             .constructors()
             .plain_month_day()
-            .constructor()
+            .constructor()?
             .into()
     };
 

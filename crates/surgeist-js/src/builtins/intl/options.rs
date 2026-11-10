@@ -156,7 +156,7 @@ pub(super) fn coerce_options_to_object(
             context.root_shape(),
             None,
             OrdinaryObject,
-        )
+        )?
         .upcast());
     }
 

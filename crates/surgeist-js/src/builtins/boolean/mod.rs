@@ -31,16 +31,16 @@ pub(crate) struct Boolean;
 
 impl IntrinsicObject for Boolean {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -72,7 +72,7 @@ impl BuiltInConstructor for Boolean {
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::boolean, context)?;
         let boolean =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data);
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data)?;
 
         Ok(boolean.into())
     }

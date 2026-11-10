@@ -25,11 +25,11 @@ impl JsSet {
     /// Doesn't matches JavaScript `new Set()` as it doesn't takes an iterator
     /// similar to Rust initialization.
     #[inline]
-    pub fn new(context: ContextAccess<'_>) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        Self {
-            inner: Set::create_from_data(OrderedSet::new(), context).upcast(),
-        }
+        Ok(Self {
+            inner: Set::create_from_data(OrderedSet::new(), context)?.upcast(),
+        })
     }
 
     /// Returns the size of the `Set` as an integer.
@@ -189,7 +189,7 @@ impl JsSet {
         let elements = elements.into_iter();
 
         let inner =
-            Set::create_from_data(OrderedSet::with_capacity(elements.size_hint().0), context);
+            Set::create_from_data(OrderedSet::with_capacity(elements.size_hint().0), context)?;
 
         for element in elements {
             let element = canonicalize_keyed_collection_key(element);
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn set_access_refuses_an_alias_without_removing_members() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let set = JsSet::from_iter([JsValue::new(7)], context.access()).unwrap();
         let alias: JsObject = set.clone().into();
         let view = alias.borrow_mut().unwrap();

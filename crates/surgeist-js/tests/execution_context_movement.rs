@@ -8,7 +8,7 @@ use surgeist_js::{
 
 #[test]
 fn idle_context_move_and_swap_keep_committed_state_and_completed_report() {
-    let mut original = Context::default();
+    let mut original = Context::builder().build().unwrap();
     let completed = original
         .with_execution(
             ExecutionOptions::new(64).with_profile(ProfileMode::Summary { timing: false }),
@@ -19,7 +19,7 @@ fn idle_context_move_and_swap_keep_committed_state_and_completed_report() {
     let instructions = completed.report.instructions().unwrap();
     assert!(instructions > 0);
     let retained = completed.report.clone();
-    let mut second = Context::default();
+    let mut second = Context::builder().build().unwrap();
     second
         .eval(Source::from_bytes("globalThis.otherValue = 42"))
         .unwrap();
@@ -72,8 +72,8 @@ fn idle_context_move_and_swap_keep_committed_state_and_completed_report() {
 
 #[test]
 fn rebinding_local_access_to_independent_context_keeps_original_operation_custody() {
-    let mut original = Context::default();
-    let mut independent = Context::default();
+    let mut original = Context::builder().build().unwrap();
+    let mut independent = Context::builder().build().unwrap();
     let outcome = original
         .with_execution(ExecutionOptions::new(0), |mut access| {
             let mut selected = access.reborrow();

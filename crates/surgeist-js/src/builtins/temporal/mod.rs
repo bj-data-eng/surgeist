@@ -83,7 +83,7 @@ impl BuiltInObject for Temporal {
 
 impl IntrinsicObject for Temporal {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
@@ -91,22 +91,26 @@ impl IntrinsicObject for Temporal {
             )?
             .static_property(
                 js_string!("Now"),
-                realm.intrinsics().objects().now(),
+                realm.intrinsics().objects().now()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
                 js_string!("Duration"),
-                realm.intrinsics().constructors().duration().constructor(),
+                realm.intrinsics().constructors().duration().constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
                 js_string!("Instant"),
-                realm.intrinsics().constructors().instant().constructor(),
+                realm.intrinsics().constructors().instant().constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
                 js_string!("PlainDate"),
-                realm.intrinsics().constructors().plain_date().constructor(),
+                realm
+                    .intrinsics()
+                    .constructors()
+                    .plain_date()
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
@@ -115,7 +119,7 @@ impl IntrinsicObject for Temporal {
                     .intrinsics()
                     .constructors()
                     .plain_date_time()
-                    .constructor(),
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
@@ -124,12 +128,16 @@ impl IntrinsicObject for Temporal {
                     .intrinsics()
                     .constructors()
                     .plain_month_day()
-                    .constructor(),
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
                 js_string!("PlainTime"),
-                realm.intrinsics().constructors().plain_time().constructor(),
+                realm
+                    .intrinsics()
+                    .constructors()
+                    .plain_time()
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
@@ -138,7 +146,7 @@ impl IntrinsicObject for Temporal {
                     .intrinsics()
                     .constructors()
                     .plain_year_month()
-                    .constructor(),
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .static_property(
@@ -147,7 +155,7 @@ impl IntrinsicObject for Temporal {
                     .intrinsics()
                     .constructors()
                     .zoned_date_time()
-                    .constructor(),
+                    .constructor()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )?
             .build()?;
@@ -155,8 +163,8 @@ impl IntrinsicObject for Temporal {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().temporal()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().temporal()?)
     }
 }
 

@@ -82,7 +82,7 @@ fn assert_native_frame(entry: &ShadowEntry) {
 /// preserve their backtrace through promise rejection (`JsError` -> `JsValue` -> `JsError`).
 #[test]
 fn backtrace_preserved_through_promise_rejection() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let entries = get_backtrace_from_rejection(
         &mut context,
         indoc! {br#"
@@ -104,7 +104,7 @@ fn backtrace_preserved_through_promise_rejection() {
 /// promise rejection round-trip.
 #[test]
 fn nested_backtrace_preserved_through_promise_rejection() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let entries = get_backtrace_from_rejection(
         &mut context,
         indoc! {br#"
@@ -134,7 +134,7 @@ fn nested_backtrace_preserved_through_promise_rejection() {
 /// the backtrace through the promise rejection round-trip.
 #[test]
 fn explicit_throw_backtrace_preserved_through_promise_rejection() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let entries = get_backtrace_from_rejection(
         &mut context,
         indoc! {br#"
@@ -159,7 +159,7 @@ fn explicit_throw_backtrace_preserved_through_promise_rejection() {
 /// <https://github.com/boa-dev/boa/discussions/4475>).
 #[test]
 fn eval_error_has_backtrace() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let code = indoc! {br#"
         const a = 0;
         iWillCauseAnError
@@ -181,8 +181,8 @@ fn eval_error_has_backtrace() {
 
 #[test]
 fn materialization_refuses_a_foreign_opaque_error() {
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let error = JsError::from_opaque(foreign.into()).unwrap();
 
     let refusal = error.into_opaque(context.access()).unwrap_err();
@@ -191,8 +191,8 @@ fn materialization_refuses_a_foreign_opaque_error() {
 
 #[test]
 fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let cause = JsError::from_opaque(foreign.into()).unwrap();
     let member = JsNativeError::range().with_cause(cause).into();
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
@@ -203,8 +203,8 @@ fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
 
 #[test]
 fn materialization_preserves_the_original_engine_error() {
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let cause = JsError::from_opaque(foreign.into()).unwrap();
     let error = JsError::from(PanicError::new("engine failure").with_source(cause));
 
@@ -213,8 +213,8 @@ fn materialization_preserves_the_original_engine_error() {
 
 #[test]
 fn materialization_preserves_a_local_aggregate_members_cause() {
-    let context = &mut Context::default();
-    let cause = JsObject::with_null_proto(context.runtime());
+    let context = &mut Context::builder().build().unwrap();
+    let cause = JsObject::with_null_proto(context.runtime()).unwrap();
     let member = JsNativeError::range()
         .with_cause(JsError::from_opaque(cause.clone().into()).unwrap())
         .into();
@@ -240,8 +240,8 @@ fn materialization_preserves_a_local_aggregate_members_cause() {
 
 #[test]
 fn native_error_materialization_refuses_a_foreign_nested_cause() {
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let cause = JsError::from_opaque(foreign.into()).unwrap();
     let inner = JsNativeError::range().with_cause(cause);
     let error = JsNativeError::error().with_cause(inner);
@@ -252,7 +252,7 @@ fn native_error_materialization_refuses_a_foreign_nested_cause() {
 
 #[test]
 fn native_error_materialization_propagates_an_engine_error_in_an_aggregate() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let engine_error = JsError::from(PanicError::new("engine failure"));
     let aggregate = JsNativeError::aggregate(vec![engine_error.clone()]);
 
@@ -280,7 +280,7 @@ fn scope_state_failure_stays_a_host_error_across_storage_and_erasure() {
         assert!(error.as_native().is_none());
         let restored = error.clone().into_stored().to_error().unwrap();
         assert_eq!(restored, error);
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         assert_eq!(restored.clone().into_opaque(context.access()), Err(error));
         assert_eq!(
             restored.into_erased(context.access()).as_engine(),
@@ -340,7 +340,7 @@ fn invocation_authority_failures_remain_uncatchable_host_errors() {
         let error = JsError::from(failure);
         assert!(!error.is_catchable());
         assert_eq!(error.clone().into_stored().to_error().unwrap(), error);
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         assert_eq!(
             error.clone().into_opaque(context.access()),
             Err(error.clone())
@@ -359,7 +359,7 @@ fn context_access_busy_remains_uncatchable_through_storage_and_erasure() {
     let error = JsError::from(EngineError::ContextAccessBusy);
     assert!(!error.is_catchable());
     assert_eq!(error.clone().into_stored().to_error().unwrap(), error);
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     assert_eq!(
         error.clone().into_opaque(context.access()),
         Err(error.clone())

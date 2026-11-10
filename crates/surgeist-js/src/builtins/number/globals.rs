@@ -37,7 +37,7 @@ pub(crate) struct IsFinite;
 
 impl IntrinsicObject for IsFinite {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, is_finite)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, is_finite)?
             .name(Self::NAME)
             .length(1)
             .build()?;
@@ -45,8 +45,8 @@ impl IntrinsicObject for IsFinite {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().is_finite().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().is_finite().map(Into::into)?)
     }
 }
 
@@ -81,7 +81,7 @@ pub(crate) struct IsNaN;
 
 impl IntrinsicObject for IsNaN {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, is_nan)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, is_nan)?
             .name(Self::NAME)
             .length(1)
             .build()?;
@@ -89,8 +89,8 @@ impl IntrinsicObject for IsNaN {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().is_nan().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().is_nan().map(Into::into)?)
     }
 }
 
@@ -272,7 +272,7 @@ pub(crate) struct ParseInt;
 
 impl IntrinsicObject for ParseInt {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, parse_int)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, parse_int)?
             .name(Self::NAME)
             .length(2)
             .build()?;
@@ -280,8 +280,8 @@ impl IntrinsicObject for ParseInt {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().parse_int().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().parse_int().map(Into::into)?)
     }
 }
 
@@ -390,7 +390,7 @@ pub(crate) struct ParseFloat;
 
 impl IntrinsicObject for ParseFloat {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, parse_float)
+        BuiltInBuilder::callable_with_intrinsic::<Self>(realm, parse_float)?
             .name(Self::NAME)
             .length(1)
             .build()?;
@@ -398,8 +398,8 @@ impl IntrinsicObject for ParseFloat {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().parse_float().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().parse_float().map(Into::into)?)
     }
 }
 

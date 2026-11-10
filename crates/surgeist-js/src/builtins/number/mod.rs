@@ -50,54 +50,54 @@ impl IntrinsicObject for Number {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_property(js_string!("EPSILON"), f64::EPSILON, attribute)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_property(js_string!("EPSILON"), f64::EPSILON, attribute)?
             .static_property(
                 js_string!("MAX_SAFE_INTEGER"),
                 Self::MAX_SAFE_INTEGER,
                 attribute,
-            )
+            )?
             .static_property(
                 js_string!("MIN_SAFE_INTEGER"),
                 Self::MIN_SAFE_INTEGER,
                 attribute,
-            )
-            .static_property(js_string!("MAX_VALUE"), Self::MAX_VALUE, attribute)
-            .static_property(js_string!("MIN_VALUE"), Self::MIN_VALUE, attribute)
+            )?
+            .static_property(js_string!("MAX_VALUE"), Self::MAX_VALUE, attribute)?
+            .static_property(js_string!("MIN_VALUE"), Self::MIN_VALUE, attribute)?
             .static_property(
                 js_string!("NEGATIVE_INFINITY"),
                 f64::NEG_INFINITY,
                 attribute,
-            )
-            .static_property(js_string!("POSITIVE_INFINITY"), f64::INFINITY, attribute)
-            .static_property(js_string!("NaN"), f64::NAN, attribute)
+            )?
+            .static_property(js_string!("POSITIVE_INFINITY"), f64::INFINITY, attribute)?
+            .static_property(js_string!("NaN"), f64::NAN, attribute)?
             .static_property(
                 js_string!("parseInt"),
-                realm.intrinsics().objects().parse_int(),
+                realm.intrinsics().objects().parse_int()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("parseFloat"),
-                realm.intrinsics().objects().parse_float(),
+                realm.intrinsics().objects().parse_float()?,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::number_is_finite, js_string!("isFinite"), 1)
-            .static_method(Self::number_is_nan, js_string!("isNaN"), 1)
-            .static_method(Self::is_safe_integer, js_string!("isSafeInteger"), 1)
-            .static_method(Self::number_is_integer, js_string!("isInteger"), 1)
-            .method(Self::to_exponential, js_string!("toExponential"), 1)
-            .method(Self::to_fixed, js_string!("toFixed"), 1)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_precision, js_string!("toPrecision"), 1)
-            .method(Self::to_string, js_string!("toString"), 1)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+            )?
+            .static_method(Self::number_is_finite, js_string!("isFinite"), 1)?
+            .static_method(Self::number_is_nan, js_string!("isNaN"), 1)?
+            .static_method(Self::is_safe_integer, js_string!("isSafeInteger"), 1)?
+            .static_method(Self::number_is_integer, js_string!("isInteger"), 1)?
+            .method(Self::to_exponential, js_string!("toExponential"), 1)?
+            .method(Self::to_fixed, js_string!("toFixed"), 1)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_precision, js_string!("toPrecision"), 1)?
+            .method(Self::to_string, js_string!("toString"), 1)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -129,7 +129,7 @@ impl BuiltInConstructor for Number {
         let prototype =
             get_prototype_from_constructor(new_target, StandardConstructors::number, context)?;
         let this =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data);
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data)?;
         Ok(this.into())
     }
 }

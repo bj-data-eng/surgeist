@@ -26,7 +26,7 @@ const self = globalThis;
 
 #[test]
 fn process_object_registration() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     crate::process::Process::register(&mut context).unwrap();
 
     run_test_actions_with(
@@ -43,7 +43,7 @@ fn process_object_registration() {
 
 #[test]
 fn process_property_descriptors() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     crate::process::Process::register(&mut context).unwrap();
 
     run_test_actions_with(
@@ -63,7 +63,7 @@ fn process_property_descriptors() {
 
 #[test]
 fn process_cwd_method() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     crate::process::Process::register(&mut context).unwrap();
 
     run_test_actions_with(
@@ -96,7 +96,7 @@ fn process_env_contains_variables() {
             ("ANOTHER_VAR", Some("another_value")),
         ],
         || {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             crate::process::Process::register(&mut context).unwrap();
 
             run_test_actions_with(
@@ -119,7 +119,7 @@ fn process_env_contains_variables() {
 #[ignore = "Unsafe under parallel test execution as it tempers with env."]
 fn process_env_properties_writable() {
     temp_env::with_var("TEST_VAR", Some("original"), || {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         crate::process::Process::register(&mut context).unwrap();
 
         run_test_actions_with(
@@ -142,7 +142,7 @@ fn process_env_properties_writable() {
 
 #[test]
 fn process_env_object_properties() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     crate::process::Process::register(&mut context).unwrap();
 
     run_test_actions_with(
@@ -169,7 +169,7 @@ fn process_env_iteration() {
             ("ITER_TEST_2", Some("value2")),
         ],
         || {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             crate::process::Process::register(&mut context).unwrap();
 
             run_test_actions_with(

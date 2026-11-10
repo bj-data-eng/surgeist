@@ -101,9 +101,10 @@ fn linked(source: &str, context: &mut Context) -> Module {
 }
 
 fn pending_gate(context: &mut Context) -> (JsPromise, ResolvingFunctions) {
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("gate"), gate.clone(), true, context.access())
         .unwrap();
     (gate, resolvers)
@@ -112,6 +113,7 @@ fn pending_gate(context: &mut Context) -> (JsPromise, ResolvingFunctions) {
 fn count(name: &str, context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }
@@ -234,6 +236,7 @@ fn suspended_async_function_created_by_a_module_survives_that_modules_own_stop()
     let inner = JsPromise::from_object(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("inner"), context.access())
             .unwrap()
             .as_object()
@@ -537,6 +540,7 @@ fn assert_adapter_interrupted(
 fn adapter_source(context: &mut Context) -> Module {
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleEffects"), 0, true, context.access())
         .unwrap();
     Module::parse(
@@ -781,9 +785,10 @@ fn initial_immediate_await_completes_with_fully_inline_jobs_and_preserves_its_ca
 #[test]
 fn fully_inline_initial_await_preserves_the_authored_guest_rejection_and_cached_promise() {
     let (mut context, executor) = fully_inline_context();
-    let reason = JsValue::from(surgeist_js::JsObject::with_null_proto(context.runtime()));
+    let reason = JsValue::from(surgeist_js::JsObject::with_null_proto(context.runtime()).unwrap());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("moduleGuestError"),
             reason.clone(),
@@ -949,6 +954,7 @@ fn dynamic_import_native_adapter_survives_initial_await_transfer_followed_by_out
     let mut context = builder.build().unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleEffects"), 0, true, context.access())
         .unwrap();
     let module = initial_transfer_source(&mut context);
@@ -1229,12 +1235,12 @@ fn inline_completion_of_an_older_child_waits_for_the_importers_remaining_depende
 #[test]
 fn inline_rejection_of_an_older_child_preserves_the_reason_and_never_runs_its_importer() {
     let mut graph = InlineGraph::new();
-    let reason = JsValue::from(surgeist_js::JsObject::with_null_proto(
-        graph.context.runtime(),
-    ));
+    let reason =
+        JsValue::from(surgeist_js::JsObject::with_null_proto(graph.context.runtime()).unwrap());
     graph
         .context
         .global_object()
+        .unwrap()
         .set(
             js_string!("graphGuestError"),
             reason.clone(),
@@ -1302,9 +1308,9 @@ fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow
         &mut context,
     );
     let d = evaluate(&module, &mut context);
-    let (a, _a_resolvers) = JsPromise::new_pending(context.access());
-    let (b, _b_resolvers) = JsPromise::new_pending(context.access());
-    let (c, _c_resolvers) = JsPromise::new_pending(context.access());
+    let (a, _a_resolvers) = JsPromise::new_pending(context.access()).unwrap();
+    let (b, _b_resolvers) = JsPromise::new_pending(context.access()).unwrap();
+    let (c, _c_resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let mut a_wait = NativeWait::subscribe(&a, &mut context);
     let _b_wait = NativeWait::subscribe(&b, &mut context);
     let _c_wait = NativeWait::subscribe(&c, &mut context);
@@ -1316,6 +1322,7 @@ fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow
     ] {
         context
             .global_object()
+            .unwrap()
             .set(
                 surgeist_js::JsString::from(name),
                 promise.clone(),

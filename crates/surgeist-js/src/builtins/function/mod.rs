@@ -226,11 +226,12 @@ impl OrdinaryFunction {
         script_or_module: Option<ActiveRunnable>,
         realm: Realm,
         template: &crate::object::shape::shared_shape::template::ObjectTemplate,
-        storage: impl IntoIterator<Item = JsValue>,
+        storage: impl crate::object::NamedSlotSource,
     ) -> JsResult<crate::object::UnpublishedObject<Self>> {
         template.create_unpublished(
             Self::from_code(code, environments, script_or_module, realm),
             storage,
+            crate::object::AllocationOrigin::TrustedConstruction,
         )
     }
 
@@ -362,44 +363,43 @@ impl IntrinsicObject for BuiltInFunctionObject {
         let has_instance = BuiltInBuilder::callable(realm, Self::has_instance)
             .name(js_string!("[Symbol.hasInstance]"))
             .length(1)
-            .build();
+            .build()?;
 
-        let throw_type_error = realm.intrinsics().objects().throw_type_error();
+        let throw_type_error = realm.intrinsics().objects().throw_type_error()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .method(Self::apply, js_string!("apply"), 2)
-            .method(Self::bind, js_string!("bind"), 1)
-            .method(Self::call, js_string!("call"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .property(JsSymbol::has_instance(), has_instance, Attribute::default())
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .method(Self::apply, js_string!("apply"), 2)?
+            .method(Self::bind, js_string!("bind"), 1)?
+            .method(Self::call, js_string!("call"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .property(JsSymbol::has_instance(), has_instance, Attribute::default())?
             .accessor(
                 js_string!("caller"),
                 Some(throw_type_error.clone()),
                 Some(throw_type_error.clone()),
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("arguments"),
                 Some(throw_type_error.clone()),
                 Some(throw_type_error),
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
-        let prototype = realm.intrinsics().constructors().function().prototype();
+        let prototype = realm.intrinsics().constructors().function().prototype()?;
 
-        BuiltInBuilder::callable_with_object(realm, prototype.clone(), Self::prototype)
+        BuiltInBuilder::callable_with_object(realm, prototype, Self::prototype)?
             .name(js_string!())
             .length(0)
+            .prototype(realm.intrinsics().constructors().object().prototype()?)?
             .build()?;
-
-        prototype.set_prototype(Some(realm.intrinsics().constructors().object().prototype()))?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -431,9 +431,18 @@ impl BuiltInConstructor for BuiltInFunctionObject {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        let active_function = context
-            .active_function_object()
-            .unwrap_or_else(|| context.intrinsics().constructors().function().constructor());
+        let active_function = context.active_function_object().map_or_else(
+            || {
+                Ok::<_, crate::JsError>(
+                    context
+                        .intrinsics()
+                        .constructors()
+                        .function()
+                        .constructor()?,
+                )
+            },
+            Ok,
+        )?;
         Self::create_dynamic_function(active_function, new_target, args, false, false, context)
             .map(Into::into)
     }
@@ -911,8 +920,7 @@ impl BuiltInFunctionObject {
                 .enumerable(false)
                 .configurable(true),
             context.access(),
-        )
-        .js_expect("defining the `length` property for a new object should not fail")?;
+        )?;
 
         // 8. Let targetName be ? Get(Target, "name").
         let target_name = target.get(js_string!("name"), context.access())?;
@@ -1086,17 +1094,15 @@ pub(crate) fn set_function_name(
 
     // 6. Return ! DefinePropertyOrThrow(F, "name", PropertyDescriptor { [[Value]]: name,
     // [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: true }).
-    function
-        .define_property_or_throw(
-            js_string!("name"),
-            PropertyDescriptor::builder()
-                .value(name)
-                .writable(false)
-                .enumerable(false)
-                .configurable(true),
-            context.access(),
-        )
-        .js_expect("defining the `name` property must not fail per the spec")?;
+    function.define_property_or_throw(
+        js_string!("name"),
+        PropertyDescriptor::builder()
+            .value(name)
+            .writable(false)
+            .enumerable(false)
+            .configurable(true),
+        context.access(),
+    )?;
 
     Ok(())
 }
@@ -1202,17 +1208,14 @@ pub(crate) fn function_call(
             ThisBindingStatus::initialized(this)
         } else if this.is_null_or_undefined() {
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;
-            let this: JsValue = context.realm().global_this().into();
+            let this: JsValue = context.realm().global_this()?.into();
             context.vm.stack.set_this(
                 context.vm.frames.last().js_expect("frame must exist")?,
                 this.clone(),
             );
             ThisBindingStatus::initialized(this)
         } else {
-            let this: JsValue = this
-                .to_object(context.access())
-                .js_expect("conversion cannot fail")?
-                .into();
+            let this: JsValue = this.to_object(context.access())?.into();
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;
             context.vm.stack.set_this(
                 context.vm.frames.last().js_expect("frame must exist")?,
@@ -1305,7 +1308,7 @@ fn function_construct(
             context.root_shape(),
             prototype,
             OrdinaryObject,
-        )
+        )?
         .upcast();
 
         this.initialize_instance_elements(this_function_object, context)?;

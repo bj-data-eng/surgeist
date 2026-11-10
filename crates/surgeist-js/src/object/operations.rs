@@ -8,7 +8,7 @@ use crate::{
         function::{BoundFunction, ClassFieldDefinition, OrdinaryFunction, set_function_name},
     },
     context::intrinsics::{StandardConstructor, StandardConstructors},
-    error::{JsNativeError, ObjectAccessError},
+    error::{JsNativeError, ObjectAccessError, ObjectConstructionError},
     native_function::NativeFunctionObject,
     object::{CONSTRUCTOR, JsFunction, JsObject, PROTOTYPE, PrivateName, StoredPrivateElement},
     property::{PropertyDescriptor, PropertyDescriptorBuilder, PropertyKey, PropertyNameKind},
@@ -267,7 +267,8 @@ impl JsObject {
         key: K,
         value: V,
         context: &mut Context,
-    ) where
+    ) -> JsResult<()>
+    where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
@@ -287,10 +288,20 @@ impl JsObject {
             .build();
 
         // 3. Perform ! DefinePropertyOrThrow(O, P, newDesc).
-        self.define_property_or_throw(key, new_desc, context.access())
-            .expect("should not fail according to spec");
+        // This private construction operation owns a refused boolean outcome;
+        // actual operation failures keep their original error channel.
+        let key = key.into();
+        let accepted = self.__define_own_property__(
+            &key,
+            new_desc,
+            &mut InternalMethodPropertyContext::new(context),
+        )?;
+        if !accepted {
+            return Err(ObjectConstructionError::PropertyRefused.into());
+        }
 
         // 4. Return unused.
+        Ok(())
     }
 
     /// Define property or throw.
@@ -707,7 +718,7 @@ impl JsObject {
         // NOTE: This is an optimization, most of the cases that `LengthOfArrayLike` will be called
         //       is for arrays. The "length" property of an array is stored in the first index.
         if self.is_array() {
-            let length = self.borrow()?.properties().named_slot(0);
+            let length = self.borrow()?.properties().named_slot(0)?;
             // Arrays are limited to [0, 2^32 - 1].
             return length.to_u32(context.access()).map(u64::from);
         }
@@ -743,7 +754,7 @@ impl JsObject {
 
         // 3. If C is undefined, return defaultConstructor.
         if c.is_undefined() {
-            return Ok(default_constructor(context.intrinsics().constructors()).constructor());
+            return Ok(default_constructor(context.intrinsics().constructors()).constructor()?);
         }
 
         // 4. If Type(C) is not Object, throw a TypeError exception.
@@ -756,7 +767,7 @@ impl JsObject {
 
         // 6. If S is either undefined or null, return defaultConstructor.
         if s.is_null_or_undefined() {
-            return Ok(default_constructor(context.intrinsics().constructors()).constructor());
+            return Ok(default_constructor(context.intrinsics().constructors()).constructor()?);
         }
 
         // 7. If IsConstructor(S) is true, return S.
@@ -822,7 +833,7 @@ impl JsObject {
                             Array::create_array_from_list(
                                 [key_str.into(), self.get(key.clone(), context.access())?],
                                 context,
-                            )
+                            )?
                             .into(),
                         ),
                     }
@@ -991,8 +1002,7 @@ impl JsObject {
                     let prop_value = from.__get__(&key, from.clone().into(), context)?;
 
                     // 2. Perform ! CreateDataPropertyOrThrow(target, nextKey, propValue).
-                    self.create_data_property_or_throw(key, prop_value, context.access())
-                        .expect("CreateDataPropertyOrThrow should never complete abruptly here");
+                    self.create_data_property_or_throw(key, prop_value, context.access())?;
                 }
             }
         }
@@ -1268,7 +1278,7 @@ impl JsObject {
         // 3. If initializer is not empty, then
         // a. Let initValue be ? Call(initializer, receiver).
         // 4. Else, let initValue be undefined.
-        let initializer = JsFunction::from_record(initializer.clone());
+        let initializer = JsFunction::from_record(initializer.clone())?;
         let init_value = initializer.call(&self.clone().into(), &[], context.access())?;
 
         match field_record {

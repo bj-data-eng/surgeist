@@ -179,6 +179,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     let next_scope = next_scope_identity(&context);
     let keys = context
         .global_object()
+        .unwrap()
         .own_property_keys(context.access())
         .unwrap();
     let mut direct = None;
@@ -209,6 +210,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .own_property_keys(context.access())
             .unwrap(),
         keys
@@ -233,6 +235,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .own_property_keys(context.access())
             .unwrap(),
         keys

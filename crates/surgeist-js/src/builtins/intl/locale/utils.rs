@@ -142,7 +142,7 @@ pub(crate) fn canonicalize_locale_list(
     // 3. If Type(locales) is String or Type(locales) is Object and locales has an [[InitializedLocale]] internal slot, then
     let o = if locales.is_string() || locales.as_object().is_some_and(|o| o.is::<Locale>()) {
         // a. Let O be CreateArrayFromList(« locales »).
-        Array::create_array_from_list([locales.clone()], context)
+        Array::create_array_from_list([locales.clone()], context)?
     } else {
         // 4. Else,
         // a. Let O be ? ToObject(locales).
@@ -497,12 +497,12 @@ where
     }
 
     // 5. Return CreateArrayFromList(subset).
-    Ok(Array::create_array_from_list(
+    Array::create_array_from_list(
         subset
             .into_iter()
             .map(|loc| js_string!(loc.to_string()).into()),
         context,
-    ))
+    )
 }
 
 /// Validates that the unicode extension `key` with `value` is a valid extension value for the

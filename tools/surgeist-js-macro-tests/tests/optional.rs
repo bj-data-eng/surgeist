@@ -13,7 +13,7 @@ struct Deserialize {
 
 #[test]
 fn optional_missing_try_from_js() {
-    let mut context = surgeist_js::Context::default();
+    let mut context = surgeist_js::Context::builder().build().unwrap();
     let value = context
         .eval(Source::from_bytes(
             r#"
@@ -32,7 +32,7 @@ fn optional_missing_try_from_js() {
 
 #[test]
 fn optional_try_from_js() {
-    let mut context = surgeist_js::Context::default();
+    let mut context = surgeist_js::Context::builder().build().unwrap();
     let value = context
         .eval(Source::from_bytes(
             r#"
@@ -52,7 +52,7 @@ fn optional_try_from_js() {
 
 #[test]
 fn required_missing_try_from_js() {
-    let mut context = surgeist_js::Context::default();
+    let mut context = surgeist_js::Context::builder().build().unwrap();
     let value = context
         .eval(Source::from_bytes(
             r"

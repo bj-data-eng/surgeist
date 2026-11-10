@@ -96,19 +96,19 @@ pub(crate) struct FinalizationRegistry {
 }
 
 impl IntrinsicObject for FinalizationRegistry {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("FinalizationRegistry"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::register, js_string!("register"), 2)
-            .method(Self::unregister, js_string!("unregister"), 1)
+            )?
+            .method(Self::register, js_string!("register"), 2)?
+            .method(Self::unregister, js_string!("unregister"), 1)?
             .build()?;
 
         Ok(())
@@ -473,7 +473,7 @@ mod publication_tests {
             #[cfg(feature = "fuzz")]
             let builder = builder.instructions_remaining(100_000);
             let mut context = builder.build().unwrap();
-            let capture = JsObject::with_null_proto(context.runtime());
+            let capture = JsObject::with_null_proto(context.runtime()).unwrap();
             let capture_edge = capture.edge();
             let callback = NativeFunction::from_fn_with_captures(
                 |_, _, capture, _| Ok(capture.clone().into()),
@@ -500,6 +500,7 @@ mod publication_tests {
                     assert!(
                         context
                             .global_object()
+                            .unwrap()
                             .get(js_string!("publicationRegistry"), context.access())
                             .unwrap()
                             .is_undefined()
@@ -519,10 +520,12 @@ mod publication_tests {
             );
             context
                 .global_object()
+                .unwrap()
                 .delete_property_or_throw(js_string!("publicationCleanup"), context.access())
                 .unwrap();
             context
                 .global_object()
+                .unwrap()
                 .delete_property_or_throw(js_string!("publicationRegistry"), context.access())
                 .unwrap();
             context.runtime().collect().unwrap();

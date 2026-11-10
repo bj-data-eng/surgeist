@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn annex_eligibility_is_frame_local_and_survives_clone_and_suspension() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let name = js_string!("block_function");
         let frame = CallFrame::host(
             Rc::new(CodeBlock::new(js_string!("annex"), 0, false)),

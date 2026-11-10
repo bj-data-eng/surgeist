@@ -42,42 +42,46 @@ pub(crate) trait TypedArrayMarker {
 }
 
 impl<T: TypedArrayMarker> IntrinsicObject for T {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, BuiltinTypedArray::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .prototype(
                 realm
                     .intrinsics()
                     .constructors()
                     .typed_array()
-                    .constructor(),
-            )
+                    .constructor()?,
+            )?
             .inherits(Some(
-                realm.intrinsics().constructors().typed_array().prototype(),
-            ))
+                realm
+                    .intrinsics()
+                    .constructors()
+                    .typed_array()
+                    .prototype()?,
+            ))?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("BYTES_PER_ELEMENT"),
                 size_of::<T::Element>(),
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT,
-            )
+            )?
             .static_property(
                 js_string!("BYTES_PER_ELEMENT"),
                 size_of::<T::Element>(),
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT,
-            )
+            )?
             .build()?;
 
         Ok(())

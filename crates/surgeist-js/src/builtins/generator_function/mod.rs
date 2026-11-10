@@ -30,28 +30,28 @@ pub struct GeneratorFunction;
 
 impl IntrinsicObject for GeneratorFunction {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .inherits(Some(
-                realm.intrinsics().constructors().function().prototype(),
-            ))
+                realm.intrinsics().constructors().function().prototype()?,
+            ))?
             .constructor_attributes(Attribute::CONFIGURABLE)
             .property(
                 PROTOTYPE,
-                realm.intrinsics().objects().generator(),
+                realm.intrinsics().objects().generator()?,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> crate::object::JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<crate::object::JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -78,13 +78,18 @@ impl BuiltInConstructor for GeneratorFunction {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        let active_function = context.active_function_object().unwrap_or_else(|| {
-            context
-                .intrinsics()
-                .constructors()
-                .generator_function()
-                .constructor()
-        });
+        let active_function = context.active_function_object().map_or_else(
+            || {
+                Ok::<_, crate::JsError>(
+                    context
+                        .intrinsics()
+                        .constructors()
+                        .generator_function()
+                        .constructor()?,
+                )
+            },
+            Ok,
+        )?;
         BuiltInFunctionObject::create_dynamic_function(
             active_function,
             new_target,

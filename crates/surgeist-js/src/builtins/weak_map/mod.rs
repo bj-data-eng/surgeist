@@ -33,27 +33,27 @@ pub(crate) struct WeakMap;
 mod tests;
 
 impl IntrinsicObject for WeakMap {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .method(Self::delete, js_string!("delete"), 1)
-            .method(Self::get, js_string!("get"), 1)
-            .method(Self::has, js_string!("has"), 1)
-            .method(Self::set, js_string!("set"), 2)
-            .method(Self::get_or_insert, js_string!("getOrInsert"), 2)
+            )?
+            .method(Self::delete, js_string!("delete"), 1)?
+            .method(Self::get, js_string!("get"), 1)?
+            .method(Self::has, js_string!("has"), 1)?
+            .method(Self::set, js_string!("set"), 2)?
+            .method(Self::get_or_insert, js_string!("getOrInsert"), 2)?
             .method(
                 Self::get_or_insert_computed,
                 js_string!("getOrInsertComputed"),
                 2,
-            )
+            )?
             .build()?;
 
         Ok(())
@@ -101,7 +101,7 @@ impl BuiltInConstructor for WeakMap {
             context.root_shape(),
             prototype,
             NativeWeakMap::new(),
-        )
+        )?
         .upcast();
 
         // 4. If iterable is either undefined or null, return map.

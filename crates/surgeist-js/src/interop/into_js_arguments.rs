@@ -59,7 +59,7 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
 /// ```
 /// # use surgeist_js::{Context, ContextAccess, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsRest;
-/// # let mut context = Context::default();
+/// # let mut context = Context::builder().build().unwrap();
 /// let sums: fn(JsRest<'_>, ContextAccess<'_>) -> i32 = |args, mut context| {
 ///     args.iter()
 ///         .map(|i| i.try_js_into::<i32>(context.reborrow()).unwrap())
@@ -134,7 +134,7 @@ impl<'a> IntoIterator for JsRest<'a> {
 /// ```
 /// # use surgeist_js::{Context, ContextAccess, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsAll;
-/// # let mut context = Context::default();
+/// # let mut context = Context::builder().build().unwrap();
 /// let sums: fn(JsAll<i32>, ContextAccess<'_>) -> i32 = |args, _context| {
 ///     args.iter().sum()
 /// };
@@ -268,7 +268,7 @@ impl<T: NativeObject> JsClass<T> {
     /// use surgeist_js::{Context, JsValue, builtins::array_buffer::ArrayBuffer};
     /// use surgeist_js::interop::{JsClass, TryFromJsArgument};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let this = JsValue::from(JsArrayBuffer::new(8, context.access()).unwrap());
     /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], context.access()).unwrap();
     /// let _ = class.borrow_mut();
@@ -322,7 +322,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 /// struct CustomHostDefinedStruct {
 ///     pub counter: usize,
 /// }
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 /// context.insert_data(CustomHostDefinedStruct { counter: 123 });
 /// let f: fn(ContextData<CustomHostDefinedStruct>) -> usize =
 ///     |ContextData(host)| host.counter + 1;

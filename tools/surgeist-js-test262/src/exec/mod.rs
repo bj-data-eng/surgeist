@@ -390,7 +390,10 @@ impl Test {
                     self.path.display()
                 );
 
-                let context = &mut Context::default();
+                let context = &mut match Context::builder().build() {
+                    Ok(context) => context,
+                    Err(error) => return error_result(false, &error),
+                };
 
                 if self.is_module() {
                     match Module::parse(source, None, context.access()) {
@@ -583,7 +586,7 @@ impl Test {
             .module_loader(loader.clone())
             .can_block(!self.flags.contains(TestFlags::CAN_BLOCK_IS_FALSE))
             .build()
-            .expect("cannot fail with default global object");
+            .map_err(|error| render_result(false, error.render()).1)?;
 
         context.set_optimizer_options(optimizer_options);
 
@@ -794,13 +797,52 @@ impl NativeCapture for AsyncResult {
 
 #[cfg(test)]
 mod tests {
-    use super::error_result;
+    use super::{
+        ErrorType, Harness, OptimizerOptions, Outcome, Path, Phase, Test, TestOutcomeResult,
+        error_result,
+    };
     use surgeist_js::{Context, JsError, JsObject};
 
     #[test]
+    fn builder_refusal_fails_the_runner_instead_of_matching_expected_guest_type_error() {
+        let metadata =
+            serde_yaml::from_str("description: builder refusal\nflags: [raw]\n").unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/exec/mod.rs");
+        let mut test = Test::new("builder refusal", path.into_boxed_path(), metadata).unwrap();
+        test.expected_outcome = Outcome::Negative {
+            phase: Phase::Runtime,
+            error_type: ErrorType::TypeError,
+        };
+        let empty = crate::HarnessFile {
+            content: "".into(),
+            path: Path::new("unused").into(),
+        };
+        let harness = Harness {
+            assert: empty.clone(),
+            sta: empty.clone(),
+            doneprint_handle: empty,
+            includes: Default::default(),
+        };
+        let blocker = Context::builder().can_block(false).build().unwrap();
+
+        let result = test.run_once(&harness, false, 0, OptimizerOptions::empty(), false);
+        assert_eq!(result.result, TestOutcomeResult::Failed);
+        assert_eq!(
+            result.result_text.as_ref(),
+            "TypeError: a context that can block must be the only active context in its current thread"
+        );
+        drop(blocker);
+
+        assert!(
+            test.create_context(&harness, OptimizerOptions::empty(), false)
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn borrowed_error_rendering_cannot_report_an_expected_guest_failure_as_passed() {
-        let context = Context::default();
-        let object = JsObject::with_null_proto(context.runtime());
+        let context = Context::builder().build().unwrap();
+        let object = JsObject::with_null_proto(context.runtime()).unwrap();
         let error = JsError::from_opaque(object.clone().into()).unwrap();
         let expected = error_result(true, &error);
         assert!(expected.0);

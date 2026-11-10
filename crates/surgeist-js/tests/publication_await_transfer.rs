@@ -79,6 +79,7 @@ impl JobExecutor for TransferExecutor {
 fn effects(owner: &mut Context) -> JsValue {
     owner
         .global_object()
+        .unwrap()
         .get(js_string!("publicationEffects"), owner.access())
         .unwrap()
 }
@@ -102,7 +103,7 @@ fn accepted_inline_publication_failure_preserves_a_transferred_module_await() {
     owner
         .register_global_property(js_string!("publicationEffects"), 0, Attribute::all())
         .unwrap();
-    let (gate, resolvers) = JsPromise::new_pending(owner.access());
+    let (gate, resolvers) = JsPromise::new_pending(owner.access()).unwrap();
     owner
         .register_global_property(
             js_string!("publicationGate"),

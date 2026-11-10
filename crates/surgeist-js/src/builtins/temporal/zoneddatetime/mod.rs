@@ -74,323 +74,323 @@ impl IntrinsicObject for ZonedDateTime {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
-            .build();
+            .build()?;
 
         let get_timezone_id = BuiltInBuilder::callable(realm, Self::get_timezone_id)
             .name(js_string!("get timeZoneId"))
-            .build();
+            .build()?;
 
         let get_era = BuiltInBuilder::callable(realm, Self::get_era)
             .name(js_string!("get era"))
-            .build();
+            .build()?;
 
         let get_era_year = BuiltInBuilder::callable(realm, Self::get_era_year)
             .name(js_string!("get eraYear"))
-            .build();
+            .build()?;
 
         let get_year = BuiltInBuilder::callable(realm, Self::get_year)
             .name(js_string!("get year"))
-            .build();
+            .build()?;
 
         let get_month = BuiltInBuilder::callable(realm, Self::get_month)
             .name(js_string!("get month"))
-            .build();
+            .build()?;
 
         let get_month_code = BuiltInBuilder::callable(realm, Self::get_month_code)
             .name(js_string!("get monthCode"))
-            .build();
+            .build()?;
 
         let get_day = BuiltInBuilder::callable(realm, Self::get_day)
             .name(js_string!("get day"))
-            .build();
+            .build()?;
 
         let get_hour = BuiltInBuilder::callable(realm, Self::get_hour)
             .name(js_string!("get hour"))
-            .build();
+            .build()?;
 
         let get_minute = BuiltInBuilder::callable(realm, Self::get_minute)
             .name(js_string!("get minute"))
-            .build();
+            .build()?;
 
         let get_second = BuiltInBuilder::callable(realm, Self::get_second)
             .name(js_string!("get second"))
-            .build();
+            .build()?;
 
         let get_millisecond = BuiltInBuilder::callable(realm, Self::get_millisecond)
             .name(js_string!("get millisecond"))
-            .build();
+            .build()?;
 
         let get_microsecond = BuiltInBuilder::callable(realm, Self::get_microsecond)
             .name(js_string!("get microsecond"))
-            .build();
+            .build()?;
 
         let get_nanosecond = BuiltInBuilder::callable(realm, Self::get_nanosecond)
             .name(js_string!("get nanosecond"))
-            .build();
+            .build()?;
 
         let get_epoch_milliseconds = BuiltInBuilder::callable(realm, Self::get_epoch_milliseconds)
             .name(js_string!("get epochMilliseconds"))
-            .build();
+            .build()?;
 
         let get_epoch_nanoseconds = BuiltInBuilder::callable(realm, Self::get_epoch_nanoseconds)
             .name(js_string!("get epochNanoseconds"))
-            .build();
+            .build()?;
 
         let get_day_of_week = BuiltInBuilder::callable(realm, Self::get_day_of_week)
             .name(js_string!("get dayOfWeek"))
-            .build();
+            .build()?;
 
         let get_day_of_year = BuiltInBuilder::callable(realm, Self::get_day_of_year)
             .name(js_string!("get dayOfYear"))
-            .build();
+            .build()?;
 
         let get_week_of_year = BuiltInBuilder::callable(realm, Self::get_week_of_year)
             .name(js_string!("get weekOfYear"))
-            .build();
+            .build()?;
 
         let get_hours_in_day = BuiltInBuilder::callable(realm, Self::get_hours_in_day)
             .name(js_string!("get daysInWeek"))
-            .build();
+            .build()?;
 
         let get_year_of_week = BuiltInBuilder::callable(realm, Self::get_year_of_week)
             .name(js_string!("get yearOfWeek"))
-            .build();
+            .build()?;
 
         let get_days_in_week = BuiltInBuilder::callable(realm, Self::get_days_in_week)
             .name(js_string!("get daysInWeek"))
-            .build();
+            .build()?;
 
         let get_days_in_month = BuiltInBuilder::callable(realm, Self::get_days_in_month)
             .name(js_string!("get daysInMonth"))
-            .build();
+            .build()?;
 
         let get_days_in_year = BuiltInBuilder::callable(realm, Self::get_days_in_year)
             .name(js_string!("get daysInYear"))
-            .build();
+            .build()?;
 
         let get_months_in_year = BuiltInBuilder::callable(realm, Self::get_months_in_year)
             .name(js_string!("get monthsInYear"))
-            .build();
+            .build()?;
 
         let get_in_leap_year = BuiltInBuilder::callable(realm, Self::get_in_leap_year)
             .name(js_string!("get inLeapYear"))
-            .build();
+            .build()?;
 
         let get_offset_nanos = BuiltInBuilder::callable(realm, Self::get_offset_nanoseconds)
             .name(js_string!("get offsetNanoseconds"))
-            .build();
+            .build()?;
 
         let get_offset = BuiltInBuilder::callable(realm, Self::get_offset)
             .name(js_string!("get offset"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::ZONED_DT_TAG,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("calendarId"),
                 Some(get_calendar_id),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("timeZoneId"),
                 Some(get_timezone_id),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("era"),
                 Some(get_era),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("eraYear"),
                 Some(get_era_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("year"),
                 Some(get_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("month"),
                 Some(get_month),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("monthCode"),
                 Some(get_month_code),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("day"),
                 Some(get_day),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("hour"),
                 Some(get_hour),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("minute"),
                 Some(get_minute),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("second"),
                 Some(get_second),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("millisecond"),
                 Some(get_millisecond),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("microsecond"),
                 Some(get_microsecond),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("nanosecond"),
                 Some(get_nanosecond),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("epochMilliseconds"),
                 Some(get_epoch_milliseconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("epochNanoseconds"),
                 Some(get_epoch_nanoseconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("dayOfWeek"),
                 Some(get_day_of_week),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("dayOfYear"),
                 Some(get_day_of_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("weekOfYear"),
                 Some(get_week_of_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("yearOfWeek"),
                 Some(get_year_of_week),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("hoursInDay"),
                 Some(get_hours_in_day),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("daysInWeek"),
                 Some(get_days_in_week),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("daysInMonth"),
                 Some(get_days_in_month),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("daysInYear"),
                 Some(get_days_in_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("monthsInYear"),
                 Some(get_months_in_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("inLeapYear"),
                 Some(get_in_leap_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("offsetNanoseconds"),
                 Some(get_offset_nanos),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("offset"),
                 Some(get_offset),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::compare, js_string!("compare"), 2)
-            .method(Self::with, js_string!("with"), 1)
-            .method(Self::with_plain_time, js_string!("withPlainTime"), 0)
-            .method(Self::with_timezone, js_string!("withTimeZone"), 1)
-            .method(Self::with_calendar, js_string!("withCalendar"), 1)
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::subtract, js_string!("subtract"), 1)
-            .method(Self::until, js_string!("until"), 1)
-            .method(Self::since, js_string!("since"), 1)
-            .method(Self::round, js_string!("round"), 1)
-            .method(Self::equals, js_string!("equals"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .method(Self::start_of_day, js_string!("startOfDay"), 0)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::compare, js_string!("compare"), 2)?
+            .method(Self::with, js_string!("with"), 1)?
+            .method(Self::with_plain_time, js_string!("withPlainTime"), 0)?
+            .method(Self::with_timezone, js_string!("withTimeZone"), 1)?
+            .method(Self::with_calendar, js_string!("withCalendar"), 1)?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::subtract, js_string!("subtract"), 1)?
+            .method(Self::until, js_string!("until"), 1)?
+            .method(Self::since, js_string!("since"), 1)?
+            .method(Self::round, js_string!("round"), 1)?
+            .method(Self::equals, js_string!("equals"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
+            .method(Self::start_of_day, js_string!("startOfDay"), 0)?
             .method(
                 Self::get_time_zone_transition,
                 js_string!("getTimeZoneTransition"),
                 1,
-            )
-            .method(Self::to_instant, js_string!("toInstant"), 0)
-            .method(Self::to_plain_date, js_string!("toPlainDate"), 0)
-            .method(Self::to_plain_time, js_string!("toPlainTime"), 0)
-            .method(Self::to_plain_date_time, js_string!("toPlainDateTime"), 0)
+            )?
+            .method(Self::to_instant, js_string!("toInstant"), 0)?
+            .method(Self::to_plain_date, js_string!("toPlainDate"), 0)?
+            .method(Self::to_plain_time, js_string!("toPlainTime"), 0)?
+            .method(Self::to_plain_date_time, js_string!("toPlainDateTime"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -1558,7 +1558,7 @@ impl ZonedDateTime {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto(context.runtime());
+            let new_round_to = JsObject::with_null_proto(context.runtime())?;
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -1829,7 +1829,7 @@ impl ZonedDateTime {
         let options_obj = if let Some(param_str) = direction_param.as_string() {
             // a. Let paramString be directionParam.
             // b. Set directionParam to OrdinaryObjectCreate(null).
-            let obj = JsObject::with_null_proto(context.runtime());
+            let obj = JsObject::with_null_proto(context.runtime())?;
             // c. Perform ! CreateDataPropertyOrThrow(directionParam, "direction", paramString).
             obj.create_data_property_or_throw(
                 js_string!("direction"),
@@ -1986,7 +1986,7 @@ pub(crate) fn create_temporal_zoneddatetime(
             .intrinsics()
             .constructors()
             .zoned_date_time()
-            .constructor()
+            .constructor()?
             .into(),
     );
     // 3. Let object be ? OrdinaryCreateFromConstructor(newTarget, "%Temporal.ZonedDateTime.prototype%", « [[InitializezdtemporalZonedDateTime]], [[EpochNanoseconds]], [[TimeZone]], [[Calendar]] »).

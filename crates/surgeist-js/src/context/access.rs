@@ -6,6 +6,7 @@ use super::{Clock, Context, HostHooks, intrinsics::Intrinsics};
 use crate::{
     HostDefined, JsResult, JsString, JsValue, Runtime, Source,
     class::{Class, ClassConstructor},
+    error::RootingError,
     execution::{ExecutionOptions, ExecutionOutcome, ExecutionSetupError, ExecutionTask},
     job::Job,
     native_function::NativeFunction,
@@ -27,7 +28,7 @@ use surgeist_js_parser::source::ReadChar;
 /// ```
 /// use surgeist_js::{Context, Source};
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let mut access = owner.access();
 /// let value = access.eval(Source::from_bytes("40 + 2"))?;
 /// assert_eq!(value.as_number(), Some(42.0));
@@ -39,7 +40,7 @@ use surgeist_js_parser::source::ReadChar;
 /// ```compile_fail
 /// use surgeist_js::Context;
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let access = owner.access();
 /// let extracted: &mut Context = access.into_owner();
 /// ```
@@ -49,7 +50,7 @@ use surgeist_js_parser::source::ReadChar;
 /// ```compile_fail
 /// use surgeist_js::Context;
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let mut access = owner.access();
 /// let extracted = std::mem::take(&mut *access);
 /// ```
@@ -219,23 +220,20 @@ impl<'owner> ContextAccess<'owner> {
     }
 
     /// Checks whether the current realm has the class registered.
-    #[must_use]
     #[inline]
-    pub fn has_global_class<C: Class>(&self) -> bool {
+    pub fn has_global_class<C: Class>(&self) -> Result<bool, RootingError> {
         self.owner.has_global_class::<C>()
     }
 
     /// Returns a class's constructor and prototype from the current realm.
-    #[must_use]
     #[inline]
-    pub fn get_global_class<C: Class>(&self) -> Option<ClassConstructor> {
+    pub fn get_global_class<C: Class>(&self) -> Result<Option<ClassConstructor>, RootingError> {
         self.owner.get_global_class::<C>()
     }
 
     /// Returns the current global object.
-    #[must_use]
     #[inline]
-    pub fn global_object(&self) -> JsObject {
+    pub fn global_object(&self) -> Result<JsObject, RootingError> {
         self.owner.global_object()
     }
 

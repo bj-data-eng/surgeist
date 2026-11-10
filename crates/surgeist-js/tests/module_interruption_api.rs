@@ -8,7 +8,8 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JobError, JsErasedError, ObjectAccessError, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, ObjectAccessError, ObjectConstructionError, PanicError,
+        RuntimeLimitError,
     },
     execution::ExecutionOptions,
     job::JobRetirement,
@@ -17,6 +18,7 @@ use surgeist_js::{
     vm::SourcePath,
 };
 use surgeist_js_ast::scope::ScopeStateError;
+use surgeist_js_gc::heap::AccessError;
 use surgeist_js_parser::frontend::InternerLimitKind;
 
 thread_local! {
@@ -68,6 +70,7 @@ fn observe(module: &Module, context: &mut Context) -> JsError {
 fn interrupt(original: JsError, context: &mut Context) -> (Module, JsError) {
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleEffects"), 0, true, context.access())
         .unwrap();
     let module = Module::parse(
@@ -108,6 +111,7 @@ fn interrupt(original: JsError, context: &mut Context) -> (Module, JsError) {
 fn effects(context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(js_string!("moduleEffects"), context.access())
         .unwrap()
 }
@@ -145,6 +149,7 @@ fn assert_engine_cause(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::Resource(value) => DiagnosticEngine::Resource(*value),
         EngineError::Rooting(value) => DiagnosticEngine::Rooting(*value),
         EngineError::ValueRender(value) => DiagnosticEngine::ValueRender(*value),
+        EngineError::ObjectConstruction(value) => DiagnosticEngine::ObjectConstruction(*value),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
         EngineError::ObjectAccess(value) => DiagnosticEngine::ObjectAccess(*value),
@@ -193,6 +198,26 @@ fn scalar_cases(context: &Context) -> Vec<EngineError> {
         },
         EngineError::InvocationIdExhausted,
     ];
+    cases.extend(
+        [
+            ObjectConstructionError::InvalidStoredEdge(AccessError::ForeignHeap),
+            ObjectConstructionError::InvalidStoredEdge(AccessError::StaleHandle),
+            ObjectConstructionError::InvalidStoredEdge(AccessError::WrongType),
+            ObjectConstructionError::ExpectedUniqueShape,
+            ObjectConstructionError::IndexedTemplateKey,
+            ObjectConstructionError::DuplicateTemplateProperty,
+            ObjectConstructionError::InvalidAccessorLayout,
+            ObjectConstructionError::NamedSlotCount {
+                expected: 5,
+                actual: 3,
+            },
+            ObjectConstructionError::NamedSlotsAlreadyInitialized,
+            ObjectConstructionError::IncompatibleSlotLayout,
+            ObjectConstructionError::PrototypeRefused,
+            ObjectConstructionError::PropertyRefused,
+        ]
+        .map(EngineError::ObjectConstruction),
+    );
     cases.extend(
         [
             ValueRenderError::Sink,
@@ -302,6 +327,12 @@ fn actual_callback_stops_preserve_every_scalar_engine_payload_identity_and_erase
                 Some(&ErasedEngineError::ValueRender(error))
             );
         }
+        if let EngineError::ObjectConstruction(error) = engine {
+            assert_eq!(
+                cause.as_engine(),
+                Some(&ErasedEngineError::ObjectConstruction(error))
+            );
+        }
         if let EngineError::Job(error) = engine {
             assert_eq!(cause.as_engine(), Some(&ErasedEngineError::Job(error)));
         }
@@ -377,7 +408,7 @@ fn an_incoming_interruption_reuses_its_original_cause_in_another_real_module() {
 #[test]
 fn nested_panic_causes_keep_native_order_object_identity_and_borrowed_provenance() {
     let mut context = context();
-    let object = JsObject::with_null_proto(context.runtime());
+    let object = JsObject::with_null_proto(context.runtime()).unwrap();
     let identity = object.identity();
     let captured = context
         .eval_with_budget(
@@ -496,7 +527,7 @@ fn admit(error: JsError, context: &mut Context) -> JsError {
 fn foreign_admission_masks_retained_objects_without_resurrecting_them_or_changing_identity() {
     let mut owner = context();
     let mut foreign = context();
-    let object = JsObject::with_null_proto(owner.runtime());
+    let object = JsObject::with_null_proto(owner.runtime()).unwrap();
     let identity = object.identity();
     let original: JsError = PanicError::new("opaque cause")
         .with_source(JsError::from_opaque(object.into()).unwrap())
@@ -642,11 +673,14 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
         .unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleEffects"), 0, true, context.access())
         .unwrap();
-    let (gate, resolvers) = surgeist_js::object::builtins::JsPromise::new_pending(context.access());
+    let (gate, resolvers) =
+        surgeist_js::object::builtins::JsPromise::new_pending(context.access()).unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleGate"), gate, true, context.access())
         .unwrap();
     let module = Module::parse(
@@ -690,6 +724,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
     let terminal = observe(&module, &mut context);
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("terminalEvaluation"),
             evaluation.clone(),
@@ -718,6 +753,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("speciesReads"), context.access())
             .unwrap(),
         0.into()
@@ -742,12 +778,15 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     for name in ["moduleEffects", "childEffects", "parentRejections"] {
         context
             .global_object()
+            .unwrap()
             .set(js_string!(name), 0, true, context.access())
             .unwrap();
     }
-    let (gate, resolvers) = surgeist_js::object::builtins::JsPromise::new_pending(context.access());
+    let (gate, resolvers) =
+        surgeist_js::object::builtins::JsPromise::new_pending(context.access()).unwrap();
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("ancestorGate"),
             gate.clone(),
@@ -797,6 +836,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     assert_eq!(effects(&mut context), 0.into());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("ancestorEvaluation"),
             evaluation.clone(),
@@ -847,6 +887,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("parentRejections"), context.access())
             .unwrap(),
         0.into()
@@ -854,6 +895,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("childEffects"), context.access())
             .unwrap(),
         1.into()
@@ -872,6 +914,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("childEffects"), context.access())
             .unwrap(),
         1.into()
@@ -903,7 +946,7 @@ fn a_locally_adopted_foreign_cause_identity_does_not_admit_an_unrelated_foreign_
     assert_same_identity(&origin_error, &adopted);
     assert_engine_cause(cause(&adopted), &original);
 
-    let foreign = JsObject::with_null_proto(origin.runtime());
+    let foreign = JsObject::with_null_proto(origin.runtime()).unwrap();
     let foreign_identity = foreign.identity();
     // The adopted interruption is the sole receiving-runtime root here. Its
     // immutable cause identity still belongs to the origin runtime; there is
@@ -1025,10 +1068,12 @@ mod final_settlement {
             .unwrap();
         context
             .global_object()
+            .unwrap()
             .set(js_string!("publicationEffects"), 0, true, context.access())
             .unwrap();
         context
             .global_object()
+            .unwrap()
             .set(
                 js_string!("publicationBodyCompleted"),
                 false,
@@ -1036,7 +1081,7 @@ mod final_settlement {
                 context.access(),
             )
             .unwrap();
-        let reason = JsObject::with_null_proto(context.runtime());
+        let reason = JsObject::with_null_proto(context.runtime()).unwrap();
         reason
             .set(
                 js_string!("tag"),
@@ -1047,6 +1092,7 @@ mod final_settlement {
             .unwrap();
         context
             .global_object()
+            .unwrap()
             .set(
                 js_string!("publicationGuestReason"),
                 reason.clone(),
@@ -1091,6 +1137,7 @@ mod final_settlement {
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(js_string!("publicationBodyCompleted"), context.access())
                 .unwrap(),
             true.into(),
@@ -1099,6 +1146,7 @@ mod final_settlement {
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(js_string!("publicationEffects"), context.access())
                 .unwrap(),
             1.into()
@@ -1118,6 +1166,7 @@ mod final_settlement {
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(js_string!("publicationGuestReason"), context.access())
                 .unwrap()
                 .as_object()
@@ -1140,6 +1189,7 @@ mod final_settlement {
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(js_string!("publicationEffects"), context.access())
                 .unwrap(),
             1.into(),

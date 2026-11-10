@@ -47,7 +47,7 @@ fn timeout_from_duration_preserves_submillisecond_and_large_supplied_values() {
 
 #[test]
 fn timeout_with_realm_preserves_submillisecond_and_large_supplied_values() {
-    let owner = Context::default();
+    let owner = Context::builder().build().unwrap();
     let effects = Rc::new(Cell::new(0));
     let mut observed = Vec::new();
     for duration in supplied() {
@@ -99,7 +99,7 @@ fn interval_from_duration_preserves_submillisecond_and_large_supplied_values() {
 
 #[test]
 fn interval_with_realm_preserves_submillisecond_and_large_supplied_values() {
-    let owner = Context::default();
+    let owner = Context::builder().build().unwrap();
     let effects = Rc::new(Cell::new(0));
     let mut observed = Vec::new();
     for duration in supplied() {
@@ -126,7 +126,7 @@ fn interval_with_realm_preserves_submillisecond_and_large_supplied_values() {
 
 #[test]
 fn ordinary_millisecond_inputs_remain_exact_in_all_four_duration_constructors() {
-    let owner = Context::default();
+    let owner = Context::builder().build().unwrap();
     let duration = Duration::from_millis(7);
     let timeout = TimeoutJob::from_duration(|_| Ok(JsValue::undefined()), duration);
     let realm_timeout = TimeoutJob::with_realm(

@@ -37,7 +37,7 @@ impl Decoder<'_> {
             StoredValue::BigInt(value) => Ok(JsValue::from(JsBigInt::new(value.clone()))),
             StoredValue::Object(fields) => self.object(id, fields, context.reborrow()),
             StoredValue::Map(entries) => {
-                let map = JsMap::new(context.reborrow());
+                let map = JsMap::new(context.reborrow())?;
                 self.seen.insert(id, map.clone().into());
                 for &(key, value) in entries {
                     let key = self.value(key, context.reborrow())?;
@@ -47,7 +47,7 @@ impl Decoder<'_> {
                 Ok(JsValue::from(map))
             }
             StoredValue::Set(entries) => {
-                let set = JsSet::new(context.reborrow());
+                let set = JsSet::new(context.reborrow())?;
                 self.seen.insert(id, set.clone().into());
                 for &entry in entries {
                     let value = self.value(entry, context.reborrow())?;
@@ -57,7 +57,7 @@ impl Decoder<'_> {
             }
             StoredValue::Array(items) => self.array(id, items, context.reborrow()),
             StoredValue::Date(timestamp) => {
-                let date = JsDate::new(context.reborrow());
+                let date = JsDate::new(context.reborrow())?;
                 date.set_time(*timestamp, context.reborrow())?;
                 self.seen.insert(id, date.clone().into());
                 Ok(JsValue::from(date))
@@ -78,7 +78,7 @@ impl Decoder<'_> {
                 Ok(JsValue::from(buffer))
             }
             StoredValue::SharedArrayBuffer(inner) => {
-                let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context.reborrow());
+                let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context.reborrow())?;
                 self.seen.insert(id, buffer.clone().into());
                 Ok(JsValue::from(buffer))
             }
@@ -109,7 +109,7 @@ impl Decoder<'_> {
         fields: &[(StringStore, NodeId)],
         mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        let object = JsObject::with_object_proto(context.intrinsics());
+        let object = JsObject::with_object_proto(context.intrinsics())?;
         self.seen.insert(id, object.clone());
 
         for (key, id) in fields {
@@ -160,5 +160,62 @@ impl Decoder<'_> {
             self.seen.insert(id, object);
         }
         Ok(array)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use surgeist_js::{Context, JsNativeErrorKind, js_string};
+
+    #[test]
+    fn child_construction_failure_returns_no_graph_after_an_accepted_parent_write() {
+        let graph = StoredGraph {
+            root: NodeId(0),
+            nodes: vec![
+                StoredValue::Object(vec![
+                    (js_string!("accepted").into(), NodeId(1)),
+                    (js_string!("child").into(), NodeId(2)),
+                ]),
+                StoredValue::Float(7.0),
+                StoredValue::RegExp {
+                    source: "(".to_string(),
+                    flags: String::new(),
+                },
+            ]
+            .into_boxed_slice(),
+        };
+        let mut context = Context::builder().build().unwrap();
+        let mut decoder = Decoder {
+            graph: &graph,
+            seen: FxHashMap::default(),
+        };
+
+        let error = decoder.value(graph.root, context.access()).unwrap_err();
+        assert_eq!(
+            error.as_native().unwrap().kind(),
+            &JsNativeErrorKind::Syntax
+        );
+        let parent = decoder.seen.get(&graph.root).unwrap();
+        assert_eq!(
+            parent
+                .get(js_string!("accepted"), context.access())
+                .unwrap(),
+            JsValue::from(7)
+        );
+        assert!(
+            parent
+                .get(js_string!("child"), context.access())
+                .unwrap()
+                .is_undefined()
+        );
+        assert!(!decoder.seen.contains_key(&NodeId(2)));
+        drop(decoder);
+
+        let error = decode(&graph, context.access()).unwrap_err();
+        assert_eq!(
+            error.as_native().unwrap().kind(),
+            &JsNativeErrorKind::Syntax
+        );
     }
 }

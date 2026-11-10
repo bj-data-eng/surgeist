@@ -87,7 +87,7 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
         Ok(ready())
     });
     let observer = job.observer();
-    let mut a = Context::default();
+    let mut a = Context::builder().build().unwrap();
     let refused = a
         .with_execution(
             ExecutionOptions::new(0).with_job_preparation_limit(0),
@@ -167,7 +167,7 @@ fn a_deferred_poll_keeps_the_exact_task_and_charges_only_its_later_operation() {
         }))
     });
     let observer = job.observer();
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let first = owner
         .with_execution(ExecutionOptions::new(0).with_job_poll_limit(0), |access| {
             let host = access.into_host_access();
@@ -270,7 +270,7 @@ fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
 }
 #[test]
 fn idle_moves_and_new_holders_keep_affinity_while_a_replacement_owner_does_not() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let required = owner.id();
     let expected = required.clone();
     let polls = Rc::new(Cell::new(0));
@@ -296,7 +296,7 @@ fn idle_moves_and_new_holders_keep_affinity_while_a_replacement_owner_does_not()
     }
     let mut moved = Box::new(owner);
     assert_eq!(moved.id(), required);
-    let mut original = std::mem::take(&mut *moved);
+    let mut original = std::mem::replace(&mut *moved, Context::builder().build().unwrap());
     assert_ne!(moved.id(), required);
     {
         let host = moved.host_access();
@@ -325,7 +325,7 @@ fn owner_drop_retires_prepared_and_pending_tasks_and_wakes_native_waiters() {
         let mut job = pending_job(drops.clone(), polls.clone());
         let observer = job.observer();
         let (mut wait, wakes) = pending_wait(&observer);
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         {
             let host = owner.host_access();
             prepared(&mut job, &host);
@@ -344,7 +344,7 @@ fn owner_drop_retires_prepared_and_pending_tasks_and_wakes_native_waiters() {
             poll(&mut wait).map(Result::unwrap),
             Poll::Ready(JobStatus::Retired(JobRetirement::OwnerDropped))
         );
-        let mut other = Context::default();
+        let mut other = Context::builder().build().unwrap();
         let host = other.host_access();
         let error = completion(&mut job, &host).unwrap_err();
         assert_eq!(
@@ -366,7 +366,7 @@ fn final_direct_drop_retires_unbound_prepared_and_pending_controls_once() {
         let mut job = pending_job(drops.clone(), polls.clone());
         let observer = job.observer();
         let mut wait = Box::pin(observer.wait().unwrap());
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         if stage > 0 {
             let host = owner.host_access();
             prepared(&mut job, &host);
@@ -398,9 +398,9 @@ fn required_owner_errors_preserve_the_inert_identity_through_erasure() {
     send_sync_clone::<ContextId>();
     send_sync_clone::<JobObserver>();
     send_sync_clone::<JsErasedError>();
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let required = owner.id();
-    let mut other = Context::default();
+    let mut other = Context::builder().build().unwrap();
     let mut job = NativeAsyncJob::new(|_| Ok(ready()));
     prepared(&mut job, &owner.host_access());
     let JobStep::Deferred(error) = step(&mut job, &other.host_access()) else {
@@ -585,7 +585,7 @@ fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters
 }
 #[test]
 fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let order = Rc::new(RefCell::new(Vec::new()));
     let polls = Rc::new(Cell::new(0));
     let p = polls.clone();
@@ -695,7 +695,7 @@ fn an_owned_synchronous_deferred_callback_can_run_once_in_a_fresh_operation() {
         *seen.borrow_mut() = Some((payload, 42));
         Ok(JsValue::new(42))
     })));
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let first = owner
         .with_execution(
             ExecutionOptions::new(0).with_job_invocation_limit(0),
@@ -748,7 +748,7 @@ fn an_owned_synchronous_deferred_callback_can_run_once_in_a_fresh_operation() {
 #[test]
 fn ordinary_factory_and_poll_errors_complete_once_without_retirement() {
     for factory_error in [false, true] {
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         let mut job = NativeAsyncJob::new(move |_| {
             let error = JsError::from_opaque(JsValue::new(7)).unwrap();
             if factory_error {

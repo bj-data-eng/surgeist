@@ -12,9 +12,9 @@ pub(crate) use unique_shape::UniqueShape;
 
 use std::fmt::Debug;
 
-use surgeist_js_gc::heap::{ObjectId, Trace as HeapTrace};
+use surgeist_js_gc::heap::{AccessError, ObjectId, Trace as HeapTrace};
 
-use crate::property::PropertyKey;
+use crate::{JsResult, property::PropertyKey};
 
 use self::{
     shared_shape::{SharedShapeRef, TransitionKey},
@@ -99,16 +99,16 @@ impl Shape {
     /// Create an insert property transitions returning the new transitioned [`Shape`].
     ///
     /// NOTE: This assumes that there is no property with the given key!
-    pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> Self {
+    pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> JsResult<Self> {
         match &self.inner {
             Inner::Shared(shape) => {
-                let shape = shape.insert_property_transition(key);
+                let shape = shape.insert_property_transition(key)?;
                 if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
+                    return Ok(shape.to_unique()?.into());
                 }
-                shape.into()
+                Ok(shape.into())
             }
-            Inner::Unique(shape) => shape.insert_property_transition(key).into(),
+            Inner::Unique(shape) => Ok(shape.insert_property_transition(key)?.into()),
         }
     }
 
@@ -119,20 +119,20 @@ impl Shape {
     pub(crate) fn change_attributes_transition(
         &self,
         key: TransitionKey,
-    ) -> ChangeTransition<Self> {
+    ) -> JsResult<ChangeTransition<Self>> {
         match &self.inner {
             Inner::Shared(shape) => {
-                let change_transition = shape.change_attributes_transition(key);
+                let change_transition = shape.change_attributes_transition(key)?;
                 let shape =
                     if change_transition.shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                        change_transition.shape.to_unique().into()
+                        change_transition.shape.to_unique()?.into()
                     } else {
                         change_transition.shape.into()
                     };
-                ChangeTransition {
+                Ok(ChangeTransition {
                     shape,
                     action: change_transition.action,
-                }
+                })
             }
             Inner::Unique(shape) => shape.change_attributes_transition(&key),
         }
@@ -141,45 +141,44 @@ impl Shape {
     /// Remove a property property from the [`Shape`] returning the new transitioned [`Shape`].
     ///
     /// NOTE: This assumes that there already is a property with the given key!
-    pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> Self {
+    pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> JsResult<Self> {
         match &self.inner {
             Inner::Shared(shape) => {
-                let shape = shape.remove_property_transition(key);
+                let shape = shape.remove_property_transition(key)?;
                 if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
+                    return Ok(shape.to_unique()?.into());
                 }
-                shape.into()
+                Ok(shape.into())
             }
-            Inner::Unique(shape) => shape.remove_property_transition(key).into(),
+            Inner::Unique(shape) => Ok(shape.remove_property_transition(key)?.into()),
         }
     }
 
     /// Create a prototype transitions returning the new transitioned [`Shape`].
-    pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
+    pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> JsResult<Self> {
         match &self.inner {
             Inner::Shared(shape) => {
-                let shape = shape.change_prototype_transition(prototype);
+                let shape = shape.change_prototype_transition(prototype)?;
                 if shape.transition_count() >= Self::TRANSITION_COUNT_MAX {
-                    return shape.to_unique().into();
+                    return Ok(shape.to_unique()?.into());
                 }
-                shape.into()
+                Ok(shape.into())
             }
-            Inner::Unique(shape) => shape.change_prototype_transition(prototype).into(),
+            Inner::Unique(shape) => Ok(shape.change_prototype_transition(prototype)?.into()),
         }
     }
 
     /// Get the [`JsPrototype`] of the [`Shape`].
-    #[must_use]
-    pub fn prototype(&self) -> JsPrototype {
+    pub fn prototype(&self) -> JsResult<JsPrototype> {
         match &self.inner {
-            Inner::Shared(shape) => shape.prototype(),
+            Inner::Shared(shape) => shape.prototype().map_err(Into::into),
             Inner::Unique(shape) => shape.prototype(),
         }
     }
 
     /// Lookup a property in the shape
     #[inline]
-    pub(crate) fn lookup(&self, key: &PropertyKey) -> Option<Slot> {
+    pub(crate) fn lookup(&self, key: &PropertyKey) -> JsResult<Option<Slot>> {
         match &self.inner {
             Inner::Shared(shape) => shape.lookup(key),
             Inner::Unique(shape) => shape.lookup(key),
@@ -188,8 +187,7 @@ impl Shape {
 
     /// Returns the keys of the [`Shape`], in insertion order.
     #[inline]
-    #[must_use]
-    pub fn keys(&self) -> Vec<PropertyKey> {
+    pub fn keys(&self) -> JsResult<Vec<PropertyKey>> {
         match &self.inner {
             Inner::Shared(shape) => shape.keys(),
             Inner::Unique(shape) => shape.keys(),
@@ -233,11 +231,10 @@ pub(crate) enum ShapeRef {
 impl ShapeRef {
     /// Roots the shape if its allocation is still live.
     #[inline]
-    #[must_use]
-    pub(crate) fn upgrade(&self) -> Option<Shape> {
+    pub(crate) fn upgrade(&self) -> Result<Option<Shape>, AccessError> {
         match self {
-            ShapeRef::Shared(shape) => Some(shape.upgrade()?.into()),
-            ShapeRef::Unique(shape) => Some(shape.upgrade()?.into()),
+            ShapeRef::Shared(shape) => Ok(shape.upgrade()?.map(Into::into)),
+            ShapeRef::Unique(shape) => Ok(shape.upgrade()?.map(Into::into)),
         }
     }
 }

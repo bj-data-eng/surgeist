@@ -208,7 +208,7 @@ impl IntrinsicObject for Json {
         let to_string_tag = JsSymbol::to_string_tag();
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
 
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
             .static_method(Self::parse, js_string!("parse"), 2)?
             .static_method(Self::stringify, js_string!("stringify"), 3)?
             .static_method(Self::raw_json, js_string!("rawJSON"), 1)?
@@ -219,8 +219,8 @@ impl IntrinsicObject for Json {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().json()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().json()?)
     }
 }
 
@@ -385,12 +385,11 @@ impl Json {
         // 11. If IsCallable(reviver) is true, then
         if let Some(obj) = args.get_or_undefined(1).as_callable() {
             // a. Let root be ! OrdinaryObjectCreate(%Object.prototype%).
-            let root = JsObject::with_object_proto(context.intrinsics());
+            let root = JsObject::with_object_proto(context.intrinsics())?;
 
             // b. Let rootName be the empty String.
             // c. Perform ! CreateDataPropertyOrThrow(root, rootName, unfiltered).
-            root.create_data_property_or_throw(js_string!(), unfiltered, context.access())
-                .js_expect("CreateDataPropertyOrThrow should never throw here")?;
+            root.create_data_property_or_throw(js_string!(), unfiltered, context.access())?;
 
             // d. Return ? InternalizeJSONProperty(root, rootName, reviver).
             Self::internalize_json_property(
@@ -514,7 +513,7 @@ impl Json {
         // For objects/arrays or modified values: context = {} (no source property)
         // Per spec, source is only provided when the value is still the same
         // primitive that was produced by parsing the original JSON text.
-        let ctx_obj = JsObject::with_object_proto(context.intrinsics());
+        let ctx_obj = JsObject::with_object_proto(context.intrinsics())?;
         if let Some(JsonNode::Primitive(source_text)) = source_node {
             // Check if the current value matches what the source text produces.
             // If the reviver modified the value, it won't match and we skip source.
@@ -621,8 +620,7 @@ impl Json {
         let obj = JsObject::from_proto_and_data(context.runtime(), None::<JsObject>, RawJson)?;
 
         // 5. Perform ! CreateDataPropertyOrThrow(obj, "rawJSON", jsonString).
-        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context.access())
-            .js_expect("CreateDataPropertyOrThrow should never throw here")?;
+        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context.access())?;
 
         // 6. Perform ! SetIntegrityLevel(obj, frozen).
         obj.set_integrity_level(IntegrityLevel::Frozen, context.access())
@@ -785,16 +783,14 @@ impl Json {
         };
 
         // 9. Let wrapper be ! OrdinaryObjectCreate(%Object.prototype%).
-        let wrapper = JsObject::with_object_proto(context.intrinsics());
+        let wrapper = JsObject::with_object_proto(context.intrinsics())?;
 
         // 10. Perform ! CreateDataPropertyOrThrow(wrapper, the empty String, value).
-        wrapper
-            .create_data_property_or_throw(
-                js_string!(),
-                args.get_or_undefined(0).clone(),
-                context.access(),
-            )
-            .js_expect("CreateDataPropertyOrThrow should never fail here")?;
+        wrapper.create_data_property_or_throw(
+            js_string!(),
+            args.get_or_undefined(0).clone(),
+            context.access(),
+        )?;
 
         // 11. Let state be the Record { [[ReplacerFunction]]: ReplacerFunction, [[Stack]]: stack, [[Indent]]: indent, [[Gap]]: gap, [[PropertyList]]: PropertyList }.
         let mut state = StateRecord {

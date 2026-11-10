@@ -233,11 +233,12 @@ fn eval(source: &str, context: &mut Context) -> JsResult<JsValue> {
 fn value(name: &str, context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }
 fn gate(context: &mut Context) -> ResolvingFunctions {
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("lifecycleGate"), gate, Attribute::all())
         .unwrap();

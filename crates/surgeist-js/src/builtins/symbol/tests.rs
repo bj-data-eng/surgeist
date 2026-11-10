@@ -53,7 +53,7 @@ fn symbol_for_and_key_for() {
     // Test that globally registered symbols are preserved across threads
 
     let handle = thread::spawn(|| {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let result = context.eval(crate::Source::from_bytes(r#"Symbol.for("cross_thread")"#));
         result
             .unwrap()
@@ -64,7 +64,7 @@ fn symbol_for_and_key_for() {
 
     let sym_from_thread = handle.join().expect("thread panicked");
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let result = context.eval(crate::Source::from_bytes(r#"Symbol.for("cross_thread")"#));
     let sym_from_main = result
         .unwrap()

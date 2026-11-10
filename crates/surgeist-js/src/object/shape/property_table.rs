@@ -1,162 +1,287 @@
 use crate::{
-    object::shape::slot::{Slot, SlotAttributes},
+    JsResult, JsValue,
+    error::{EngineResourceError, ObjectConstructionError, RootingError},
+    object::{
+        PreparedNamedProperties,
+        shape::slot::{Slot, SlotAttributes},
+    },
     property::PropertyKey,
 };
-use rustc_hash::{FxBuildHasher, FxHashMap};
-use std::{cell::RefCell, rc::Rc};
+use rustc_hash::FxHashMap;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+use surgeist_js_gc::heap::AccessError;
 
-/// The internal representation of [`PropertyTable`].
+/// Ordered named-property metadata. Slot counts are maintained at insertion.
 #[derive(Default, Debug, Clone)]
 pub(crate) struct PropertyTableInner {
-    pub(crate) map: FxHashMap<PropertyKey, (u32, Slot)>,
+    pub(crate) map: FxHashMap<PropertyKey, Cell<(u32, Slot)>>,
     pub(crate) keys: Vec<(PropertyKey, Slot)>,
+    pub(crate) required_slots: u32,
 }
 
 impl PropertyTableInner {
-    /// Returns a new table with a given minimum capacity.
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self {
-            map: FxHashMap::with_capacity_and_hasher(capacity, FxBuildHasher),
-            keys: Vec::with_capacity(capacity),
-        }
+    pub(crate) fn with_capacity(capacity: usize) -> JsResult<Self> {
+        let mut this = Self::default();
+        this.reserve(capacity)?;
+        Ok(this)
     }
 
-    /// Returns all the keys, in insertion order.
-    pub(crate) fn keys(&self) -> Vec<PropertyKey> {
-        self.keys_cloned_n(self.keys.len() as u32)
-    }
-
-    /// Returns `n` cloned keys, in insertion order.
-    pub(crate) fn keys_cloned_n(&self, n: u32) -> Vec<PropertyKey> {
-        let n = n as usize;
-
+    pub(crate) fn reserve(&mut self, additional: usize) -> JsResult<()> {
+        let count = self
+            .keys
+            .len()
+            .checked_add(additional)
+            .ok_or(EngineResourceError::SizeOverflow)?;
+        u32::try_from(count).map_err(|_| EngineResourceError::SizeOverflow)?;
+        std::alloc::Layout::array::<(PropertyKey, Slot)>(count)
+            .map_err(|_| EngineResourceError::SizeOverflow)?;
         self.keys
-            .iter()
-            .take(n)
-            .map(|(key, _)| key)
-            .filter(|key| matches!(key, PropertyKey::String(_)))
-            .chain(
-                self.keys
-                    .iter()
-                    .take(n)
-                    .map(|(key, _)| key)
-                    .filter(|key| matches!(key, PropertyKey::Symbol(_))),
-            )
-            .cloned()
-            .collect()
+            .try_reserve(additional)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        self.map
+            .try_reserve(additional)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        Ok(())
     }
 
-    /// Returns a new table with `n` cloned properties.
-    pub(crate) fn clone_count(&self, n: u32) -> Self {
-        let n = n as usize;
+    pub(crate) fn keys(&self) -> JsResult<Vec<PropertyKey>> {
+        self.keys_cloned_n(
+            u32::try_from(self.keys.len()).map_err(|_| EngineResourceError::SizeOverflow)?,
+        )
+    }
 
-        let mut keys = Vec::with_capacity(n);
-        let mut map = FxHashMap::default();
+    pub(crate) fn keys_cloned_n(&self, n: u32) -> JsResult<Vec<PropertyKey>> {
+        let entries = self
+            .keys
+            .get(..n as usize)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        let mut result = Vec::new();
+        result
+            .try_reserve_exact(entries.len())
+            .map_err(|_| EngineResourceError::Allocation)?;
+        result.extend(
+            entries
+                .iter()
+                .filter(|(key, _)| matches!(key, PropertyKey::String(_)))
+                .map(|(key, _)| key.clone()),
+        );
+        result.extend(
+            entries
+                .iter()
+                .filter(|(key, _)| matches!(key, PropertyKey::Symbol(_)))
+                .map(|(key, _)| key.clone()),
+        );
+        Ok(result)
+    }
 
-        for (index, (key, slot)) in self.keys.iter().take(n).enumerate() {
-            keys.push((key.clone(), *slot));
-            map.insert(key.clone(), (index as u32, *slot));
+    pub(crate) fn clone_count(&self, n: u32) -> JsResult<Self> {
+        let entries = self
+            .keys
+            .get(..n as usize)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        let mut result = Self::with_capacity(entries.len())?;
+        for (key, slot) in entries {
+            result.insert(key.clone(), slot.attributes)?;
         }
-
-        Self { map, keys }
+        Ok(result)
     }
 
-    /// Insert a property entry into the table.
-    pub(crate) fn insert(&mut self, key: PropertyKey, attributes: SlotAttributes) {
-        let slot = Slot::from_previous(self.keys.last().map(|x| x.1), attributes);
-        let index = self.keys.len() as u32;
+    pub(crate) fn insert(&mut self, key: PropertyKey, attributes: SlotAttributes) -> JsResult<()> {
+        if matches!(key, PropertyKey::Index(_)) {
+            return Err(ObjectConstructionError::IndexedTemplateKey.into());
+        }
+        if self.map.contains_key(&key) {
+            return Err(ObjectConstructionError::DuplicateTemplateProperty.into());
+        }
+        let index =
+            u32::try_from(self.keys.len()).map_err(|_| EngineResourceError::SizeOverflow)?;
+        let required_slots = self
+            .required_slots
+            .checked_add(attributes.width())
+            .ok_or(EngineResourceError::SizeOverflow)?;
+        self.reserve(1)?;
+        let slot = Slot {
+            index: self.required_slots,
+            attributes,
+        };
         self.keys.push((key.clone(), slot));
-        let value = self.map.insert(key, (index, slot));
-        debug_assert!(value.is_none());
+        self.map.insert(key, Cell::new((index, slot)));
+        self.required_slots = required_slots;
+        Ok(())
     }
 }
 
-/// Represents an ordered property table, that maps [`PropertyTable`] to [`Slot`].
-///
-/// This is shared between [`crate::object::shape::SharedShape`].
+/// Validated authored metadata, not a live object or mutation capability.
+pub(crate) struct NamedLayout {
+    table: PropertyTableInner,
+}
+
+impl NamedLayout {
+    pub(crate) fn new(capacity: usize) -> JsResult<Self> {
+        Ok(Self {
+            table: PropertyTableInner::with_capacity(capacity)?,
+        })
+    }
+
+    pub(crate) fn push(&mut self, key: PropertyKey, attributes: SlotAttributes) -> JsResult<()> {
+        if attributes.is_accessor_descriptor() && attributes.contains(SlotAttributes::WRITABLE) {
+            return Err(ObjectConstructionError::InvalidAccessorLayout.into());
+        }
+        self.table.insert(key, attributes)
+    }
+
+    pub(crate) fn prepare(self, values: Vec<JsValue>) -> JsResult<PreparedNamedProperties> {
+        PreparedNamedProperties::new(self.table, values)
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub(crate) struct PropertyTable {
     pub(super) inner: Rc<RefCell<PropertyTableInner>>,
 }
 
 impl PropertyTable {
-    /// Creates a new `PropertyTable` with the specified capacity.
-    pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(PropertyTableInner::with_capacity(capacity))),
-        }
+    pub(crate) fn with_capacity(capacity: usize) -> JsResult<Self> {
+        Ok(Self {
+            inner: Rc::new(RefCell::new(PropertyTableInner::with_capacity(capacity)?)),
+        })
     }
-
-    /// Returns the inner representation of a [`PropertyTable`].
     pub(super) fn inner(&self) -> &RefCell<PropertyTableInner> {
         &self.inner
     }
 
-    /// Add a property to the [`PropertyTable`] or deep clone it,
-    /// if there already is a property or the property has attributes that are not the same.
     pub(crate) fn add_property_deep_clone_if_needed(
         &self,
         key: PropertyKey,
         attributes: SlotAttributes,
         property_count: u32,
-    ) -> Self {
+    ) -> JsResult<Self> {
         {
-            let mut inner = self.inner.borrow_mut();
-            if (property_count as usize) == inner.keys.len() && !inner.map.contains_key(&key) {
-                inner.insert(key, attributes);
-                return self.clone();
+            let mut inner = self
+                .inner
+                .try_borrow_mut()
+                .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+            if property_count as usize == inner.keys.len() && !inner.map.contains_key(&key) {
+                inner.insert(key, attributes)?;
+                return Ok(self.clone());
             }
         }
-
-        // property is already present need to make deep clone of property table.
-        let this = self.deep_clone(property_count);
-        {
-            let mut inner = this.inner.borrow_mut();
-            inner.insert(key, attributes);
-        }
-        this
+        let this = self.deep_clone(property_count)?;
+        this.inner
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+            .insert(key, attributes)?;
+        Ok(this)
     }
-
-    /// Deep clone the [`PropertyTable`] in insertion order with the first n properties.
-    pub(crate) fn deep_clone(&self, n: u32) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(self.inner.borrow().clone_count(n))),
-        }
+    pub(crate) fn deep_clone(&self, n: u32) -> JsResult<Self> {
+        Ok(Self {
+            inner: Rc::new(RefCell::new(
+                self.inner
+                    .try_borrow()
+                    .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+                    .clone_count(n)?,
+            )),
+        })
     }
-
-    /// Deep clone the [`PropertyTable`].
-    pub(crate) fn deep_clone_all(&self) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new((*self.inner.borrow()).clone())),
-        }
+    pub(crate) fn deep_clone_all(&self) -> JsResult<Self> {
+        let inner = self
+            .inner
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let count =
+            u32::try_from(inner.keys.len()).map_err(|_| EngineResourceError::SizeOverflow)?;
+        Ok(Self {
+            inner: Rc::new(RefCell::new(inner.clone_count(count)?)),
+        })
     }
-
-    /// Change the attributes of a property.
     pub(crate) fn set_attributes_at_index(
         &self,
         key: &PropertyKey,
-        property_attributes: SlotAttributes,
-    ) {
-        let mut inner = self.inner.borrow_mut();
-        let Some((index, slot)) = inner.map.get_mut(key) else {
-            unreachable!("There should already be a property!")
-        };
-        slot.attributes = property_attributes;
-        let index = *index as usize;
-
-        inner.keys[index].1.attributes = property_attributes;
+        attributes: SlotAttributes,
+    ) -> JsResult<()> {
+        let mut inner = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let PropertyTableInner { map, keys, .. } = &mut *inner;
+        let cell = map
+            .get(key)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        let (index, old) = cell.get();
+        if !old.attributes.width_match(attributes) {
+            return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+        }
+        let entry = keys
+            .get_mut(index as usize)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        entry.1.attributes = attributes;
+        cell.set((
+            index,
+            Slot {
+                index: old.index,
+                attributes,
+            },
+        ));
+        Ok(())
     }
+    pub(crate) fn get(&self, key: &PropertyKey) -> JsResult<Slot> {
+        let inner = self
+            .inner
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        inner
+            .map
+            .get(key)
+            .map(|cell| cell.get().1)
+            .ok_or_else(|| ObjectConstructionError::IncompatibleSlotLayout.into())
+    }
+}
 
-    /// Get a property from the [`PropertyTable`].
-    ///
-    /// Panics:
-    ///
-    /// If it is not in the [`PropertyTable`].
-    pub(crate) fn get_expect(&self, key: &PropertyKey) -> Slot {
-        let inner = self.inner.borrow();
-        let Some((_, slot)) = inner.map.get(key) else {
-            unreachable!("There should already be a property!")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::js_string;
+    #[test]
+    fn cloned_table_cells_have_independent_attribute_and_index_storage() {
+        let original = PropertyTable::with_capacity(1).unwrap();
+        let key = PropertyKey::from(js_string!("value"));
+        original
+            .inner
+            .borrow_mut()
+            .insert(key.clone(), SlotAttributes::CONFIGURABLE)
+            .unwrap();
+        let copied = original.inner.borrow().clone();
+        let cloned = PropertyTable {
+            inner: Rc::new(RefCell::new(copied)),
         };
-        *slot
+        original
+            .set_attributes_at_index(&key, SlotAttributes::WRITABLE)
+            .unwrap();
+        assert_eq!(
+            original.get(&key).unwrap().attributes,
+            SlotAttributes::WRITABLE
+        );
+        assert_eq!(
+            cloned.get(&key).unwrap().attributes,
+            SlotAttributes::CONFIGURABLE
+        );
+        assert_eq!(
+            cloned.inner.borrow().keys.first().unwrap().1.attributes,
+            SlotAttributes::CONFIGURABLE
+        );
+        cloned
+            .set_attributes_at_index(&key, SlotAttributes::ENUMERABLE)
+            .unwrap();
+        assert_eq!(
+            original.get(&key).unwrap().attributes,
+            SlotAttributes::WRITABLE
+        );
+        assert_eq!(
+            cloned.get(&key).unwrap().attributes,
+            SlotAttributes::ENUMERABLE
+        );
     }
 }

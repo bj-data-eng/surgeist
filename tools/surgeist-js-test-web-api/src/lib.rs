@@ -18,7 +18,7 @@
 //! ```no_run
 //! use surgeist_js::Context;
 //!
-//! let mut context = Context::default();
+//! let mut context = Context::builder().build().unwrap();
 //!
 //! surgeist_js_test_web_api::register(None, &mut context)
 //!     .expect("failed to register TC55 APIs");
@@ -166,7 +166,7 @@ pub(crate) mod test {
     #[track_caller]
     #[allow(unused)]
     pub(crate) fn run_test_actions(actions: impl IntoIterator<Item = TestAction>) {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         register(None, context).expect("failed to register WinterTC APIs");
         run_test_actions_with(actions, context);
     }

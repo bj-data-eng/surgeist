@@ -112,7 +112,7 @@ impl HeadersIterator {
 
         let proto = context
             .realm()
-            .get_class::<Self>()
+            .get_class::<Self>()?
             .ok_or_else(|| surgeist_js::js_error!(Error: "Headers Iterator not registered"))?
             .prototype();
 
