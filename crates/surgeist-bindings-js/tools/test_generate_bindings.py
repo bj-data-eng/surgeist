@@ -44,7 +44,8 @@ class DescriptionTests(unittest.TestCase):
     def test_actual_retained_blocks_and_generated_bytes_correspond(self):
         # This is an explicit generated-artifact contract. Source token equality
         # is the oracle, not a copy of today's generated Rust as a semantic test.
-        self.assertEqual(g.generate(self.data), g.OUTPUT.read_text(encoding="utf-8"))
+        for path, output in g.generate(self.data).items():
+            self.assertEqual(output, path.read_text(encoding="utf-8"))
 
     def test_changed_standard_member_type_is_refused(self):
         self.member("Node.nodeName")["type"]["name"] = "USVString"
@@ -245,11 +246,11 @@ class DescriptionTests(unittest.TestCase):
                         g.load(path)
 
     def test_check_is_path_independent_read_only_and_reproducible(self):
-        before = g.OUTPUT.read_bytes()
+        before = {path: path.read_bytes() for path in g.generate(self.data)}
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run([sys.executable, "-B", str(Path(g.__file__)), "--check"], cwd=directory, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(g.OUTPUT.read_bytes(), before)
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
         self.assertEqual(g.generate(self.data), g.generate(copy.deepcopy(self.data)))
 
 

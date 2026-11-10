@@ -1,6 +1,6 @@
 mod floating;
 mod integer;
-mod string;
+pub(crate) mod string;
 
 pub use integer::{IntegerKind, IntegerMode, IntegerValue};
 pub use string::{ByteString, DomString, UsvString};

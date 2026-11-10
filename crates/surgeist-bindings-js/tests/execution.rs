@@ -18,7 +18,7 @@ fn evaluate(execution: &mut Execution<'_>, realm: &Realm, source: &str) -> Resul
     execution.in_realm(realm, |scope| {
         let value = scope.evaluate(&units(source))?;
         scope.to_utf16(&value)
-    })?
+    })
 }
 
 fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
@@ -38,7 +38,7 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
     let function = execution.in_realm(&a, |scope| {
         let function = scope.evaluate(&units("(argument => name + ':' + argument)"))?;
         Ok::<_, Error>(scope.retain(&function))
-    })??;
+    })?;
     execution.memory_pressure();
     execution.in_realm(&b, |scope| {
         let function = scope.import(&function)?;
@@ -47,12 +47,12 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
         let value = scope.call(&function, &receiver, &[argument])?;
         assert_eq!(scope.to_utf16(&value)?, units("A:from B"));
         Ok::<_, Error>(())
-    })??;
+    })?;
 
     let object = execution.in_realm(&a, |scope| {
         let object = scope.evaluate(&units("globalThis.retained = {count: 1}"))?;
         Ok::<_, Error>(scope.retain(&object))
-    })??;
+    })?;
     execution.memory_pressure();
     execution.in_realm(&a, |scope| {
         let root = scope.import(&object)?;
@@ -63,7 +63,7 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units("fromRust")), &root)?;
         Ok::<_, Error>(())
-    })??;
+    })?;
     assert_eq!(
         evaluate(&mut execution, &a, "fromRust === retained")?,
         units("true")
@@ -79,7 +79,7 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
         let count = scope.get(&object, PropertyKey::String(&units("count")))?;
         assert_eq!(scope.to_utf16(&count)?, units("2"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -99,7 +99,7 @@ fn utf16_is_code_unit_exact(process: &mut Process) -> Result<(), Error> {
         let value = scope.evaluate(&source)?;
         assert_eq!(scope.to_utf16(&value)?, [0xd800]);
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -111,7 +111,7 @@ fn exceptions_preserve_values_without_diagnostics(process: &mut Process) -> Resu
             Err(Error::Exception(exception)) => Ok(exception),
             _ => Err(Error::BackendUnavailable),
         }
-    })??;
+    })?;
     assert_eq!(exception.phase(), ExceptionPhase::Evaluate);
     assert_eq!(evaluate(&mut execution, &realm, "diagnostics")?, units("0"));
     execution.in_realm(&realm, |scope| {
@@ -126,7 +126,7 @@ fn exceptions_preserve_values_without_diagnostics(process: &mut Process) -> Resu
         let value = scope.import(coercion.value())?;
         assert_eq!(scope.to_utf16(&value)?, units("99"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     assert_eq!(evaluate(&mut execution, &realm, "diagnostics")?, units("1"));
     execution.in_realm(&realm, |scope| {
         match scope.evaluate(&units("let = ;")) {
@@ -146,7 +146,7 @@ fn exceptions_preserve_values_without_diagnostics(process: &mut Process) -> Resu
         let value = scope.evaluate(&units("6 * 7"))?;
         assert_eq!(scope.to_utf16(&value)?, units("42"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -191,7 +191,7 @@ fn properties_and_calls_refuse_invalid_values(process: &mut Process) -> Result<(
             _ => return Err(Error::BackendUnavailable),
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -284,7 +284,7 @@ fn web_idl_integer_conversion_preserves_coercion_and_exact_modulo(
         let original = scope.evaluate(&units("coercionFailure"))?;
         assert!(scope.strict_equals(&thrown, &original)?);
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -307,7 +307,7 @@ fn web_idl_boolean_is_noncoercive(process: &mut Process) -> Result<(), Error> {
         let count = scope.evaluate(&units("booleanCoercions"))?;
         assert_eq!(scope.to_utf16(&count)?, units("0"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -361,7 +361,7 @@ fn web_idl_strings_preserve_units_and_validate_bytes(process: &mut Process) -> R
             assert_eq!(scope.byte_string(&value)?.as_bytes(), expected.as_bytes());
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -439,7 +439,7 @@ fn web_idl_floating_conversions_apply_rounding_and_restrictions(
             assert_eq!(scope.unrestricted_double(&value)?, expected);
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -519,7 +519,7 @@ fn web_idl_primitive_coercion_runs_once_and_preserves_original_throws(
             }
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -533,7 +533,7 @@ fn install(
         let function = scope.function(callback)?;
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units(name)), &function)
-    })?
+    })
 }
 
 struct DropReceipt(Rc<Cell<usize>>);
@@ -631,7 +631,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
             let global = scope.global()?;
             let function = scope.get(&global, PropertyKey::String(&units("returnsReceiver")))?;
             Ok::<_, Error>((scope.retain(&function), scope.retain(&global)))
-        })??;
+        })?;
         execution.in_realm(&b, |scope| {
             let function = scope.import(&receiver_function)?;
             let creation_global = scope.import(&creation_global)?;
@@ -643,7 +643,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
                 assert!(scope.strict_equals(&normalized, &creation_global)?);
             }
             Ok::<_, Error>(())
-        })??;
+        })?;
     }
     install(
         &mut execution,
@@ -675,12 +675,12 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
         // Only guest heap edges may sustain this otherwise unreachable cycle.
         scope.set(&global, PropertyKey::String(&units("ownedInA")), &function)?;
         Ok::<_, Error>(scope.retain(&function))
-    })??;
+    })?;
     execution.in_realm(&b, |scope| {
         let function = scope.import(&function)?;
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units("fromA")), &function)
-    })??;
+    })?;
     evaluate(
         &mut execution,
         &a,
@@ -755,7 +755,7 @@ fn native_callbacks_recurse_and_release_self_cleared_roots(
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units("recursive")), &function)?;
         Ok::<_, Error>(scope.retain(&function))
-    })??;
+    })?;
     custody.replace(Some(root));
     drop(callback);
     assert_eq!(
@@ -1042,7 +1042,7 @@ fn scalar_construction_preserves_javascript_values(process: &mut Process) -> Res
             assert!(!scope.boolean(&value)?);
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1086,7 +1086,7 @@ fn value_classification_uses_language_types_without_guest_hooks(
         let count = scope.evaluate(&units("classificationHooks"))?;
         assert_eq!(scope.double(&count)?, 0.0);
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1126,7 +1126,7 @@ fn callable_classification_includes_classes_and_revoked_callable_proxies(
             assert!(matches!(scope.call(&object, &receiver, &[]), Err(Error::ExpectedFunction)));
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1197,7 +1197,7 @@ fn scalar_and_classification_operations_work_in_native_callbacks(
         assert_eq!(scope.kind(&result)?, ValueKind::Number);
         assert_eq!(scope.double(&result)?, 42.5);
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1291,7 +1291,7 @@ fn property_keys_are_exact_and_never_coerce(process: &mut Process) -> Result<(),
         let actual = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
         assert!(scope.strict_equals(&actual, &original)?);
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1361,7 +1361,7 @@ fn descriptors_preserve_attributes_reentry_and_original_throws(
         let observed = scope.evaluate(&units("definitionReentry"))?;
         assert_eq!(scope.to_utf16(&observed)?, units("nested"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1411,7 +1411,7 @@ fn objects_prototypes_and_dense_arrays_preserve_identity(
         let length = scope.get(&empty, PropertyKey::String(&units("length")))?;
         assert_eq!(scope.to_utf16(&length)?, units("0"));
         Ok::<_, Error>(())
-    })??;
+    })?;
     Ok(())
 }
 
@@ -1447,7 +1447,7 @@ fn captured_intrinsics_survive_guest_replacement_and_realm_lease_release(
         let function = scope.function(&callback)?;
         scope.set(&global, PropertyKey::String(&units("cycle")), &function)?;
         Ok::<_, Error>(scope.retain(&function))
-    })??;
+    })?;
     execution.in_realm(&b, |scope| {
         let global = scope.global()?;
         let function = scope.import(&root)?;
@@ -1456,7 +1456,7 @@ fn captured_intrinsics_survive_guest_replacement_and_realm_lease_release(
             PropertyKey::String(&units("fromAIntrinsic")),
             &function,
         )
-    })??;
+    })?;
     evaluate(
         &mut execution,
         &a,
@@ -1572,7 +1572,7 @@ fn install_constructor(
         )?;
         let global = scope.global()?;
         scope.set(&global, PropertyKey::String(&units(name)), &function)
-    })?
+    })
 }
 
 fn fixture_constructor(
@@ -1714,7 +1714,7 @@ fn declared_constructors_preserve_calls_metadata_and_installed_descriptors(
         let name = scope.get(&exact, PropertyKey::String(&[110, 97, 109, 101]))?;
         assert_eq!(scope.to_utf16(&name)?, units);
         Ok::<_, Error>(())
-    })??;
+    })?;
     assert_eq!(
         evaluate(
             &mut execution,
@@ -1757,7 +1757,7 @@ fn declared_constructor_length_is_exact_u32(process: &mut Process) -> Result<(),
             // construction still executes the real typed native callback.
             let value = scope.evaluate(&units("(() => { const descriptor = Object.getOwnPropertyDescriptor(LengthBoundary, 'length'); const bound = LengthBoundary.bind(null, 1); let refused = false; try { LengthBoundary(); } catch (error) { refused = error instanceof TypeError; } const constructed = new LengthBoundary() instanceof LengthBoundary && new bound() instanceof LengthBoundary; return [descriptor.value, [descriptor.writable, descriptor.enumerable, descriptor.configurable].join(','), bound.length, refused, constructed].join('|'); })()"))?;
             Ok(String::from_utf16_lossy(&scope.to_utf16(&value)?))
-        })??;
+        })?;
         let expected = format!("{length}|false,false,true|{}|true|true", length - 1);
         eprintln!("constructor length {length}: {result}");
         if result != expected {
@@ -1863,14 +1863,14 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
         let constructor = scope.get(&global, PropertyKey::String(&units("Declared")))?;
         let error = scope.get(&global, PropertyKey::String(&units("TypeError")))?;
         Ok::<_, Error>((scope.retain(&constructor), scope.retain(&error)))
-    })??;
+    })?;
     execution.in_realm(&b, |scope| {
         let global = scope.global()?;
         let constructor = scope.import(&constructor)?;
         let error = scope.import(&a_type_error)?;
         scope.set(&global, PropertyKey::String(&units("fromA")), &constructor)?;
         scope.set(&global, PropertyKey::String(&units("TypeErrorA")), &error)
-    })??;
+    })?;
     evaluate(
         &mut execution,
         &b,
@@ -1881,16 +1881,16 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
     let b_target = execution.in_realm(&b, |scope| {
         let value = scope.evaluate(&units("function CrossRealmTarget(){}; CrossRealmTarget"))?;
         Ok::<_, Error>(scope.retain(&value))
-    })??;
+    })?;
     execution.in_realm(&a, |scope| {
         let global = scope.global()?;
         let target = scope.import(&b_target)?;
         scope.set(&global, PropertyKey::String(&units("targetFromB")), &target)
-    })??;
+    })?;
     let cross_bound = execution.in_realm(&a, |scope| {
         let value = scope.evaluate(&units("globalThis.crossBound = Function.prototype.bind.call(new Proxy(targetFromB, {}), null); Object.defineProperty(crossBound, 'prototype', {value:0, writable:false, configurable:false}); Object.defineProperty(crossBound, 'name', {value:{toString() {throw 'name data must not coerce';}}, configurable:false}); Object.defineProperty(crossBound, 'length', {value:{valueOf() {throw 'length data must not coerce';}}, configurable:false}); crossBound"))?;
         Ok::<_, Error>(scope.retain(&value))
-    })??;
+    })?;
     execution.in_realm(&b, |scope| {
         let global = scope.global()?;
         let value = scope.import(&cross_bound)?;
@@ -1899,7 +1899,7 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
             PropertyKey::String(&units("boundProxyTarget")),
             &value,
         )
-    })??;
+    })?;
     drop(b_target);
     drop(cross_bound);
     let (launch, plain_call, poison) = execution.in_realm(&b, |scope| {
@@ -1912,7 +1912,7 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
             scope.retain(&plain),
             scope.retain(&poison),
         ))
-    })??;
+    })?;
     execution.in_realm(&driver, |scope| {
         let global = scope.global()?;
         for (name, root) in [
@@ -1924,7 +1924,7 @@ fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_indepen
             scope.set(&global, PropertyKey::String(&units(name)), &value)?;
         }
         Ok::<_, Error>(())
-    })??;
+    })?;
     // Poison A's inherited trap/descriptor fields too. The core's private
     // handler objects must be null-prototype and descriptor.value must be own.
     evaluate(
@@ -2155,19 +2155,20 @@ fn main() -> Result<(), Error> {
         let value = execution.in_realm(&realm, |scope| {
             let value = scope.evaluate(&units("Promise.resolve().then(() => { throw new Error('must not run at teardown') }); ({alive: true})"))?;
             Ok::<_, Error>(scope.retain(&value))
-        })??;
+        })?;
         (realm, value)
     };
     drop(process);
     let mut next = Process::bootstrap(EngineKind::V8)?;
     let mut execution = next.execution();
     assert!(matches!(
-        execution.in_realm(&old_realm, |_| ()),
+        execution.in_realm(&old_realm, |_| Ok(())),
         Err(Error::ForeignOwner)
     ));
     let realm = execution.create_realm()?;
     execution.in_realm(&realm, |scope| {
         assert!(matches!(scope.import(&old_value), Err(Error::ForeignOwner)));
+        Ok(())
     })?;
     // Forgetting a temporary borrow cannot lose ownership of the isolate.
     std::mem::forget(execution);

@@ -49,12 +49,12 @@
 //! let root = execution.in_realm(&realm, |scope| {
 //!     let value = scope.string(&[0xd800])?;
 //!     Ok::<_, Error>(scope.retain(&value))
-//! })??;
+//! })?;
 //! execution.in_realm(&realm, |scope| {
 //!     let value = scope.import(&root)?;
 //!     assert_eq!(scope.to_utf16(&value)?, [0xd800]);
 //!     Ok::<_, Error>(())
-//! })??;
+//! })?;
 //! # Ok(())
 //! # }
 //! ```
@@ -74,6 +74,7 @@
 )]
 
 mod backend;
+pub mod conversion;
 pub mod declarations;
 mod error;
 mod idl;
@@ -161,6 +162,13 @@ impl Process {
             engine: self.engine.as_mut(),
         }
     }
+
+    /// Secondary conversion cleanup observations, including after terminal
+    /// refusal or release of the original account. This query enters no SDK
+    /// frame and never changes the immutable first error.
+    pub fn conversion_cleanup_status(&self) -> conversion::CleanupStatus {
+        self.engine.owner_state().cleanup_status()
+    }
 }
 
 /// Exclusive access to an execution owner's heap.
@@ -180,25 +188,37 @@ impl Execution<'_> {
         self.engine.create_realm()
     }
 
-    /// Runs Rust binding operations in a validated realm. The result cannot
-    /// contain a scoped value; explicitly retained [`Root`]s may escape.
+    /// Runs fallible Rust binding operations in a validated realm. The chosen
+    /// result includes local cleanup and post-SDK capture reaping. A guest
+    /// exception remains catchable unless cleanup itself fatally fails; that
+    /// double failure retains the original exception in its terminal report.
+    /// The result cannot contain a scoped value; retain [`Root`]s explicitly.
     pub fn in_realm<T>(
         &mut self,
         realm: &Realm,
-        action: impl for<'scope> FnOnce(&mut Scope<'scope>) -> T,
+        action: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
     ) -> Result<T, Error> {
+        let boundary = owner::Boundary::enter(self.engine.owner_state())?;
         let mut action = Some(action);
         let mut result = None;
-        self.engine.with_realm(realm, &mut |operations| {
+        let entered = self.engine.with_realm(realm, &mut |operations| {
             if let Some(action) = action.take() {
                 result = Some(action(&mut Scope {
                     operations,
                     invariant: PhantomData,
-                }));
+                })?);
             }
-        })?;
+            Ok(())
+        });
+        let chosen = match entered {
+            Ok(()) => result.take().ok_or(Error::BackendUnavailable),
+            Err(error) => {
+                drop(result.take());
+                Err(error)
+            }
+        };
         self.engine.reap();
-        result.ok_or(Error::BackendUnavailable)
+        boundary.finish(chosen)
     }
 
     /// Runs this heap's shared explicit microtask checkpoint. Evaluating a
@@ -520,7 +540,7 @@ impl<'scope> Arguments<'scope> {
 /// use surgeist_bindings_js::{Completion, Execution, Realm};
 /// fn escape(execution: &mut Execution<'_>, realm: &Realm) {
 ///     let completion = execution.in_realm(realm, |scope| {
-///         Completion::Return(scope.string(&[65]).unwrap())
+///         Ok(Completion::Return(scope.string(&[65]).unwrap()))
 ///     });
 /// }
 /// ```
@@ -578,7 +598,7 @@ pub enum Intrinsic {
 /// fn escape(execution: &mut Execution<'_>, realm: &Realm) {
 ///     let descriptor = execution.in_realm(realm, |scope| {
 ///         let value = scope.string(&[65]).unwrap();
-///         PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true }
+///         Ok(PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true })
 ///     });
 /// }
 /// ```

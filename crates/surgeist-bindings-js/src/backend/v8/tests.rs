@@ -575,6 +575,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
+    crate::conversion::tests::run()?;
     Ok(())
 }
 
@@ -583,7 +584,8 @@ fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> Test
     impl Drop for FailureOnDrop {
         fn drop(&mut self) {
             // The destructor owns no SDK handle or root registry. This is the
-            // same pure owner transition that accounting cleanup will use.
+            // pure host transition. Pending conversion cleanup is qualified
+            // separately against its actual selected entry outcome.
             self.0.fail(Error::RegistryConflict);
         }
     }

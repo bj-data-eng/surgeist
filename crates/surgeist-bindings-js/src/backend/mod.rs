@@ -60,11 +60,12 @@ pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
 
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
+    fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn create_realm(&mut self) -> Result<Realm, Error>;
     fn with_realm(
         &mut self,
         realm: &Realm,
-        action: &mut dyn FnMut(&mut dyn Operations),
+        action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
     ) -> Result<(), Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
     fn memory_pressure(&mut self);
@@ -74,6 +75,8 @@ pub(crate) trait Engine {
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
+    fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
+    fn refuse(&self, error: Error) -> Error;
     fn check_active(&self) -> Result<(), Error>;
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
