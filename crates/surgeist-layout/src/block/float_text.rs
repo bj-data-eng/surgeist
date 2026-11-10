@@ -91,9 +91,74 @@ impl<Node, S: LayoutScalar> std::ops::Deref for BoundEvents<Node, S> {
     }
 }
 
-struct CellOriginIncidence {
+struct OriginIncidence {
     represented: bool,
     inside: bool,
+}
+
+fn visit_source(funding: Option<EntryFundingRef<'_>>) -> Result<(), FitError> {
+    if let Some(funding) = funding {
+        funding.visit(1)?;
+    }
+    Ok(())
+}
+
+fn source_computed_cut<Node: Copy + Eq>(
+    associations: &crate::text_layout::capture::ScopeAssociations<Node>,
+    boundary: &surgeist_text::PreparedComputedLineBoundary,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<crate::text_layout::capture::ComputedNativeCut>, FitError> {
+    for (actual, cut) in associations.computed_cuts() {
+        visit_source(funding)?;
+        if actual == boundary {
+            return Ok(Some(cut));
+        }
+    }
+    Ok(None)
+}
+
+/// Incidence belongs to one preparation and one actual original occurrence.
+/// The admitted origin ranges have equal local and aggregate lengths.
+fn text_origin_incidence(
+    unit: &surgeist_text::PreparedUnit,
+    origin: &surgeist_text::PreparedOrigin,
+    local: usize,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<OriginIncidence>, FitError> {
+    visit_source(funding)?;
+    if unit.prepared_text() != origin.prepared_text() {
+        return Ok(None);
+    }
+    let unit = unit.view();
+    let original = origin.view();
+    if let Some(empty) = unit.empty_origin() {
+        return Ok((empty == *origin).then_some(OriginIncidence {
+            represented: original.local_range().contains(local)
+                || local == original.local_range().end,
+            inside: false,
+        }));
+    }
+    let aggregate = original.aggregate_range();
+    let range = unit.source_range();
+    let start = range.start.max(aggregate.start);
+    let end = range.end.min(aggregate.end);
+    if start >= end {
+        return Ok(None);
+    }
+    let local_start = original.local_range().start + (start - aggregate.start);
+    let local_end = original.local_range().start + (end - aggregate.start);
+    let declared = original.local_range();
+    let in_origin = declared.start <= local && local <= declared.end;
+    let inside = if in_origin {
+        let source = aggregate.start + (local - declared.start);
+        range.start < source && source < range.end
+    } else {
+        false
+    };
+    Ok(Some(OriginIncidence {
+        represented: in_origin && local_start <= local && local <= local_end,
+        inside,
+    }))
 }
 
 /// A Cell can span several originals without offering an interior break.
@@ -103,7 +168,7 @@ fn cell_origin_incidence(
     origin: &surgeist_text::PreparedOrigin,
     local: usize,
     funding: Option<EntryFundingRef<'_>>,
-) -> Result<Option<CellOriginIncidence>, FitError> {
+) -> Result<Option<OriginIncidence>, FitError> {
     let view = origin.view();
     let Some(captured) = view.capture_position() else {
         return Ok(None);
@@ -133,7 +198,7 @@ fn cell_origin_incidence(
             None => {}
         }
     }
-    Ok(member.then_some(CellOriginIncidence {
+    Ok(member.then_some(OriginIncidence {
         represented,
         inside: before && after,
     }))
@@ -163,7 +228,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         if packet.node != pending.node || packet.input != request {
             return Err(FitError::InvalidGeometry);
         }
-        let participants: Vec<_> = binding.prepared.participants().collect();
         let origin_seam = |origin: &surgeist_text::PreparedOrigin,
                            after: bool|
          -> Result<Option<(TextSeam, usize, bool)>, FitError> {
@@ -173,26 +237,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             } else {
                 view.local_range().start
             };
-            let source = if after {
-                view.aggregate_range().end
-            } else {
-                view.aggregate_range().start
-            };
             let mut endpoint = None;
-            for (index, participant) in participants.iter().enumerate() {
+            for (index, participant) in binding.prepared.participants().enumerate() {
+                visit_source(funding)?;
                 let inside = match participant {
                     PreparedParticipant::Text(unit) => {
-                        let unit_view = unit.view();
-                        if unit_view.empty_origin().as_ref() != Some(origin)
-                            && !unit_view.origins().any(|row| row.origin() == *origin)
-                        {
+                        let Some(incidence) = text_origin_incidence(&unit, origin, local, funding)?
+                        else {
                             continue;
-                        }
-                        let range = unit_view.source_range();
-                        range.start < source && source < range.end
+                        };
+                        incidence.inside
                     }
                     PreparedParticipant::Cell(cell) => {
-                        let Some(incidence) = cell_origin_incidence(cell, origin, local, funding)?
+                        let Some(incidence) = cell_origin_incidence(&cell, origin, local, funding)?
                         else {
                             continue;
                         };
@@ -220,25 +277,41 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         };
         let at_node =
             |node: Node, after: bool| -> Result<Option<(TextSeam, usize, bool)>, FitError> {
-                if let Some(row) = binding.origins.iter().find(|row| row.node == node) {
-                    return origin_seam(&row.origin, after);
+                for row in &binding.origins {
+                    visit_source(funding)?;
+                    if row.node == node {
+                        return origin_seam(&row.origin, after);
+                    }
                 }
-                let Some(participant) = binding
-                    .controls
-                    .iter()
-                    .find(|row| row.node == node)
-                    .map(|row| PreparedParticipant::Control(row.occurrence.clone()))
-                    .or_else(|| {
-                        binding
-                            .atomics
-                            .iter()
-                            .find(|row| row.node == node)
-                            .map(|row| PreparedParticipant::Atomic(row.occurrence.clone()))
-                    })
-                else {
+                let mut participant = None;
+                for row in &binding.controls {
+                    visit_source(funding)?;
+                    if row.node == node {
+                        participant = row.occurrence.view().participant();
+                        break;
+                    }
+                }
+                if participant.is_none() {
+                    for row in &binding.atomics {
+                        visit_source(funding)?;
+                        if row.node == node {
+                            participant = Some(PreparedParticipant::Atomic(row.occurrence.clone()));
+                            break;
+                        }
+                    }
+                }
+                let Some(participant) = participant else {
                     return Ok(None);
                 };
-                let Some(index) = participants.iter().position(|p| p == &participant) else {
+                let mut rank = None;
+                for (index, actual) in binding.prepared.participants().enumerate() {
+                    visit_source(funding)?;
+                    if actual == participant {
+                        rank = Some(index);
+                        break;
+                    }
+                }
+                let Some(index) = rank else {
                     return Ok(None);
                 };
                 Ok(Some((
@@ -253,6 +326,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             };
         let mut previous = None;
         for &node in run.nodes()[..offset].iter().rev() {
+            visit_source(funding)?;
             previous = at_node(node, true)?;
             if previous.is_some() {
                 break;
@@ -260,6 +334,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         }
         let mut following = None;
         for &node in &run.nodes()[offset + 1..] {
+            visit_source(funding)?;
             following = at_node(node, false)?;
             if following.is_some() {
                 break;
@@ -277,12 +352,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         let mut next_seam = following.map(|value| value.0);
         let mut preceding_computed = None;
         let mut following_computed = None;
-        for (index, participant) in participants.iter().enumerate().take(upper).skip(lower) {
-            let PreparedParticipant::ComputedLineBoundary(boundary) = participant else {
+        for (index, participant) in binding.prepared.participants().enumerate().take(upper) {
+            visit_source(funding)?;
+            if index < lower {
+                continue;
+            }
+            let PreparedParticipant::ComputedLineBoundary(ref boundary) = participant else {
                 continue;
             };
-            let cut = associations
-                .computed_cut(boundary)
+            let cut = source_computed_cut(associations, boundary, funding)?
                 .and_then(|cut| cut.relative_to(run.inventory.clone()))
                 .ok_or(FitError::MissingComputedBoundaryIncidence)?;
             match cut.side_of_node(offset) {
@@ -537,19 +615,24 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 Ok(match seam {
                     TextSeam::BeforeParticipant(participant)
                     | TextSeam::AfterParticipant(participant) => {
-                        request.participants.contains(participant)
+                        let mut found = false;
+                        for actual in &request.participants {
+                            visit_source(funding)?;
+                            if actual == participant {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
                     }
                     TextSeam::Origin { origin, local } => {
                         let mut found = false;
                         for participant in &request.participants {
+                            visit_source(funding)?;
                             found = match participant {
                                 PreparedParticipant::Text(unit) => {
-                                    unit.view().empty_origin().as_ref() == Some(origin)
-                                        || unit.view().origins().any(|row| {
-                                            row.origin() == *origin
-                                                && row.local_range().start <= local.get()
-                                                && local.get() <= row.local_range().end
-                                        })
+                                    text_origin_incidence(unit, origin, local.get(), funding)?
+                                        .is_some_and(|incidence| incidence.represented)
                                 }
                                 PreparedParticipant::Cell(cell) => {
                                     cell_origin_incidence(cell, origin, local.get(), funding)?
@@ -816,3 +899,6 @@ mod closing_source_controls;
 
 #[cfg(test)]
 mod closing_funding_tests;
+
+#[cfg(test)]
+mod source_incidence_tests;

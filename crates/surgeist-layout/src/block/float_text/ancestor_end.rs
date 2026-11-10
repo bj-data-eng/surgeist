@@ -1,6 +1,6 @@
 //! Source-ordered, immediately closing physical edges for one native float.
 
-use super::{FloatEvent, cell_origin_incidence};
+use super::{FloatEvent, cell_origin_incidence, source_computed_cut, text_origin_incidence};
 use crate::text_layout::AdmittedRun;
 use crate::text_layout::fit::FitError;
 use crate::text_layout::scope_alignment::{EntryBacking, EntryFundingRef};
@@ -211,8 +211,7 @@ impl ClosingEnds {
                     continue;
                 }
                 if let text::PreparedParticipant::ComputedLineBoundary(boundary) = participant {
-                    let cut = associations
-                        .computed_cut(&boundary)
+                    let cut = source_computed_cut(associations, &boundary, funding)?
                         .ok_or(FitError::MissingComputedBoundaryIncidence)?;
                     let Some(cut) = cut.relative_to(run.inventory.clone()) else {
                         // The issued cut is proved wholly outside this native
@@ -235,11 +234,13 @@ impl ClosingEnds {
                             if view.empty_origin().as_ref() == Some(&row.origin) {
                                 continue;
                             }
-                            let mut member = false;
-                            for piece in view.origins() {
-                                visit(funding)?;
-                                member |= piece.origin() == row.origin;
-                            }
+                            let member = text_origin_incidence(
+                                &unit,
+                                &row.origin,
+                                row.origin.view().local_range().start,
+                                funding,
+                            )?
+                            .is_some();
                             if member
                                 && (!view.processed_range().is_empty()
                                     || view.source_range().is_empty())
@@ -326,26 +327,29 @@ impl ClosingEnds {
         end: &text::PreparedControl,
         funding: Option<EntryFundingRef<'_>>,
     ) -> Result<bool, FitError> {
-        for separator in run.binding.prepared.virtual_separators() {
+        let Some(end) = end.view().participant() else {
+            // An inner control has no outer row. Its source occurrence is
+            // still processed by the native owner/parent walk above.
+            return Ok(false);
+        };
+        for (rank, participant) in run.binding.prepared.participants().enumerate() {
             visit(funding)?;
-            let view = separator.view();
-            let mut before_end = false;
-            for following in view.following_controls() {
-                visit(funding)?;
-                before_end |= following == *end;
+            if participant == end {
+                break;
             }
-            if !before_end {
+            if rank < source.position
+                || rank < run.segment.start().view().participant_offset()
+                || run.segment.end().view().participant_offset() <= rank
+            {
                 continue;
             }
-            for unit in view.units() {
-                visit(funding)?;
-                for (rank, participant) in run.binding.prepared.participants().enumerate() {
-                    visit(funding)?;
-                    if participant == text::PreparedParticipant::Text(unit.clone())
-                        && (source.position <= rank || source.inside && source.position == rank)
-                    {
-                        return Ok(true);
-                    }
+            if let text::PreparedParticipant::Text(unit) = participant {
+                let view = unit.view();
+                if view.empty_origin().is_none()
+                    && view.source_range().is_empty()
+                    && view.processed_range().is_empty()
+                {
+                    return Ok(true);
                 }
             }
         }
