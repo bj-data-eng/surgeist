@@ -58,7 +58,7 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
         &DocumentString::from("form")
     );
     assert_eq!(
-        form_element.attributes().as_slice()[0].value(),
+        form_element.attributes().get(0).unwrap().value(),
         &DocumentString::from("f")
     );
     let children: Vec<_> = form.children().collect();
@@ -81,7 +81,7 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
     assert_eq!(input.children().count(), 0);
     assert!(matches!(
         document.node(&children[1]).unwrap().kind(),
-        HtmlNodeKind::Text(value) if value == &DocumentString::from("Z")
+        HtmlNodeKind::Text(value) if value == DocumentString::from("Z")
     ));
 
     let (mut inputs, mut owners) = (0, 0);

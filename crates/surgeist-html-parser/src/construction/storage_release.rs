@@ -1,7 +1,7 @@
 //! Freezing and releasing the active session storage.
 
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 impl SessionStorage {
     pub(super) fn prepare_freeze(
@@ -20,7 +20,7 @@ impl SessionStorage {
                 .node_at(0)
                 .ok_or(SessionError::ForeignNode)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         );
         if let Some(fragment) = &self.fragment {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -31,7 +31,7 @@ impl SessionStorage {
                     .node_at(output)
                     .ok_or_else(|| latch_registry_row(control))?
                     .kind(),
-                HtmlNodeKind::Fragment
+                ConstructionNodeKind::Fragment
             ) {
                 return Err(SessionError::WrongToken);
             }

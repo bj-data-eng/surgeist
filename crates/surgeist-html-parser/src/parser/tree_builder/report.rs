@@ -1062,7 +1062,7 @@ mod tests {
 
     fn first_text(
         document: &surgeist_html::construction::HtmlDocument,
-    ) -> &surgeist_html::values::DocumentString {
+    ) -> surgeist_html::values::DocumentString {
         let html = document
             .root()
             .children()

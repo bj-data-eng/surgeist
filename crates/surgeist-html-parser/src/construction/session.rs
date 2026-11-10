@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_html::{
     construction::HtmlConstructionResult,
-    construction::{HtmlFragmentOwner, HtmlNodeKind, HtmlTemplateContentsKind},
+    construction::{ConstructionNodeKind, HtmlFragmentOwner, HtmlTemplateContentsKind},
     values::QualifiedName,
 };
 
@@ -41,7 +41,7 @@ impl ParserArenaSession {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind(),
-            HtmlNodeKind::Fragment
+            ConstructionNodeKind::Fragment
         ) {
             Ok(Some(storage.root(control)?))
         } else {
@@ -104,7 +104,7 @@ impl ParserArenaSession {
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind()
             {
-                HtmlNodeKind::Element(value) => Some(value.name()),
+                ConstructionNodeKind::Element(value) => Some(value.name()),
                 _ => None,
             },
         )
@@ -127,7 +127,7 @@ impl ParserArenaSession {
             .construction
             .node_at(element)
             .ok_or(SessionError::ForeignNode)?;
-        if !matches!(record.kind(), HtmlNodeKind::Element(_)) {
+        if !matches!(record.kind(), ConstructionNodeKind::Element(_)) {
             return Err(SessionError::WrongToken);
         }
         if record.parent().is_some() {
@@ -194,7 +194,7 @@ impl ParserArenaSession {
                 .node_at(target)
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             for position in 0..storage
                 .construction
@@ -215,7 +215,7 @@ impl ParserArenaSession {
                     .construction
                     .node_at(child)
                     .ok_or(SessionError::ForeignNode)?;
-                if matches!(record.kind(), HtmlNodeKind::Element(_)) {
+                if matches!(record.kind(), ConstructionNodeKind::Element(_)) {
                     return Ok(Some(ElementInsertionIgnored::DocumentAlreadyHasElement));
                 }
             }

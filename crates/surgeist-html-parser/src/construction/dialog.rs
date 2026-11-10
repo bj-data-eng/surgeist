@@ -6,7 +6,7 @@ use surgeist_html::elements::dialog::{
     HtmlDialogOutcome, HtmlDialogReply as Reply,
 };
 use surgeist_html::{
-    construction::HtmlNodeKind, values::Namespace, vocabulary::KnownHtmlAttribute,
+    construction::ConstructionNodeKind, values::Namespace, vocabulary::KnownHtmlAttribute,
 };
 
 pub(super) struct DialogMetadata {
@@ -80,7 +80,7 @@ impl SessionStorage {
             )
             .map_err(|_| latch_registry_row(c))?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -235,7 +235,7 @@ impl SessionStorage {
             return Ok(());
         }
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -245,7 +245,6 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         if attr.name().namespace().uri().is_some()

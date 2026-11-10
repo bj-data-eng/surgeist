@@ -325,7 +325,7 @@ fn inspect(
     for (i, e) in expected.iter().enumerate() {
         let id = *ids[i].as_ref().ok_or("missing-recipe-node")?;
         let n = f.node(&id).map_err(|_| "foreign-native-node")?;
-        if !payload(n.kind(), e, c) || n.parent() != e.parent.and_then(|p| ids[p]) {
+        if !payload(&n.kind(), e, c) || n.parent() != e.parent.and_then(|p| ids[p]) {
             return Err("native-payload-or-parent");
         }
         let owner = e.owner.map(|(p, shadow)| {

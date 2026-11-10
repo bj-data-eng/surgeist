@@ -24,7 +24,6 @@ fn elements(raw: &str, name: &str) -> Vec<Attributes> {
             found.push(
                 element
                     .attributes()
-                    .as_slice()
                     .iter()
                     .map(|attribute| {
                         (

@@ -5,7 +5,7 @@ use surgeist_html::{
     bounded::form::{
         HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
     },
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -105,7 +105,7 @@ impl SessionStorage {
         position: usize,
     ) -> Result<usize, SessionError> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(control))?
@@ -113,7 +113,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let attributes = element.attributes().as_slice();
+        let attributes = element.attributes();
         let value = attributes
             .get(position)
             .ok_or(SessionError::AttributeStorageUnavailable)?
@@ -360,7 +360,7 @@ impl SessionStorage {
                     let mut value_position = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
-                    for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
+                    for (index, attribute) in element.attributes().iter().enumerate() {
                         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
                             value_position = Some(index);
@@ -407,7 +407,7 @@ impl SessionStorage {
                     let mut source = None;
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let element = element_record(&self.construction, control, node)?;
-                    for (position, attribute) in element.attributes().as_slice().iter().enumerate()
+                    for (position, attribute) in element.attributes().iter().enumerate()
                     {
                         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                         if attribute.name().namespace().uri().is_none()
@@ -503,7 +503,7 @@ impl SessionStorage {
         };
         let (value, value_slot) = self.register_field_copy(control, value)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(control))?
@@ -613,7 +613,7 @@ impl SessionStorage {
         let mut value = None;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let element = element_record(&self.construction, control, node)?;
-        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (position, attribute) in element.attributes().iter().enumerate() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attribute.name().local_name()), "checked")? {
                 checked = true;

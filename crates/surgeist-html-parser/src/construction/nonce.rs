@@ -3,7 +3,7 @@ use super::*;
 #[cfg(test)]
 use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    construction::{HtmlFragmentOwner, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlFragmentOwner},
     values::{Attribute, Namespace, QualifiedName},
 };
 
@@ -80,7 +80,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -117,7 +117,7 @@ impl SessionStorage {
             HtmlParseWorkCategory::InspectByte,
             surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -127,7 +127,6 @@ impl SessionStorage {
         };
         let attribute = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         if matches!(
@@ -205,7 +204,7 @@ impl SessionStorage {
                     .node_at(root)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             ) {
                 // Every owned construction Document is standalone/inert, with no BC.
                 return Ok((C::NotBrowsingContextConnected, P::Unavailable));
@@ -365,7 +364,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -374,7 +373,7 @@ impl SessionStorage {
             return Ok(());
         };
         let mut selected = None;
-        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (position, attribute) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
@@ -628,7 +627,7 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -644,7 +643,7 @@ impl SessionStorage {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
-        for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (index, attribute) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
@@ -768,7 +767,7 @@ impl ParserArenaSession {
 mod tests {
     use super::*;
     use surgeist_html::{
-        construction::HtmlNodeKind,
+        construction::ConstructionNodeKind,
         values::{DocumentString, Namespace, QualifiedName},
     };
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1219,7 +1218,7 @@ mod tests {
     }
     fn p_node(c: &mut ParseControl, session: &ParserArenaSession) -> ParserNode {
         let storage = session.active().unwrap();
-        let index = (0..storage.construction.test_storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
+        let index = (0..storage.construction.test_storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),ConstructionNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
         storage.node(c, index).unwrap()
     }
     #[test]

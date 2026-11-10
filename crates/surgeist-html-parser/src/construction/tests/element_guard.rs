@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
+use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode};
 
 #[test]
 fn document_mode_update_rejects_fragment_and_work_stop_before_the_real_mode_write() {
@@ -38,7 +38,7 @@ fn document_mode_update_rejects_fragment_and_work_stop_before_the_real_mode_writ
             .node_at(0)
             .expect("retained construction position")
             .kind(),
-        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+        ConstructionNodeKind::Document(HtmlDocumentMode::NoQuirks)
     ));
     document.release(&mut c).unwrap();
     storage_zero(&c);

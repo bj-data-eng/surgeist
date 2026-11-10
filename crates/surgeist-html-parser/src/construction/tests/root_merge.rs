@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     values::DocumentString,
 };
 
@@ -50,7 +50,7 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
             .unwrap();
         assert!(second.is_none());
         let storage = session.active().unwrap();
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(root.index)
             .expect("retained construction position")
@@ -61,27 +61,28 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
         assert_eq!(
             element
                 .attributes()
-                .as_slice()
                 .iter()
                 .map(|a| a.name().local_name().to_utf8().unwrap())
                 .collect::<Vec<_>>(),
             ["id", "x:id", "a", "z"]
         );
         assert_eq!(
-            element.attributes().as_slice()[0]
+            element
+                .attributes()
+                .get(0)
+                .unwrap()
                 .value()
                 .to_utf8()
                 .unwrap(),
             "old"
         );
         assert_eq!(
-            element.attributes().as_slice()[2].value().code_units(),
+            element.attributes().get(2).unwrap().value().code_units(),
             [0xd800, 0xd83d, 0xde00]
         );
         assert!(
             element
                 .attributes()
-                .as_slice()
                 .iter()
                 .all(|a| a.name().namespace().uri().is_none())
         );
@@ -91,12 +92,16 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
         let mut frozen = session.freeze(&mut c).unwrap();
         let document = frozen.document().unwrap();
         let root_id = document.root().children().next().unwrap();
-        let HtmlNodeKind::Element(element) = document.node(&root_id).unwrap().kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Element(element) =
+            document.node(&root_id).unwrap().kind()
+        else {
             panic!("root")
         };
         assert_eq!(element.attributes().len(), 4);
         let head_id = document.node(&root_id).unwrap().children().next().unwrap();
-        let HtmlNodeKind::Element(head) = document.node(&head_id).unwrap().kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Element(head) =
+            document.node(&head_id).unwrap().kind()
+        else {
             panic!("head")
         };
         assert_eq!(head.name().local_name().to_utf8().unwrap(), "head");
@@ -136,7 +141,7 @@ fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpa
     let observed = c.owned_span_observation();
     assert!(second.is_none());
     assert_eq!(c.stop(), None);
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
         .construction
@@ -147,18 +152,18 @@ fn observed_root_merge(new_attributes: bool) -> crate::parser::control::OwnedSpa
         panic!("actual root")
     };
     assert_eq!(element.attributes().len(), 16);
-    for (i, attribute) in element.attributes().as_slice().iter().enumerate() {
+    for (i, attribute) in element.attributes().iter().enumerate() {
         assert_eq!(
             attribute.name().local_name().to_utf8().unwrap(),
             format!("a{i:02}")
         );
         assert_eq!(attribute.value().to_utf8().unwrap(), "v");
     }
+    assert_eq!(attribute_holders(element.attributes()), 2);
     assert_eq!(
-        Arc::strong_count(element.attributes().shared_attributes()),
-        2
+        Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
+        1
     );
-    assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
     tokenizer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
@@ -240,7 +245,7 @@ fn assert_partial_merge_storage(
     };
     assert_eq!(*actual, moved);
     assert_eq!(values.len(), 2 - moved);
-    let HtmlNodeKind::Element(element) = &storage
+    let ConstructionNodeKind::Element(element) = &storage
         .construction
         .node_at(root.index)
         .expect("retained construction position")
@@ -250,15 +255,15 @@ fn assert_partial_merge_storage(
     };
     let expected = [("id", "old"), ("a", "one"), ("b", "two")];
     assert_eq!(element.attributes().len(), 1 + moved);
-    for (attribute, (name, value)) in element.attributes().as_slice().iter().zip(expected) {
+    for (attribute, (name, value)) in element.attributes().iter().zip(expected) {
         assert_eq!(attribute.name().local_name().to_utf8().unwrap(), name);
         assert_eq!(attribute.value().to_utf8().unwrap(), value);
     }
+    assert_eq!(attribute_holders(element.attributes()), 2);
     assert_eq!(
-        Arc::strong_count(element.attributes().shared_attributes()),
-        2
+        Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
+        1
     );
-    assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::ManagedAttributes)
@@ -600,7 +605,9 @@ fn merge_rejects_weak_holder_and_foreign_origin_before_consuming_input() {
         .expect("retained construction position")
         .kind()
     {
-        HtmlNodeKind::Element(e) => Arc::downgrade(e.attributes().shared_attributes()),
+        ConstructionNodeKind::Element(e) => {
+            Arc::downgrade(e.attributes().to_ordered().shared_attributes())
+        }
         _ => panic!("root"),
     };
     assert_eq!(
@@ -687,7 +694,7 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
         }))
     ));
     assert!(input.is_none());
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
         .construction
@@ -699,7 +706,10 @@ fn staged_attribute_cap_failure_preserves_root_and_reclaims_exact_real_slots() {
     };
     assert_eq!(element.attributes().len(), 1);
     assert_eq!(
-        element.attributes().as_slice()[0]
+        element
+            .attributes()
+            .get(0)
+            .unwrap()
             .value()
             .to_utf8()
             .unwrap(),
@@ -767,7 +777,7 @@ fn merge_foreign_control_and_cancel_leave_the_real_lexical_owner_untaken() {
             ));
         }
         assert!(input.is_some());
-        let HtmlNodeKind::Element(element) = &session
+        let ConstructionNodeKind::Element(element) = &session
             .active()
             .unwrap()
             .construction
@@ -811,7 +821,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
         let mut input = Some(second);
         let result = session.add_attributes_if_missing(&mut c, &root, &mut input);
         let completed = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        let HtmlNodeKind::Element(element) = &session
+        let ConstructionNodeKind::Element(element) = &session
             .active()
             .unwrap()
             .construction
@@ -822,7 +832,10 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
             panic!("root")
         };
         assert_eq!(
-            element.attributes().as_slice()[0]
+            element
+                .attributes()
+                .get(0)
+                .unwrap()
                 .value()
                 .to_utf8()
                 .unwrap(),
@@ -851,11 +864,11 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
                 assert_eq!(attribute.value.value.text().to_utf8().unwrap(), value);
             }
         }
+        assert_eq!(attribute_holders(element.attributes()), 2);
         assert_eq!(
-            Arc::strong_count(element.attributes().shared_attributes()),
-            2
+            Arc::weak_count(element.attributes().to_ordered().shared_attributes()),
+            1
         );
-        assert_eq!(Arc::weak_count(element.attributes().shared_attributes()), 1);
         match result {
             Err(error) => assert!(matches!(
                 error,

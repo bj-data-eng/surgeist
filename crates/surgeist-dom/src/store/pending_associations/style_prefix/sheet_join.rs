@@ -368,7 +368,7 @@ fn form_request(
         .root()
         .kind()
     {
-        surgeist_html::construction::HtmlNodeKind::Document(mode) => *mode,
+        surgeist_html::construction::HtmlNodeKind::Document(mode) => mode,
         _ => return Err(DomParsedHtmlStyleError::WrongRequest),
     };
     let mut cursor = report.pending_associations();

@@ -6,7 +6,7 @@ use history::{FrozenHistory, PreparedHistory, Unpublishable};
 use surgeist_html::{
     attributes::HtmlReferrerPolicy,
     construction::HtmlConstructionResult,
-    construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlNode},
     values::DocumentString,
 };
 
@@ -196,7 +196,7 @@ impl<'a> PreparedReportStorage<'a> {
                     checked_document(storage, &state.document, c)?;
                     if !matches!(
                         arena.node_at(*node).map(|n| n.kind()),
-                        Some(HtmlNodeKind::Element(_))
+                        Some(ConstructionNodeKind::Element(_))
                     ) {
                         return Err(SessionError::WrongToken);
                     }
@@ -218,7 +218,7 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 RetainedPayload::Dialog { node, state } => {
                     checked_raw(storage, state.value, c)?;
-                    let HtmlNodeKind::Element(element) =
+                    let ConstructionNodeKind::Element(element) =
                         arena.node_at(*node).ok_or(SessionError::WrongToken)?.kind()
                     else {
                         return Err(SessionError::WrongToken);
@@ -239,7 +239,7 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                 }
                 RetainedPayload::Style { node, state } => {
-                    let HtmlNodeKind::Element(element) =
+                    let ConstructionNodeKind::Element(element) =
                         arena.node_at(*node).ok_or(SessionError::WrongToken)?.kind()
                     else {
                         return Err(SessionError::WrongToken);
@@ -369,7 +369,7 @@ impl<'a> PreparedReportStorage<'a> {
                     let node = node.ok_or(SessionError::WrongToken)?;
                     let record = checked_node(arena, node, c)?;
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = record.kind() else {
+                    let ConstructionNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::WrongToken);
                     };
                     if element.link_flags().is_none() {
@@ -445,7 +445,7 @@ impl<'a> PreparedReportStorage<'a> {
                         HtmlParseWorkCategory::InspectByte,
                         surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND as u64,
                     )?;
-                    let HtmlNodeKind::Element(element) = record.kind() else {
+                    let ConstructionNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::NonceMetadataUnavailable);
                     };
                     if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
@@ -473,7 +473,7 @@ impl<'a> PreparedReportStorage<'a> {
                         return Err(SessionError::ContextUnavailable);
                     }
                     if closed_common && matches!(registry, context::RegistryRef::Null) {
-                        let HtmlNodeKind::Element(element) = arena
+                        let ConstructionNodeKind::Element(element) = arena
                             .node_at(node.ok_or(SessionError::WrongToken)?)
                             .ok_or(SessionError::WrongToken)?
                             .kind()
@@ -616,13 +616,13 @@ impl<'a> PreparedReportStorage<'a> {
                     }
                     if let Some(scheme) = &meta.scheme {
                         scheme.require(c)?;
-                        let Some(HtmlNodeKind::Document(mode)) =
+                        let Some(ConstructionNodeKind::Document(mode)) =
                             arena.node_at(document).map(|node| node.kind())
                         else {
                             return Err(SessionError::WrongToken);
                         };
                         let expected = surgeist_css::CssParserContext::new(
-                            if *mode == HtmlDocumentMode::Quirks {
+                            if mode == HtmlDocumentMode::Quirks {
                                 surgeist_css::CssParserMode::Quirks
                             } else {
                                 surgeist_css::CssParserMode::Standards
@@ -735,7 +735,7 @@ fn checked_document(
         DocumentRef::Owned(index) => {
             if !matches!(
                 arena(storage).node_at(*index).map(|record| record.kind()),
-                Some(HtmlNodeKind::Document(_))
+                Some(ConstructionNodeKind::Document(_))
             ) {
                 return Err(SessionError::NodeDocumentUnavailable);
             }
@@ -772,7 +772,7 @@ fn checked_select(
 ) -> Result<(), SessionError> {
     let record = checked_node(arena, node, c)?;
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let HtmlNodeKind::Element(element) = record.kind() else {
+    let ConstructionNodeKind::Element(element) = record.kind() else {
         return Err(SessionError::SelectMetadataUnavailable);
     };
     if !exact_ascii(
@@ -1286,7 +1286,8 @@ impl<'a> Refs<'a> {
                 node: link,
                 parser_document,
             } => {
-                let HtmlNodeKind::Element(element) = node.kind() else {
+                let surgeist_html::construction::HtmlNodeKind::Element(element) = node.kind()
+                else {
                     return Err(unresolved(read::HtmlParseUnresolvedKind::Node));
                 };
                 let flags = element
@@ -1978,8 +1979,8 @@ impl HtmlParseTemplate<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::construction::PreexistingElement;
     use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
-    use surgeist_html::construction::HtmlElement;
     use surgeist_html::values::{Namespace, OrderedAttributes, QualifiedName};
 
     fn native_select(limits: HtmlParseLimits, local: &str) -> (ParseControl, FrozenArena, usize) {
@@ -1988,7 +1989,7 @@ mod tests {
         let node = session
             .allocate_element(
                 &mut c,
-                HtmlElement::new(
+                PreexistingElement::new(
                     QualifiedName::new(Namespace::html(), None, local),
                     OrderedAttributes::default(),
                 ),

@@ -257,12 +257,12 @@ fn document_parse_owns_exact_source_native_and_complete_d1_after_cancellation() 
     };
     assert_eq!(element.name().local_name(), &DocumentString::from("p"));
     assert_eq!(
-        element.attributes().as_slice()[0].value(),
+        element.attributes().get(0).unwrap().value(),
         &DocumentString::from("x")
     );
     let text = p.children().next().unwrap();
     assert!(
-        matches!(document.node(&text).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("A&B\nC"))
+        matches!(document.node(&text).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("A&B\nC"))
     );
     let associations = report.associations();
     assert!(!associations.is_empty());
@@ -764,7 +764,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
         matches!(p.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))
     );
     assert!(
-        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("Z"))
     );
     let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.len(), 2);
@@ -785,7 +785,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     let p = contents.children().next().unwrap();
     let p = fragment.node(&p).unwrap();
     assert!(
-        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("A"))
+        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("A"))
     );
     assert!(matches!(
         effects.effect(1),
@@ -911,7 +911,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
         panic!("input")
     };
     assert_eq!(
-        element.attributes().as_slice()[0].value(),
+        element.attributes().get(0).unwrap().value(),
         &DocumentString::from("ABC")
     );
     assert!(matches!(
@@ -1438,7 +1438,7 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
     let HtmlNodeKind::Element(element) = second.kind() else {
         panic!("details")
     };
-    let attributes = element.attributes().as_slice();
+    let attributes: Vec<_> = element.attributes().iter().collect();
     assert_eq!(attributes.len(), 3);
     assert_eq!(
         attributes[2].name().local_name(),
@@ -1528,7 +1528,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
             panic!("input")
         };
         assert_eq!(element.name().local_name(), &DocumentString::from("input"));
-        let attributes = element.attributes().as_slice();
+        let attributes: Vec<_> = element.attributes().iter().collect();
         assert_eq!(attributes.len(), 3);
         for (attribute, (name, value)) in
             attributes
@@ -1632,7 +1632,7 @@ fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel(
         };
         assert_eq!(element.name().local_name(), &DocumentString::from("input"));
         let default = value_slot.map(|slot| {
-            let attribute = &element.attributes().as_slice()[slot];
+            let attribute = &element.attributes().get(slot).unwrap();
             assert_eq!(
                 attribute.name().local_name(),
                 &DocumentString::from("value")
@@ -1710,7 +1710,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
             panic!("input")
         };
         assert_eq!(element.name().local_name(), &DocumentString::from("input"));
-        let default = &element.attributes().as_slice()[1];
+        let default = &element.attributes().get(1).unwrap();
         assert_eq!(default.name().local_name(), &DocumentString::from("value"));
         assert_eq!(
             default.value(),
@@ -1844,7 +1844,7 @@ fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_captu
         matches!(p.kind(), HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))
     );
     assert!(
-        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+        matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(t) if t==DocumentString::from("Z"))
     );
     assert_eq!(report.effects().unwrap().unwrap().len(), 0);
     assert_eq!(report.usage(), &usage);
@@ -1883,11 +1883,11 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         let children: Vec<_> = p.children().collect();
         assert_eq!(children.len(), 4);
         assert!(
-            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("é"))
+            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("é"))
         );
         for (node, expected) in children[1..].iter().zip(["?1?", "?a:b", "?xml d?"]) {
             assert!(
-                matches!(document.node(node).unwrap().kind(),HtmlNodeKind::Comment(t) if t==&DocumentString::from(expected))
+                matches!(document.node(node).unwrap().kind(),HtmlNodeKind::Comment(t) if t==DocumentString::from(expected))
             );
         }
         let expected = [
@@ -2087,7 +2087,7 @@ fn textarea_text_keeps_its_raw_value_and_one_provenance_step_for_each_character(
                     let children: Vec<_> = node.children().collect();
                     assert_eq!(children.len(), 1, "{n} characters make one text child");
                 }
-                HtmlNodeKind::Text(value) if value == &DocumentString::from(text.as_str()) => {
+                HtmlNodeKind::Text(value) if value == DocumentString::from(text.as_str()) => {
                     texts += 1;
                 }
                 _ => {}

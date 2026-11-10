@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_html::{
     bounded::construction::HtmlConstructionAttributeEditMode,
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -66,7 +66,7 @@ impl SessionStorage {
     ) -> Result<Option<PreparedAttributeMerge>, SessionError> {
         let target = self.index(control, target)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(target)
             .ok_or_else(|| latch_registry_row(control))?
@@ -84,7 +84,7 @@ impl SessionStorage {
         }
         let container = self.element_attribute_container(control, target)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if Arc::weak_count(element.attributes().shared_attributes()) != 1 {
+        if Arc::weak_count(element.attributes().to_ordered().shared_attributes()) != 1 {
             return Err(SessionError::AliasedPayload);
         }
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
@@ -585,7 +585,7 @@ impl SessionStorage {
                 .storage(control)?
                 .node_at(target)
                 .map(|node| node.kind()),
-            Some(HtmlNodeKind::Element(_))
+            Some(ConstructionNodeKind::Element(_))
         ) || stage > self.payloads.values.len()
         {
             return Err(latch_registry_row(control));
@@ -645,7 +645,7 @@ impl SessionStorage {
             Ok::<_, SessionError>(())
         })();
         // Restore the sole ticket before creating the registry's known alias.
-        let Some(HtmlNodeKind::Element(record)) = self
+        let Some(ConstructionNodeKind::Element(record)) = self
             .construction
             .storage(control)?
             .node_at(target)
@@ -653,8 +653,8 @@ impl SessionStorage {
         else {
             return Err(latch_registry_row(control));
         };
-        control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
-        let values = record.attributes().clone();
+        let values = record.attributes().to_ordered();
+        control.restore_attribute_weak(values.shared_attributes(), &mut shared);
         *storage = Some(AttributeStorage::Frozen {
             values,
             allocation,

@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     values::DocumentString,
 };
 
@@ -239,7 +239,7 @@ fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_recl
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
             );
-            let HtmlNodeKind::ProcessingInstruction(pi) = &session
+            let ConstructionNodeKind::ProcessingInstruction(pi) = &session
                 .active()
                 .unwrap()
                 .construction
@@ -374,7 +374,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
         let storage = session.active().unwrap();
         if storage.construction.test_storage().len() == 2 {
             installed = true;
-            let HtmlNodeKind::ProcessingInstruction(pi) = &storage
+            let ConstructionNodeKind::ProcessingInstruction(pi) = &storage
                 .construction
                 .node_at(1)
                 .expect("retained construction position")
@@ -506,7 +506,7 @@ fn shared_pi_map_literal_xml_closure_keeps_native_fields_and_reclaims_real_owner
             .allocate_processing_instruction(&mut c, &mut Some((target, raw)), None)
             .unwrap();
         let storage = session.active().unwrap();
-        let HtmlNodeKind::ProcessingInstruction(pi) = &storage
+        let ConstructionNodeKind::ProcessingInstruction(pi) = &storage
             .construction
             .node_at(node.index)
             .expect("retained construction position")

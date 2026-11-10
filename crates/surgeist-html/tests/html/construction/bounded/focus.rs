@@ -42,13 +42,7 @@ fn native_constructor_and_non_document_readbacks_have_distinct_meanings() {
 
 #[test]
 fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_reseal() {
-    let owner = refuse(
-        storage(),
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Document(HtmlDocumentMode::Quirks),
-        },
-        cause::WRONG_NODE_KIND,
-    );
+    let owner = storage();
     let (owner, document) = create(
         owner,
         HtmlConstructionCommand::CreateDocument {
@@ -106,7 +100,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     assert_eq!(original.id(), id);
     assert_eq!(
         original.kind(),
-        &HtmlNodeKind::Document(HtmlDocumentMode::LimitedQuirks)
+        HtmlNodeKind::Document(HtmlDocumentMode::LimitedQuirks)
     );
     assert_eq!(original.children().len(), 0);
     assert_eq!(

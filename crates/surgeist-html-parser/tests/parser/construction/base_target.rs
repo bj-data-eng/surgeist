@@ -250,7 +250,7 @@ fn first_href_binds_decoded_value_and_actual_node_before_later_bases() {
         };
         assert_eq!(element.name().local_name(), &DocumentString::from("base"));
         assert_eq!(
-            element.attributes().as_slice()[0].value().code_units(),
+            element.attributes().get(0).unwrap().value().code_units(),
             &[65, 38, 66]
         );
         let mut seen = [false; 3];

@@ -11,16 +11,98 @@ use crate::{
 };
 use depth::{DepthPlan, owning_parent};
 
+/// The content of a record that `Create` makes: a node with no element data and no children.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlConstructionLeaf {
+    /// A text node; the payload preserves the exact UTF-16 code units.
+    Text(DocumentString),
+    /// A comment node; the payload preserves the exact UTF-16 code units.
+    Comment(DocumentString),
+    /// A processing instruction recorded with its exact target and data.
+    ProcessingInstruction(HtmlProcessingInstruction),
+    /// A document type declaration.
+    Doctype(HtmlDoctype),
+}
+impl HtmlConstructionLeaf {
+    fn into_content(self) -> NodeContent {
+        match self {
+            Self::Text(value) => NodeContent::Text(value),
+            Self::Comment(value) => NodeContent::Comment(value),
+            Self::ProcessingInstruction(value) => NodeContent::ProcessingInstruction(value),
+            Self::Doctype(value) => NodeContent::Doctype(value),
+        }
+    }
+    fn units(&self) -> Result<usize, HtmlConstructionError> {
+        match self {
+            Self::Text(value) | Self::Comment(value) => Ok(value.len()),
+            Self::ProcessingInstruction(value) => processing_instruction_units(value),
+            Self::Doctype(value) => doctype_units(value),
+        }
+    }
+}
+
+/// What a native append creates: an element or a leaf.
+#[derive(Clone, Debug)]
+pub(in crate::internal::construction) enum Creation {
+    Element {
+        name: QualifiedName,
+        attributes: OrderedAttributes,
+        link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
+    },
+    Leaf(HtmlConstructionLeaf),
+}
+impl Creation {
+    /// Whether the created record is an HTML `template` element, which brings its contents.
+    pub(in crate::internal::construction) fn is_template(&self) -> bool {
+        matches!(self, Self::Element { name, .. }
+            if crate::vocabulary::KnownHtmlElement::from_name(name)
+                == Some(crate::vocabulary::KnownHtmlElement::Template))
+    }
+    /// Attributes and UTF-16 units the creation commits: the same helpers the bounded operation's
+    /// plan sums, evaluated in one step so native admission can check the usage before committing
+    /// it.
+    pub(in crate::internal::construction) fn usage(
+        &self,
+    ) -> Result<(usize, usize), HtmlConstructionError> {
+        match self {
+            Self::Leaf(leaf) => Ok((0, leaf.units()?)),
+            Self::Element {
+                name, attributes, ..
+            } => {
+                let mut units = name_units(name)?;
+                for attribute in attributes.iter() {
+                    units = add(units, attribute_units(attribute)?)?;
+                }
+                Ok((attributes.len(), units))
+            }
+        }
+    }
+    pub(in crate::internal::construction) fn into_command(self) -> HtmlConstructionCommand {
+        match self {
+            Self::Element {
+                name,
+                attributes,
+                link_flags,
+            } => HtmlConstructionCommand::CreateElement {
+                name,
+                attributes,
+                link_flags,
+            },
+            Self::Leaf(leaf) => HtmlConstructionCommand::Create { leaf },
+        }
+    }
+}
+
 /// Closed generic changes; parser policy and source evidence are not operands.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum HtmlConstructionCommand {
-    /// Creates a detached record of `kind` with no parent. Document and Fragment kinds are refused
-    /// with the wrong-node-kind error; use `CreateDocument` and `CreateFragment`.
+    /// Creates a detached text, comment, processing-instruction or doctype record with no parent.
+    /// Elements, Documents and fragments have their own commands.
     Create {
-        /// The record to create. Its names, values and attributes count toward the UTF-16 unit and
-        /// attribute limits.
-        kind: HtmlNodeKind,
+        /// The record to create. Its values count toward the UTF-16 unit limit.
+        leaf: HtmlConstructionLeaf,
     },
     /// Creates exact element values and explicit producer-supplied history in
     /// one record commit. Flags require an actual HTML link expanded name.
@@ -1046,16 +1128,13 @@ impl HtmlConstructionOperation {
     fn name(&self) -> Option<&QualifiedName> {
         match self.command() {
             HtmlConstructionCommand::CreateElement { name, .. } => Some(name),
-            HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Element(v),
-            } => Some(v.name()),
             HtmlConstructionCommand::ReplaceContent {
                 content: HtmlConstructionContent::ElementName(v),
                 ..
             } => Some(v),
             HtmlConstructionCommand::SetLinkFlags { .. } => {
                 match &self.arena().records[self.plan.positions[0].position()].kind {
-                    HtmlNodeKind::Element(v) => Some(v.name()),
+                    NodeContent::Element(v) => Some(v.name()),
                     _ => None,
                 }
             }
@@ -1470,30 +1549,6 @@ fn doctype_units(value: &HtmlDoctype) -> Result<usize, HtmlConstructionError> {
         value.system_id().map_or(0, DocumentString::len),
     )
 }
-fn leaf_units(kind: &HtmlNodeKind) -> Result<usize, HtmlConstructionError> {
-    match kind {
-        HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => Ok(0),
-        HtmlNodeKind::Element(value) => name_units(value.name()),
-        HtmlNodeKind::Text(value) | HtmlNodeKind::Comment(value) => Ok(value.len()),
-        HtmlNodeKind::ProcessingInstruction(value) => processing_instruction_units(value),
-        HtmlNodeKind::Doctype(value) => doctype_units(value),
-    }
-}
-/// Attributes and UTF-16 units a `Create` of `kind` commits: the same helpers
-/// the bounded operation's plan sums, evaluated in one step so native admission
-/// can check the usage before committing it.
-pub(in crate::internal::construction) fn created_usage(
-    kind: &HtmlNodeKind,
-) -> Result<(usize, usize), HtmlConstructionError> {
-    let mut units = leaf_units(kind)?;
-    let HtmlNodeKind::Element(element) = kind else {
-        return Ok((0, units));
-    };
-    for attribute in element.attributes().iter() {
-        units = add(units, attribute_units(attribute)?)?;
-    }
-    Ok((element.attributes().len(), units))
-}
 fn structural_parent(arena: &Arena, index: NodeIx) -> Option<NodeIx> {
     arena.records.get(index.position()).and_then(owning_parent)
 }
@@ -1502,14 +1557,14 @@ fn ordinary_owned_contents(
     template: NodeIx,
 ) -> Result<NodeIx, HtmlConstructionError> {
     let record = &arena.records[template.position()];
-    if !matches!(record.kind, HtmlNodeKind::Element(_)) {
+    if !matches!(record.kind, NodeContent::Element(_)) {
         return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
     }
     let Some(TemplateContents::Owned(contents)) = record.template_contents else {
         return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
     };
     let target = &arena.records[contents.position()];
-    if !matches!(target.kind, HtmlNodeKind::Fragment)
+    if !matches!(target.kind, NodeContent::Fragment)
         || target.shadow_properties.is_some()
         || target.parent.is_some()
         || !matches!(&target.owner, Some(HtmlFragmentOwner::Template(owner)) if owner.index == template && owner.tree == arena.serial)
@@ -1524,7 +1579,7 @@ fn unowned_fragment(
     shadow: bool,
 ) -> Result<(), HtmlConstructionError> {
     let target = &arena.records[index.position()];
-    if !matches!(target.kind, HtmlNodeKind::Fragment)
+    if !matches!(target.kind, NodeContent::Fragment)
         || target.parent.is_some()
         || target.shadow_properties.is_some() != shadow
     {
@@ -1555,15 +1610,7 @@ impl HtmlConstructionOperation {
             match self.command() {
                 Command::Create { .. } | Command::CreateElement { .. } => {
                     plan.new_units = match self.command() {
-                        Command::Create { kind } => {
-                            if matches!(kind, HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment) {
-                                return Err(HtmlConstructionCause::WrongNodeKind.into());
-                            }
-                            if let HtmlNodeKind::Element(element) = kind {
-                                plan.new_attributes = element.attributes().len();
-                            }
-                            leaf_units(kind)?
-                        }
+                        Command::Create { leaf } => leaf.units()?,
                         Command::CreateElement {
                             name,
                             attributes,
@@ -1650,7 +1697,7 @@ impl HtmlConstructionOperation {
                     let old = &arena.records[a.position()].kind;
                     match (old, content) {
                         (
-                            HtmlNodeKind::Element(element),
+                            NodeContent::Element(element),
                             HtmlConstructionContent::ElementName(name),
                         ) => {
                             if arena.records[a.position()].template_contents.is_some()
@@ -1663,19 +1710,19 @@ impl HtmlConstructionOperation {
                             plan.old_units = name_units(element.name())?;
                             plan.new_units = name_units(name)?;
                         }
-                        (HtmlNodeKind::Text(old), HtmlConstructionContent::Text(new))
-                        | (HtmlNodeKind::Comment(old), HtmlConstructionContent::Comment(new)) => {
+                        (NodeContent::Text(old), HtmlConstructionContent::Text(new))
+                        | (NodeContent::Comment(old), HtmlConstructionContent::Comment(new)) => {
                             plan.old_units = old.len();
                             plan.new_units = new.len();
                         }
                         (
-                            HtmlNodeKind::ProcessingInstruction(old),
+                            NodeContent::ProcessingInstruction(old),
                             HtmlConstructionContent::ProcessingInstruction(new),
                         ) => {
                             plan.old_units = processing_instruction_units(old)?;
                             plan.new_units = processing_instruction_units(new)?;
                         }
-                        (HtmlNodeKind::Doctype(old), HtmlConstructionContent::Doctype(new)) => {
+                        (NodeContent::Doctype(old), HtmlConstructionContent::Doctype(new)) => {
                             plan.old_units = doctype_units(old)?;
                             plan.new_units = doctype_units(new)?;
                         }
@@ -1696,13 +1743,13 @@ impl HtmlConstructionOperation {
                                         >(),
                             )
                         }
-                        _ => (1, size_of::<HtmlNodeKind>()),
+                        _ => (1, size_of::<NodeContent>()),
                     };
                     plan.record_writes = add(plan.record_writes, writes)?;
                     plan.copied_bytes = add(plan.copied_bytes, bytes)?;
                 }
                 Command::ReplaceAttributes { attributes, .. } => {
-                    let HtmlNodeKind::Element(old) = &arena.records[a.position()].kind else {
+                    let NodeContent::Element(old) = &arena.records[a.position()].kind else {
                         return Err(HtmlConstructionCause::WrongNodeKind.into());
                     };
                     plan.new_attributes = attributes.as_slice().len();
@@ -1716,7 +1763,7 @@ impl HtmlConstructionOperation {
                     )?;
                 }
                 Command::AttachShadow { .. } => {
-                    if !matches!(arena.records[a.position()].kind, HtmlNodeKind::Element(_)) {
+                    if !matches!(arena.records[a.position()].kind, NodeContent::Element(_)) {
                         return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
                     }
                     if arena.records[a.position()].shadow.is_some() {
@@ -1727,7 +1774,7 @@ impl HtmlConstructionOperation {
                 }
                 Command::AttachTemplateShadow { .. } => {
                     plan.old_contents = Some(ordinary_owned_contents(arena, a)?);
-                    if !matches!(arena.records[b.position()].kind, HtmlNodeKind::Element(_)) {
+                    if !matches!(arena.records[b.position()].kind, NodeContent::Element(_)) {
                         return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
                     }
                     if arena.records[b.position()].shadow.is_some() {
@@ -1747,7 +1794,7 @@ impl HtmlConstructionOperation {
                     plan.usage.edges = subtract(plan.usage.edges, 1)?;
                 }
                 Command::ReassignTemplateContents { .. } => {
-                    if !matches!(arena.records[a.position()].kind, HtmlNodeKind::Element(_)) {
+                    if !matches!(arena.records[a.position()].kind, NodeContent::Element(_)) {
                         return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
                     }
                     match arena.records[a.position()].template_contents {
@@ -1775,7 +1822,7 @@ impl HtmlConstructionOperation {
                     }
                 }
                 Command::SetDocumentMode { .. } => {
-                    if !matches!(arena.records[a.position()].kind, HtmlNodeKind::Document(_)) {
+                    if !matches!(arena.records[a.position()].kind, NodeContent::Document(_)) {
                         return Err(HtmlConstructionCause::WrongNodeKind.into());
                     }
                 }
@@ -1787,13 +1834,13 @@ impl HtmlConstructionOperation {
                 Command::Publish { .. } => {
                     if !matches!(
                         arena.records[a.position()].kind,
-                        HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment
+                        NodeContent::Document(_) | NodeContent::Fragment
                     ) || arena.records[a.position()].parent.is_some()
                     {
                         return Err(HtmlConstructionCause::InvalidOutputRoot.into());
                     }
                     plan.output_document = match arena.records[a.position()].kind {
-                        HtmlNodeKind::Document(mode) => Some(mode),
+                        NodeContent::Document(mode) => Some(mode),
                         _ => None,
                     };
                     return Ok(Phase::PublishReset(arena.first_record()));
@@ -1970,7 +2017,7 @@ impl HtmlConstructionOperation {
                     )?;
                 }
                 Command::SetDocumentMode { .. } => {
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlNodeKind>())?;
+                    plan.copied_bytes = add(plan.copied_bytes, size_of::<NodeContent>())?;
                     plan.record_writes += 1;
                 }
                 Command::SetLinkFlags { .. } => {
@@ -2345,9 +2392,6 @@ impl HtmlConstructionOperation {
             }
             Phase::NewAttribute(index) => {
                 let attribute = match self.command() {
-                    Command::Create {
-                        kind: HtmlNodeKind::Element(element),
-                    } => &element.attributes().as_slice()[index],
                     Command::CreateElement { attributes, .. } => &attributes.as_slice()[index],
                     Command::ReplaceAttributes { attributes, .. } => &attributes.as_slice()[index],
                     // Only a command with new attributes enters this phase.
@@ -2366,7 +2410,7 @@ impl HtmlConstructionOperation {
                 }
             }
             Phase::OldAttribute(index) => {
-                let HtmlNodeKind::Element(element) =
+                let NodeContent::Element(element) =
                     &self.arena().records[self.plan.positions[0].position()].kind
                 else {
                     // The command phase checked that the target is an element.
@@ -2495,7 +2539,7 @@ impl HtmlConstructionOperation {
                         || target.owner.is_some()
                         || matches!(
                             target.kind,
-                            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment
+                            NodeContent::Document(_) | NodeContent::Fragment
                         )
                     {
                         return Err(HtmlConstructionCause::ParentChildConflict.into());
@@ -2536,7 +2580,7 @@ fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionE
             .ok_or(HtmlConstructionCause::UnknownNode)?;
         if !matches!(
             parent.kind,
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+            NodeContent::Document(_) | NodeContent::Fragment | NodeContent::Element(_)
         ) || parent.template_contents.is_some()
         {
             return Err(HtmlConstructionCause::ParentChildConflict.into());
@@ -2545,23 +2589,23 @@ fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionE
     if !record.children.is_empty()
         && (!matches!(
             record.kind,
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+            NodeContent::Document(_) | NodeContent::Fragment | NodeContent::Element(_)
         ) || record.template_contents.is_some())
     {
         return Err(HtmlConstructionCause::ParentChildConflict.into());
     }
-    if record.shadow_properties.is_some() && !matches!(record.kind, HtmlNodeKind::Fragment) {
+    if record.shadow_properties.is_some() && !matches!(record.kind, NodeContent::Fragment) {
         return Err(HtmlConstructionCause::InvalidShadowAssociation.into());
     }
     if let Some(contents) = record.template_contents {
-        if !matches!(record.kind, HtmlNodeKind::Element(_)) {
+        if !matches!(record.kind, NodeContent::Element(_)) {
             return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
         }
         let target = arena
             .records
             .get(contents.position().position())
             .ok_or(HtmlConstructionCause::UnknownNode)?;
-        if !matches!(target.kind, HtmlNodeKind::Fragment) || target.parent.is_some() {
+        if !matches!(target.kind, NodeContent::Fragment) || target.parent.is_some() {
             return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
         }
         match contents {
@@ -2580,7 +2624,7 @@ fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionE
         }
     }
     if let Some(shadow) = &record.shadow {
-        if !matches!(record.kind, HtmlNodeKind::Element(_))
+        if !matches!(record.kind, NodeContent::Element(_))
             || shadow.host.index != index
             || shadow.host.tree != arena.serial
             || shadow.contents.tree != arena.serial
@@ -2599,7 +2643,7 @@ fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionE
         }
     }
     if let Some(owner) = &record.owner {
-        if !matches!(record.kind, HtmlNodeKind::Fragment) || record.parent.is_some() {
+        if !matches!(record.kind, NodeContent::Fragment) || record.parent.is_some() {
             return Err(HtmlConstructionCause::AssociationAlreadyOwned.into());
         }
         let id = match owner {
@@ -2716,20 +2760,6 @@ impl HtmlConstructionReadyOperation {
                 }
             }
         };
-        let command = command.map(|command| match command {
-            Command::CreateElement {
-                name,
-                attributes,
-                link_flags,
-            } => Command::Create {
-                kind: HtmlNodeKind::Element(HtmlElement {
-                    name,
-                    attributes,
-                    link_flags,
-                }),
-            },
-            command => command,
-        });
         let plan = &mut plan;
         let p = plan.positions;
         if !plan.no_op {
@@ -2748,34 +2778,28 @@ impl HtmlConstructionReadyOperation {
             } = resolved;
             if let Some(command) = command {
                 match command {
-                    // The element form was converted to `Create` above.
-                    Command::CreateElement { .. } => {}
                     Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
-                    Command::Create { kind } => {
-                        // A template's identity, staged for its contents, is what makes the created
-                        // element a template here.
-                        let mut record = Record::new(kind, None, 0);
-                        record.children = std::mem::take(&mut plan.new_children[0]);
-                        record.children_generation = plan.new_children_generations[0];
-                        if let Some(template) = created_template {
-                            record.template_contents =
-                                Some(TemplateContents::Owned(template.contents));
-                        }
-                        arena.records.push(record);
-                        if let Some(StagedTemplate { owner, .. }) = created_template {
-                            let mut contents = Record::new(HtmlNodeKind::Fragment, None, 1);
-                            contents.children = std::mem::take(&mut plan.new_children[1]);
-                            contents.children_generation = plan.new_children_generations[1];
-                            contents.owner = Some(HtmlFragmentOwner::Template(owner));
-                            arena.records.push(contents);
-                            arena.populate(0);
-                            arena.populate(1);
-                        } else {
-                            arena.populate(0);
-                        }
+                    Command::Create { leaf } => {
+                        push_created(arena, plan, created_template, leaf.into_content());
+                    }
+                    Command::CreateElement {
+                        name,
+                        attributes,
+                        link_flags,
+                    } => {
+                        push_created(
+                            arena,
+                            plan,
+                            created_template,
+                            NodeContent::Element(ElementContent {
+                                name,
+                                attributes,
+                                link_flags,
+                            }),
+                        );
                     }
                     Command::CreateDocument { mode } => {
-                        let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
+                        let mut record = Record::new(NodeContent::Document(mode), None, 0);
                         // This actual admitted constructor issues original state;
                         // generic raw kinds and later mode edits cannot issue it.
                         record.document_focused_area_designation =
@@ -2786,14 +2810,14 @@ impl HtmlConstructionReadyOperation {
                         arena.populate(0);
                     }
                     Command::CreateFragment => {
-                        let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
+                        let mut record = Record::new(NodeContent::Fragment, None, 0);
                         record.children = std::mem::take(&mut plan.new_children[0]);
                         record.children_generation = plan.new_children_generations[0];
                         arena.records.push(record);
                         arena.populate(0);
                     }
                     Command::CreateShadowContents { properties } => {
-                        let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
+                        let mut record = Record::new(NodeContent::Fragment, None, 0);
                         record.children = std::mem::take(&mut plan.new_children[0]);
                         record.children_generation = plan.new_children_generations[0];
                         record.shadow_properties = Some(properties);
@@ -2813,17 +2837,17 @@ impl HtmlConstructionReadyOperation {
                         // Written through the element above.
                         HtmlConstructionContent::ElementName(_) => {}
                         HtmlConstructionContent::Text(value) => {
-                            arena.records[p[0].position()].kind = HtmlNodeKind::Text(value)
+                            arena.records[p[0].position()].kind = NodeContent::Text(value)
                         }
                         HtmlConstructionContent::Comment(value) => {
-                            arena.records[p[0].position()].kind = HtmlNodeKind::Comment(value)
+                            arena.records[p[0].position()].kind = NodeContent::Comment(value)
                         }
                         HtmlConstructionContent::ProcessingInstruction(value) => {
                             arena.records[p[0].position()].kind =
-                                HtmlNodeKind::ProcessingInstruction(value)
+                                NodeContent::ProcessingInstruction(value)
                         }
                         HtmlConstructionContent::Doctype(value) => {
-                            arena.records[p[0].position()].kind = HtmlNodeKind::Doctype(value)
+                            arena.records[p[0].position()].kind = NodeContent::Doctype(value)
                         }
                     },
                     // Written through the element above.
@@ -2834,7 +2858,7 @@ impl HtmlConstructionReadyOperation {
                     | Command::SetTemplateShadowContents { .. }
                     | Command::ReassignTemplateContents { .. } => {}
                     Command::SetDocumentMode { mode, .. } => {
-                        arena.records[p[0].position()].kind = HtmlNodeKind::Document(mode)
+                        arena.records[p[0].position()].kind = NodeContent::Document(mode)
                     }
                     // A publication returned above, where its owner is shared.
                     Command::Publish { .. } => {}
@@ -2895,6 +2919,34 @@ impl HtmlConstructionReadyOperation {
     }
 }
 
+/// Pushes the created record and, for a template, its contents fragment. A template's identity,
+/// staged for its contents, is what makes the created element a template here.
+fn push_created(
+    arena: &mut Arena,
+    plan: &mut Plan,
+    created_template: Option<StagedTemplate>,
+    content: NodeContent,
+) {
+    let mut record = Record::new(content, None, 0);
+    record.children = std::mem::take(&mut plan.new_children[0]);
+    record.children_generation = plan.new_children_generations[0];
+    if let Some(template) = created_template {
+        record.template_contents = Some(TemplateContents::Owned(template.contents));
+    }
+    arena.records.push(record);
+    if let Some(StagedTemplate { owner, .. }) = created_template {
+        let mut contents = Record::new(NodeContent::Fragment, None, 1);
+        contents.children = std::mem::take(&mut plan.new_children[1]);
+        contents.children_generation = plan.new_children_generations[1];
+        contents.owner = Some(HtmlFragmentOwner::Template(owner));
+        arena.records.push(contents);
+        arena.populate(0);
+        arena.populate(1);
+    } else {
+        arena.populate(0);
+    }
+}
+
 /// Applies the commands that write through an element's data. The command is handed back for the
 /// generic commit when it is any other, and with the wrong-node-kind error when the target is not
 /// an element, unchanged and with nothing written.
@@ -2914,7 +2966,7 @@ fn write_element(
         .get_mut(position.position())
         .map(|record| &mut record.kind)
     {
-        Some(HtmlNodeKind::Element(element)) => Some(element),
+        Some(NodeContent::Element(element)) => Some(element),
         _ => None,
     };
     match (command, element) {
@@ -3067,7 +3119,7 @@ impl HtmlConstructionRetirementAction<'_> {
             }
             RetirementPhase::Payload(index) => {
                 let record = &mut storage.arena.records[index];
-                record.kind = HtmlNodeKind::Fragment;
+                record.kind = NodeContent::Fragment;
                 record.document_focused_area_designation = None;
                 record.owner = None;
                 record.shadow = None;
@@ -3205,11 +3257,10 @@ mod publish_membership_tests {
         for local in ["a", "b"] {
             let (next, node) = drive(
                 storage,
-                HtmlConstructionCommand::Create {
-                    kind: HtmlNodeKind::Element(HtmlElement::new(
-                        QualifiedName::new(Namespace::html(), None, local),
-                        OrderedAttributes::default(),
-                    )),
+                HtmlConstructionCommand::CreateElement {
+                    name: QualifiedName::new(Namespace::html(), None, local),
+                    attributes: OrderedAttributes::default(),
+                    link_flags: None,
                 },
             );
             let (next, _) = drive(
@@ -3330,11 +3381,10 @@ mod order_commit_guard_tests {
             (storage, created)
         }
         fn element(local: &str) -> HtmlConstructionCommand {
-            HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Element(HtmlElement::new(
-                    QualifiedName::new(Namespace::html(), None, local),
-                    OrderedAttributes::default(),
-                )),
+            HtmlConstructionCommand::CreateElement {
+                name: QualifiedName::new(Namespace::html(), None, local),
+                attributes: OrderedAttributes::default(),
+                link_flags: None,
             }
         }
         let mut initialization = Some(HtmlConstructionStorage::begin());
@@ -3656,7 +3706,10 @@ mod native_finish_tests {
         .unwrap();
         let root = builder.root;
         builder
-            .append(&root, HtmlNodeKind::Comment("c".into()))
+            .append(
+                &root,
+                Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
+            )
             .unwrap();
         let BuilderStorage::Held(storage) = &mut builder.storage else {
             panic!("a fresh builder holds its storage");
@@ -3707,11 +3760,10 @@ mod unreachable_state_tests {
     }
 
     fn element(local: &str) -> HtmlConstructionCommand {
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::html(), None, local),
-                OrderedAttributes::default(),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::html(), None, local),
+            attributes: OrderedAttributes::default(),
+            link_flags: None,
         }
     }
 
@@ -3752,7 +3804,7 @@ mod unreachable_state_tests {
         }
         let position = operation.plan.positions[0];
         operation.arena_mut().unwrap().records[position.position()].kind =
-            HtmlNodeKind::Comment("c".into());
+            NodeContent::Comment("c".into());
         operation.try_ready().unwrap()
     }
 
@@ -3780,7 +3832,7 @@ mod unreachable_state_tests {
             assert!(
                 matches!(
                     storage.arena.records[position.position()].kind,
-                    HtmlNodeKind::Comment(_)
+                    NodeContent::Comment(_)
                 ),
                 "{local}: nothing was written"
             );

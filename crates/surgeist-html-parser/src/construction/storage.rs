@@ -1,8 +1,6 @@
 //! The active session storage: one arena with its payload registry, effects and evidence.
 
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
-
 pub(super) struct SessionStorage {
     pub(super) csp_slot: Option<usize>,
     #[cfg(test)]
@@ -191,11 +189,11 @@ impl SessionStorage {
             },
         };
         let kind = match root {
-            RootKind::Document(mode) => HtmlNodeKind::Document(mode),
+            RootKind::Document(mode) => NewRecord::Document(mode),
             #[cfg(test)]
-            RootKind::Fragment => HtmlNodeKind::Fragment,
+            RootKind::Fragment => NewRecord::Fragment,
         };
-        let root_is_document = matches!(kind, HtmlNodeKind::Document(_));
+        let root_is_document = matches!(kind, NewRecord::Document(_));
         let allocated = payload_write::<Option<FormEffects>>(control, 1)
             .and_then(|()| session.allocate_native(control, kind, false, 0, 0));
         if let Err(error) = allocated {

@@ -713,12 +713,12 @@ pub(super) fn allocate(
             }
         }
         HtmlNodeKind::Text(value) => {
-            c.string(value)?;
-            NewNode::Text(value.clone())
+            c.string(&value)?;
+            NewNode::Text(value)
         }
         HtmlNodeKind::Comment(value) => {
-            c.string(value)?;
-            NewNode::Comment(value.clone())
+            c.string(&value)?;
+            NewNode::Comment(value)
         }
         HtmlNodeKind::Doctype(value) => {
             c.string(value.name())?;
@@ -1020,8 +1020,9 @@ fn family(
             // Reuse the owner interpretation of this actual immutable width /
             // height, without applying an attribute transition or reset hook.
             let mut stopped = None;
+            let attributes = element.attributes().to_ordered();
             let value = NativeFamily::canvas_from_attributes(
-                element.attributes().as_slice(),
+                attributes.as_slice(),
                 &mut || match c.step(1) {
                     Ok(()) => Ok(()),
                     Err(error) => {

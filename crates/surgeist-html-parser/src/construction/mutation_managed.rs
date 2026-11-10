@@ -73,7 +73,7 @@ impl SessionStorage {
                         .construction
                         .node_at(node)
                         .ok_or(SessionError::ForeignNode)?;
-                    let HtmlNodeKind::Element(element) = view.kind() else {
+                    let ConstructionNodeKind::Element(element) = view.kind() else {
                         return Err(SessionError::WrongToken);
                     };
                     let mut flags = element.link_flags().ok_or(SessionError::WrongToken)?;
@@ -171,7 +171,7 @@ impl SessionStorage {
                 let (association, _) = find_form_association_state(&self.payloads, c, node)?
                     .ok_or(SessionError::FormAssociationMetadataUnavailable)?;
                 let container = self.element_attribute_container(c, node)?;
-                let HtmlNodeKind::Element(element) = &self
+                let ConstructionNodeKind::Element(element) = &self
                     .construction
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?
@@ -386,7 +386,7 @@ impl ParserArenaSession {
         }
         let container = storage.element_attribute_container(c, node)?;
         let mut position = None;
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -394,7 +394,7 @@ impl ParserArenaSession {
         else {
             unreachable!()
         };
-        for (index, old) in element.attributes().as_slice().iter().enumerate() {
+        for (index, old) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if old.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(old.name().local_name()), local)?
@@ -408,7 +408,9 @@ impl ParserArenaSession {
             family,
             node,
             local,
-            position.map(|p| element.attributes().as_slice()[p].value()),
+            position
+                .and_then(|p| element.attributes().get(p))
+                .map(|a| a.value()),
             Some(attr.value.value.text()),
         )?;
         storage.preflight_managed_effect(c, node, effect)?;

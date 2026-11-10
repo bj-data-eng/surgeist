@@ -75,7 +75,7 @@ fn standalone_nonce_slots_preserve_content_reference_and_absence_in_both_encodin
             panic!("p")
         };
         assert_eq!(
-            element.attributes().as_slice()[0].value(),
+            element.attributes().get(0).unwrap().value(),
             &DocumentString::from(" A&B ")
         );
         let associations = report.associations();
@@ -186,7 +186,7 @@ fn captured_connected_shadow_header_policy_hides_content_preserving_real_slot() 
                         panic!("nonce element")
                     };
                     assert_eq!(
-                        element.attributes().as_slice()[0].value(),
+                        element.attributes().get(0).unwrap().value(),
                         &DocumentString::from(if policy == HtmlHeaderDeliveredCsp::Present {
                             ""
                         } else {
@@ -228,7 +228,7 @@ fn connected_script_hiding_runs_with_actual_pending_connection_effects() {
                 assert_eq!(
                     element
                         .attributes()
-                        .get(&Namespace::none(), &DocumentString::from("nonce"))
+                        .find(&Namespace::none(), &DocumentString::from("nonce"))
                         .unwrap()
                         .value()
                         .code_units(),
@@ -370,7 +370,7 @@ fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() 
                 // A template's contents host is not a ShadowRoot host. The
                 // connected outer Document's policy cannot hide this attribute.
                 assert_eq!(
-                    element.attributes().as_slice()[0].value(),
+                    element.attributes().get(0).unwrap().value(),
                     &DocumentString::from("A")
                 );
                 break;

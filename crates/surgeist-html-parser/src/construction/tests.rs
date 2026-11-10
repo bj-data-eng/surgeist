@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlElement, HtmlFragment, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlFragment},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 mod attribute_validation;
@@ -391,13 +391,18 @@ pub(super) fn limits() -> HtmlParseLimits {
 pub(super) fn control() -> ParseControl {
     ParseControl::new(limits(), HtmlParseCancellation::new())
 }
-fn element(namespace: Namespace, local: &str) -> HtmlElement {
-    HtmlElement::new(
+/// How many holders share an element's attribute backing, not counting the clone the view makes.
+fn attribute_holders(attributes: surgeist_html::construction::HtmlAttributes<'_>) -> usize {
+    let owned = attributes.to_ordered();
+    Arc::strong_count(owned.shared_attributes()) - 1
+}
+fn element(namespace: Namespace, local: &str) -> PreexistingElement {
+    PreexistingElement::new(
         QualifiedName::new(namespace, None, local),
         OrderedAttributes::new(Vec::new()).unwrap(),
     )
 }
-fn html(local: &str) -> HtmlElement {
+fn html(local: &str) -> PreexistingElement {
     element(Namespace::html(), local)
 }
 fn frozen(mut session: ParserArenaSession, control: &mut ParseControl) -> FrozenArena {
@@ -411,7 +416,9 @@ fn locals(fragment: &HtmlFragment) -> Vec<String> {
         .root()
         .children()
         .map(|id| {
-            let HtmlNodeKind::Element(element) = fragment.node(&id).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                fragment.node(&id).unwrap().kind()
+            else {
                 panic!("expected element");
             };
             element.name().local_name().to_utf8().unwrap()
@@ -467,7 +474,7 @@ fn owned_tag(c: &mut ParseControl, name: &str, attrs: &[(&str, &[u16])]) -> Tag 
     }
 }
 pub(super) fn native_text(session: &ParserArenaSession, node: &ParserNode) -> Vec<u16> {
-    let HtmlNodeKind::Text(value) = &session
+    let ConstructionNodeKind::Text(value) = &session
         .active()
         .unwrap()
         .construction

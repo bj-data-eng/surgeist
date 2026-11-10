@@ -1019,7 +1019,7 @@ fn traverse<'a>(
                         .as_ref()
                         .ok_or(HtmlConstructionCaptureError::WrongFactRole)?;
                     control.work(4)?;
-                    builder.add_document(*mode, observed.scripting, observed.registry.clone())?
+                    builder.add_document(mode, observed.scripting, observed.registry.clone())?
                 }
                 HtmlNodeKind::Element(element) => {
                     let observed = observations
@@ -1050,7 +1050,7 @@ fn traverse<'a>(
                             .as_ref()
                             .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?,
                         element.name().clone(),
-                        element.attributes().clone(),
+                        element.attributes().to_ordered(),
                         observed.is_value.clone(),
                         observed.registry.clone(),
                     )?
@@ -1111,7 +1111,7 @@ fn traverse<'a>(
                         document
                             .as_ref()
                             .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?,
-                        value.clone(),
+                        value,
                     )?
                 }
                 HtmlNodeKind::Comment(value) => {
@@ -1120,7 +1120,7 @@ fn traverse<'a>(
                         document
                             .as_ref()
                             .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?,
-                        value.clone(),
+                        value,
                     )?
                 }
                 HtmlNodeKind::Doctype(value) => {
@@ -1135,7 +1135,7 @@ fn traverse<'a>(
                         document
                             .as_ref()
                             .ok_or(HtmlConstructionCaptureError::MissingNodeDocument)?,
-                        value.clone(),
+                        value,
                     )?
                 }
                 HtmlNodeKind::ProcessingInstruction(value) => {

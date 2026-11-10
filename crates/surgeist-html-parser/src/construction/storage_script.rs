@@ -1,7 +1,7 @@
 //! Script preparation over the active session storage.
 
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 impl SessionStorage {
     pub(super) fn prepare_script_owned(
@@ -29,7 +29,7 @@ impl SessionStorage {
                 }
                 Action::ReadAsyncPresence => {
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = &self
+                    let ConstructionNodeKind::Element(element) = self
                         .construction
                         .node_at(index)
                         .ok_or_else(|| latch_registry_row(control))?
@@ -66,7 +66,7 @@ impl SessionStorage {
                             .node_at(child)
                             .ok_or(SessionError::ForeignNode)?;
                         if Some(child) != detached
-                            && let HtmlNodeKind::Text(text) = record.kind()
+                            && let ConstructionNodeKind::Text(text) = record.kind()
                             && !text.is_empty()
                         {
                             empty = false;
@@ -81,14 +81,14 @@ impl SessionStorage {
                             .node_at(index)
                             .ok_or_else(|| latch_registry_row(control))?
                             .kind(),
-                        HtmlNodeKind::Element(_)
+                        ConstructionNodeKind::Element(_)
                     ) {
                         return Err(SessionError::ScriptMetadataUnavailable);
                     }
                     Reply::ChildTextEmpty(empty)
                 }
                 Action::ReadSrcPresence => {
-                    let HtmlNodeKind::Element(element) = &self
+                    let ConstructionNodeKind::Element(element) = self
                         .construction
                         .node_at(index)
                         .ok_or_else(|| latch_registry_row(control))?
@@ -110,7 +110,7 @@ impl SessionStorage {
                             .construction
                             .node_at(current)
                             .ok_or(SessionError::ForeignNode)?;
-                        if matches!(record.kind(), HtmlNodeKind::Document(_)) {
+                        if matches!(record.kind(), ConstructionNodeKind::Document(_)) {
                             connected = true;
                             ancestor = None;
                             break;
@@ -128,7 +128,7 @@ impl SessionStorage {
                 }
                 Action::ClassifyType => {
                     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = &self
+                    let ConstructionNodeKind::Element(element) = self
                         .construction
                         .node_at(index)
                         .ok_or_else(|| latch_registry_row(control))?

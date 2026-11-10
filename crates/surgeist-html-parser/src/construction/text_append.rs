@@ -3,9 +3,10 @@ use super::*;
 use construction_owner::construction_error;
 use surgeist_html::bounded::construction::{
     HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
+    HtmlStoredString,
 };
 use surgeist_html::{
-    construction::{HtmlConstructionCause, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlConstructionCause},
     values::DocumentString,
 };
 
@@ -74,6 +75,14 @@ impl CommittedTickets {
         }
         refused
     }
+}
+
+/// The string a text record holds, shared with the registry row that mirrors it. `None` for a
+/// missing position or a record of another kind.
+fn stored_text_of(construction: &ConstructionOwner, index: usize) -> Option<&DocumentString> {
+    construction
+        .node_at(index)
+        .and_then(|record| record.stored_string(HtmlStoredString::Text))
 }
 
 impl SessionStorage {
@@ -148,9 +157,7 @@ impl SessionStorage {
             self.bind_string(old_slot, StringLocation::Detached)
                 .map_err(|_| latch_registry_row(control))?;
         }
-        let Some(HtmlNodeKind::Text(committed)) =
-            self.construction.node_at(index).map(|record| record.kind())
-        else {
+        let Some(committed) = stored_text_of(&self.construction, index) else {
             return Err(latch_registry_row(control));
         };
         let Some(survivor) = (if reused {
@@ -239,8 +246,8 @@ impl SessionStorage {
             (None, None) => {}
         }
         if let Some(mut allocation) = original {
-            let restored = match self.construction.node_at(index).map(|record| record.kind()) {
-                Some(HtmlNodeKind::Text(value)) => {
+            let restored = match stored_text_of(&self.construction, index) {
+                Some(value) => {
                     keep_first(
                         &mut refused,
                         control.restore_text_append_ticket(&mut allocation, value),
@@ -266,7 +273,7 @@ impl SessionStorage {
                         _ => Some(allocation),
                     }
                 }
-                _ => Some(allocation),
+                None => Some(allocation),
             };
             if let Some(allocation) = restored {
                 // No row can take the ticket back; it is credited here.
@@ -292,7 +299,7 @@ impl SessionStorage {
             at_end,
         } = append;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::Text(old) = self
+        let ConstructionNodeKind::Text(old) = self
             .construction
             .node_at(index)
             .ok_or(SessionError::ForeignNode)?

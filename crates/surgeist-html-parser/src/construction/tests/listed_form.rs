@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlElement, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     elements::form::HtmlNativeFormAssociationKind,
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -358,7 +358,7 @@ fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freez
         false,
     );
     assert!(session.active().unwrap().effects.form.is_none());
-    let HtmlNodeKind::Element(body_record) = &session
+    let ConstructionNodeKind::Element(body_record) = &session
         .active()
         .unwrap()
         .construction
@@ -371,7 +371,6 @@ fn listed_late_body_id_merge_resets_exact_target_before_next_attribute_and_freez
     assert_eq!(
         body_record
             .attributes()
-            .as_slice()
             .iter()
             .map(|a| a.name().local_name().code_units().to_vec())
             .collect::<Vec<_>>(),
@@ -845,7 +844,7 @@ fn listed_id_slot_fixture(
     };
     assert_eq!(*moved, 1);
     assert_eq!(values.len(), 1);
-    let HtmlNodeKind::Element(element) = &storage
+    let ConstructionNodeKind::Element(element) = &storage
         .construction
         .node_at(body.index)
         .expect("retained construction position")
@@ -853,9 +852,12 @@ fn listed_id_slot_fixture(
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().as_slice().len(), 1);
+    assert_eq!(element.attributes().len(), 1);
     assert_eq!(
-        element.attributes().as_slice()[0]
+        element
+            .attributes()
+            .get(0)
+            .unwrap()
             .name()
             .local_name()
             .code_units(),
@@ -880,7 +882,7 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
     let storage = session.active().unwrap();
     assert_eq!(storage.construction.test_storage().len(), old_count);
     assert!(storage.effects.form.is_some());
-    let HtmlNodeKind::Element(element) = &storage
+    let ConstructionNodeKind::Element(element) = &storage
         .construction
         .node_at(body.index)
         .expect("retained construction position")
@@ -888,7 +890,7 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().as_slice().len(), 1);
+    assert_eq!(element.attributes().len(), 1);
     assert!(matches!(
         &storage.payloads.values[prepared.stage],
         RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
@@ -949,7 +951,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
             &storage.payloads.values[prepared.stage],
             RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
         ));
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(body.index)
             .expect("retained construction position")
@@ -957,7 +959,7 @@ fn listed_id_global_drain_exact_and_one_short_keeps_real_slot_owners_and_metadat
         else {
             panic!("body")
         };
-        assert_eq!(element.attributes().as_slice().len(), 1);
+        assert_eq!(element.attributes().len(), 1);
         if short {
             let stop = c.stop().unwrap();
             assert_eq!(result, Err(SessionError::Stop(stop)));
@@ -1007,7 +1009,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
         &session.active().unwrap().payloads.values[prepared.stage],
         RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved: 1, .. }))
     ));
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
         .construction
@@ -1017,7 +1019,7 @@ fn listed_id_cancel_after_real_slot_append_retains_owner_and_reclaims_all_partia
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().as_slice().len(), 1);
+    assert_eq!(element.attributes().len(), 1);
     assert_eq!(
         session.freeze(&mut c).err(),
         Some(SessionError::Stop(HtmlParseStop::Cancelled))
@@ -1114,7 +1116,7 @@ fn listed_namespaced_id_is_inapplicable_and_imported_control_metadata_is_unavail
     let form = form_creation(&mut session, &mut lexer, &mut c, &body, None);
     // Preexisting immutable native input deliberately exercises namespace
     // identity, not parser-created physical storage or foreign token support.
-    let native = HtmlElement::new(
+    let native = PreexistingElement::new(
         QualifiedName::new(Namespace::html(), None, "button"),
         OrderedAttributes::new(vec![Attribute::new(
             QualifiedName::new(
@@ -1183,7 +1185,7 @@ fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner
         );
         assert!(session.active().unwrap().effects.form.is_none());
     }
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
         .construction
@@ -1193,8 +1195,8 @@ fn listed_empty_and_ignored_duplicate_late_id_do_not_replace_existing_form_owner
     else {
         panic!("body")
     };
-    assert_eq!(element.attributes().as_slice().len(), 1);
-    assert!(element.attributes().as_slice()[0].value().is_empty());
+    assert_eq!(element.attributes().len(), 1);
+    assert!(element.attributes().get(0).unwrap().value().is_empty());
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);

@@ -1,6 +1,12 @@
 //! Bounded native authoring and immutable, result-local construction output.
 
 pub(crate) mod bounded;
+mod views;
+
+pub use views::{
+    BuildStr, ConstructionDoctype, ConstructionNodeKind, ConstructionProcessingInstruction,
+    HtmlAttributes, HtmlElementView, HtmlNodeKind,
+};
 
 use crate::internal::accounting::{
     HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlResource, HtmlWork,
@@ -12,6 +18,7 @@ use crate::{
     internal::values::DocumentString, internal::values::OrderedAttributes,
     internal::values::QualifiedName,
 };
+use bounded::operations::HtmlConstructionLeaf;
 use std::{collections::VecDeque, error::Error, fmt, num::NonZeroU32, sync::Arc};
 use surgeist_ledger::{
     Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
@@ -619,45 +626,32 @@ impl fmt::Display for HtmlProcessingInstructionError {
 }
 impl Error for HtmlProcessingInstructionError {}
 
-/// Exact element name and ordered raw attributes.
+/// The stored name, attributes and link history of an element record.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlElement {
+struct ElementContent {
     link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
     name: QualifiedName,
     attributes: OrderedAttributes,
 }
-impl HtmlElement {
-    /// Stores exact element values without fabricating construction history.
-    pub fn new(name: QualifiedName, attributes: OrderedAttributes) -> Self {
-        Self {
-            name,
-            attributes,
-            link_flags: None,
-        }
-    }
-    /// Actual construction flags. Imported records without history return None.
-    pub fn link_flags(&self) -> Option<crate::internal::elements::rel::HtmlLinkFlags> {
-        self.link_flags
-    }
-    /// Exact shared qualified name.
-    pub fn name(&self) -> &QualifiedName {
+impl ElementContent {
+    fn name(&self) -> &QualifiedName {
         &self.name
     }
-    /// Ordered shared raw attributes.
-    pub fn attributes(&self) -> &OrderedAttributes {
+    fn attributes(&self) -> &OrderedAttributes {
         &self.attributes
     }
 }
 
-/// Immutable content records; hierarchy is exposed by [`HtmlNode`].
+/// The stored content of a node record. Readers see it only through [`HtmlNodeKind`] and
+/// [`ConstructionNodeKind`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HtmlNodeKind {
+enum NodeContent {
     /// The Document node, carrying the compatibility mode selected when it was built.
     Document(HtmlDocumentMode),
     /// A document-fragment root.
     Fragment,
     /// An element with its exact qualified name and ordered raw attributes.
-    Element(HtmlElement),
+    Element(ElementContent),
     /// A text node; the payload preserves the exact UTF-16 code units.
     Text(DocumentString),
     /// A comment node; the payload preserves the exact UTF-16 code units.
@@ -809,7 +803,7 @@ pub enum HtmlFocusedAreaDesignation {
 
 #[derive(Debug)]
 struct Record {
-    kind: HtmlNodeKind,
+    kind: NodeContent,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<NodeIx>,
     /// The ordinary children in order. A deque, so that taking or placing an entry near either
@@ -841,8 +835,8 @@ struct Record {
     publish_found: u8,
 }
 impl Record {
-    fn new(kind: HtmlNodeKind, parent: Option<NodeIx>, depth: usize) -> Self {
-        let document_focused_area_designation = matches!(kind, HtmlNodeKind::Document(_))
+    fn new(kind: NodeContent, parent: Option<NodeIx>, depth: usize) -> Self {
+        let document_focused_area_designation = matches!(kind, NodeContent::Document(_))
             .then_some(HtmlFocusedAreaDesignation::Unavailable);
         Self {
             kind,
@@ -989,8 +983,11 @@ impl<'a> HtmlNode<'a> {
     pub fn id(self) -> HtmlNodeId {
         self.arena.id(self.index)
     }
-    /// Immutable content record.
-    pub fn kind(self) -> &'a HtmlNodeKind {
+    /// The node's content, by value.
+    pub fn kind(self) -> HtmlNodeKind<'a> {
+        self.content().published()
+    }
+    fn content(self) -> &'a NodeContent {
         &self.arena.records[self.index.position()].kind
     }
     /// Original design-mode state of this owned Document, or `None` for a
@@ -998,7 +995,7 @@ impl<'a> HtmlNode<'a> {
     /// mode disabled and admits no operation that changes it. Captured external
     /// Documents are not owned construction nodes and receive no such grant.
     pub fn document_design_mode_enabled(self) -> Option<bool> {
-        matches!(self.kind(), HtmlNodeKind::Document(_)).then_some(false)
+        matches!(self.content(), NodeContent::Document(_)).then_some(false)
     }
     /// Stored original designation of this owned Document, or `None` for a
     /// non-Document. Only the controlled CreateDocument transition issues known
@@ -1174,7 +1171,7 @@ fn fragment_view(
     id: &HtmlNodeId,
 ) -> Result<Option<HtmlFragment>, ForeignHtmlResult> {
     Ok(
-        matches!(arena.lookup(id)?.kind(), HtmlNodeKind::Fragment).then(|| HtmlFragment {
+        matches!(arena.lookup(id)?.content(), NodeContent::Fragment).then(|| HtmlFragment {
             arena: arena.clone(),
             root: id.index,
         }),
@@ -1709,25 +1706,27 @@ impl Builder {
     fn append(
         &mut self,
         parent: &HtmlBuilderNode,
-        kind: HtmlNodeKind,
+        creation: bounded::operations::Creation,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let parent_position = self.index(parent)?;
         let parent_view = self.storage()?.node(parent)?;
         if !matches!(
             parent_view.kind(),
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+            ConstructionNodeKind::Document(_)
+                | ConstructionNodeKind::Fragment
+                | ConstructionNodeKind::Element(_)
         ) {
             return Err(HtmlConstructionCause::ParentCannotHaveChildren.into());
         }
         if parent_view.template_contents().is_some() {
             return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
-        let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::vocabulary::KnownHtmlElement::from_name(element.name()) == Some(crate::vocabulary::KnownHtmlElement::Template));
+        let template = creation.is_template();
         let depth = self
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
-        let (attributes, units) = bounded::operations::created_usage(&kind)?;
+        let (attributes, units) = creation.usage()?;
         let charged = self.accounting.admit(
             1 + usize::from(template),
             1 + usize::from(template),
@@ -1741,9 +1740,7 @@ impl Builder {
             self.accounting.release(charged)?;
             return Err(error);
         }
-        let created = match self
-            .apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })
-        {
+        let created = match self.apply_creating(creation.into_command()) {
             Ok(created) => created,
             Err(error) => {
                 self.accounting.release(charged)?;
@@ -1780,7 +1777,7 @@ impl Builder {
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let host_position = self.index(host)?;
         let view = self.storage()?.node(host)?;
-        if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
+        if !matches!(view.kind(), ConstructionNodeKind::Element(_)) {
             return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
         }
         if view.shadow_root().is_some() {
@@ -1882,13 +1879,13 @@ macro_rules! authoring_methods {
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
             self.builder.append(
                 parent,
-                HtmlNodeKind::Element(HtmlElement {
+                bounded::operations::Creation::Element {
                     link_flags: (crate::vocabulary::KnownHtmlElement::from_name(&name)
                         == Some(crate::vocabulary::KnownHtmlElement::Link))
                     .then(crate::internal::elements::rel::HtmlLinkFlags::fresh),
                     name,
                     attributes,
-                }),
+                },
             )
         }
         /// Appends exact text, retaining nulls and isolated surrogates.
@@ -1897,8 +1894,10 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: impl Into<DocumentString>,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder
-                .append(parent, HtmlNodeKind::Text(value.into()))
+            self.builder.append(
+                parent,
+                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Text(value.into())),
+            )
         }
         /// Appends exact comment data without imposing serialized-comment syntax.
         pub fn append_comment(
@@ -1906,8 +1905,10 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: impl Into<DocumentString>,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder
-                .append(parent, HtmlNodeKind::Comment(value.into()))
+            self.builder.append(
+                parent,
+                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Comment(value.into())),
+            )
         }
         /// Appends a checked native processing instruction.
         pub fn append_processing_instruction(
@@ -1915,8 +1916,12 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: HtmlAuthoredProcessingInstruction,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder
-                .append(parent, HtmlNodeKind::ProcessingInstruction(value.into()))
+            self.builder.append(
+                parent,
+                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::ProcessingInstruction(
+                    value.into(),
+                )),
+            )
         }
         /// Appends exact doctype data without deriving document mode.
         pub fn append_doctype(
@@ -1924,7 +1929,10 @@ macro_rules! authoring_methods {
             parent: &HtmlBuilderNode,
             value: HtmlDoctype,
         ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
-            self.builder.append(parent, HtmlNodeKind::Doctype(value))
+            self.builder.append(
+                parent,
+                bounded::operations::Creation::Leaf(HtmlConstructionLeaf::Doctype(value)),
+            )
         }
         /// Retrieves an HTML template's separate contents handle.
         pub fn template_contents(
@@ -1978,6 +1986,7 @@ impl HtmlFragmentBuilder {
 
 #[cfg(test)]
 mod tests {
+    use super::bounded::operations::Creation;
     use super::*;
 
     /// What an operation that cannot hand the storage back leaves: no native command can cause it,
@@ -2004,12 +2013,13 @@ mod tests {
         let (mut records, mut children) = (0, 0);
         for _ in 0..appends {
             let kind = if nested {
-                HtmlNodeKind::Element(HtmlElement::new(
-                    QualifiedName::new(Namespace::from_uri("urn:x"), None, "e"),
-                    OrderedAttributes::new(Vec::new()).unwrap(),
-                ))
+                Creation::Element {
+                    name: QualifiedName::new(Namespace::from_uri("urn:x"), None, "e"),
+                    attributes: OrderedAttributes::new(Vec::new()).unwrap(),
+                    link_flags: None,
+                }
             } else {
-                HtmlNodeKind::Comment("c".into())
+                Creation::Leaf(HtmlConstructionLeaf::Comment("c".into()))
             };
             let appended = builder.append(&parent, kind).unwrap();
             if nested {
@@ -2058,7 +2068,10 @@ mod tests {
         let root = builder.root;
         for _ in 0..edges {
             builder
-                .append(&root, HtmlNodeKind::Comment("c".into()))
+                .append(
+                    &root,
+                    Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
+                )
                 .unwrap();
             let storage = builder.storage().unwrap();
             assert!(storage.records_capacity() <= nodes);
@@ -2082,7 +2095,10 @@ mod tests {
         let _refusing = crate::internal::amortized::fault::arm(1);
         for count in 1..=appends {
             builder
-                .append(&root, HtmlNodeKind::Comment("c".into()))
+                .append(
+                    &root,
+                    Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
+                )
                 .unwrap();
             let storage = builder.storage().unwrap();
             assert_eq!(storage.len(), count + 1);
@@ -2159,7 +2175,10 @@ mod tests {
         // The builder keeps working with the recovered storage.
         let root = builder.root;
         builder
-            .append(&root, HtmlNodeKind::Comment("c".into()))
+            .append(
+                &root,
+                Creation::Leaf(HtmlConstructionLeaf::Comment("c".into())),
+            )
             .unwrap();
     }
 
@@ -2193,7 +2212,7 @@ mod tests {
         let arena = Arena {
             identity: Arc::new(Identity),
             records: vec![Record::new(
-                HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks),
+                NodeContent::Document(HtmlDocumentMode::NoQuirks),
                 None,
                 0,
             )],
@@ -2223,11 +2242,11 @@ mod tests {
             data: DocumentString::from("a?"),
         };
         let record = Record::new(
-            HtmlNodeKind::ProcessingInstruction(recovered.clone()),
+            NodeContent::ProcessingInstruction(recovered.clone()),
             None,
             0,
         );
-        let HtmlNodeKind::ProcessingInstruction(stored) = record.kind else {
+        let NodeContent::ProcessingInstruction(stored) = record.kind else {
             panic!("expected exact processing-instruction record");
         };
         assert_eq!(stored.target().code_units(), [120]);
@@ -2262,47 +2281,54 @@ mod tests {
                 value,
             )
         };
-        let element = |attributes: Vec<crate::internal::values::Attribute>| {
-            HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::from_uri("urn:x"), Some("p".into()), "tag"),
-                OrderedAttributes::new(attributes).unwrap(),
-            ))
+        let element = |attributes: Vec<crate::internal::values::Attribute>| Creation::Element {
+            name: QualifiedName::new(Namespace::from_uri("urn:x"), Some("p".into()), "tag"),
+            attributes: OrderedAttributes::new(attributes).unwrap(),
+            link_flags: None,
         };
-        let cases: Vec<(&str, HtmlNodeKind, usize, usize)> = vec![
+        let cases: Vec<(&str, Creation, usize, usize)> = vec![
             (
                 "text with an isolated surrogate pair and a null",
-                HtmlNodeKind::Text(DocumentString::from_utf16(vec![0xD83D, 0xDE00, 0])),
+                Creation::Leaf(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
+                    vec![0xD83D, 0xDE00, 0],
+                ))),
                 0,
                 3,
             ),
             (
                 "comment",
-                HtmlNodeKind::Comment(DocumentString::from("xyz")),
+                Creation::Leaf(HtmlConstructionLeaf::Comment(DocumentString::from("xyz"))),
                 0,
                 3,
             ),
             (
                 "processing instruction",
-                HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction {
-                    target: DocumentString::from("xy"),
-                    data: DocumentString::from("abc"),
-                }),
+                Creation::Leaf(HtmlConstructionLeaf::ProcessingInstruction(
+                    HtmlProcessingInstruction {
+                        target: DocumentString::from("xy"),
+                        data: DocumentString::from("abc"),
+                    },
+                )),
                 0,
                 5,
             ),
             (
                 "doctype with both identifiers",
-                HtmlNodeKind::Doctype(HtmlDoctype::new("h", Some("ab".into()), Some("xyz".into()))),
+                Creation::Leaf(HtmlConstructionLeaf::Doctype(HtmlDoctype::new(
+                    "h",
+                    Some("ab".into()),
+                    Some("xyz".into()),
+                ))),
                 0,
                 6,
             ),
             (
                 "doctype with only a present empty public identifier",
-                HtmlNodeKind::Doctype(HtmlDoctype::new(
+                Creation::Leaf(HtmlConstructionLeaf::Doctype(HtmlDoctype::new(
                     "html",
                     Some(DocumentString::default()),
                     None,
-                )),
+                ))),
                 0,
                 4,
             ),

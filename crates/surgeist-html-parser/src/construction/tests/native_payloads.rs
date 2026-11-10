@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_html::{construction::HtmlNodeKind, values::Namespace};
+use surgeist_html::{construction::ConstructionNodeKind, values::Namespace};
 
 #[test]
 fn newly_latched_work_or_cancellation_disposes_all_retained_attribute_fields() {
@@ -251,7 +251,7 @@ fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_nativ
     }
     tokenizer.release(&mut c).unwrap();
     let node = inserted.unwrap();
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = &session
         .active()
         .unwrap()
         .construction
@@ -267,25 +267,31 @@ fn real_tokenizer_case_duplicate_recovery_and_reference_data_reach_managed_nativ
     );
     assert_eq!(element.attributes().len(), 2);
     assert_eq!(
-        element.attributes().as_slice()[0]
+        element
+            .attributes()
+            .get(0)
+            .unwrap()
             .name()
             .local_name()
             .code_units(),
         &[0x7a]
     );
     assert_eq!(
-        element.attributes().as_slice()[0].value().code_units(),
+        element.attributes().get(0).unwrap().value().code_units(),
         &[0x78]
     );
     assert_eq!(
-        element.attributes().as_slice()[1]
+        element
+            .attributes()
+            .get(1)
+            .unwrap()
             .name()
             .local_name()
             .code_units(),
         &[0x61, 0x3a, 0x62]
     );
     assert_eq!(
-        element.attributes().as_slice()[1].value().code_units(),
+        element.attributes().get(1).unwrap().value().code_units(),
         &[0xd83d, 0xde00]
     );
     let mut frozen = session.freeze(&mut c).unwrap();
@@ -429,12 +435,14 @@ fn token_backing_transfers_exact_names_order_attributes_and_template_pair_to_nat
     let mut frozen = session.freeze(&mut c).unwrap();
     let fragment = frozen.fragment().unwrap();
     let id = fragment.root().children().next().unwrap();
-    let HtmlNodeKind::Element(value) = fragment.node(&id).unwrap().kind() else {
+    let surgeist_html::construction::HtmlNodeKind::Element(value) =
+        fragment.node(&id).unwrap().kind()
+    else {
         panic!("element")
     };
     assert_eq!(value.name().local_name().code_units().as_ptr(), original);
     assert_eq!(value.name().namespace(), &Namespace::html());
-    let attrs = value.attributes().as_slice();
+    let attrs: Vec<_> = value.attributes().iter().collect();
     assert_eq!(attrs[0].name().local_name().code_units(), &[0x7a]);
     assert_eq!(attrs[0].value().code_units(), &[0xd800, 0, 0x20]);
     assert_eq!(

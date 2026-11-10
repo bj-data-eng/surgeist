@@ -115,7 +115,7 @@ fn attribute_strings(raw: &str) -> BTreeMap<String, Vec<DocumentString>> {
     let mut found: BTreeMap<String, Vec<DocumentString>> = BTreeMap::new();
     visit(document.root(), &|id| document.node(id).unwrap(), |node| {
         if let HtmlNodeKind::Element(element) = node.kind() {
-            for attribute in element.attributes().as_slice() {
+            for attribute in element.attributes().iter() {
                 let name = attribute.name();
                 for string in [name.namespace().uri(), name.prefix()]
                     .into_iter()

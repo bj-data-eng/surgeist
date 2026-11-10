@@ -3,7 +3,7 @@
 use super::*;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
 pub(super) struct PseudoAttribute {
     pub(super) name: DocumentString,
@@ -100,7 +100,7 @@ impl SessionStorage {
             HtmlNameIndexSlot as NameSlot, HtmlNameIndexTable as NameTable,
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::ProcessingInstruction(pi) = &self
+        let ConstructionNodeKind::ProcessingInstruction(pi) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -127,7 +127,7 @@ impl SessionStorage {
                 let reply = match action {
                     Action::Read(offset) => {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-                        let HtmlNodeKind::ProcessingInstruction(pi) = &self
+                        let ConstructionNodeKind::ProcessingInstruction(pi) = &self
                             .construction
                             .node_at(node)
                             .ok_or_else(|| latch_registry_row(c))?
@@ -500,7 +500,7 @@ impl FrozenArena {
             .position();
         if !matches!(
             arena.node_at(position).unwrap().kind(),
-            HtmlNodeKind::ProcessingInstruction(_)
+            ConstructionNodeKind::ProcessingInstruction(_)
         ) {
             return Err(SessionError::WrongToken);
         }

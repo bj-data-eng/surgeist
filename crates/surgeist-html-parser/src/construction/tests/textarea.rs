@@ -1,7 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
-    elements::form::HtmlNativeFormAssociationKind,
+    construction::HtmlDocumentMode, elements::form::HtmlNativeFormAssociationKind,
 };
 
 fn textarea_owner<'a>(
@@ -86,16 +85,14 @@ fn textarea_raw_is_independent_exact_child_text_and_retired_backing_is_disposed(
         .to_vec();
     assert_eq!(native, [65]);
     assert_eq!(raw, [65]);
-    let HtmlNodeKind::Text(native) = &session
+    let native = session
         .active()
         .unwrap()
         .construction
         .node_at(text.index)
         .expect("retained construction position")
-        .kind()
-    else {
-        panic!("text")
-    };
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("text");
     assert!(!native.shares_storage_with(session.textarea_raw_value(&mut c, &node).unwrap()));
     let mut b = next_text(&mut tokenizer, &mut c);
     session

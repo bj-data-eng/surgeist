@@ -455,7 +455,7 @@ mod pi_recovery {
         } else {
             assert_eq!(children.len(), 3);
             assert!(
-                matches!(document.node(&children[2]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+                matches!(document.node(&children[2]).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("Z"))
             );
             let node = document.node(&children[1]).unwrap();
             match (case.native, node.kind()) {
@@ -464,14 +464,14 @@ mod pi_recovery {
                     assert_eq!(pi.data(), &DocumentString::from(case.data));
                 }
                 (Native::Comment, HtmlNodeKind::Comment(data)) => {
-                    assert_eq!(data, &DocumentString::from(case.data))
+                    assert_eq!(data, DocumentString::from(case.data))
                 }
                 _ => panic!("literal PI versus recovered comment: {}", case.raw),
             }
             Some(node.id())
         };
         assert!(
-            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("é"))
+            matches!(document.node(&children[0]).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("é"))
         );
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), case.errors.len(), "{}", case.raw);
@@ -981,7 +981,6 @@ fn native_kind(kind: &HtmlNodeKind) -> Kind {
             native_name(element.name()),
             element
                 .attributes()
-                .as_slice()
                 .iter()
                 .map(|attr| Attr {
                     name: native_name(attr.name()),
@@ -1050,7 +1049,7 @@ fn project(document: &HtmlDocument) -> Result<Projection, ProjectionError> {
             None => {}
         }
         result.nodes.push(Node {
-            kind: native_kind(view.kind()),
+            kind: native_kind(&view.kind()),
             parent,
             children: Vec::new(),
             template: None,
@@ -3011,7 +3010,7 @@ mod reference_recovery {
         assert_eq!(p.children().count(), 1);
         let text = document.node(&p.children().next().unwrap()).unwrap();
         assert!(
-            matches!(text.kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from(format!("é{}",reference.value)))
+            matches!(text.kind(),HtmlNodeKind::Text(t) if t==DocumentString::from(format!("é{}",reference.value)))
         );
         let diagnostics = report.diagnostics();
         assert_eq!(
@@ -3183,7 +3182,7 @@ mod reference_recovery {
                 let HtmlNodeKind::Element(element) = p.kind() else {
                     panic!("literal p")
                 };
-                let attrs = element.attributes().as_slice();
+                let attrs: Vec<_> = element.attributes().iter().collect();
                 assert_eq!(attrs.len(), 2);
                 assert_eq!(attrs[0].name().local_name(), &DocumentString::from("x"));
                 assert_eq!(
@@ -3194,7 +3193,7 @@ mod reference_recovery {
                 assert_eq!(attrs[1].value(), &DocumentString::from("�"));
                 assert_eq!(p.children().count(), 1);
                 assert!(
-                    matches!(document.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
+                    matches!(document.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==DocumentString::from("Z"))
                 );
                 let diagnostics = output.diagnostics();
                 assert_eq!(diagnostics.len(), 2);

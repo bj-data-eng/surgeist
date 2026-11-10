@@ -46,16 +46,14 @@ fn external_text_alias_and_native_backing_holder_reject_without_consuming_owners
         .insert_text(&mut c, &root, None, &mut text, None)
         .unwrap()
         .unwrap();
-    let HtmlNodeKind::Text(value) = &session
+    let value = session
         .active()
         .unwrap()
         .construction
         .node_at(inserted._node.index)
         .expect("retained construction position")
-        .kind()
-    else {
-        panic!("text")
-    };
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("text");
     let alias = value.clone();
     let mut frozen = session.freeze(&mut c).unwrap();
     // A native string that another holder still keeps cannot be released: the ticket of a string

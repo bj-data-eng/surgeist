@@ -1,5 +1,4 @@
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
 
 #[test]
 fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
@@ -33,7 +32,7 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
             .register_group_string_owned(&mut c, aggregate, origins)
             .unwrap();
         let node = storage
-            .allocate_owned(&mut c, HtmlNodeKind::Text(value), false, 0, 0)
+            .allocate_owned(&mut c, NewRecord::Text(value), false, 0, 0)
             .unwrap();
         storage
             .bind_string(slot, StringLocation::Text(node.index))
@@ -59,14 +58,12 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
             else {
                 panic!("actual current text group")
             };
-            let HtmlNodeKind::Text(value) = storage
+            let value = storage
                 .construction
                 .node_at(first._node.index)
                 .unwrap()
-                .kind()
-            else {
-                panic!("actual text")
-            };
+                .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+                .expect("actual text");
             assert!(value.retained_units() - value.len() >= 4);
             assert_eq!(value.block().holders(), 2);
             assert_eq!(value.block().weak_holders(), 1);
@@ -162,10 +159,12 @@ fn text_append_current_ticket_lookup_is_independent_of_unrelated_payloads() {
         };
         assert_eq!(*owner, text.index);
         assert_eq!(value.code_units(), [0xd800, 0]);
-        let HtmlNodeKind::Text(native) = storage.construction.node_at(text.index).unwrap().kind()
-        else {
-            panic!("actual text")
-        };
+        let native = storage
+            .construction
+            .node_at(text.index)
+            .unwrap()
+            .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+            .expect("actual text");
         assert!(native.shares_storage_with(value));
         session.release(&mut c).unwrap();
         storage_zero(&c);

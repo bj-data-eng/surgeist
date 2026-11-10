@@ -3,7 +3,7 @@
 //! This registry fact does not grant public report or browser lifecycle support.
 
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlParseReadiness {
@@ -91,7 +91,7 @@ impl SessionStorage {
                             .node_at(0)
                             .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
-                        HtmlNodeKind::Document(_)
+                        ConstructionNodeKind::Document(_)
                     )
                 {
                     return Err(SessionError::CompletionMetadataUnavailable);
@@ -124,7 +124,7 @@ impl ParserArenaSession {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(SessionError::NotDocument);
         }

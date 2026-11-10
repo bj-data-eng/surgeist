@@ -2,7 +2,9 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDoctype, HtmlDocumentMode, HtmlNodeKind, HtmlProcessingInstruction},
+    construction::{
+        ConstructionNodeKind, HtmlDoctype, HtmlDocumentMode, HtmlProcessingInstruction,
+    },
     values::DocumentString,
 };
 
@@ -208,7 +210,7 @@ impl ParserArenaSession {
         control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         let node = storage.allocate_prepared_owned(
             control,
-            creation_command(HtmlNodeKind::Comment(value)),
+            creation_command(NewRecord::Comment(value)),
             false,
             0,
             0,
@@ -247,7 +249,7 @@ impl ParserArenaSession {
         // Recovered PI data is exact storage, not checked native authoring input.
         let node = storage.allocate_prepared_owned(
             control,
-            creation_command(HtmlNodeKind::ProcessingInstruction(
+            creation_command(NewRecord::ProcessingInstruction(
                 HtmlProcessingInstruction::new(target, data),
             )),
             false,
@@ -323,7 +325,7 @@ impl ParserArenaSession {
             // strings. Native authored Option data keeps its separate meaning.
             let node = storage.allocate(
                 control,
-                HtmlNodeKind::Doctype(HtmlDoctype::new(name, Some(public_id), Some(system_id))),
+                NewRecord::Doctype(HtmlDoctype::new(name, Some(public_id), Some(system_id))),
                 false,
                 0,
                 0,
@@ -357,7 +359,7 @@ impl ParserArenaSession {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(SessionError::NotDocument);
         }
@@ -381,7 +383,7 @@ impl ParserArenaSession {
                     .node_at(child)
                     .ok_or_else(|| latch_registry_row(control))?
                     .kind(),
-                HtmlNodeKind::Doctype(_) | HtmlNodeKind::Element(_)
+                ConstructionNodeKind::Doctype(_) | ConstructionNodeKind::Element(_)
             ) {
                 return Ok(false);
             }
@@ -395,7 +397,7 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Document(mode) = &storage
+        let ConstructionNodeKind::Document(mode) = &storage
             .construction
             .node_at(0)
             .ok_or_else(|| latch_registry_row(control))?
@@ -423,7 +425,7 @@ impl ParserArenaSession {
                 .node_at(0)
                 .ok_or(SessionError::ForeignNode)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(SessionError::NotDocument);
         }

@@ -3,7 +3,6 @@ use super::*;
 use crate::HtmlParseCancellation;
 use surgeist_html::{
     bounded::construction::HtmlConstructionAttributeEditMode,
-    construction::{HtmlElement, HtmlNodeKind},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -37,10 +36,12 @@ fn exact_current_ticket(session: &ParserArenaSession, c: &mut ParseControl, node
         panic!("actual indexed current ticket")
     };
     assert_eq!(*owner, node.index);
-    let HtmlNodeKind::Text(native) = storage.construction.node_at(node.index).unwrap().kind()
-    else {
-        panic!("native text")
-    };
+    let native = storage
+        .construction
+        .node_at(node.index)
+        .unwrap()
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("native text");
     assert!(value.shares_storage_with(native));
     assert_eq!(allocation.units(), value.len() as u64);
     assert_eq!(allocation.vector_capacity(), value.retained_units());
@@ -203,10 +204,12 @@ fn cancellation_after_real_tail_chunk_keeps_old_text_and_actual_growth_and_first
         4 + 300
     );
     let storage = session.active().unwrap();
-    let HtmlNodeKind::Text(native) = storage.construction.node_at(node.index).unwrap().kind()
-    else {
-        panic!("text")
-    };
+    let native = storage
+        .construction
+        .node_at(node.index)
+        .unwrap()
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("text");
     assert!(
         native.retained_units() >= 302,
         "actual growth survives rollback"
@@ -223,10 +226,12 @@ fn external_weak_preservation_and_detached_append_keep_current_ticket_and_histor
     let (mut session, root, node) = aggregate(&mut c);
     let weak = {
         let storage = session.active().unwrap();
-        let HtmlNodeKind::Text(value) = storage.construction.node_at(node.index).unwrap().kind()
-        else {
-            panic!("text")
-        };
+        let value = storage
+            .construction
+            .node_at(node.index)
+            .unwrap()
+            .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+            .expect("text");
         value.block().downgrade()
     };
     let mut input = Some(owned_text(&mut c, &[0, 0xd800]));
@@ -345,11 +350,9 @@ fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work
                                     texts += 1;
                                     let node = node.as_ref().unwrap();
                                     let storage = session.active().unwrap();
-                                    let HtmlNodeKind::Text(value) =
-                                        storage.construction.node_at(node.index).unwrap().kind()
-                                    else {
-                                        panic!("text")
-                                    };
+                                    let value = storage.construction.node_at(node.index).unwrap()
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("text");
                                     let capacity = value.retained_units();
                                     let address = value.code_units().as_ptr() as usize;
                                     if old_capacity != 0
@@ -548,10 +551,13 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
     assert_eq!(c.stop(), Some(mismatch));
     let (owner, ..) = operation.take().unwrap().abort().unwrap().into_parts();
     storage.construction.owner = Some(owner);
-    let value = match storage.construction.node_at(node.index).unwrap().kind() {
-        HtmlNodeKind::Text(value) => value.clone(),
-        _ => panic!("native text"),
-    };
+    let value = storage
+        .construction
+        .node_at(node.index)
+        .unwrap()
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("native text")
+        .clone();
     storage.payloads.values[slot] = RetainedPayload::String {
         value,
         allocation,
@@ -652,7 +658,7 @@ fn appending_while_an_attribute_edit_holds_the_storage_reports_the_registry_row(
     let element = session
         .allocate_element(
             &mut c,
-            HtmlElement::new(
+            PreexistingElement::new(
                 QualifiedName::new(Namespace::none(), None, "x"),
                 OrderedAttributes::default(),
             ),

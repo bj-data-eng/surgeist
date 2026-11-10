@@ -1,7 +1,7 @@
 //! Managed string registration, text insertion and merging, and string disposal.
 
 use super::*;
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
 /// A constant string that one parse creates once and shares between its occurrences.
 #[derive(Clone, Copy)]
@@ -342,7 +342,7 @@ impl SessionStorage {
                     .node_at(parent_index)
                     .ok_or_else(|| latch_registry_row(control))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             )
         {
             let Some(text) = input.take() else {
@@ -404,7 +404,7 @@ impl SessionStorage {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let preceding = match preceding {
             Some(index) => match self.construction.node_at(index).map(|record| record.kind()) {
-                Some(HtmlNodeKind::Text(_)) => Some(index),
+                Some(ConstructionNodeKind::Text(_)) => Some(index),
                 Some(_) => None,
                 None => return Err(latch_registry_row(control)),
             },
@@ -431,7 +431,7 @@ impl SessionStorage {
                             .node_at(0)
                             .ok_or_else(|| latch_registry_row(control))?
                             .kind(),
-                        HtmlNodeKind::Fragment
+                        ConstructionNodeKind::Fragment
                     ) =>
                 {
                     None
@@ -465,7 +465,7 @@ impl SessionStorage {
             payload_write::<Option<usize>>(control, 1)?;
             let node = self.allocate_prepared_owned(
                 control,
-                creation_command(HtmlNodeKind::Text(value)),
+                creation_command(NewRecord::Text(value)),
                 false,
                 0,
                 0,

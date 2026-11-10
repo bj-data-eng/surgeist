@@ -1,7 +1,7 @@
 //! Immediate first-base hooks in the canonical construction effects owner.
 use super::*;
 use crate::{HtmlBaseMissing, HtmlBaseUrlRecord, HtmlParseBaseFacts};
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 #[derive(Clone, Copy)]
 pub(super) enum ResponseDomain {
@@ -57,7 +57,7 @@ std::thread_local! {
 pub(super) fn is_base(
     record: surgeist_html::bounded::construction::HtmlConstructionNode<'_>,
 ) -> bool {
-    let HtmlNodeKind::Element(element) = record.kind() else {
+    let ConstructionNodeKind::Element(element) = record.kind() else {
         return false;
     };
     element.name().local_name().code_units() == [98, 97, 115, 101]
@@ -575,7 +575,7 @@ impl SessionStorage {
 pub(super) mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
-    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+    use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
     pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =
@@ -812,7 +812,7 @@ pub(super) mod tests {
             .expect("retained construction position")
             .kind()
         {
-            HtmlNodeKind::Element(element) => element
+            ConstructionNodeKind::Element(element) => element
                 .attributes()
                 .iter()
                 .map(|a| {
@@ -1562,7 +1562,7 @@ pub(super) mod tests {
             .expect("retained construction position")
             .kind()
         {
-            HtmlNodeKind::Element(element) => element
+            ConstructionNodeKind::Element(element) => element
                 .attributes()
                 .iter()
                 .map(|a| {

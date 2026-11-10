@@ -4,7 +4,7 @@
 //! construction establishes empty File resources and initial Image coordinates;
 //! images-disabled is explicit operation evidence, independent of scripting.
 use super::*;
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
 // A parser-phase specialization: source values are actual managed raw slots.
 // HTML owns the observation/history rules; this owner still qualifies, admits,
@@ -17,7 +17,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -25,7 +25,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (position, attribute) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "src")?
@@ -196,7 +196,7 @@ pub(super) fn append_native_input_value(
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let (_, raw, _) = find_input_state(payloads, c, node).map(|(raw, state)| (node, raw, state))?;
     let internal = textarea_raw(payloads, c, raw)?.code_units();
-    let HtmlNodeKind::Element(element) = records
+    let ConstructionNodeKind::Element(element) = records
         .node_at(node)
         .ok_or(SessionError::ForeignNode)?
         .kind()
@@ -209,7 +209,7 @@ pub(super) fn append_native_input_value(
         surgeist_html::elements::input::HtmlInputValueMode::Default
             | surgeist_html::elements::input::HtmlInputValueMode::DefaultOn
     ) {
-        for attribute in element.attributes().as_slice() {
+        for attribute in element.attributes().iter() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "value")?

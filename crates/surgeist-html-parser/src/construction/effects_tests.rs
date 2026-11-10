@@ -9,8 +9,9 @@ use crate::parser::tokenizer::{
     token::{Event, Token},
 };
 use crate::parser::tree_builder::ConstructionCapability;
+use surgeist_html::bounded::construction::HtmlStoredString;
 use surgeist_html::{
-    construction::{HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode},
     elements::{
         form::HtmlOptionFlags,
         script::{HtmlScriptKind, HtmlScriptResult},
@@ -430,7 +431,7 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     let text = children(&session, &copy);
     assert_eq!(text.len(), 1);
     assert!(
-        matches!(&session.active().unwrap().construction.node_at(text[0]).expect("retained construction position").kind(), HtmlNodeKind::Text(value) if value == &DocumentString::from("AB"))
+        matches!(session.active().unwrap().construction.node_at(text[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units() == DocumentString::from("AB").code_units())
     );
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
@@ -465,31 +466,40 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
     for (original, copy) in originals.iter().zip(&copies) {
         assert_ne!(original, copy);
         let storage = session.active().unwrap();
-        match (
-            &storage
-                .construction
-                .node_at(*original)
-                .expect("retained construction position")
-                .kind(),
-            &storage
-                .construction
-                .node_at(*copy)
-                .expect("retained construction position")
-                .kind(),
-        ) {
-            (HtmlNodeKind::Text(a), HtmlNodeKind::Text(b))
-            | (HtmlNodeKind::Comment(a), HtmlNodeKind::Comment(b)) => {
-                assert_eq!(a, b);
-                assert!(!a.shares_storage_with(b));
+        let first = storage
+            .construction
+            .node_at(*original)
+            .expect("retained construction position");
+        let second = storage
+            .construction
+            .node_at(*copy)
+            .expect("retained construction position");
+        let distinct = |field: HtmlStoredString| {
+            let (a, b) = (
+                first.stored_string(field).unwrap(),
+                second.stored_string(field).unwrap(),
+            );
+            assert_eq!(a, b);
+            assert!(!a.shares_storage_with(b));
+        };
+        match (first.kind(), second.kind()) {
+            (ConstructionNodeKind::Text(_), ConstructionNodeKind::Text(_)) => {
+                distinct(HtmlStoredString::Text)
             }
-            (HtmlNodeKind::ProcessingInstruction(a), HtmlNodeKind::ProcessingInstruction(b)) => {
+            (ConstructionNodeKind::Comment(_), ConstructionNodeKind::Comment(_)) => {
+                distinct(HtmlStoredString::Comment)
+            }
+            (
+                ConstructionNodeKind::ProcessingInstruction(a),
+                ConstructionNodeKind::ProcessingInstruction(b),
+            ) => {
                 assert_eq!(a.target(), b.target());
                 assert_eq!(a.data(), b.data());
-                assert!(!a.data().shares_storage_with(b.data()));
+                distinct(HtmlStoredString::ProcessingInstructionData);
             }
-            (HtmlNodeKind::Element(a), HtmlNodeKind::Element(b)) => {
+            (ConstructionNodeKind::Element(a), ConstructionNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
-                assert_eq!(a.attributes(), b.attributes());
+                assert_eq!(a.attributes().to_ordered(), b.attributes().to_ordered());
                 assert!(
                     !a.name()
                         .local_name()
@@ -625,7 +635,7 @@ fn select_owners_active_and_frozen_facts_are_qualified_and_unavailable_for_wrong
     let mut next = vec![document.root().id()];
     while let Some(id) = next.pop() {
         let node = document.node(&id).unwrap();
-        if let HtmlNodeKind::Element(e) = node.kind()
+        if let surgeist_html::construction::HtmlNodeKind::Element(e) = node.kind()
             && e.name().local_name() == &DocumentString::from("option")
         {
             ids.push(id);
@@ -839,7 +849,7 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
         let child = children(&session, &target);
         assert_eq!(child.len(), 1);
         assert!(
-            matches!(&session.active().unwrap().construction.node_at(child[0]).expect("retained construction position").kind(), HtmlNodeKind::Text(value) if value == &DocumentString::from(expected))
+            matches!(session.active().unwrap().construction.node_at(child[0]).expect("retained construction position").kind(), ConstructionNodeKind::Text(value) if value.code_units() == DocumentString::from(expected).code_units())
         );
     }
     let storage = session.active().unwrap();
@@ -1190,9 +1200,9 @@ fn non_element_clone_fixture(
                 .kind(),
             kind
         ),
-        (HtmlNodeKind::Text(_), 0)
-            | (HtmlNodeKind::Comment(_), 1)
-            | (HtmlNodeKind::ProcessingInstruction(_), 2)
+        (ConstructionNodeKind::Text(_), 0)
+            | (ConstructionNodeKind::Comment(_), 1)
+            | (ConstructionNodeKind::ProcessingInstruction(_), 2)
     ));
     // Make the allocator's two reserve attempts no-growth operations. This is
     // real admitted fixture capacity, not an allocation substitute.
@@ -1299,10 +1309,12 @@ fn non_element_clone_binding_boundary(kind: usize) {
         let installed_bound=(nodes..nodes+installed).all(|node| {
             let storage=session.active().unwrap();
             let bound=|location: StringLocation,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && value.shares_storage_with(stored)));
-            match storage.construction.node_at(node).unwrap().kind() {
-                HtmlNodeKind::Text(value)=>bound(StringLocation::Text(node),value),
-                HtmlNodeKind::Comment(value)=>bound(StringLocation::Comment(node),value),
-                HtmlNodeKind::ProcessingInstruction(value)=>bound(StringLocation::ProcessingInstructionTarget(node),value.target())&&bound(StringLocation::ProcessingInstructionData(node),value.data()),
+            let record=storage.construction.node_at(node).unwrap();
+            let held=|field:HtmlStoredString|record.stored_string(field);
+            match record.kind() {
+                ConstructionNodeKind::Text(_)=>held(HtmlStoredString::Text).is_some_and(|value|bound(StringLocation::Text(node),value)),
+                ConstructionNodeKind::Comment(_)=>held(HtmlStoredString::Comment).is_some_and(|value|bound(StringLocation::Comment(node),value)),
+                ConstructionNodeKind::ProcessingInstruction(_)=>held(HtmlStoredString::ProcessingInstructionTarget).is_some_and(|value|bound(StringLocation::ProcessingInstructionTarget(node),value))&&held(HtmlStoredString::ProcessingInstructionData).is_some_and(|value|bound(StringLocation::ProcessingInstructionData(node),value)),
                 _=>false,
             }
         });
@@ -2157,14 +2169,13 @@ fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
     // computed independently of the lookup under test.
     let expected = |session: &ParserArenaSession| -> Vec<usize> {
         let storage = session.active().unwrap();
-        let HtmlNodeKind::Element(element) =
+        let ConstructionNodeKind::Element(element) =
             storage.construction.node_at(dialog.index).unwrap().kind()
         else {
             panic!("dialog element")
         };
         element
             .attributes()
-            .as_slice()
             .iter()
             .map(|attribute| {
                 storage

@@ -1127,9 +1127,9 @@ impl Dom {
                     if inert {
                         return Err(Error::UnsupportedState { subject: node.id() });
                     }
-                    DomDocumentMetadata::from_parsed(class, *mode, environment, design_mode_enabled)
+                    DomDocumentMetadata::from_parsed(class, mode, environment, design_mode_enabled)
                 } else {
-                    if !inert || *mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
+                    if !inert || mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
                         return Err(Error::UnsupportedState { subject: node.id() });
                     }
                     DomDocumentMetadata::parsed_template_owner(
@@ -1148,7 +1148,7 @@ impl Dom {
                     design_mode_enabled,
                 )
             } else {
-                if !inert || *mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
+                if !inert || mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
                     return Err(Error::UnsupportedState { subject: node.id() });
                 }
                 DomDocumentMetadata::parsed_template_owner(

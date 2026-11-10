@@ -10,7 +10,7 @@ use surgeist_html::bounded::select::{
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::elements::form::{HtmlOptionFlags, HtmlSelectFlags};
-use surgeist_html::{construction::HtmlNodeKind, vocabulary::KnownHtmlElement};
+use surgeist_html::{construction::ConstructionNodeKind, vocabulary::KnownHtmlElement};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
@@ -159,7 +159,7 @@ impl SessionStorage {
                     Some(
                         self.allocate_in_document_owned(
                             c,
-                            HtmlNodeKind::Fragment,
+                            NewRecord::Fragment,
                             false,
                             0,
                             0,
@@ -572,7 +572,7 @@ impl SessionStorage {
         position: usize,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -582,7 +582,6 @@ impl SessionStorage {
         };
         let attribute = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         let selected = exact_ascii(c, Some(attribute.name().local_name()), "selected")?;

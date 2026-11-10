@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
+use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode};
 
 #[test]
 fn table_implied_names_are_real_managed_native_elements_without_lexical_origins() {
@@ -58,7 +58,9 @@ fn table_implied_names_are_real_managed_native_elements_without_lexical_origins(
         .root()
         .children()
         .map(|id| {
-            let HtmlNodeKind::Element(element) = fragment.node(&id).unwrap().kind() else {
+            let surgeist_html::construction::HtmlNodeKind::Element(element) =
+                fragment.node(&id).unwrap().kind()
+            else {
                 panic!("native table element")
             };
             assert!(element.name().prefix().is_none());
@@ -268,7 +270,7 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
                 .node_at(0)
                 .expect("retained construction position")
                 .kind(),
-            HtmlNodeKind::Document(HtmlDocumentMode::Quirks)
+            ConstructionNodeKind::Document(HtmlDocumentMode::Quirks)
         ));
         let stop = c.stop();
         session.release(&mut c).unwrap();

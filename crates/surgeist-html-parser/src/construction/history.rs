@@ -755,7 +755,7 @@ mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
-    use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
+    use surgeist_html::construction::HtmlDocumentMode;
 
     fn limits() -> HtmlParseLimits {
         super::super::tests::limits()
@@ -877,7 +877,8 @@ mod tests {
             assert_eq!(view.source().identity(), source.identity());
             assert!(owner.document().is_none());
             let text = owner.fragment().unwrap().root().children().next().unwrap();
-            let HtmlNodeKind::Text(text) = owner.fragment().unwrap().node(&text).unwrap().kind()
+            let surgeist_html::construction::HtmlNodeKind::Text(text) =
+                owner.fragment().unwrap().node(&text).unwrap().kind()
             else {
                 panic!("native text")
             };

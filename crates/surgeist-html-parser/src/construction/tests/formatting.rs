@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     values::{DocumentString, Namespace},
 };
 
@@ -353,7 +353,7 @@ fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_dis
         .unwrap();
     for node in [&first, &second] {
         let storage = session.active().unwrap();
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(node.index)
             .expect("retained construction position")
@@ -366,7 +366,7 @@ fn formatting_replay_copies_exact_utf16_attributes_and_original_origins_into_dis
             original_pointer
         );
         assert_eq!(element.name().namespace(), &Namespace::html());
-        let attributes = element.attributes().as_slice();
+        let attributes: Vec<_> = element.attributes().iter().collect();
         assert_eq!(attributes[0].name().local_name().code_units(), [122]);
         assert_eq!(attributes[0].name().namespace(), &Namespace::none());
         assert_eq!(

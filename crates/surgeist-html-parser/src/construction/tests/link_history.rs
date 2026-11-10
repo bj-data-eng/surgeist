@@ -1,7 +1,7 @@
 //! Actual canonical link change and clone paths, independent literal expectations.
 use super::*;
 use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
     loop {
@@ -22,7 +22,7 @@ fn flags(
     session: &ParserArenaSession,
     node: &ParserNode,
 ) -> surgeist_html::elements::link::HtmlLinkFlags {
-    let HtmlNodeKind::Element(e) = &session
+    let ConstructionNodeKind::Element(e) = &session
         .active()
         .unwrap()
         .construction
@@ -111,7 +111,7 @@ fn actual_link_disabled_removal_readdition_rel_change_and_clone_use_canonical_fl
     assert!(session.active().unwrap().payloads.values.iter().any(
         |p| matches!(p,RetainedPayload::Link{node:Some(n),parser_document:None}if *n==copy.index)
     ));
-    let HtmlNodeKind::Element(original) = &session
+    let ConstructionNodeKind::Element(original) = &session
         .active()
         .unwrap()
         .construction
@@ -121,7 +121,7 @@ fn actual_link_disabled_removal_readdition_rel_change_and_clone_use_canonical_fl
     else {
         unreachable!()
     };
-    let HtmlNodeKind::Element(cloned) = &session
+    let ConstructionNodeKind::Element(cloned) = &session
         .active()
         .unwrap()
         .construction

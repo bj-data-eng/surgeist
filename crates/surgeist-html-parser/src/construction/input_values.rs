@@ -2,7 +2,7 @@
 
 use super::*;
 #[cfg(test)]
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 use surgeist_html::values::DocumentString;
 
 pub(crate) fn input_tag_state(
@@ -157,14 +157,14 @@ pub(super) fn append_input_content(
     absent_fallback: &[u16],
 ) -> Result<(), SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let HtmlNodeKind::Element(element) = records
+    let ConstructionNodeKind::Element(element) = records
         .node_at(node)
         .ok_or(SessionError::ForeignNode)?
         .kind()
     else {
         return Err(SessionError::InputMetadataUnavailable);
     };
-    for attribute in element.attributes().as_slice() {
+    for attribute in element.attributes().iter() {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), "value")?

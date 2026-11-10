@@ -3,7 +3,7 @@
 use super::clone::same_location;
 use super::*;
 use surgeist_html::{
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     values::{Attribute, OrderedAttributes},
 };
 
@@ -109,9 +109,7 @@ impl SessionStorage {
         position: usize,
     ) -> Result<Option<[usize; 2]>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let attributes = element_record(&self.construction, c, node)?
-            .attributes()
-            .as_slice();
+        let attributes = element_record(&self.construction, c, node)?.attributes();
         let Some(attribute) = attributes.get(position) else {
             return Ok(None);
         };
@@ -251,9 +249,7 @@ impl SessionStorage {
         index: usize,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let attributes = element_record(&self.construction, c, node)?
-            .attributes()
-            .as_slice();
+        let attributes = element_record(&self.construction, c, node)?.attributes();
         let count = attributes.len();
         let Some(last) = count.checked_sub(1) else {
             return Ok(None);
@@ -347,7 +343,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let container = self.element_attribute_container(c, node)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -356,7 +352,7 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         };
         let mut selected = None;
-        for (index, attr) in element.attributes().as_slice().iter().enumerate() {
+        for (index, attr) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?

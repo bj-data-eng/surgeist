@@ -2,7 +2,7 @@
 
 use super::*;
 #[cfg(test)]
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 // Shared exact physical traversal used by form views and output reads.
 pub(super) fn ordinary_view_parent(
@@ -135,7 +135,7 @@ pub(super) fn append_descendant_text(
     let mut next = next_ordinary_view_node(records, control, root, root, None)?;
     while let Some(node) = next {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let HtmlNodeKind::Text(value) = records
+        if let ConstructionNodeKind::Text(value) = records
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
             .kind()

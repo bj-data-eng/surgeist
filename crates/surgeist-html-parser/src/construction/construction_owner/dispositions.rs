@@ -3,11 +3,12 @@
 use super::*;
 use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 use surgeist_html::{
-    bounded::construction::HtmlConstructionCommand,
+    bounded::construction::{
+        HtmlConstructionCommand, HtmlConstructionContent, HtmlConstructionLeaf,
+    },
     construction::{
-        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlElement,
-        HtmlFragment, HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties,
-        HtmlSlotAssignment,
+        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -46,11 +47,10 @@ fn create_element(
     create(
         owner,
         control,
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                html_name(local),
-                OrderedAttributes::default(),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: html_name(local),
+            attributes: OrderedAttributes::default(),
+            link_flags: None,
         },
     )
 }
@@ -84,7 +84,7 @@ fn document_shaped_owner_refusals_report_their_session_error_and_latch_nothing()
         &mut owner,
         &mut control,
         HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Comment(DocumentString::default()),
+            leaf: HtmlConstructionLeaf::Comment(DocumentString::default()),
         },
     );
     let outer = create_element(&mut owner, &mut control, "div");
@@ -173,11 +173,19 @@ fn document_shaped_owner_refusals_report_their_session_error_and_latch_nothing()
 fn an_owner_refusal_of_a_sequenced_request_latches_the_owner_refusal_invariant() {
     let mut control = crate::construction::tests::control();
     let mut owner = ConstructionOwner::new(&mut control).unwrap();
+    let document = create(
+        &mut owner,
+        &mut control,
+        HtmlConstructionCommand::CreateDocument {
+            mode: HtmlDocumentMode::NoQuirks,
+        },
+    );
     let refusal = refused(
         &mut owner,
         &mut control,
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks),
+        HtmlConstructionCommand::ReplaceContent {
+            node: document,
+            content: HtmlConstructionContent::Text(DocumentString::default()),
         },
     );
     let expected = invariant(HtmlParseInvariant::ConstructionOwnerRefusal);

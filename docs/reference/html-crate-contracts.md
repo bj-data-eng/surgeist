@@ -283,6 +283,18 @@ including the locally unowned output for a captured-host attachment. Its
 `shadow_properties() -> Option<HtmlShadowRootProperties>` reads the actual five
 properties stored once with that fragment role. The host's private shadow link
 retains its existing qualified endpoint IDs, without another properties field.
+
+Node content is read through views returned by value. `HtmlNode::kind()` returns
+the output-only `HtmlNodeKind<'a>` (`Document(mode)`, `Fragment`,
+`Element(HtmlElementView<'a>)`, `Text`, `Comment`, `ProcessingInstruction`,
+`Doctype`), whose text payloads share the node's stored strings.
+`HtmlElementView` reports `name()`, `attributes()` and `link_flags()`.
+`HtmlAttributes<'a>` reports `len`, `is_empty`, `get(index)`, `iter`,
+`find(namespace, local_name)` and `to_ordered()`, in producer order.
+`HtmlConstructionNode::kind()` returns `ConstructionNodeKind<'a>`, whose text is
+`BuildStr<'a>` (borrowed code units with `code_units`, `len` and `is_empty`);
+`HtmlConstructionNode::stored_string(HtmlStoredString)` returns the shared string of
+a non-element record for an owner that must keep or prove sharing.
 `HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
 and the target's properties; `host()` and `contents()` return the `Copy` IDs by
 value, and `properties()` copies the same value without allocation. This
@@ -604,7 +616,7 @@ command operands, never mutable arena fields.
 
 | Variant | Payload and result |
 | --- | --- |
-| `Create` | `kind: HtmlNodeKind`; creates a detached generic record and returns its `HtmlBuilderNode`. Document/fragment roots can be created only through root creation; HTML template contents are created and linked atomically with an HTML template element. |
+| `Create` | `leaf: HtmlConstructionLeaf` (`Text`, `Comment`, `ProcessingInstruction` or `Doctype`); creates a detached leaf record and returns its `HtmlBuilderNode`. Elements, Documents and fragments have their own commands, so a leaf cannot name them. |
 | `CreateDocument` | `mode: HtmlDocumentMode`; creates a detached document root and returns its handle. |
 | `CreateFragment` | No payload; creates an unassociated fragment root and returns its handle. |
 | `CreateShadowContents` | `properties: HtmlShadowRootProperties`; creates a fragment explicitly marked as shadow contents, retaining its actual properties once, and returns its handle. This role is owner-controlled, not a caller-supplied validation flag. |
@@ -674,8 +686,8 @@ exactly one (`ParentChildConflict` otherwise). The count lives in the already
 admitted record layout, so it needs no allocation, and a stale count is reset
 before it is read. Failures keep the order of the earlier per-record scan.
 
-Template association creation is owned by `Create`; lookup returns its issued
-contents handle. Cloning a template clones its element through `Create` and
+Template association creation is owned by `CreateElement`; lookup returns its issued
+contents handle. Cloning a template clones its element through `CreateElement` and
 fills that new contents fragment. Moving a whole contents association uses
 `ReassignTemplateContents { template, contents }`, which atomically detaches the
 old owning association or removes the old non-owning reference, then associates
@@ -726,14 +738,13 @@ fallback retain reciprocal contents ownership. Parser stacks and effects use the
 same referenced fragment and remain parser-owned. No new native declarative-shadow
 convenience or DOM implementation is implied.
 
-`HtmlElement::new(QualifiedName, OrderedAttributes) -> Self` keeps link flags
-absent for imported values. `CreateElement { name, attributes, link_flags }`
+`CreateElement { name, attributes, link_flags }`
 accepts the actual owned name, validated ordered attributes and optional producer
 history as one creation input. It validates supplied flags against its existing
 admitted HTML link classification, then forms the private element only at the
 same Ready record commit. Invalid supplied flags retain the exact command and
-inputs. `None` preserves unknown history. The existing `Create { kind }` consumes
-completed checked payloads; it has no competing flag input. Parser initial and
+inputs. `None` preserves unknown history. `Create { leaf }` consumes
+completed checked payloads and creates no element, so it has no flag input. Parser initial and
 clone producers keep their original source qualification before this operation;
 no later SetLinkFlags phase or duplicate name scan is introduced. Raw
 `HtmlProcessingInstruction` payload construction remains exact-value storage;
@@ -1466,7 +1477,7 @@ controller to remain authoritative.
 
 ### Native and parsed values entering semantics
 
-`HtmlDocument`, `HtmlFragment`, `HtmlNodeKind`, names and strings have exactly one
+`HtmlDocument`, `HtmlFragment`, `HtmlNodeKind<'a>`, names and strings have exactly one
 definition in HTML. A parse report lends that same HTML result. Semantics owns
 the public `HtmlConstructionCaptureAdapter`; callers supply external facts,
 while the adapter owns traversal, sharing, capture construction, admission and

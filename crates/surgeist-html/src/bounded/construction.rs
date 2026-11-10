@@ -14,10 +14,10 @@ pub use crate::internal::construction::bounded::attribute_edit::{
 pub use crate::internal::construction::bounded::operations::{
     HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
     HtmlConstructionActionFailure, HtmlConstructionCommand, HtmlConstructionCommit,
-    HtmlConstructionContent, HtmlConstructionGrowth, HtmlConstructionObservation,
-    HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRetirement,
-    HtmlConstructionRetirementAction, HtmlConstructionRetirementDescription,
-    HtmlConstructionStepWork,
+    HtmlConstructionContent, HtmlConstructionGrowth, HtmlConstructionLeaf,
+    HtmlConstructionObservation, HtmlConstructionOperation, HtmlConstructionReadyOperation,
+    HtmlConstructionRetirement, HtmlConstructionRetirementAction,
+    HtmlConstructionRetirementDescription, HtmlConstructionStepWork,
 };
 pub use crate::internal::construction::bounded::text_append::{
     HtmlConstructionTextAppend, HtmlConstructionTextAppendAction,
@@ -31,5 +31,5 @@ pub use crate::internal::construction::bounded::{
     HtmlConstructionInitialization, HtmlConstructionInitializationAction,
     HtmlConstructionInitializationObservation, HtmlConstructionLease, HtmlConstructionNode,
     HtmlConstructionReadyInitialization, HtmlConstructionRecovery, HtmlConstructionRefusal,
-    HtmlConstructionRetired, HtmlConstructionStorage,
+    HtmlConstructionRetired, HtmlConstructionStorage, HtmlStoredString,
 };

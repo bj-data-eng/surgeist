@@ -6,7 +6,7 @@ use associated::HtmlParseHyperlinkUnavailable;
 use surgeist_html::attributes::meta_pragma::HtmlMetaPragmaState as Pragma;
 use surgeist_html::{
     attributes::{HtmlReferrerPolicy, meta_processing::default_document_referrer_policy},
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     values::DocumentString,
 };
 
@@ -508,7 +508,7 @@ impl SessionStorage {
                 .node_at(root)
                 .ok_or(SessionError::ForeignNode)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         )
         .then_some(root))
     }
@@ -837,7 +837,7 @@ impl SessionStorage {
                 }
             }));
         }
-        let HtmlNodeKind::Document(mode) = self
+        let ConstructionNodeKind::Document(mode) = self
             .construction
             .node_at(document)
             .ok_or(SessionError::ForeignNode)?
@@ -845,7 +845,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::NotDocument);
         };
-        let candidate = c.parse_meta_color_scheme(content.code_units(), *mode)?;
+        let candidate = c.parse_meta_color_scheme(content.code_units(), mode)?;
         if let Err(stop) = c.charge(HtmlParseWorkCategory::ProviderCall, 1) {
             // The stop is latched; a refusal here would be a later one.
             let _ = candidate.release(c);
@@ -1278,7 +1278,7 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?;
-        let HtmlNodeKind::Element(element) = record.kind() else {
+        let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(());
         };
         let len = element.attributes().len();
@@ -1300,13 +1300,12 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?;
-        let HtmlNodeKind::Element(element) = record.kind() else {
+        let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(());
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let attribute = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         if attribute.name().namespace().uri().is_some() {

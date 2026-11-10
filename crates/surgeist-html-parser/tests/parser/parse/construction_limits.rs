@@ -268,7 +268,7 @@ fn ordinary_text_depth_exact_and_one_short_are_independent_of_open_elements() {
             let text_id = div.children().next().unwrap();
             assert!(
                 matches!(document.node(&text_id).unwrap().kind(), HtmlNodeKind::Text(text)
-                if text == &DocumentString::from(value))
+                if text == DocumentString::from(value))
             );
         }
         let failed = limit_failure(

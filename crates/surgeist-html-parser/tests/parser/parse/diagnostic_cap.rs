@@ -47,7 +47,7 @@ fn render<'a>(
             HtmlNodeKind::Element(element) => {
                 let name = String::from_utf16_lossy(element.name().local_name().code_units());
                 out.push_str(&format!("{pad}<{name}>\n"));
-                for attribute in element.attributes().as_slice() {
+                for attribute in element.attributes().iter() {
                     out.push_str(&format!("{pad}  @{attribute:?}\n"));
                 }
                 if let Some(contents) = node.template_contents() {

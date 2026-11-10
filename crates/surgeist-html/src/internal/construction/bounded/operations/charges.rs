@@ -63,11 +63,10 @@ fn element(
 ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
     create(
         storage,
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::html(), None, local),
-                OrderedAttributes::default(),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::html(), None, local),
+            attributes: OrderedAttributes::default(),
+            link_flags: None,
         },
     )
 }
@@ -98,7 +97,7 @@ fn contents_of(storage: &HtmlConstructionStorage, template: &HtmlBuilderNode) ->
 
 /// A record's fields as they were, copied by exhaustive destructuring.
 struct RecordSnapshot {
-    kind: HtmlNodeKind,
+    kind: NodeContent,
     document_focused_area_designation: Option<HtmlFocusedAreaDesignation>,
     parent: Option<NodeIx>,
     children: VecDeque<NodeIx>,
@@ -206,13 +205,13 @@ fn assigned(before: &RecordSnapshot, after: &RecordSnapshot) -> Vec<&'static str
     } = after;
     let mut fields = Vec::new();
     match (kind_before, kind_after) {
-        (HtmlNodeKind::Element(before), HtmlNodeKind::Element(after)) => {
-            let HtmlElement {
+        (NodeContent::Element(before), NodeContent::Element(after)) => {
+            let ElementContent {
                 link_flags: flags_before,
                 name: name_before,
                 attributes: attributes_before,
             } = before;
-            let HtmlElement {
+            let ElementContent {
                 link_flags: flags_after,
                 name: name_after,
                 attributes: attributes_after,
@@ -285,7 +284,7 @@ fn depth_cache_changes(before: &Snapshot, after: &Snapshot) -> usize {
 /// The bytes one assignment of the named field copies.
 fn field_size(field: &str) -> usize {
     match field {
-        "kind" => size_of::<HtmlNodeKind>(),
+        "kind" => size_of::<NodeContent>(),
         "kind.element.link_flags" => {
             size_of::<Option<crate::internal::elements::rel::HtmlLinkFlags>>()
         }
@@ -617,29 +616,29 @@ fn reassigning_over_a_shadow_reference_assigns_the_new_owner_and_the_contents() 
 #[test]
 fn replacing_text_like_content_assigns_the_kind() {
     // Each replacement differs in length, so the units in the usage move too.
-    let replacements: [(HtmlNodeKind, HtmlConstructionContent); 4] = [
+    let replacements: [(HtmlConstructionLeaf, HtmlConstructionContent); 4] = [
         (
-            HtmlNodeKind::Text("a".into()),
+            HtmlConstructionLeaf::Text("a".into()),
             HtmlConstructionContent::Text("bcd".into()),
         ),
         (
-            HtmlNodeKind::Comment("a".into()),
+            HtmlConstructionLeaf::Comment("a".into()),
             HtmlConstructionContent::Comment("bcd".into()),
         ),
         (
-            HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction::new("t", "a")),
+            HtmlConstructionLeaf::ProcessingInstruction(HtmlProcessingInstruction::new("t", "a")),
             HtmlConstructionContent::ProcessingInstruction(HtmlProcessingInstruction::new(
                 "t", "bc",
             )),
         ),
         (
-            HtmlNodeKind::Doctype(HtmlDoctype::new("a", None, None)),
+            HtmlConstructionLeaf::Doctype(HtmlDoctype::new("a", None, None)),
             HtmlConstructionContent::Doctype(HtmlDoctype::new("bcd", None, None)),
         ),
     ];
     for (kind, content) in replacements {
         let label = format!("ReplaceContent over {kind:?}");
-        let (storage, node) = create(begin(), HtmlConstructionCommand::Create { kind });
+        let (storage, node) = create(begin(), HtmlConstructionCommand::Create { leaf: kind });
         assert_assigned(
             &label,
             storage,
@@ -706,11 +705,10 @@ fn attributes_of(pairs: &[(&str, &str)]) -> OrderedAttributes {
 fn replacing_attributes_assigns_the_collection() {
     let (storage, element) = create(
         begin(),
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                name(Namespace::html(), "div"),
-                OrderedAttributes::default(),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: name(Namespace::html(), "div"),
+            attributes: OrderedAttributes::default(),
+            link_flags: None,
         },
     );
     assert_assigned(
@@ -732,11 +730,10 @@ fn replacing_attributes_with_equal_values_still_assigns_the_collection() {
     // it leaves is the one it found.
     let (storage, element) = create(
         begin(),
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                name(Namespace::html(), "div"),
-                attributes_of(&[("id", "x")]),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: name(Namespace::html(), "div"),
+            attributes: attributes_of(&[("id", "x")]),
+            link_flags: None,
         },
     );
     assert_assigned(
@@ -791,19 +788,17 @@ fn setting_link_flags_assigns_the_link_history() {
 
 #[test]
 fn creating_records_appends_them_and_counts_their_depths() {
-    let command = HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Element(HtmlElement::new(
-            name(Namespace::html(), "p"),
-            OrderedAttributes::default(),
-        )),
+    let command = HtmlConstructionCommand::CreateElement {
+        name: name(Namespace::html(), "p"),
+        attributes: OrderedAttributes::default(),
+        link_flags: None,
     };
     assert_created("Create of an element", begin(), command, 1);
     // A template creates its contents record too.
-    let command = HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Element(HtmlElement::new(
-            name(Namespace::html(), "template"),
-            OrderedAttributes::default(),
-        )),
+    let command = HtmlConstructionCommand::CreateElement {
+        name: name(Namespace::html(), "template"),
+        attributes: OrderedAttributes::default(),
+        link_flags: None,
     };
     assert_created("Create of a template", begin(), command, 2);
 }

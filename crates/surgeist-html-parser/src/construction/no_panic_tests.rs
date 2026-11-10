@@ -7,7 +7,7 @@ use super::effects::tests::{graph, named, request};
 use super::tests::{body_lexical_value, control, fresh_script_owner, lexical_kind, storage_zero};
 use super::*;
 use crate::parser::control::HtmlParseInvariant;
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 fn registry_row() -> HtmlParseStop {
     HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow)
@@ -264,7 +264,12 @@ fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attribut
 fn pi_node(storage: &SessionStorage) -> usize {
     (0..)
         .map_while(|position| storage.construction.node_at(position))
-        .find(|record| matches!(record.kind(), HtmlNodeKind::ProcessingInstruction(_)))
+        .find(|record| {
+            matches!(
+                record.kind(),
+                ConstructionNodeKind::ProcessingInstruction(_)
+            )
+        })
         .expect("processing instruction record")
         .position()
 }

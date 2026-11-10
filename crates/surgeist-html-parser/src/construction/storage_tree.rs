@@ -1,7 +1,7 @@
 //! Tree navigation over the arena: containers, ordinary roots, connectivity and effect walks.
 
 use super::*;
-use surgeist_html::construction::{HtmlFragmentOwner, HtmlNodeKind};
+use surgeist_html::construction::{ConstructionNodeKind, HtmlFragmentOwner};
 
 impl SessionStorage {
     #[cfg(test)]
@@ -50,7 +50,9 @@ impl SessionStorage {
             .ok_or(SessionError::ForeignNode)?
             .kind()
         {
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_) => Ok(()),
+            ConstructionNodeKind::Document(_)
+            | ConstructionNodeKind::Fragment
+            | ConstructionNodeKind::Element(_) => Ok(()),
             _ => Err(SessionError::NotContainer),
         }
     }
@@ -158,7 +160,7 @@ impl SessionStorage {
     ) -> Result<bool, SessionError> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         let record = storage.node_at(node).ok_or(SessionError::ForeignNode)?;
-        let HtmlNodeKind::Element(element) = record.kind() else {
+        let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(false);
         };
         Ok(exact_ascii(
@@ -243,7 +245,7 @@ impl SessionStorage {
                 .node_at(root)
                 .ok_or(SessionError::ForeignNode)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ))
     }
 
@@ -263,7 +265,7 @@ impl SessionStorage {
                     .node_at(root)
                     .ok_or_else(|| latch_registry_row(control))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             ) {
                 return Ok(true);
             }

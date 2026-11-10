@@ -1,9 +1,9 @@
 use surgeist_html::{
     construction::HtmlConstructionResult,
     construction::{
-        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlElement,
-        HtmlFragment, HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
-        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+        HtmlBuilderNode, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+        HtmlFragmentBuilder, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind, HtmlShadowRootMode,
+        HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -734,8 +734,10 @@ fn publish(
     }
 }
 fn create_element(local: &str) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
-    surgeist_html::bounded::construction::HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Element(HtmlElement::new(name(local), OrderedAttributes::default())),
+    surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
+        name: name(local),
+        attributes: OrderedAttributes::default(),
+        link_flags: None,
     }
 }
 #[test]

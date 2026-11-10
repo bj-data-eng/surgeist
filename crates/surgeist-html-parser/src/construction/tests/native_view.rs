@@ -4,8 +4,10 @@
 
 use super::*;
 use surgeist_html::{
+    bounded::construction::{HtmlConstructionNode, HtmlStoredString},
     construction::{
-        HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind, HtmlShadowRootProperties,
+        ConstructionNodeKind, HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId,
+        HtmlShadowRootProperties,
     },
     values::{Attribute, DocumentString, QualifiedName},
 };
@@ -130,36 +132,44 @@ impl<'a> NativeView<'a> {
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
             HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<HtmlNodeKind>() as u64,
+            HtmlConstructionNode::CONTENT_BYTES as u64,
         )?;
         self.control.charge(
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<NativeKind>() as u64,
         )?;
-        Ok(
-            match &self
-                .storage
-                .construction
-                .node_at(index)
-                .ok_or_else(SessionError::registry_row)?
-                .kind()
-            {
-                HtmlNodeKind::Document(mode) => NativeKind::Document(*mode),
-                HtmlNodeKind::Fragment => NativeKind::Fragment,
-                HtmlNodeKind::Element(element) => NativeKind::Element(self.name(element.name())),
-                HtmlNodeKind::Text(text) => NativeKind::Text(self.string(text)),
-                HtmlNodeKind::Comment(text) => NativeKind::Comment(self.string(text)),
-                HtmlNodeKind::ProcessingInstruction(pi) => NativeKind::ProcessingInstruction {
-                    target: self.string(pi.target()),
-                    data: self.string(pi.data()),
-                },
-                HtmlNodeKind::Doctype(doctype) => NativeKind::Doctype {
-                    name: self.string(doctype.name()),
-                    public_id: doctype.public_id().map(|s| self.string(s)),
-                    system_id: doctype.system_id().map(|s| self.string(s)),
-                },
+        let record = self
+            .storage
+            .construction
+            .node_at(index)
+            .ok_or_else(SessionError::registry_row)?;
+        let held = |field: HtmlStoredString| record.stored_string(field);
+        let missing = SessionError::registry_row;
+        Ok(match record.kind() {
+            ConstructionNodeKind::Document(mode) => NativeKind::Document(mode),
+            ConstructionNodeKind::Fragment => NativeKind::Fragment,
+            ConstructionNodeKind::Element(element) => {
+                NativeKind::Element(self.name(element.name()))
+            }
+            ConstructionNodeKind::Text(_) => {
+                NativeKind::Text(self.string(held(HtmlStoredString::Text).ok_or_else(missing)?))
+            }
+            ConstructionNodeKind::Comment(_) => NativeKind::Comment(
+                self.string(held(HtmlStoredString::Comment).ok_or_else(missing)?),
+            ),
+            ConstructionNodeKind::ProcessingInstruction(_) => NativeKind::ProcessingInstruction {
+                target: self.string(
+                    held(HtmlStoredString::ProcessingInstructionTarget).ok_or_else(missing)?,
+                ),
+                data: self
+                    .string(held(HtmlStoredString::ProcessingInstructionData).ok_or_else(missing)?),
             },
-        )
+            ConstructionNodeKind::Doctype(_) => NativeKind::Doctype {
+                name: self.string(held(HtmlStoredString::DoctypeName).ok_or_else(missing)?),
+                public_id: held(HtmlStoredString::DoctypePublicId).map(|s| self.string(s)),
+                system_id: held(HtmlStoredString::DoctypeSystemId).map(|s| self.string(s)),
+            },
+        })
     }
     #[cfg(test)]
     pub(crate) fn unit(
@@ -185,7 +195,7 @@ impl<'a> NativeView<'a> {
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.control.charge(
             HtmlParseWorkCategory::InspectByte,
-            mem::size_of::<HtmlNodeKind>() as u64,
+            HtmlConstructionNode::CONTENT_BYTES as u64,
         )?;
         match &self
             .storage
@@ -194,7 +204,7 @@ impl<'a> NativeView<'a> {
             .ok_or_else(SessionError::registry_row)?
             .kind()
         {
-            HtmlNodeKind::Element(element) => Ok(element.attributes().len()),
+            ConstructionNodeKind::Element(element) => Ok(element.attributes().len()),
             _ => Err(SessionError::WrongToken),
         }
     }
@@ -206,7 +216,7 @@ impl<'a> NativeView<'a> {
     ) -> Result<Option<NativeAttribute<'a>>, SessionError> {
         let index = self.storage.index(self.control, node)?;
         self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .storage
             .construction
             .node_at(index)
@@ -227,7 +237,7 @@ impl<'a> NativeView<'a> {
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<NativeAttribute>() as u64,
         )?;
-        let attribute = &element.attributes().as_slice()[position];
+        let attribute = &element.attributes().get(position).unwrap();
         Ok(Some(NativeAttribute {
             name: self.name(attribute.name()),
             value: self.string(attribute.value()),

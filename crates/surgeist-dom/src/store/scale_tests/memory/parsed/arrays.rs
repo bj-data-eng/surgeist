@@ -50,7 +50,8 @@ pub(super) fn report(
         let mut occurrences = 0;
         for id in report_ids {
             if let HtmlNodeKind::Element(element) = document.node(id).unwrap().kind() {
-                let bank = element.attributes().shared_attributes();
+                let owned = element.attributes().to_ordered();
+                let bank = owned.shared_attributes();
                 occurrences += bank.len();
                 html.record(
                     Arc::as_ptr(bank) as usize,

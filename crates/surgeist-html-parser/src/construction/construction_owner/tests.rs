@@ -3,9 +3,9 @@ use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 use surgeist_html::{
     bounded::construction::{
         HtmlConstructionActionDescription, HtmlConstructionAttributeEditMode,
-        HtmlConstructionCommand,
+        HtmlConstructionCommand, HtmlConstructionLeaf,
     },
-    construction::{HtmlBuilderNode, HtmlConstructionResource, HtmlElement, HtmlNodeKind},
+    construction::{HtmlBuilderNode, HtmlConstructionResource},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 #[test]
@@ -98,7 +98,7 @@ fn insertion_pair(
         .apply(
             &mut control,
             HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Comment(DocumentString::default()),
+                leaf: HtmlConstructionLeaf::Comment(DocumentString::default()),
             },
             &[(HtmlParseResource::ManagedNodes, 1)],
         )
@@ -210,7 +210,7 @@ fn parser_insertion_pair(
     let child = session
         .allocate_element(
             &mut control,
-            HtmlElement::new(
+            PreexistingElement::new(
                 QualifiedName::new(Namespace::none(), None, "x"),
                 OrderedAttributes::default(),
             ),
@@ -342,11 +342,10 @@ fn with_element() -> (ParseControl, ConstructionOwner) {
     owner
         .apply(
             &mut control,
-            HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Element(HtmlElement::new(
-                    QualifiedName::new(Namespace::none(), None, "x"),
-                    OrderedAttributes::default(),
-                )),
+            HtmlConstructionCommand::CreateElement {
+                name: QualifiedName::new(Namespace::none(), None, "x"),
+                attributes: OrderedAttributes::default(),
+                link_flags: None,
             },
             &[(HtmlParseResource::ManagedNodes, 1)],
         )
@@ -602,11 +601,10 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
     other
         .apply(
             &mut control,
-            HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Element(HtmlElement::new(
-                    QualifiedName::new(Namespace::none(), None, "y"),
-                    OrderedAttributes::default(),
-                )),
+            HtmlConstructionCommand::CreateElement {
+                name: QualifiedName::new(Namespace::none(), None, "y"),
+                attributes: OrderedAttributes::default(),
+                link_flags: None,
             },
             &[(HtmlParseResource::ManagedNodes, 1)],
         )

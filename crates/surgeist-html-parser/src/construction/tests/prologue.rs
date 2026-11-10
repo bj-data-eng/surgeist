@@ -1,7 +1,7 @@
 use super::*;
 use surgeist_html::{
     construction::{
-        HtmlAuthoredProcessingInstruction, HtmlDocumentMode, HtmlNodeKind,
+        ConstructionNodeKind, HtmlAuthoredProcessingInstruction, HtmlDocumentMode,
         HtmlProcessingInstructionError,
     },
     values::{DocumentString, Namespace},
@@ -66,11 +66,16 @@ fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() 
     let doc = output.document().unwrap();
     assert_eq!(doc.mode(), HtmlDocumentMode::LimitedQuirks);
     let children = doc.root().children().collect::<Vec<_>>();
-    let HtmlNodeKind::Comment(value) = doc.node(&children[0]).unwrap().kind() else {
+    let surgeist_html::construction::HtmlNodeKind::Comment(value) =
+        doc.node(&children[0]).unwrap().kind()
+    else {
         panic!("comment");
     };
     assert_eq!(value.code_units(), [0x61, 0xd800]);
-    let HtmlNodeKind::ProcessingInstruction(value) = doc.node(&children[1]).unwrap().kind() else {
+    drop(value);
+    let surgeist_html::construction::HtmlNodeKind::ProcessingInstruction(value) =
+        doc.node(&children[1]).unwrap().kind()
+    else {
         panic!("PI");
     };
     assert_eq!(value.target().code_units(), [0x78]);
@@ -79,12 +84,16 @@ fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() 
         HtmlAuthoredProcessingInstruction::try_from(value.clone()),
         Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark)
     );
-    let HtmlNodeKind::Doctype(value) = doc.node(&children[2]).unwrap().kind() else {
+    drop(value);
+    let surgeist_html::construction::HtmlNodeKind::Doctype(value) =
+        doc.node(&children[2]).unwrap().kind()
+    else {
         panic!("doctype");
     };
     assert_eq!(value.name().code_units(), [0x68]);
     assert_eq!(value.public_id().unwrap().code_units(), [0x70]);
     assert_eq!(value.system_id().unwrap().code_units(), [0x73]);
+    drop(value);
     output.release(&mut c).unwrap();
     storage_zero(&c);
 }
@@ -116,7 +125,7 @@ fn missing_doctype_fields_lower_to_managed_empty_strings_and_detached_nodes_surv
     let detached = session.allocate_doctype(&mut c, &mut Some(value)).unwrap();
     assert!(!session.document_accepts_doctype(&mut c).unwrap());
     assert!(session.parent(&mut c, &detached).unwrap().is_none());
-    let HtmlNodeKind::Doctype(value) = &session
+    let ConstructionNodeKind::Doctype(value) = &session
         .active()
         .unwrap()
         .construction
@@ -167,7 +176,7 @@ fn source_implied_html_owns_literal_backing_and_real_empty_attributes_at_exact_u
             );
         } else {
             let node = result.unwrap();
-            let HtmlNodeKind::Element(value) = &session
+            let ConstructionNodeKind::Element(value) = &session
                 .active()
                 .unwrap()
                 .construction

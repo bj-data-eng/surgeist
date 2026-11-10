@@ -1,6 +1,6 @@
 //! Reached A/Area URL and wholly inactive Img updates in the original owner.
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 use surgeist_html::{
     elements::{
         image::{
@@ -389,7 +389,7 @@ impl SessionStorage {
             return Ok(());
         }
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -412,7 +412,7 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -422,7 +422,6 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

@@ -2,8 +2,6 @@
 use crate::{Lane, ParseKind, UnicodeCase, UnicodeSource, UnicodeTarget, error};
 use std::collections::HashSet;
 use surgeist_fuzz::*;
-#[cfg(test)]
-use surgeist_html::construction::HtmlProcessingInstruction;
 use surgeist_html::{
     construction::{
         ForeignHtmlResult, HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeId, HtmlNodeKind,
@@ -189,10 +187,53 @@ pub(crate) fn context_for(
         )
     })
 }
+/// An owned snapshot of an element's name, attributes and link history.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeElement {
+    name: QualifiedName,
+    attributes: OrderedAttributes,
+    link_flags: Option<surgeist_html::elements::link::HtmlLinkFlags>,
+}
+impl NativeElement {
+    pub(crate) fn name(&self) -> &QualifiedName {
+        &self.name
+    }
+    pub(crate) fn attributes(&self) -> &OrderedAttributes {
+        &self.attributes
+    }
+}
+/// An owned snapshot of a published node's content.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum NativeKind {
+    Document(HtmlDocumentMode),
+    Fragment,
+    Element(NativeElement),
+    Text(DocumentString),
+    Comment(DocumentString),
+    ProcessingInstruction(surgeist_html::construction::HtmlProcessingInstruction),
+    Doctype(surgeist_html::construction::HtmlDoctype),
+}
+impl From<HtmlNodeKind<'_>> for NativeKind {
+    fn from(kind: HtmlNodeKind<'_>) -> Self {
+        match kind {
+            HtmlNodeKind::Document(mode) => Self::Document(mode),
+            HtmlNodeKind::Fragment => Self::Fragment,
+            HtmlNodeKind::Element(element) => Self::Element(NativeElement {
+                name: element.name().clone(),
+                attributes: element.attributes().to_ordered(),
+                link_flags: element.link_flags(),
+            }),
+            HtmlNodeKind::Text(value) => Self::Text(value),
+            HtmlNodeKind::Comment(value) => Self::Comment(value),
+            HtmlNodeKind::ProcessingInstruction(value) => Self::ProcessingInstruction(value),
+            HtmlNodeKind::Doctype(value) => Self::Doctype(value),
+        }
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeNode {
     pub(crate) id: HtmlNodeId,
-    pub(crate) kind: HtmlNodeKind,
+    pub(crate) kind: NativeKind,
     pub(crate) parent: Option<HtmlNodeId>,
     pub(crate) children: Vec<HtmlNodeId>,
     pub(crate) template: Option<HtmlNodeId>,
@@ -257,7 +298,7 @@ pub(crate) fn native(
         }
         out.push(NativeNode {
             id,
-            kind: n.kind().clone(),
+            kind: n.kind().into(),
             parent,
             children,
             template,
@@ -410,22 +451,18 @@ fn field_units(n: HtmlNode<'_>, field: HtmlParseField) -> Option<usize> {
         (HtmlNodeKind::Element(e), HtmlParseField::Namespace) => {
             Some(e.name().namespace().uri().map_or(0, DocumentString::len))
         }
-        (HtmlNodeKind::Element(e), HtmlParseField::AttributeName(i)) => e
-            .attributes()
-            .as_slice()
-            .get(i)
-            .map(|a| a.name().local_name().len()),
+        (HtmlNodeKind::Element(e), HtmlParseField::AttributeName(i)) => {
+            e.attributes().get(i).map(|a| a.name().local_name().len())
+        }
         (HtmlNodeKind::Element(e), HtmlParseField::AttributeValue(i)) => {
-            e.attributes().as_slice().get(i).map(|a| a.value().len())
+            e.attributes().get(i).map(|a| a.value().len())
         }
         (HtmlNodeKind::Element(e), HtmlParseField::AttributeNamespace(i)) => e
             .attributes()
-            .as_slice()
             .get(i)
             .map(|a| a.name().namespace().uri().map_or(0, DocumentString::len)),
         (HtmlNodeKind::Element(e), HtmlParseField::AttributePrefix(i)) => e
             .attributes()
-            .as_slice()
             .get(i)
             .map(|a| a.name().prefix().map_or(0, DocumentString::len)),
         // PI attributes are exposed by metadata rather than this native record.
@@ -557,28 +594,28 @@ pub(crate) fn same_source(
 }
 fn check_literal(id: u8, nodes: &[NativeNode]) -> bool {
     let elements = |name: &str| {
-        nodes.iter().filter(move|n|matches!(&n.kind,HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from(name))).collect::<Vec<_>>()
+        nodes.iter().filter(move|n|matches!(&n.kind,NativeKind::Element(e) if e.name().local_name()==&DocumentString::from(name))).collect::<Vec<_>>()
     };
     let text = |n: &NativeNode, expected: &[u16]| {
         n.children.len() == 1
             && nodes.iter().any(|child| {
                 n.children.contains(&child.id)
-                    && matches!(&child.kind,HtmlNodeKind::Text(t) if t.code_units()==expected)
+                    && matches!(&child.kind,NativeKind::Text(t) if t.code_units()==expected)
             })
     };
     let p = elements("p");
     match id {
-        0=>p.len()==1 && text(p[0],&[65,38,66,10,67]) && matches!(&p[0].kind,HtmlNodeKind::Element(e) if e.attributes().as_slice()==[Attribute::new(QualifiedName::new(Namespace::none(),None,"id"),"x")]),
-        1=>p.len()==1 && text(p[0],&[65,0xd800,10,66]) && nodes.iter().any(|n|matches!(&n.kind,HtmlNodeKind::Text(t) if t.code_units()==[0xfeff])),
+        0=>p.len()==1 && text(p[0],&[65,38,66,10,67]) && matches!(&p[0].kind,NativeKind::Element(e) if e.attributes().as_slice()==[Attribute::new(QualifiedName::new(Namespace::none(),None,"id"),"x")]),
+        1=>p.len()==1 && text(p[0],&[65,0xd800,10,66]) && nodes.iter().any(|n|matches!(&n.kind,NativeKind::Text(t) if t.code_units()==[0xfeff])),
         2=>p.len()==1 && text(p[0],&[65,66]),
-        3=>{let a=elements("a");a.len()==1 && matches!(&a[0].kind,HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::svg() && e.attributes().as_slice()==[
+        3=>{let a=elements("a");a.len()==1 && matches!(&a[0].kind,NativeKind::Element(e) if e.name().namespace()==&Namespace::svg() && e.attributes().as_slice()==[
             Attribute::new(QualifiedName::new(Namespace::from_uri("http://www.w3.org/1999/xlink"),Some("xlink".into()),"href"),"x"),
             Attribute::new(QualifiedName::new(Namespace::none(),None,"viewBox"),"0 0 1 1")])},
         4=>{let t=elements("template");t.len()==1 && p.len()==2 && p.iter().any(|n|text(n,&[84]) && n.parent==t[0].template) && p.iter().any(|n|text(n,&[90]) && n.parent!=t[0].template)},
         // HTML 877d 13.2.5.73-76: both `<?target data?>` and `<?target data>` yield target "target" and data "data".
-        5|8=>p.len()==1 && text(p[0],&[80]) && nodes.iter().filter(|n|matches!(&n.kind,HtmlNodeKind::ProcessingInstruction(i) if i.target()==&DocumentString::from("target") && i.data()==&DocumentString::from("data"))).count()==1,
+        5|8=>p.len()==1 && text(p[0],&[80]) && nodes.iter().filter(|n|matches!(&n.kind,NativeKind::ProcessingInstruction(i) if i.target()==&DocumentString::from("target") && i.data()==&DocumentString::from("data"))).count()==1,
         6=>p.len()==2 && text(p[0],&[65]) && text(p[1],&[66]) && p[0].parent==p[1].parent,
-        7=>{let t=elements("table");let x=nodes.iter().position(|n|matches!(&n.kind,HtmlNodeKind::Text(s) if s.code_units()==[88]));t.len()==1 && x.is_some_and(|i|nodes[i].parent==t[0].parent && i<nodes.iter().position(|n|n.id==t[0].id).expect("existing table"))},
+        7=>{let t=elements("table");let x=nodes.iter().position(|n|matches!(&n.kind,NativeKind::Text(s) if s.code_units()==[88]));t.len()==1 && x.is_some_and(|i|nodes[i].parent==t[0].parent && i<nodes.iter().position(|n|n.id==t[0].id).expect("existing table"))},
         _=>false,
     }
 }

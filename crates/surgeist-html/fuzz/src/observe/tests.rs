@@ -1,5 +1,6 @@
 //! Oracle checks for the literal observation, using handwritten spec-derived sources.
 use super::*;
+use surgeist_html::construction::HtmlProcessingInstruction;
 
 fn parsed_nodes(source: &str) -> Vec<NativeNode> {
     let limits = crate::codec::limits(crate::codec::CAPS).expect("documented envelope");
@@ -16,8 +17,8 @@ fn with_instruction_data(nodes: &[NativeNode], data: &str) -> Vec<NativeNode> {
         .iter()
         .cloned()
         .map(|mut node| {
-            if let HtmlNodeKind::ProcessingInstruction(instruction) = &node.kind {
-                node.kind = HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction::new(
+            if let NativeKind::ProcessingInstruction(instruction) = &node.kind {
+                node.kind = NativeKind::ProcessingInstruction(HtmlProcessingInstruction::new(
                     instruction.target().clone(),
                     data,
                 ));
