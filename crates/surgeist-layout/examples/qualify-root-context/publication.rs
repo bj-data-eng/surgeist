@@ -388,6 +388,8 @@ fn finish(
     current.inputs(
         root,
         &mut Inventory {
+            declaration_path: RelativePath::new(input.declaration_path())?,
+            mode,
             fixtures: Vec::new(),
             cases: Vec::new(),
             global_inputs: Vec::new(),
@@ -1310,7 +1312,7 @@ fn terminal_authority(
         edition: edition.name().to_owned(),
         declaration: authority::PathDigest {
             path: "corpus.toml".to_owned(),
-            sha256: Sha256Digest::from_bytes(input.bytes).as_str().to_owned(),
+            sha256: Sha256Digest::from_bytes(input.bytes()).as_str().to_owned(),
         },
         records,
         browser_settings: authority::BrowserSettingsWitness::from_official_json(

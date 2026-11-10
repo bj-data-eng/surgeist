@@ -71,6 +71,36 @@ pub(super) enum QualificationMode {
     CheckPublishedMatching(&'static str),
 }
 
+impl Serialize for QualificationMode {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        let name = match self {
+            Self::Regular => "regular",
+            Self::StylesheetCustody => "stylesheet-custody",
+            Self::FontCustody => "font-custody",
+            Self::NumericDiagnostics => "numeric-diagnostics",
+            Self::ElementScrollSizeDiagnostics => "element-scroll-size-diagnostics",
+            Self::MeasuredLeafDiagnostics => "measured-leaf-diagnostics",
+            Self::FlexContentTextDiagnostics => "flex-content-text-diagnostics",
+            Self::PreparedRangeCapture => "prepared-range-capture",
+            Self::FlexCompositionCapture => "flex-composition-capture",
+            Self::OriginalSubgridBodyCapture => "original-subgrid-body-capture",
+            Self::PreparedAtomicPercentageCapture => "prepared-atomic-percentage-capture",
+            Self::HorizontalBrFontBandCapture => "horizontal-br-font-band-capture",
+            Self::VerticalBrFontBandCapture => "vertical-br-font-band-capture",
+            Self::EmptyLineBrFontBandCapture => "empty-line-br-font-band-capture",
+            _ => {
+                return Err(serde::ser::Error::custom(
+                    "durable mode is not a focused profile",
+                ));
+            }
+        };
+        serializer.serialize_str(name)
+    }
+}
+
 impl QualificationMode {
     fn derives_terminal(self) -> bool {
         matches!(
@@ -475,6 +505,8 @@ struct ExpectedCase {
 }
 
 struct Inventory {
+    declaration_path: RelativePath,
+    mode: QualificationMode,
     fixtures: Vec<FixtureSpec>,
     cases: Vec<ExpectedCase>,
     global_inputs: Vec<RelativePath>,
@@ -501,23 +533,168 @@ impl Declaration {
     }
 }
 
-// The bytes and their parsed source records travel together. A focused run may
-// select records from this declaration, while retaining its complete source bytes.
+const FOCUSED_DECLARATION: &str = "focused-declaration.json";
+
+// Retained catalogue bytes and fresh focused identities have separate owners.
 struct DeclarationInput<'a> {
-    bytes: &'a [u8],
+    identity: DeclarationIdentity<'a>,
     declaration: Declaration,
+}
+
+enum DeclarationIdentity<'a> {
+    Catalogue(&'a [u8]),
+    Focused(FocusedInput),
+}
+
+struct FocusedInput {
+    requested_source: RelativePath,
+    mode: QualificationMode,
+    bytes: Vec<u8>,
+}
+
+#[derive(Serialize)]
+struct FocusedProjection<'a> {
+    schema_version: u8,
+    requested_source: &'a RelativePath,
+    mode: QualificationMode,
+    records: &'a [Record],
+}
+
+fn focused_bytes(
+    source: &RelativePath,
+    mode: QualificationMode,
+    records: &[Record],
+) -> Result<Vec<u8>> {
+    let mut bytes = serde_json::to_vec(&FocusedProjection {
+        schema_version: 1,
+        requested_source: source,
+        mode,
+        records,
+    })?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 impl<'a> DeclarationInput<'a> {
     fn parse(bytes: &'a [u8]) -> Result<Self> {
         let declaration = Declaration::parse(bytes)?;
         declaration.expected()?;
-        Ok(Self { bytes, declaration })
+        Ok(Self {
+            identity: DeclarationIdentity::Catalogue(bytes),
+            declaration,
+        })
+    }
+
+    fn focused(bytes: &[u8], source: &str, mode: QualificationMode) -> Result<Self> {
+        // Validate every authored entry before any selection or normalization.
+        let mut declaration = Declaration::parse(bytes)?;
+        declaration.expected()?;
+        // JSON must preserve every typed value; nonfinite TOML numbers would
+        // otherwise silently become null in the derived input.
+        for record in &declaration.records {
+            if let ExpectedDisposition::Generated {
+                metadata:
+                    ExpectedMetadata::AbsoluteLocal {
+                        inline_offset,
+                        block_offset,
+                        root_size,
+                        ..
+                    },
+            } = &record.expected
+            {
+                let size_is_finite = match root_size {
+                    None => true,
+                    Some(ExpectedRootSize::Fixed { width, height }) => {
+                        width.is_finite() && height.is_finite()
+                    }
+                    Some(ExpectedRootSize::FlexPair {
+                        item_width,
+                        item_height,
+                    }) => item_width.is_finite() && item_height.is_finite(),
+                };
+                if !inline_offset.is_finite()
+                    || block_offset.is_some_and(|value| !value.is_finite())
+                    || !size_is_finite
+                {
+                    return Err(format!(
+                        "focused declaration requires finite metadata: {}",
+                        record.source.as_str()
+                    )
+                    .into());
+                }
+            }
+        }
+        let mode = effective_mode(mode, Some(source));
+        if matches!(
+            mode,
+            QualificationMode::Publish
+                | QualificationMode::CheckPublished
+                | QualificationMode::PublishExact(_)
+                | QualificationMode::CheckPublishedExact(_)
+                | QualificationMode::DeriveExact(_)
+                | QualificationMode::DeriveSpecialized(_)
+                | QualificationMode::DeriveMatching(_)
+                | QualificationMode::PublishSpecialized(_)
+                | QualificationMode::CheckPublishedSpecialized(_)
+                | QualificationMode::PublishMatching(_)
+                | QualificationMode::CheckPublishedMatching(_)
+        ) {
+            return Err("focused declarations require a focused qualification mode".into());
+        }
+        select_records(&mut declaration, Some(source), mode)?;
+        declaration.expected()?;
+        let requested_source = RelativePath::new(source)?;
+        let bytes = focused_bytes(&requested_source, mode, &declaration.records)?;
+        Ok(Self {
+            identity: DeclarationIdentity::Focused(FocusedInput {
+                requested_source,
+                mode,
+                bytes,
+            }),
+            declaration,
+        })
+    }
+
+    fn bytes(&self) -> &[u8] {
+        match &self.identity {
+            DeclarationIdentity::Catalogue(bytes) => bytes,
+            DeclarationIdentity::Focused(input) => &input.bytes,
+        }
+    }
+
+    fn declaration_path(&self) -> &'static str {
+        match &self.identity {
+            DeclarationIdentity::Catalogue(_) => "corpus.toml",
+            DeclarationIdentity::Focused(_) => FOCUSED_DECLARATION,
+        }
+    }
+
+    fn execution_mode(&self, catalogue_mode: QualificationMode) -> QualificationMode {
+        match &self.identity {
+            DeclarationIdentity::Catalogue(_) => catalogue_mode,
+            DeclarationIdentity::Focused(input) => input.mode,
+        }
+    }
+
+    fn verify_execution(&self, mode: QualificationMode) -> Result<()> {
+        if let DeclarationIdentity::Focused(input) = &self.identity {
+            if mode != input.mode {
+                return Err("focused declaration mode differs from execution mode".into());
+            }
+            if input.bytes
+                != focused_bytes(
+                    &input.requested_source,
+                    input.mode,
+                    &self.declaration.records,
+                )?
+            {
+                return Err("focused declaration records differ from their identity".into());
+            }
+        }
+        Ok(())
     }
 
     fn sealed_prefix(current: &'a [u8], length: usize, sha256: &str) -> Result<Self> {
-        // Validate the complete catalogue before selecting the captured prefix.
-        // An appended record cannot duplicate or shadow a captured source.
         Self::parse(current)?;
         let bytes = current
             .get(..length)
@@ -573,8 +750,8 @@ impl BrowserCorpusAdapter for QualificationAdapter {
     }
 }
 
-pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
-    let mode = match (mode, fixture) {
+fn effective_mode(mode: QualificationMode, fixture: Option<&str>) -> QualificationMode {
+    match (mode, fixture) {
         (QualificationMode::Regular, Some(FLEX_COMPOSITION_SOURCE)) => {
             QualificationMode::FlexCompositionCapture
         }
@@ -594,7 +771,10 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             QualificationMode::EmptyLineBrFontBandCapture
         }
         _ => mode,
-    };
+    }
+}
+
+pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     if matches!(
         mode,
@@ -615,8 +795,14 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         }
         return publication::run(owner, mode);
     }
-    let mut input = DeclarationInput::parse(DECLARATION)?;
-    select_records(&mut input.declaration, fixture, mode)?;
+    let input = if let Some(source) = fixture {
+        DeclarationInput::focused(DECLARATION, source, mode)?
+    } else {
+        let mut input = DeclarationInput::parse(DECLARATION)?;
+        select_records(&mut input.declaration, None, mode)?;
+        input
+    };
+    let mode = input.execution_mode(mode);
     if let Some(source) = fixture {
         eprintln!(
             "qualify-root-context: focused declared source {source}; not a full inventory qualification"
@@ -804,7 +990,7 @@ fn corpus_for_inventory(
     }
     Ok(BrowserCorpus::new(
         BrowserLocation::new(owner, root)?,
-        RelativePath::new("corpus.toml")?,
+        inventory.declaration_path.clone(),
         if focused {
             "surgeist-layout-root-context-focused".into()
         } else {
@@ -867,6 +1053,9 @@ fn validate_corpus(
     use crate::parity_support::prepared_range_qualification as prepared_range;
 
     let mode = validation.mode;
+    if mode != inventory.mode {
+        return Err("inventory mode differs from validation mode".into());
+    }
     let prepared_range_policy = if mode.box_observations() == BoxObservationRequest::PreparedRanges
     {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -879,7 +1068,13 @@ fn validate_corpus(
         None
     };
     let flex_composition = if mode.box_observations() == BoxObservationRequest::FlexComposition {
-        let input_root = if mode.specialized_profile().is_some() {
+        let input_root = if flex_composition_qualification::input_pins()
+            .iter()
+            .all(|(path, _)| {
+                inventory
+                    .expected_inputs
+                    .contains_key(&RelativePath::new(*path).expect("policy path"))
+            }) {
             root
         } else {
             Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1427,7 +1622,10 @@ fn inventory_with_retained_helper(
     access: InputAccess,
     retained_helper: Option<&[u8]>,
 ) -> Result<Inventory> {
+    input.verify_execution(mode)?;
     let mut inventory = Inventory {
+        declaration_path: RelativePath::new(input.declaration_path())?,
+        mode,
         fixtures: Vec::new(),
         cases: Vec::new(),
         global_inputs: Vec::new(),
@@ -1475,7 +1673,7 @@ fn inventory_with_retained_helper(
     for (name, bytes) in INPUTS
         .iter()
         .copied()
-        .chain(std::iter::once(("corpus.toml", input.bytes)))
+        .chain(std::iter::once((input.declaration_path(), input.bytes())))
     {
         if name == "fonts/Ahem.ttf"
             && mode.box_observations() == BoxObservationRequest::EmptyLineBrFontBand
@@ -1517,7 +1715,7 @@ fn inventory_with_retained_helper(
             .or(augmented.as_deref())
             .unwrap_or(bytes);
         inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
-        if name != "corpus.toml" {
+        if name != input.declaration_path() {
             inventory.global_inputs.push(path);
         }
     }
@@ -1537,7 +1735,17 @@ fn inventory_with_retained_helper(
         )?;
         inventory.global_inputs.push(path);
     }
-    match mode.specialized_profile() {
+    let policy_profile = mode.specialized_profile().or_else(|| {
+        if !matches!(input.identity, DeclarationIdentity::Focused(_)) {
+            return None;
+        }
+        match mode {
+            QualificationMode::PreparedRangeCapture => Some(SpecializedProfile::PreparedRange),
+            QualificationMode::FlexCompositionCapture => Some(SpecializedProfile::FlexComposition),
+            _ => None,
+        }
+    });
+    match policy_profile {
         Some(SpecializedProfile::PreparedRange) => {
             let path = RelativePath::new(
                 crate::parity_support::prepared_range_qualification::RETAINED_POLICY,
@@ -2594,6 +2802,8 @@ sha256 = "{}"
         let bytes = b"authored semantic input";
         fs::write(source.0.join(reference.path.as_str()), bytes).unwrap();
         let fresh_inventory = || Inventory {
+            declaration_path: RelativePath::new("corpus.toml").unwrap(),
+            mode: QualificationMode::Regular,
             fixtures: Vec::new(),
             cases: Vec::new(),
             global_inputs: Vec::new(),
@@ -3103,3 +3313,11 @@ mod prepared_range_tests;
 #[cfg(test)]
 #[path = "flex_composition_tests.rs"]
 mod flex_composition_tests;
+
+#[cfg(test)]
+#[path = "focused_declaration_tests.rs"]
+mod focused_declaration_tests;
+
+#[cfg(test)]
+#[path = "focused_contract_tests.rs"]
+mod focused_contract_tests;
