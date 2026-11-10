@@ -141,6 +141,118 @@ fn tiny_forced_base_boxed_execution_publishes_literal_black_pixels() {
 }
 
 #[test]
+fn forced_base_execution_records_render_phase_across_profiles() {
+    use crate::accounting::{RenderClock, RenderEvent, RenderPhaseFilter, RenderProfile};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    static TICKS: AtomicU64 = AtomicU64::new(0);
+    fn clock() -> Duration {
+        Duration::from_millis(TICKS.fetch_add(1, Ordering::SeqCst))
+    }
+    fn forbidden_clock() -> Duration {
+        panic!("off or untimed forced execution read the clock")
+    }
+
+    let mut observed_work = None;
+    for profile in [
+        RenderProfile::Summary { timing: true },
+        RenderProfile::Detailed {
+            timing: true,
+            event_limit: 256,
+            filter: RenderPhaseFilter::Phase(RenderPhase::Render),
+        },
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 256,
+            filter: RenderPhaseFilter::Phase(RenderPhase::Render),
+        },
+    ] {
+        let timed = matches!(
+            profile,
+            RenderProfile::Summary { timing: true } | RenderProfile::Detailed { timing: true, .. }
+        );
+        let options = RenderAccountingOptions::new()
+            .with_profile(profile)
+            .with_clock(RenderClock::Host(if timed {
+                clock
+            } else {
+                forbidden_clock
+            }));
+        let mut renderer = pollster::block_on(crate::Renderer::new(
+            crate::Options::default().with_accounting(options),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        let mut scene = Scene::new();
+        scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+        let result = pollster::block_on(renderer.render_forced_base_graph_for_test(
+            &mut surface,
+            &scene,
+            crate::Parameters::default(),
+            WorkingFormat::HighPrecision,
+        ))
+        .unwrap();
+        let report = renderer.take_last_attempt().unwrap();
+        let attempt = report.attempt().unwrap();
+        if timed {
+            assert!(
+                result
+                    .stats
+                    .execution_time
+                    .is_some_and(|time| time > Duration::ZERO),
+                "real forced execution must end its inclusive Render observation"
+            );
+        } else {
+            assert_eq!(result.stats.execution_time, None);
+        }
+        assert_eq!(
+            attempt.phase_count(RenderPhase::Render),
+            u64::from(!matches!(profile, RenderProfile::Off))
+        );
+        assert_eq!(
+            result.stats.execution_time,
+            attempt.phase_elapsed(RenderPhase::Render)
+        );
+        if matches!(profile, RenderProfile::Detailed { .. }) {
+            assert_eq!(attempt.dropped_events(), 0);
+            let phases: Vec<_> = attempt
+                .events()
+                .filter_map(|event| match event {
+                    RenderEvent::Phase {
+                        phase: RenderPhase::Render,
+                        duration,
+                        ..
+                    } => Some(duration),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(phases, [result.stats.execution_time]);
+        }
+        let usage = attempt.usage();
+        assert_eq!(usage.work(RenderWork::Submissions), 1);
+        let work = <RenderWork as surgeist_ledger::Dimension>::from_fn(|unit| usage.work(unit));
+        if let Some(expected) = observed_work {
+            assert_eq!(
+                work, expected,
+                "profiling must preserve actual admitted work"
+            );
+        } else {
+            observed_work = Some(work);
+        }
+        let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_eq!(
+            pixels.rgba(),
+            &[0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]
+        );
+        assert_eq!(surface.headless_publication_count_for_test(), 1);
+    }
+}
+
+#[test]
 fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
     use std::future::Future;
     use std::task::{Context, Poll, Waker};
