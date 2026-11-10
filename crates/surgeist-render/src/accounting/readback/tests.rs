@@ -15,7 +15,7 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
         .into_parts();
     let frames = Some(frame.snapshot_for_test());
     let mut readbacks = ReadbackFixture::new(&cpu, options);
-    let (output, _, report, fault) = readbacks
+    let (output, started, report, fault) = readbacks
         .run_sync(|attempt| {
             let output = attempt.account().retained::<u8>(7)?;
             attempt.account().work(RenderWork::ReadbackRows, 2)?;
@@ -24,6 +24,7 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
         .unwrap()
         .into_parts();
     let output = output.unwrap();
+    assert!(started);
     assert_eq!(fault, None);
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(

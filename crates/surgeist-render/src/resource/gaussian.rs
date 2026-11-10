@@ -722,7 +722,7 @@ mod tests {
                 .unwrap(),
         );
         let cpu = RendererCpu::new(options).unwrap();
-        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
             .run_sync(|attempt| {
                 let error = GaussianKernelPlan::try_new(
                     1.0,
@@ -737,6 +737,15 @@ mod tests {
             })
             .unwrap()
             .into_parts();
+        assert!(matches!(
+            result.unwrap_err().accounting_diagnostic(),
+            Some(crate::RenderAccountingError::Refused(_))
+        ));
+        assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            crate::RenderAttemptStatus::Refused
+        );
         assert_eq!(fault, None);
         assert_eq!(
             report
@@ -750,7 +759,7 @@ mod tests {
         assert_eq!(refusal.current, 24);
         assert_eq!(refusal.amount, 8);
 
-        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
             .run_sync(|retry| {
                 let plan = GaussianKernelPlan::try_new(
                     1.0,
@@ -767,6 +776,12 @@ mod tests {
             })
             .unwrap()
             .into_parts();
+        result.unwrap();
+        assert_eq!(report.status(), crate::RenderAttemptStatus::Succeeded);
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            crate::RenderAttemptStatus::Succeeded
+        );
         assert_eq!(fault, None);
         assert_eq!(
             report
