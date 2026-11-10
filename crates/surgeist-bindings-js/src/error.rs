@@ -10,6 +10,8 @@ pub enum ExceptionPhase {
     Evaluate,
     PropertyRead,
     PropertyWrite,
+    DefineProperty,
+    Prototype,
     Invoke,
     Coerce,
 }
@@ -53,15 +55,35 @@ pub enum Error {
     StringTooLong,
     /// The argument list exceeds the backend's supported call bound.
     TooManyArguments,
+    /// An array exceeds the embedding policy's conservative pinned SDK capacity.
+    ArrayTooLong,
+    /// A dynamic property key was neither String nor Symbol.
+    ExpectedPropertyKey,
+    /// A descriptor accessor was neither callable nor undefined.
+    ExpectedAccessor,
     /// This operation requires an object or function, respectively.
     ExpectedObject,
     ExpectedFunction,
+    /// Web IDL EnforceRange rejected a nonfinite or out-of-range Number.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    IntegerOutOfRange,
+    /// Web IDL float/double conversion rejected a nonfinite value or float overflow.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    FloatOutOfRange,
+    /// Web IDL ByteString conversion encountered a code unit greater than 255.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    ByteStringOutOfRange,
     /// Guest Set rejected the property update.
     PropertyRejected,
     /// Execution was terminated by the backend.
     Terminated,
     /// The backend could not complete and supplied no guest exception.
     BackendUnavailable,
+    /// Internal root-registry access overlapped. The owner fails closed after
+    /// this defect rather than entering the SDK with inconsistent storage.
+    RegistryConflict,
+    /// A native callback panicked. The owner is terminal and cannot be resumed.
+    CallbackPanicked,
     /// The original guest-thrown value and operation phase.
     Exception(Exception),
 }
@@ -76,12 +98,20 @@ impl fmt::Display for Error {
             Self::IdentityExhausted => "execution identity space is exhausted",
             Self::Allocation => "binding storage allocation was refused",
             Self::StringTooLong => "the string exceeds the backend limit",
+            Self::ArrayTooLong => "the array exceeds the backend element limit",
+            Self::ExpectedPropertyKey => "a property key must be String or Symbol",
+            Self::ExpectedAccessor => "an accessor must be callable or undefined",
             Self::TooManyArguments => "the argument list exceeds the backend limit",
             Self::ExpectedObject => "an object is required",
             Self::ExpectedFunction => "a callable function is required",
+            Self::IntegerOutOfRange => "the Number is outside the Web IDL integer range",
+            Self::FloatOutOfRange => "the Number is outside the Web IDL floating point range",
+            Self::ByteStringOutOfRange => "the string contains a code unit outside the byte range",
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
+            Self::CallbackPanicked => "a native callback panicked",
+            Self::RegistryConflict => "binding root-registry access overlapped",
             Self::Exception(_) => "JavaScript threw an exception",
         })
     }

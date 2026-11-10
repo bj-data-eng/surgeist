@@ -63,6 +63,77 @@ The ARM64 results do not qualify a future worker-transfer or shared-isolate API.
 The process-lived platform is initialized once and deliberately never disposed
 or dynamically unloaded. Per-owner roots, contexts and isolate use safe RAII.
 
+The original SDK Weak handle only signals callback retirement from its native
+finalizer. The Rust registry keeps lease custody until host-boundary reaping,
+then releases the Weak handle before arbitrary captures, outside registry borrows
+and SDK frames. GC and explicit teardown therefore retain ordinary user Drop
+unwind behavior without sending that unwind through an extern-C finalizer.
+
 The [crate notice](NOTICE.md) distinguishes SDK, native V8 and bundled-library
 terms. A source-qualified dependency notice is not certification of every
 possible downstream executable or static-link composition.
+
+## Scoped object operations
+
+The backend captures pristine `Reflect.set` and `Reflect.setPrototypeOf` to
+preserve Boolean rejection and original proxy exceptions. The SDK's direct
+prototype setter suppresses proxy trap exceptions in the pinned
+[`SetPrototypeImpl`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/api/api.cc)
+path. These functions and the selected `Array.prototype.values` intrinsic are
+retained in private managed heap data. Callback registrations retain those heap
+edges rather than adding persistent Rust roots back to their creation context.
+
+Rust-side dense array construction is limited to **16,777,216 elements**, checked
+before root-vector allocation and SDK construction. This is an embedding policy,
+not the JavaScript array-length limit. The pinned
+[`fixed-array-base.h`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/objects/fixed-array-base.h)
+defines a capacity of 16 Mi elements in lower-limits mode and 128 Mi otherwise.
+The safe SDK exposes no runtime query for that build choice; the conservative
+minimum avoids its capacity checks in either mode. Boundary qualification uses
+scalar length checks, without allocating an enormous array.
+
+## Declared constructors
+
+The scoped constructor uses a private constructible target and a public Proxy
+with a native construct trap. The pinned SDK's direct constructor path allocates
+before entering Rust and falls back to the target realm's Object prototype,
+which does not implement Web IDL's argument-conversion ordering or same-interface
+prototype fallback. The
+[`Proxy construct path`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/builtins/builtins-proxy-gen.cc)
+instead invokes the trap without allocating the target's default receiver.
+The handler selects the prototype after conversion and returns an explicit
+object. The private target is not exposed through prototype.constructor.
+
+Function length is an explicit own Number data property: nonwritable,
+nonenumerable and configurable. The internal native template uses zero rather
+than routing metadata through its
+[`16-bit length storage`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/objects/templates-inl.h).
+Every u32 value is exactly representable as Number. Qualification checks the
+65,535/65,536 boundary, 1,000,000 and u32::MAX, including binding and construction.
+
+The SDK does not expose semantic GetFunctionRealm. For nonobject prototype
+fallback, the backend safely unwraps outer Proxies and makes a private sanitized
+Proxy of the ordinary function. Its trap returns own data values or undefined
+without invoking guest name/length accessors. Captured pristine bind creates a
+fresh bound shell without an own prototype. A second private Proxy forces that
+shell's prototype lookup to undefined; captured Reflect.construct and Object
+then execute the engine's real
+[`GetFunctionRealm` fallback](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/objects/js-function.cc).
+The resulting Object prototype's creation context identifies the target realm;
+the probe object's own creation context does not.
+
+This composition preserves the original single prototype Get, including a getter
+that freezes its property while returning a primitive. Both private handlers
+have null prototypes, and descriptor reads test own fields before access.
+[`Bind's metadata processing`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/objects/js-function.cc)
+does not coerce object-valued name/length data. Qualification covers ordinary,
+bound and wrapped function families reachable through this bridge, including
+cross-realm Proxy targets and revocation. Independently injected SDK callables
+with access checks or interceptors are outside this owned execution contract.
+
+Creation context, pristine intrinsics and private handler edges remain in the
+managed heap. Context metadata stores only the checked realm key, so dropping a
+public realm token does not invalidate a reachable constructor or root a cycle.
+No guest source snippets, unsafe code or patched dependency are needed.
+The pinned Web IDL leaves constructorless interfaces' IsConstructor status
+unresolved; this declared-constructor capability selects no policy for them.

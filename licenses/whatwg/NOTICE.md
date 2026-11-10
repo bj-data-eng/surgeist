@@ -583,3 +583,19 @@ source links made absolute, the autocapitalize table's `rowspan` cells
 expanded, and script/style/MDN annotations removed without executing source
 scripts. No input method, autocorrection engine or suggestion interface is
 incorporated.
+
+## JavaScript binding algorithms
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+`surgeist-bindings-js` adapts the Web IDL primitive conversion algorithms from
+revision `0620cf171d1b97138847088748e363cae4005156`, original `index.bs` Git blob
+`dc7fd23d7c85adb570387a6ab513b59da96cb80b`. The complete source clauses are
+linked in the [binding source index](../../references/js-bindings-standards.md).
+The existing complete [upstream LICENSE](LICENSE) applies: specification prose
+uses CC BY 4.0; portions incorporated into code use BSD 3-Clause instead.
+The Rust adaptation implements exact integer residue with binary64 decomposition,
+typed string conversion, floating conversion and failures, and the standard's
+range/clamp ordering. It delegates JavaScript coercion to the engine and copies
+no JavaScript engine implementation. The original standard remains authoritative;
+no endorsement or broader interface-conformance claim is implied.

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 use super::Engine;
-use crate::backend::Engine as EngineApi;
+use crate::backend::{Engine as EngineApi, Operations};
 use crate::{Error, ExceptionPhase, Realm};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -49,6 +49,8 @@ struct State {
     native: RefCell<BTreeMap<NativeId, Weak<Counter>>>,
     wrappers: RefCell<BTreeMap<NativeId, Rc<v8::Weak<v8::Object>>>>,
     callback: RefCell<Option<v8::Global<v8::Function>>>,
+    rooted: RefCell<Option<crate::Root>>,
+    realm: Realm,
     observations: Observations,
 }
 
@@ -74,6 +76,8 @@ impl Host {
             native: RefCell::default(),
             wrappers: RefCell::default(),
             callback: RefCell::default(),
+            rooted: RefCell::default(),
+            realm: realm.clone(),
             observations,
         }));
         let mut host = Self { engine, realm };
@@ -84,21 +88,32 @@ impl Host {
 
     fn install(&mut self, realm: &Realm) -> Result<(), String> {
         self.engine
-            .enter(realm, ExceptionPhase::PropertyWrite, |scope, _roots| {
-                let context = scope.get_current_context();
-                for (name, function) in [
-                    ("getCounter", v8::Function::new(scope, get_counter)),
-                    ("retainCallback", v8::Function::new(scope, retain_callback)),
-                    ("fireCallback", v8::Function::new(scope, fire_callback)),
-                    ("clearCallback", v8::Function::new(scope, clear_callback)),
-                ] {
-                    let key = v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
-                    let value = function.ok_or(Error::BackendUnavailable)?;
-                    if context.global(scope).set(scope, key.into(), value.into()) != Some(true) {
-                        return Err(Error::PropertyRejected);
-                    }
-                }
-                Ok(())
+            .with_context(realm, |entered| {
+                entered.attempt(
+                    ExceptionPhase::PropertyWrite,
+                    |scope, _roots, _realm, _intrinsics| {
+                        let context = scope.get_current_context();
+                        for (name, function) in [
+                            ("getCounter", v8::Function::new(scope, get_counter)),
+                            ("retainCallback", v8::Function::new(scope, retain_callback)),
+                            ("fireCallback", v8::Function::new(scope, fire_callback)),
+                            ("clearCallback", v8::Function::new(scope, clear_callback)),
+                            ("retainRooted", v8::Function::new(scope, retain_rooted)),
+                            ("rootedCall", v8::Function::new(scope, rooted_call)),
+                            ("clearRooted", v8::Function::new(scope, clear_rooted)),
+                        ] {
+                            let key =
+                                v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
+                            let value = function.ok_or(Error::BackendUnavailable)?;
+                            if context.global(scope).set(scope, key.into(), value.into())
+                                != Some(true)
+                            {
+                                return Err(Error::PropertyRejected);
+                            }
+                        }
+                        Ok(())
+                    },
+                )
             })
             .map_err(|error| error.to_string())
     }
@@ -140,10 +155,10 @@ impl Host {
 
     fn eval_in(&mut self, realm: &Realm, source: &str) -> Result<String, String> {
         let source: Vec<_> = source.encode_utf16().collect();
-        let result = self
-            .engine
-            .evaluate(realm, &source)
-            .and_then(|root| self.engine.to_utf16(realm, &root));
+        let result = self.engine.with_context(realm, |entered| {
+            let root = entered.evaluate(&source)?;
+            entered.to_utf16(&root)
+        });
         let result = match result {
             Ok(units) => Ok(String::from_utf16_lossy(&units)),
             Err(Error::Exception(exception)) => {
@@ -151,7 +166,7 @@ impl Host {
                 // exception capture itself never coerces the thrown value.
                 let message = self
                     .engine
-                    .to_utf16(realm, exception.value())
+                    .with_context(realm, |entered| entered.to_utf16(exception.value()))
                     .map_err(|error| error.to_string());
                 Err(message
                     .map(|units| String::from_utf16_lossy(&units))
@@ -222,6 +237,7 @@ impl Drop for Host {
 }
 
 fn state(scope: &v8::PinScope) -> Result<Rc<State>, &'static str> {
+    production_roots(scope)?;
     scope
         .get_slot::<Rc<State>>()
         .cloned()
@@ -229,6 +245,11 @@ fn state(scope: &v8::PinScope) -> Result<Rc<State>, &'static str> {
 }
 
 fn throw(scope: &mut v8::PinScope, message: &str) {
+    // A sticky host failure cannot be translated to a catchable guest error.
+    // Termination may still await a V8 interrupt check, so decline this entry.
+    if production_roots(scope).is_err() {
+        return;
+    }
     if let Some(message) = v8::String::new(scope, message) {
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
@@ -350,6 +371,9 @@ fn add(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut result
     let Some(delta) = args.get(0).int32_value(scope) else {
         return;
     };
+    if production_roots(scope).is_err() {
+        return;
+    }
     let Some(value) = native.value.get().checked_add(delta) else {
         return throw(scope, "counter overflow");
     };
@@ -418,11 +442,119 @@ fn clear_callback(
     }
 }
 
+fn production_roots(scope: &v8::PinScope) -> Result<Rc<super::Roots>, &'static str> {
+    let roots = scope
+        .get_slot::<Weak<super::Roots>>()
+        .and_then(Weak::upgrade)
+        .ok_or("execution owner is closed")?;
+    roots.available().map_err(|_| "execution owner failed")?;
+    Ok(roots)
+}
+
+fn retain_rooted(
+    scope: &mut v8::PinScope,
+    args: v8::FunctionCallbackArguments,
+    _result: v8::ReturnValue,
+) {
+    if v8::Local::<v8::Function>::try_from(args.get(0)).is_err() {
+        return throw(scope, "expected a function");
+    }
+    let state = match state(scope) {
+        Ok(value) => value,
+        Err(message) => return throw(scope, message),
+    };
+    let roots = match production_roots(scope) {
+        Ok(value) => value,
+        Err(message) => return throw(scope, message),
+    };
+    let root = match roots.retain(scope, state.realm.0.key, args.get(0)) {
+        Ok(root) => root,
+        Err(Error::RegistryConflict) => return,
+        Err(_) => return throw(scope, "root retention failed"),
+    };
+    match state.rooted.try_borrow_mut() {
+        Ok(mut retained) => *retained = Some(root),
+        Err(_) => throw(scope, "callback slot is borrowed"),
+    };
+}
+
+fn rooted_call(
+    scope: &mut v8::PinScope,
+    args: v8::FunctionCallbackArguments,
+    mut result: v8::ReturnValue,
+) {
+    let state = match state(scope) {
+        Ok(value) => value,
+        Err(message) => return throw(scope, message),
+    };
+    let root = match state.rooted.try_borrow() {
+        Ok(retained) => retained.clone(),
+        Err(_) => return throw(scope, "callback slot is borrowed"),
+    };
+    let Some(root) = root else {
+        return throw(scope, "no rooted callback");
+    };
+    let roots = match production_roots(scope) {
+        Ok(value) => value,
+        Err(message) => return throw(scope, message),
+    };
+    let function = match roots.local(scope, &root) {
+        Ok(value) => value,
+        Err(Error::RegistryConflict) => return,
+        Err(_) => return throw(scope, "rooted callback is unavailable"),
+    };
+    let function = match v8::Local::<v8::Function>::try_from(function) {
+        Ok(value) => value,
+        Err(_) => return throw(scope, "rooted value is not callable"),
+    };
+    let receiver = v8::undefined(scope);
+    let Some(value) = function.call(scope, receiver.into(), &[args.get(0)]) else {
+        return;
+    };
+    // Exercise the SAME production registry for nested read and result rooting.
+    // No registry or callback-slot borrow crosses this invocation or collection.
+    let returned = match roots.retain(scope, root.0.realm, value) {
+        Ok(value) => value,
+        Err(Error::RegistryConflict) => return,
+        Err(_) => return throw(scope, "result root retention failed"),
+    };
+    match roots.local(scope, &returned) {
+        Ok(value) => result.set(value),
+        Err(Error::RegistryConflict) => (),
+        Err(_) => throw(scope, "result root is unavailable"),
+    }
+}
+
+fn clear_rooted(
+    scope: &mut v8::PinScope,
+    _args: v8::FunctionCallbackArguments,
+    _result: v8::ReturnValue,
+) {
+    let state = match state(scope) {
+        Ok(value) => value,
+        Err(message) => return throw(scope, message),
+    };
+    match state.rooted.try_borrow_mut() {
+        Ok(mut retained) => {
+            retained.take();
+        }
+        Err(_) => throw(scope, "callback slot is borrowed"),
+    };
+}
+
 // V8's process platform is pinned to its first entry thread. Keep every native
 // qualification case on this one test thread, with sequential isolate owners.
 #[test]
 fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     v8::V8::set_flags_from_string("--expose-gc");
+    // Scalar validation exercises the declared embedding boundary without an
+    // enormous element allocation or a fabricated slice.
+    assert!(crate::backend::validate_array_length(16_777_216).is_ok());
+    assert!(matches!(
+        crate::backend::validate_array_length(16_777_217),
+        Err(Error::ArrayTooLong)
+    ));
+
     repeated_native_access_preserves_javascript_identity_and_native_mutation()?;
     live_javascript_wrapper_keeps_native_alive_and_garbage_collection_releases_it()?;
     collected_wrapper_can_be_recreated_for_a_still_owned_native()?;
@@ -439,6 +571,74 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     repeated_host_teardown_discards_queued_jobs_without_executing_them()?;
     distinct_realms_share_native_state_without_sharing_globals()?;
     invalid_native_identity_types_are_rejected()?;
+    nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
+    registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
+    Ok(())
+}
+
+fn nested_callback_scopes_share_production_roots_and_release_self_cleared_custody() -> TestResult {
+    let observations = Observations::default();
+    let mut host = Host::new(observations.clone())?;
+    let native = host.counter(0)?;
+    let weak = Rc::downgrade(&native);
+    host.eval(&format!("(() => {{ const a = getCounter({}); retainRooted(n => {{ if (n === 0) {{ clearRooted(); gc(); return a.add(3); }} return rootedCall(n - 1) + 1; }}); }})()", native.id))?;
+    drop(native);
+    host.collect()?;
+    assert!(weak.upgrade().is_some());
+    assert_eq!(host.eval("rootedCall(5)")?, "8");
+    assert_eq!(
+        weak.upgrade()
+            .ok_or("live callback lost native custody")?
+            .value
+            .get(),
+        3
+    );
+    host.collect()?;
+    assert!(weak.upgrade().is_none());
+    assert_eq!(observations.native_drops.get(), 1);
+    Ok(())
+}
+
+fn registry_failure_stays_terminal_across_guest_catches_and_native_coercion() -> TestResult {
+    // Qualify both a later native entry and an earlier entry whose coercion
+    // encounters the failure. Neither may mutate after the sticky refusal.
+    for source in [
+        "try { rootedCall(0) } catch (_) {} a.add(1)",
+        "a.add({ valueOf() { try { rootedCall(0) } catch (_) {} return 1; } })",
+    ] {
+        registry_failure_rejects_native_work(source)?;
+    }
+    Ok(())
+}
+
+fn registry_failure_rejects_native_work(source: &str) -> TestResult {
+    let mut host = Host::new(Observations::default())?;
+    let native = host.counter(0)?;
+    host.eval("retainRooted(() => 7)")?;
+    host.eval(&format!("globalThis.a = getCounter({})", native.id))?;
+    let roots = host.engine.roots.clone();
+    let held = roots.entries.try_borrow_mut()?;
+    let source: Vec<_> = source.encode_utf16().collect();
+    assert!(matches!(
+        host.engine
+            .with_context(&host.realm, |entered| entered.evaluate(&source)),
+        Err(Error::RegistryConflict)
+    ));
+    assert!(matches!(
+        host.engine.create_realm(),
+        Err(Error::RegistryConflict)
+    ));
+    assert!(matches!(
+        host.engine.checkpoint(),
+        Err(Error::RegistryConflict)
+    ));
+    assert_eq!(native.value.get(), 0);
+    drop(held);
+    assert!(matches!(
+        host.engine.with_context(&host.realm, |entered| entered
+            .evaluate(&"42".encode_utf16().collect::<Vec<_>>())),
+        Err(Error::RegistryConflict)
+    ));
     Ok(())
 }
 
@@ -572,6 +772,7 @@ fn invalid_receivers_and_callback_registration_fail_without_corrupting_state() -
         "true"
     );
     assert_eq!(host.eval("fireCallback(4)")?, "5");
+    assert_eq!(host.eval("[null, undefined, 7, true, 'x'].every(receiver => { try { a.add.call(receiver, 1); return false; } catch (error) { return error instanceof TypeError; } })")?, "true");
     assert_eq!(native.value.get(), 8);
     Ok(())
 }

@@ -17,3 +17,7 @@ workspace = true
 [[test]]
 name = "execution"
 harness = false
+
+[[test]]
+name = "capture_cleanup"
+harness = false
