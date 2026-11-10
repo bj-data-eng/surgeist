@@ -209,6 +209,8 @@ fn earlier_host_stays_first() -> TestResult {
                         Value: 1,
                         CodeUnit: u64::MAX,
                         EnumerationLookup: u64::MAX,
+                        Argument: u64::MAX,
+                        DictionaryMember: u64::MAX,
                     },
                     ResourceTable {
                         BufferBytes: u64::MAX,

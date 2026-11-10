@@ -17,6 +17,10 @@ surgeist_ledger::dimensions! {
         CodeUnit,
         /// One lookup in a bounded declared enumeration.
         EnumerationLookup,
+        /// One declared argument presence/default decision.
+        Argument,
+        /// One dictionary member visited, before reading guest properties.
+        DictionaryMember,
     }
 }
 

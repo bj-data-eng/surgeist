@@ -10,6 +10,9 @@ pub enum Rule {
     ByteString,
     IntegerRange,
     FloatingRange,
+    Dictionary(&'static str),
+    RequiredMember(&'static str),
+    RequiredArgument(&'static str),
 }
 
 /// Cleanup activity that failed after its value or phase was finished.

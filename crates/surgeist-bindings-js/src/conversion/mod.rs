@@ -2,6 +2,7 @@
 //! Accounts borrow the entered execution boundary and never own native state.
 
 mod account;
+mod composition;
 pub mod declarations;
 mod failure;
 #[cfg(test)]
@@ -21,6 +22,7 @@ pub use account::{
     CleanupStatus, ConversionAccount, Converted, LedgerError, Resource, ResourceTable, Work,
     WorkTable,
 };
+pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
 pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };
@@ -41,11 +43,23 @@ enum Converter<T> {
 }
 
 /// Closed typed conversion descriptor. Its constructors are owned by bindings.
-pub struct Type<T>(Converter<T>);
+pub struct Type<T> {
+    converter: Converter<T>,
+    includes_undefined: bool,
+}
 
 impl<T> Type<T> {
     const fn scalar(convert: Scalar<T>) -> Self {
-        Self(Converter::Scalar(convert))
+        Self {
+            converter: Converter::Scalar(convert),
+            includes_undefined: false,
+        }
+    }
+
+    /// Adds IDL nullability once. This constructor is unavailable on a
+    /// nullable descriptor, so nullable-of-nullable is not representable.
+    pub fn nullable(self) -> Nullable<Self> {
+        Nullable(self)
     }
 }
 
@@ -54,10 +68,18 @@ pub struct Enumeration<E>(Type<E>);
 
 impl<E> Enumeration<E> {
     pub(crate) const fn new(name: &'static str, lookup: fn(&[u16]) -> Option<E>) -> Self {
-        Self(Type(Converter::Enumeration { name, lookup }))
+        Self(Type {
+            converter: Converter::Enumeration { name, lookup },
+            includes_undefined: false,
+        })
     }
     pub fn value_type(&self) -> &Type<E> {
         &self.0
+    }
+    /// Nullable ordinary enum conversion; assignment's ignored-nonmember
+    /// policy remains a separate operation.
+    pub fn nullable(self) -> Nullable<Type<E>> {
+        self.0.nullable()
     }
 }
 
@@ -79,6 +101,9 @@ impl IntegerType {
     pub const fn new(kind: IntegerKind, mode: IntegerMode) -> Self {
         Self { kind, mode }
     }
+    pub fn nullable(self) -> Nullable<Self> {
+        Nullable(self)
+    }
 }
 
 /// Scalar descriptors; string allocation and numeric algorithms share the
@@ -90,6 +115,12 @@ pub mod types {
     };
     use crate::{ByteString, DomString, UsvString};
     pub const BOOLEAN: Type<bool> = Type::scalar(boolean);
+    /// The unique IDL undefined value. Nullable undefined still retains
+    /// undefined separately from null.
+    pub const UNDEFINED: Type<()> = Type {
+        converter: super::Converter::Scalar(super::undefined),
+        includes_undefined: true,
+    };
     pub const DOM_STRING: Type<DomString> = Type::scalar(dom_string);
     pub const USV_STRING: Type<UsvString> = Type::scalar(usv_string);
     pub const BYTE_STRING: Type<ByteString> = Type::scalar(byte_string);
@@ -192,13 +223,16 @@ impl<'scope> Conversion<'_, 'scope> {
         })
     }
 
-    pub fn value<T>(
+    pub fn value<D: Descriptor>(
         &mut self,
-        ty: &Type<T>,
+        ty: &D,
         value: &Value<'scope>,
-    ) -> Result<Converted<T>, Failure> {
-        self.work(Work::Value, 1).map_err(Failure)?;
-        match &ty.0 {
+    ) -> Result<Converted<D::Output>, Failure> {
+        composition::sealed::Convert::convert(ty, self, value)
+    }
+
+    fn typed<T>(&mut self, ty: &Type<T>, value: &Value<'scope>) -> Result<Converted<T>, Failure> {
+        match &ty.converter {
             Converter::Scalar(convert) => convert(self, value),
             Converter::Enumeration { name, lookup } => {
                 let units = self.string_units(value)?;
@@ -221,7 +255,7 @@ impl<'scope> Conversion<'_, 'scope> {
         self.work(Work::Value, 1).map_err(Failure)?;
         let units = self.string_units(value)?;
         self.work(Work::EnumerationLookup, 1).map_err(Failure)?;
-        match &ty.0.0 {
+        match &ty.0.converter {
             Converter::Enumeration { lookup, .. } => {
                 Ok(lookup(units.get()).map_or(EnumAssignment::Ignored, EnumAssignment::Member))
             }
@@ -229,18 +263,23 @@ impl<'scope> Conversion<'_, 'scope> {
         }
     }
 
-    pub fn integer(
+    fn integer(
         &mut self,
         ty: IntegerType,
         value: &Value<'scope>,
     ) -> Result<Converted<IntegerValue>, Failure> {
-        self.work(Work::Value, 1).map_err(Failure)?;
         match self.scope.integer(value, ty.kind, ty.mode) {
             Ok(value) => Ok(self.plain(value)),
             Err(Error::IntegerOutOfRange) => Err(self.validation(Rule::IntegerRange)),
             Err(error) => self.core(Err(error)),
         }
     }
+}
+
+fn undefined<'s>(cx: &mut Conversion<'_, 's>, value: &Value<'s>) -> Result<Converted<()>, Failure> {
+    let result = cx.scope.kind(value);
+    cx.core(result)?;
+    Ok(cx.plain(()))
 }
 
 fn boolean<'s>(cx: &mut Conversion<'_, 's>, value: &Value<'s>) -> Result<Converted<bool>, Failure> {

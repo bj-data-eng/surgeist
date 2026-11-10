@@ -7,7 +7,8 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
 property operations, calls, original exception values, Web IDL primitive
-conversion, metered scalar and enumeration conversion, scoped Rust callbacks,
+conversion, metered scalar, enumeration, nullable and dictionary conversion,
+declared argument defaults, scoped Rust callbacks,
 declared constructors and explicit shared microtask checkpoints.
 Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
@@ -98,13 +99,31 @@ that invoke guest coercion do so once and preserve the original thrown value.
 Value-kind and callability checks invoke no guest properties or coercion hooks;
 classes and revoked callable proxies remain callable even though calls throw.
 
-[`conversion`](src/conversion/mod.rs) provides closed typed scalar and enumeration
-descriptors. A `ConversionAccount` attaches an authenticated child to a caller-owned
+[`conversion`](src/conversion/mod.rs) provides closed typed descriptors for
+scalars, enumerations, nullable values and complete brand-free dictionaries.
+`Conversion::value` accepts the sealed descriptor family, including
+`IntegerType`; nullable descriptors preserve an inner type that includes
+undefined and cannot be wrapped in a second nullable descriptor. A `ConversionAccount` attaches an authenticated child to a caller-owned
 Ledger operation. Its `run` method borrows the entered scope; `Converted` outputs
 retain their requested Rust buffer charges until their payloads are destroyed.
 Charges cover binding work and storage, excluding engine instructions and heap
 allocation. Timing follows the Ledger operation's profiling configuration.
 The existing primitive methods remain available without this account.
+
+The [generated descriptors](src/conversion/declarations.rs) derive dictionary
+member order, argument indices, optionality and defaults from the same authored
+JSON as the typed values. Dictionary conversion visits inherited members before
+derived members, sorts each declaration lexicographically, and converts each
+member immediately after reading it. Undefined and null dictionaries use the
+declared member defaults. A dictionary with any unavailable native brand is
+excluded as a whole.
+
+`Conversion::argument` converts one already-selected declaration argument from
+`arguments.get(descriptor.index())`. Optional omission and explicit undefined
+select the declared default or `ArgumentValue::Missing`; null follows the
+selected type's ordinary conversion. These descriptors do not perform overload
+selection, authenticate a native receiver or install an interface. Returned
+nullable and argument values retain the original output's storage custody.
 
 Metered validation throws an intrinsic TypeError; guest coercion preserves the
 original exception. Host refusal is terminal. If cleanup also fails at an actual
@@ -112,9 +131,10 @@ host or callback exit, its terminal report preserves the selected primary
 exception and exposes the cleanup fault separately. A prior host refusal remains
 first. Cleanup guards enter no SDK code, and cleanup diagnostics remain readable
 after an account drops. Enumeration attribute assignment ignores a nonmember
-after one coercion. Nullable, sequence and dictionary conversion remain pending;
-generated enumeration and complete brand-free dictionary values derive from the
-single [authored description](bindings/dom-core.json).
+after one coercion. Synchronous sequence conversion remains pending. Generated
+values and conversion descriptors derive from the single
+[authored description](bindings/dom-core.json); dictionaries requiring native
+brands, union/overload selection and installed interfaces remain separate work.
 
 ## Verification
 

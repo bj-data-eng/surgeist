@@ -8,6 +8,7 @@ Cargo, V8, downloads, or repository target directory. Run through pisct run.
 
 import copy
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -276,6 +277,39 @@ class ValueLoweringTests(unittest.TestCase):
             {"name": "Derived", "kind": "dictionary", "inherits": "Base", "members": [member("y"), member("b")]},
         ]})
         self.assertEqual([m["name"] for m in model["dictionaries"][1]["members"]], ["a", "z", "b", "y"])
+
+    def test_converter_visits_inherited_then_derived_members_immediately(self):
+        def member(name):
+            return {"id": "fixture." + name, "name": name,
+                    "type": {"kind": "named", "name": "boolean"}, "required": False}
+        model = g.lower_values({"declarations": [
+            {"name": "Base", "kind": "dictionary", "members": [member("z"), member("a")]},
+            {"name": "Derived", "kind": "dictionary", "inherits": "Base", "members": [member("y"), member("b")]},
+        ]})
+        output = g.emit_conversions(model)
+        derived = output[output.index("fn convert_derived"):]
+        # This is the generator's declared output contract, independently
+        # ordered from the unsorted source fixture. Conversion occurs within
+        # each member's match, before the following member Get.
+        reads = re.findall(r"cx.member\(input, object, &\[([0-9, ]+)\]\)", derived)
+        self.assertEqual(reads, ["97", "122", "98", "121"])
+        self.assertEqual(re.findall(r"Some\(value\) => (.*)", derived),
+                         ["Some(*cx.value(&types::BOOLEAN, &value)?.get()),"] * 4)
+
+    def test_argument_facts_and_context_restrictions_come_from_declarations(self):
+        data = g.load()
+        model = g.lower_values(data)
+        lowered = {a["id"]: a for a in g.lower_arguments(data, model)}
+        title = lowered["DOMImplementation.createHTMLDocument:0/title"]
+        self.assertEqual(title["argument"]["presence"], "optional")
+        self.assertNotIn("default", title["argument"])
+        mask = lowered["Document.createNodeIterator:0/whatToShow"]
+        self.assertEqual(mask["index"], 1)
+        self.assertEqual(mask["argument"]["default"], {"kind": "integer", "value": 4294967295})
+        self.assertEqual(lowered["Node.getRootNode:0/options"]["argument"]["default"], {"kind": "empty_dictionary"})
+        self.assertNotIn("Document.createNodeIterator:0/filter", lowered)
+        self.assertIsNone(g.conversion_type({"kind": "nullable", "inner": {"kind": "named", "name": "EventInit"}}, model))
+        self.assertIsNone(g.conversion_type({"kind": "nullable", "inner": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}}}, model))
 
     def test_unavailable_inherited_member_excludes_whole_derived_dictionary(self):
         model = g.lower_values({"declarations": [

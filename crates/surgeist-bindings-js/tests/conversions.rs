@@ -1,3 +1,6 @@
+#[path = "conversions/composition.rs"]
+mod composition;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -72,8 +75,8 @@ fn callback_and_owned_output(process: &mut Process) -> TestResult {
         output.replace(Some(text));
         Ok(Completion::Undefined)
     });
-    // Missing arguments are not part of this consumer's declared input. The
-    // actual optional/default argument layer remains a subsequent contribution.
+    // This consumer selects required inputs. Generated optional/default
+    // argument descriptors are exercised by the composition consumer.
     let mut execution = process.execution();
     execution.in_realm(&realm, |scope| {
         let function = scope.function(&callback)?;
@@ -187,8 +190,8 @@ fn scalars_and_nested_reentry(process: &mut Process) -> TestResult {
         );
         let number = scope.primitive(Primitive::Number(-2.0))?;
         let integer = account.run(scope, |cx| {
-            cx.integer(
-                IntegerType::new(IntegerKind::UnsignedLongLong, IntegerMode::Wrap),
+            cx.value(
+                &IntegerType::new(IntegerKind::UnsignedLongLong, IntegerMode::Wrap),
                 &number,
             )
         })?;
@@ -206,8 +209,8 @@ fn scalars_and_nested_reentry(process: &mut Process) -> TestResult {
         assert_eq!(*value.get(), f64::INFINITY);
         let out_of_range = scope.primitive(Primitive::Number(256.0))?;
         let failure = match account.run(scope, |cx| {
-            cx.integer(
-                IntegerType::new(IntegerKind::Octet, IntegerMode::EnforceRange),
+            cx.value(
+                &IntegerType::new(IntegerKind::Octet, IntegerMode::EnforceRange),
                 &out_of_range,
             )
         }) {
@@ -257,6 +260,8 @@ fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
             Value: 1,
             CodeUnit: if storage_short { 3 } else { 2 },
             EnumerationLookup: 0,
+            Argument: 0,
+            DictionaryMember: 0,
         },
         ResourceTable {
             BufferBytes: if storage_short { 5 } else { 6 },
@@ -303,6 +308,8 @@ fn exact_admission_and_cross_realm_account(process: &mut Process) -> TestResult 
             Value: 1,
             CodeUnit: 3,
             EnumerationLookup: 0,
+            Argument: 0,
+            DictionaryMember: 0,
         },
         ResourceTable { BufferBytes: 6 },
     );
@@ -456,9 +463,11 @@ fn main() -> TestResult {
         scalars_and_nested_reentry(&mut process)?;
         timing_is_ledger_owned(&mut process)?;
         exact_admission_and_cross_realm_account(&mut process)?;
+        composition::run(&mut process)?;
     }
     admission_is_exact_and_terminal(false)?;
     admission_is_exact_and_terminal(true)?;
     retained_output_does_not_own_the_heap()?;
+    composition::independent_owners()?;
     Ok(())
 }
