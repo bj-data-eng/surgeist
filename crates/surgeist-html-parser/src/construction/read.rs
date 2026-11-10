@@ -88,7 +88,7 @@ impl std::fmt::Display for HtmlParseUnresolvedReference {
 impl std::error::Error for HtmlParseUnresolvedReference {}
 
 /// Qualify only the references used by fixed public readers. The canonical
-/// history transfer still owns source/group/leaf qualification and alias checks.
+/// history transfer still owns source/group/leaf qualification.
 pub(crate) fn prepare_public_readers(
     input: &Option<FrozenArena>,
     c: &mut ParseControl,

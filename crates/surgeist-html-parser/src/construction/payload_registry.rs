@@ -32,12 +32,10 @@ pub(super) struct PayloadStorage {
     /// leaves its entries here, so the release that retires the registry still
     /// returns them.
     pub(super) prepared_entries: u64,
+    /// The row of the first registration of each literal string, which later registrations share.
+    pub(super) literals: [Option<usize>; LITERALS],
     pub(super) preexisting_units: usize,
     pub(super) preexisting_attributes: usize,
-    /// Registry rows below this slot were audited by an earlier creation-time
-    /// `check_new_aliases`; the completed-freeze preflight and release audit
-    /// every row again.
-    pub(super) audited_rows: usize,
     /// Registry rows of selectedcontent metadata. Rows are never removed, so zero
     /// proves that no select has a selectedcontent descendant to update.
     pub(super) selectedcontent_rows: usize,
@@ -708,10 +706,15 @@ impl PayloadStorage {
                 if value.shares_storage_with(stored))
         })
     }
+    #[cfg(test)]
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
-    #[cfg(test)]
-    fn assert_joins_match_registry(&self) {
+    ///
+    /// A latched registry-row stop does not name its row. When one is latched, an attribute join
+    /// that names a row a lost edit emptied is accepted, at most one such join; every other join
+    /// and every other stop is still checked.
+    fn assert_joins_match_registry(&self, registry_row_stop: bool) {
+        let mut tolerated = 0;
         let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
         let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();
         for (slot, row) in self.values.iter().enumerate() {
@@ -737,6 +740,19 @@ impl PayloadStorage {
             // row that was current when it was written.
             let mut cell = *cell;
             *cell.rows.get_mut(Join::StyleOrder) = joined.rows.copy(Join::StyleOrder);
+            if registry_row_stop
+                && tolerated == 0
+                && cell.get(Join::Attributes).is_none()
+                && joined.get(Join::Attributes).is_some_and(|slot| {
+                    matches!(
+                        self.values.get(slot),
+                        Some(RetainedPayload::Attributes(None))
+                    )
+                })
+            {
+                tolerated += 1;
+                *cell.rows.get_mut(Join::Attributes) = joined.rows.copy(Join::Attributes);
+            }
             if let Some(slot) = joined.get(Join::StyleOrder) {
                 assert!(
                     matches!(self.values.get(slot), Some(RetainedPayload::StyleOrder(_))),
@@ -754,185 +770,18 @@ impl PayloadStorage {
             assert!(list == &kind.slots, "a kind list differs from the registry");
         }
     }
-    /// Cleanup is a bounded ownership walk over admitted entries, permitted
-    /// after a terminal stop. No parser work is resumed and no work refunded.
-    /// Each live location is checked against its actual immutable record.
-    pub(super) fn check_aliases(
-        &self,
-        records: ConstructionView<'_>,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        self.audit_aliases(records, control, 0..self.values.len())
-    }
-    /// The audit of the one row at `slot`, for an edit of the record that row
-    /// backs: the edit is refused if that row is aliased, without the cost of
-    /// auditing the registry.
-    pub(super) fn check_row_aliases(
-        &self,
-        records: ConstructionView<'_>,
-        control: &mut ParseControl,
-        slot: usize,
-    ) -> Result<(), SessionError> {
-        self.audit_aliases(records, control, slot..slot.saturating_add(1))
-    }
-    /// The creation-time audit: only the rows registered since the previous one,
-    /// so the cost is the rows the operations in between added, not the registry.
-    /// Every row is audited again by the completed-freeze preflight and release.
-    pub(super) fn check_new_aliases(
-        &mut self,
-        records: ConstructionView<'_>,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        self.audit_aliases(records, control, self.audited_rows..self.values.len())?;
-        self.audited_rows = self.values.len();
-        Ok(())
-    }
-    fn audit_aliases(
-        &self,
-        records: ConstructionView<'_>,
-        control: &mut ParseControl,
-        rows: std::ops::Range<usize>,
-    ) -> Result<(), SessionError> {
-        for index in rows {
-            cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-            let payload = self
-                .values
-                .get(index)
-                .ok_or_else(|| latch_registry_row(control))?;
-            match payload {
-                RetainedPayload::String {
-                    value,
-                    allocation,
-                    location,
-                    ..
-                } => {
-                    if allocation.finalized() {
-                        control.require_document_string_for_disposal(allocation, value)?;
-                    }
-                    let stored = location.value(records, &self.values, index, control)?;
-                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 2)?;
-                    let expected = if let Some(stored) = stored {
-                        if !stored.shares_storage_with(value) {
-                            return Err(SessionError::AliasedPayload);
-                        }
-                        2
-                    } else {
-                        1
-                    };
-                    if !allocation.finalized() && value.block().holders() != expected {
-                        return Err(SessionError::AliasedPayload);
-                    }
-                }
-                RetainedPayload::Attributes(Some(
-                    AttributeStorage::Frozen {
-                        values,
-                        element,
-                        shared,
-                        ..
-                    }
-                    | AttributeStorage::Removing {
-                        values,
-                        element,
-                        shared,
-                        ..
-                    },
-                )) => {
-                    let expected = if let Some(index) = element {
-                        cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                        cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
-                        let Some(HtmlNodeKind::Element(record)) =
-                            records.node_at(*index).map(|node| node.kind())
-                        else {
-                            return Err(SessionError::AliasedPayload);
-                        };
-                        if !Arc::ptr_eq(
-                            values.shared_attributes(),
-                            record.attributes().shared_attributes(),
-                        ) {
-                            return Err(SessionError::AliasedPayload);
-                        }
-                        2
-                    } else {
-                        1
-                    };
-                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
-                    if !shared.finalized()
-                        && Arc::strong_count(values.shared_attributes()) != expected
-                    {
-                        return Err(SessionError::AliasedPayload);
-                    }
-                }
-                RetainedPayload::Attributes(Some(AttributeStorage::Unvalidated {
-                    backing,
-                    shared,
-                    ..
-                })) => {
-                    cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 1)?;
-                    if !shared.finalized() && Arc::strong_count(backing) != 1 {
-                        return Err(SessionError::AliasedPayload);
-                    }
-                }
-                RetainedPayload::Attributes(Some(
-                    AttributeStorage::Building { .. } | AttributeStorage::Transferring { .. },
-                )) => {}
-                RetainedPayload::Attributes(None) => return Err(SessionError::Consumed),
-                RetainedPayload::CspState(_)
-                | RetainedPayload::CspPolicy(_)
-                | RetainedPayload::CspTransition(_)
-                | RetainedPayload::BaseDocument { .. }
-                | RetainedPayload::Base { .. }
-                | RetainedPayload::SvgScript { .. }
-                | RetainedPayload::ConstructionCause { .. }
-                | RetainedPayload::Script { .. }
-                | RetainedPayload::NodeDocument { .. }
-                | RetainedPayload::LookupRegistry { .. }
-                | RetainedPayload::Shadow { .. }
-                | RetainedPayload::StandaloneDocumentCompletion { .. }
-                | RetainedPayload::Document { .. }
-                | RetainedPayload::MetaMissing { .. }
-                | RetainedPayload::Template { .. }
-                | RetainedPayload::FormAssociation { .. }
-                | RetainedPayload::Textarea { .. }
-                | RetainedPayload::Nonce { .. }
-                | RetainedPayload::Output { .. }
-                | RetainedPayload::InputSource { .. }
-                | RetainedPayload::Input { .. }
-                | RetainedPayload::SelectFamily { .. }
-                | RetainedPayload::Details { .. }
-                | RetainedPayload::Link { .. }
-                | RetainedPayload::AssociatedInputs { .. }
-                | RetainedPayload::Hyperlink { .. }
-                | RetainedPayload::Image { .. }
-                | RetainedPayload::Dialog { .. }
-                | RetainedPayload::Style { .. }
-                | RetainedPayload::AssociationDocument(_)
-                | RetainedPayload::AssociationOccurrence(_)
-                | RetainedPayload::AssociationCapturedContext(_)
-                | RetainedPayload::Retired => {}
-                RetainedPayload::HistoricalString { origins } => {
-                    origins.require_disposal_owner(control)?
-                }
-                RetainedPayload::PiAttributes { values, .. } => {
-                    values.require_disposal_owner(control)?
-                }
-                RetainedPayload::WorkList(Some(list)) => list.require_disposal_owner(control)?,
-                RetainedPayload::WorkList(None) => return Err(SessionError::Consumed),
-                RetainedPayload::StyleOrder(list) => list.require_disposal_owner(control)?,
-                RetainedPayload::EventHandlerStarts(list) => {
-                    list.require_disposal_owner(control)?
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub(super) fn release(
         self,
         control: &mut ParseControl,
         owner: &ControlIdentity,
     ) -> Result<(), SessionError> {
         #[cfg(test)]
-        self.assert_joins_match_registry();
+        self.assert_joins_match_registry(matches!(
+            control.stop(),
+            Some(crate::parser::control::HtmlParseStop::InternalInvariant(
+                crate::parser::control::HtmlParseInvariant::RegistryRow
+            ))
+        ));
         let Self {
             mut values,
             allocation,
@@ -1039,17 +888,6 @@ impl PayloadStorage {
                         shared,
                         ..
                     } => {
-                        if shared.finalized() {
-                            // A refused bank and tickets are dropped with the
-                            // payload; the latched stop reports the skipped credit.
-                            keep_first(
-                                &mut refused,
-                                control
-                                    .release_final_attributes(values, allocation, shared)
-                                    .map_err(FinalReleaseError::discard),
-                            );
-                            continue;
-                        }
                         let backing = values.into_shared_attributes();
                         match control.release_shared(backing, shared) {
                             Ok(vector) => {

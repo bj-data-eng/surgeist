@@ -376,13 +376,7 @@ impl ParserArenaSession {
         {
             kind = Some(HtmlNativeFormAssociationKind::Select);
         }
-        // Every creation audits the rows registered since the previous one, so no
-        // creation pays for the registry its predecessors built.
         let storage = self.active_mut()?;
-        storage.payloads.check_new_aliases(
-            ConstructionView::Active(storage.construction.storage(control)?),
-            control,
-        )?;
         if !matches!(profile, CreationProfile::Ordinary) {
             if matches!(profile, CreationProfile::Input(..))
                 && !exact_ascii(control, Some(tag.name.value.text()), "input")?

@@ -1,10 +1,9 @@
-//! Optional sharing at completed DOM-owned immutable value boundaries.
+//! Custody of text at completed DOM-owned immutable value boundaries.
 use super::*;
 
 impl Draft {
-    /// The actual Text occurrence is under affine custody before the optional
-    /// producer may retain an upgraded candidate. Other node kinds pass through.
-    pub(in crate::store) fn share_held_text(
+    /// The actual Text occurrence is under affine custody. Other node kinds pass through.
+    pub(in crate::store) fn admit_held_text(
         &self,
         mut incoming: custody::Held<NewNode>,
         retained_occurrence: bool,
@@ -23,91 +22,7 @@ impl Draft {
                 .debit_mut()
                 .grow(original, |next| self.admit_custody_usage(next, cancel))?;
         }
-        let Some(session) = self.sharing_session() else {
-            return Ok(incoming);
-        };
-        let NewNode::Text(text) = incoming.value() else {
-            unreachable!("the held candidate remains Text")
-        };
-        let selected =
-            self.with_sharing_admission(cancel, |admission| session.share_string(text, admission))?;
-        let Some(selected) = selected else {
-            return Ok(incoming);
-        };
-        let mut selected = selected.into_held();
-        let (old, mut original_credit) = incoming.into_parts();
-        // The original occurrence ends only after its actual field is gone.
-        drop(old);
-        drop(original_credit.split(original)?);
-        selected
-            .debit_mut()
-            .absorb(original_credit)
-            .expect("sharing uses the original DOM custody domain");
-        let (value, credit) = selected.into_parts();
-        Ok(custody::Held::new(NewNode::Text(value), credit))
-    }
-
-    /// Element prefixes are ordinary value text, never mandatory name atoms.
-    /// This storage change does not replay native initialization or alter any
-    /// namespace/local-name identity or prefix-presence distinction.
-    pub(in crate::store) fn share_held_name_prefix(
-        &self,
-        mut incoming: custody::Held<crate::DomQualifiedName>,
-        cancel: &AtomicBool,
-    ) -> Result<custody::Held<crate::DomQualifiedName>, DomError> {
-        let Some(session) = self.sharing_session() else {
-            return Ok(incoming);
-        };
-        #[cfg(test)]
-        if !session.fixture_strings_enabled() {
-            return Ok(incoming);
-        }
-        self.seed_name_atoms(incoming.value(), cancel)?;
-        let Some(prefix) = incoming.value().prefix() else {
-            return Ok(incoming);
-        };
-        let mut original = source::storage::Payload::default();
-        original.string(prefix)?;
-        let original = custody::Usage::new(original.bytes, original.units);
-        // Ingress has retained this exact complete name occurrence before
-        // offering its prefix. The name is not yet a sealed payload.
-        let prefix = incoming
-            .value()
-            .prefix()
-            .expect("original prefix is present");
-        let selected = self
-            .with_sharing_admission(cancel, |admission| session.share_string(prefix, admission))?;
-        let Some(selected) = selected else {
-            return Ok(incoming);
-        };
-        let (value, selected_credit) = selected.into_held().into_parts();
-        drop(incoming.value_mut().replace_prefix(Some(value)));
-        incoming
-            .debit_mut()
-            .absorb(selected_credit)
-            .expect("sharing uses the original DOM custody domain");
-        drop(incoming.debit_mut().split(original)?);
         Ok(incoming)
-    }
-
-    pub(in crate::store) fn seed_name_atoms(
-        &self,
-        name: &crate::DomQualifiedName,
-        cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
-        let Some(session) = self.sharing_session() else {
-            return Ok(());
-        };
-        #[cfg(test)]
-        if !session.fixture_strings_enabled() {
-            return Ok(());
-        }
-        for atom in name.namespace().into_iter().chain([name.local_name_atom()]) {
-            self.with_sharing_admission(cancel, |admission| {
-                session.seed_string(atom.text(), admission)
-            })?;
-        }
-        Ok(())
     }
 }
 
@@ -191,95 +106,5 @@ mod tests {
             second.value[0].name().owner(),
             first.value[0].name().owner()
         );
-    }
-
-    #[test]
-    fn text_producer_provenance_preserves_unrelated_credit_on_reuse() {
-        let cancel = AtomicBool::new(false);
-        let dom = Dom::new(limits()).unwrap();
-        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
-        draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
-        let mut units = Vec::with_capacity(19);
-        units.extend_from_slice(&[0xd800, 0, 120]);
-        let first = draft
-            .share_held_text(
-                custody::Held::new(
-                    NewNode::Text(DocumentString::from_utf16(units)),
-                    draft
-                        .custody_ledger()
-                        .retain(custody::Usage::ZERO, |_| Ok(()))
-                        .unwrap(),
-                ),
-                false,
-                &cancel,
-            )
-            .unwrap();
-        let NewNode::Text(first_text) = first.value() else {
-            panic!("actual Text");
-        };
-        assert_eq!(first_text.retained_units(), 19);
-        let selected = custody::Usage::new(size_of::<Vec<u16>>() + 19 * size_of::<u16>(), 19);
-        assert_eq!(first.debit().usage(), selected);
-        let extra = custody::Usage::new(777, 111);
-        for retained_occurrence in [false, true] {
-            let value = DocumentString::from_utf16(vec![0xd800, 0, 120]);
-            let original = value.block().downgrade();
-            let capacity = value.retained_units();
-            let original_extent = custody::Usage::new(
-                size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
-                capacity,
-            );
-            let owned = if retained_occurrence {
-                extra.checked_add(original_extent).unwrap()
-            } else {
-                extra
-            };
-            let input = custody::Held::new(
-                NewNode::Text(value),
-                draft.custody_ledger().retain(owned, |_| Ok(())).unwrap(),
-            );
-            let result = draft
-                .share_held_text(input, retained_occurrence, &cancel)
-                .unwrap();
-            let NewNode::Text(value) = result.value() else {
-                panic!("same Text kind");
-            };
-            assert!(value.shares_storage_with(first_text));
-            assert_eq!(value.code_units(), &[0xd800, 0, 120]);
-            assert!(original.upgrade().is_none());
-            assert_eq!(
-                result.debit().usage(),
-                selected.checked_add(extra).unwrap(),
-                "producer-qualified original field ends without subtracting unrelated credit"
-            );
-        }
-    }
-
-    #[test]
-    fn comment_candidate_keeps_its_exact_backing_and_credit() {
-        let cancel = AtomicBool::new(false);
-        let dom = Dom::new(limits()).unwrap();
-        let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
-        draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
-        let text = DocumentString::from_utf16(vec![0xd800, 0]);
-        let pointer = text.block().address();
-        let debit = draft
-            .custody_ledger()
-            .retain(custody::Usage::new(37, 5), |_| Ok(()))
-            .unwrap();
-        let baseline = draft.custody_ledger().total();
-        let result = draft
-            .share_held_text(
-                custody::Held::new(NewNode::Comment(text), debit),
-                false,
-                &cancel,
-            )
-            .unwrap();
-        let NewNode::Comment(text) = result.value() else {
-            panic!("same node kind");
-        };
-        assert_eq!(text.block().address(), pointer);
-        assert_eq!(result.debit().usage(), custody::Usage::new(37, 5));
-        assert_eq!(draft.custody_ledger().total(), baseline);
     }
 }

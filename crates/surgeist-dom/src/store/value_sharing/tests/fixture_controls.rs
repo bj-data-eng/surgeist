@@ -37,43 +37,6 @@ fn source_limits() -> DomSourceLimits {
 }
 
 #[test]
-fn disabled_layers_do_not_read_hash_or_activate_the_optional_owner() {
-    for mode in [Layers::CallerOnly, Layers::BanksOnly] {
-        let f = fixture();
-        let guard = control(&f.pool, mode);
-        let session = admitted(|a| f.pool.attach(a)).unwrap();
-        let baseline = f.ledger.total();
-        let text = raw(17);
-        let mut no_actions = Admission {
-            global: &mut |_| panic!("a disabled layer cannot retain a candidate"),
-            step: &mut || panic!("a disabled layer cannot inspect input or acquire a root"),
-        };
-        assert!(
-            session
-                .share_string(&text, &mut no_actions)
-                .unwrap()
-                .is_none()
-        );
-        session
-            .seed_string(f.name.local_name(), &mut no_actions)
-            .unwrap();
-        if mode == Layers::CallerOnly {
-            let bank = value(&f, RAW, 7);
-            assert!(matches!(
-                session.probe_bank(bank.entries(), &mut no_actions).unwrap(),
-                BankProbe::Bypassed
-            ));
-            session.offer_bank(&bank, None, &mut no_actions).unwrap();
-        }
-        assert!(session.is_dormant());
-        assert!(lock(&f.pool.0).roots.is_none());
-        assert_eq!(f.ledger.total(), baseline);
-        drop(session);
-        drop(guard);
-    }
-}
-
-#[test]
 fn owner_qualified_control_leaves_other_owners_and_threads_combined() {
     let f = fixture();
     let other = fixture();
@@ -150,68 +113,6 @@ fn panic_releases_the_control_and_nested_installation_preserves_its_outer_scope(
 }
 
 #[test]
-fn each_mode_preserves_paired_checkpoint_restore_and_closing() {
-    for mode in MODES {
-        let f = fixture();
-        let guard = control(&f.pool, mode);
-        let session = admitted(|a| f.pool.attach(a)).unwrap();
-        let base = value(&f, &[11], 3);
-        let later = value(&f, &[22], 5);
-        let base_text = DocumentString::from("base-text");
-        let later_text = DocumentString::from("later-text");
-        offer(&session, &base);
-        assert!(
-            admitted(|a| session.share_string(&base_text, a))
-                .unwrap()
-                .is_none()
-        );
-        let mark = admitted(|a| session.checkpoint(a)).unwrap();
-        offer(&session, &later);
-        assert!(
-            admitted(|a| session.share_string(&later_text, a))
-                .unwrap()
-                .is_none()
-        );
-        mark.restore();
-        if mode == Layers::CallerOnly {
-            assert!(matches!(
-                admitted(|a| session.probe_bank(base.entries(), a)).unwrap(),
-                BankProbe::Bypassed
-            ));
-            assert!(session.is_dormant());
-        } else {
-            assert!(hit(&session, &base).storage().same_storage(&base));
-            assert!(matches!(
-                admitted(|a| session.probe_bank(later.entries(), a)).unwrap(),
-                BankProbe::Miss(_)
-            ));
-        }
-        let selected =
-            admitted(|a| session.share_string(&DocumentString::from("base-text"), a)).unwrap();
-        if mode == Layers::Combined {
-            assert!(
-                selected
-                    .as_ref()
-                    .unwrap()
-                    .value()
-                    .shares_storage_with(&base_text)
-            );
-        } else {
-            assert!(selected.is_none());
-        }
-        assert!(
-            admitted(|a| session.share_string(&DocumentString::from("later-text"), a))
-                .unwrap()
-                .is_none()
-        );
-        drop(selected);
-        seal(session);
-        assert_raw(&f);
-        drop(guard);
-    }
-}
-
-#[test]
 fn native_values_keep_mandatory_atoms_and_select_only_the_enabled_backings() {
     let cancel = AtomicBool::new(false);
     for mode in MODES {
@@ -265,20 +166,18 @@ fn native_values_keep_mandatory_atoms_and_select_only_the_enabled_backings() {
             mode != Layers::CallerOnly
         );
         assert!(!left.same_attribute_storage(other));
-        assert_eq!(
-            left.attributes()[0]
+        assert!(
+            !left.attributes()[0]
                 .value()
-                .shares_storage_with(other.attributes()[0].value()),
-            mode == Layers::Combined
+                .shares_storage_with(other.attributes()[0].value())
         );
-        assert_eq!(
-            before
+        assert!(
+            !before
                 .node(text)
                 .unwrap()
                 .data()
                 .unwrap()
-                .shares_storage_with(before.node(equal_text).unwrap().data().unwrap()),
-            mode == Layers::Combined
+                .shares_storage_with(before.node(equal_text).unwrap().data().unwrap())
         );
         for id in [caller_first, caller_second] {
             assert!(

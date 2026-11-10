@@ -11,17 +11,6 @@ use crate::{
 use std::{error::Error, fmt};
 use surgeist_html::parsing::HtmlParserScriptingMode;
 
-/// Private qualification selection. Every mode still executes terminal
-/// promotion and both pools' fixed lifecycle; only optional reuse differs.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum ValueSharingMode {
-    Off,
-    BankOnly,
-    #[default]
-    Combined,
-}
-
 /// The detail a new request selects. Unit tests of the parser's recording
 /// machinery run with every kind selected; a test of selection names its
 /// selection.
@@ -208,8 +197,6 @@ pub struct HtmlDocumentParseRequest {
     associated: InputBank,
     accounting: RequestAccounting,
     detail: DetailSet,
-    #[cfg(test)]
-    value_sharing: ValueSharingMode,
 }
 impl HtmlDocumentParseRequest {
     /// Charges the parse as `accounting` says: in a host's operation and scope,
@@ -241,11 +228,6 @@ impl HtmlDocumentParseRequest {
     }
     pub(crate) fn initial_policy_base(&self) -> bool {
         self.initial_policy_base
-    }
-    #[cfg(test)]
-    pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
-        self.value_sharing = mode;
-        self
     }
     /// Parse the owned decoded source into a complete immutable report.
     #[expect(
@@ -289,8 +271,6 @@ impl HtmlDocumentParseRequest {
             associated: self.associated.into_shared(),
             accounting: self.accounting,
             detail: self.detail,
-            #[cfg(test)]
-            value_sharing: self.value_sharing,
         }
     }
     /// Selects the no-browsing-context operation: scripting is Disabled and
@@ -306,8 +286,6 @@ impl HtmlDocumentParseRequest {
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
             detail: default_detail(),
-            #[cfg(test)]
-            value_sharing: ValueSharingMode::Combined,
         }
     }
     /// Selects one document from the supplied immutable capture. Enabled
@@ -351,8 +329,6 @@ impl HtmlDocumentParseRequest {
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
             detail: default_detail(),
-            #[cfg(test)]
-            value_sharing: ValueSharingMode::Combined,
         })
     }
     /// Supplies actual ordinary-document URL/encoding/CSP observations. This
@@ -477,8 +453,6 @@ pub(crate) struct DocumentRequestParts {
     accounting: RequestAccounting,
     #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     detail: DetailSet,
-    #[cfg(test)]
-    value_sharing: ValueSharingMode,
 }
 impl DocumentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
@@ -487,10 +461,6 @@ impl DocumentRequestParts {
     #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     pub(crate) fn detail(&self) -> DetailSet {
         self.detail
-    }
-    #[cfg(test)]
-    pub(crate) fn value_sharing(&self) -> ValueSharingMode {
-        self.value_sharing
     }
     pub(crate) fn associated_inputs(
         &self,
@@ -548,8 +518,6 @@ pub struct HtmlFragmentParseRequest {
     associated: InputBank,
     accounting: RequestAccounting,
     detail: DetailSet,
-    #[cfg(test)]
-    value_sharing: ValueSharingMode,
 }
 impl HtmlFragmentParseRequest {
     /// Charges the parse as `accounting` says; see
@@ -574,11 +542,6 @@ impl HtmlFragmentParseRequest {
     /// The selected detail.
     pub fn detail(&self) -> DetailSet {
         self.detail
-    }
-    #[cfg(test)]
-    pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
-        self.value_sharing = mode;
-        self
     }
     /// Capture/revision-qualified attestation for this entry Document's parser
     /// creation environment. Target-only image support is insufficient.
@@ -610,8 +573,6 @@ impl HtmlFragmentParseRequest {
             associated: self.associated.into_shared(),
             accounting: self.accounting,
             detail: self.detail,
-            #[cfg(test)]
-            value_sharing: self.value_sharing,
         }
     }
     /// Selects Inert mode and disallows declarative shadow roots. A disabled
@@ -654,8 +615,6 @@ impl HtmlFragmentParseRequest {
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
             detail: default_detail(),
-            #[cfg(test)]
-            value_sharing: ValueSharingMode::Combined,
         })
     }
     /// Execution-only observations, resolved against the actual reached Document.
@@ -793,8 +752,6 @@ pub(crate) struct FragmentRequestParts {
     accounting: RequestAccounting,
     #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     detail: DetailSet,
-    #[cfg(test)]
-    value_sharing: ValueSharingMode,
 }
 impl FragmentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
@@ -803,10 +760,6 @@ impl FragmentRequestParts {
     #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     pub(crate) fn detail(&self) -> DetailSet {
         self.detail
-    }
-    #[cfg(test)]
-    pub(crate) fn value_sharing(&self) -> ValueSharingMode {
-        self.value_sharing
     }
     pub(crate) fn associated_inputs(
         &self,

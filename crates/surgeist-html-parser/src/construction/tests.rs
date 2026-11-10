@@ -15,6 +15,7 @@ mod input;
 mod input_types;
 mod link_history;
 mod listed_form;
+mod literals;
 mod native_payloads;
 pub(crate) mod native_view;
 mod output;

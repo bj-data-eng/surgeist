@@ -3031,7 +3031,7 @@ impl Draft {
         admit(units, limits.units, DomResource::StringCodeUnits)?;
         self.reserve_created_arena(cancel)?;
         self.source_admit(0, cancel)?;
-        let kind = self.share_held_text(kind, retained_occurrence, cancel)?;
+        let kind = self.admit_held_text(kind, retained_occurrence, cancel)?;
         let key = Key::Created(self.created.len());
         let relevant_global = match kind.value() {
             NewNode::Document(metadata) => metadata
@@ -3719,7 +3719,7 @@ impl Draft {
                             self.admit_custody_usage(usage, cancelled)
                         })?,
                 };
-                let held = self.share_held_text(
+                let held = self.admit_held_text(
                     custody::Held::new(kind, credit),
                     retained_occurrence,
                     cancelled,

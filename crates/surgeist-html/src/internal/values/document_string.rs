@@ -331,12 +331,6 @@ impl DocumentString {
         }
     }
 
-    /// Returns the allocation of a string that covers its whole block. Crate-internal: the value
-    /// pool holds whole blocks only.
-    pub(crate) fn whole_block_vec(&self) -> &Arc<Vec<u16>> {
-        &self.block.units
-    }
-
     /// Iterates code points, combining surrogate pairs and retaining isolated
     /// surrogates as their numeric code points.
     ///

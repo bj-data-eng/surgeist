@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlElement, HtmlNodeKind},
+    construction::HtmlElement,
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -393,61 +393,6 @@ fn radio_checked_added_removed_dirty_gate_and_existing_attribute_replacement_are
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
-}
-#[test]
-fn radio_managed_alias_refusal_preserves_original_then_retry_reclaims_all_owners() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        crate::HtmlSource::utf8(
-            "<html><head></head><input type=radio name=a checked><input type=radio name=b checked><i name=b>",
-        ),
-        limits(),
-    );
-    let (mut c, mut session, proof, mut lexer, a, b) = radio_managed_fixture(&request);
-    let mut field = radio_next_attribute(&mut lexer, &mut c);
-    let pointer = field
-        .as_ref()
-        .unwrap()
-        .value
-        .value
-        .text()
-        .code_units()
-        .as_ptr();
-    let HtmlNodeKind::Element(e) = &session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(a.index)
-        .expect("retained construction position")
-        .kind()
-    else {
-        panic!("input")
-    };
-    let alias = e.attributes().clone();
-    assert_eq!(
-        session.set_input_attribute(&mut c, &a, &mut field, &proof),
-        Err(SessionError::AliasedPayload)
-    );
-    assert_eq!(
-        field
-            .as_ref()
-            .unwrap()
-            .value
-            .value
-            .text()
-            .code_units()
-            .as_ptr(),
-        pointer
-    );
-    assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
-    assert!(session.input_state(&mut c, &b).unwrap().flags.checkedness());
-    drop(alias);
-    session
-        .set_input_attribute(&mut c, &a, &mut field, &proof)
-        .unwrap();
-    assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());
-    lexer.release(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    storage_zero(&c);
 }
 #[test]
 fn radio_actual_owner_change_null_then_final_owner_and_disconnected_setter_use_virtual_tree() {

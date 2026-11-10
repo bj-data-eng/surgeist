@@ -314,10 +314,6 @@ impl ParserArenaSession {
         if !storage.html_local(c, node, family.local())? {
             return Err(SessionError::WrongToken);
         }
-        storage.payloads.check_new_aliases(
-            ConstructionView::Active(storage.construction.test_storage()),
-            c,
-        )?;
         let attr = input.as_ref().ok_or(SessionError::Consumed)?;
         c.require_source_range(&attr.source)?;
         check_formatting_text(c, &attr.name, &attr.source)?;
@@ -389,11 +385,6 @@ impl ParserArenaSession {
             }
         }
         let container = storage.element_attribute_container(c, node)?;
-        storage.payloads.check_row_aliases(
-            ConstructionView::Active(storage.construction.test_storage()),
-            c,
-            container,
-        )?;
         let mut position = None;
         let HtmlNodeKind::Element(element) = &storage
             .construction

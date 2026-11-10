@@ -1,5 +1,4 @@
 use super::*;
-use surgeist_html::construction::HtmlNodeKind;
 
 #[test]
 fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validation() {
@@ -31,7 +30,7 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
     storage_zero(&c);
 }
 #[test]
-fn external_input_and_native_backing_aliases_reject_without_consuming_owners() {
+fn external_text_alias_and_native_backing_holder_reject_without_consuming_owners() {
     let mut c = control();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -59,24 +58,14 @@ fn external_input_and_native_backing_aliases_reject_without_consuming_owners() {
     };
     let alias = value.clone();
     let mut frozen = session.freeze(&mut c).unwrap();
-    let capacity = c
-        .usage()
-        .resource(HtmlParseResource::ManagedCapacityBytes)
-        .current;
-    assert!(matches!(
-        frozen.release(&mut c),
-        Err(SessionError::AliasedPayload)
-    ));
-    assert!(frozen.fragment().is_some());
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current,
-        capacity
+    // A native string that another holder still keeps cannot be released: the ticket of a string
+    // that does not share its block requires the block to be unheld.
+    let aliased = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
     );
+    assert_eq!(frozen.release(&mut c), Err(SessionError::Stop(aliased)));
+    assert_eq!(c.stop(), Some(aliased));
     drop(alias);
-    frozen.release(&mut c).unwrap();
-    storage_zero(&c);
 }
 #[test]
 fn foreign_token_owner_preserves_input_and_original_ledger_for_cleanup() {

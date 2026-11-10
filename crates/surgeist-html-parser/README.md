@@ -29,12 +29,12 @@ reuses unique aggregate backing while retaining immutable history leaves; the
 parser indexes current text tickets and textarea metadata with actual admitted
 capacity and cleanup.
 
-Finalization uses HTML's bounded value pools to share eligible immutable
-attribute banks, element-name components and Text data within each completed
-report. Sharing starts after mutable construction and alias checks finish;
-selected capacities and original/replacement overlap are admitted before output
-publication. Source locations, node identities and construction history remain
-per occurrence. Mutable parsing retains its original peak-storage requirements.
+A parse keeps each attribute bank, element-name component and Text datum as the
+construction created it: equal values are separate allocations. The exception is
+the namespace URIs (HTML, SVG, MathML, XLink, XML, XMLNS) and the attribute prefixes
+(xlink, xml, xmlns): a parse creates each once and every element, attribute,
+clone and fragment-context namespace or prefix with that value shares it. Source
+locations, node identities and construction history remain per occurrence.
 
 The document profile is fresh ordinary Disabled execution. Fragments retain
 qualified Inert/Disabled context facts. JavaScript execution, resource fetching,

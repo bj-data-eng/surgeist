@@ -308,4 +308,3 @@ pub(crate) mod interpretation;
 pub(crate) mod name_index;
 pub(crate) mod newlines;
 pub(crate) mod semantic_input;
-pub(crate) mod sharing;

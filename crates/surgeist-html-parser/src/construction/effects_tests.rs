@@ -1896,26 +1896,7 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     assert!(storage.effects.current.is_none());
     assert_eq!(c.stop(), None);
     assert_eq!(binding(&owner), DocumentRef::Captured(document));
-    // Release is itself charged work in the running state (the pops in
-    // construction/token_payload.rs release_token_attributes), so with no spare the first
-    // release is refused with a work stop. That latches the stop, after which
-    // terminal cleanup charges nothing (cleanup_owner and cleanup_release in
-    // construction/cleanup.rs and parser/control.rs) and the retry succeeds.
-    let refused = owner.release(&mut c).unwrap_err();
-    assert!(matches!(
-        refused,
-        SessionError::Stop(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::WorkCredits,
-            ..
-        })
-    ));
-    assert_eq!(
-        c.stop(),
-        Some(match refused {
-            SessionError::Stop(stop) => stop,
-            _ => unreachable!(),
-        })
-    );
+    // The release of an owner that holds no token needs no work beyond the exact budget.
     owner.release(&mut c).unwrap();
     storage_zero(&c);
 }
@@ -1953,10 +1934,7 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     // Each element exercises the payload lookups its kind performs while it is
     // created, attributed and inserted: attribute containers, ids, the node's
     // document binding, attribute values read by identity (nonce, href), and
-    // script/style/dialog/image/form/details/output metadata. Creation audits
-    // only the rows registered since the previous creation
-    // (`check_new_aliases`, construction/payload_registry.rs); the completed-freeze preflight
-    // and release still run the full `check_aliases`. Elements that walk the document
+    // script/style/dialog/image/form/details/output metadata. Elements that walk the document
     // in tree order (meta theme color, style with text) scale with tree nodes,
     // not with payloads, and are not measured here.
     let elements = [

@@ -8,7 +8,7 @@
 //! Every measure is the visits one extra element adds to a document whose
 //! unrelated filler holds `filler` elements: that marginal cost is the same for
 //! any filler size, whatever the filler's fanout adds to both documents. It is
-//! exactly equal for most elements; `POOL_PROBE_SLACK` explains the rest.
+//! exactly equal for every element.
 
 use surgeist_html::{
     construction::HtmlDocumentMode,
@@ -59,43 +59,27 @@ fn visits_added_after(unit: &str, filler: usize, element: &str) -> i64 {
 /// The filler sizes every measure is taken at.
 const SIZES: [usize; 3] = [50, 200, 800];
 
-/// Requires the measures taken at `SIZES` to differ by at most `slack`.
-fn assert_flat(what: &str, unit: &str, measures: [i64; 3], slack: i64) {
-    assert_flat_of("record visits", what, unit, measures, slack);
+/// Requires the measures taken at `SIZES` to be equal.
+fn assert_flat(what: &str, unit: &str, measures: [i64; 3]) {
+    assert_flat_of("record visits", what, unit, measures);
 }
 
 /// As `assert_flat`, naming the `measured` quantity in the failure.
-fn assert_flat_of(measured: &str, what: &str, unit: &str, measures: [i64; 3], slack: i64) {
+fn assert_flat_of(measured: &str, what: &str, unit: &str, measures: [i64; 3]) {
     let (least, most) = (
         measures.iter().min().copied().unwrap_or(0),
         measures.iter().max().copied().unwrap_or(0),
     );
     assert!(
-        most - least <= slack,
+        most == least,
         "{what} added {measures:?} {measured} after {SIZES:?} unrelated {unit}"
     );
 }
 
-/// Requires the visits `element` adds to be the same with 50, 200 and 800
-/// unrelated `unit`s, within `slack` visits.
-fn assert_independent_of_unrelated_within(unit: &str, element: &str, slack: i64) {
-    let measures = SIZES.map(|filler| visits_added_after(unit, filler, element));
-    assert_flat(element, unit, measures, slack);
-}
-
-/// Slack for an element whose strings are new to the value pool the final
-/// sharing pass probes. The pool is a fixed table (surgeist-html
-/// `values/sharing/policy.rs`), so a probe's visits are bounded, but they
-/// depend on the occupancy the filler's pooled values leave in its bucket:
-/// how many of the four candidates it inspects, whether a matching hash is
-/// upgraded and compared, how many hot slots it scans before a free one, and
-/// whether that slot's page is already allocated. This value is not derived
-/// from those terms: the largest spread seen for an anchor or a style element
-/// over filler sizes 1 to 130, 190 to 210 and 790 to 810 was 29 visits.
-const POOL_PROBE_SLACK: i64 = 32;
-
+/// Requires the visits `element` adds to be the same with 50, 200 and 800 unrelated `unit`s.
 fn assert_independent_of_unrelated(unit: &str, element: &str) {
-    assert_independent_of_unrelated_within(unit, element, 0);
+    let measures = SIZES.map(|filler| visits_added_after(unit, filler, element));
+    assert_flat(element, unit, measures);
 }
 
 #[test]
@@ -115,7 +99,7 @@ fn a_details_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
 
 #[test]
 fn an_anchor_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
-    assert_independent_of_unrelated_within(SPAN, "<a href=x>t</a>", POOL_PROBE_SLACK);
+    assert_independent_of_unrelated(SPAN, "<a href=x>t</a>");
 }
 
 #[test]
@@ -130,18 +114,14 @@ fn a_dialog_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
 
 #[test]
 fn a_style_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
-    assert_independent_of_unrelated_within(SPAN, "<style>a{}</style>", POOL_PROBE_SLACK);
+    assert_independent_of_unrelated(SPAN, "<style>a{}</style>");
 }
 
 #[test]
 fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
     // The sheet order the style records names the earlier style elements, but
     // one more entry is all that a later style adds to it.
-    assert_independent_of_unrelated_within(
-        "<style>b{}</style>",
-        "<style>a{}</style>",
-        POOL_PROBE_SLACK,
-    );
+    assert_independent_of_unrelated("<style>b{}</style>", "<style>a{}</style>");
 }
 
 #[test]
@@ -162,20 +142,12 @@ fn a_viewport_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it()
 fn a_theme_color_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
     // It is a candidate for the theme color, so its insertion settles the
     // selection, and that takes reading this meta, not walking the tree.
-    assert_independent_of_unrelated_within(
-        SPAN,
-        "<meta name=theme-color content=red>",
-        POOL_PROBE_SLACK,
-    );
+    assert_independent_of_unrelated(SPAN, "<meta name=theme-color content=red>");
 }
 
 #[test]
 fn a_color_scheme_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
-    assert_independent_of_unrelated_within(
-        SPAN,
-        "<meta name=color-scheme content=dark>",
-        POOL_PROBE_SLACK,
-    );
+    assert_independent_of_unrelated(SPAN, "<meta name=color-scheme content=dark>");
 }
 
 /// One form control that registers a form association.
@@ -237,7 +209,6 @@ fn assert_selectedness_work_independent_of_other_options(option: &str) {
         &format!("{option} in a select over a div"),
         "options",
         SIZES.map(excess),
-        0,
     );
 }
 
@@ -278,7 +249,7 @@ fn work_added_at_depth(
 fn assert_state_steps_independent_of_depth(open: &str, element: &str) {
     let measures = SIZES
         .map(|depth| work_added_at_depth(HtmlParseWorkCategory::StateStep, open, depth, element));
-    assert_flat_of("state steps", element, open, measures, 0);
+    assert_flat_of("state steps", element, open, measures);
 }
 
 #[test]
@@ -313,7 +284,6 @@ fn a_template_adds_the_same_state_steps_whatever_separates_it_from_an_open_templ
         "<template></template>",
         "<div> in an open template",
         measures,
-        0,
     );
 }
 
@@ -338,7 +308,6 @@ fn assert_creation_excess_independent_of_depth(open: &str, element: &str, contro
         element,
         open,
         SIZES.map(excess),
-        0,
     );
 }
 
@@ -357,7 +326,7 @@ fn an_html_element_adds_no_more_visits_than_a_foreign_one_whatever_is_open_aroun
 fn assert_visits_independent_of_depth(open: &str, element: &str) {
     let measures = SIZES
         .map(|depth| work_added_at_depth(HtmlParseWorkCategory::RecordVisit, open, depth, element));
-    assert_flat_of("record visits", element, open, measures, 0);
+    assert_flat_of("record visits", element, open, measures);
 }
 
 #[test]
@@ -411,13 +380,7 @@ fn visits_added_in_a_cell_at_depth(depth: usize, prefix: &str, element: &str) ->
 /// and 800 open spans, with `prefix` opened between the spans and the cell.
 fn assert_cell_work_independent_of_depth(prefix: &str, element: &str) {
     let measures = SIZES.map(|depth| visits_added_in_a_cell_at_depth(depth, prefix, element));
-    assert_flat_of(
-        "record visits in a table cell",
-        element,
-        "<span>",
-        measures,
-        0,
-    );
+    assert_flat_of("record visits in a table cell", element, "<span>", measures);
 }
 
 #[test]
@@ -462,24 +425,14 @@ fn a_selected_option_adds_the_same_selectedcontent_visits_whatever_unrelated_ele
     // Updating the select's selectedcontent reads the select's descendants and
     // its options; nothing outside the select is read.
     let measures = SIZES.map(|count| visits_added_by_selected_option_after(SPAN, count));
-    assert_flat_of(
-        "record visits",
-        "a second selected option",
-        SPAN,
-        measures,
-        POOL_PROBE_SLACK,
-    );
+    assert_flat_of("record visits", "a second selected option", SPAN, measures);
 }
 
 #[test]
 fn a_style_inside_a_fostered_element_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
     // The element is fostered before its table, so the style is not the last
     // node of the tree; it still follows every style before it.
-    assert_independent_of_unrelated_within(
-        SPAN,
-        "<table><b><style>a{}</style></b></table>",
-        POOL_PROBE_SLACK,
-    );
+    assert_independent_of_unrelated(SPAN, "<table><b><style>a{}</style></b></table>");
 }
 
 /// A `div` in a connected document that has a header-delivered policy, the
@@ -564,7 +517,6 @@ fn a_hidden_nonce_adds_the_same_visits_whatever_unrelated_elements_precede_it() 
         "a hidden nonce",
         SPAN,
         SIZES.map(excess),
-        POOL_PROBE_SLACK,
     );
 }
 
@@ -601,7 +553,7 @@ fn assert_order_comparison_costs_one_visit_per_level(first: &str, cell: &str, in
         let levels = (pair[1] - pair[0]) as i64;
         let grew = window[1] - window[0];
         assert!(
-            grew <= PER_LEVEL * levels + POOL_PROBE_SLACK,
+            grew <= PER_LEVEL * levels,
             "{inner} added {measures:?} record visits after {depths:?} open spans: {grew} more \
              for {levels} more levels"
         );
@@ -657,7 +609,7 @@ fn a_second_meta_in_a_nearby_branch_costs_nothing_for_the_open_levels_above_it()
     };
     let measures = depths.map(visits);
     assert!(
-        measures[2] - measures[0] <= POOL_PROBE_SLACK,
+        measures[2] <= measures[0],
         "a second meta added {measures:?} record visits after {depths:?} open divs"
     );
 }

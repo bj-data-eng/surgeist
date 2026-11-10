@@ -4,6 +4,7 @@ use super::*;
 use crate::name::{AttributeValues, NameRecord};
 use crate::store::payload;
 use std::hash::{Hash, Hasher};
+use surgeist_html::values::DocumentString;
 
 const BUCKETS: usize = 32;
 const WAYS: usize = 4;

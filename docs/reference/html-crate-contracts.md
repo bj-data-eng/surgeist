@@ -932,8 +932,8 @@ parser to refund corresponding capacity. Cleanup does not poll for useful work,
 allocate, infer a capacity or silently discard a refused owner. A preflight
 refusal leaves the retirement cursor at the same allocation for retry. Parser
 then releases its independent payload/effect/evidence ticket banks in their
-existing order. Shared strings and attributes are dropped from records before
-their retained parser payload tickets are reclaimed, preserving alias checks.
+existing order. Strings and attributes are dropped from records before their
+retained parser payload tickets are reclaimed.
 
 These snapshots/actions replace private `VectorCapacity<Record>` accesses in
 session reserve/release, private `SharedAllocation<Arena>` in freeze/recovery and
@@ -1168,7 +1168,7 @@ text append, complete attribute edits with their candidates and slots, and lease
 recovery) consume the owner and return `HtmlConstructionRefusal<Owner>`, which
 holds the complete unconsumed owner and the cause, so a refusal loses nothing and
 a consumed owner cannot be presented again. The other owner families
-(attribute validation, interpretation and the value pools) keep a guarded
+(attribute validation and interpretation) keep a guarded
 `&mut Option<Owner>` transition that leaves `Some` unchanged on refusal. The
 remaining boundaries return an error value containing the complete unconsumed
 owner/input. Borrowing action failure leaves ownership in its enclosing
@@ -1803,12 +1803,12 @@ and otherwise that it names a rule or vocabulary.
 
 | Family | Shape | Evolution |
 | --- | --- | --- |
-| `HtmlConstructionRefusal`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionRefusal`, `HtmlConstructionActionFailure` | Carrier struct with the reason and the recovered owners | Fields private |
 | the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
 | `HtmlConstructionError` with its cause enum `HtmlConstructionCause`, which the parser maps variant by variant | Struct whose `cause()` returns an exhaustive enum with the payload of the cause, and `accounting_fault` | Exhaustive: a new cause fails to compile in the parser |
 | Resource accounting that a consumer matches exhaustively: `HtmlIntegerUnitStepError` and `HtmlNumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `HtmlFloatingPointAllocationError` (semantics `range.rs`), `HtmlIntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `HtmlAutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
 | Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
-| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `HtmlRangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
+| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `HtmlRangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
 
 Keyword and state sets that the pinned standard enumerates, and the action,
 reply, outcome and step enums of the controlled operations, are exhaustive. Every

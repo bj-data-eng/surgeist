@@ -61,6 +61,13 @@ impl PublishedEvidence {
 /// The arena stays where it was, for release.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Unpublishable;
+impl Unpublishable {
+    /// The refusal as the session error, with a custody fault latched as the
+    /// controller's first stop.
+    pub(crate) fn latch(self, c: &mut ParseControl) -> SessionError {
+        latch_registry_row(c)
+    }
+}
 
 impl ParserArenaSession {
     #[cfg(test)]
@@ -70,10 +77,6 @@ impl ParserArenaSession {
     ) -> Result<FrozenHistory, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.test_storage()),
-            c,
-        )?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
@@ -254,9 +257,6 @@ impl FrozenHistory {
     /// source or complete projection, stays in `slot` whole and unchanged.
     fn publish(slot: &mut Option<FrozenArena>) -> Option<Self> {
         let arena = slot.as_mut()?;
-        if arena.finalizing.is_some() {
-            return None;
-        }
         let mut storage = arena.storage.take()?;
         let Some(mut evidence) = storage.evidence.take() else {
             arena.storage = Some(storage);
@@ -331,8 +331,6 @@ impl FrozenHistory {
         storage.evidence = Some(evidence);
         FrozenArena {
             storage: Some(storage),
-            finalizing: None,
-            sharing_started: false,
         }
     }
     /// Prepublication disposal of the actual frozen owner.
@@ -348,20 +346,6 @@ pub(crate) struct PreparedHistory<'a> {
     input: &'a mut Option<FrozenArena>,
 }
 impl<'a> PreparedHistory<'a> {
-    pub(super) fn share_values<'c>(
-        &mut self,
-        c: &'c mut ParseControl,
-        #[cfg(test)] mode: crate::request::ValueSharingMode,
-    ) -> Result<super::value_sharing::Sharing<'c>, SessionError> {
-        self.input
-            .as_mut()
-            .ok_or(SessionError::Consumed)?
-            .share_values(
-                c,
-                #[cfg(test)]
-                mode,
-            )
-    }
     /// The prepared arena, for tests that corrupt what publication will take.
     #[cfg(test)]
     pub(crate) fn arena_for_test(&mut self) -> Option<&mut FrozenArena> {
@@ -374,9 +358,6 @@ impl<'a> PreparedHistory<'a> {
         let arena = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = arena.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Frozen(&storage.view), c)?;
         storage.effects.require_freezable(c)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -778,6 +759,17 @@ mod tests {
 
     fn limits() -> HtmlParseLimits {
         super::super::tests::limits()
+    }
+
+    #[test]
+    fn an_unpublishable_history_latches_the_registry_row_as_the_first_stop() {
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::RegistryRow,
+        );
+        assert_eq!(c.stop(), None);
+        assert_eq!(Unpublishable.latch(&mut c), SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
     }
     fn zero(c: &ParseControl) {
         super::super::tests::storage_zero(c);
@@ -1370,67 +1362,6 @@ mod tests {
             }
             zero(&c);
         }
-    }
-
-    #[test]
-    fn immutable_history_alias_refusal_cancel_and_foreign_control_preserve_transfer_and_retry() {
-        let source = crate::HtmlSource::utf8("AB");
-        let (mut c, mut session, _) = projected(&source);
-        let alias = (0..session.active().unwrap().construction.test_storage().len())
-            .find_map(|position| {
-                match session
-                    .active()
-                    .unwrap()
-                    .construction
-                    .node_at(position)
-                    .unwrap()
-                    .kind()
-                {
-                    HtmlNodeKind::Text(value) => Some(value.clone()),
-                    _ => None,
-                }
-            })
-            .unwrap();
-        assert!(matches!(
-            session.freeze_history(&mut c),
-            Err(SessionError::AliasedPayload)
-        ));
-        assert!(session.active().is_ok() && c.stop().is_none());
-        drop(alias);
-        let owner = session.freeze_history(&mut c).unwrap();
-        let alias = owner.fragment().unwrap().clone();
-        let mut arena = owner.into_arena();
-        assert!(arena.release(&mut c).is_err());
-        drop(alias);
-        arena.release(&mut c).unwrap();
-        zero(&c);
-
-        let signal = HtmlParseCancellation::new();
-        let (mut c, mut session, _) = literal(&source, signal.clone());
-        session
-            .prepare_native_associations(&mut c, &source)
-            .unwrap();
-        signal.cancel();
-        assert!(matches!(
-            session.freeze_history(&mut c),
-            Err(SessionError::Stop(HtmlParseStop::Cancelled))
-        ));
-        assert!(session.active().is_ok());
-        session.release(&mut c).unwrap();
-        zero(&c);
-
-        let (mut c, mut session, _) = projected(&source);
-        let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
-        foreign.admit_source(&source).unwrap();
-        assert!(matches!(
-            session.freeze_history(&mut foreign),
-            Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
-                crate::parser::control::HtmlParseInvariant::ForeignControl
-            )))
-        ));
-        assert!(session.active().is_ok() && c.stop().is_none());
-        session.release(&mut c).unwrap();
-        zero(&c);
     }
 
     #[test]

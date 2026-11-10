@@ -4895,7 +4895,8 @@ fn parsed_input_image_history_transfers_never_entered_absent_empty_and_nonempty_
 }
 
 #[test]
-fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state() {
+fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rewriting_report_or_parser_state()
+ {
     let cancel = AtomicBool::new(false);
     let (mut dom, environment) = setup();
     let mut seed = DomBatch::new();
@@ -5045,9 +5046,10 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
     }
     for text in &texts {
         let data = result.snapshot().node(*text).unwrap().data().unwrap();
-        assert!(data.shares_storage_with(native_data));
+        // The installed node holds the report's string, not the equal native one.
+        assert!(!data.shares_storage_with(native_data));
         assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
-        assert_eq!(data.retained_units(), 64);
+        assert!(data.retained_units() >= 6);
     }
     let mut edit = DomBatch::new();
     edit.set_attribute(inputs[0], "class", "edited");
@@ -5112,7 +5114,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
             "initial".encode_utf16().collect::<Vec<_>>()
         );
         let data = snapshot.node(text).unwrap().data().unwrap();
-        assert!(data.shares_storage_with(native_data));
+        assert!(!data.shares_storage_with(native_data));
         assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
     }
     assert!(std::ptr::eq(result.report(), Arc::as_ref(&report)));

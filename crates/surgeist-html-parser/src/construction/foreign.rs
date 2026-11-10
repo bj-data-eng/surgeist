@@ -349,16 +349,26 @@ impl SessionStorage {
         let (local, ticket) = self.register_foreign_text(c, original, adjustment)?;
         let (namespace, namespace_ticket) = match namespace {
             Some(uri) => {
-                let value = literal_string(c, uri.as_bytes())?;
-                let (value, ticket) = self.register_string(c, value, None)?;
+                let (value, ticket) = match Literal::of_uri(uri) {
+                    Some(literal) => self.register_literal(c, literal)?,
+                    None => {
+                        let value = literal_string(c, uri.as_bytes())?;
+                        self.register_string(c, value, None)?
+                    }
+                };
                 (Namespace::from_uri(value), Some(ticket))
             }
             None => (Namespace::none(), None),
         };
         let (prefix, prefix_ticket) = match prefix {
             Some(prefix) => {
-                let value = literal_string(c, prefix.as_bytes())?;
-                let (value, ticket) = self.register_string(c, value, None)?;
+                let (value, ticket) = match Literal::of_prefix(prefix) {
+                    Some(literal) => self.register_literal(c, literal)?,
+                    None => {
+                        let value = literal_string(c, prefix.as_bytes())?;
+                        self.register_string(c, value, None)?
+                    }
+                };
                 (Some(value), Some(ticket))
             }
             None => (None, None),
@@ -717,17 +727,6 @@ mod tests {
                 assert!(
                     matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                 );
-                session
-                    .active()
-                    .unwrap()
-                    .payloads
-                    .check_aliases(
-                        ConstructionView::Active(
-                            session.active().unwrap().construction.test_storage(),
-                        ),
-                        &mut c,
-                    )
-                    .unwrap();
             } else {
                 result.unwrap();
             }
@@ -860,30 +859,6 @@ mod tests {
                     );
                 }
                 Err(error) => panic!("qualified clone failure: {error:?}"),
-            }
-            match session.active().unwrap().payloads.check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
-                &mut c,
-            ) {
-                Ok(()) => {}
-                Err(SessionError::Stop(first)) => {
-                    // The exact clone cut can stop at the following cleanup
-                    // qualification. Terminal cleanup rechecks the actual aliases
-                    // without additional work and preserves that first stop.
-                    assert_eq!(c.stop(), Some(first));
-                    session
-                        .active()
-                        .unwrap()
-                        .payloads
-                        .check_aliases(
-                            ConstructionView::Active(
-                                session.active().unwrap().construction.test_storage(),
-                            ),
-                            &mut c,
-                        )
-                        .unwrap();
-                }
-                Err(error) => panic!("actual clone aliases: {error:?}"),
             }
             lexer.release(&mut c).unwrap();
             if let Err(SessionError::Stop(_)) = session.release(&mut c) {
@@ -1111,8 +1086,13 @@ impl SessionStorage {
             // The selected HTML namespace is a defining literal, copied through
             // the same admitted exact buffer as token-created units.
             let (namespace, namespace_ticket) = if let Some(uri) = foreign.uri() {
-                let namespace = literal_string(control, uri.as_bytes())?;
-                let (value, ticket) = self.register_string(control, namespace, None)?;
+                let (value, ticket) = match Literal::of_uri(uri) {
+                    Some(literal) => self.register_literal(control, literal)?,
+                    None => {
+                        let namespace = literal_string(control, uri.as_bytes())?;
+                        self.register_string(control, namespace, None)?
+                    }
+                };
                 (Namespace::from_uri(value), Some(ticket))
             } else {
                 self.copy_context_namespace(control)?

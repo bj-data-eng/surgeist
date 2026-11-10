@@ -27,14 +27,7 @@ use admission::Site;
 mod attributes;
 mod construction;
 mod css_value;
-mod finalization;
 pub(crate) use css_value::CssSchemeValue;
-pub(crate) use finalization::FinalReleaseError;
-#[cfg(test)]
-pub(crate) use finalization::{
-    FinalizationCut, FinalizationObservation, FinalizationTransferObservation,
-    FinalizationTransferStage,
-};
 mod string_extension;
 mod text_append;
 pub(crate) use construction::ConstructionAllocation;
@@ -164,9 +157,9 @@ pub enum HtmlParseInvariant {
     ///   disagrees, or a new row cannot be registered;
     /// - a position, count or text extent is outside what it indexes, or
     ///   registry arithmetic over one overflows;
-    /// - an owner, lease, pool, ticket, attribute edit, pending operation,
-    ///   terminal slot or finalization state that is kept in a slot is absent,
-    ///   or is occupied when the step needs it free;
+    /// - an owner, lease, ticket, attribute edit, pending operation or
+    ///   terminal slot that is kept in a slot is absent, or is occupied when
+    ///   the step needs it free;
     /// - a retained step lacks the value its stage consumes: the form-owner
     ///   reset's owner or stage, the stage of an attribute bank, a text-run
     ///   scan's run kind, a recognition cursor's result, or an image-source
@@ -397,14 +390,6 @@ pub(crate) struct ParseControl {
     #[cfg(test)]
     owned_spans: OwnedSpanObservation,
     #[cfg(test)]
-    finalization_cut: Option<finalization::CutRequest>,
-    #[cfg(test)]
-    finalization_observation: Option<FinalizationObservation>,
-    #[cfg(test)]
-    finalization_transfer_cut: Option<finalization::TransferCut>,
-    #[cfg(test)]
-    finalization_transfer_observation: Option<FinalizationTransferObservation>,
-    #[cfg(test)]
     css_scheme_fault: Option<css_value::SchemeFault>,
     /// Refuses the next `release_shared` as if its payload were aliased.
     #[cfg(test)]
@@ -593,14 +578,6 @@ impl ParseControl {
             sibling_hints: [None; SIBLING_HINTS],
             #[cfg(test)]
             owned_spans: OwnedSpanObservation::default(),
-            #[cfg(test)]
-            finalization_cut: None,
-            #[cfg(test)]
-            finalization_observation: None,
-            #[cfg(test)]
-            finalization_transfer_cut: None,
-            #[cfg(test)]
-            finalization_transfer_observation: None,
             #[cfg(test)]
             css_scheme_fault: None,
             #[cfg(test)]
@@ -1619,8 +1596,7 @@ impl ParseControl {
                 HtmlParseInvariant::ForeignControl,
             ));
         }
-        if shared.finalized
-            || shared.shared.as_ptr() != Arc::as_ptr(values)
+        if shared.shared.as_ptr() != Arc::as_ptr(values)
             || shared.bytes != size_of::<Vec<surgeist_html::values::Attribute>>() as u64
             || vector.capacity != values.capacity()
         {
@@ -1707,7 +1683,6 @@ impl ParseControl {
             shared: Arc::downgrade(&shared),
             bytes,
             element: PhantomData,
-            finalized: false,
         };
         Ok((shared, allocation))
     }
@@ -2113,7 +2088,7 @@ impl ParseControl {
             resource: HtmlParseResource::BufferedUtf16Units,
             data_pointer: buffer.as_slice().as_ptr() as usize,
             backing: None,
-            finalized: false,
+            shared: false,
         };
         Ok((buffer.into_vec(), allocation))
     }
@@ -2289,6 +2264,35 @@ impl ParseControl {
         Ok(())
     }
 
+    /// The occurrence ticket of a string that shares the block of a string already registered:
+    /// the block's storage is charged by the ticket of the first, so only the units of this
+    /// occurrence are admitted, as every stored string counts its length.
+    pub(crate) fn share_document_string(
+        &mut self,
+        value: &surgeist_html::values::DocumentString,
+    ) -> Result<DocumentStringAllocation, HtmlParseStop> {
+        self.checkpoint()?;
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+        ])?;
+        let units = u64::try_from(value.len())
+            .or_else(|_| self.representation(HtmlParseResource::ManagedUtf16Units))?;
+        self.acquire(HtmlParseResource::ManagedUtf16Units, units)?;
+        Ok(DocumentStringAllocation {
+            owner: self.identity.clone(),
+            units,
+            vector_capacity: value.retained_units(),
+            vector_admitted: 0,
+            wrapper_bytes: 0,
+            resource: HtmlParseResource::ManagedUtf16Units,
+            data_pointer: value.code_units().as_ptr() as usize,
+            backing: Some(value.block().downgrade()),
+            shared: true,
+        })
+    }
+
     /// Transfers this producer's actual independent text ticket into the CSP
     /// provider aggregate. The aggregate is acquired before the vector ticket
     /// retires; the immutable backing remains live under its new sole receipt.
@@ -2351,7 +2355,7 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        if !allocation.finalized
+        if !allocation.shared
             && allocation
                 .backing
                 .as_ref()
@@ -2407,7 +2411,6 @@ pub(crate) struct SharedAllocation<T> {
     shared: Weak<T>,
     bytes: u64,
     element: PhantomData<T>,
-    finalized: bool,
 }
 impl<T> SharedAllocation<T> {
     #[cfg(test)]
@@ -2441,9 +2444,15 @@ pub(crate) struct DocumentStringAllocation {
     resource: HtmlParseResource,
     data_pointer: usize,
     backing: Option<WeakTextBlock>,
-    finalized: bool,
+    /// Whether other strings hold the same block, which a release then does not require to be
+    /// unheld.
+    shared: bool,
 }
 impl DocumentStringAllocation {
+    /// Records that other strings hold this ticket's block.
+    pub(crate) fn mark_shared(&mut self) {
+        self.shared = true;
+    }
     #[cfg(test)]
     pub(crate) fn units(&self) -> u64 {
         self.units

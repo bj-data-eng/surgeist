@@ -185,7 +185,8 @@ fn equal_native_and_imported_banks_share_without_merging_input_state() {
 }
 
 #[test]
-fn independently_created_text_shares_without_changing_siblings_or_snapshots() {
+fn independently_created_equal_text_keeps_separate_backings_without_changing_siblings_or_snapshots()
+{
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -213,18 +214,18 @@ fn independently_created_text_shares_without_changing_siblings_or_snapshots() {
         assert_eq!(before.node(id).unwrap().data().unwrap().code_units(), RAW);
     }
     assert!(
-        before
+        !before
             .node(first)
             .unwrap()
             .data()
             .unwrap()
             .shares_storage_with(before.node(second).unwrap().data().unwrap()),
-        "independent equal Text values must share"
+        "independent equal Text values keep separate backings"
     );
 }
 
 #[test]
-fn completed_text_replacement_reuses_an_existing_equal_value() {
+fn completed_text_replacement_keeps_the_callers_value_beside_an_equal_one() {
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -247,18 +248,18 @@ fn completed_text_replacement_reuses_an_existing_equal_value() {
         assert_eq!(after.node(id).unwrap().data().unwrap().code_units(), RAW);
     }
     assert!(
-        after
+        !after
             .node(edited)
             .unwrap()
             .data()
             .unwrap()
             .shares_storage_with(after.node(existing).unwrap().data().unwrap()),
-        "completed Text replacement must select the existing immutable value"
+        "completed Text replacement keeps the caller's value"
     );
 }
 
 #[test]
-fn different_ordered_banks_share_equal_strings_but_keep_order_prefixes_and_ids() {
+fn different_ordered_banks_keep_equal_strings_separate_and_keep_order_prefixes_and_ids() {
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -312,10 +313,10 @@ fn different_ordered_banks_share_equal_strings_but_keep_order_prefixes_and_ids()
     }
     assert!(!std::ptr::eq(left, right));
     assert!(
-        left[1].value().shares_storage_with(right[0].value()),
-        "different banks must still reuse repeated value strings"
+        !left[1].value().shares_storage_with(right[0].value()),
+        "equal value strings of different banks keep separate backings"
     );
-    assert!(left[2].value().shares_storage_with(right[2].value()));
+    assert!(!left[2].value().shares_storage_with(right[2].value()));
 }
 
 fn padded(value: &str, capacity: usize) -> DocumentString {
@@ -390,7 +391,7 @@ fn equal_smaller_noop_candidates_keep_original_backings_usage_and_history() {
 }
 
 #[test]
-fn one_long_native_transaction_reuses_first_late_hot_patterns() {
+fn one_long_native_transaction_reuses_banks_for_late_hot_patterns() {
     let mut dom = Dom::new(
         DomLimits::new(
             1_500,
@@ -523,13 +524,14 @@ fn one_long_native_transaction_reuses_first_late_hot_patterns() {
         .unwrap()
         .shares_storage_with(snapshot.node(second_text).unwrap().data().unwrap());
     assert!(
-        bank_shared && text_shared,
-        "late hot patterns in one transaction must reuse backing: bank={bank_shared}, Text={text_shared}"
+        bank_shared && !text_shared,
+        "late hot patterns in one transaction reuse the bank, not the Text backing: bank={bank_shared}, Text={text_shared}"
     );
 }
 
 #[test]
-fn later_values_and_text_reuse_existing_canonical_name_text_without_rebinding_atoms() {
+fn later_values_and_text_keep_their_own_backing_beside_canonical_name_text_without_rebinding_atoms()
+{
     const URI: &[u16] = &[117, 114, 110, 58, 115, 104, 97, 114, 101, 100];
     const LOCAL: &[u16] = &[115, 104, 97, 114, 101, 100];
     let mut dom = owner();
@@ -615,20 +617,20 @@ fn later_values_and_text_reuse_existing_canonical_name_text_without_rebinding_at
             .is_empty()
     );
     assert!(
-        namespace.text().shares_storage_with(attributes[0].value()),
-        "a later value must reuse the actual canonical namespace text"
+        !namespace.text().shares_storage_with(attributes[0].value()),
+        "a later value keeps its own backing beside the canonical namespace text"
     );
     assert!(
-        local.text().shares_storage_with(attributes[1].value()),
-        "a later value must reuse the actual canonical local-name text"
+        !local.text().shares_storage_with(attributes[1].value()),
+        "a later value keeps its own backing beside the canonical local-name text"
     );
     assert!(
-        namespace
+        !namespace
             .text()
             .shares_storage_with(after.node(namespace_text).unwrap().data().unwrap())
     );
     assert!(
-        local
+        !local
             .text()
             .shares_storage_with(after.node(local_text).unwrap().data().unwrap())
     );
@@ -680,7 +682,7 @@ fn assert_prefixed_values(snapshot: &DomSnapshot, element: NodeId) {
 }
 
 #[test]
-fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutations() {
+fn new_and_imported_prefixes_keep_their_own_backing_without_merging_names_or_mutations() {
     let mut dom = owner();
     let source_document = document(&mut dom);
     let (seed, text) = prefix_seed(&mut dom, source_document);
@@ -732,11 +734,11 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
         );
         assert_eq!(name.local_name_atom().same_identity(&local), Ok(true));
         assert!(
-            name.prefix().unwrap().shares_storage_with(seeded_text),
-            "new native/imported prefix must reuse an earlier immutable Text value"
+            !name.prefix().unwrap().shares_storage_with(seeded_text),
+            "a new native/imported prefix keeps its own backing beside an earlier Text value"
         );
     }
-    assert!(seeded_value.shares_storage_with(seeded_text));
+    assert!(!seeded_value.shares_storage_with(seeded_text));
 
     let mut destination = owner();
     let target_document = document(&mut destination);
@@ -785,15 +787,15 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
     let target_text_value = imported_snapshot.node(target_text).unwrap().data().unwrap();
     assert_eq!(target_text_value.code_units(), [112]);
     assert!(
-        imported_name
+        !imported_name
             .prefix()
             .unwrap()
             .shares_storage_with(target_text_value),
-        "foreign import must select the destination owner's earlier prefix backing"
+        "foreign import keeps the imported prefix backing"
     );
     let target_seed_node = imported_snapshot.node(target_seed).unwrap();
     assert!(
-        target_seed_node.as_element().unwrap().attributes()[0]
+        !target_seed_node.as_element().unwrap().attributes()[0]
             .value()
             .shares_storage_with(target_text_value)
     );
@@ -821,7 +823,7 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
     );
     assert_eq!(changed.name().prefix().unwrap().code_units(), [112]);
     assert!(
-        changed
+        !changed
             .name()
             .prefix()
             .unwrap()
@@ -1010,7 +1012,7 @@ fn historical_weak_bank_is_readopted_by_fresh_creation_before_snapshot_import() 
 }
 
 #[test]
-fn distinct_rows_keep_parentage_and_ids_while_equal_child_values_share() {
+fn distinct_rows_keep_parentage_and_ids_and_share_banks_but_not_equal_child_values() {
     let mut dom = owner();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
@@ -1124,7 +1126,7 @@ fn distinct_rows_keep_parentage_and_ids_while_equal_child_values_share() {
             cell.as_element().unwrap().attributes()
         ));
         let text = snapshot.node(texts[index]).unwrap().data().unwrap();
-        assert!(first_text.shares_storage_with(text));
+        assert!(!first_text.shares_storage_with(text));
     }
 }
 

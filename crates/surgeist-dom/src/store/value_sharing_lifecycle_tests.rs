@@ -1,74 +1,8 @@
-//! Functional coverage of the new private transaction/session ownership seam.
+//! Functional coverage of the transaction and session ownership seam of the attribute-bank sharing
+//! owner: cold and active checkpoints, restore, and closing at the publication fence.
 use super::*;
-
-#[test]
-fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidates() {
-    let cancel = AtomicBool::new(false);
-    let mut dom = Dom::new(
-        DomLimits::new(
-            32,
-            65_536,
-            128,
-            0,
-            0,
-            64,
-            1_000_000,
-            crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    let mut setup = DomBatch::new();
-    let document = setup.create_document();
-    let document = dom
-        .apply(setup, &cancel)
-        .unwrap()
-        .document(&document)
-        .unwrap();
-
-    let mut units = Vec::with_capacity(19);
-    units.extend_from_slice(&[120, 0xd800, 0]);
-    let value = DocumentString::from_utf16(units);
-    let unused = value.block().downgrade();
-    let mut first = DomBatch::new();
-    let element =
-        first.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
-    first.set_attribute(&element, "data-first", value);
-    let first = dom.prepare(first, &cancel).unwrap();
-    assert!(unused.upgrade().is_some());
-
-    // A retained first preparation owns the optional root. The independent
-    // sibling still prepares against the same canonical tree by bypassing it.
-    let mut sibling = DomBatch::new();
-    let text = sibling.create_text(document, "sibling");
-    let sibling = dom.prepare(sibling, &cancel).unwrap();
-    drop(first);
-    assert!(
-        unused.upgrade().is_none(),
-        "an aborted offer owns no strong field"
-    );
-    let commit = dom.publish(sibling, &cancel).unwrap();
-    let text = commit.created(&text).unwrap().unwrap();
-    assert!(matches!(&dom.state.node(dom.owner, text).unwrap().kind(),
-        DomNodeKind::Text(value) if value.code_units() == [115, 105, 98, 108, 105, 110, 103]));
-
-    let mut next = DomBatch::new();
-    let a = next.create_text(document, DocumentString::from_utf16(vec![121, 0xd800]));
-    let b = next.create_text(document, DocumentString::from_utf16(vec![121, 0xd800]));
-    let next = dom.apply(next, &cancel).unwrap();
-    let a = next.created(&a).unwrap().unwrap();
-    let b = next.created(&b).unwrap().unwrap();
-    let (DomNodeKind::Text(a), DomNodeKind::Text(b)) = (
-        dom.state.node(dom.owner, a).unwrap().kind(),
-        dom.state.node(dom.owner, b).unwrap().kind(),
-    ) else {
-        panic!("actual Text values")
-    };
-    assert!(
-        a.shares_storage_with(b),
-        "the aborted root leaves the next real transaction usable"
-    );
-}
+use crate::name::AttributeStorage;
+use surgeist_html::values::{Namespace, QualifiedName};
 
 fn source_fixture() -> (Dom, NodeId, Draft) {
     let cancel = AtomicBool::new(false);
@@ -88,13 +22,9 @@ fn source_fixture() -> (Dom, NodeId, Draft) {
     .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let text = setup.create_text(&document, "original");
-    let text = dom
-        .apply(setup, &cancel)
-        .unwrap()
-        .created(&text)
-        .unwrap()
-        .unwrap();
+    let element = setup.create_element(&document, "div");
+    let commit = dom.apply(setup, &cancel).unwrap();
+    let element = commit.created(&element).unwrap().unwrap();
     let commands = DomBatch::new();
     let draft = Draft::new_source(
         &dom,
@@ -105,43 +35,50 @@ fn source_fixture() -> (Dom, NodeId, Draft) {
     )
     .unwrap()
     .0;
-    (dom, text, draft)
+    (dom, element, draft)
 }
 
-fn share(draft: &Draft, value: &DocumentString) -> Option<value_sharing::SelectedString> {
-    draft
-        .with_sharing_admission(&AtomicBool::new(false), |admission| {
-            draft
-                .sharing_session()
-                .unwrap()
-                .share_string(value, admission)
+/// Forms a one-attribute bank of `value` through the draft's sharing session, which offers it and
+/// probes for an equal one.
+fn form(draft: &Draft, value: &str) -> AttributeStorage {
+    let cancel = AtomicBool::new(false);
+    let raw = QualifiedName::new(Namespace::none(), None, "data-x");
+    let name = draft.bind_name(&raw, None, &cancel).unwrap();
+    let mut input = draft
+        .attribute_input(1, None, &cancel, |entries| {
+            entries
+                .try_reserve_exact(1)
+                .map_err(|_| DomError::RepresentationExhausted)
         })
-        .unwrap()
+        .unwrap();
+    input.entries.push(crate::DomAttribute::from_parts(
+        name,
+        DocumentString::from(value),
+    ));
+    draft.form_attributes(input, None, &cancel).unwrap().value
 }
 
 #[test]
 fn active_inner_restore_preserves_outer_offer_and_cold_outer_aborts_late_root() {
     let cancel = AtomicBool::new(false);
-    let (_dom, _text, mut draft) = source_fixture();
+    let (_dom, _element, mut draft) = source_fixture();
     assert!(draft.sharing_session().unwrap().is_dormant());
     let outer = draft.source_checkpoint(0, 0, &cancel).unwrap();
     assert!(
         outer.sharing().is_none(),
         "a cold boundary owns no pool mark"
     );
-    let first = DocumentString::from("outer-candidate");
-    assert!(share(&draft, &first).is_none());
+    let first = form(&draft, "outer-candidate");
     let inner = draft.source_checkpoint(0, 0, &cancel).unwrap();
     assert!(inner.sharing().is_some());
-    let second = DocumentString::from("inner-candidate");
-    assert!(share(&draft, &second).is_none());
+    let second = form(&draft, "inner-candidate");
     inner.restore(&mut draft);
     assert!(
-        share(&draft, &first).is_some(),
+        form(&draft, "outer-candidate").same_storage(&first),
         "outer offer survives inner restore"
     );
     assert!(
-        share(&draft, &second).is_none(),
+        !form(&draft, "inner-candidate").same_storage(&second),
         "inner offer was rolled back"
     );
 
@@ -155,7 +92,7 @@ fn active_inner_restore_preserves_outer_offer_and_cold_outer_aborts_late_root() 
     // subsequent attempt can activate normally with the same attachment.
     draft.source_limits.as_mut().unwrap().work = 1_000_000;
     assert!(
-        share(&draft, &first).is_none(),
+        !form(&draft, "outer-candidate").same_storage(&first),
         "cold restore aborted its late offer"
     );
 }
@@ -163,18 +100,17 @@ fn active_inner_restore_preserves_outer_offer_and_cold_outer_aborts_late_root() 
 #[test]
 fn absent_checkpoint_removes_only_the_attachment_created_after_it() {
     let cancel = AtomicBool::new(false);
-    let (dom, _text, mut draft) = source_fixture();
+    let (dom, _element, mut draft) = source_fixture();
     drop(draft.sharing.take());
     let checkpoint = draft.source_checkpoint(0, 0, &cancel).unwrap();
     assert!(checkpoint.sharing().is_none());
     draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
-    let value = DocumentString::from("late-attachment");
-    assert!(share(&draft, &value).is_none());
+    let late = form(&draft, "late-attachment");
     checkpoint.restore(&mut draft);
     assert!(draft.sharing_session().is_none());
     draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
     assert!(
-        share(&draft, &value).is_none(),
+        !form(&draft, "late-attachment").same_storage(&late),
         "restored late root owns no offer"
     );
 }
@@ -182,10 +118,10 @@ fn absent_checkpoint_removes_only_the_attachment_created_after_it() {
 #[test]
 fn cold_checkpoint_can_close_late_root_at_the_actual_source_publication_fence() {
     let cancel = AtomicBool::new(false);
-    let (mut dom, text, mut draft) = source_fixture();
+    let (mut dom, element, mut draft) = source_fixture();
     let checkpoint = draft.source_checkpoint(0, 0, &cancel).unwrap();
     let mut edit = DomBatch::new();
-    edit.replace_data(text, 0, usize::MAX, "published-late-root");
+    edit.set_attribute(element, "data-x", "published-late-root");
     draft.apply(&edit.commands[0], dom.limits, &cancel).unwrap();
     assert!(checkpoint.sharing().is_none());
     assert!(!draft.sharing_session().unwrap().is_dormant());
@@ -200,11 +136,14 @@ fn cold_checkpoint_can_close_late_root_at_the_actual_source_publication_fence() 
     draft.commit_publication(rebase, &committed.committed);
     drop(checkpoint);
     draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
-    let selected = share(&draft, &DocumentString::from("published-late-root"))
-        .expect("the cold checkpoint's drop cannot abort the published offer")
-        .into_held();
-    let DomNodeKind::Text(actual) = dom.state.node(dom.owner, text).unwrap().kind() else {
-        panic!("published Text")
+    let formed = form(&draft, "published-late-root");
+    let DomNodeKind::Element(actual) = dom.state.node(dom.owner, element).unwrap().kind() else {
+        panic!("published Element")
     };
-    assert!(actual.shares_storage_with(selected.value()));
+    assert!(
+        actual
+            .attributes_backing()
+            .is_some_and(|backing| backing.same_storage(&formed)),
+        "the cold checkpoint's drop cannot abort the published offer"
+    );
 }

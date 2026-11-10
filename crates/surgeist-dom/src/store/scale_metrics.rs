@@ -98,12 +98,6 @@ pub(super) enum Event {
     SharingBankMiss,
     SharingBankBypassed,
     SharingBankOfferCommitted,
-    SharingStringProbeStarted,
-    SharingStringOfferPromoted,
-    SharingStringHit,
-    SharingStringMiss,
-    SharingStringBypassed,
-    SharingStringOfferCommitted,
     SharingPairActivated,
     SharingMarkCreated,
     SharingMarkRestored,
@@ -122,13 +116,6 @@ pub(super) enum Event {
     /// One completed HTML-report to canonical DOM attribute output row.
     /// This is metadata construction, not a copied UTF16 buffer.
     ParsedAttributeRowMaterialized,
-    /// Successfully admitted public HTML descriptor coordinates, in order:
-    /// records, inspected bytes, copied bytes, providers, reserved bytes.
-    /// Closing allowances are prepaid; neither array is executed-phase telemetry.
-    SharingHtmlAdmitted {
-        closing: bool,
-        coordinates: [usize; 5],
-    },
     QueueRecordVisited,
     /// Exact suffix movement after a completed Vec insertion/removal.
     QueueRecordsMoved {
@@ -195,12 +182,6 @@ pub(super) struct Counters {
     pub sharing_bank_misses: usize,
     pub sharing_bank_bypasses: usize,
     pub sharing_bank_offers: usize,
-    pub sharing_string_probes: usize,
-    pub sharing_string_offer_promotions: usize,
-    pub sharing_string_hits: usize,
-    pub sharing_string_misses: usize,
-    pub sharing_string_bypasses: usize,
-    pub sharing_string_offers: usize,
     pub sharing_pair_activations: usize,
     pub sharing_marks_created: usize,
     pub sharing_marks_restored: usize,
@@ -214,8 +195,6 @@ pub(super) struct Counters {
     pub sharing_metadata_materialized_bytes: usize,
     pub parsed_attribute_rows_materialized: usize,
     pub parsed_attribute_row_materialized_bytes: usize,
-    pub sharing_html_admitted_immediate: [usize; 5],
-    pub sharing_html_admitted_closing: [usize; 5],
     pub queue_record_visits: usize,
     pub queue_records_moved: usize,
     pub hosted_semantic_visits: usize,
@@ -281,12 +260,6 @@ impl Counters {
             Event::SharingBankMiss => add(&mut self.sharing_bank_misses, 1),
             Event::SharingBankBypassed => add(&mut self.sharing_bank_bypasses, 1),
             Event::SharingBankOfferCommitted => add(&mut self.sharing_bank_offers, 1),
-            Event::SharingStringProbeStarted => add(&mut self.sharing_string_probes, 1),
-            Event::SharingStringOfferPromoted => add(&mut self.sharing_string_offer_promotions, 1),
-            Event::SharingStringHit => add(&mut self.sharing_string_hits, 1),
-            Event::SharingStringMiss => add(&mut self.sharing_string_misses, 1),
-            Event::SharingStringBypassed => add(&mut self.sharing_string_bypasses, 1),
-            Event::SharingStringOfferCommitted => add(&mut self.sharing_string_offers, 1),
             Event::SharingPairActivated => add(&mut self.sharing_pair_activations, 1),
             Event::SharingMarkCreated => add(&mut self.sharing_marks_created, 1),
             Event::SharingMarkRestored => add(&mut self.sharing_marks_restored, 1),
@@ -306,19 +279,6 @@ impl Counters {
                     &mut self.parsed_attribute_row_materialized_bytes,
                     std::mem::size_of::<crate::DomAttribute>(),
                 );
-            }
-            Event::SharingHtmlAdmitted {
-                closing,
-                coordinates,
-            } => {
-                let total = if closing {
-                    &mut self.sharing_html_admitted_closing
-                } else {
-                    &mut self.sharing_html_admitted_immediate
-                };
-                for (total, amount) in total.iter_mut().zip(coordinates) {
-                    add(total, amount);
-                }
             }
             Event::QueueRecordVisited => add(&mut self.queue_record_visits, 1),
             Event::QueueRecordsMoved { records } => add(&mut self.queue_records_moved, records),
