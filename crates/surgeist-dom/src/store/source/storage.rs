@@ -386,6 +386,22 @@ pub(in crate::store) fn commands(
     for command in commands {
         step()?;
         match command {
+            Command::Compound(edit) => match edit {
+                crate::compound::Edit::Variadic { nodes, .. } => {
+                    payload.bank::<crate::DomNodeOrString>(nodes.capacity())?;
+                    for node in nodes {
+                        step()?;
+                        if let crate::DomNodeOrString::String(value) = node {
+                            payload.string(value)?;
+                        }
+                    }
+                }
+                crate::compound::Edit::TextContent { value, .. } => payload.string(value)?,
+                crate::compound::Edit::AdjacentText { position, data, .. } => {
+                    payload.string(position)?;
+                    payload.string(data)?;
+                }
+            },
             Command::AssignSlot { incoming, .. } => {
                 payload.bank::<NodeOperand>(incoming.capacity())?;
             }

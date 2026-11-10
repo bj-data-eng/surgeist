@@ -124,9 +124,11 @@ pub use element_tasks::{
     DomElementTaskId, DomElementTaskRetention, DomElementTaskSource, DomElementTaskSourceKind,
 };
 mod autofocus;
+mod compound;
 mod dialog;
 mod dispatch;
 mod document;
+pub use compound::DomNodeOrString;
 mod element;
 mod event;
 pub use event::{

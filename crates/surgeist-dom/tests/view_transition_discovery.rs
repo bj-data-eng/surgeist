@@ -51,6 +51,9 @@ fn source(dom: &mut Dom, edit: DomSourceEdit) -> Result<DomSourceCompletion, (En
     {
         DomSourceProgress::Complete(done) => Ok(done),
         DomSourceProgress::Request(request) => panic!("unexpected VT service: {request:?}"),
+        DomSourceProgress::Failed(failure) => {
+            panic!("VT edit cannot produce a compound failure: {failure:?}")
+        }
     }
 }
 

@@ -2213,6 +2213,9 @@ fn execute_slot_source_edit(
     match dom.begin_source_edit(edit, source_limits(), cancel) {
         Err(error) => Err(error),
         Ok(mut lease) => match lease.advance(cancel)? {
+            surgeist_dom::DomSourceProgress::Failed(failure) => {
+                panic!("manual Slot assignment cannot produce a compound failure: {failure:?}")
+            }
             surgeist_dom::DomSourceProgress::Complete(_) => Ok(()),
             surgeist_dom::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 panic!("manual Slot assignment has no external Style phase: {request:?}")

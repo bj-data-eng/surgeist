@@ -84,6 +84,7 @@ impl OperationRoot {
             Self::Commands(commands) => commands.first(),
         }?;
         match command {
+            Command::Compound(edit) => Some(edit.receiver()),
             Command::CreateRange { document, .. } | Command::SetActiveRange { document, .. } => {
                 existing(document)
             }

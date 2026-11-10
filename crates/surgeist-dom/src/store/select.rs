@@ -890,6 +890,8 @@ pub(super) enum Effect {
         target: Key,
     },
     Tree(tree::Frame),
+    Compound(super::compound::Frame),
+    CompoundTextCleanup(Key),
     Clone(import::Frame),
     Post {
         list: ScratchVec<Key>,
@@ -932,6 +934,7 @@ impl Effect {
             Self::Post { list, .. } => list.freeze(draft, cancel),
             Self::Update { targets, .. } => targets.freeze(draft, cancel),
             Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
+            Self::Compound(frame) => frame.freeze(draft, cancel),
             _ => Ok(()),
         }
     }
@@ -1021,6 +1024,8 @@ impl EffectFrame {
             },
             Effect::Clear { target } => Effect::Clear { target: *target },
             Effect::Tree(frame) => Effect::Tree(frame.checkpoint(a, cancel)?),
+            Effect::Compound(frame) => Effect::Compound(frame.checkpoint(a, cancel)?),
+            Effect::CompoundTextCleanup(key) => Effect::CompoundTextCleanup(*key),
             Effect::Clone(frame) => Effect::Clone(frame.checkpoint()),
             Effect::Post { list, index, stage } => Effect::Post {
                 list: list.checkpoint(a, cancel)?,
@@ -1208,6 +1213,7 @@ impl Draft {
                     life: _,
                 } = popped;
                 self.effect_scoped = scoped;
+                let had_compound_failure = self.compound_failure().is_some();
                 match effect {
                     Effect::AutofocusInsertion(frame) => {
                         self.autofocus_effect(frame, limits, cancel)?
@@ -1296,6 +1302,10 @@ impl Draft {
                         }
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
+                    Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
+                    Effect::CompoundTextCleanup(key) => {
+                        self.compound_discard_unpublished(key, cancel)?
+                    }
                     Effect::Clone(frame) => {
                         self.clone_effect(frame, scoped, payload, limits, cancel)?
                     }
@@ -1464,6 +1474,11 @@ impl Draft {
                         );
                         self.retire_node(fragment, cancel)?;
                     }
+                }
+                if !had_compound_failure && self.compound_failure().is_some() {
+                    // Hand the selected ordinary error back to its Source
+                    // owner before any fallible cleanup can roll it back.
+                    break;
                 }
             }
             if self.effects.is_empty() && !self.journal.has_marks() {

@@ -7,6 +7,133 @@ use surgeist_dom::{DocumentString, DomSourceProgress, DomSourceRequest};
 use surgeist_html::values::Namespace;
 
 #[test]
+fn compound_conversion_services_real_sheet_removal_before_delivering_original_hierarchy_failure() {
+    let (mut session, document) = native_session();
+    let style = named_style(&mut session, document, "A".into());
+    let sheet = session
+        .snapshot()
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap()
+        .id()
+        .clone();
+    let before = session
+        .style_execution()
+        .snapshot(document)
+        .unwrap()
+        .unwrap();
+    let result = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::append(document, vec![style.into(), document.into()]),
+            source_limits(),
+            &mut DomSourceServices {
+                meta: Some(envelope()),
+                execution_scope: None,
+                style_policy: &mut |_| panic!("removal has no new policy evaluation"),
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Failed(failure) = result else {
+        panic!("the original late hierarchy failure must be delivered")
+    };
+    assert_eq!(failure.error(), &surgeist_dom::DomError::HierarchyRequest);
+    assert!(session.dom().pending_source_edit().is_none());
+    let snapshot = session.snapshot();
+    let fragment = snapshot.node(style).unwrap().parent().unwrap();
+    assert!(matches!(
+        snapshot.node(fragment).unwrap().kind(),
+        surgeist_dom::DomNodeKind::DocumentFragment
+    ));
+    assert_eq!(snapshot.node(fragment).unwrap().children(), [style]);
+    assert!(
+        snapshot
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    let after = session
+        .style_execution()
+        .snapshot(document)
+        .unwrap()
+        .unwrap();
+    assert_ne!(after.revision(), before.revision());
+    // CSSOM remove_sheet removes list/owner associations, while the actual
+    // sheet and existing handles survive (sheet_operations.rs's public contract).
+    assert!(before.sheets().contains(&sheet));
+    assert!(!after.sheets().contains(&sheet));
+    assert!(after.sheet(&sheet).unwrap().inputs().owner.is_none());
+    let result = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(style, "id", "survived"),
+            source_limits(),
+            &mut DomSourceServices {
+                meta: Some(envelope()),
+                execution_scope: None,
+                style_policy: &mut |_| panic!("detached Style has no new policy evaluation"),
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
+}
+
+#[test]
+fn compound_append_retains_the_actual_joined_meta_publication_and_order() {
+    let (mut session, document) = native_session();
+    let a = named_style(&mut session, document, "A".into());
+    let b = named_style(&mut session, document, "B".into());
+    let first = detached_meta(&mut session, document, "B".into());
+    let second = detached_meta(&mut session, document, "A".into());
+    let parent = container(&session, document);
+    let result = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::append(parent, vec![first.into(), second.into()]),
+            source_limits(),
+            &mut DomSourceServices {
+                meta: Some(envelope()),
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request during Meta insertion"),
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::MetaSource(outcome) = result else {
+        panic!("real compound Meta publication")
+    };
+    assert!(matches!(outcome.source(), DomSourceProgress::Complete(_)));
+    assert_eq!(outcome.preferences().len(), 2);
+    assert_eq!(
+        outcome.preferences()[0].observation().preferred_name(),
+        &DocumentString::from("B")
+    );
+    assert_eq!(
+        outcome.preferences()[1].observation().preferred_name(),
+        &DocumentString::from("A")
+    );
+    assert!(!is_disabled(&mut session, a));
+    assert!(is_disabled(&mut session, b));
+    assert!(session.dom().pending_source_edit().is_none());
+}
+
+#[test]
 fn one_source_subtree_preserves_b_then_a_order_and_one_final_producer_basis() {
     let (mut session, document) = native_session();
     let a = named_style(&mut session, document, "A".into());

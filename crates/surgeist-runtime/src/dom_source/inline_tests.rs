@@ -132,6 +132,287 @@ fn bind(
     .unwrap();
     (properties, context)
 }
+
+#[test]
+fn compound_failure_delivers_partial_native_commit_and_releases_runtime_source_guard() {
+    let cancel = AtomicBool::new(false);
+    let mut session = session();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element(&document, "root");
+    batch.insert_before(&element, &document, None);
+    let made = session.dom().apply(batch, &cancel).unwrap();
+    let document = made.document(&document).unwrap();
+    let element = made.created(&element).unwrap().unwrap();
+    let before = session.snapshot().stamp();
+    let result = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::append(
+                document.node(),
+                vec![
+                    element.into(),
+                    surgeist_dom::DocumentString::from("x").into(),
+                ],
+            ),
+            limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request"),
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Failed(failure) = result else {
+        panic!("terminal ordinary failure is distinct from success")
+    };
+    assert_eq!(failure.error(), &surgeist_dom::DomError::HierarchyRequest);
+    assert_eq!(failure.commit().changes().from(), before);
+    assert_eq!(failure.commit().changes().to(), session.snapshot().stamp());
+    assert!(
+        session
+            .snapshot()
+            .node(document.node())
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+    let fragment = session.snapshot().node(element).unwrap().parent().unwrap();
+    assert_eq!(
+        session.snapshot().node(fragment).unwrap().children().len(),
+        2
+    );
+    assert!(session.dom().pending_source_edit().is_none());
+    let next = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(element, "id", "after-failure"),
+            limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request"),
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(next, DomSourceDriveProgress::Complete(_)));
+}
+
+#[test]
+fn compound_terminal_refusal_resumes_the_original_runtime_invocation_after_cancellation() {
+    let cancel = AtomicBool::new(false);
+    let mut session = session();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let element = batch.create_element(&document, "root");
+    batch.insert_before(&element, &document, None);
+    let made = session.dom().apply(batch, &cancel).unwrap();
+    let document = made.document(&document).unwrap();
+    let element = made.created(&element).unwrap().unwrap();
+    let low = DomSourceLimits::new(64_000_000, 1_000_000, 16_000_000, 0, 1024, 1024, 4);
+    let mut source = session.source_execution();
+    let result = source.apply(
+        &mut session.dom(),
+        DomSourceEdit::append(
+            document.node(),
+            vec![
+                element.into(),
+                surgeist_dom::DocumentString::from("x").into(),
+            ],
+        ),
+        low,
+        &mut DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut |_| panic!("no Style request"),
+            url: None,
+        },
+        &cancel,
+    );
+    assert!(matches!(
+        result,
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+            surgeist_dom::DomError::SourcePublicationLimit
+        )))
+    ));
+    let status = session.dom().pending_source_edit().unwrap();
+    assert_eq!(status.phase(), surgeist_dom::DomSourcePhase::PendingCleanup);
+    assert!(!status.has_published());
+    let operation = status.operation();
+    let interrupted = AtomicBool::new(true);
+    assert!(
+        source
+            .resume(
+                &mut session.dom(),
+                operation,
+                limits(),
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| panic!("no Style request"),
+                    url: None
+                },
+                &interrupted
+            )
+            .is_err()
+    );
+    assert_eq!(
+        session.dom().pending_source_edit().unwrap().operation(),
+        operation
+    );
+    let result = source
+        .resume(
+            &mut session.dom(),
+            operation,
+            limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request"),
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Failed(failure) = result else {
+        panic!("resume must deliver the original ordinary error")
+    };
+    assert_eq!(failure.operation(), operation);
+    assert_eq!(failure.error(), &surgeist_dom::DomError::HierarchyRequest);
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(session.dom().usage().managed_nodes(), 4);
+    let fragment = session.snapshot().node(element).unwrap().parent().unwrap();
+    assert_eq!(
+        session.snapshot().node(fragment).unwrap().children().len(),
+        2
+    );
+}
+
+#[test]
+fn compound_failure_preserves_paired_inline_adoption_publication_through_native_driver() {
+    let cancel = AtomicBool::new(false);
+    let mut session = session();
+    let mut batch = DomBatch::new();
+    let first = batch.create_document();
+    let second = batch.create_document();
+    let element = batch.create_element_ns(&first, Namespace::html(), "div");
+    batch.insert_before(&element, &first, None);
+    let made = session.dom().apply(batch, &cancel).unwrap();
+    let first = made.document(&first).unwrap();
+    let second = made.document(&second).unwrap();
+    let element = made.created(&element).unwrap().unwrap();
+    let (properties, _) = bind(&mut session, element, first);
+    let old = session
+        .dom()
+        .raw_mut()
+        .capture_inline_style(element)
+        .unwrap()
+        .unwrap();
+    let version = surgeist_cssom::CssomInputVersion {
+        role: surgeist_cssom::CssomInputRole::Support,
+        identity: "runtime-source".into(),
+        revision: 1,
+    };
+    let profiles = [first, second]
+        .into_iter()
+        .map(|document| {
+            DomInlineStyleProfile::new(
+                element,
+                document,
+                surgeist_css::CssParserContext::default(),
+                version.clone(),
+                surgeist_cssom::CssomDeclarationSupport::default(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let context = DomInlineStyleSourceContext::new(session.snapshot().stamp(), profiles).unwrap();
+    let result = session
+        .source_execution()
+        .apply_with_inline_styles(
+            &mut session.dom(),
+            DomSourceInlineStyleEdit::new(
+                DomSourceEdit::append(
+                    second.node(),
+                    vec![
+                        element.into(),
+                        surgeist_dom::DocumentString::from("x").into(),
+                    ],
+                ),
+                context,
+                requests(),
+            ),
+            limits(),
+            &mut DomSourceServices {
+                meta: Some(
+                    surgeist_dom::DomMetaAtomicLimits::new(16_000_000, 1_000_000, 1_000_000, 128)
+                        .unwrap(),
+                ),
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request"),
+                url: None,
+            },
+            |_, _| panic!("empty declarations require no parser decision"),
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::InlineSource {
+        source: DomSourceProgress::Failed(failure),
+        publication,
+    } = result
+    else {
+        panic!("retain the real failed terminal and paired CSSOM publication")
+    };
+    assert_eq!(failure.error(), &surgeist_dom::DomError::HierarchyRequest);
+    assert_eq!(publication.dom().from(), old.dom().stamp());
+    assert_eq!(publication.dom().to(), failure.commit().changes().to());
+    assert_eq!(
+        session.snapshot().node(element).unwrap().owner_document(),
+        Some(second)
+    );
+    assert!(
+        session
+            .snapshot()
+            .node(second.node())
+            .unwrap()
+            .children()
+            .is_empty()
+    );
+    let current = session
+        .dom()
+        .raw_mut()
+        .capture_inline_style(element)
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.properties().handle(), &properties);
+    assert_ne!(
+        current.properties().snapshot().revision(),
+        old.properties().snapshot().revision()
+    );
+    assert!(session.dom().pending_source_edit().is_none());
+    let next = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(element, "data-next", "after-inline-failure"),
+            limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| panic!("no Style request"),
+                url: None,
+            },
+            &cancel,
+        )
+        .unwrap();
+    assert!(matches!(next, DomSourceDriveProgress::Complete(_)));
+}
 #[test]
 fn inline_setter_returns_original_complete_with_receipt_and_releases_source_owner() {
     let cancel = AtomicBool::new(false);

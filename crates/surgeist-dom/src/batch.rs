@@ -65,6 +65,7 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    Compound(crate::compound::Edit),
     ExitFullscreen {
         document: NodeOperand,
     },

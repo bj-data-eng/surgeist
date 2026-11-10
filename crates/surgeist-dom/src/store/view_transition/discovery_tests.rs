@@ -103,6 +103,7 @@ fn measured_element_query(query: ElementQuery) {
         let result: Result<crate::DomSourceCompletion, DomError> = (|| {
             let mut lease = f.dom.begin_source_edit(edit, discovery_limits(), &cancel)?;
             match lease.advance(&cancel)? {
+                crate::DomSourceProgress::Failed(failure) => panic!("VT edit cannot produce a compound failure: {failure:?}"),
                 crate::DomSourceProgress::Complete(done) => Ok(done),
                 crate::DomSourceProgress::Request(request) => {
                     panic!("unexpected VT service {request:?}")
@@ -405,6 +406,7 @@ fn committed_record_claims_survive_reopened_sources_and_reused_private_ticket_ze
         let cancel = AtomicBool::new(false);
         let mut source = dom.begin_source_edit(edit, discovery_limits(), &cancel)?;
         match source.advance(&cancel)? {
+            crate::DomSourceProgress::Failed(failure) => panic!("VT edit cannot produce a compound failure: {failure:?}"),
             crate::DomSourceProgress::Complete(done) => Ok(done),
             crate::DomSourceProgress::Request(request) => {
                 panic!("unexpected VT request {request:?}")

@@ -17,7 +17,7 @@ pub use scope::DomSourceExecutionEntryScope;
 pub(crate) mod watcher;
 use crate::batch::{Command, Creation};
 use crate::view_transition::*;
-use crate::{DomDocumentStamp, DomSnapshot, DomStyleRequest, NodeId};
+use crate::{DomDocumentStamp, DomError, DomSnapshot, DomStyleRequest, NodeId};
 pub use event::*;
 use std::sync::Arc;
 use surgeist_css::values::view_transition::CssViewTransitionIdent;
@@ -192,6 +192,46 @@ pub enum DomSourceOutput {
 pub enum DomSourceProgress {
     Request(DomSourceRequest),
     Complete(DomSourceCompletion),
+    /// A named compound algorithm ended with its authentic partial publication.
+    Failed(DomSourceFailure),
+}
+/// Terminal ordinary failure after a compound algorithm's accepted effects.
+/// Service/admission refusals remain errors on the retained operation instead.
+#[derive(Debug)]
+pub struct DomSourceFailure {
+    operation: DomSourceOperationId,
+    error: DomError,
+    commit: crate::DomCommit,
+}
+impl DomSourceFailure {
+    /// The original named invocation that has now ended.
+    pub const fn operation(&self) -> DomSourceOperationId {
+        self.operation
+    }
+    /// Its first ordinary algorithm error, preserved through later refusals.
+    pub const fn error(&self) -> &DomError {
+        &self.error
+    }
+    /// Authentic final publication; earlier phases remain canonical too.
+    pub const fn commit(&self) -> &crate::DomCommit {
+        &self.commit
+    }
+    /// Move the invocation identity, original error and terminal commit together.
+    pub fn into_parts(self) -> (DomSourceOperationId, DomError, crate::DomCommit) {
+        (self.operation, self.error, self.commit)
+    }
+}
+impl DomSourceProgress {
+    pub(crate) fn terminal(completion: DomSourceCompletion, failure: Option<DomError>) -> Self {
+        match failure {
+            Some(error) => Self::Failed(DomSourceFailure {
+                operation: completion.operation,
+                error,
+                commit: completion.commit,
+            }),
+            None => Self::Complete(completion),
+        }
+    }
 }
 /// Completed source-owned cleanup after an actual queued Dialog Toggle dispatch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -270,7 +310,7 @@ impl DomSourceNativeHtmlInstallLimits {
 }
 
 /// Exactly one requested canonical edit, retaining the original command.
-/// There is no sequence container, append operation, batch-local operand or
+/// There is no command-sequence container, batch-local operand or
 /// conversion from an arbitrary batch. Published identities name every input.
 #[derive(Debug)]
 pub struct DomSourceEdit {

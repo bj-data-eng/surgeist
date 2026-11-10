@@ -310,9 +310,9 @@ the same output boundary as ordinary observations.
 
 Each actual joined publication returns immediately as
 `DomSourceDriveProgress::MetaSource`, including same-name or producer-unchanged
-occurrences. It owns the authentic next request or completion, root commits,
+occurrences. It owns the authentic next request, completion or failed terminal, root commits,
 optional inline evidence and ordered preference observations. Watcher settlement
-finishes before any result is propagated. Complete finishes the actual Style
+finishes before any result is propagated. Complete and Failed finish the actual Style
 guard while retaining the whole outcome; Request is returned unserviced. A later
 explicit resume processes later Style/policy/event work against the names already
 installed. An advance without a Meta occurrence continues the existing service

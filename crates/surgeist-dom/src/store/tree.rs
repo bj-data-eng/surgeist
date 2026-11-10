@@ -352,7 +352,7 @@ impl Draft {
         Ok(())
     }
 
-    fn next_sibling(&self, node: Key) -> Option<Key> {
+    pub(super) fn next_sibling(&self, node: Key) -> Option<Key> {
         let parent = self.node(node).expect("staged node").parent()?;
         let children = self.node(parent).expect("staged parent").children();
         let position = children
@@ -362,12 +362,13 @@ impl Draft {
         children.get(position + 1)
     }
 
-    fn ensure_pre_insert(
+    pub(super) fn ensure_pre_insert(
         &self,
         node: Key,
         parent: Key,
         child: Option<Key>,
         exclude: Option<Key>,
+        exclude_all: bool,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         if !parent_can_have_children(self.node(parent)?.kind()) {
@@ -429,17 +430,16 @@ impl Draft {
         for (position, candidate) in children.iter().enumerate() {
             self.effect_step(cancelled)?;
             let candidate_kind = self.node(candidate)?.kind();
+            let excluded = exclude_all || Some(candidate) == exclude;
             let invalid = if matches!(kind, KindRead::DocumentType(_)) {
-                (matches!(candidate_kind, KindRead::DocumentType(_)) && Some(candidate) != exclude)
+                (matches!(candidate_kind, KindRead::DocumentType(_)) && !excluded)
                     || (matches!(candidate_kind, KindRead::Element(_))
-                        && reference
-                            .map_or(Some(candidate) != exclude, |reference| position < reference))
+                        && reference.map_or(!excluded, |reference| position < reference))
             } else {
-                (matches!(candidate_kind, KindRead::Element(_)) && Some(candidate) != exclude)
+                (matches!(candidate_kind, KindRead::Element(_)) && !excluded)
                     || (matches!(candidate_kind, KindRead::DocumentType(_))
                         && reference.is_some_and(|reference| {
-                            position > reference
-                                || position == reference && Some(candidate) != exclude
+                            position > reference || position == reference && !excluded
                         }))
             };
             if invalid {
@@ -457,7 +457,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.ensure_pre_insert(node, parent, before, None, cancelled)?;
+        self.ensure_pre_insert(node, parent, before, None, false, cancelled)?;
         if before == Some(node) {
             before = self.next_sibling(node);
         }
@@ -472,7 +472,7 @@ impl Draft {
         limits: DomLimits,
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
-        self.ensure_pre_insert(node, parent, Some(child), Some(child), cancelled)?;
+        self.ensure_pre_insert(node, parent, Some(child), Some(child), false, cancelled)?;
         let mut before = self.next_sibling(child);
         if before == Some(node) {
             before = self.next_sibling(node);
@@ -491,7 +491,27 @@ impl Draft {
         self.run_effects(limits, cancelled)
     }
 
-    fn insert_validated(
+    pub(super) fn replace_all_checked(
+        &mut self,
+        node: Key,
+        parent: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.ensure_pre_insert(node, parent, None, None, true, cancel)?;
+        self.push_effect(
+            select::Effect::Tree(Frame::ReplaceAll {
+                key: parent,
+                replacement: Some(node),
+                inserted: false,
+            }),
+            self.effect_scoped,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
+    }
+
+    pub(super) fn insert_validated(
         &mut self,
         node: Key,
         parent: Key,
@@ -767,8 +787,10 @@ impl Draft {
                         cancel,
                     )?;
                     self.remove(child, limits, cancel)?;
-                } else if !inserted && let Some(text) = replacement {
-                    self.pre_insert(text, key, None, limits, cancel)?;
+                } else if !inserted && let Some(node) = replacement {
+                    // The named caller established the replacement's validity
+                    // before removal; this is DOM's insert, not pre-insert.
+                    self.insert_validated(node, key, None, limits, cancel)?;
                 }
             }
             Frame::Walk {
@@ -950,6 +972,11 @@ impl Draft {
             }
             Frame::Insert(mut frame) => {
                 if frame.stage == 0 {
+                    // DOM3071 insert step 3 precedes fragment removal, Range
+                    // maintenance and children-changed hooks.
+                    if frame.moving.is_empty() {
+                        return Ok(());
+                    }
                     if frame.fragment
                         && let Some(&child) = frame.moving.get(frame.index)
                     {

@@ -1262,27 +1262,30 @@ impl Pending {
                         .consume();
                     lease.dom.active_task = std::sync::Weak::new();
                 }
-                DomSourceProgress::Complete(DomSourceCompletion {
-                    operation: operation.id,
-                    cancelled: operation.cancelled,
-                    published: std::mem::take(&mut operation.historical),
-                    commit: published.commit,
-                    installation,
-                    fullscreen_exit_return: match operation.draft.method.as_ref() {
-                        Some(crate::store::method::Frame::FullscreenExit(value)) => *value,
-                        _ => None,
+                DomSourceProgress::terminal(
+                    DomSourceCompletion {
+                        operation: operation.id,
+                        cancelled: operation.cancelled,
+                        published: std::mem::take(&mut operation.historical),
+                        commit: published.commit,
+                        installation,
+                        fullscreen_exit_return: match operation.draft.method.as_ref() {
+                            Some(crate::store::method::Frame::FullscreenExit(value)) => *value,
+                            _ => None,
+                        },
+                        design_mode_range_disposition: match operation.draft.method.as_ref() {
+                            Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
+                            _ => None,
+                        },
+                        dialog_toggle_disposition: match operation.commands {
+                            OperationRoot::DialogTask(crate::DomDialogTaskInfo::Toggle(_)) => {
+                                Some(crate::DomDialogToggleTaskDisposition::TrackerCleared)
+                            }
+                            _ => None,
+                        },
                     },
-                    design_mode_range_disposition: match operation.draft.method.as_ref() {
-                        Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
-                        _ => None,
-                    },
-                    dialog_toggle_disposition: match operation.commands {
-                        OperationRoot::DialogTask(crate::DomDialogTaskInfo::Toggle(_)) => {
-                            Some(crate::DomDialogToggleTaskDisposition::TrackerCleared)
-                        }
-                        _ => None,
-                    },
-                })
+                    operation.draft.compound_failure().cloned(),
+                )
             }
         };
         (source, changes)
@@ -1413,7 +1416,10 @@ impl<'caps> DomMetaSourcePreparation<'_, '_, 'caps> {
             dom: changes,
             inline,
         });
-        if matches!(&source, DomSourceProgress::Complete(_)) {
+        if matches!(
+            &source,
+            DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_)
+        ) {
             self.lease.complete = true;
             self.lease.dom.source_operation = self.lease.dom.source_parents.pop();
         } else {
