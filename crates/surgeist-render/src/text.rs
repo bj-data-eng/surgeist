@@ -397,15 +397,13 @@ impl TextDecorationLineStyle {
 }
 
 fn unsupported_text_decoration_style_error(style: TextDecorationLineStyle) -> super::Error {
-    let mut error = super::Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+    super::Error::unsupported_render_primitive(UnsupportedPrimitive::new(
         PrimitiveFamily::TextDecorations,
         PrimitiveOperation::TextDecorationStyle,
-    ));
-    error.append_message(format!(
+    )).append_message(format!(
         ": text decoration style '{}' requires root/text to expand the decoration into explicit render geometry",
         style.label()
-    ));
-    error
+    ))
 }
 
 /// One authored glyph instance in run-local logical coordinates.

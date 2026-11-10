@@ -363,9 +363,8 @@ impl DeviceTerminalSignal {
         let diagnostic =
             RuntimeCapabilityUnavailable::try_new(operation, self.unavailable_reason())
                 .expect("terminal-device diagnostics always use a permitted operation/reason pair");
-        let mut error = Error::runtime_capability_unavailable(diagnostic);
-        error.append_message(format_args!(": {}", self.message()));
-        error
+        Error::runtime_capability_unavailable(diagnostic)
+            .append_message(format_args!(": {}", self.message()))
     }
 }
 
@@ -742,5 +741,44 @@ impl super::Backend {
                 )
             })?;
         Ok(&state.custody.0)
+    }
+}
+
+#[cfg(test)]
+mod error_context_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_error_keeps_qualified_reason_and_literal_backend_suffix() {
+        for (terminal, reason, message) in [
+            (
+                DeviceTerminalSignal::lost(
+                    DeviceLossReason::Destroyed,
+                    "device was destroyed".into(),
+                ),
+                RuntimeCapabilityUnavailableReason::DeviceLost {
+                    reason: DeviceLossReason::Destroyed,
+                },
+                "runtime capability is unavailable: device was destroyed",
+            ),
+            (
+                DeviceTerminalSignal::faulted(
+                    GpuFaultKind::Validation,
+                    "invalid GPU command".into(),
+                    Some(7),
+                ),
+                RuntimeCapabilityUnavailableReason::DeviceFaulted {
+                    kind: GpuFaultKind::Validation,
+                },
+                "runtime capability is unavailable: invalid GPU command",
+            ),
+        ] {
+            let error = terminal.error(RuntimeOperation::SurfaceRendering);
+            assert_eq!(error.code(), crate::ErrorCode::RuntimeCapabilityUnavailable);
+            assert_eq!(error.message(), message);
+            let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+            assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
+            assert_eq!(diagnostic.reason(), reason);
+        }
     }
 }

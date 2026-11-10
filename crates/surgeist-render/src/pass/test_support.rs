@@ -163,17 +163,17 @@ impl Drop for ScopedColorFilterShaderFailureForTest {
     }
 }
 
-pub(crate) fn normalize_color_filter_shader_failure_for_test(mut error: Error) -> Error {
+pub(crate) fn normalize_color_filter_shader_failure_for_test(error: Error) -> Error {
     let active = COLOR_FILTER_SHADER_FAILURE_FOR_TEST.with(Cell::get);
     if active && error.message() == "the color-filter operation buffer binding is missing" {
-        error.replace_message("injected color-filter shader failure after checked realization");
+        error.replace_message("injected color-filter shader failure after checked realization")
+    } else {
+        error
     }
-    error
 }
 
-pub(crate) fn normalize_scope_resolution_failure_for_test(mut error: Error) -> Error {
-    error.replace_message("checked internal Vello resource or command encoding failed");
-    error
+pub(crate) fn normalize_scope_resolution_failure_for_test(error: Error) -> Error {
+    error.replace_message("checked internal Vello resource or command encoding failed")
 }
 
 #[cfg(test)]

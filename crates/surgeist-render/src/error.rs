@@ -66,51 +66,104 @@ type BackendErrorSource = Box<dyn error::Error + 'static>;
 /// Private code domain accepted by backend error construction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BackendErrorCode {
-    DeviceCreateFailed,
     RendererCreateFailed,
     SurfaceCreateFailed,
+    #[cfg(any(
+        test,
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
     SurfaceConfigureFailed,
     SurfaceOutOfMemory,
+    #[cfg(any(
+        test,
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
     SurfaceTimeout,
+    #[cfg(any(
+        test,
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
     SurfaceOutdated,
     ImageUploadFailed,
     RenderFailed,
     /// A texture readback failed during copy, mapping, or row decoding.
     ReadbackFailed,
+    #[cfg(any(
+        test,
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
     PresentFailed,
     UnsupportedBackend,
 }
 
 impl BackendErrorCode {
-    const ALL: [Self; 12] = [
-        Self::DeviceCreateFailed,
-        Self::RendererCreateFailed,
-        Self::SurfaceCreateFailed,
-        Self::SurfaceConfigureFailed,
-        Self::SurfaceOutOfMemory,
-        Self::SurfaceTimeout,
-        Self::SurfaceOutdated,
-        Self::ImageUploadFailed,
-        Self::RenderFailed,
-        Self::ReadbackFailed,
-        Self::PresentFailed,
-        Self::UnsupportedBackend,
-    ];
-
     const fn error_code(self) -> ErrorCode {
         match self {
-            Self::DeviceCreateFailed => ErrorCode::DeviceCreateFailed,
             Self::RendererCreateFailed => ErrorCode::RendererCreateFailed,
             Self::SurfaceCreateFailed => ErrorCode::SurfaceCreateFailed,
+            #[cfg(any(
+                test,
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
             Self::SurfaceConfigureFailed => ErrorCode::SurfaceConfigureFailed,
             Self::SurfaceOutOfMemory => ErrorCode::SurfaceOutOfMemory,
+            #[cfg(any(
+                test,
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
             Self::SurfaceTimeout => ErrorCode::SurfaceTimeout,
+            #[cfg(any(
+                test,
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
             Self::SurfaceOutdated => ErrorCode::SurfaceOutdated,
             Self::ImageUploadFailed => ErrorCode::ImageUploadFailed,
             Self::RenderFailed => ErrorCode::RenderFailed,
             Self::ReadbackFailed => ErrorCode::ReadbackFailed,
+            #[cfg(any(
+                test,
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
             Self::PresentFailed => ErrorCode::PresentFailed,
             Self::UnsupportedBackend => ErrorCode::UnsupportedBackend,
+        }
+    }
+}
+
+impl ErrorPayload {
+    /// Explicit prose/source enrichment is an allocating observation path.
+    /// Mandatory accounting finalization uses the fixed constructor and typed data.
+    fn into_context(self) -> Box<ErrorContext> {
+        match self {
+            Self::Context(context) => context,
+            Self::Accounting(failure) => {
+                let diagnostic = failure.diagnostic;
+                let message = failure
+                    .message
+                    .into_inner()
+                    .unwrap_or_else(|| format!("render accounting: {diagnostic}"));
+                Box::new(ErrorContext {
+                    code: ErrorCode::Accounting,
+                    message,
+                    source: None,
+                    invalid_value: None,
+                    unsupported_primitive: None,
+                    unresolved_resource: None,
+                    degraded_quality: None,
+                    runtime_capability_unavailable: None,
+                    preparation: Some(PreparationDiagnostic::Accounting(diagnostic)),
+                    #[cfg(feature = "render-text")]
+                    text_layout: None,
+                })
+            }
         }
     }
 }
@@ -129,35 +182,6 @@ impl Error {
                 diagnostic,
                 message: OnceLock::new(),
             }),
-        }
-    }
-
-    /// Explicit prose/source enrichment is an allocating observation path.
-    /// Mandatory accounting finalization uses the fixed constructor and typed data.
-    fn context_mut(&mut self) -> &mut ErrorContext {
-        if let ErrorPayload::Accounting(failure) = &mut self.payload {
-            let diagnostic = failure.diagnostic;
-            let message = failure
-                .message
-                .take()
-                .unwrap_or_else(|| format!("render accounting: {diagnostic}"));
-            self.payload = ErrorPayload::Context(Box::new(ErrorContext {
-                code: ErrorCode::Accounting,
-                message,
-                source: None,
-                invalid_value: None,
-                unsupported_primitive: None,
-                unresolved_resource: None,
-                degraded_quality: None,
-                runtime_capability_unavailable: None,
-                preparation: Some(PreparationDiagnostic::Accounting(diagnostic)),
-                #[cfg(feature = "render-text")]
-                text_layout: None,
-            }));
-        }
-        match &mut self.payload {
-            ErrorPayload::Context(context) => context,
-            ErrorPayload::Accounting(_) => unreachable!("accounting context was just materialized"),
         }
     }
 
@@ -184,7 +208,6 @@ impl Error {
 
     #[must_use]
     pub(crate) fn new(code: BackendErrorCode, message: impl Into<String>) -> Self {
-        debug_assert!(BackendErrorCode::ALL.contains(&code));
         Self::context(ErrorContext {
             code: code.error_code(),
             message: message.into(),
@@ -202,34 +225,49 @@ impl Error {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
-    pub(crate) fn with_source(mut self, source: impl error::Error + Send + Sync + 'static) -> Self {
-        self.context_mut().source = Some(Box::new(source));
-        self
+    pub(crate) fn with_source(self, source: impl error::Error + Send + Sync + 'static) -> Self {
+        let mut context = self.payload.into_context();
+        context.source = Some(Box::new(source));
+        Self {
+            payload: ErrorPayload::Context(context),
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
     #[must_use]
-    pub(crate) fn with_source(mut self, source: impl error::Error + 'static) -> Self {
-        self.context_mut().source = Some(Box::new(source));
-        self
+    pub(crate) fn with_source(self, source: impl error::Error + 'static) -> Self {
+        let mut context = self.payload.into_context();
+        context.source = Some(Box::new(source));
+        Self {
+            payload: ErrorPayload::Context(context),
+        }
     }
 
-    pub(crate) fn append_message(&mut self, suffix: impl fmt::Display) {
-        self.context_mut().message.push_str(&suffix.to_string());
+    #[must_use]
+    pub(crate) fn append_message(self, suffix: impl fmt::Display) -> Self {
+        let mut context = self.payload.into_context();
+        context.message.push_str(&suffix.to_string());
+        Self {
+            payload: ErrorPayload::Context(context),
+        }
     }
 
-    pub(crate) fn replace_message(&mut self, message: impl Into<String>) {
-        self.context_mut().message = message.into();
+    #[must_use]
+    pub(crate) fn replace_message(self, message: impl Into<String>) -> Self {
+        let mut context = self.payload.into_context();
+        context.message = message.into();
+        Self {
+            payload: ErrorPayload::Context(context),
+        }
     }
 
     pub(crate) fn invalid_input_message(message: impl Into<String>) -> Self {
-        let mut error = Self::from_invalid_value(InvalidValue::new(
+        Self::from_invalid_value(InvalidValue::new(
             "input",
             "internal validation",
             "must satisfy the requested validation rule",
-        ));
-        error.replace_message(message);
-        error
+        ))
+        .replace_message(message)
     }
 
     pub(crate) fn runtime_unavailable(
@@ -239,9 +277,7 @@ impl Error {
     ) -> Self {
         let diagnostic = RuntimeCapabilityUnavailable::try_new(operation, reason)
             .expect("runtime unavailability constructors use validated operation/reason pairs");
-        let mut error = Self::runtime_capability_unavailable(diagnostic);
-        error.replace_message(message);
-        error
+        Self::runtime_capability_unavailable(diagnostic).replace_message(message)
     }
 
     /// Returns this diagnostic's stable classification.
@@ -361,9 +397,6 @@ impl Error {
     /// [`Self::runtime_capability_unavailable_diagnostic`].
     #[must_use]
     pub fn runtime_capability_unavailable(value: RuntimeCapabilityUnavailable) -> Self {
-        debug_assert!(
-            RuntimeCapabilityUnavailable::try_new(value.operation(), value.reason()).is_ok()
-        );
         Self::context(ErrorContext {
             code: ErrorCode::RuntimeCapabilityUnavailable,
             message: "runtime capability is unavailable".into(),
@@ -1539,14 +1572,14 @@ mod geometry_error_tests {
             element_index: usize::MAX,
         };
         let mut error = Error::from(diagnostic).with_source(Cause);
-        error.append_message(format_args!(" at command {}", 3));
+        error = error.append_message(format_args!(" at command {}", 3));
         assert_eq!(error.code(), ErrorCode::GeometryRealization);
         assert_eq!(error.geometry_realization_diagnostic(), Some(&diagnostic));
         assert_eq!(
             error.source().unwrap().to_string(),
             "native receiving context"
         );
-        error.replace_message("qualified receiving failure");
+        error = error.replace_message("qualified receiving failure");
         assert_eq!(error.geometry_realization_diagnostic(), Some(&diagnostic));
         assert_eq!(
             error.source().unwrap().to_string(),
