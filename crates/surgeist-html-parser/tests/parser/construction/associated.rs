@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{bank, environment, limits, record};
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 use surgeist_html_parser::*;
@@ -34,7 +36,7 @@ fn hyperlinks(report: &HtmlParseReport) -> Vec<(String, HtmlBaseUrlRecord, HtmlB
                         panic!("actual ordinary owner");
                     };
                     assert_eq!(document.id(), report.document().unwrap().root().id());
-                    assert!(has_source(link.cause().unwrap()));
+                    assert!(has_source(&link.cause().unwrap()));
                     found.push((
                         element.name().local_name().to_utf8().unwrap(),
                         snapshot.base().clone(),
@@ -81,7 +83,7 @@ fn earlier_anchor_preserves_actual_cached_record_when_later_base_changes() {
         HtmlBaseFactsLimits::new(20, 10_000, 100_000),
     )
     .unwrap();
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf8(
             "<!doctype html><a href=x></a><base href='https://example.test/new/'><area href=x>",
         ),
@@ -139,7 +141,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
             ),
         ],
     );
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8(
             "<!doctype html><a></a><a href=''></a><a href='http://['></a><area href=missing>",
         ),
@@ -217,7 +219,7 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
             true,
         ),
     ] {
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
             .with_encoding_url_facts(vec![facts.clone()])
@@ -260,7 +262,7 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
 
 #[test]
 fn standalone_img_starts_before_disabled_guard_and_keeps_only_latest_inactive_wait() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><img><img src=x srcset=y><img src=x src=x>"),
         limits(),
     )
@@ -306,13 +308,13 @@ fn template_url_facts_bind_only_actual_independent_inert_document() {
     let blank = record(&revision, "about:blank", true, None);
     let not_blank = record(&revision, "https://outer.test/", false, None);
     assert!(matches!(
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits())
+        crate::parser::support::offline_all(HtmlSource::utf8(""), limits())
             .with_template_base_facts(environment(&not_blank, &encoding)),
         Err(HtmlParseRequestError::Base(
             HtmlBaseFactsError::ContradictoryObservation
         ))
     ));
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><template><a href=x></a></template>"),
         limits(),
     )
@@ -369,7 +371,7 @@ fn unused_execution_banks_are_released_before_successful_report_usage() {
         )],
     ));
     let report =
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
+        crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
             .with_encoding_url_facts(banks)
             .parse()
             .unwrap();
@@ -396,7 +398,7 @@ fn spare_execution_capacity_does_not_overlap_successful_retained_receipt_and_fai
     let parse = |capacity| {
         let mut inputs = Vec::with_capacity(capacity);
         inputs.push(fact.clone());
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
+        crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><p>ok</p>"), limits())
             .with_encoding_url_facts(inputs)
             .parse()
             .unwrap()
@@ -428,7 +430,7 @@ fn spare_execution_capacity_does_not_overlap_successful_retained_receipt_and_fai
     let mut inputs = Vec::with_capacity(128);
     inputs.push(fact.clone());
     let denied = limits().into_builder().source_units(0).finish().unwrap();
-    let failure = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), denied)
+    let failure = crate::parser::support::offline_all(HtmlSource::utf8("x"), denied)
         .with_encoding_url_facts(inputs)
         .parse()
         .unwrap_err();
@@ -447,7 +449,7 @@ fn source_insertion_updates_actual_picture_images_in_source_order() {
             3,
         ),
     ] {
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .parse()
             .unwrap();
         let mut cursor = report.metadata();
@@ -478,7 +480,7 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
     // attachInternals or popover interaction. Authored attributes do not mutate
     // these slots. Namespace applicability is independent of nonce storage.
     let parse = || {
-        HtmlDocumentParseRequest::offline(
+        crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><x-card nonce=html popover><svg nonce=svg><g nonce=g></g></svg><math nonce=math><mi nonce=mi></mi></math></x-card>"),
         limits(),
     ).parse().unwrap()
@@ -579,7 +581,7 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
         )],
     );
     let request = |limits| {
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x></a><img src=x crossorigin=anonymous referrerpolicy=origin>"), limits)
+        crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><a href=x></a><img src=x crossorigin=anonymous referrerpolicy=origin>"), limits)
         .with_base_facts(environment(&base, &encoding)).unwrap()
         .with_encoding_url_facts(vec![facts.clone()])
     };
@@ -644,7 +646,7 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
 fn parsed_style_retains_actual_parser_document_and_pop_while_general_clone_is_fresh() {
     // HTML877d12131/12142: actual parser creation and actual pop are independent
     // of current node-document; DOM cloning does not copy parser ownership.
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(
         "<!doctype html><style>a{}</style><template><style>b{}</style></template><select><button><selectedcontent></selectedcontent></button><option selected><style>c{}</style></option></select>"
     ), limits()).parse().unwrap();
     let root = report.document().unwrap().root().id();
@@ -656,7 +658,7 @@ fn parsed_style_retains_actual_parser_document_and_pop_while_general_clone_is_fr
                 if let Some(style) = row.style() {
                     assert!(!style.state().on_parser_stack());
                     assert_eq!(style.association(), HtmlParseStyleAssociation::Pending);
-                    assert!(has_source(style.cause().unwrap()));
+                    assert!(has_source(&style.cause().unwrap()));
                     let node = row.node();
                     let parent = node.parent().unwrap();
                     let parent_node = report.document().unwrap().node(&parent).unwrap();
@@ -717,7 +719,7 @@ fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_rel
             HtmlBaseFactsLimits::new(128, 10_000, 100_000),
         )
         .unwrap();
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x>"), limits())
+        crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><a href=x>"), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
             .with_encoding_url_facts(vec![fact])
@@ -821,7 +823,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
             HtmlEncodingUrlFactsError::InputsMismatch,
         ),
     ] {
-        let report = HtmlDocumentParseRequest::offline(
+        let report = crate::parser::support::offline_all(
             HtmlSource::utf8("<!doctype html><a href=x>"),
             limits(),
         )
@@ -888,7 +890,7 @@ fn reached_general_clones_use_current_base_and_fresh_image_update_identity() {
         HtmlBaseFactsLimits::new(20, 10000, 100000),
     )
     .unwrap();
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><a href=x><img src=x></a><base href='https://example.test/new/'></option></select>"), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><a href=x><img src=x></a><base href='https://example.test/new/'></option></select>"), limits())
         .with_base_facts(environment).unwrap().with_encoding_url_facts(vec![bank(&old,&encoding,vec![HtmlEncodingUrlParseObservation::new("x".into(),HtmlEncodingUrlParseOutcome::Parsed(old_x.clone()))]), bank(&new,&encoding,vec![HtmlEncodingUrlParseObservation::new("x".into(),HtmlEncodingUrlParseOutcome::Parsed(new_x.clone()))])]).parse().unwrap();
     let mut cursor = report.metadata();
     let mut links = Vec::new();
@@ -942,7 +944,7 @@ fn reached_general_clones_use_current_base_and_fresh_image_update_identity() {
 
 #[test]
 fn missing_inert_context_and_duplicate_execution_contexts_remain_explicit() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><template><a href=x></a></template>"),
         limits(),
     )
@@ -973,11 +975,13 @@ fn missing_inert_context_and_duplicate_execution_contexts_remain_explicit() {
     let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
     let fact = bank(&base, &encoding, vec![]);
-    let failure =
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><a href=x>"), limits())
-            .with_encoding_url_facts(vec![fact.clone(), fact.clone()])
-            .parse()
-            .unwrap_err();
+    let failure = crate::parser::support::offline_all(
+        HtmlSource::utf8("<!doctype html><a href=x>"),
+        limits(),
+    )
+    .with_encoding_url_facts(vec![fact.clone(), fact.clone()])
+    .parse()
+    .unwrap_err();
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::InvalidAssociatedFacts)

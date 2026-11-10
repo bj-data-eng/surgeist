@@ -748,7 +748,7 @@ impl ParserArenaSession {
                 .ok_or(SessionError::NonceMetadataUnavailable)?;
             let previous = storage.begin_attribute_change(c, node, None)?;
             let supplied = value.take().ok_or(SessionError::Consumed)?;
-            let group = if let Some(evidence) = &mut storage.evidence {
+            let group = if let Some(evidence) = storage.graph() {
                 match evidence.source_independent_group(c, supplied.text().len()) {
                     Ok(group) => Some(group),
                     Err(error) => {

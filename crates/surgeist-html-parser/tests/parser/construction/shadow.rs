@@ -1,13 +1,14 @@
 use crate::parser::support::limits_builder;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind},
     parsing::HtmlParserScriptingMode,
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
-    HtmlFragmentParseRequest, HtmlParseCancellation, HtmlParseDestination, HtmlParseEffect,
-    HtmlParseEffectHost, HtmlParseField, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseReport,
-    HtmlSource,
+    HtmlParseCancellation, HtmlParseDestination, HtmlParseEffect, HtmlParseEffectHost,
+    HtmlParseField, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseReport, HtmlSource,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -68,7 +69,7 @@ fn parsed(local_host: bool, mode: &str) -> (HtmlParseReport, HtmlParseCancellati
     } else {
         format!("<template shadowrootmode={mode}><p>A</p></template>")
     };
-    let request = HtmlFragmentParseRequest::with_options(
+    let request = crate::parser::support::fragment_all_with_options(
         HtmlSource::utf8(source),
         context(),
         limits(),

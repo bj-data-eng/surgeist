@@ -10,7 +10,7 @@ use surgeist_html::construction::{HtmlDocument, HtmlFragment, HtmlNode, HtmlNode
 
 use surgeist_html_parser::{
     HtmlParseAssociationCaptureDisposition, HtmlParseBaseState, HtmlParseCompletion,
-    HtmlParseDestination, HtmlParseMetadata, HtmlParseMetadataDocument, HtmlParseMetadataStep,
+    HtmlParseMetadata, HtmlParseMetadataDocument, HtmlParseMetadataStep,
     HtmlParsePendingAssociationStep, HtmlParseReadiness, HtmlParseReport,
 };
 fn historical_document(
@@ -785,29 +785,6 @@ fn collect_rows<'a>(
         source.metadata.push(record);
         #[cfg(test)]
         written.pushed::<HtmlParseMetadata<'a>>();
-    }
-    let associations = report.associations();
-    for index in 0..associations.len() {
-        c.step(1)?;
-        // An index below the length that names no row is a report that lacks
-        // what it says it holds.
-        let row = associations.row(index)?.ok_or(match source.arena {
-            Arena::Document(_) => Error::NotCompletedOrdinaryReport,
-            Arena::Fragment(_) => Error::NotCompletedFragmentReport,
-        })?;
-        match row.destination() {
-            HtmlParseDestination::Node(node)
-            | HtmlParseDestination::Field { node, .. }
-            | HtmlParseDestination::Raw { node, .. } => {
-                if !source.bootstrap_only(&node.id(), c)? {
-                    source.add(node.id(), c)?;
-                }
-            }
-            HtmlParseDestination::Lexical { .. }
-            | HtmlParseDestination::Omission(_)
-            | HtmlParseDestination::LexicalEnd
-            | HtmlParseDestination::Cause(_) => {}
-        }
     }
     let mut pending = report.pending_associations();
     loop {

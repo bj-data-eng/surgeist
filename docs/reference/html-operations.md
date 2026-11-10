@@ -2578,7 +2578,7 @@ let report = request.parse().unwrap();
 assert_eq!(report.source().identity(), &source_id);
 assert!(report.document().is_some());
 assert!(report.fragment().is_none());
-assert!(report.diagnostics().is_empty());
+assert!(report.detail().is_none());
 
 let cancelled = HtmlDocumentParseRequest::offline(
     HtmlSource::utf8("<p>x"),
@@ -2641,12 +2641,38 @@ reopen execution or alter that snapshot. Its
   `input_image_coordinate()` and `input_image_source()` lend Image's initial
   `(0,0)` coordinate and independently retained last Image source, distinguishing
   absent from present-empty. Native attributes remain separately traversable.
-- `diagnostics()` lends committed record/location pairs in emission order,
+- A parse records its optional detail only when its request selects it with
+  `with_detail(DetailSet)`: the source map (`SOURCE_MAP`), the lexical and
+  omission records (`LEXICAL`), the construction history (`HISTORY`) and the
+  diagnostics (`DIAGNOSTICS`). The default selection is `DetailSet::NONE`, and a
+  parse that selects none allocates no storage for detail, runs none of the work
+  that produces it and checks none of the `SourceMapEntries`, `SourceMapPayloadUnits`,
+  `Diagnostics` and `DiagnosticPayloadUnits` caps. The source map, the lexical
+  records and the history name the origin groups and construction causes of one
+  graph, which a parse records when it selects any of the three; each kind adds only
+  its own records. `report.detail()` is `None` for a parse that selected none, and
+  otherwise lends `associations()`, `lexical()`, `omissions()`, `history()` and
+  `diagnostics()` for the kinds selected, with `cause_of(subject)` for the
+  construction cause of a dialog, image, style, hyperlink, missing meta fact or
+  pending association occurrence. The `detail` cargo feature of
+  `surgeist-html-parser`, on by default, provides these readers and the detail
+  types; without it a non-empty selection is refused with
+  `HtmlParseDetailUnavailable`, and `detail()` does not exist.
+- What a parse keeps without detail is the input text, `report.source()`; the offset
+  at which the start tag of each parser-created `script`, `style` and event handler
+  content attribute ended, read as a line and column by `script_position`,
+  `style_position` and `event_handler_positions` and computed on demand by
+  `HtmlSource::position` from a line index built at its first use (the column counts
+  UTF-16 code units of the decoded source); and the values a pending association
+  occurrence reads: `preferred_name()`, `base_changed_input()`, the base input of its
+  context, and the attribute values and text of its style inputs, each a copy of the
+  field as it was when the occurrence was recorded.
+- `detail().diagnostics()` lends committed record/location pairs in emission order,
   including delayed errors whose source offsets go backwards. The `diagnostics`
   cap bounds how many are retained: the retained pairs are the first emitted, and
   `dropped()` counts the ones emitted after the cap was reached, which are kept
   nowhere. Recovery evidence is not an author-conformance certificate.
-- `associations()` lends admitted fixed rows. Each `row(index)` lends its cause
+- `detail().associations()` lends admitted fixed rows. Each `row(index)` lends its cause
   and a `destination()`: a current native destination, lexical occurrence with
   an optional part, omission, lexical end or cause. Current field destinations
   identify final native fields; a cause's `retired_destination()` preserves
@@ -2654,7 +2680,7 @@ reopen execution or alter that snapshot. Its
   Its source-qualified reverse query accepts caller-supplied cancellation and
   visits one row per step, returning Match, Skipped, Complete or Cancelled
   without history expansion or allocation.
-- `history_view()` lends qualified groups and headers, including their cause
+- `detail().history()` lends qualified groups and headers, including their cause
   and optional retirement cause. Its expansion cursor uses caller-provided
   scratch. Contributed text intervals are distinct from historical merge prefixes.
 
@@ -2682,7 +2708,13 @@ descriptions below retain their existing link anchors.
 A caller sizes `HtmlParseLimits` from the cost of the input it admits. These figures were
 measured with generous limits at commit `46787d6d8` by parsing the same repeated input at ten
 sizes, the powers of two from 4,096 to 131,072 source units and 10,000, 20,000, 40,000 and
-80,000, and dividing each resource's total by the units of the document. A figure is a range
+80,000, and dividing each resource's total by the units of the document.
+They are the costs of a parse that selects every kind of detail (`DetailSet::ALL`). A parse that
+selects none, which is the default, charges and retains less: it records no source map, lexical,
+omission, history or diagnostic entry, so the `SourceMapEntries`, `SourceMapPayloadUnits`,
+`Diagnostics` and `DiagnosticPayloadUnits` figures are zero and the work credits and managed
+capacity fall by the work and storage that produced them. The table is not measured again for
+that selection, so a limit sized from it still admits every parse of the same input. A figure is a range
 over those sizes, and the high end is the figure to size a limit by: a capacity or a layout
 steps up when a buffer doubles, so the cost per unit depends on where a document ends in the
 doubling. Work credits are deterministic: a build profile does not change them. The cost is
@@ -2717,7 +2749,7 @@ credits and 878 capacity bytes per unit.
 
 Batching consecutive Text tokens in the tree builder was evaluated against these figures and is not
 implemented. It could cut the text row by about a factor of six, but it is not exact. The
-retained provenance is observable: `history_view().len()` for a run of `n` characters in
+retained provenance is observable: `detail().history().len()` for a run of `n` characters in
 `body` is `2n + 11` groups, while one token of `n` units (a rejected end tag in `script`
 content) gives a constant 16 whatever `n` is. The association rows grow by 6 per character of script
 content and by 3 per unit of the single token. A batched parser would have to
@@ -2796,8 +2828,8 @@ the size of the answer. The source-range reverse query (`associations().reverse(
 no index by position: each `advance` examines one association row and a query advanced to
 completion visits every row, so `q` queries cost `q` times `associations().len()` row visits, none
 charged to a parse limit because the report is immutable. The history expansion cursor needs scratch
-of `index + 1` frames of 16 bytes, where `index` is the position of the group in `history_view()`: a
-group created late needs scratch in proportion to the groups before it, up to `16 * history_view().len()`
+of `index + 1` frames of 16 bytes, where `index` is the position of the group in `detail().history()`: a
+group created late needs scratch in proportion to the groups before it, up to `16 * detail().history().len()`
 bytes, however shallow its own history is, and a shorter scratch reports `InsufficientScratch` with
 the length required.
 

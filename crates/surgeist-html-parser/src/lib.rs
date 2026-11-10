@@ -16,10 +16,18 @@
         clippy::arithmetic_side_effects
     )
 )]
+// A parse records its detail only when its request selects it, and without the
+// `detail` feature no request can. The recording code and the data it keeps
+// stay compiled, constant-folded away by the unselected control, and the types
+// that read them do not exist, so what only those readers use is unused.
+#![cfg_attr(not(feature = "detail"), allow(dead_code))]
 
 use surgeist_html_semantics::*;
 mod accounting;
 mod construction;
+mod detail;
+#[cfg(feature = "detail")]
+mod detail_view;
 mod keyed;
 mod meta_csp;
 mod parser;
@@ -30,6 +38,12 @@ mod schema_support;
 mod settings;
 mod source;
 pub use accounting::HtmlParseAccounting;
+pub use detail::{DetailSet, HtmlParseDetailUnavailable};
+#[cfg(feature = "detail")]
+pub use detail_view::{
+    HtmlParseCauseUnselected, HtmlParseCaused, HtmlParseDetail, HtmlParseLexical,
+    HtmlParseOmissions,
+};
 pub use request::*;
 pub use settings::*;
 pub use source::*;
@@ -55,11 +69,13 @@ pub use construction::context::{
     HtmlParseCapturedRegistry, HtmlParseEffect, HtmlParseEffectHost, HtmlParseEffects,
     HtmlParseRegistry, HtmlParseRegistryBinding,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::evidence::{
     HtmlParseDiagnostic, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
     HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole, HtmlParseDiagnosticRule,
     HtmlParseDiagnosticSeverity, HtmlParseDiagnostics, HtmlParseTokenFamily,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::history::{
     HtmlParseHistoryBody, HtmlParseHistoryCursor, HtmlParseHistoryError, HtmlParseHistoryFrame,
     HtmlParseHistoryLeaf, HtmlParseHistoryOrigin, HtmlParseHistoryStep, HtmlParseOriginGroup,
@@ -75,23 +91,30 @@ pub use construction::pending_association::{
     HtmlParseAssociationStyleInputs, HtmlParsePendingAssociationCursor,
     HtmlParsePendingAssociationStep,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::provenance::reverse::{HtmlParseAssociationRelation, HtmlParseReverseError};
+#[cfg(any(feature = "detail", test))]
 pub use construction::provenance::{
     HtmlParseCapturedCauseRole, HtmlParseConstructionOperation, HtmlParseRawField, HtmlParserRule,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::provenance::{
     HtmlParseColorOperandRole, HtmlParseColorValueSource, HtmlParseRangeBranch,
     HtmlParseRangeOperandKind, HtmlParseRangeOperandRole,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::provenance::{
     HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseOmissionKind,
 };
+pub use construction::read::HtmlParseScript;
+#[cfg(any(feature = "detail", test))]
 pub use construction::read::{
     HtmlParseAssociation, HtmlParseAssociations, HtmlParseCapturedCause, HtmlParseCause,
     HtmlParseDestination, HtmlParseField, HtmlParseHistory, HtmlParseHistoryHeader,
     HtmlParseLexicalOccurrence, HtmlParseLexicalPart, HtmlParseOmission, HtmlParseReverseCursor,
-    HtmlParseReverseStep, HtmlParseScript,
+    HtmlParseReverseStep,
 };
+#[cfg(any(feature = "detail", test))]
 pub use construction::read::{
     HtmlParseColorComputation, HtmlParseRangeComputation, HtmlParseRangeOperand,
 };
@@ -110,14 +133,18 @@ pub use construction::report::{
 };
 pub use construction::style::HtmlParseStyleAssociation;
 pub use construction::{HtmlParseFormEvidence, HtmlParseOutputOverride};
+#[cfg(any(feature = "detail", test))]
 pub use parser::tokenizer::states::{
     HtmlTokenizerEscape, HtmlTokenizerIdentifier, HtmlTokenizerQuote, HtmlTokenizerRawState,
     HtmlTokenizerState,
 };
+#[cfg(any(feature = "detail", test))]
 pub use parser::tokenizer::token::{
     HtmlParseOriginKind, HtmlParseTextOrigin, HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase,
 };
+#[cfg(any(feature = "detail", test))]
 pub use parser::tree_builder::head::{HtmlInsertionMode, HtmlTreeDiagnostic};
+#[cfg(any(feature = "detail", test))]
 pub use parser::tree_builder::prologue::{HtmlPrologueDiagnostic, HtmlPrologueMode};
 
 pub use construction::context::HtmlParseOpaqueOrigin;

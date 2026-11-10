@@ -50,6 +50,9 @@ pub(super) fn validate_initial_input_origins(
             continue;
         }
         let text = &attribute.value;
+        if !control.detail().records_graph() {
+            continue;
+        }
         let mut covered = 0;
         for origin in text.origins.as_slice() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -299,21 +302,25 @@ fn copy_whole_generated_input_value(
     if retained != 0 {
         return Err(SessionError::OriginSplitUnavailable);
     }
-    let Some(RetainedPayload::String {
-        origins: Some(group),
-        ..
-    }) = payloads.values.get(source)
-    else {
-        return Err(latch_registry_row(c));
+    let original = if c.detail().records_graph() {
+        let Some(RetainedPayload::String {
+            origins: Some(group),
+            ..
+        }) = payloads.values.get(source)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        let evidence = evidence.ok_or(SessionError::WrongToken)?;
+        evidence.qualify_generated_copy(c, payloads, group, value.code_units())?;
+        Some(evidence.copy_group_reference(c, group)?)
+    } else {
+        None
     };
-    let evidence = evidence.ok_or(SessionError::WrongToken)?;
-    evidence.qualify_generated_copy(c, payloads, group, value.code_units())?;
-    let original = evidence.copy_group_reference(c, group)?;
     Ok((
         FieldCopy {
             value: literal_string(c, b"")?,
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
-            original: Some(original),
+            original,
         },
         count,
     ))
@@ -368,7 +375,41 @@ fn copy_input_value_core(
             None
         };
         let mut covered = 0;
-        if let Some(origins) = origins {
+        if !control.detail().records_graph() {
+            // No origin splits the value, so every unit is kept or omitted on
+            // its own and no origin row is copied.
+            let temporal = matches!(
+                policy,
+                surgeist_html::elements::input::HtmlInputSanitization::Temporal(_)
+            );
+            for (position, &unit) in value.code_units().iter().enumerate() {
+                control.charge_unit_inspection()?;
+                let keep = if let Some(cursor) = &mut selection {
+                    while range.is_some_and(|range| range.end() <= position) {
+                        payload_write::<
+                            Option<surgeist_html::elements::input::HtmlInputRetainedRange>,
+                        >(control, 1)?;
+                        range = next_input_range(control, cursor)?;
+                    }
+                    range.is_some_and(|range| range.start() <= position && position < range.end())
+                        && cursor.retain_unit(unit)
+                } else {
+                    policy.retain_unit(unit)
+                };
+                if keep {
+                    let kept = if temporal {
+                        selection
+                            .as_ref()
+                            .and_then(|cursor| cursor.replacement_unit(position))
+                            .unwrap_or(unit)
+                    } else {
+                        unit
+                    };
+                    buffer.extend_units(&[kept], control)?;
+                }
+            }
+            covered = value.len();
+        } else if let Some(origins) = origins {
             origins.require_disposal_owner(control)?;
             let evidence = evidence.ok_or(SessionError::WrongToken)?;
             let mut cursor = provenance::GroupOriginCursor::new(evidence, origins, control)?;

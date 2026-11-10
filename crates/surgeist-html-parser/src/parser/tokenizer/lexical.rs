@@ -179,7 +179,7 @@ impl Tokenizer<'_> {
             .tag
             .as_ref()
             .and_then(|tag| tag.attribute.as_ref())
-            .map(|attribute| &attribute.lexical);
+            .and_then(|attribute| attribute.lexical.as_ref());
         let field = attribute.unwrap_or(markup);
         let role = match self.state {
             TagOpen if matches!(point, 0x21 | 0x2f | 0x3f) => Some(HtmlParseLexicalRole::Syntax),
@@ -370,17 +370,23 @@ impl Tokenizer<'_> {
                 tag.name.origins.as_slice(),
             )?;
             if let Some(attribute) = &tag.attribute {
+                // An open markup occurrence and its attributes are recorded
+                // together, so an attribute of one has an occurrence too.
+                let attribute_lexical = attribute
+                    .lexical
+                    .as_ref()
+                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
                 Self::retain_lexical_text(
                     evidence,
                     c,
-                    &attribute.lexical,
+                    attribute_lexical,
                     HtmlParseLexicalRole::Name,
                     attribute.name.origins.as_slice(),
                 )?;
                 Self::retain_lexical_text(
                     evidence,
                     c,
-                    &attribute.lexical,
+                    attribute_lexical,
                     HtmlParseLexicalRole::Value,
                     attribute.value.origins.as_slice(),
                 )?;
@@ -392,7 +398,7 @@ impl Tokenizer<'_> {
                 let end = attribute.value.value.len();
                 evidence.lexical_part(
                     c,
-                    &attribute.lexical,
+                    attribute_lexical,
                     HtmlParseLexicalRole::Value,
                     &self.current,
                     end..end,
@@ -400,7 +406,7 @@ impl Tokenizer<'_> {
                 )?;
                 evidence.lexical_part(
                     c,
-                    &attribute.lexical,
+                    attribute_lexical,
                     HtmlParseLexicalRole::EndAnchor,
                     &self.current,
                     end..end,
@@ -409,7 +415,7 @@ impl Tokenizer<'_> {
                 let source = self.range(attribute.start, self.current.end(), c)?;
                 evidence.lexical_finish(
                     c,
-                    &attribute.lexical,
+                    attribute_lexical,
                     &source,
                     HtmlParseLexicalKind::Attribute,
                     HtmlParseLexicalDisposition::Abandoned,

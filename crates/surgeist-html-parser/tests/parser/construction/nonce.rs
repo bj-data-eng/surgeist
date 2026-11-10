@@ -1,4 +1,6 @@
 use crate::parser::support::limits;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlNodeKind},
     parsing::HtmlParserScriptingMode,
@@ -8,9 +10,8 @@ use surgeist_html::{
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDestination,
-    HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseRawField, HtmlParseReport,
-    HtmlParseStop, HtmlParseUnsupportedState, HtmlSource,
+    HtmlFragmentParseRequest, HtmlParseDestination, HtmlParseFailureReason, HtmlParseMetadataStep,
+    HtmlParseRawField, HtmlParseReport, HtmlParseStop, HtmlParseUnsupportedState, HtmlSource,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -47,7 +48,7 @@ fn standalone_nonce_slots_preserve_content_reference_and_absence_in_both_encodin
     let literal = "<!doctype html><p nonce=' A&amp;B '></p><x-host></x-host><svg nonce=S><g nonce=G></g></svg><math nonce=M></math>";
     for source in [HtmlSource::utf8(literal), HtmlSource::utf16(literal.into())] {
         let identity = source.identity().clone();
-        let report = HtmlDocumentParseRequest::offline(source, limits())
+        let report = crate::parser::support::offline_all(source, limits())
             .parse()
             .unwrap();
         assert_eq!(report.source().identity(), &identity);
@@ -90,7 +91,7 @@ fn standalone_nonce_slots_preserve_content_reference_and_absence_in_both_encodin
 }
 #[test]
 fn later_html_body_merge_installs_nonce_without_recopying_ignored_existing_field() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8(
             "<!doctype html><html nonce=A><body><html nonce=B><body nonce=C><p nonce=''>",
         ),

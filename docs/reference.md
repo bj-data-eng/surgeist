@@ -101,12 +101,17 @@ Dependencies still retain their own manifest-defined defaults.
 | Feature | Forward |
 | --- | --- |
 | `dialog-system` | `surgeist-dialog/system` |
+| `html-parser-detail` | `surgeist-html-parser/detail` |
 | `render-text` | `surgeist-render/render-text` |
 | `render-paint` | `surgeist-render/render-paint` |
 | `render-web` | `surgeist-render/render-web` |
 | `render-window` | `surgeist-render/render-window` |
 | `text-accessibility` | `surgeist-text/text-accessibility` |
 | `window-accessibility` | `surgeist-window/accessibility` |
+
+The root depends on `surgeist-html-parser` without its default features, so the
+root's default build has no parse detail types or readers; `html-parser-detail`
+provides them.
 
 ## Source And Artifact Locations
 

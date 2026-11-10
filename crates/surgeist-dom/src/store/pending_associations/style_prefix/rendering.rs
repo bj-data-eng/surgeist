@@ -98,7 +98,7 @@ fn facts(
 ) -> Result<Facts, DomParsedHtmlStyleError> {
     let scratch = meter.fork();
     // Both variable buffers remain live together; count their headers as well
-    // as the actual capacity admitted by append_group. The blocking Arc target
+    // as the actual capacity admitted by append_value. The blocking Arc target
     // is admitted separately before converting its Vec.
     scratch.retain(size_of::<Vec<u16>>() * 2, 0, 0, cancel)?;
     let report = &meter.entry().report.value().value;
@@ -148,9 +148,9 @@ fn facts(
                         return Err(DomParsedHtmlStyleError::WrongRequest);
                     }
                 }
-                let blocking = if let Some(group) = inputs.attribute(KnownHtmlAttribute::Blocking) {
+                let blocking = if let Some(value) = inputs.attribute(KnownHtmlAttribute::Blocking) {
                     let mut units = Vec::new();
-                    append_group(report, group, &mut units, &scratch, cancel)?;
+                    append_value(value, &mut units, &scratch, cancel)?;
                     scratch.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                     Some(DocumentString::from_utf16(units))
                 } else {
@@ -176,9 +176,9 @@ fn facts(
                         body: None,
                     });
                 }
-                let media = if let Some(group) = inputs.attribute(KnownHtmlAttribute::Media) {
+                let media = if let Some(value) = inputs.attribute(KnownHtmlAttribute::Media) {
                     let mut units = Vec::new();
-                    append_group(report, group, &mut units, &scratch, cancel)?;
+                    append_value(value, &mut units, &scratch, cancel)?;
                     Some(units)
                 } else {
                     None

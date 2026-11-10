@@ -417,11 +417,11 @@ fn form_request(
                     }
                 };
                 let attribute = |name| -> Result<Option<DocumentString>, DomParsedHtmlStyleError> {
-                    let Some(group) = inputs.attribute(name) else {
+                    let Some(value) = inputs.attribute(name) else {
                         return Ok(None);
                     };
                     let mut units = Vec::new();
-                    append_group(report, group, &mut units, meter, cancel)?;
+                    append_value(value, &mut units, meter, cancel)?;
                     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                     Ok(Some(DocumentString::from_utf16(units)))
                 };

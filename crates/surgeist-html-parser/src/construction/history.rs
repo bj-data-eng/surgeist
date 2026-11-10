@@ -282,7 +282,7 @@ impl FrozenHistory {
     pub(super) fn storage_mut(&mut self) -> &mut FrozenStorage {
         &mut self.storage
     }
-    pub(super) fn evidence(&self) -> &PublishedEvidence {
+    pub(crate) fn evidence(&self) -> &PublishedEvidence {
         &self.evidence
     }
     /// The published evidence, for tests that corrupt a report.

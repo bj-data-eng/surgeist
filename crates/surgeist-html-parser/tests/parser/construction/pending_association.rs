@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{environment, fragment_context, limits, record, revision};
 use surgeist_html::{
     construction::HtmlNodeId, elements::style::HtmlStyleTrigger, vocabulary::KnownHtmlAttribute,
@@ -6,7 +8,7 @@ use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
 fn parse(text: &str) -> HtmlParseReport {
-    HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), limits())
+    crate::parser::support::offline_all(HtmlSource::utf8(text), limits())
         .parse()
         .unwrap()
 }
@@ -32,20 +34,8 @@ fn documents(report: &HtmlParseReport) -> Vec<HtmlParseAssociationDocument<'_>> 
         }
     }
 }
-fn units(report: &HtmlParseReport, group: HtmlParseOriginGroup<'_>) -> Vec<u16> {
-    let history = report.history_view();
-    let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
-    let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
-    let mut units = Vec::new();
-    loop {
-        match cursor.advance() {
-            HtmlParseHistoryStep::Leaf(leaf) => units.extend_from_slice(leaf.units()),
-            HtmlParseHistoryStep::Progress => {}
-            HtmlParseHistoryStep::Complete => return units,
-            HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
-            HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
-        }
-    }
+fn units(value: &surgeist_html::values::DocumentString) -> Vec<u16> {
+    value.code_units().to_vec()
 }
 #[test]
 fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selecting_a_set() {
@@ -58,7 +48,7 @@ fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selectin
         .position(|row| row.kind() == HtmlParseAssociationOccurrenceKind::ChangePreferred)
         .unwrap();
     assert_eq!(
-        units(&report, rows[meta].preferred_name().unwrap()),
+        units(rows[meta].preferred_name().unwrap()),
         "B&".encode_utf16().collect::<Vec<_>>()
     );
     assert!(rows[meta].requires_processing());
@@ -85,7 +75,6 @@ fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selectin
     assert_eq!(rows[meta].prior_document(), Some(before.id()));
     assert_eq!(
         units(
-            &report,
             before
                 .style()
                 .unwrap()
@@ -95,12 +84,11 @@ fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selectin
         [65]
     );
     assert_eq!(
-        units(&report, before.style().unwrap().text(0).unwrap().unwrap()),
+        units(before.style().unwrap().text(0).unwrap().unwrap()),
         "a{content:'&amp;'}".encode_utf16().collect::<Vec<_>>()
     );
     assert_eq!(
         units(
-            &report,
             after
                 .style()
                 .unwrap()
@@ -190,10 +178,10 @@ fn ignored_template_and_type_ineligible_styles_have_complete_capture_without_obl
 #[test]
 fn zero_sheet_meta_is_an_obligation_and_independent_parses_have_distinct_occurrence_ids() {
     let source = HtmlSource::utf8("<!doctype html><meta http-equiv=default-style content=chosen>");
-    let a = HtmlDocumentParseRequest::offline(source.clone(), limits())
+    let a = crate::parser::support::offline_all(source.clone(), limits())
         .parse()
         .unwrap();
-    let b = HtmlDocumentParseRequest::offline(source, limits())
+    let b = crate::parser::support::offline_all(source, limits())
         .parse()
         .unwrap();
     let a_rows = occurrences(&a);
@@ -266,7 +254,7 @@ fn known_base_encoding_and_two_original_base_epochs_are_not_final_tree_reconstru
         HtmlBaseFactsLimits::new(20, 10_000, 100_000),
     )
     .unwrap();
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><style title=A>a{}</style><base href='https://example.test/next/'><style title=C>c{}</style>"), limits()).with_base_facts(facts).unwrap().parse().unwrap();
+    let report = crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><style title=A>a{}</style><base href='https://example.test/next/'><style title=C>c{}</style>"), limits()).with_base_facts(facts).unwrap().parse().unwrap();
     let rows = occurrences(&report);
     let pops: Vec<_> = rows
         .iter()
@@ -562,7 +550,7 @@ fn next_base_facts() -> HtmlParseBaseFacts {
 /// For each pending association occurrence, in order, the first base element with an `href` it
 /// records and the base observation it selects.
 fn recorded_bases(text: &str) -> Vec<(Option<HtmlNodeId>, Option<usize>)> {
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(text), limits())
         .with_base_facts(next_base_facts())
         .unwrap()
         .parse()

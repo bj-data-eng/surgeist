@@ -3,6 +3,8 @@
 //! from the parse's own unhosted usage, which the hosted parse must equal.
 
 use super::support::{fragment_context, limits};
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use surgeist_html::accounting::{
@@ -20,7 +22,7 @@ const SOURCE: &str = "<!doctype html><p class=a>one<b>two</b></p><table><tr><td>
 type Ledger = SharedOperation<HtmlWork, HtmlResource>;
 
 fn request() -> HtmlDocumentParseRequest {
-    HtmlDocumentParseRequest::offline(HtmlSource::utf8(SOURCE), limits())
+    crate::parser::support::offline_all(HtmlSource::utf8(SOURCE), limits())
 }
 
 /// A host operation with `scopes` scopes, profiled in summary mode without a
@@ -455,7 +457,7 @@ fn a_parse_profiles_its_own_operation_when_its_request_selects_a_mode() {
 #[test]
 fn a_failed_parse_profiles_its_own_operation_too() {
     let limits = limits().into_builder().work_credits(50).finish().unwrap();
-    let Err(failure) = HtmlDocumentParseRequest::offline(HtmlSource::utf8(SOURCE), limits)
+    let Err(failure) = crate::parser::support::offline_all(HtmlSource::utf8(SOURCE), limits)
         .with_accounting(
             HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false })
                 .observing_phases(),
@@ -508,7 +510,7 @@ fn dropping_a_failure_releases_what_the_stopped_parse_still_held_in_the_host() {
         .finish()
         .unwrap();
     let Err(failure) =
-        HtmlDocumentParseRequest::offline(HtmlSource::utf8(SOURCE.repeat(40)), limits)
+        crate::parser::support::offline_all(HtmlSource::utf8(SOURCE.repeat(40)), limits)
             .with_accounting(HtmlParseAccounting::host(HtmlHostScope::new(
                 ledger.clone(),
                 root,
@@ -697,7 +699,7 @@ const TEN_ERRORS: &str = "< < < < < < < < < < ";
 
 #[test]
 fn a_host_diagnostics_cap_below_the_parse_cap_drops_diagnostics_and_the_parse_completes() {
-    let alone = HtmlDocumentParseRequest::offline(HtmlSource::utf8(TEN_ERRORS), limits())
+    let alone = crate::parser::support::offline_all(HtmlSource::utf8(TEN_ERRORS), limits())
         .parse()
         .unwrap();
     assert_eq!(alone.diagnostics().len(), 11);
@@ -714,7 +716,7 @@ fn a_host_diagnostics_cap_below_the_parse_cap_drops_diagnostics_and_the_parse_co
         },
     );
     let (ledger, root) = host_with(host_limits, 3, ProfileMode::Off);
-    let hosted = HtmlDocumentParseRequest::offline(HtmlSource::utf8(TEN_ERRORS), limits())
+    let hosted = crate::parser::support::offline_all(HtmlSource::utf8(TEN_ERRORS), limits())
         .with_accounting(HtmlParseAccounting::host(HtmlHostScope::new(
             ledger.clone(),
             root,

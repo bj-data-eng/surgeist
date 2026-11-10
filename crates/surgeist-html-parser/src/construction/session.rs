@@ -458,6 +458,8 @@ impl ParserArenaSession {
             failed_text_append: _,
             appended_units: _,
             style_order_floor: _,
+            token_end: _,
+            handler_starts: _,
             main_tree_styleless: _,
             style_subtree: _,
             detached_order: _,

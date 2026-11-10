@@ -73,9 +73,11 @@ pub(crate) fn evaluate_parse(target: &MarkupTarget, case: &Case) -> Result<CaseO
     };
     let mut capture = None;
     let request = match case.mode {
-        Mode::Document { .. } => {
-            Request::Document(HtmlDocumentParseRequest::offline(original.clone(), limits))
-        }
+        Mode::Document { .. } => Request::Document(
+            HtmlDocumentParseRequest::offline(original.clone(), limits)
+                .with_detail(surgeist_html_parser::DetailSet::ALL)
+                .map_err(crate::observe::detail_error)?,
+        ),
         Mode::Fragment { context, shadow } => {
             let info = &CONTEXTS[usize::from(context)];
             let cx = context_for(context_ns(info.ns), info.local, false)?;
@@ -95,7 +97,9 @@ pub(crate) fn evaluate_parse(target: &MarkupTarget, case: &Case) -> Result<CaseO
                         "qualified capture",
                         e,
                     )
-                })?,
+                })?
+                .with_detail(surgeist_html_parser::DetailSet::ALL)
+                .map_err(crate::observe::detail_error)?,
             )
         }
     };

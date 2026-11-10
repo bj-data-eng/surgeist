@@ -303,6 +303,8 @@ fn parsed(source: &str) -> Vec<crate::observe::NativeNode> {
         surgeist_html_parser::HtmlSource::utf8(source.to_owned()),
         limits,
     )
+    .with_detail(surgeist_html_parser::DetailSet::ALL)
+    .unwrap()
     .parse()
     .unwrap();
     crate::observe::native(&report).unwrap()

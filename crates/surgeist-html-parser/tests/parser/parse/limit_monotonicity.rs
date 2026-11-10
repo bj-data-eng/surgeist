@@ -6,9 +6,7 @@
 //! reports, and succeeds under a limit exactly when the limit holds that peak.
 
 use super::linear_work::roomy_limits;
-use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlSource,
-};
+use surgeist_html_parser::{HtmlParseLimits, HtmlParseResource, HtmlSource};
 
 /// Documents that between them grow the tokenizer's buffers, the open-element stack, the
 /// formatting list and the pending text of a table; take the meta elements whose values the
@@ -45,7 +43,7 @@ const DOCUMENTS: [(&str, &str); 4] = [
 ];
 
 fn parses(document: &str, limits: HtmlParseLimits) -> bool {
-    HtmlDocumentParseRequest::offline(HtmlSource::utf8(document), limits)
+    crate::parser::support::offline_all(HtmlSource::utf8(document), limits)
         .parse()
         .is_ok()
 }
@@ -77,9 +75,10 @@ fn a_parse_succeeds_under_a_byte_limit_exactly_when_the_limit_holds_its_measured
         }),
     ];
     for (name, document) in DOCUMENTS {
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(document), roomy_limits())
-            .parse()
-            .unwrap_or_else(|_| panic!("{name} parses within roomy limits"));
+        let report =
+            crate::parser::support::offline_all(HtmlSource::utf8(document), roomy_limits())
+                .parse()
+                .unwrap_or_else(|_| panic!("{name} parses within roomy limits"));
         for (resource, select) in limited {
             // The peak is what the run under generous limits reports, not a formula.
             let peak = report.usage().resource(resource).high_water();
@@ -135,7 +134,7 @@ fn a_textarea_parse_succeeds_under_a_logical_limit_exactly_when_the_limit_holds_
         }),
     ];
     let (_, document) = DOCUMENTS[3];
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(document), roomy_limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(document), roomy_limits())
         .parse()
         .unwrap();
     for (resource, select) in limited {
@@ -148,7 +147,7 @@ fn a_textarea_parse_succeeds_under_a_logical_limit_exactly_when_the_limit_holds_
         limits.sort_unstable();
         limits.dedup();
         for limit in limits {
-            let result = HtmlDocumentParseRequest::offline(
+            let result = crate::parser::support::offline_all(
                 HtmlSource::utf8(document),
                 select(roomy_limits(), limit),
             )

@@ -249,6 +249,42 @@ impl HtmlParseReport {
             ReportContext::Fragment(request) => request.limits(),
         }
     }
+    /// The line and column at which the start tag of the parser-created
+    /// `script` element `id` ended, as a browser's parser reads the position of
+    /// a script. `None` for a node that is not a script the parser created.
+    pub fn script_position(
+        &self,
+        id: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<Option<crate::HtmlSourcePosition>, crate::HtmlSourceRangeError> {
+        self.storage
+            .script_start(id)
+            .map(|offset| self.source().position(offset))
+            .transpose()
+    }
+    /// The line and column at which the start tag of the parser-created `style`
+    /// element `id` ended. `None` for a node that is not a style the parser
+    /// created.
+    pub fn style_position(
+        &self,
+        id: &surgeist_html::construction::HtmlNodeId,
+    ) -> Result<Option<crate::HtmlSourcePosition>, crate::HtmlSourceRangeError> {
+        self.storage
+            .style_start(id)
+            .map(|offset| self.source().position(offset))
+            .transpose()
+    }
+    /// The event handler content attributes the parser created on the element
+    /// `id`, as the index of each among the attributes of the element and the
+    /// line and column at which the start tag it came from ended.
+    pub fn event_handler_positions<'a>(
+        &'a self,
+        id: &'a surgeist_html::construction::HtmlNodeId,
+    ) -> impl Iterator<Item = Result<(usize, crate::HtmlSourcePosition), crate::HtmlSourceRangeError>> + 'a
+    {
+        self.storage
+            .event_handler_starts(id)
+            .map(|(attribute, offset)| Ok((attribute, self.source().position(offset)?)))
+    }
     pub fn document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.storage.history().document()
     }
@@ -341,9 +377,6 @@ impl HtmlParseReport {
     pub fn metadata(&self) -> HtmlParseMetadataCursor<'_> {
         self.storage.metadata()
     }
-    pub fn diagnostics(&self) -> crate::construction::evidence::HtmlParseDiagnostics<'_> {
-        self.storage.evidence().diagnostics()
-    }
     pub fn effects(
         &self,
     ) -> Result<
@@ -363,12 +396,30 @@ impl HtmlParseReport {
     }
 }
 
+/// The readers the unit tests use directly, without a request that selects
+/// them.
+#[cfg(test)]
 impl HtmlParseReport {
-    pub fn associations(&self) -> crate::construction::read::HtmlParseAssociations<'_> {
+    pub(crate) fn associations(&self) -> crate::construction::read::HtmlParseAssociations<'_> {
         crate::construction::read::HtmlParseAssociations::new(self.history())
     }
-    pub fn history_view(&self) -> crate::construction::read::HtmlParseHistory<'_> {
+    pub(crate) fn history_view(&self) -> crate::construction::read::HtmlParseHistory<'_> {
         crate::construction::read::HtmlParseHistory::new(self.history())
+    }
+    pub(crate) fn diagnostics(&self) -> crate::construction::evidence::HtmlParseDiagnostics<'_> {
+        self.storage.evidence().diagnostics()
+    }
+}
+
+#[cfg(feature = "detail")]
+impl HtmlParseReport {
+    /// The detail the request selected, or `None` when it selected none.
+    pub fn detail(&self) -> Option<crate::HtmlParseDetail<'_>> {
+        let selected = match &self.context {
+            ReportContext::Document { request, .. } => request.detail(),
+            ReportContext::Fragment(request) => request.detail(),
+        };
+        (!selected.is_empty()).then(|| crate::HtmlParseDetail::new(self, selected))
     }
 }
 

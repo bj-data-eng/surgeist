@@ -200,6 +200,57 @@ fn stage_text_runs(
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let units = text.value.text().code_units();
         let len = units.len();
+        if !control.detail().records_graph() {
+            // No origin splits the text, so each maximal run of one kind is a
+            // run of its own.
+            let mut index = 0;
+            while index < len {
+                let mut kind = None;
+                let mut end = index;
+                while let Some(&unit) = units.get(end) {
+                    control.charge_unit_inspection()?;
+                    let current = match partition {
+                        TextPartition::Body => body_text_kind(unit),
+                        TextPartition::FirstLf if end == 0 && unit == 10 => {
+                            BodyTextKind::Whitespace
+                        }
+                        TextPartition::FirstLf => BodyTextKind::Other,
+                    };
+                    if kind.is_some_and(|old| old != current) {
+                        break;
+                    }
+                    kind = Some(current);
+                    end = end
+                        .checked_add(1)
+                        .ok_or_else(|| latch_registry_row(control))?;
+                }
+                let Some(kind) = kind else {
+                    return Err(latch_registry_row(control));
+                };
+                let Some(entries) = runs.entries.as_mut() else {
+                    return Err(latch_registry_row(control));
+                };
+                if let Some(previous) = draft.take_if(|draft| draft.kind != kind) {
+                    push_text_run(entries, previous, control)?;
+                }
+                let current = match &mut draft {
+                    Some(current) => current,
+                    empty => empty.insert(TextRunDraft::new(kind, control)?),
+                };
+                let Some(run_units) = units.get(index..end) else {
+                    return Err(latch_registry_row(control));
+                };
+                current.value.extend_units(run_units, control)?;
+                index = end;
+            }
+            if let Some(last) = draft.take() {
+                let Some(entries) = runs.entries.as_mut() else {
+                    return Err(latch_registry_row(control));
+                };
+                push_text_run(entries, last, control)?;
+            }
+            return Ok(());
+        }
         let mut covered = 0;
         for origin in text.origins.as_slice() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

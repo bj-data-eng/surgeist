@@ -135,6 +135,16 @@ impl KnownHtmlEventHandler {
             .and_then(|index| sorted.get(index).copied())
     }
 
+    /// Recognizes the local name of a no-namespace attribute, as UTF-16 code
+    /// units, as an event handler content attribute of the pinned index.
+    pub fn from_local_units(units: &[u16]) -> Option<Self> {
+        let sorted = Self::sorted_by_name();
+        sorted
+            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
+            .ok()
+            .and_then(|index| sorted.get(index).copied())
+    }
+
     /// Whether this attribute is an event handler content attribute of `element`,
     /// an HTML element.
     pub fn applies_to(self, element: KnownHtmlElement) -> bool {

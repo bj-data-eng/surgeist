@@ -311,6 +311,7 @@ fn hosted(
         parse_limits.finish().unwrap(),
         HtmlParseCancellation::new(),
         request.lease(),
+        crate::DetailSet::ALL,
     );
     (control, request)
 }
@@ -432,6 +433,7 @@ fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
         builder().finish().unwrap(),
         HtmlParseCancellation::new(),
         request.lease(),
+        crate::DetailSet::ALL,
     );
     assert_eq!(c.stop(), None);
     // The phase scopes name a scope of another operation.
@@ -511,6 +513,7 @@ fn a_refusal_whose_item_carries_nothing_reports_the_rate_as_one() {
         builder().finish().unwrap(),
         HtmlParseCancellation::new(),
         request.lease(),
+        crate::DetailSet::ALL,
     );
     // A zero item cannot cross a cap, so no ledger produces this refusal; the
     // figures still name the scope's value and the batch sum without a rate.

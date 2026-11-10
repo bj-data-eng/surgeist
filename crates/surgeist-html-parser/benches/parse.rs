@@ -9,6 +9,8 @@
 //! mode without timing.
 //!
 //! Run with `cargo bench --offline --locked -j 1 -p surgeist-html-parser --bench parse`.
+//! The parse selects no detail, which is the default of a request. The environment variable
+//! `SURGEIST_PARSE_DETAIL=all` selects every kind of detail, to measure what it costs.
 //! A first argument without a leading dash selects the documents whose name contains it, as in
 //! `--bench parse -- table-heavy`. A name that matches no document exits with status 2 and lists
 //! the known names.
@@ -19,7 +21,7 @@ use std::{fmt::Write as _, hint::black_box, time::Instant};
 mod documents;
 
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseAccounting, HtmlParseLimits, HtmlParseResource,
+    DetailSet, HtmlDocumentParseRequest, HtmlParseAccounting, HtmlParseLimits, HtmlParseResource,
     HtmlParseUsage, HtmlParseWorkCategory, HtmlSource,
 };
 use surgeist_ledger::ProfileMode;
@@ -99,8 +101,18 @@ fn limits() -> HtmlParseLimits {
         .expect("benchmark limits are representable")
 }
 
+/// The detail a parse selects: none, or all of it when the environment names `all`.
+fn detail() -> DetailSet {
+    match std::env::var("SURGEIST_PARSE_DETAIL").as_deref() {
+        Ok("all") => DetailSet::ALL,
+        _ => DetailSet::NONE,
+    }
+}
+
 fn parse(source: &HtmlSource) -> HtmlParseUsage {
     let report = HtmlDocumentParseRequest::offline(source.clone(), limits())
+        .with_detail(detail())
+        .expect("the benchmark builds with the detail feature")
         .parse()
         .unwrap_or_else(|failure| panic!("benchmark document failed to parse: {failure:?}"));
     let usage = report.usage().clone();
@@ -110,7 +122,9 @@ fn parse(source: &HtmlSource) -> HtmlParseUsage {
 
 fn timed(source: &HtmlSource, mode: Option<ProfileMode>) -> f64 {
     let start = Instant::now();
-    let mut request = HtmlDocumentParseRequest::offline(black_box(source).clone(), limits());
+    let mut request = HtmlDocumentParseRequest::offline(black_box(source).clone(), limits())
+        .with_detail(detail())
+        .expect("the benchmark builds with the detail feature");
     if let Some(mode) = mode {
         request = request.with_accounting(HtmlParseAccounting::profiled(mode).observing_phases());
     }

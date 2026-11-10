@@ -23,7 +23,7 @@ surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
 surgeist-dom = { path = "crates/surgeist-dom", version = "=0.1.0" }
 surgeist-font = { path = "crates/surgeist-font", version = "=0.1.0" }
 surgeist-html = { path = "crates/surgeist-html", version = "=0.1.0" }
-surgeist-html-parser = { path = "crates/surgeist-html-parser", version = "=0.1.0" }
+surgeist-html-parser = { path = "crates/surgeist-html-parser", version = "=0.1.0", default-features = false }
 surgeist-html-semantics = { path = "crates/surgeist-html-semantics", version = "=0.1.0" }
 surgeist-layout = { path = "crates/surgeist-layout", version = "=0.1.0" }
 surgeist-paint = { path = "crates/surgeist-paint", version = "=0.1.0" }
@@ -51,6 +51,7 @@ required-features = ["render-text"]
 [features]
 default = []
 dialog-system = ["surgeist-dialog/system"]
+html-parser-detail = ["surgeist-html-parser/detail"]
 render-text = ["surgeist-render/render-text"]
 render-paint = ["surgeist-render/render-paint"]
 render-web = ["surgeist-render/render-web"]

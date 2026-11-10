@@ -3,7 +3,12 @@
 Synchronous decoded-Unicode HTML parsing, recovery and source-owning immutable
 reports. Document and qualified contextual-fragment requests produce the shared
 [HTML construction values](../surgeist-html/README.md), preserving source identity,
-UTF-8 byte or UTF-16 unit coordinates, structured diagnostics and provenance.
+UTF-8 byte or UTF-16 unit coordinates. A request selects optional parse detail
+(`with_detail`): the source map, lexical and omission records, construction
+history and structured diagnostics. A parse that selects none, the default,
+records and retains none of it. The `detail` cargo feature, on by default,
+provides the detail types and readers; a build that turns it off refuses a
+non-empty selection with `HtmlParseDetailUnavailable`.
 
 The [detailed parsing guide](../../docs/reference/html-operations.md#decoded-unicode-parsing)
 records supported profiles, explicit external facts, bounded ownership and

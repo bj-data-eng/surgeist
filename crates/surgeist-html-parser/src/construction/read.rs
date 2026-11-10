@@ -913,6 +913,12 @@ pub struct HtmlParseLexicalOccurrence<'a> {
     value: &'a provenance::LexicalOccurrence,
 }
 impl<'a> HtmlParseLexicalOccurrence<'a> {
+    pub(crate) fn new(
+        history: &'a FrozenHistory,
+        value: &'a provenance::LexicalOccurrence,
+    ) -> Self {
+        Self { history, value }
+    }
     pub fn kind(&self) -> provenance::HtmlParseLexicalKind {
         self.value.kind
     }
@@ -941,6 +947,9 @@ pub struct HtmlParseLexicalPart<'a> {
     value: &'a provenance::LexicalPart,
 }
 impl<'a> HtmlParseLexicalPart<'a> {
+    pub(crate) fn new(history: &'a FrozenHistory, value: &'a provenance::LexicalPart) -> Self {
+        Self { history, value }
+    }
     pub fn role(&self) -> provenance::HtmlParseLexicalRole {
         self.value.role
     }
@@ -967,6 +976,9 @@ pub struct HtmlParseOmission<'a> {
     value: &'a provenance::LexicalOmission,
 }
 impl<'a> HtmlParseOmission<'a> {
+    pub(crate) fn new(value: &'a provenance::LexicalOmission) -> Self {
+        Self { value }
+    }
     pub fn source(&self) -> &'a crate::HtmlSourceRange {
         &self.value.source
     }

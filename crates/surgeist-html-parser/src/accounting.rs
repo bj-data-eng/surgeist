@@ -498,10 +498,18 @@ mod tests {
     fn a_lease_serves_one_parse() {
         let (ledger, root) = host(8);
         let request = HtmlParseAccounting::host(HtmlHostScope::new(ledger, root)).into_request();
-        let mut first =
-            ParseControl::with_accounting(limits(), HtmlParseCancellation::new(), request.lease());
-        let mut second =
-            ParseControl::with_accounting(limits(), HtmlParseCancellation::new(), request.lease());
+        let mut first = ParseControl::with_accounting(
+            limits(),
+            HtmlParseCancellation::new(),
+            request.lease(),
+            crate::DetailSet::ALL,
+        );
+        let mut second = ParseControl::with_accounting(
+            limits(),
+            HtmlParseCancellation::new(),
+            request.lease(),
+            crate::DetailSet::ALL,
+        );
         assert_eq!(first.stop(), None);
         first.charge(HtmlParseWorkCategory::StateStep, 1).unwrap();
         let in_use = HtmlParseStop::AccountingInUse;

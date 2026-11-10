@@ -14,6 +14,8 @@
 //!   14 inserts the last node at the adjusted insertion location for it, which
 //!   13.2.6.1 places inside the template's contents, after their last child.
 
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{fragment_context, limits};
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlNode, HtmlNodeId, HtmlNodeKind},
@@ -21,10 +23,9 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDiagnosticKind,
-    HtmlParseDiagnosticLocationRole, HtmlParseMetadataDocument, HtmlParseMetadataStep,
-    HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource, HtmlTokenizerDiagnostic,
-    HtmlTreeDiagnostic,
+    HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole, HtmlParseMetadataDocument,
+    HtmlParseMetadataStep, HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource,
+    HtmlTokenizerDiagnostic, HtmlTreeDiagnostic,
 };
 
 /// Renders the children of `parent` as an indented tree. A template's contents
@@ -72,13 +73,13 @@ fn sources(input: &str) -> [HtmlSource; 2] {
 }
 
 fn parse_document(source: HtmlSource) -> HtmlParseReport {
-    HtmlDocumentParseRequest::offline(source, limits())
+    crate::parser::support::offline_all(source, limits())
         .parse()
         .unwrap_or_else(|failure| panic!("document must parse: {:?}", failure.reason()))
 }
 
 fn parse_fragment(source: HtmlSource) -> HtmlParseReport {
-    HtmlFragmentParseRequest::with_options(
+    crate::parser::support::fragment_all_with_options(
         source,
         fragment_context(),
         limits(),

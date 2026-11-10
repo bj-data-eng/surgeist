@@ -198,6 +198,9 @@ pub(super) enum RetainedPayload {
     /// The style elements of one tree in tree order, shared by the style
     /// occurrences recorded while the tree held exactly a prefix of them.
     StyleOrder(OwnedVec<usize>),
+    /// The start positions of the event handler content attributes the parser
+    /// created, in the order it created them.
+    EventHandlerStarts(OwnedVec<EventHandlerStart>),
     // A replaced raw backing was disposed; its initialized registry slot
     // remains admitted until the registry itself is released.
     Retired,
@@ -277,6 +280,16 @@ pub enum HtmlParseFormEvidence {
     Reset,
 }
 
+/// Where the parser created one event handler content attribute: the offset at
+/// which its element's start tag ended.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct EventHandlerStart {
+    pub(crate) node: usize,
+    /// The index of the attribute among the attributes of its element.
+    pub(crate) attribute: usize,
+    pub(crate) offset: usize,
+}
+
 /// Source processing model facts retained in the actual arena owner.
 /// Owned document positions stay local; captured documents retain checked IDs.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -287,6 +300,8 @@ pub(crate) struct ScriptMetadata {
     pub(crate) script_type: Option<HtmlScriptKind>,
     pub(crate) result: HtmlScriptResult,
     pub(crate) steps_when_result_ready: Option<HtmlScriptReadySteps>,
+    /// The offset at which the start tag of a parser-created script ended.
+    pub(crate) start: Option<usize>,
 }
 
 impl ScriptMetadata {
@@ -905,6 +920,9 @@ impl PayloadStorage {
                 RetainedPayload::WorkList(Some(list)) => list.require_disposal_owner(control)?,
                 RetainedPayload::WorkList(None) => return Err(SessionError::Consumed),
                 RetainedPayload::StyleOrder(list) => list.require_disposal_owner(control)?,
+                RetainedPayload::EventHandlerStarts(list) => {
+                    list.require_disposal_owner(control)?
+                }
             }
         }
         Ok(())
@@ -1117,6 +1135,10 @@ impl PayloadStorage {
                 continue;
             }
             if let RetainedPayload::StyleOrder(list) = payload {
+                keep_first(&mut refused, list.release(control));
+                continue;
+            }
+            if let RetainedPayload::EventHandlerStarts(list) = payload {
                 keep_first(&mut refused, list.release(control));
                 continue;
             }

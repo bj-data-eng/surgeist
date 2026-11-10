@@ -795,8 +795,10 @@ impl ParserArenaSession {
         target: &ParserNode,
         input: &mut Option<Tag>,
     ) -> Result<(), SessionError> {
-        self.active_mut()?
-            .add_attributes_if_missing(control, target, input)
+        let storage = self.active_mut()?;
+        let before = storage.attribute_count(control, target)?;
+        storage.add_attributes_if_missing(control, target, input)?;
+        storage.record_merged_event_handlers(control, target, before)
     }
     pub(crate) fn add_body_attributes_if_missing(
         &mut self,
@@ -805,6 +807,7 @@ impl ParserArenaSession {
         input: &mut Option<Tag>,
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
+        let before = storage.attribute_count(control, target)?;
         if let Some(prepared) = storage.prepare_named_attribute_merge(
             control,
             target,
@@ -813,7 +816,7 @@ impl ParserArenaSession {
         )? {
             storage.finish_attribute_merge(control, prepared)?;
         }
-        Ok(())
+        storage.record_merged_event_handlers(control, target, before)
     }
     pub(crate) fn allocate_implicit_html(
         &mut self,

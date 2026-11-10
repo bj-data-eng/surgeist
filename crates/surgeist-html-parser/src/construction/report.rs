@@ -967,6 +967,7 @@ impl ReportStorage {
     pub(crate) fn history_mut(&mut self) -> &mut FrozenHistory {
         &mut self.history
     }
+    #[cfg(test)]
     pub(crate) fn evidence(&self) -> &history::PublishedEvidence {
         self.history.evidence()
     }
@@ -1421,7 +1422,7 @@ impl<'a> HtmlParseDialogMissing<'a> {
     pub fn action(&self) -> surgeist_html::elements::dialog::HtmlDialogAction {
         self.action
     }
-    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
         self.cause
     }
 }
@@ -1502,7 +1503,7 @@ impl<'a> HtmlParseMetaMissing<'a> {
     pub fn kind(&self) -> &'a meta::HtmlParseMetaMissingKind {
         self.kind
     }
-    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
         self.cause
     }
 }
@@ -1616,8 +1617,8 @@ impl<'a> HtmlParseHyperlink<'a> {
     pub fn state(&self) -> &HtmlParseHyperlinkState<'a> {
         &self.state
     }
-    pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
-        self.cause.as_ref()
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
+        self.cause
     }
     pub fn raw(&self) -> Option<&'a DocumentString> {
         self.raw
@@ -1650,7 +1651,7 @@ impl<'a> HtmlParseImage<'a> {
     pub fn latest_started(&self) -> u64 {
         self.state.latest
     }
-    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
         self.cause
     }
 
@@ -1682,8 +1683,8 @@ impl<'a> HtmlParseStyle<'a> {
     pub fn creating_parser_document(&self) -> Option<&HtmlParseMetadataDocument<'a>> {
         self.parser_document.as_ref()
     }
-    pub fn cause(&self) -> Option<&read::HtmlParseCause<'a>> {
-        self.cause.as_ref()
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
+        self.cause
     }
     pub fn association(&self) -> style::HtmlParseStyleAssociation {
         style::HtmlParseStyleAssociation::Pending

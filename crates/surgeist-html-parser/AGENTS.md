@@ -16,10 +16,14 @@ Select affected checks under the root process/resource policy, from repository r
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-html-parser
+cargo test --offline --locked -j 1 -p surgeist-html-parser --no-default-features --lib --test selection
 cargo clippy --offline --locked -j 1 -p surgeist-html-parser --all-targets -- -F unsafe-code -D warnings
 python3 crates/surgeist-html-parser/tools/generate_character_references.py --check
 cargo fmt --all -- --check
 ```
+
+The `detail` feature provides the parse detail types and readers; the second
+command checks the build without it.
 
 Preserve exact source/fact identities, first reached failure, actual retained
 allocations and explicit cleanup. See [README.md](README.md) for capability limits and attribution.

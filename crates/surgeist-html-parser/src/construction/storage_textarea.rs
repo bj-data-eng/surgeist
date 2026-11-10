@@ -115,7 +115,7 @@ impl SessionStorage {
                     })?;
                     let source = self.field_slot(control, StringLocation::Text(child))?;
                     let mut incoming = self.copied_slot_group(control, source)?;
-                    if incoming.is_none() && self.evidence.is_some() {
+                    if incoming.is_none() && self.graph_recorded() {
                         let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
                         let fresh = evidence.source_independent_group(control, added)?;
                         evidence.bind_leaf_value(control, &fresh, source)?;

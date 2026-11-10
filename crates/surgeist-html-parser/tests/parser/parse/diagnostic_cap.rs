@@ -21,14 +21,16 @@
 //! tree of a parse that retains every diagnostic is the oracle for a parse that
 //! retains fewer, because the cap bounds retention only.
 
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{fragment_context, limits_builder};
 use surgeist_html::{
     construction::{HtmlNode, HtmlNodeId, HtmlNodeKind},
     parsing::HtmlParserScriptingMode,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDiagnosticKind, HtmlParseLimits,
-    HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource, HtmlSource,
+    HtmlFragmentParseRequest, HtmlParseDiagnosticKind, HtmlParseLimits, HtmlParseMetadataStep,
+    HtmlParseReport, HtmlParseResource, HtmlSource,
 };
 
 /// Renders every node below `parent`, with its kind, in document order.
@@ -98,7 +100,7 @@ fn parse(
 ) -> Result<HtmlParseReport, Box<surgeist_html_parser::HtmlParseFailure>> {
     let source = HtmlSource::utf8(input);
     match kind {
-        Kind::Document => HtmlDocumentParseRequest::offline(source, limits).parse(),
+        Kind::Document => crate::parser::support::offline_all(source, limits).parse(),
         Kind::Fragment => HtmlFragmentParseRequest::with_options(
             source,
             fragment_context(),
@@ -106,6 +108,8 @@ fn parse(
             HtmlParserScriptingMode::Inert,
             false,
         )
+        .unwrap()
+        .with_detail(surgeist_html_parser::DetailSet::ALL)
         .unwrap()
         .parse(),
     }

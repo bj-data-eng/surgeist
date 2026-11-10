@@ -34,6 +34,9 @@ pub(super) fn check_formatting_text(
         return Err(SessionError::AliasedPayload);
     }
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    if !control.detail().records_graph() {
+        return Ok(());
+    }
     let len = text.value.text().len();
     let mut covered = 0;
     for origin in text.origins.as_slice() {
@@ -361,6 +364,9 @@ impl ParserArenaSession {
                 return Err(error);
             }
         };
+        // The copy keeps the positions of the tag it was created from, not of
+        // the token that caused the reconstruction.
+        let current_end = self.active_mut()?.token_end.replace(creation.source.end());
         let result = self.active_mut()?.allocate_html_payload_prepared(
             control,
             copied.name.value,
@@ -368,6 +374,7 @@ impl ParserArenaSession {
             copied.attributes,
             prepared,
         );
+        self.active_mut()?.token_end = current_end;
         if control.stop().is_none() {
             self.active_mut()?
                 .end_node_copy(control, previous.as_ref())?;

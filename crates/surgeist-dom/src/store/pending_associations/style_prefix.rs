@@ -16,8 +16,8 @@ use surgeist_html::{
 };
 use surgeist_html_parser::{
     HtmlParseAssociationContextRequirement as Requirement, HtmlParseAssociationContextRole as Role,
-    HtmlParseAssociationOccurrenceKind as Kind, HtmlParseHistoryFrame, HtmlParseHistoryStep,
-    HtmlParseMetadataDocument, HtmlParseOriginGroup, HtmlParsePendingAssociationStep as Step,
+    HtmlParseAssociationOccurrenceKind as Kind, HtmlParseMetadataDocument,
+    HtmlParsePendingAssociationStep as Step,
 };
 
 pub(super) mod meta_occurrence;
@@ -646,40 +646,19 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         Ok(())
     }
 }
-fn append_group(
-    report: &HtmlParseReport,
-    group: HtmlParseOriginGroup<'_>,
+fn append_value(
+    value: &DocumentString,
     units: &mut Vec<u16>,
     meter: &Meter,
     cancel: &AtomicBool,
 ) -> Result<(), DomParsedHtmlStyleError> {
-    let scratch = meter.fork();
-    let history = report.history_view();
-    let mut frames = Vec::new();
-    scratch.reserve(&mut frames, history.len(), cancel)?;
-    for _ in 0..history.len() {
-        scratch.step(cancel)?;
-        frames.push(HtmlParseHistoryFrame::default());
-    }
-    let mut reader = history
-        .cursor(group, &mut frames, None)
-        .map_err(crate::DomParsedHtmlAssociationAdmissionError::from)?;
-    loop {
+    meter.step(cancel)?;
+    meter.reserve_units(units, value.len(), cancel)?;
+    for &unit in value.code_units() {
         meter.step(cancel)?;
-        match reader.advance() {
-            HtmlParseHistoryStep::Leaf(leaf) => {
-                meter.reserve_units(units, leaf.units().len(), cancel)?;
-                for &unit in leaf.units() {
-                    meter.step(cancel)?;
-                    units.push(unit);
-                }
-            }
-            HtmlParseHistoryStep::Progress => (),
-            HtmlParseHistoryStep::Complete => return Ok(()),
-            HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
-            HtmlParseHistoryStep::Fault(fault) => return Err(fault.into()),
-        }
+        units.push(unit);
     }
+    Ok(())
 }
 fn select(
     dom: &Dom,
@@ -957,8 +936,7 @@ fn form_text_nonce(
                 let mut units = Vec::new();
                 for i in 0..inputs.text_len() {
                     meter.step(cancel)?;
-                    append_group(
-                        report,
+                    append_value(
                         inputs
                             .text(i)?
                             .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?,
@@ -969,11 +947,11 @@ fn form_text_nonce(
                 }
                 meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                 let text = DocumentString::from_utf16(units);
-                let nonce = if let Some(group) =
+                let nonce = if let Some(value) =
                     inputs.attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Nonce)
                 {
                     let mut units = Vec::new();
-                    append_group(report, group, &mut units, meter, cancel)?;
+                    append_value(value, &mut units, meter, cancel)?;
                     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                     Some(DocumentString::from_utf16(units))
                 } else {

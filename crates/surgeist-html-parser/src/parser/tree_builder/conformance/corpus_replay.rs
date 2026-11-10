@@ -713,3 +713,122 @@ fn script_on_cases_are_exactly_the_documents_the_disabled_only_profile_excludes(
         surgeist_html::parsing::HtmlParserScriptingMode::Disabled
     );
 }
+
+/// The tree, the metadata and the pending associations of a report, in a form
+/// that does not name node identities, so two parses of one input compare.
+fn shape(report: &crate::HtmlParseReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    if let Some(document) = report.document() {
+        out.push_str(&render(document));
+    }
+    if let Some(fragment) = report.fragment() {
+        out.push_str(&render_fragment(fragment));
+    }
+    let mut metadata = report.metadata();
+    loop {
+        match metadata.advance() {
+            crate::HtmlParseMetadataStep::Record(record) => {
+                writeln!(out, "meta {:?}", record.node().kind()).unwrap();
+            }
+            crate::HtmlParseMetadataStep::Skipped => {}
+            crate::HtmlParseMetadataStep::Complete => break,
+            crate::HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    let mut pending = report.pending_associations();
+    loop {
+        match pending.advance() {
+            crate::HtmlParsePendingAssociationStep::Occurrence(row) => {
+                let value = |value: Option<&DocumentString>| value.map(|v| text(v.code_units()));
+                writeln!(
+                    out,
+                    "occurrence {:?} {} {:?} {:?}",
+                    row.kind(),
+                    row.requires_processing(),
+                    value(row.preferred_name()),
+                    value(row.base_changed_input()),
+                )
+                .unwrap();
+                if let Some(style) = row.style() {
+                    for index in 0..style.text_len() {
+                        writeln!(out, "style text {:?}", value(style.text(index).unwrap()))
+                            .unwrap();
+                    }
+                }
+            }
+            crate::HtmlParsePendingAssociationStep::Document(row) => {
+                writeln!(
+                    out,
+                    "document {} {}",
+                    row.occurrence_count(),
+                    row.has_obligations()
+                )
+                .unwrap();
+            }
+            crate::HtmlParsePendingAssociationStep::Skipped => {}
+            crate::HtmlParsePendingAssociationStep::Complete => break,
+            crate::HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    out
+}
+
+/// The shape of one parse of a retained case with the detail selected, or the
+/// failure it ended in.
+fn shape_with(
+    fixture: &Fixture<'_>,
+    utf16: bool,
+    detail: crate::DetailSet,
+) -> Result<String, String> {
+    let parsed = match fixture.fragment {
+        None => document_request(fixture.input, utf16)
+            .with_detail(detail)
+            .map_err(|e| e.to_string())?
+            .parse(),
+        Some(context) => fragment_request(context, fixture.input, utf16)?
+            .with_detail(detail)
+            .map_err(|e| e.to_string())?
+            .parse(),
+    };
+    match parsed {
+        Ok(report) => Ok(shape(&report)),
+        Err(failure) => Err(format!("{:?} {:?}", failure.reason(), failure.first_stop())),
+    }
+}
+
+/// Parsing every retained case with no detail, with each kind alone and with
+/// all of it gives one tree, the same metadata and the same pending
+/// associations: detail records the parse, and does not change it.
+#[cfg(feature = "detail")]
+#[test]
+fn every_retained_case_gives_the_same_result_whatever_detail_the_parse_selects() {
+    use crate::DetailSet;
+    let mut compared = 0;
+    for (file, raw) in DATA {
+        for fixture in decode(raw).unwrap_or_else(|e| panic!("{file}: {e:?}")) {
+            if fixture.scripting == FixtureScripting::Enabled {
+                continue;
+            }
+            for utf16 in [false, true] {
+                let expected = shape_with(&fixture, utf16, DetailSet::ALL);
+                for detail in [
+                    DetailSet::NONE,
+                    DetailSet::SOURCE_MAP,
+                    DetailSet::LEXICAL,
+                    DetailSet::HISTORY,
+                    DetailSet::DIAGNOSTICS,
+                ] {
+                    assert_eq!(
+                        shape_with(&fixture, utf16, detail),
+                        expected,
+                        "{file}/{} utf16={utf16} detail={detail:?}",
+                        fixture.ordinal
+                    );
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 3000, "{compared} comparisons");
+}

@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{fragment_context, limits};
 use surgeist_html::{
     attributes::HtmlInputType,
@@ -7,11 +9,11 @@ use surgeist_html::{
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
-    HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlFragmentParseRequest,
-    HtmlParseAssociationRelation, HtmlParseConstructionOperation, HtmlParseDestination,
-    HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole,
-    HtmlParseDiagnosticSeverity, HtmlParseEffect, HtmlParseEffectHost, HtmlParseFailureReason,
-    HtmlParseField, HtmlParseHistoryError, HtmlParseHistoryFrame, HtmlParseHistoryStep,
+    HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlParseAssociationRelation,
+    HtmlParseConstructionOperation, HtmlParseDestination, HtmlParseDiagnosticContext,
+    HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole, HtmlParseDiagnosticSeverity,
+    HtmlParseEffect, HtmlParseEffectHost, HtmlParseFailureReason, HtmlParseField,
+    HtmlParseHistoryError, HtmlParseHistoryFrame, HtmlParseHistoryStep,
     HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseLimits,
     HtmlParseMetadataStep, HtmlParseOriginKind, HtmlParseRawField, HtmlParseResource,
     HtmlParseRetiredDestination, HtmlParseReverseError, HtmlParseReverseStep, HtmlParseStop,
@@ -45,7 +47,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
         } else {
             HtmlSource::utf8(raw)
         };
-        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let request = crate::parser::support::offline_all(source, limits());
         let identity = request.source().identity().clone();
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap();
@@ -230,7 +232,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
 #[test]
 fn document_parse_owns_exact_source_native_and_complete_d1_after_cancellation() {
     let literal = "<!doctype html><p id=x>A&amp;B\r\nC</p>";
-    let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+    let request = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits());
     let identity = request.source().identity().clone();
     let cancellation = request.cancellation().clone();
     let report = request.parse().unwrap();
@@ -283,7 +285,7 @@ fn document_parse_owns_exact_source_native_and_complete_d1_after_cancellation() 
 fn public_resource_and_cancel_failures_retain_original_source_without_partial_output() {
     let source = HtmlSource::utf8("<p>x");
     let identity = source.identity().clone();
-    let failure = HtmlDocumentParseRequest::offline(
+    let failure = crate::parser::support::offline_all(
         source,
         limits()
             .into_builder()
@@ -303,7 +305,7 @@ fn public_resource_and_cancel_failures_retain_original_source_without_partial_ou
         })
     ));
     assert_eq!(failure.cleanup_error(), None);
-    let source_denial = HtmlDocumentParseRequest::offline(
+    let source_denial = crate::parser::support::offline_all(
         HtmlSource::utf8("x"),
         limits().into_builder().source_units(0).finish().unwrap(),
     )
@@ -319,7 +321,7 @@ fn public_resource_and_cancel_failures_retain_original_source_without_partial_ou
     ));
     assert!(source_denial.diagnostics().is_none());
     assert_eq!(source_denial.cleanup_error(), None);
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf16(DocumentString::from_utf16(vec![0xd800])),
         limits(),
     );
@@ -351,7 +353,7 @@ enum ReachedStage {
 fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
     let literal =
         "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea></form>";
-    let complete = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+    let complete = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
         .parse()
         .unwrap();
     let total = complete
@@ -382,7 +384,7 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
         }
     };
     let cut = |work: u64| {
-        HtmlDocumentParseRequest::offline(
+        crate::parser::support::offline_all(
             HtmlSource::utf8(literal),
             limits().into_builder().work_credits(work).finish().unwrap(),
         )
@@ -482,7 +484,7 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
         }
     }
     // The budget the complete parse consumed is sufficient.
-    HtmlDocumentParseRequest::offline(
+    crate::parser::support::offline_all(
         HtmlSource::utf8(literal),
         limits()
             .into_builder()
@@ -499,7 +501,7 @@ fn public_failure_keeps_first_stop_snapshot_separate_from_cleanup_and_cancel() {
     // Document, doctype, html, head, body, p and Text A are seven actual nodes.
     // The following div must refuse before allocation, after text is retained.
     let literal = "<!doctype html><p>A</p><div>";
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf8(literal),
         limits().into_builder().managed_nodes(7).finish().unwrap(),
     );
@@ -549,7 +551,7 @@ fn public_failure_keeps_first_stop_snapshot_separate_from_cleanup_and_cancel() {
 #[test]
 fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_identity() {
     let literal = "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea><select><option selected>Q</option></select></form>";
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
         .parse()
         .unwrap();
     let document = report.document().unwrap();
@@ -645,7 +647,7 @@ fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
         "<!doctype html><body><input form=f>{}<form id=f></form>",
         "<input name=a>".repeat(60)
     );
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
         .parse()
         .unwrap();
     let document = report.document().unwrap();
@@ -685,7 +687,7 @@ fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
 fn handoff_resource_stop_remains_typed_in_public_failure() {
     let literal =
         "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea></form>";
-    let failure = HtmlDocumentParseRequest::offline(
+    let failure = crate::parser::support::offline_all(
         HtmlSource::utf8(literal),
         limits()
             .into_builder()
@@ -709,7 +711,7 @@ fn handoff_resource_stop_remains_typed_in_public_failure() {
 fn completed_owner_transfer_work_stop_remains_a_public_failure() {
     let literal =
         "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea></form>";
-    let failure = HtmlDocumentParseRequest::offline(
+    let failure = crate::parser::support::offline_all(
         HtmlSource::utf8(literal),
         limits()
             .into_builder()
@@ -734,7 +736,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     let literal = "<template shadowrootmode=closed shadowrootclonable><p>A</p></template><template shadowrootmode=open><p>B</p></template><p>Z</p>";
     let context = fragment_context();
     let capture = context.capture().identity().clone();
-    let request = HtmlFragmentParseRequest::with_options(
+    let request = crate::parser::support::fragment_all_with_options(
         HtmlSource::utf8(literal),
         context,
         limits(),
@@ -795,7 +797,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
 #[test]
 fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
     let literal = "<!doctype html><p>A&amp;B</p>";
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
         .parse()
         .unwrap();
     let history = report.history_view();
@@ -826,7 +828,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
         history.cursor(group, &mut empty, None),
         Err(HtmlParseHistoryError::InsufficientScratch { supplied: 0, .. })
     ));
-    let foreign_request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+    let foreign_request = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits());
     let query_cancel = foreign_request.cancellation().clone();
     let foreign_report = foreign_request.parse().unwrap();
     assert!(matches!(
@@ -891,7 +893,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
 #[test]
 fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_values() {
     let literal = "<input value='A&#13;B&#10;C' type=hidden><?marker name='x&amp;y'?>";
-    let report = HtmlFragmentParseRequest::with_options(
+    let report = crate::parser::support::fragment_all_with_options(
         HtmlSource::utf8(literal),
         fragment_context(),
         limits(),
@@ -984,7 +986,7 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
     let literal = "<p id=x>A&amp;B</p><textarea>C</textarea>";
     let source = HtmlSource::utf16(DocumentString::from(literal));
     let context = fragment_context();
-    let complete = HtmlFragmentParseRequest::with_options(
+    let complete = crate::parser::support::fragment_all_with_options(
         source.clone(),
         context.clone(),
         limits(),
@@ -1000,7 +1002,7 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
         .current();
     drop(complete);
     for cut in [0, 256, final_credits - 1] {
-        let failure = HtmlFragmentParseRequest::with_options(
+        let failure = crate::parser::support::fragment_all_with_options(
             source.clone(),
             context.clone(),
             limits().into_builder().work_credits(cut).finish().unwrap(),
@@ -1043,7 +1045,7 @@ fn retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing() {
     let document_source = HtmlSource::utf16(DocumentString::from(
         "<!doctype html><p>A&amp;B<input type=color value=currentcolor>",
     ));
-    let failure = HtmlDocumentParseRequest::offline(document_source.clone(), limits())
+    let failure = crate::parser::support::offline_all(document_source.clone(), limits())
         .parse()
         .unwrap_err();
     assert!(matches!(
@@ -1151,7 +1153,7 @@ fn fragment_template_missing_fact_is_conditional_and_returns_original_context_op
     let capture = builder.finish().unwrap();
     let context =
         HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
-    let simple = HtmlFragmentParseRequest::with_options(
+    let simple = crate::parser::support::fragment_all_with_options(
         HtmlSource::utf8("<p>A"),
         context.clone(),
         limits(),
@@ -1163,7 +1165,7 @@ fn fragment_template_missing_fact_is_conditional_and_returns_original_context_op
     .unwrap();
     assert!(simple.fragment().is_some());
     let source = HtmlSource::utf8("<template>A</template>");
-    let request = HtmlFragmentParseRequest::with_options(
+    let request = crate::parser::support::fragment_all_with_options(
         source.clone(),
         context.clone(),
         limits(),
@@ -1215,7 +1217,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
     let raw = vec![
         0xfeff, 0x3c, 0x70, 0x3e, 0x41, 0xd800, 0x0d, 0x0a, 0x42, 0x3c, 0x2f, 0x70, 0x3e,
     ];
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf16(DocumentString::from_utf16(raw.clone())),
         limits(),
     );
@@ -1357,7 +1359,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
 
 #[test]
 fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnostic() {
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf16(DocumentString::from_utf16(Vec::<u16>::new())),
         limits(),
     );
@@ -1420,7 +1422,7 @@ fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnosti
 #[test]
 fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_current_slot() {
     let literal = "<!doctype html><details name=g open></details><details id=b name=g open data-tail=z></details>";
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits())
         .parse()
         .unwrap();
     let document = report.document().unwrap();
@@ -1500,7 +1502,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
     ] {
         let literal = format!("<!doctype html><input type=email multiple value='{original}'>");
         let request =
-            HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal.as_str()), limits());
+            crate::parser::support::offline_all(HtmlSource::utf8(literal.as_str()), limits());
         let identity = request.source().identity().clone();
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap();
@@ -1565,7 +1567,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
         assert_eq!(report.usage(), &usage);
     }
 
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><input type=email value='a,'><input type=hidden value=x>"),
         limits(),
     )
@@ -1606,7 +1608,7 @@ fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel(
             true,
         ),
     ] {
-        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+        let request = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits());
         let identity = request.source().identity().clone();
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap();
@@ -1685,7 +1687,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
             "&#32;",
         ),
     ] {
-        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+        let request = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits());
         let identity = request.source().identity().clone();
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap();
@@ -1800,7 +1802,7 @@ fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_captu
     let context = fragment_context();
     let capture = context.capture().identity().clone();
     let request =
-        HtmlFragmentParseRequest::new(HtmlSource::utf8(literal), context, limits()).unwrap();
+        crate::parser::support::fragment_all(HtmlSource::utf8(literal), context, limits()).unwrap();
     let cancellation = request.cancellation().clone();
     let report = request.parse().unwrap();
     let usage = report.usage().clone();
@@ -1862,7 +1864,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
             HtmlSource::utf8(literal)
         };
         let identity = source.identity().clone();
-        let request = HtmlDocumentParseRequest::offline(source, limits());
+        let request = crate::parser::support::offline_all(source, limits());
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap();
         let usage = report.usage().clone();
@@ -2068,7 +2070,7 @@ fn value_sharing_report_with_limits(
     let report = if fragment {
         let context = fragment_context();
         let capture = context.capture().identity().clone();
-        let request = HtmlFragmentParseRequest::new(source, context, limits).unwrap();
+        let request = crate::parser::support::fragment_all(source, context, limits).unwrap();
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap_or_else(|failure| {
             panic!(
@@ -2085,7 +2087,7 @@ fn value_sharing_report_with_limits(
         assert_eq!(report.context().unwrap().capture().identity(), &capture);
         report
     } else {
-        let request = HtmlDocumentParseRequest::offline(source, limits);
+        let request = crate::parser::support::offline_all(source, limits);
         let cancellation = request.cancellation().clone();
         let report = request.parse().unwrap_or_else(|failure| {
             panic!(
@@ -2437,7 +2439,7 @@ fn report_value_sharing_preserves_raw_surrogates_and_each_source_interval() {
     raw.extend("</p><p>".encode_utf16());
     raw.push(0xd800);
     raw.extend("</p>".encode_utf16());
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf16(DocumentString::from_utf16(raw.clone())),
         limits(),
     );
@@ -2848,7 +2850,7 @@ const TEXTAREA_PROVENANCE: [(usize, usize, usize); 5] = [
 fn textarea_text_keeps_its_raw_value_and_one_provenance_step_for_each_character() {
     for (n, history, rows) in TEXTAREA_PROVENANCE {
         let text = "a".repeat(n);
-        let report = HtmlDocumentParseRequest::offline(
+        let report = crate::parser::support::offline_all(
             HtmlSource::utf8(format!("<!doctype html><textarea>{text}</textarea>")),
             limits(),
         )

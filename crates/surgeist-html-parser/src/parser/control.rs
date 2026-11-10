@@ -379,6 +379,8 @@ pub(crate) struct ParseControl {
     /// only when the parse could not set them up; the control is then stopped
     /// from its creation with the fault.
     accounts: Option<Accounts>,
+    /// The optional detail this parse records.
+    detail: crate::DetailSet,
     /// The caps the accounts were built with, for tests that lower one.
     #[cfg(test)]
     configured: HtmlParseLimits,
@@ -558,7 +560,7 @@ impl ParseControl {
     /// A control that keeps its figures in counters of its own.
     #[cfg(test)]
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
-        Self::with_accounting(limits, cancellation, None)
+        Self::with_accounting(limits, cancellation, None, crate::request::default_detail())
     }
     /// A control that charges the operation of `lease`, or its own counters
     /// when there is none. A setup fault latches as the first stop.
@@ -566,6 +568,7 @@ impl ParseControl {
         limits: HtmlParseLimits,
         cancellation: HtmlParseCancellation,
         lease: Option<&Arc<Lease>>,
+        detail: crate::DetailSet,
     ) -> Self {
         let (accounts, stopped) = match Accounts::new(&limits, lease) {
             Ok(accounts) => (Some(accounts), None),
@@ -579,6 +582,7 @@ impl ParseControl {
         };
         let mut control = Self {
             accounts,
+            detail,
             #[cfg(test)]
             configured: limits,
             cancellation,
@@ -657,6 +661,17 @@ impl ParseControl {
             .map_or_else(HtmlParseUsage::empty, |(usage, credits)| {
                 HtmlParseUsage::from_ledger(&usage, credits)
             })
+    }
+    /// The optional detail this parse records.
+    pub(crate) fn detail(&self) -> crate::DetailSet {
+        // Without the feature no request selects detail, and the constant lets
+        // the compiler drop the code that records it. Unit tests drive the
+        // recording code directly, so they keep the selection they name.
+        if cfg!(any(feature = "detail", test)) {
+            self.detail
+        } else {
+            crate::DetailSet::NONE
+        }
     }
     pub(crate) fn identity(&self) -> ControlIdentity {
         ControlIdentity(self.identity.clone())
@@ -3043,6 +3058,8 @@ impl HtmlParseUsage {
 
 #[cfg(test)]
 mod admission_tests;
+#[cfg(all(test, feature = "detail"))]
+mod detail_tests;
 #[cfg(test)]
 mod growth_tests;
 #[cfg(test)]

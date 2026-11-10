@@ -590,6 +590,11 @@ impl ParserArenaSession {
         {
             return Err(SessionError::ContextUnavailable);
         }
+        // The bootstrap cause is part of the graph, which a parse records only
+        // when it selects a detail that names it.
+        if !c.detail().records_graph() {
+            return Ok(());
+        }
         let mut root_slot = None;
         let mut output_slot = None;
         for (slot, payload) in storage.payloads.values.iter().enumerate() {
@@ -708,7 +713,7 @@ impl SessionStorage {
         // This private path is reached only after actual fragment creation
         // qualification. The canonical evidence owner retains captured URI
         // qualification; it cannot invent a lexical TextOrigin for this copy.
-        let previous = if let Some(evidence) = &self.evidence {
+        let previous = if let Some(evidence) = provenance::graph_in(&mut self.evidence) {
             match evidence.current_cause(c) {
                 Ok(previous) => previous,
                 Err(error) => {
@@ -719,7 +724,7 @@ impl SessionStorage {
         } else {
             None
         };
-        let group = if let Some(evidence) = &mut self.evidence {
+        let group = if let Some(evidence) = provenance::graph_in(&mut self.evidence) {
             match evidence.retain_captured_namespace(
                 c,
                 provenance::CapturedParserTrigger::new(
