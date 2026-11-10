@@ -8544,6 +8544,45 @@ fn zero_sized_mask_image_annihilates_without_texture_allocation() {
 }
 
 #[test]
+#[cfg(not(target_arch = "wasm32"))]
+#[ignore = "requires WGPU_BACKEND= in an isolated test process"]
+fn resource_preparation_without_adapter_returns_setup_refusal() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = Size::new(16.0, 12.0);
+    let surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let stats_before = renderer.stats();
+    let capabilities_before = renderer.runtime_capabilities(&surface);
+    assert_eq!(
+        capabilities_before,
+        RuntimeCapabilities::Unavailable(RuntimeCapabilityUnavailableReason::AdapterUnavailable)
+    );
+
+    let error = renderer
+        .resource_preparation_observation_for_test(
+            composition_commands_for_test(),
+            size,
+            1.0,
+            Color::BLACK,
+            Format::Rgba8,
+        )
+        .expect_err("resource preparation without a selected adapter must return a setup refusal");
+
+    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::AdapterSelection);
+    assert_eq!(
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::AdapterUnavailable
+    );
+    assert_eq!(
+        error.message(),
+        "resource preparation coverage requires a ready default device"
+    );
+    assert_eq!(renderer.stats(), stats_before);
+    assert_eq!(renderer.runtime_capabilities(&surface), capabilities_before);
+}
+
+#[test]
 fn resource_preparation_is_allocation_safe_and_submission_free() {
     let options = Options::default()
         .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision)
