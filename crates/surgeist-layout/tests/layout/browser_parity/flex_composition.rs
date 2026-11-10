@@ -9,6 +9,9 @@ const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
 const SCRIPT_CUSTODY_REPORT: &str = include_str!("flex_composition_script_custody_report.json");
 const FOCUSED_REPORT: &str = include_str!("flex_composition_focused_report.json");
+const FIXED_ORTHOGONAL_REPORT: &str = include_str!("flex_composition_fixed_orthogonal_report.json");
+const FIXED_ORTHOGONAL_REPORT_SHA256: &str =
+    "f69ebad7fd090c3b8c2ba1a4978d361baf21f75ab946efb6b300c212d6f4e862";
 const FOCUSED_REPORT_SHA256: &str =
     "60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82";
 
@@ -24,6 +27,7 @@ pub(crate) const RETAINED_HELPER_SHA256: &str =
 pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == RETAINED_HELPER_SHA256
         || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+        || digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
 }
 
 pub(super) struct Capture<'a> {
@@ -162,6 +166,11 @@ fn require_control_environment(
         (
             FOCUSED_REPORT,
             FOCUSED_REPORT_SHA256,
+            "focused-declaration.json",
+        ),
+        (
+            FIXED_ORTHOGONAL_REPORT,
+            FIXED_ORTHOGONAL_REPORT_SHA256,
             "focused-declaration.json",
         ),
     ] {

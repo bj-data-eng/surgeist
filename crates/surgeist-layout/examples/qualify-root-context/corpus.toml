@@ -2770,3 +2770,118 @@ inline_offset = 0
 kind = "fixed"
 width = 10.5
 height = 10.5
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-whitespace-pre.html"
+source_sha256 = "dba3b79420f774a30123131ef8ce41732cdac2dab9c00b7c21fe83f7cb78bb73"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalTextProducer"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-whitespace-pre-wrap.html"
+source_sha256 = "2f63b9de58658d1a26f44858bf57681ad0a85e60790b47547022e78ed3b1b4cd"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalTextProducer"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-whitespace-break-spaces.html"
+source_sha256 = "94c7a8525414a320ce1f19e2f88a7138786d3335d0dc9281f2f150575f5d8cb2"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalTextProducer"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-missing-width.html"
+source_sha256 = "73985a4645ba22c00966cb027627e904520cf09a7ee245544a98bbe2aa768f50"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalPhysicalSize"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-auto-height.html"
+source_sha256 = "262aecf734f1a476f4ed2fc1df335462c3f78da4ca68d9e594636e12264b2b12"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalPhysicalSize"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-shifted-frame.html"
+source_sha256 = "aa5685a46cdd71965c64389c071296da49cf31853093cd6cdecf83325071c504"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalExternalFrame"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-nbsp-mixed-content.html"
+source_sha256 = "a4cc1b1bbe5939136626f6f698dc40d968df99ed83809f127740a16770b4d63c"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalTextProducer"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-em-space-mixed-content.html"
+source_sha256 = "73c0d10812f841e53046cb0628dccf08f2a181a72c1342fc0fb8b422e1526460"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalTextProducer"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-individual-translate.html"
+source_sha256 = "0726d8d50c82c752bc8aeecf25b41c08df4865f58815f4078d82c0e75070541e"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalFrame"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-individual-scale.html"
+source_sha256 = "8175dcd2caf7e097d52c4c291c494d272c9e00ae44f0ae14c1f632f7f622a74e"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalFrame"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-individual-rotate.html"
+source_sha256 = "2c13005182bd9fee6760bcb6b279718963f19d6900842cec460042b2d3f30188"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalFrame"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-motion-path.html"
+source_sha256 = "6e6f81bb882bd23e0b30d8d9fefa58f00fefeb4437e50a3cfbcfbc271451f710"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalOrthogonalFrame"
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-collapsible-whitespace.html"
+source_sha256 = "79857611de50e929333b6f9f040d9f1fb8c9b3e56a487779df00a8629c13ed7e"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 30
+height = 50

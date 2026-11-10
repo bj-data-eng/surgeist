@@ -339,3 +339,52 @@ fn focused_declaration_execution_refuses_mode_or_typed_record_identity_mismatch(
     assert_eq!(fs::read_dir(&root.0).unwrap().count(), 0);
     invocation.check_terminal().unwrap();
 }
+
+#[test]
+fn paired_geometry_binds_the_requested_mode_and_complete_generated_peer_closure() {
+    let source = "html/qualification/fixed-orthogonal-translation-0-75.html";
+    let mode = QualificationMode::PairedGeometryCapture;
+    assert_eq!(mode.box_observations(), BoxObservationRequest::Geometry);
+    assert!(!mode.collects_numeric_differences());
+    let input = DeclarationInput::focused(DECLARATION, source, mode).unwrap();
+    assert_eq!(input.execution_mode(QualificationMode::Regular), mode);
+    let value: serde_json::Value = serde_json::from_slice(input.bytes()).unwrap();
+    assert_eq!(value["mode"], "paired-geometry-capture");
+    assert_eq!(value["requested_source"], source);
+    assert_eq!(value["records"].as_array().unwrap().len(), 2);
+    assert_eq!(input.declaration.expected().unwrap().generated(), 8);
+    let before = prepared(DECLARATION, source, mode).unwrap();
+    let after = prepared(&appended(), source, mode).unwrap();
+    assert_eq!(before, after);
+    assert_eq!(before.jobs.len(), 2);
+    let diagnostic = prepared(
+        DECLARATION,
+        source,
+        QualificationMode::ElementScrollSizeDiagnostics,
+    )
+    .unwrap();
+    assert_eq!(before.jobs, diagnostic.jobs);
+    assert_ne!(before.inputs, diagnostic.inputs);
+    let changed = edit_record(
+        DECLARATION,
+        "html/qualification/fixed-orthogonal-translation-0-25.html",
+        "inline_offset = 0",
+        "inline_offset = 1",
+    );
+    assert_ne!(
+        before.inputs,
+        prepared(&changed, source, mode).unwrap().inputs
+    );
+    for old in [
+        QualificationMode::Regular,
+        QualificationMode::NumericDiagnostics,
+        QualificationMode::StylesheetCustody,
+    ] {
+        assert!(DeclarationInput::focused(DECLARATION, source, old).is_err());
+    }
+    assert!(DeclarationInput::focused(DECLARATION, BASIC, mode).is_err());
+    assert!(
+        DeclarationInput::focused(DECLARATION, "html/qualification/undeclared-pair.html", mode)
+            .is_err()
+    );
+}

@@ -743,9 +743,12 @@ function qualifyRootLocalSubtree(root, unshifted, preparedRanges, compositionIma
     'inset-block-start', 'inset-block-end'];
   const inline = preparedRanges ? qualifyPreparedRangeSubtree(root) : null;
   const pending = [root];
+  const localBoxes = [];
+  let fixedOrthogonal = false;
   while (pending.length) {
     const node = pending.pop();
     const style = getComputedStyle(node);
+    localBoxes.push([node, style]);
     if (logicalBlockEdges.some(property => styleDeclarationValue(node.style, property))) {
       fail('UnrepresentedLogicalBlockEdges');
     }
@@ -755,7 +758,21 @@ function qualifyRootLocalSubtree(root, unshifted, preparedRanges, compositionIma
     const expectedMode = compositionImage
       ? (node === root.firstElementChild ? 'vertical-lr' : 'sideways-rl')
       : 'horizontal-tb';
-    if (style.writingMode !== expectedMode) fail('RootLocalWritingMode');
+    if (style.writingMode !== expectedMode) {
+      if (node === root || preparedRanges || compositionImage ||
+          !['vertical-rl', 'vertical-lr', 'sideways-rl', 'sideways-lr'].includes(style.writingMode)) {
+        fail('RootLocalWritingMode');
+      }
+      // Source/live subtree equality authenticates these inline declarations.
+      // A computed or measured finite size cannot supply missing source input.
+      const fixed = property => {
+        const value = styleDeclarationValue(node.style, property);
+        return /^(?:\d+(?:\.\d*)?|\.\d+)px$/.test(value) &&
+          Number.isFinite(Number(value.slice(0, -2))) && Number(value.slice(0, -2)) >= 0;
+      };
+      if (!fixed('width') || !fixed('height')) fail('RootLocalOrthogonalPhysicalSize');
+      fixedOrthogonal = true;
+    }
     // These elements have no border-box observation that can share the root's
     // omitted translation. A world-zero rectangle is not a local zero box.
     if (['none', 'contents'].includes(style.display)) fail('RootLocalBoxlessObservation');
@@ -782,6 +799,39 @@ function qualifyRootLocalSubtree(root, unshifted, preparedRanges, compositionIma
     // Fixed/sticky, transformed, viewport-dependent and typed inline producers
     // have deliberately not been qualified by this first capability.
     pending.push(...node.children);
+  }
+  if (fixedOrthogonal) qualifyRootLocalFixedPhysicalScope(root, localBoxes);
+}
+
+function qualifyRootLocalFixedPhysicalScope(root, boxes) {
+  const fail = reason => { throw new Error('Root context: ' + reason); };
+  const properties = new Set(['display', 'writing-mode', 'direction', 'width', 'height',
+    'grid-auto-flow', 'grid-template-columns', 'grid-template-rows',
+    'grid-row', 'grid-row-start', 'grid-row-end',
+    'grid-column', 'grid-column-start', 'grid-column-end']);
+  const edges = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  for (const [node, style] of boxes) {
+    // Every local producer shares the root translation. This source profile
+    // admits no intervening positioned, clipped or scrolling dependency.
+    // Auto insets follow from the authenticated base and absence of source
+    // overrides below, not CSSOM's resolved absolute-position coordinates.
+    if ((node !== root && !['static', 'relative'].includes(style.position)) ||
+        style.overflowX !== 'visible' || style.overflowY !== 'visible' ||
+        style.translate !== 'none' || style.rotate !== 'none' || style.scale !== 'none' || style.offsetPath !== 'none' ||
+        style.aspectRatio !== 'auto' || edges.some(property => !/^[-+]?0(?:\.0+)?px$/.test(style[property]))) {
+      fail('RootLocalOrthogonalFrame');
+    }
+    if (style.whiteSpace !== 'normal') fail('RootLocalOrthogonalTextProducer');
+    for (const property of Array.from(node.style)) {
+      // Only represented source inputs participate in this profile. Other
+      // declarations require their own proof rather than a property blacklist.
+      if (!properties.has(property)) fail('RootLocalOrthogonalSourceOverride');
+    }
+    if (Array.from(node.childNodes).some(child => child.nodeType === Node.TEXT_NODE && /[^\t\n\f\r ]/.test(child.textContent))) {
+      fail('RootLocalOrthogonalTextProducer');
+    }
   }
 }
 

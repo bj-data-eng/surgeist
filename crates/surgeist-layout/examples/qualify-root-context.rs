@@ -207,6 +207,16 @@ fn parse_arguments(
             Ok((Some(source.as_str()), QualificationMode::NumericDiagnostics))
         }
         [mode, flag, source]
+            if mode == "--paired-geometry-capture"
+                && flag == "--fixture"
+                && !source.starts_with("--") =>
+        {
+            Ok((
+                Some(source.as_str()),
+                QualificationMode::PairedGeometryCapture,
+            ))
+        }
+        [mode, flag, source]
             if mode == "--element-scroll-size-diagnostics"
                 && flag == "--fixture"
                 && !source.starts_with("--") =>
@@ -237,7 +247,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --derive-published-qualification <edition> | --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --publish-relative-inset-differences | --check-published-relative-inset-differences | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --derive-published-qualification <edition> | --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --publish-relative-inset-differences | --check-published-relative-inset-differences | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --paired-geometry-capture --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -250,6 +260,24 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn paired_geometry_capture_requires_one_source_argument() {
+        let source = "html/qualification/fixed-orthogonal-translation-0-75.html";
+        let requested = arguments(&["--paired-geometry-capture", "--fixture", source]);
+        assert_eq!(
+            parse_arguments(&requested),
+            Ok((Some(source), QualificationMode::PairedGeometryCapture))
+        );
+        for invalid in [
+            vec!["--paired-geometry-capture"],
+            vec!["--paired-geometry-capture", "--fixture"],
+            vec!["--paired-geometry-capture", "--fixture", "--other"],
+            vec!["--paired-geometry-capture", "--fixture", source, "extra"],
+        ] {
+            assert!(parse_arguments(&arguments(&invalid)).is_err());
+        }
     }
 
     #[test]

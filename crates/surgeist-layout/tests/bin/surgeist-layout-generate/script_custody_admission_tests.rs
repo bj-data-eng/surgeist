@@ -9,7 +9,7 @@ fn script_custody_admission_requires_candidate(
 
     assert_eq!(
         Sha256Digest::from_bytes(TEST_HELPER_SOURCE.as_bytes()).as_str(),
-        "eb92590a7b4ae6bb9ef10f64148e7fa4e7ff0a6f6bccf1abf7eceea0fc44b0e4"
+        crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
     );
     assert_eq!(
         Sha256Digest::from_bytes(source.as_bytes()).as_str(),
@@ -30,6 +30,8 @@ fn script_custody_admission_requires_candidate(
         "../../layout/browser_parity/captured/original-subgrid-body-qualification/scripts/gentest/test_helper.js"
     );
     setup(retained).expect("the retained producer remains admissible");
+    setup(include_str!("../../layout/browser_parity/captured/scriptless-order/scripts/gentest/test_helper.js"))
+        .expect("the source-script-custody producer remains admissible");
     for other_profile_helper in [
         include_str!(
             "../../layout/browser_parity/captured/canonical-box-differences/scripts/gentest/test_helper.js"
@@ -47,7 +49,7 @@ fn script_custody_admission_requires_candidate(
         setup(&modified),
         Err(AdapterError::Preparation(reason)) if reason == refusal
     ));
-    setup(TEST_HELPER_SOURCE).expect("the script-custody helper must preserve fresh profile setup");
+    setup(TEST_HELPER_SOURCE).expect("the qualified helper preserves fresh profile setup");
 }
 
 #[test]

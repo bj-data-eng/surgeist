@@ -8,10 +8,24 @@ Run one ordinary declared source with:
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
 ~~~
 
-Omitting the fixture selects the ordinary geometry cohort. The
+Omitting the fixture selects the ordinary geometry cohort. The original Grid
+Lanes axis sources retain the adopted-versus-browser orientation difference, so
+strict original comparison reports it; see the [Chromium orientation witness](../../../../references/chromium-grid-lanes-orientation--149.0.7827.115.md).
+Generated declarations describe capture admission, not matching geometry.
+The
 [prepared Range recipe](../../tests/layout/browser_parity/README.md#prepared-range-qualification)
 selects its own capture profile. Numeric diagnostics use an explicit mode and
 fail on every numeric difference.
+
+Paired ordinary geometry uses a separate strict mode. It selects the declared
+outgoing peer closure, binds that mode and the selected records in the focused
+input, compares every local box through Native, and checks the declared world
+rounding phase and raw DOM-size invariance. It does not admit the separate
+ElementScrollSizes Native channel for nonhorizontal boxes.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --paired-geometry-capture --fixture html/qualification/fixed-orthogonal-translation-0-75.html
+~~~
 
 ## Element scroll sizes
 

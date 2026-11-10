@@ -2,10 +2,11 @@ const FOCUSED_ENVIRONMENT_REPORT: &str = include_str!("flex_composition_focused_
 
 #[test]
 fn focused_flex_environment_preserves_all_four_complete_policy_comparisons() {
+    for (report, digest) in focused_environment_witnesses() {
     use super::exact_differences::flex_composition_qualification::{Inputs, qualify};
     assert_eq!(
-        sha256(FOCUSED_ENVIRONMENT_REPORT.as_bytes()),
-        "60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82"
+        sha256(report.as_bytes()),
+        digest
     );
     let inputs = Inputs::load(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
     for (variant, xml) in VARIANTS {
@@ -14,7 +15,7 @@ fn focused_flex_environment_preserves_all_four_complete_policy_comparisons() {
             .unwrap();
         let new = Golden::parse_with_flex_composition(
             xml,
-            FOCUSED_ENVIRONMENT_REPORT,
+            report,
             SOURCE,
             SOURCE_BYTES,
             &output,
@@ -27,11 +28,13 @@ fn focused_flex_environment_preserves_all_four_complete_policy_comparisons() {
         assert_eq!(old_counts, new_counts);
         assert_eq!(a, b);
     }
+    }
 }
 
 #[test]
 fn focused_flex_environment_refuses_missing_wrong_or_crossed_declaration_keys() {
-    let original: serde_json::Value = serde_json::from_str(FOCUSED_ENVIRONMENT_REPORT).unwrap();
+    for (report, _) in focused_environment_witnesses() {
+    let original: serde_json::Value = serde_json::from_str(report).unwrap();
     let old: serde_json::Value = serde_json::from_str(REPORT).unwrap();
     let (variant, xml) = VARIANTS[0];
     let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");
@@ -89,4 +92,12 @@ fn focused_flex_environment_refuses_missing_wrong_or_crossed_declaration_keys() 
     let mut crossed_contract = original;
     crossed_contract["metadata"]["contract_sha256"] = old["metadata"]["contract_sha256"].clone();
     refused(&crossed_contract);
+    }
+}
+
+fn focused_environment_witnesses() -> [(&'static str, &'static str); 2] {
+    [
+        (FOCUSED_ENVIRONMENT_REPORT, "60437234e3d3d380bda1cb208409d23ebfa690a3add9d1db9b21c8f94ebc5b82"),
+        (include_str!("flex_composition_fixed_orthogonal_report.json"), "f69ebad7fd090c3b8c2ba1a4978d361baf21f75ab946efb6b300c212d6f4e862"),
+    ]
 }

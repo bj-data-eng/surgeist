@@ -26,6 +26,8 @@ fn classify(scenario: Value) -> Value {
           position: 'relative', top: 'auto', right: 'auto', bottom: 'auto', left: 'auto',
           width: '30px', height: '50px', minWidth: '0px', minHeight: '0px',
           maxWidth: 'none', maxHeight: 'none', aspectRatio: 'auto',
+          whiteSpace: 'normal',
+          translate: 'none', rotate: 'none', scale: 'none', offsetPath: 'none',
           clipPath: 'none', overflowX: 'visible', overflowY: 'visible', content: 'normal',
           marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px',
           paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px',
@@ -41,14 +43,21 @@ fn classify(scenario: Value) -> Value {
       child.scrollTop = input.scrollTop || 0;
       child.textContent = input.text || '';
       if (child.textContent) child.childNodes.push({nodeType: 3, textContent: child.textContent, length: child.textContent.length});
+      if (input.mixed) {
+        const nested = box(input.mode, 'block', {display: 'block', width: '10px', height: '10px'});
+        child.children.push(nested); child.childNodes.push(nested);
+      }
       if (input.marker) child.attributes.push({name: input.marker, value: 'true'});
       root.children.push(child); root.childNodes.push(child);
       globalThis.getComputedStyle = node => node.computed;
       globalThis.Node = {TEXT_NODE: 3, ELEMENT_NODE: 1};
       try {
         qualifyRootLocalSubtree(root, () => true, false, null);
+        // The current describer omits nonleaf text. The source gate must reject
+        // unsupported anonymous text before that projection loses the producer.
         const normalized = node => ({style: {writingMode: node.computed.writingMode},
-          textContent: node.textContent, children: node.children.map(normalized)});
+          textContent: node.children.length ? undefined : node.textContent,
+          children: node.children.map(normalized)});
         qualifyAnalyticCaptureText(normalized(root), 'horizontal-tb');
         return {accepted: true};
       } catch (error) { return {accepted: false, reason: error.message}; }
@@ -143,4 +152,60 @@ fn fixed_orthogonal_source_overrides_and_unsupported_producer_frames_refuse() {
             .extend(extra.as_object().unwrap().clone());
         assert_eq!(classify(scenario)["accepted"], false);
     }
+}
+
+#[test]
+fn fixed_orthogonal_preserved_whitespace_is_an_unsupported_text_producer() {
+    for white_space in ["pre", "pre-wrap", "break-spaces"] {
+        let result = classify(json!({"mode": "vertical-rl", "text": " \n ",
+            "authored": {"white-space": white_space}, "computed": {"whiteSpace": white_space}}));
+        assert_eq!(result["accepted"], false, "{white_space}");
+        assert_eq!(
+            result["reason"],
+            "Root context: RootLocalOrthogonalTextProducer"
+        );
+    }
+}
+
+#[test]
+fn fixed_orthogonal_noncollapsible_nonleaf_text_is_refused() {
+    let results = ["\u{00a0}", "\u{2003}", "\u{202f}", "\u{000b}"].map(|text| {
+        classify(json!({"mode": "vertical-rl", "text": text, "mixed": true,
+            "authored": {"display": "block"}, "computed": {"display": "block"}}))["accepted"]
+            .clone()
+    });
+    assert_eq!(
+        results,
+        [json!(false), json!(false), json!(false), json!(false)]
+    );
+}
+
+#[test]
+fn fixed_orthogonal_individual_transforms_and_motion_paths_are_refused() {
+    let results = [
+        json!({"authored": {"translate": "1px 0px"}, "computed": {"translate": "1px"}}),
+        json!({"authored": {"scale": "2"}, "computed": {"scale": "2"}}),
+        json!({"authored": {"rotate": "20deg"}, "computed": {"rotate": "20deg"}}),
+        json!({"authored": {"offset-path": "path('M0,0 L100,0')", "offset-distance": "10px"},
+            "computed": {"offsetPath": "path('M0,0 L100,0')"}}),
+        json!({"authored": {"offset-rotate": "auto 20deg"}}),
+    ]
+    .map(|extra| {
+        let mut scenario = json!({"mode": "vertical-rl"});
+        scenario
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        classify(scenario)["accepted"].clone()
+    });
+    assert_eq!(
+        results,
+        [
+            json!(false),
+            json!(false),
+            json!(false),
+            json!(false),
+            json!(false)
+        ]
+    );
 }

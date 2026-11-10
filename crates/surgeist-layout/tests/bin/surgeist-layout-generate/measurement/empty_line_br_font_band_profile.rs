@@ -21,9 +21,10 @@ pub(crate) const SCRIPT_PATH: &str = "scripts/gentest/empty_line_br_font_band.js
 pub(crate) const SCRIPT: &str = include_str!("empty_line_br_font_band.js");
 pub(crate) const REQUEST: &[u8] = include_bytes!("empty_line_br_font_band_request.json");
 
-/// The retained producer and the source-script-custody producer qualified for
-/// this observation profile. Other globally known helpers grant no capability.
+/// Producing helpers qualified for this observation profile. Global helper
+/// recognition grants no capability.
 pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == HELPER_SHA256
         || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+        || digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
 }

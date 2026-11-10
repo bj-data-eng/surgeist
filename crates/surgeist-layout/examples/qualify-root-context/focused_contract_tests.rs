@@ -38,7 +38,16 @@ fn prepared(
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let input = DeclarationInput::focused(bytes, source, mode)?;
     let mode = input.execution_mode(mode);
-    let inventory = prepare_inventory(root, owner, &input, mode)?;
+    let inventory = inventory_with_retained_helper(
+        root,
+        owner,
+        &input,
+        mode,
+        InputAccess::Prepare,
+        Some(include_bytes!(
+            "../../tests/layout/browser_parity/captured/scriptless-order/scripts/gentest/test_helper.js"
+        )),
+    )?;
     let corpus = corpus_for_inventory(
         root,
         owner,
