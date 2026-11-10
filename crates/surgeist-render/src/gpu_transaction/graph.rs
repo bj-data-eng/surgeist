@@ -304,11 +304,7 @@ impl GpuOperationTransaction {
         operation: RuntimeOperation,
         account: &Account,
     ) -> Result<(GraphOutputCommit, FrameCleanup)> {
-        let mut transaction = self;
-        let result = transaction
-            .resolve_submission_phase(operation, account)
-            .await;
-        result?;
+        let transaction = self.resolve_submission_phase(operation, account).await?;
         let mut resources = AccountingReadyGraphResources::try_new(
             submitted_resources.capture_resources,
             submitted_resources.prepared_frame,
@@ -320,7 +316,9 @@ impl GpuOperationTransaction {
             PendingGraphHostEffect::Presented(effect).authorize(CleanGraphSubmissionReceipt {
                 _resource_readiness: receipt,
             });
-        transaction.begin_present_phase(device, operation)?;
+        #[cfg(all(test, feature = "render-window"))]
+        super::test_support::after_graph_authorization_for_test(&transaction.lease);
+        let transaction = transaction.begin_present_phase(device, operation)?;
         let output = account.phase(RenderPhase::Present, || {
             clean.apply(&account.at(RenderPhase::Present))
         })?;

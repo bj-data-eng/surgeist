@@ -108,7 +108,7 @@ impl<'a, T> GpuOperationDraft<'a, T> {
 pub(crate) struct GpuOperationLease {
     signal: Arc<DeviceSignal>,
     generation: u64,
-    #[cfg(test)]
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     cleanup_time: Option<std::rc::Rc<std::cell::Cell<u64>>>,
 }
 
@@ -118,7 +118,7 @@ impl GpuOperationLease {
         Self {
             signal,
             generation,
-            #[cfg(test)]
+            #[cfg(all(test, not(target_arch = "wasm32")))]
             cleanup_time: None,
         }
     }
@@ -146,77 +146,55 @@ impl GpuOperationLease {
 impl Drop for GpuOperationLease {
     fn drop(&mut self) {
         self.signal.clear_active(self.generation);
-        #[cfg(test)]
+        #[cfg(all(test, not(target_arch = "wasm32")))]
         if let Some(time) = &self.cleanup_time {
             time.set(time.get() + 7);
         }
     }
 }
 
-/// Nested WGPU scopes and the active-generation lease for one operation.
-///
-/// Scope fields are stored in reverse pop order. The explicit `Drop` below
-/// preserves that order when an async operation future is canceled.
-#[must_use = "GPU operation transactions must resolve scopes before publishing state"]
-pub(crate) struct GpuOperationTransaction {
-    validation: Option<wgpu::ErrorScopeGuard>,
-    out_of_memory: Option<wgpu::ErrorScopeGuard>,
-    internal: Option<wgpu::ErrorScopeGuard>,
-    lease: GpuOperationLease,
-    stage: GpuOperationStage,
-    #[cfg(test)]
+/// Real scopes in reverse push order, including during partial async moves.
+#[must_use = "active GPU scopes must resolve or close on cancellation"]
+struct ActiveGpuScopes {
+    validation: wgpu::ErrorScopeGuard,
+    out_of_memory: wgpu::ErrorScopeGuard,
+    internal: wgpu::ErrorScopeGuard,
+    #[cfg(all(test, not(target_arch = "wasm32")))]
     scope_gate: Option<std::rc::Rc<test_support::ScopePopGate>>,
 }
 
-impl GpuOperationTransaction {
-    pub(crate) fn begin(
-        device: &wgpu::Device,
-        signal: Arc<DeviceSignal>,
-        generation: u64,
-        stage: GpuOperationStage,
-    ) -> Self {
-        let lease = GpuOperationLease::begin(signal, generation);
+impl ActiveGpuScopes {
+    fn begin(device: &wgpu::Device) -> Self {
         let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let out_of_memory = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
         Self {
-            validation: Some(validation),
-            out_of_memory: Some(out_of_memory),
-            internal: Some(internal),
-            lease,
-            stage,
-            #[cfg(test)]
+            validation,
+            out_of_memory,
+            internal,
+            #[cfg(all(test, not(target_arch = "wasm32")))]
             scope_gate: None,
         }
     }
 
-    async fn pop_active_scopes(&mut self) -> Option<wgpu::Error> {
-        let validation = self
-            .validation
-            .take()
-            .expect("transaction validation scope must be present")
-            .pop();
-        #[cfg(test)]
+    async fn pop(self) -> Option<wgpu::Error> {
+        // Keep unpopped guards in this partially moved aggregate. Cancellation
+        // drops the pending native result and remaining guards before the lease
+        // held by the enclosing operation; do not destructure or pop eagerly.
+        let validation = self.validation.pop();
+        #[cfg(all(test, not(target_arch = "wasm32")))]
         if let Some(gate) = &self.scope_gate {
             gate.wait(test_support::ScopePopPosition::Validation).await;
         }
         let validation = validation.await;
-        let out_of_memory = self
-            .out_of_memory
-            .take()
-            .expect("transaction out-of-memory scope must be present")
-            .pop();
-        #[cfg(test)]
+        let out_of_memory = self.out_of_memory.pop();
+        #[cfg(all(test, not(target_arch = "wasm32")))]
         if let Some(gate) = &self.scope_gate {
             gate.wait(test_support::ScopePopPosition::OutOfMemory).await;
         }
         let out_of_memory = out_of_memory.await;
-        let internal = self
-            .internal
-            .take()
-            .expect("transaction internal scope must be present")
-            .pop();
-        #[cfg(test)]
+        let internal = self.internal.pop();
+        #[cfg(all(test, not(target_arch = "wasm32")))]
         if let Some(gate) = &self.scope_gate {
             gate.wait(test_support::ScopePopPosition::Internal).await;
         }
@@ -227,25 +205,39 @@ impl GpuOperationTransaction {
             .flatten()
             .next()
     }
+}
 
-    fn terminal_result(
-        &self,
-        terminal: Option<Arc<DeviceTerminalSignal>>,
-        operation: RuntimeOperation,
-    ) -> Result<()> {
-        let Some(terminal) = terminal else {
-            return Ok(());
-        };
-        match terminal.as_ref() {
-            DeviceTerminalSignal::Lost { .. } => Err(terminal.error(operation)),
-            DeviceTerminalSignal::Faulted {
-                kind,
-                message,
-                operation_generation: Some(generation),
-            } if *generation == self.lease.generation() => {
-                Err(self.stage.classify_fault(*kind, message))
-            }
-            DeviceTerminalSignal::Faulted { .. } => Err(terminal.error(operation)),
+/// Nested WGPU scopes precede the lease so cancellation closes them first.
+#[must_use = "GPU operation transactions must resolve scopes before publishing state"]
+pub(crate) struct GpuOperationTransaction {
+    scopes: ActiveGpuScopes,
+    lease: GpuOperationLease,
+    stage: GpuOperationStage,
+}
+
+/// Clean submission ownership retained through graph resource authorization.
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+#[must_use = "clean graph submissions must begin presentation or abort on drop"]
+struct CleanSubmissionContinuation {
+    lease: GpuOperationLease,
+    stage: GpuOperationStage,
+}
+
+impl GpuOperationTransaction {
+    pub(crate) fn begin(
+        device: &wgpu::Device,
+        signal: Arc<DeviceSignal>,
+        generation: u64,
+        stage: GpuOperationStage,
+    ) -> Self {
+        let lease = GpuOperationLease::begin(signal, generation);
+        Self {
+            scopes: ActiveGpuScopes::begin(device),
+            lease,
+            stage,
         }
     }
 
@@ -253,44 +245,32 @@ impl GpuOperationTransaction {
         feature = "render-window",
         all(feature = "render-web", target_arch = "wasm32")
     ))]
+    /// Resolve owns scope and lease cleanup on cancellation, inside the observed
+    /// phase. The former borrowed resolver left remaining cleanup to its caller
+    /// after Resolve closed. Clean success instead retains the lease for Present.
     async fn resolve_submission_phase(
-        &mut self,
+        self,
         operation: RuntimeOperation,
         account: &Account,
-    ) -> Result<()> {
+    ) -> Result<CleanSubmissionContinuation> {
         account
-            .async_phase(RenderPhase::Resolve, async {
-                let captured = self.pop_active_scopes().await;
-                self.terminal_result(self.lease.signal.first_terminal(), operation)?;
+            .async_phase(RenderPhase::Resolve, async move {
+                let captured = self.scopes.pop().await;
+                terminal_result(
+                    &self.lease,
+                    self.stage,
+                    self.lease.signal.first_terminal(),
+                    operation,
+                )?;
                 if let Some(error) = captured {
                     return Err(classify_captured_error(self.stage, error));
                 }
-                Ok(())
+                Ok(CleanSubmissionContinuation {
+                    lease: self.lease,
+                    stage: self.stage,
+                })
             })
             .await
-    }
-
-    #[cfg(any(
-        feature = "render-window",
-        all(feature = "render-web", target_arch = "wasm32")
-    ))]
-    fn begin_present_phase(
-        &mut self,
-        device: &wgpu::Device,
-        operation: RuntimeOperation,
-    ) -> Result<()> {
-        if self.validation.is_some() || self.out_of_memory.is_some() || self.internal.is_some() {
-            return Err(Error::new(
-                BackendErrorCode::PresentFailed,
-                "the graph presentation phase started before submission scopes resolved",
-            ));
-        }
-        self.terminal_result(self.lease.signal.first_terminal(), operation)?;
-        self.stage = GpuOperationStage::Present;
-        self.internal = Some(device.push_error_scope(wgpu::ErrorFilter::Internal));
-        self.out_of_memory = Some(device.push_error_scope(wgpu::ErrorFilter::OutOfMemory));
-        self.validation = Some(device.push_error_scope(wgpu::ErrorFilter::Validation));
-        Ok(())
     }
 
     /// Resolves all error scopes before the caller may publish its draft state.
@@ -314,10 +294,10 @@ impl GpuOperationTransaction {
         }
     }
 
-    async fn finish_inner(mut self, operation: RuntimeOperation) -> Result<()> {
-        let captured = self.pop_active_scopes().await;
+    async fn finish_inner(self, operation: RuntimeOperation) -> Result<()> {
+        let captured = self.scopes.pop().await;
 
-        self.terminal_result(self.lease.finish(), operation)?;
+        terminal_result(&self.lease, self.stage, self.lease.finish(), operation)?;
         if let Some(error) = captured {
             return Err(classify_captured_error(self.stage, error));
         }
@@ -353,11 +333,47 @@ impl GpuOperationTransaction {
     }
 }
 
-impl Drop for GpuOperationTransaction {
-    fn drop(&mut self) {
-        drop(self.validation.take());
-        drop(self.out_of_memory.take());
-        drop(self.internal.take());
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+impl CleanSubmissionContinuation {
+    fn begin_present_phase(
+        self,
+        device: &wgpu::Device,
+        operation: RuntimeOperation,
+    ) -> Result<GpuOperationTransaction> {
+        terminal_result(
+            &self.lease,
+            self.stage,
+            self.lease.signal.first_terminal(),
+            operation,
+        )?;
+        Ok(GpuOperationTransaction {
+            scopes: ActiveGpuScopes::begin(device),
+            lease: self.lease,
+            stage: GpuOperationStage::Present,
+        })
+    }
+}
+
+fn terminal_result(
+    lease: &GpuOperationLease,
+    stage: GpuOperationStage,
+    terminal: Option<Arc<DeviceTerminalSignal>>,
+    operation: RuntimeOperation,
+) -> Result<()> {
+    let Some(terminal) = terminal else {
+        return Ok(());
+    };
+    match terminal.as_ref() {
+        DeviceTerminalSignal::Lost { .. } => Err(terminal.error(operation)),
+        DeviceTerminalSignal::Faulted {
+            kind,
+            message,
+            operation_generation: Some(generation),
+        } if *generation == lease.generation() => Err(stage.classify_fault(*kind, message)),
+        DeviceTerminalSignal::Faulted { .. } => Err(terminal.error(operation)),
     }
 }
 

@@ -2,6 +2,7 @@ use crate::accounting::Account;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) enum ScopePopPosition {
     Validation,
     OutOfMemory,
@@ -10,6 +11,7 @@ pub(super) enum ScopePopPosition {
 
 /// A per-owner pause after the real consuming pop. The native result future,
 /// unpopped guards and generation lease remain owned by the real resolver.
+#[cfg(not(target_arch = "wasm32"))]
 pub(super) struct ScopePopGate {
     position: ScopePopPosition,
     reached: std::cell::Cell<bool>,
@@ -17,6 +19,7 @@ pub(super) struct ScopePopGate {
     waker: std::cell::RefCell<Option<std::task::Waker>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ScopePopGate {
     pub(super) fn new(position: ScopePopPosition) -> std::rc::Rc<Self> {
         std::rc::Rc::new(Self {
@@ -53,6 +56,69 @@ impl ScopePopGate {
         })
         .await;
     }
+}
+
+#[cfg(feature = "render-window")]
+thread_local! {
+    static GRAPH_AUTHORIZATION_PROBE: std::cell::RefCell<Option<std::rc::Rc<GraphAuthorizationProbe>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Scoped to one fixture device on its owning thread. The first matching graph
+/// authorization identifies its exact active generation; nested fixtures restore
+/// their predecessor on every exit, including unwind.
+#[cfg(feature = "render-window")]
+pub(super) struct GraphAuthorizationProbe {
+    signal: Arc<DeviceSignal>,
+    generation: std::cell::Cell<Option<u64>>,
+}
+
+#[cfg(feature = "render-window")]
+pub(super) struct GraphAuthorizationProbeGuard {
+    probe: std::rc::Rc<GraphAuthorizationProbe>,
+    previous: Option<std::rc::Rc<GraphAuthorizationProbe>>,
+}
+
+#[cfg(feature = "render-window")]
+impl GraphAuthorizationProbeGuard {
+    pub(super) fn install(signal: Arc<DeviceSignal>) -> Self {
+        let probe = std::rc::Rc::new(GraphAuthorizationProbe {
+            signal,
+            generation: std::cell::Cell::new(None),
+        });
+        let previous = GRAPH_AUTHORIZATION_PROBE
+            .with_borrow_mut(|slot| slot.replace(std::rc::Rc::clone(&probe)));
+        Self { probe, previous }
+    }
+
+    pub(super) fn generation(&self) -> Option<u64> {
+        self.probe.generation.get()
+    }
+}
+
+#[cfg(feature = "render-window")]
+impl Drop for GraphAuthorizationProbeGuard {
+    fn drop(&mut self) {
+        GRAPH_AUTHORIZATION_PROBE.with_borrow_mut(|slot| *slot = self.previous.take());
+    }
+}
+
+#[cfg(feature = "render-window")]
+pub(super) fn after_graph_authorization_for_test(lease: &super::GpuOperationLease) {
+    GRAPH_AUTHORIZATION_PROBE.with_borrow(|slot| {
+        if let Some(probe) = slot
+            && Arc::ptr_eq(&probe.signal, &lease.signal)
+        {
+            assert_eq!(
+                lease.signal.active_generation_for_test(),
+                Some(lease.generation)
+            );
+            assert_eq!(probe.generation.replace(Some(lease.generation)), None);
+            lease.signal.record_uncaptured_fault_for_test(
+                crate::GpuFaultKind::Internal,
+                "terminal after actual graph authorization",
+            );
+        }
+    });
 }
 
 use super::{
