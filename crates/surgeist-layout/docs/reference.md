@@ -783,11 +783,12 @@ ordinary alignment and justification in that reduced content frame. A child
 [native group-alignment contract](../../../references/text-group-alignment--native-determination.md)
 defines nested residuals, membership and per-line direction.
 
-Layout derives a flow root from the box's own inputs: a float, an absolutely
-positioned box, a replaced or table box, a box whose overflow scrolls on both
-axes, a box whose inner display is not block, and a block whose writing mode
-differs from its parent's. One decision serves float avoidance, float
-containment and margin collapse, including for leaf-measured boxes.
+Layout derives a flow root from the box's inputs and its parent's writing
+mode: a float, an absolutely positioned box, a replaced or table box, a box with
+hidden, scroll or auto overflow, a box whose inner display is not block, and a
+block whose writing mode differs from its parent's. One decision serves float
+avoidance, float containment and margin collapse, including for leaf-measured
+boxes.
 `NodeInputOf::block_flow_context` supplies `BlockFlowContext::Independent` for
 any other used flow root. `Normal` retains the derived roles.
 Independent contexts contain their own floats; ordinary shared blocks transfer

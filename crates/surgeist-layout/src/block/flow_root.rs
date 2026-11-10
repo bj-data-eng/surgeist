@@ -4,10 +4,11 @@ use crate::node_projection::CommonBoxProjection;
 use crate::{BlockFlowContext, Display, Float, LayoutScalar, NodeInputOf, Position, WritingMode};
 
 /// A box establishes an independent block formatting context when it is
-/// floated or absolutely positioned (CSS 2.1 section 9.4.1), is replaced or a
-/// table wrapper, scrolls (section 11.1.1), has a non-block inner display, has
-/// a writing mode that differs from its parent's (Writing Modes 4 section 3.2)
-/// or is declared `BlockFlowContext::Independent` by the host.
+/// floated or absolutely positioned, has hidden, scroll or auto overflow
+/// (CSS 2.1 section 9.4.1), is replaced or a table wrapper, has a non-block
+/// inner display, has a writing mode that differs from its parent's (Writing
+/// Modes 4 section 3.2) or is declared `BlockFlowContext::Independent` by the
+/// host.
 ///
 /// Callers add their own questions, such as the parent's formatting role,
 /// inline-level participation or zero-size collapse-through conditions.

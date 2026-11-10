@@ -64,13 +64,14 @@ pub enum TextGroupAlign {
 
 /// Used block formatting-context establishment supplied by style lowering.
 ///
-/// Layout derives a flow root from the box's own inputs: a float, an absolutely
-/// positioned box, a replaced or table box, a box whose overflow scrolls on both
-/// axes, a box whose inner display is not block, and a block whose writing mode
-/// differs from its parent's (Writing Modes 4 section 3.2). One decision serves
-/// float avoidance, float containment and margin collapse for laid-out and
-/// leaf-measured boxes alike. `Independent` declares every other used flow root.
-/// `Normal` does not override any of the derived roles.
+/// Layout derives a flow root from the box's inputs and its parent's writing
+/// mode: a float, an absolutely positioned box, a replaced or table box, a box
+/// with hidden, scroll or auto overflow, a box whose inner display is not
+/// block, and a block whose writing mode differs from its parent's (Writing
+/// Modes 4 section 3.2). One decision serves float avoidance, float containment
+/// and margin collapse for laid-out and leaf-measured boxes alike.
+/// `Independent` declares every other used flow root. `Normal` does not
+/// override any of the derived roles.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum BlockFlowContext {
     #[default]
