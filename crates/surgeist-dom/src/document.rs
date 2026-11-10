@@ -17,6 +17,13 @@ pub enum DomDocumentClass {
     Html,
 }
 
+/// The actual implemented interface, independent of XML/HTML document type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDocumentInterface {
+    Document,
+    XmlDocument,
+}
+
 /// Retained provenance of this Document's focused-area designation.
 /// This does not resolve the currently focused area, system focus or a viewport.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,6 +82,16 @@ impl fmt::Debug for DomOpaqueOrigin {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DomDocumentCreationCause {
     Native,
+    /// The standard Document constructor, qualified by its actual creation Global.
+    Constructed {
+        global: crate::DomHostedGlobalId,
+    },
+    /// A canonical live clone, with independently established document state.
+    Cloned {
+        /// Actual URL/encoding field producers, when the source owned them.
+        url: Option<surgeist_html_semantics::HtmlBaseUrlRecord>,
+        encoding: Option<surgeist_html_semantics::HtmlBaseEncoding>,
+    },
     ParsedOffline {
         url: surgeist_html_semantics::HtmlBaseUrlRecord,
         encoding: surgeist_html_semantics::HtmlBaseEncoding,
@@ -96,6 +113,7 @@ pub enum DomDocumentCreationCause {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DomDocumentMetadata {
     class: DomDocumentClass,
+    interface: DomDocumentInterface,
     content_type: DocumentString,
     encoding: DocumentString,
     url: DocumentString,
@@ -397,11 +415,31 @@ impl DomDocumentMetadata {
         design_mode_enabled: bool,
         materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
     ) -> Result<Self, DomError> {
-        Ok(Self {
+        Ok(Self::with_values(
             class,
-            content_type: materialize(content_type)?,
-            encoding: materialize(ENCODING)?,
-            url: materialize(URL)?,
+            materialize(content_type)?,
+            materialize(ENCODING)?,
+            materialize(URL)?,
+            origin,
+            environment,
+            design_mode_enabled,
+        ))
+    }
+    fn with_values(
+        class: DomDocumentClass,
+        content_type: DocumentString,
+        encoding: DocumentString,
+        url: DocumentString,
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        design_mode_enabled: bool,
+    ) -> Self {
+        Self {
+            class,
+            interface: DomDocumentInterface::Document,
+            content_type,
+            encoding,
+            url,
             origin,
             mode: HtmlDocumentMode::NoQuirks,
             design_mode_enabled,
@@ -415,7 +453,73 @@ impl DomDocumentMetadata {
             policy: crate::DomDocumentPolicyContainer::native(),
             meta_ui: NoAssociatedMetaThemeConsumer,
             hosted_inputs: None,
-        })
+        }
+    }
+    pub(crate) fn xml_factory(
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::native(environment, materialize)?;
+        metadata.interface = DomDocumentInterface::XmlDocument;
+        Ok(metadata)
+    }
+    pub(crate) fn constructed(
+        global: crate::DomHostedGlobalId,
+        origin: DomOpaqueOrigin,
+        environment: DomDocumentEnvironment,
+        materialize: &mut impl FnMut(&str) -> Result<DocumentString, DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::native_defaults(
+            DomDocumentClass::Xml,
+            CONTENT_TYPE,
+            origin,
+            environment,
+            false,
+            materialize,
+        )?;
+        metadata.cause = DomDocumentCreationCause::Constructed { global };
+        Ok(metadata)
+    }
+    pub(crate) fn clone_document(
+        &self,
+        registry: DomRegistryBinding,
+        share: &mut impl FnMut(&DocumentString) -> Result<DocumentString, DomError>,
+        retain_url: &mut impl FnMut(&surgeist_html_semantics::HtmlBaseUrlRecord) -> Result<(), DomError>,
+    ) -> Result<Self, DomError> {
+        let mut metadata = Self::with_values(
+            self.class,
+            share(&self.content_type)?,
+            share(&self.encoding)?,
+            share(&self.url)?,
+            self.origin.clone(),
+            DomDocumentEnvironment::new(self.environment.input_platform()),
+            false,
+        );
+        metadata.interface = self.interface;
+        metadata.mode = self.mode;
+        metadata.allow_declarative_shadow_roots = self.allow_declarative_shadow_roots;
+        metadata.registry = registry;
+        let (url, encoding) = match &self.cause {
+            DomDocumentCreationCause::ParsedOffline { url, encoding } => {
+                (Some(url), Some(encoding))
+            }
+            DomDocumentCreationCause::Cloned { url, encoding } => (url.as_ref(), encoding.as_ref()),
+            _ => self.hosted_inputs.as_ref().map_or((None, None), |inputs| {
+                (inputs.0.facts.document_url(), inputs.0.facts.encoding())
+            }),
+        };
+        if let Some(url) = url {
+            retain_url(url)?;
+        }
+        metadata.cause = DomDocumentCreationCause::Cloned {
+            url: url.cloned(),
+            encoding: encoding.cloned(),
+        };
+        Ok(metadata)
+    }
+    /// Actual implemented interface; XML type alone does not imply XMLDocument.
+    pub const fn interface(&self) -> DomDocumentInterface {
+        self.interface
     }
     // Only the canonical createDocument tail calls these source-ordered writes.
     // They do not provide caller mutation of arbitrary Document metadata.
@@ -477,6 +581,17 @@ impl DomDocumentMetadata {
         result.meta_color_scheme = None;
         result.policy = crate::DomDocumentPolicyContainer::unavailable();
         result
+    }
+    pub(crate) fn native_field_inputs(&self) -> bool {
+        matches!(
+            &self.cause,
+            DomDocumentCreationCause::Native
+                | DomDocumentCreationCause::Constructed { .. }
+                | DomDocumentCreationCause::Cloned {
+                    url: None,
+                    encoding: None
+                }
+        )
     }
     pub fn creation_cause(&self) -> &DomDocumentCreationCause {
         &self.cause
@@ -566,6 +681,7 @@ impl DomDocumentMetadata {
     }
     pub(crate) fn same_nondesign_mode_state(&self, other: &Self) -> bool {
         self.class == other.class
+            && self.interface == other.interface
             && self.content_type == other.content_type
             && self.encoding == other.encoding
             && self.url == other.url
@@ -689,7 +805,9 @@ impl DomDocumentMetadata {
                 .checked_add(string.retained_units())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
-        if let DomDocumentCreationCause::ParsedOffline { url, .. } = &self.cause {
+        if let DomDocumentCreationCause::ParsedOffline { url, .. }
+        | DomDocumentCreationCause::Cloned { url: Some(url), .. } = &self.cause
+        {
             units = units
                 .checked_add(url.retained_storage_usage().utf16_extent())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
@@ -723,7 +841,9 @@ impl DomDocumentMetadata {
                 })
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
-        if let DomDocumentCreationCause::ParsedOffline { url, .. } = &self.cause {
+        if let DomDocumentCreationCause::ParsedOffline { url, .. }
+        | DomDocumentCreationCause::Cloned { url: Some(url), .. } = &self.cause
+        {
             bytes = bytes
                 .checked_add(url.retained_storage_usage().retained_bytes())
                 .ok_or(crate::DomError::RepresentationExhausted)?;

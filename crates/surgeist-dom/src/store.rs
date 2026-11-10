@@ -251,6 +251,7 @@ pub enum DomError {
     RangePublicationUnavailable,
     /// A reached operation needs a current live hosted owner association.
     HostedSourceUnavailable,
+    DocumentConstructor(crate::DomDocumentConstructorError),
     HostedCompositionRequired,
     /// A custody capability, target, or occurrence does not match this owner.
     InvalidDispatchCustody,
@@ -3035,12 +3036,7 @@ impl Draft {
                 .hosted
                 .as_ref()
                 .map(|a| a.global),
-            _ => self
-                .document_metadata(document)?
-                .document_environment()
-                .hosted
-                .as_ref()
-                .map(|a| a.global),
+            _ => self.node(document)?.relevant_global(),
         };
         let node = DraftNode::fresh(
             kind,
@@ -3257,6 +3253,14 @@ impl Draft {
             Command::AssignSlot { slot, incoming } => {
                 let slot = self.resolve(slot.clone())?;
                 self.assign_manual(slot, incoming, limits, cancelled)?;
+            }
+            Command::ConstructDocument(context) => {
+                let key = self.construct_document(context, limits, cancelled)?;
+                self.register_ticket(key, cancelled)?;
+            }
+            Command::CloneNode { source, subtree } => {
+                let source = self.resolve(source.clone())?;
+                self.clone_node(source, *subtree, limits, cancelled)?;
             }
             Command::CreateXmlDocument {
                 associated_document,

@@ -467,6 +467,51 @@ pub struct DomHostedSource {
     pub(crate) active_work: Weak<Work>,
 }
 
+/// One standard Document-constructor invocation issued by the trusted native
+/// Global owner. It retains no Global lifetime or historical origin authority.
+/// Runtime supplies the ordinary interface constructor's callee Global;
+/// execution revalidates this exact issuer, generation and associated Document.
+/// Prototype selection through NewTarget belongs to the adapter and precedes
+/// native construction. This is operation-specific, not a general realm claim.
+/// This value is move-only.
+#[derive(Debug)]
+pub struct DomDocumentConstructorContext {
+    pub(crate) data: DocumentConstructorContext,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct DocumentConstructorContext {
+    pub(crate) issuer: SourceObservation,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) document: crate::DocumentId,
+}
+/// A constructor context cannot grant authority after its original issuer or
+/// association has expired. Foreign canonical owners use DomError::ForeignOwner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomDocumentConstructorError {
+    ForeignIssuer,
+    ExpiredIssuer,
+    PoisonedIssuer,
+    StaleAssociation,
+    IncompleteAssociation,
+    Unavailable,
+}
+impl DomDocumentConstructorError {
+    pub(crate) fn from_hosted(error: DomHostedError) -> crate::DomError {
+        let reason = match error {
+            DomHostedError::Dom(error) => return error,
+            DomHostedError::ForeignSource => Self::ForeignIssuer,
+            DomHostedError::SourceExpired => Self::ExpiredIssuer,
+            DomHostedError::SourcePoisoned => Self::PoisonedIssuer,
+            DomHostedError::StaleIdentity
+            | DomHostedError::StaleBasis
+            | DomHostedError::WrongPhase => Self::StaleAssociation,
+            DomHostedError::IncompleteOperation => Self::IncompleteAssociation,
+            _ => Self::Unavailable,
+        };
+        crate::DomError::DocumentConstructor(reason)
+    }
+}
+
 /// Observation used for live-use validation, never for historical activity reads.
 #[derive(Clone, Debug)]
 pub(crate) struct SourceObservation {

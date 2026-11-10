@@ -38,6 +38,66 @@ impl Draft {
         };
         Ok(metadata)
     }
+    pub(super) fn construct_document(
+        &mut self,
+        context: &crate::hosted::DocumentConstructorContext,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Key, DomError> {
+        use crate::DomDocumentConstructorError as Refusal;
+        self.source_step(cancel)?;
+        if context.global.source().owner != self.store {
+            return Err(DomError::ForeignOwner);
+        }
+        context
+            .issuer
+            .validate(
+                context.global.source(),
+                crate::hosted::Role::Global,
+                context.global.slot,
+                context.global.generation,
+            )
+            .map_err(Refusal::from_hosted)?;
+        let document = self
+            .hosted_globals
+            .as_deref()
+            .ok_or(DomError::DocumentConstructor(Refusal::StaleAssociation))?
+            .document_with(context.global, &mut || {
+                self.source_step(cancel)
+                    .map_err(crate::DomHostedError::from)
+            })
+            .map_err(Refusal::from_hosted)?;
+        if document != context.document {
+            return Err(DomError::DocumentConstructor(Refusal::StaleAssociation));
+        }
+        let source = self.document_metadata(Key::Existing(document.node()))?;
+        let environment = source.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .filter(|a| a.global == context.global && a.source == context.issuer)
+            .ok_or(DomError::DocumentConstructor(Refusal::StaleAssociation))?;
+        association.validate_live().map_err(Refusal::from_hosted)?;
+        let origin = source.origin().clone();
+        let environment = crate::DomDocumentEnvironment::new(environment.input_platform());
+        let formation = source::formation::Formation::new(self, cancel)?;
+        let metadata =
+            DomDocumentMetadata::constructed(context.global, origin, environment, &mut |text| {
+                source::formation::string(text, formation.as_ref(), cancel)
+            })?;
+        let document = Key::Created(self.created.len());
+        let document = self.allocate_formed(
+            NewNode::Document(metadata),
+            document,
+            limits,
+            cancel,
+            formation,
+        )?;
+        let mut common = self.common_fields_mut(document, cancel)?;
+        common.relevant_global = Some(context.global);
+        common.commit(cancel)?;
+        Ok(document)
+    }
     pub(super) fn create_xml_document(
         &mut self,
         associated: Key,
@@ -67,10 +127,10 @@ impl Draft {
             DomResource::StringCodeUnits,
         )?;
         let formation = source::formation::Formation::new(self, cancel)?;
-        let metadata =
-            DomDocumentMetadata::native(crate::DomDocumentEnvironment::new(input), &mut |text| {
-                source::formation::string(text, formation.as_ref(), cancel)
-            })?;
+        let metadata = DomDocumentMetadata::xml_factory(
+            crate::DomDocumentEnvironment::new(input),
+            &mut |text| source::formation::string(text, formation.as_ref(), cancel),
+        )?;
         let document = Key::Created(self.created.len());
         let document = self.allocate_formed(
             NewNode::Document(metadata),
@@ -627,3 +687,6 @@ mod xml_tests {
         assert!(!observed.exceeded);
     }
 }
+
+#[cfg(test)]
+mod operations_tests;

@@ -177,6 +177,11 @@ pub(crate) enum Command {
         kind: Creation,
         document: Option<NodeOperand>,
     },
+    ConstructDocument(crate::hosted::DocumentConstructorContext),
+    CloneNode {
+        source: NodeOperand,
+        subtree: bool,
+    },
     Import {
         snapshot: DomSnapshot,
         source: NodeId,
@@ -563,6 +568,27 @@ impl DomBatch {
             snapshot: snapshot.clone(),
             source,
             document: target_document.into(),
+            subtree,
+        });
+        ticket
+    }
+    /// Execute one authenticated standard Document constructor. Its original
+    /// Global supplies origin; the new base Document has no Window association.
+    pub fn construct_document(
+        &mut self,
+        context: crate::DomDocumentConstructorContext,
+    ) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::ConstructDocument(context.data));
+        ticket
+    }
+    /// Clone a live canonical node through its original native hooks. Document
+    /// cloning preserves its interface and specified metadata; direct ShadowRoot
+    /// cloning is NotSupported. This is distinct from captured import.
+    pub fn clone_node(&mut self, source: impl Into<NodeOperand>, subtree: bool) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::CloneNode {
+            source: source.into(),
             subtree,
         });
         ticket

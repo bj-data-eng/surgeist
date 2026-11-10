@@ -17,6 +17,7 @@ pub(super) struct CloneRequest {
     pub placement: Placement,
     pub subtree: bool,
     pub scoped: bool,
+    pub root_ticket: bool,
 }
 pub(super) struct Frame {
     source: Source,
@@ -28,6 +29,7 @@ pub(super) struct Frame {
     next_child: usize,
     subtree: bool,
     shadow_started: bool,
+    root_ticket: bool,
 }
 impl Frame {
     pub(super) fn retained_payload(
@@ -48,6 +50,7 @@ impl Frame {
             next_child: self.next_child,
             subtree: self.subtree,
             shadow_started: self.shadow_started,
+            root_ticket: self.root_ticket,
         }
     }
 }
@@ -162,12 +165,43 @@ impl Draft {
                 placement: Placement::Detached,
                 subtree,
                 scoped: false,
+                root_ticket: false,
             },
             limits,
             cancel,
         )?;
         self.run_effects(limits, cancel)?;
         Ok(root)
+    }
+    pub(super) fn clone_node(
+        &mut self,
+        source: Key,
+        subtree: bool,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if matches!(
+            self.node(source)?.kind(),
+            transaction::KindRead::ShadowRoot(_)
+        ) {
+            return Err(DomError::NotSupported);
+        }
+        let document = self.node(source)?.document();
+        self.begin_clone(
+            Source::Staged(source),
+            None,
+            CloneRequest {
+                document,
+                placement: Placement::Detached,
+                subtree,
+                scoped: self.effect_scoped,
+                root_ticket: true,
+            },
+            limits,
+            cancel,
+        )?;
+        self.run_effects(limits, cancel)
     }
     pub(super) fn begin_clone(
         &mut self,
@@ -182,9 +216,15 @@ impl Draft {
             placement,
             subtree,
             scoped,
+            root_ticket,
         } = request;
         let start = self.created.len();
         let copy = self.clone_single(&source, document, limits, cancel)?;
+        let document = if matches!(self.node(copy)?.kind(), transaction::KindRead::Document(_)) {
+            copy
+        } else {
+            document
+        };
         if scoped {
             for i in start..self.created.len() {
                 self.mark_source_private(Key::Created(i), cancel)?;
@@ -201,6 +241,7 @@ impl Draft {
                 next_child: 0,
                 subtree,
                 shadow_started: false,
+                root_ticket,
             }),
             scoped,
             payload,
@@ -235,6 +276,7 @@ impl Draft {
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
+                    root_ticket: false,
                 },
                 limits,
                 cancel,
@@ -267,6 +309,7 @@ impl Draft {
                     placement: Placement::BeforeChildren(parent),
                     subtree: true,
                     scoped,
+                    root_ticket: false,
                 },
                 limits,
                 cancel,
@@ -294,6 +337,7 @@ impl Draft {
                         next_child: 0,
                         subtree: true,
                         shadow_started: false,
+                        root_ticket: false,
                     }),
                     scoped,
                     source_payload,
@@ -304,6 +348,11 @@ impl Draft {
         }
         if let Placement::AfterClone(parent) = frame.placement {
             self.pre_insert(frame.copy, parent, None, limits, cancel)?;
+        }
+        // The root's one caller ticket belongs to this retained native tail,
+        // including when a connected Document descendant yielded Source work.
+        if frame.root_ticket {
+            self.register_ticket(frame.copy, cancel)?;
         }
         Ok(())
     }
@@ -333,7 +382,79 @@ impl Draft {
             Source::Staged(k) => self.node(*k)?.script().map(|v| v.flags),
         };
         let formation = source::formation::Formation::new(self, cancel)?;
-        let copy = if let transaction::KindRead::Element(element) = original.kind() {
+        // Captured import preserves its original refusal point; only the live
+        // canonical clone command can reach Document cloning below.
+        if matches!(source, Source::Published(..))
+            && matches!(original.kind(), transaction::KindRead::Document(_))
+        {
+            return Err(DomError::NotSupported);
+        }
+        let copy = if let transaction::KindRead::Document(metadata) = original.kind() {
+            let registry = match metadata.custom_element_registry() {
+                crate::DomRegistryBinding::Null => crate::DomRegistryBinding::Null,
+                crate::DomRegistryBinding::Registry(id) => {
+                    // The current canonical registry producer admits only Global
+                    // registries. A Global registry is never copied to a clone.
+                    let record = self
+                        .registries
+                        .as_deref()
+                        .ok_or(DomError::HostedSourceUnavailable)?
+                        .get(id)?;
+                    match record
+                        .capture
+                        .registry_scope(&record.local)
+                        .map_err(DomError::SelectCapture)?
+                    {
+                        surgeist_html_semantics::HtmlRegistryScope::Scoped => {
+                            crate::DomRegistryBinding::Registry(id)
+                        }
+                        surgeist_html_semantics::HtmlRegistryScope::Global => {
+                            crate::DomRegistryBinding::Null
+                        }
+                        surgeist_html_semantics::HtmlRegistryScope::Unavailable => {
+                            return Err(DomError::NotSupported);
+                        }
+                    }
+                }
+            };
+            let metadata = metadata.clone_document(
+                registry,
+                &mut |value| source::formation::share(value, formation.as_ref(), cancel),
+                &mut |url| {
+                    self.source_step(cancel)?;
+                    if let Some(formation) = &formation {
+                        let usage = url.retained_storage_usage();
+                        formation.retain_payload(
+                            source::storage::Payload {
+                                bytes: usage.retained_bytes(),
+                                units: usage.utf16_extent(),
+                            },
+                            cancel,
+                        )?;
+                    }
+                    Ok(())
+                },
+            )?;
+            let global = match source {
+                Source::Staged(key) => self.node(*key)?.relevant_global(),
+                Source::Published(snapshot, id, _) => snapshot
+                    .state
+                    .node(snapshot.owner(), *id)?
+                    .relevant_global(),
+            };
+            let document = Key::Created(self.created.len());
+            let copy = self.allocate_formed(
+                NewNode::Document(metadata),
+                document,
+                limits,
+                cancel,
+                formation,
+            )?;
+            let mut common = self.common_fields_mut(copy, cancel)?;
+            common.relevant_global = global;
+            common.commit(cancel)?;
+            copy
+        } else if let transaction::KindRead::Element(element) = original.kind() {
             let name = self.bind_canonical_name(element.name(), formation.as_ref(), cancel)?;
             let name = self.form_element_name(name, formation.as_ref(), cancel)?;
             let mut admit = |next| self.admit_custody_usage(next, cancel);
@@ -351,10 +472,7 @@ impl Draft {
             formed.children.name = Some(name.custody);
             self.allocate_element_formed(formed, document, limits, cancel, formation)?
         } else {
-            if matches!(
-                original.kind(),
-                transaction::KindRead::Document(_) | transaction::KindRead::ShadowRoot(_)
-            ) {
+            if matches!(original.kind(), transaction::KindRead::ShadowRoot(_)) {
                 return Err(DomError::NotSupported);
             }
             if let Some(budget) = &formation {

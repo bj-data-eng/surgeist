@@ -1911,6 +1911,8 @@ impl DomSourceLease<'_> {
                     Command::Create { .. }
                         | Command::CreateRange { .. }
                         | Command::Import { .. }
+                        | Command::CloneNode { .. }
+                        | Command::ConstructDocument(_)
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
                         | Command::CreateXmlDocument { .. }

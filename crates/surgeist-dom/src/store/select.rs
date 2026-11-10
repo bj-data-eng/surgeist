@@ -1433,6 +1433,7 @@ impl Draft {
                                     placement: import::Placement::AfterClone(fragment),
                                     subtree: true,
                                     scoped: true,
+                                    root_ticket: false,
                                 },
                                 limits,
                                 cancel,
