@@ -98,6 +98,27 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
     return actualPristine(ctx);
   }
 
+  function foreignNamespaceScriptCustody(ctx) {
+    const scriptCount = document.querySelectorAll('script').length;
+    const htmlScriptCount = document.scripts.length;
+    const extra = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+    extra.setAttribute('type', 'application/json');
+    extra.textContent = '{}';
+    document.head.appendChild(extra);
+    try {
+      require(extra.isConnected && document.querySelectorAll('script').length === scriptCount + 1 &&
+        Array.from(document.querySelectorAll('script')).includes(extra) &&
+        document.scripts.length === htmlScriptCount,
+        'actual SVG script changes the full script census without changing the HTML script census');
+      refused('Root context: ScriptChanged');
+      repeat(ctx);
+      refused('Root context: ScriptChanged');
+    } finally {
+      extra.remove();
+    }
+    pristineAgain(ctx);
+  }
+
   function scriptlessSourceCustody(ctx) {
     const source = new DOMParser().parseFromString(ctx.args[0], 'text/html');
     if (source.querySelectorAll('script').length !== 0) return;
@@ -125,6 +146,7 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
   if (mode === 'stylesheet') {
     getTestData = function () {
       const ctx = context();
+      foreignNamespaceScriptCustody(ctx);
       const { owner, originalText, pristine } = ctx;
       repeat(ctx);
       require(measure() === pristine, 'successful repeated setup preserves complete envelope');
