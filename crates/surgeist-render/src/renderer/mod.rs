@@ -290,11 +290,12 @@ impl Renderer {
         _preferred_device: Option<DeviceSlotIdentity>,
     ) -> Result<Surface> {
         let _ = canvas;
-        Capabilities::CURRENT.ensure_supported(UnsupportedPrimitive::new(
-            PrimitiveFamily::Surfaces,
-            PrimitiveOperation::WebCanvasSurface,
-        ))?;
-        unreachable!("web canvas support requires the render-web feature on wasm32");
+        Err(Error::unsupported_render_primitive(
+            UnsupportedPrimitive::new(
+                PrimitiveFamily::Surfaces,
+                PrimitiveOperation::WebCanvasSurface,
+            ),
+        ))
     }
 
     /// Creates a headless surface for later asynchronous GPU operations.
