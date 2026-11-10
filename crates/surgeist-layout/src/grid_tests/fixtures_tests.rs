@@ -3006,43 +3006,54 @@ pub(super) fn compute_oracle_grid(tree: &mut OracleTree) {
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 }
 
-pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput {
-    crate::compute_grid(
-        &mut tree.borrow_compute(),
-        1,
-        ComputeInput::for_child(
-            RunMode::PerformLayout,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::NONE,
-            Size::new(Some(120.0), Some(120.0)),
-            crate::ContainingLayoutContext::new(
-                crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
+fn oracle_grid_input() -> ComputeInput {
+    ComputeInput::for_child(
+        RunMode::PerformLayout,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::new(Some(120.0), Some(120.0)),
+        crate::ContainingLayoutContext::new(
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::ParentFormattingContext::NoParent,
+        ),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    SizingOperation::Normal,
                 ),
-                crate::ParentFormattingContext::NoParent,
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                    SizingOperation::Normal,
+                ),
             ),
-            SizingRequestOf::new(
-                Size::new(
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
-                        SizingOperation::Normal,
-                    ),
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
-                        SizingOperation::Normal,
-                    ),
-                ),
-                OrthogonalFallbackOf::new(
-                    Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-                ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
     )
-    .unwrap()
+}
+
+pub(super) fn compute_oracle_grid_output(tree: &mut OracleTree) -> ComputeOutput {
+    crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()).unwrap()
+}
+
+// The grid container's site and the grid-name error that rejects its layout.
+pub(super) fn oracle_grid_names_rejection(
+    tree: &mut OracleTree,
+) -> (crate::LayoutErrorSiteOf<u32>, crate::NamedGridErrorReport) {
+    let Err(error) = crate::compute_grid(&mut tree.borrow_compute(), 1, oracle_grid_input()) else {
+        panic!("invalid grid names must not lay out");
+    };
+    match error.kind() {
+        crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::GridNames(report)) => {
+            (error.site(), report.clone())
+        }
+        other => panic!("unexpected error kind {other:?}"),
+    }
 }
 
 pub(super) fn final_y(tree: &OracleTree, node: u32) -> Scalar {

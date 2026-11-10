@@ -1837,7 +1837,7 @@ fn fake_leaf_error(
         LayoutErrorSite::Node(node),
         error.operation(),
         match error.kind() {
-            LayoutErrorKind::InvalidInput(value) => LayoutErrorKind::InvalidInput(*value),
+            LayoutErrorKind::InvalidInput(value) => LayoutErrorKind::InvalidInput(value.clone()),
             LayoutErrorKind::MissingContext(value) => LayoutErrorKind::MissingContext(*value),
             LayoutErrorKind::UnsupportedCapability(value) => {
                 LayoutErrorKind::UnsupportedCapability(*value)

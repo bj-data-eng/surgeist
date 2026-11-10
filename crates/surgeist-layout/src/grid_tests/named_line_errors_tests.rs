@@ -140,27 +140,36 @@ fn subgrid_tree<S: LayoutScalar>(
         .style(3, item)
 }
 
-// Layout must return `InvalidInput`; any other result is described.
+fn grid_axis(axis: Axis) -> GridAxisKind {
+    match axis {
+        Axis::Columns => GridAxisKind::Column,
+        Axis::Rows => GridAxisKind::Row,
+    }
+}
+
+// Layout must return `InvalidInput(GridNames(expected))` at the `site` node;
+// any other result is described.
 fn rejection<S: LayoutScalar>(
     label: &str,
     tree: &PublicLayoutTreeOf<S>,
-    probe: u32,
+    site: u32,
+    expected: NamedGridErrorReport,
 ) -> Option<String> {
     match compute_layout(tree, 1, fri08_c01_placement_request()) {
-        Err(error) => match error.kind() {
-            LayoutErrorKindOf::InvalidInput(_) => None,
-            other => Some(format!(
-                "{label}: error kind {other:?} instead of InvalidInput"
-            )),
-        },
-        Ok(batch) => {
-            let output = fri08_c01_placement_output(&batch, probe);
-            Some(format!(
-                "{label}: layout succeeded with node {probe} at x={} width={}",
-                output.location.x.to_f64(),
-                output.size.width.to_f64()
-            ))
+        Err(error) => {
+            let actual_site = error.site();
+            match error.kind() {
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(actual))
+                    if *actual == expected && actual_site == LayoutErrorSiteOf::Node(site) =>
+                {
+                    None
+                }
+                other => Some(format!(
+                    "{label}: error {other:?} at {actual_site:?} instead of GridNames({expected:?}) at Node({site})"
+                )),
+            }
         }
+        Ok(_) => Some(format!("{label}: layout succeeded")),
     }
 }
 
@@ -199,7 +208,10 @@ fn reserved_names_in_track_lists<S: LayoutScalar>() -> Vec<String> {
             results.push(rejection(
                 &format!("{axis:?} line name {reserved}"),
                 &tree,
-                2,
+                1,
+                NamedGridErrorReport::ReservedLineName {
+                    name: reserved.to_string(),
+                },
             ));
         }
     }
@@ -241,7 +253,10 @@ fn reserved_names_in_subgrid_lists<S: LayoutScalar>() -> Vec<String> {
                 results.push(rejection(
                     &format!("{axis:?} subgrid {shape} {reserved}"),
                     &tree,
-                    3,
+                    2,
+                    NamedGridErrorReport::ReservedLineName {
+                        name: reserved.to_string(),
+                    },
                 ));
             }
         }
@@ -264,7 +279,10 @@ fn zero_subgrid_repeat_count<S: LayoutScalar>() -> Vec<String> {
         rejection(
             &format!("{axis:?} subgrid repeat count 0"),
             &subgrid_tree::<S>(axis, components, NodeInputOf::default()),
-            3,
+            2,
+            NamedGridErrorReport::ZeroRepeat {
+                axis: grid_axis(axis),
+            },
         )
     }))
 }
@@ -288,7 +306,10 @@ fn repeated_subgrid_auto_fill<S: LayoutScalar>() -> Vec<String> {
                 vec![auto_fill("a"), auto_fill("b")],
                 NodeInputOf::default(),
             ),
-            3,
+            2,
+            NamedGridErrorReport::MultipleAutoFillRepeats {
+                axis: grid_axis(axis),
+            },
         )
     }))
 }
@@ -323,7 +344,10 @@ fn repeated_automatic_track_repeats<S: LayoutScalar>() -> Vec<String> {
             results.push(rejection(
                 &format!("{axis:?} {shape}"),
                 &single_item_tree(grid_with(axis, tracks), NodeInputOf::default()),
-                2,
+                1,
+                NamedGridErrorReport::UnresolvedAutoRepeatNames {
+                    axis: grid_axis(axis),
+                },
             ));
         }
     }
@@ -356,7 +380,10 @@ fn nested_automatic_track_repeats<S: LayoutScalar>() -> Vec<String> {
             results.push(rejection(
                 &format!("{axis:?} {shape} nested in counted repeat"),
                 &single_item_tree(grid_with(axis, vec![outer]), NodeInputOf::default()),
-                2,
+                1,
+                NamedGridErrorReport::UnresolvedAutoRepeatNames {
+                    axis: grid_axis(axis),
+                },
             ));
         }
     }
@@ -386,7 +413,10 @@ fn automatic_track_repeats_without_track_size<S: LayoutScalar>() -> Vec<String> 
             results.push(rejection(
                 &format!("{axis:?} {shape} with line names only"),
                 &single_item_tree(grid_with(axis, tracks), NodeInputOf::default()),
-                2,
+                1,
+                NamedGridErrorReport::UnresolvedAutoRepeatNames {
+                    axis: grid_axis(axis),
+                },
             ));
         }
     }
@@ -417,27 +447,39 @@ fn unequal_template_area_rows<S: LayoutScalar>() -> Vec<String> {
         (
             "short second row",
             vec![area_row(&[Some("a"), Some("a")]), area_row(&[Some("b")])],
+            (2, 2, 1),
         ),
         (
             "long second row",
             vec![area_row(&[Some("a")]), area_row(&[Some("b"), Some("b")])],
+            (2, 1, 2),
         ),
         (
             "empty second row",
             vec![area_row(&[Some("a"), Some("a")]), area_row(&[])],
+            (2, 2, 0),
         ),
-        ("empty first row", vec![area_row(&[])]),
+        ("empty first row", vec![area_row(&[])], (1, 1, 0)),
     ];
-    collect(shapes.into_iter().map(|(shape, rows)| {
-        rejection(
-            &format!("areas with {shape}"),
-            &single_item_tree(
-                grid_with_areas::<S>(rows),
-                placed_in(Axis::Columns, bare("a")),
-            ),
-            2,
-        )
-    }))
+    collect(
+        shapes
+            .into_iter()
+            .map(|(shape, rows, (row, expected, actual))| {
+                rejection(
+                    &format!("areas with {shape}"),
+                    &single_item_tree(
+                        grid_with_areas::<S>(rows),
+                        placed_in(Axis::Columns, bare("a")),
+                    ),
+                    1,
+                    NamedGridErrorReport::TemplateAreaRowLengthMismatch {
+                        row,
+                        expected,
+                        actual,
+                    },
+                )
+            }),
+    )
 }
 
 lane_tests!(
@@ -478,7 +520,10 @@ fn non_rectangular_template_areas<S: LayoutScalar>() -> Vec<String> {
                 grid_with_areas::<S>(rows),
                 placed_in(Axis::Columns, bare("a")),
             ),
-            2,
+            1,
+            NamedGridErrorReport::NonRectangularTemplateArea {
+                name: "a".to_string(),
+            },
         )
     }))
 }

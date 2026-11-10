@@ -8,8 +8,9 @@ use super::fixtures::{
     fri05_c05_grid_sizing_input, fri08_c01_placement_compute, fri08_c01_placement_output,
     fri08_c01_placement_request, fri08_c01_topology_for_style, fri08_c02_auto_fit_output,
     fri08_c02_auto_fit_repeat, fri08_c03_auto_fit_batch, fri08_c03_auto_fit_named_repeat,
-    fri08_c03_nested_projection_tree, lp, map_grid_axis, subgrid_axis_report, subgrid_eligibility,
-    subgrid_track, subgrid_track_of, vertical_baseline_measure,
+    fri08_c03_nested_projection_tree, lp, map_grid_axis, oracle_grid_names_rejection,
+    subgrid_axis_report, subgrid_eligibility, subgrid_track, subgrid_track_of,
+    vertical_baseline_measure,
 };
 use super::*;
 use crate::test_support::layout_tree::OracleMeasurementOf;
@@ -256,7 +257,13 @@ fn fixed_grid_repeat_capacity_is_reported_f64() {
 fn assert_mixed_grid_repeat_capacity_is_reported<S: LayoutScalar + std::panic::RefUnwindSafe>() {
     let mut differences = Vec::new();
     for (display, auto_body) in [
-        (Display::Grid, vec![TrackComponentOf::line_names(["slot"])]),
+        (
+            Display::Grid,
+            vec![
+                TrackComponentOf::line_names(["slot"]),
+                TrackComponentOf::px(S::ONE),
+            ],
+        ),
         (Display::GridLanes, vec![TrackComponentOf::px(S::ONE)]),
     ] {
         let make_tree = |count| {
@@ -6160,7 +6167,7 @@ fn fri08_c01_topology_uses_larger_area_or_sized_list_dimension_without_losing_na
 }
 
 #[test]
-fn named_grid_invalid_template_areas_keep_explicit_line_names() {
+fn named_grid_non_rectangular_template_area_is_rejected_despite_explicit_line_names() {
     let mut tree = OracleTree::new()
         .children(1, [2])
         .style(
@@ -6202,15 +6209,38 @@ fn named_grid_invalid_template_areas_keep_explicit_line_names() {
             },
         );
 
-    compute_oracle_grid(&mut tree);
-    let child = tree.final_layout(2).expect("child should be laid out");
+    let (site, report) = oracle_grid_names_rejection(&mut tree);
 
-    assert_eq!(child.location.x, 40.0);
-    assert_eq!(child.size.width, 40.0);
+    assert_eq!(site, crate::LayoutErrorSiteOf::Node(1));
+    assert_eq!(
+        report,
+        NamedGridErrorReport::NonRectangularTemplateArea {
+            name: "bad".to_string(),
+        }
+    );
+}
+
+fn assert_grid_names_rejection<T>(
+    result: Result<T, crate::LayoutErrorOf<u32, f32>>,
+    expected: NamedGridErrorReport,
+) {
+    let Err(error) = result else {
+        panic!("invalid grid names must not lay out");
+    };
+    assert_eq!(error.site(), crate::LayoutErrorSiteOf::Node(1));
+    assert!(
+        matches!(
+            error.kind(),
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::GridNames(actual))
+                if *actual == expected
+        ),
+        "unexpected error kind {:?}",
+        error.kind()
+    );
 }
 
 #[test]
-fn invalid_named_grid_context_is_reported() {
+fn invalid_template_areas_are_rejected_instead_of_reported() {
     let mut tree = OracleTree::new().children(1, []).style(
         1,
         NodeInput {
@@ -6266,20 +6296,20 @@ fn invalid_named_grid_context_is_reported() {
                 ),
             ),
         ),
-    )
-    .unwrap();
+    );
 
-    assert!(result.report().named_grid_errors().contains(
-        &NamedGridErrorReport::TemplateAreaRowLengthMismatch {
+    assert_grid_names_rejection(
+        result,
+        NamedGridErrorReport::TemplateAreaRowLengthMismatch {
             row: 2,
             expected: 2,
             actual: 1,
         },
-    ));
+    );
 }
 
 #[test]
-fn invalid_named_grid_context_fallback_is_reported() {
+fn invalid_line_names_are_rejected_instead_of_reported() {
     let mut tree = OracleTree::new().children(1, []).style(
         1,
         NodeInput {
@@ -6328,14 +6358,14 @@ fn invalid_named_grid_context_fallback_is_reported() {
                 ),
             ),
         ),
-    )
-    .unwrap();
+    );
 
-    assert!(result.report().named_grid_errors().contains(
-        &NamedGridErrorReport::ReservedLineName {
+    assert_grid_names_rejection(
+        result,
+        NamedGridErrorReport::ReservedLineName {
             name: "auto".to_string(),
         },
-    ));
+    );
 }
 
 #[test]

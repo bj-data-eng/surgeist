@@ -2,11 +2,11 @@ use super::{
     AlignContent, AlignItems, AvailableSpaceOf, AxisSizingRequestOf, BaselinesOf, BoxSizing,
     Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Direction, Display, Edges,
     GridAutoFlow, GridPlacement, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
-    LayoutInternalInvariant, LayoutOperation, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf,
-    LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf, NodeOutputOf,
-    OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis, RunMode,
-    Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
-    TrackRepeat, TrackSizingOf, Traverse,
+    LayoutInternalInvariant, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
+    LengthAutoOf, LengthOf, LengthResolutionStatus, MaxTrackSizingOf, MinSizeOf, MinTrackSizingOf,
+    NodeOutputOf, OrthogonalFallbackOf, Overflow, Point, Position, PreferredSizeOf, RequestedAxis,
+    RunMode, Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf,
+    TrackComponentOf, TrackRepeat, TrackSizingOf, Traverse,
 };
 use crate::engine::containment::{
     compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
@@ -74,9 +74,9 @@ use lanes::{
     prepare_grid_lanes_intrinsic_child_input, resolve_grid_lanes_placement_with_resolved_tracks,
 };
 use named::{
-    GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context_with_report,
-    empty_grid_named_context, resolve_grid_placement_or_auto_with_report,
-    resolve_positioned_grid_placement_with_report, resolve_subgrid_placement,
+    GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context,
+    resolve_grid_placement_or_auto_with_report, resolve_positioned_grid_placement_with_report,
+    resolve_subgrid_placement,
 };
 pub use named::{NamedGridErrorReport, NamedGridReport};
 use placement::*;
@@ -1801,22 +1801,13 @@ where
     let sized_explicit_rows = sized_row_tracks.len();
     let mut report = GridComputationReport::default();
     let geometry_parent_context = parent_context.geometry_only();
-    let named_context = match build_grid_named_context_with_report(
+    let named_context = build_grid_named_context(
         style,
         sized_explicit_columns,
         sized_explicit_rows,
         &geometry_parent_context,
-    ) {
-        Ok((context, named_report)) => {
-            report.merge_named_grid(named_report);
-            context
-        }
-        Err(error) => {
-            debug_invalid_named_grid_context(&error);
-            report.merge_named_grid(NamedGridReport::from_error(error));
-            empty_grid_named_context(sized_explicit_columns, sized_explicit_rows)
-        }
-    };
+    )
+    .map_err(|error| invalid_grid_names_error(node, error))?;
     let mut topology = ExpandedGridTopology::new(ExpandedGridTopologyInput {
         container: container_style,
         columns: column_expansion,
@@ -2062,7 +2053,16 @@ where
     })
 }
 
-fn debug_invalid_named_grid_context(_error: &NamedGridError) {}
+fn invalid_grid_names_error<Node, S: LayoutScalar, M>(
+    container: Node,
+    error: NamedGridError,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(container),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::GridNames(error.into())),
+    )
+}
 
 fn grid_placement_demand_error<Node, S: LayoutScalar, M>(
     container: Node,
