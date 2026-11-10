@@ -2341,7 +2341,7 @@ fn combined_inventory_filter_preserves_original_only_execution_without_current_c
     let selected = select_parity_inventory(
         support::fixture_files("xml").expect("original fixtures"),
         Some(&edition),
-        Some("xml/block/block_basic__border_box_ltr.xml"),
+        Some("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml"),
     )
     .expect("original-only match must satisfy combined filter");
     assert!(selected.current.is_empty());

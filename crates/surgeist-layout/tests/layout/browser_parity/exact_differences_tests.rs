@@ -1287,3 +1287,40 @@ fn sideways_fixed_capture_retains_the_gutter_control_environment() {
         );
     }
 }
+
+#[test]
+fn matching_geometry_exposes_complete_raw_differences_and_requires_empty_comparison() {
+    let historical =
+        Golden::parse(include_str!("xml/block/block_basic__border_box_ltr.xml")).unwrap();
+    assert!(compare_matching_geometry(&historical).is_err());
+    let matching = Golden::parse(&FIXED_XML.replace("width=\"21\"", "width=\"20\"")).unwrap();
+    let (raw, qualified) = compare_matching_geometry(&matching).unwrap();
+    assert!(raw.is_empty());
+    assert_eq!(
+        qualified.unwrap(),
+        QualifiedComparison {
+            raw: RawVerdict::Matches,
+            qualified: QualifiedVerdict::MatchingControl
+        }
+    );
+    let (raw, qualified) = compare_matching_geometry(&golden()).unwrap();
+    assert_eq!(raw.len(), 1);
+    assert!(raw[0].contains("Width"));
+    assert!(qualified.is_err());
+    for field in ["x", "y", "width", "height"] {
+        let mut missing = matching.clone();
+        match field {
+            "x" => missing.expectations.x = None,
+            "y" => missing.expectations.y = None,
+            "width" => missing.expectations.width = None,
+            _ => missing.expectations.height = None,
+        }
+        assert!(compare_matching_geometry(&missing).is_err(), "{field}");
+    }
+    let mut nonfinite = matching.clone();
+    nonfinite.expectations.width = Some(Scalar::NAN);
+    assert!(compare_matching_geometry(&nonfinite).is_err());
+    let mut late = matching;
+    late.root.children.push(late.root.clone());
+    assert!(compare_matching_geometry(&late).is_err());
+}

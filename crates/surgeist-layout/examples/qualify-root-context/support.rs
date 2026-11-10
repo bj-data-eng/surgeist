@@ -65,9 +65,17 @@ pub(super) enum QualificationMode {
     Derive(PublishedEdition),
     PublishSpecialized(SpecializedProfile),
     CheckPublishedSpecialized(SpecializedProfile),
+    PublishMatching(&'static str),
+    CheckPublishedMatching(&'static str),
 }
 
 impl QualificationMode {
+    fn matching_edition(self) -> Option<&'static str> {
+        match self {
+            Self::PublishMatching(edition) | Self::CheckPublishedMatching(edition) => Some(edition),
+            _ => None,
+        }
+    }
     fn collects_numeric_differences(self) -> bool {
         matches!(
             self,
@@ -272,6 +280,8 @@ fn select_records(
                 | QualificationMode::CheckPublishedExact(_)
                 | QualificationMode::Derive(_)
                 | QualificationMode::PublishSpecialized(_)
+                | QualificationMode::PublishMatching(_)
+                | QualificationMode::CheckPublishedMatching(_)
                 | QualificationMode::CheckPublishedSpecialized(_) => {
                     return Err("durable modes require the complete inventory".into());
                 }
@@ -385,6 +395,16 @@ fn declared_named_font_counts(record: &Record) -> Option<(usize, usize)> {
 }
 
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
+pub(super) fn declared_matching_edition(name: &str) -> Option<&'static str> {
+    static CATALOGUE: std::sync::OnceLock<Option<Declaration>> = std::sync::OnceLock::new();
+    CATALOGUE
+        .get_or_init(|| Declaration::parse(DECLARATION).ok())
+        .as_ref()?
+        .records
+        .iter()
+        .filter_map(|r| r.matching_publication.as_deref())
+        .find(|edition| *edition == name)
+}
 const CUSTODY_HELPER: &[u8] = include_bytes!("custody.js");
 const INPUTS: &[(&str, &[u8])] = &[
     (
@@ -550,6 +570,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublishedExact(_)
             | QualificationMode::Derive(_)
             | QualificationMode::PublishSpecialized(_)
+            | QualificationMode::PublishMatching(_)
+            | QualificationMode::CheckPublishedMatching(_)
             | QualificationMode::CheckPublishedSpecialized(_)
     ) {
         if fixture.is_some() {
@@ -1091,6 +1113,16 @@ fn validate_corpus(
                     native_errors.push(diagnostic);
                 }
             }
+        } else if mode.matching_edition().is_some() {
+            let (raw, qualified) =
+                crate::parity_support::exact_differences::compare_matching_geometry(&golden)?;
+            eprintln!(
+                "qualify-root-context: {} raw={raw:?}; qualified={qualified:?}",
+                case.case.id()
+            );
+            if let Err(error) = qualified {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
         } else if let Err(error) = crate::parity_support::assert_surgeist_matches(&golden) {
             let diagnostic = format!("{}: {error}", case.case.id());
             eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
@@ -1172,6 +1204,8 @@ fn validate_corpus(
         | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
         | QualificationMode::PublishSpecialized(_)
+        | QualificationMode::PublishMatching(_)
+        | QualificationMode::CheckPublishedMatching(_)
         | QualificationMode::CheckPublishedSpecialized(_) => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
@@ -1394,6 +1428,8 @@ fn inventory_with_retained_helper(
         | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
         | QualificationMode::PublishSpecialized(_)
+        | QualificationMode::PublishMatching(_)
+        | QualificationMode::CheckPublishedMatching(_)
         | QualificationMode::CheckPublishedSpecialized(_) => None,
     };
     for (name, bytes) in INPUTS
@@ -1593,26 +1629,7 @@ fn inventory_with_retained_helper(
 }
 
 fn qualify_historical_geometry(current: &str, historical: &str, case_id: &str) -> Result<()> {
-    let current = roxmltree::Document::parse(current)?;
-    let historical = roxmltree::Document::parse(historical)?;
-    assert_eq!(current.root_element().attribute("name"), Some(case_id));
-    assert_eq!(historical.root_element().attribute("name"), Some(case_id));
-    assert_eq!(
-        current.root_element().attribute("use-rounding"),
-        historical.root_element().attribute("use-rounding")
-    );
-    let current = current
-        .root_element()
-        .children()
-        .find(|node| node.has_tag_name("expectations"))
-        .expect("current expectations");
-    let historical = historical
-        .root_element()
-        .children()
-        .find(|node| node.has_tag_name("expectations"))
-        .expect("historical expectations");
-    compare_observation_tree(current, historical, case_id);
-    Ok(())
+    qualification_catalogue::verify_historical_geometry(current, historical, case_id)
 }
 
 fn compare_observation_tree(
@@ -1620,50 +1637,8 @@ fn compare_observation_tree(
     historical: roxmltree::Node<'_, '_>,
     path: &str,
 ) {
-    assert_eq!(
-        current.tag_name().name(),
-        historical.tag_name().name(),
-        "{path}: observation category"
-    );
-    assert_eq!(
-        current.tag_name().namespace(),
-        historical.tag_name().namespace(),
-        "{path}: observation namespace"
-    );
-    let attributes = |node: roxmltree::Node<'_, '_>| {
-        node.attributes()
-            .map(|attribute| (attribute.name().to_owned(), attribute.value().to_owned()))
-            .collect::<BTreeMap<_, _>>()
-    };
-    assert_eq!(
-        attributes(current),
-        attributes(historical),
-        "{path}: exact historical observation fields"
-    );
-    for node in [current, historical] {
-        assert!(
-            node.children()
-                .filter(roxmltree::Node::is_text)
-                .all(|text| text.text().is_none_or(|value| value.trim().is_empty())),
-            "{path}: unexpected observation text"
-        );
-    }
-    let current = current
-        .children()
-        .filter(roxmltree::Node::is_element)
-        .collect::<Vec<_>>();
-    let historical = historical
-        .children()
-        .filter(roxmltree::Node::is_element)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        current.len(),
-        historical.len(),
-        "{path}: observation cardinality"
-    );
-    for (index, (current, historical)) in current.into_iter().zip(historical).enumerate() {
-        compare_observation_tree(current, historical, &format!("{path}/{index}"));
-    }
+    qualification_catalogue::compare_observation_tree(current, historical)
+        .unwrap_or_else(|error| panic!("{path}: {error}"));
 }
 
 fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
@@ -1681,67 +1656,18 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
     };
     let (root_direction, root_writing_mode, root_position) = match metadata {
         ExpectedMetadata::AbsoluteLocal {
-            hypothetical_display,
-            containing_direction,
-            hypothetical_direction,
             root_direction,
             root_writing_mode,
             inline_offset,
-            block_offset,
             root_size,
+            ..
         } => {
-            assert_eq!(
-                test.attribute("observation-frame"),
-                Some("root-border-local")
-            );
-            assert_eq!(
-                viewport.attribute("root-context"),
-                Some("absolute-root-local")
-            );
-            assert_eq!(
-                viewport.attribute("containing-direction"),
-                Some(containing_direction.as_str())
-            );
-            assert_eq!(
-                viewport.attribute("hypothetical-direction"),
-                Some(hypothetical_direction.as_str())
-            );
-            assert_eq!(
-                viewport.attribute("hypothetical-display"),
-                Some(hypothetical_display.as_str())
-            );
-            assert_eq!(
-                viewport.attribute("hypothetical-anchor"),
-                Some("inline-start")
-            );
-            assert_eq!(
-                px_attribute(viewport, "hypothetical-inline-offset")?,
-                *inline_offset
-            );
-            if let Some(block_offset) = block_offset {
-                assert_eq!(
-                    px_attribute(viewport, "hypothetical-block-offset")?,
-                    *block_offset
-                );
-            } else {
-                assert_eq!(viewport.attribute("hypothetical-block-offset"), None);
-            }
-            for (containing, fallback) in [
-                ("containing-width", "fallback-icb-width"),
-                ("containing-height", "fallback-icb-height"),
-            ] {
-                assert_eq!(
-                    px_attribute(viewport, containing)?,
-                    px_attribute(viewport, fallback)?
-                );
-            }
-            for field in ["parent-inline-extent", "parent-direction"] {
-                assert_eq!(
-                    viewport.attribute(field),
-                    None,
-                    "absolute context has no BlockFlow field"
-                );
-            }
+            qualification_catalogue::verify_absolute_metadata(
+                xml,
+                metadata,
+                case.case.id(),
+                case.case.variant(),
+            )?;
             qualify_root_size(
                 test,
                 viewport,

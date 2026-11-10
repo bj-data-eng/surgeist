@@ -789,3 +789,38 @@ fn matching_terminal_wire_requires_policy_free_complete_original_bindings() {
         );
     }
 }
+
+#[test]
+fn matching_capture_binding_authenticates_inputs_without_a_policy_identity() {
+    let mut fixture = Fixture::new(&"a".repeat(64));
+    fixture.inputs.remove("policy.md");
+    fixture.metadata.inputs = fixture.inputs.clone();
+    let bind = |fixture: &Fixture| {
+        capture_binding_from_verified_inputs(CaptureBindingInputs {
+            metadata: &fixture.metadata,
+            artifact: &fixture.artifact,
+            case: &fixture.case,
+            full_inputs: &fixture.inputs,
+            excluded_specs: &fixture.excluded,
+            actual_xml_sha256: &fixture.xml,
+            historical_sha256: None,
+            browser_settings: &fixture.settings,
+            observation_request: "geometry",
+            observation_input_sha256: None,
+        })
+    };
+    let projection = bind(&fixture).unwrap();
+    assert!(
+        serde_json::to_value(&projection)
+            .unwrap()
+            .get("policy_source_sha256")
+            .is_none()
+    );
+    fixture.inputs.remove("html/fixed.html");
+    assert!(bind(&fixture).is_err());
+    fixture
+        .inputs
+        .insert("html/fixed.html".into(), "0".repeat(64));
+    fixture.metadata.inputs = fixture.inputs.clone();
+    assert!(bind(&fixture).is_err());
+}

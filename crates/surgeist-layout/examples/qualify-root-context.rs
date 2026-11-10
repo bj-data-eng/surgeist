@@ -186,6 +186,21 @@ fn parse_arguments(
                 SpecializedProfile::PreparedAtomicPercentage,
             ),
         )),
+        [command, name]
+            if command == "--publish-matching-geometry"
+                || command == "--check-published-matching-geometry" =>
+        {
+            let edition = support::declared_matching_edition(name)
+                .ok_or("unknown matching geometry edition")?;
+            Ok((
+                None,
+                if command == "--publish-matching-geometry" {
+                    QualificationMode::PublishMatching(edition)
+                } else {
+                    QualificationMode::CheckPublishedMatching(edition)
+                },
+            ))
+        }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -239,7 +254,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }

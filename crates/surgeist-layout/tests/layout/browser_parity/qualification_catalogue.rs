@@ -22,6 +22,8 @@ struct Catalogue {
     semantic_publications: Vec<SemanticPublication>,
     #[serde(default)]
     specialized_publications: Vec<SpecializedPublication>,
+    #[serde(default)]
+    matching_publications: Vec<MatchingPublication>,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +32,13 @@ struct SemanticPublication {
     source: RelativePath,
     replaces_sha256: Option<Sha256Digest>,
     specifications: BTreeMap<String, SemanticReference>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchingPublication {
+    edition: String,
+    sources: Vec<RelativePath>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +61,8 @@ pub(crate) struct Record {
     pub(crate) semantic_specifications: Option<BTreeMap<String, SemanticReference>>,
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub(crate) specialized_publication: Option<SpecializedProfile>,
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub(crate) matching_publication: Option<String>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -247,6 +258,38 @@ impl Declaration {
             }
             record.specialized_publication = Some(profile);
         }
+        let mut editions = BTreeSet::new();
+        for publication in catalogue.matching_publications {
+            super::capture_authority::validate_matching_edition(&publication.edition)?;
+            if publication.sources.is_empty() || !editions.insert(publication.edition.clone()) {
+                return Err("matching publication requires a unique nonempty edition".into());
+            }
+            for source in publication.sources {
+                let record = catalogue
+                    .records
+                    .iter_mut()
+                    .find(|record| record.source == source)
+                    .ok_or("matching publication requires a declared source")?;
+                if !matches!(record.source_kind, SourceKind::Original)
+                    || !matches!(
+                        record.expected,
+                        ExpectedDisposition::Generated {
+                            metadata: ExpectedMetadata::AbsoluteLocal {
+                                root_size: None,
+                                ..
+                            }
+                        }
+                    )
+                    || record.relation.is_some()
+                    || record.semantic_specifications.is_some()
+                    || record.specialized_publication.is_some()
+                    || record.matching_publication.is_some()
+                {
+                    return Err("matching publication requires unique unpaired original box sources without other authority".into());
+                }
+                record.matching_publication = Some(publication.edition.clone());
+            }
+        }
         Ok(Self {
             records: catalogue.records,
         })
@@ -255,6 +298,14 @@ impl Declaration {
         &self,
         selected: &BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
+        let matching_editions: BTreeSet<_> = selected
+            .values()
+            .filter_map(|record| {
+                record
+                    .get("matching_publication")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .collect();
         let mut matched = 0;
         let mut uncovered = Vec::new();
         for record in &self.records {
@@ -264,7 +315,15 @@ impl Declaration {
                     return Err(format!("selected live record changed: {source}").into());
                 }
                 matched += 1;
-            } else if record.specialized_publication.is_some() {
+            } else if record
+                .matching_publication
+                .as_deref()
+                .is_some_and(|edition| matching_editions.contains(edition))
+            {
+                return Err("selected matching edition membership changed".into());
+            } else if record.specialized_publication.is_some()
+                || record.matching_publication.is_some()
+            {
                 uncovered
                     .extend(fixture_cases().map(|(variant, _)| format!("{source} ({variant})")));
             } else if let Some(references) = &record.semantic_specifications {
@@ -321,6 +380,176 @@ impl Record {
             .filter(|stem| !stem.is_empty())
             .ok_or("missing source stem")?;
         Ok((family, stem))
+    }
+}
+
+/// Shared issuer/portable validation of every retained historical observation.
+pub(crate) fn verify_historical_geometry(
+    current: &str,
+    historical: &str,
+    name: &str,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let current = roxmltree::Document::parse(current)?;
+    let historical = roxmltree::Document::parse(historical)?;
+    for document in [&current, &historical] {
+        if document.root_element().attribute("name") != Some(name) {
+            return Err("historical case association changed".into());
+        }
+    }
+    if current.root_element().attribute("use-rounding")
+        != historical.root_element().attribute("use-rounding")
+    {
+        return Err("historical rounding changed".into());
+    }
+    compare_observation_tree(
+        current
+            .root_element()
+            .children()
+            .find(|n| n.has_tag_name("expectations"))
+            .ok_or("missing current expectations")?,
+        historical
+            .root_element()
+            .children()
+            .find(|n| n.has_tag_name("expectations"))
+            .ok_or("missing historical expectations")?,
+    )
+}
+
+pub(crate) fn compare_observation_tree(
+    a: roxmltree::Node<'_, '_>,
+    b: roxmltree::Node<'_, '_>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let attributes = |node: roxmltree::Node<'_, '_>| {
+        node.attributes()
+            .map(|a| {
+                (
+                    (a.namespace().map(str::to_owned), a.name().to_owned()),
+                    a.value().to_owned(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    if a.tag_name() != b.tag_name()
+        || attributes(a) != attributes(b)
+        || [a, b].iter().any(|node| {
+            node.children()
+                .filter(roxmltree::Node::is_text)
+                .any(|text| text.text().is_some_and(|s| !s.trim().is_empty()))
+        })
+    {
+        return Err("historical observation fields changed".into());
+    }
+    let a: Vec<_> = a.children().filter(roxmltree::Node::is_element).collect();
+    let b: Vec<_> = b.children().filter(roxmltree::Node::is_element).collect();
+    if a.len() != b.len() {
+        return Err("historical observation cardinality changed".into());
+    }
+    for (a, b) in a.into_iter().zip(b) {
+        compare_observation_tree(a, b)?;
+    }
+    Ok(())
+}
+
+/// Shared declared absolute-root certificate checks. The Golden parser separately
+/// validates the protocol shape and all finite fallback/root-context values.
+pub(crate) fn verify_absolute_metadata(
+    xml: &str,
+    metadata: &ExpectedMetadata,
+    name: &str,
+    variant: &str,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let ExpectedMetadata::AbsoluteLocal {
+        hypothetical_display,
+        containing_direction,
+        hypothetical_direction,
+        root_direction,
+        root_writing_mode,
+        inline_offset,
+        block_offset,
+        ..
+    } = metadata
+    else {
+        return Err("matching geometry requires absolute-local metadata".into());
+    };
+    let doc = roxmltree::Document::parse(xml)?;
+    let test = doc.root_element();
+    let viewport = test
+        .children()
+        .find(|n| n.has_tag_name("viewport"))
+        .ok_or("missing viewport")?;
+    let root = test
+        .children()
+        .find(|n| n.has_tag_name("input"))
+        .and_then(|n| n.children().find(roxmltree::Node::is_element))
+        .ok_or("missing root input")?;
+    let direction = if root_direction == "variant" {
+        if variant.ends_with("_rtl") {
+            "rtl"
+        } else {
+            "ltr"
+        }
+    } else {
+        root_direction.as_str()
+    };
+    if !test.has_tag_name("test")
+        || test.attribute("name") != Some(name)
+        || test.attribute("measurement-version") != Some("4")
+        || test.attribute("observation-frame") != Some("root-border-local")
+        || viewport.attribute("root-context") != Some("absolute-root-local")
+        || viewport.attribute("hypothetical-display") != Some(hypothetical_display.as_str())
+        || viewport.attribute("containing-direction") != Some(containing_direction.as_str())
+        || viewport.attribute("hypothetical-direction") != Some(hypothetical_direction.as_str())
+        || viewport.attribute("hypothetical-anchor") != Some("inline-start")
+        || root.attribute("position").unwrap_or("relative") != "absolute"
+        || root.attribute("direction") != Some(direction)
+        || root.attribute("writing-mode").unwrap_or("horizontal-tb") != root_writing_mode
+    {
+        return Err("declared root capture metadata changed".into());
+    }
+    fn px(node: roxmltree::Node<'_, '_>, name: &str) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        let value: f64 = node
+            .attribute(name)
+            .and_then(|s| s.strip_suffix("px"))
+            .ok_or("missing root pixel attribute")?
+            .parse()?;
+        if !value.is_finite() {
+            return Err("nonfinite root pixel attribute".into());
+        }
+        Ok(value)
+    }
+    if !inline_offset.is_finite() || px(viewport, "hypothetical-inline-offset")? != *inline_offset {
+        return Err("root inline offset changed".into());
+    }
+    match block_offset {
+        Some(offset)
+            if offset.is_finite() && px(viewport, "hypothetical-block-offset")? == *offset => {}
+        None if viewport.attribute("hypothetical-block-offset").is_none() => {}
+        _ => return Err("root block offset changed".into()),
+    }
+    for (containing, fallback) in [
+        ("containing-width", "fallback-icb-width"),
+        ("containing-height", "fallback-icb-height"),
+    ] {
+        if px(viewport, containing)? != px(viewport, fallback)? {
+            return Err("root containing/fallback extent differs".into());
+        }
+    }
+    Ok(())
+}
+
+impl Record {
+    pub(crate) fn verify_matching_capture(
+        &self,
+        current: &str,
+        historical: &str,
+        name: &str,
+        variant: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let ExpectedDisposition::Generated { metadata } = &self.expected else {
+            return Err("matching output must be Generated".into());
+        };
+        verify_historical_geometry(current, historical, name)?;
+        verify_absolute_metadata(current, metadata, name, variant)
     }
 }
 
@@ -610,5 +839,98 @@ sources = [
                 "{appendix}"
             );
         }
+    }
+    #[test]
+    fn matching_capture_revalidation_rejects_changed_history_and_declared_root_metadata() {
+        const SOURCE: &str = "html/flex/fri07_collapsed_strut_wrapping.html";
+        const NAME: &str = "fri07_collapsed_strut_wrapping__border_box_ltr";
+        let catalogue = Declaration::parse(unannotated_catalogue()).unwrap();
+        let record = catalogue
+            .records
+            .iter()
+            .find(|r| r.source.as_str() == SOURCE)
+            .unwrap();
+        let current = include_str!(
+            "captured/canonical-box-differences/xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml"
+        );
+        let historical =
+            include_str!("xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml");
+        record
+            .verify_matching_capture(current, historical, NAME, "border_box_ltr")
+            .unwrap();
+        let changed_context = current.replace(
+            "hypothetical-display=\"flex\"",
+            "hypothetical-display=\"grid\"",
+        );
+        assert_ne!(changed_context, current);
+        assert!(
+            record
+                .verify_matching_capture(&changed_context, historical, NAME, "border_box_ltr")
+                .is_err()
+        );
+        let (prefix, observations) = historical.split_once("<expectations>").unwrap();
+        let changed = format!(
+            "{prefix}<expectations>{}",
+            observations.replacen("<node ", "<node extra-observation=\"changed\" ", 1)
+        );
+        assert_ne!(changed, historical);
+        assert!(
+            record
+                .verify_matching_capture(current, &changed, NAME, "border_box_ltr")
+                .is_err()
+        );
+        let dropped = historical.replacen(" x=\"0\"", "", 1);
+        assert_ne!(dropped, historical);
+        assert!(
+            record
+                .verify_matching_capture(current, &dropped, NAME, "border_box_ltr")
+                .is_err()
+        );
+        assert!(
+            record
+                .verify_matching_capture(current, historical, NAME, "border_box_rtl")
+                .is_err()
+        );
+    }
+    #[test]
+    fn matching_live_membership_rejects_same_edition_growth_and_reports_new_editions() {
+        const EXTRA: &str = "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html";
+        let old =
+            Declaration::parse(&[unannotated_catalogue(), MATCHING.as_bytes()].concat()).unwrap();
+        let selected: BTreeMap<_, _> = old
+            .records
+            .iter()
+            .filter(|record| {
+                record.semantic_specifications.is_some() || record.matching_publication.is_some()
+            })
+            .map(|record| {
+                (
+                    record.source.as_str().to_owned(),
+                    serde_json::to_value(record).unwrap(),
+                )
+            })
+            .collect();
+        assert!(old.check_live_records(&selected).unwrap().is_empty());
+        let growth = MATCHING.replace("sources = [", &format!("sources = [\n  {EXTRA:?},"));
+        let growth =
+            Declaration::parse(&[unannotated_catalogue(), growth.as_bytes()].concat()).unwrap();
+        assert!(growth.check_live_records(&selected).is_err());
+        let other = format!(
+            "{MATCHING}\n[[matching_publications]]\nedition = \"later-controls\"\nsources = [{EXTRA:?}]\n"
+        );
+        let other =
+            Declaration::parse(&[unannotated_catalogue(), other.as_bytes()].concat()).unwrap();
+        let uncovered = other
+            .check_live_records(&selected)
+            .unwrap()
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            uncovered,
+            fixture_cases()
+                .map(|(variant, _)| format!("{EXTRA} ({variant})"))
+                .into_iter()
+                .collect()
+        );
     }
 }

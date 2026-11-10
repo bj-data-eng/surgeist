@@ -16,10 +16,13 @@ enum Edition {
     RootContextV4,
     Exact(PublishedEdition),
     Specialized(SpecializedProfile),
+    Matching(&'static str),
 }
 impl Edition {
     fn name(self) -> &'static str {
-        if let Self::Specialized(profile) = self {
+        if let Self::Matching(edition) = self {
+            edition
+        } else if let Self::Specialized(profile) = self {
             profile.edition()
         } else {
             self.published().map_or(EDITION, PublishedEdition::name)
@@ -27,7 +30,7 @@ impl Edition {
     }
     fn published(self) -> Option<PublishedEdition> {
         match self {
-            Self::RootContextV4 | Self::Specialized(_) => None,
+            Self::RootContextV4 | Self::Specialized(_) | Self::Matching(_) => None,
             Self::Exact(edition) => Some(edition),
         }
     }
@@ -53,9 +56,11 @@ fn edition_input(current: &[u8]) -> Result<DeclarationInput<'_>> {
     )
 }
 
-pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
-    require_current_inputs(owner)?;
-    let (edition, access) = match mode {
+fn publication_request(mode: QualificationMode) -> Result<(Edition, InputAccess)> {
+    if let Some(edition) = mode.matching_edition() {
+        authority::validate_matching_edition(edition)?;
+    }
+    Ok(match mode {
         QualificationMode::Publish => (Edition::RootContextV4, InputAccess::Prepare),
         QualificationMode::CheckPublished => (Edition::RootContextV4, InputAccess::ReadOnly),
         QualificationMode::PublishExact(edition) => (Edition::Exact(edition), InputAccess::Prepare),
@@ -68,8 +73,19 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         QualificationMode::CheckPublishedSpecialized(profile) => {
             (Edition::Specialized(profile), InputAccess::ReadOnly)
         }
+        QualificationMode::PublishMatching(edition) => {
+            (Edition::Matching(edition), InputAccess::Prepare)
+        }
+        QualificationMode::CheckPublishedMatching(edition) => {
+            (Edition::Matching(edition), InputAccess::ReadOnly)
+        }
         _ => return Err("expected a durable publication mode".into()),
-    };
+    })
+}
+
+pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
+    require_current_inputs(owner)?;
+    let (edition, access) = publication_request(mode)?;
     let parent = edition_parent(owner)?;
     let retained = if edition != Edition::RootContextV4 && matches!(access, InputAccess::ReadOnly) {
         let root = parent.join(edition.name());
@@ -81,6 +97,10 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         None
     };
     let input = match edition {
+        Edition::Matching(edition) => matching_input(
+            retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes),
+            edition,
+        )?,
         Edition::Specialized(profile) => {
             let bytes = retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes);
             specialized_input(bytes, profile)?
@@ -131,6 +151,19 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
             finish(owner, &root, &input, &origin, access, edition, mode)
         }
     }
+}
+
+fn matching_input<'a>(bytes: &'a [u8], edition: &str) -> Result<DeclarationInput<'a>> {
+    authority::validate_matching_edition(edition)?;
+    let mut input = DeclarationInput::parse(bytes)?;
+    input
+        .declaration
+        .records
+        .retain(|record| record.matching_publication.as_deref() == Some(edition));
+    if input.declaration.records.is_empty() {
+        return Err("unknown matching publication edition".into());
+    }
+    Ok(input)
 }
 
 fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<DeclarationInput<'_>> {
@@ -336,6 +369,9 @@ fn finish(
     inventory(root, owner, input, mode, InputAccess::ReadOnly)?;
     check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
     if has_terminal {
+        if matches!(edition, Edition::Matching(_)) {
+            terminal_cases = matching_cases(root, input, &snapshot, &corpus, &report)?;
+        }
         if let Edition::Specialized(profile) = edition {
             terminal_cases = specialized_cases(root, input, &snapshot, &corpus, &report, profile)?;
         }
@@ -963,6 +999,81 @@ fn prebind_current_cases(
     Ok(requirements)
 }
 
+fn matching_cases(
+    root: &Path,
+    input: &DeclarationInput<'_>,
+    inventory: &Inventory,
+    corpus: &BrowserCorpus,
+    report: &browser::BrowserGenerationReport,
+) -> Result<Vec<authority::QualifiedCase>> {
+    let settings = authority::BrowserSettingsWitness::from_official_json(&serde_json::to_vec(
+        corpus.browser(),
+    )?)?;
+    let retained = string_inputs(&inventory.expected_inputs);
+    let report_json: serde_json::Value = serde_json::from_slice(&report.to_bytes()?)?;
+    let metadata = serde_json::from_value(report_json["metadata"].clone())?;
+    report
+        .generated()
+        .iter()
+        .map(|generated| {
+            let artifact: authority::CapturedArtifact =
+                serde_json::from_value(serde_json::to_value(generated)?)?;
+            let record = input
+                .declaration
+                .records
+                .iter()
+                .find(|record| record.source.as_str() == artifact.source)
+                .ok_or("undeclared matching source")?;
+            let xml = fs::read_to_string(root.join(&artifact.output))?;
+            let predecessor = artifact.output.replacen("xml/", "historical/", 1);
+            record.verify_matching_capture(
+                &xml,
+                &fs::read_to_string(root.join(&predecessor))?,
+                &artifact.name,
+                &artifact.variant,
+            )?;
+            let historical = authority::PathDigest {
+                path: predecessor.clone(),
+                sha256: retained
+                    .get(&predecessor)
+                    .ok_or("missing matching history")?
+                    .clone(),
+            };
+            let case = authority::CaseDescriptor {
+                name: artifact.name.clone(),
+                source: artifact.source.clone(),
+                variant: artifact.variant.clone(),
+                output: authority::PathDigest {
+                    path: artifact.output.clone(),
+                    sha256: artifact.output_sha256.clone(),
+                },
+                record_sha256: semantic_record_digest(record)?.as_str().to_owned(),
+            };
+            let identity =
+                authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+                    metadata: &metadata,
+                    artifact: &artifact,
+                    case: &case,
+                    full_inputs: &retained,
+                    excluded_specs: &BTreeSet::new(),
+                    actual_xml_sha256: &authority::sha256(xml.as_bytes()),
+                    historical_sha256: Some(&historical.sha256),
+                    browser_settings: &settings,
+                    observation_request: "geometry",
+                    observation_input_sha256: None,
+                })?;
+            Ok(authority::QualifiedCase::Matching(
+                authority::MatchingCase {
+                    case,
+                    historical,
+                    matching: authority::MatchingCategory::Geometry,
+                    identity,
+                },
+            ))
+        })
+        .collect()
+}
+
 fn specialized_cases(
     root: &Path,
     input: &DeclarationInput<'_>,
@@ -1175,6 +1286,7 @@ fn current_owner_inputs(
         .flat_map(|case| match case {
             authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
             authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
+            authority::QualifiedCase::Matching(_) => Vec::new(),
         })
         .map(|binding| binding.path.as_str())
         .collect::<BTreeSet<_>>();

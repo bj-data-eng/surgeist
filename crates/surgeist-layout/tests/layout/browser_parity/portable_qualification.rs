@@ -38,6 +38,7 @@ type PlacementObserver<'a> =
 pub(super) enum Edition {
     Exact(PublishedEdition),
     Specialized(SpecializedProfile),
+    Matching(&'static str),
 }
 
 impl Edition {
@@ -45,13 +46,15 @@ impl Edition {
         match self {
             Self::Exact(edition) => edition.name(),
             Self::Specialized(profile) => profile.edition(),
+            Self::Matching(edition) => edition,
         }
     }
 
-    fn artifact_root(self) -> &'static str {
+    fn artifact_root(self) -> String {
         match self {
-            Self::Exact(edition) => edition.artifact_root(),
-            Self::Specialized(profile) => profile.artifact_root(),
+            Self::Exact(edition) => edition.artifact_root().to_owned(),
+            Self::Specialized(profile) => profile.artifact_root().to_owned(),
+            Self::Matching(edition) => format!("tests/layout/browser_parity/captured/{edition}"),
         }
     }
 }
@@ -196,7 +199,7 @@ fn static_files(root: &Path) -> Result<BTreeSet<String>> {
 struct Freshness {
     owner: PathBuf,
     root: PathBuf,
-    artifact_root: &'static str,
+    artifact_root: String,
     pins: BTreeMap<String, String>,
     owner_pins: BTreeMap<String, String>,
     selected_records: BTreeMap<String, Value>,
@@ -302,6 +305,7 @@ struct AdmittedCase {
 }
 
 enum AdmittedComparison {
+    MatchingGeometry,
     Exact {
         edition: PublishedEdition,
         spec: Box<ExactDifferenceSpec>,
@@ -437,6 +441,9 @@ impl AdmittedEdition {
                             })
                         })
                 }
+                AdmittedComparison::MatchingGeometry => {
+                    support::exact_differences::compare_matching_geometry(&case.golden)
+                }
                 AdmittedComparison::PreparedRange { variant } => {
                     compare_prepared_range(&case.golden, variant)
                 }
@@ -510,7 +517,7 @@ fn compare_prepared_range(
 }
 
 pub struct AdmittedRegistry {
-    editions: [AdmittedEdition; 12],
+    editions: Vec<AdmittedEdition>,
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -518,7 +525,7 @@ pub struct AdmittedRegistry {
 impl AdmittedRegistry {
     pub(super) fn outputs(&self) -> impl Iterator<Item = String> {
         self.editions.iter().flat_map(|edition| {
-            let root = edition.freshness.artifact_root;
+            let root = &edition.freshness.artifact_root;
             edition
                 .outputs()
                 .map(move |output| format!("{root}/{output}"))
@@ -607,8 +614,14 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
     )
 }
 
+// Register only a complete publisher terminal after reviewed capture/check.
+const REGISTERED_MATCHING: &[(&str, &str)] = &[(
+    "box-controls",
+    "6583efca2515a24b1d97edb7873a4a97df8f1dbd3e7119e124c4e0746542b2ea",
+)];
+
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
-    let editions = [
+    let mut editions = vec![
         admit(
             owner,
             Registration {
@@ -688,6 +701,15 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             },
         )?,
     ];
+    for &(edition, terminal_sha256) in REGISTERED_MATCHING {
+        editions.push(admit(
+            owner,
+            Registration {
+                edition: Edition::Matching(edition),
+                terminal_sha256,
+            },
+        )?);
+    }
     let mut selected_records = BTreeMap::new();
     for edition in &editions {
         for (source, record) in &edition.freshness.selected_records {
@@ -711,8 +733,11 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
 
 pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<AdmittedEdition> {
     let edition = registration.edition;
+    if let Edition::Matching(name) = edition {
+        authority::validate_matching_edition(name)?;
+    }
     let artifact_root = edition.artifact_root();
-    let root = owner.join(artifact_root);
+    let root = owner.join(&artifact_root);
     regular_file(owner, &format!("{artifact_root}/{}", authority::TERMINAL))?;
     let terminal_pin = PathDigest {
         path: authority::TERMINAL.into(),
@@ -776,6 +801,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .flat_map(|case| match case {
             authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
             authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
+            authority::QualifiedCase::Matching(_) => Vec::new(),
         })
         .map(|binding| binding.path.as_str())
         .collect();
@@ -828,6 +854,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     }
     let edition = match edition {
         Edition::Exact(edition) => edition,
+        Edition::Matching(_) => {
+            let cases = admit_matching(&root, &terminal, &report, &artifacts)?;
+            freshness.verify()?;
+            return Ok(AdmittedEdition { freshness, cases });
+        }
         Edition::Specialized(profile) => {
             let cases = admit_specialized(
                 &root,
@@ -846,7 +877,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .iter()
         .map(|case| match case {
             authority::QualifiedCase::Exact(case) => Ok(case),
-            authority::QualifiedCase::Specialized(_) => {
+            authority::QualifiedCase::Specialized(_) | authority::QualifiedCase::Matching(_) => {
                 Err(changed("expected an exact difference edition"))
             }
         })
@@ -1031,6 +1062,85 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     }
     freshness.verify()?;
     Ok(AdmittedEdition { freshness, cases })
+}
+
+fn admit_matching(
+    root: &Path,
+    terminal: &Qualification,
+    report: &Report,
+    artifacts: &BTreeMap<&str, &CapturedArtifact>,
+) -> Result<Vec<AdmittedCase>> {
+    let declaration = Declaration::parse(&read_pinned(root, &terminal.declaration)?)
+        .map_err(|error| malformed(error.to_string()))?;
+    let records: BTreeMap<_, _> = declaration
+        .records
+        .iter()
+        .filter(|r| r.matching_publication.as_deref() == Some(terminal.edition.as_str()))
+        .map(|r| (r.source.as_str(), r))
+        .collect();
+    if records.len() != terminal.records.len()
+        || records.len() * crate::fixture_variants::fixture_cases().len() != terminal.cases.len()
+    {
+        return Err(changed("complete matching edition source census"));
+    }
+    let mut consumed = BTreeSet::new();
+    let mut cases = Vec::new();
+    for qualified in &terminal.cases {
+        let authority::QualifiedCase::Matching(case) = qualified else {
+            return Err(changed("expected matching geometry category"));
+        };
+        let descriptor = &case.case;
+        let artifact = artifacts
+            .get(descriptor.name.as_str())
+            .ok_or_else(|| changed("missing matching generated artifact"))?;
+        if !consumed.insert(descriptor.name.as_str()) {
+            return Err(malformed("duplicate matching generated case"));
+        }
+        let record = records
+            .get(descriptor.source.as_str())
+            .ok_or_else(|| changed("missing matching source record"))?;
+        let bytes = read_pinned(root, &descriptor.output)?;
+        let xml = std::str::from_utf8(&bytes).map_err(|error| malformed(error.to_string()))?;
+        let historical = read_pinned(root, &case.historical)?;
+        let historical =
+            std::str::from_utf8(&historical).map_err(|error| malformed(error.to_string()))?;
+        record
+            .verify_matching_capture(xml, historical, &descriptor.name, &descriptor.variant)
+            .map_err(|error| changed(error.to_string()))?;
+        let identity =
+            authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+                metadata: &report.metadata,
+                artifact,
+                case: descriptor,
+                full_inputs: &terminal.retained_inputs,
+                excluded_specs: &BTreeSet::new(),
+                actual_xml_sha256: &sha256(&bytes),
+                historical_sha256: Some(&case.historical.sha256),
+                browser_settings: &terminal.browser_settings,
+                observation_request: "geometry",
+                observation_input_sha256: None,
+            })?;
+        if identity != case.identity {
+            return Err(changed("matching capture binding projection"));
+        }
+        let golden = support::Golden::parse(xml).map_err(|error| changed(error.to_string()))?;
+        // Validate supported complete geometry without accepting a mismatch.
+        let (raw, qualified) = support::exact_differences::compare_matching_geometry(&golden)?;
+        if !raw.is_empty() || qualified.is_err() {
+            return Err(changed(format!(
+                "matching edition contains raw geometry differences: {raw:?}"
+            )));
+        }
+        cases.push(AdmittedCase {
+            output: descriptor.output.path.clone(),
+            comparison: AdmittedComparison::MatchingGeometry,
+            golden,
+        });
+    }
+    if consumed.len() != artifacts.len() {
+        return Err(changed("unconsumed matching generated artifact"));
+    }
+    Ok(cases)
 }
 
 fn admit_specialized(
