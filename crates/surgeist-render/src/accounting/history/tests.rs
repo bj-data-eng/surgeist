@@ -5,6 +5,8 @@ use crate::{
 };
 use std::mem::size_of;
 
+mod ownership;
+
 fn attempt<T>(
     limits: RenderLimits,
     run: impl FnOnce(&Account) -> Result<T>,
@@ -66,10 +68,7 @@ fn canonical(history: &ImageHistory) -> Vec<(u64, Arc<[u8]>)> {
     history
         .inner
         .lock()
-        .committed
-        .as_ref()
-        .expect("committed history")
-        .iter()
+        .canonical_for_test()
         .map(|record| {
             (
                 record.identity.fingerprint().get(),
@@ -77,6 +76,27 @@ fn canonical(history: &ImageHistory) -> Vec<(u64, Arc<[u8]>)> {
             )
         })
         .collect()
+}
+
+fn canonical_capacity(history: &ImageHistory) -> usize {
+    let state = history.inner.lock();
+    match &state.custody {
+        Custody::Canonical
+        | Custody::Transaction {
+            baseline: BaselineCustody::DraftOnly,
+            ..
+        } => state.records.capacity(),
+        Custody::Transaction {
+            baseline: BaselineCustody::Retained { old, .. },
+            ..
+        } => old.capacity(),
+    }
+}
+
+fn candidate_capacity(history: &ImageHistory) -> usize {
+    let state = history.inner.lock();
+    assert!(matches!(&state.custody, Custody::Transaction { .. }));
+    state.records.capacity()
 }
 
 fn retained(cpu: &RendererCpu) -> u64 {
@@ -276,18 +296,11 @@ fn baseline_draft_and_growth_charge_actual_metadata_overlap_once_per_allocation(
     let tall = image(2, 3, Size::new(1.0, 2.0), bytes);
     publish(&history, &[&wide]);
     let baseline = retained(&cpu);
-    let old_capacity = history.inner.lock().committed.as_ref().unwrap().capacity();
+    let old_capacity = canonical_capacity(&history);
     assert_eq!(old_capacity, 1);
     let draft = unlimited(|account| {
         let draft = history.begin(account)?;
-        let draft_capacity = history
-            .inner
-            .lock()
-            .draft
-            .as_ref()
-            .unwrap()
-            .records
-            .capacity();
+        let draft_capacity = candidate_capacity(&history);
         assert_eq!(
             retained(&cpu),
             baseline + (draft_capacity * size_of::<ContentRecord>()) as u64
@@ -295,14 +308,7 @@ fn baseline_draft_and_growth_charge_actual_metadata_overlap_once_per_allocation(
         assert!(draft.observer().observe(&tall, account)?);
         Ok(draft)
     });
-    let draft_capacity = history
-        .inner
-        .lock()
-        .draft
-        .as_ref()
-        .unwrap()
-        .records
-        .capacity();
+    let draft_capacity = candidate_capacity(&history);
     assert_eq!(draft_capacity, 2);
     let snapshot = cpu.snapshot().unwrap();
     assert_eq!(
@@ -461,14 +467,7 @@ fn late_abort_restores_only_canonical_baseline_after_old_vector_disposal() {
         assert!(!observer.observe(&equal_a, account)?);
         Ok(draft)
     });
-    let larger_capacity = history
-        .inner
-        .lock()
-        .draft
-        .as_ref()
-        .unwrap()
-        .records
-        .capacity();
+    let larger_capacity = candidate_capacity(&history);
     let checkpoint = cpu.begin_interval().unwrap();
     let ready = draft.into_publication().unwrap().retire_old().unwrap();
     let closed = checkpoint.finish().unwrap();
@@ -479,10 +478,7 @@ fn late_abort_restores_only_canonical_baseline_after_old_vector_disposal() {
     for (restored, original) in restored.iter().zip(&baseline) {
         assert!(Arc::ptr_eq(&restored.1, &original.1));
     }
-    assert_eq!(
-        history.inner.lock().committed.as_ref().unwrap().capacity(),
-        larger_capacity
-    );
+    assert_eq!(canonical_capacity(&history), larger_capacity);
     assert_eq!(closed.usage().work(RenderWork::ImageIdentityDrops), 2);
     assert_eq!(
         cpu.snapshot()
