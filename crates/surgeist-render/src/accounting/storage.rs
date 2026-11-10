@@ -127,18 +127,28 @@ impl Drop for DisposalStart<'_> {
 }
 
 /// A complete standalone result with preparation-only custody.
-/// Automatic field order destroys the mandatory value before both actual leases.
+/// Automatic field order destroys the value, then second and first custody.
 pub(crate) struct PreparationValue<T> {
     value: T,
-    backing: [Option<PreparationHold>; 2],
+    second: Option<PreparationHold>,
+    first: Option<PreparationHold>,
 }
 impl<T> PreparationValue<T> {
     pub(crate) fn new(value: T, backing: [Option<PreparationHold>; 2]) -> Self {
-        Self { value, backing }
+        let [first, second] = backing;
+        Self {
+            value,
+            second,
+            first,
+        }
     }
     pub(crate) fn into_retained(self) -> T {
-        let Self { value, backing } = self;
-        for hold in backing.into_iter().flatten() {
+        let Self {
+            value,
+            second,
+            first,
+        } = self;
+        for hold in [first, second].into_iter().flatten() {
             hold.retain();
         }
         value
