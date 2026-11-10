@@ -7,8 +7,10 @@ use std::thread::ThreadId;
 
 use super::{ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
 use crate::{
-    Arguments, Callback, Completion, Error, Exception, ExceptionPhase, Intrinsic, Primitive, Realm,
-    RealmIdentity, RealmKey, Root, RootIdentity, Scope, Value, ValueKind, WellKnownSymbol,
+    Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
+    ConstructorCompletion, Error, Exception, ExceptionPhase, FunctionMetadata, Intrinsic,
+    Primitive, PrototypeResolver, Realm, RealmIdentity, RealmKey, Root, RootIdentity, Scope, Value,
+    ValueKind, WellKnownSymbol,
 };
 
 #[cfg(test)]
@@ -31,9 +33,21 @@ struct RootEntry {
     value: v8::Global<v8::Value>,
 }
 
+enum NativeCallback {
+    Callable(Callback),
+    Constructor(ConstructorCallback),
+}
+
 struct CallbackLease {
-    callback: Callback,
+    callback: NativeCallback,
     realm: RealmKey,
+}
+
+#[derive(Clone, Copy)]
+enum CallbackRole {
+    Callable = 0,
+    ConstructorTarget = 1,
+    ConstructorTrap = 2,
 }
 
 struct CallbackEntry {
@@ -325,8 +339,20 @@ impl super::Engine for Engine {
             let prototype = v8::Local::<v8::Object>::try_from(prototype)
                 .map_err(|_| Error::BackendUnavailable)?;
             let array_values = pristine_method(scope, prototype, "values")?;
+            let global = context.global(scope);
+            let object_constructor = pristine_method(scope, global, "Object")?;
+            let function_constructor = pristine_method(scope, global, "Function")?;
+            let prototype_name =
+                v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
+            let function_prototype = function_constructor
+                .get(scope, prototype_name.into())
+                .ok_or(Error::BackendUnavailable)?;
+            let function_prototype = v8::Local::<v8::Object>::try_from(function_prototype)
+                .map_err(|_| Error::BackendUnavailable)?;
+            let bind = pristine_method(scope, function_prototype, "bind")?;
+            let construct = pristine_method(scope, reflect, "construct")?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(3) {
+            if !template.set_internal_field_count(6) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -335,11 +361,21 @@ impl super::Engine for Engine {
             if !intrinsics.set_internal_field(0, setter.into())
                 || !intrinsics.set_internal_field(1, array_values.into())
                 || !intrinsics.set_internal_field(2, set_prototype.into())
+                || !intrinsics.set_internal_field(3, bind.into())
+                || !intrinsics.set_internal_field(4, construct.into())
+                || !intrinsics.set_internal_field(5, object_constructor.into())
             {
                 return Err(Error::BackendUnavailable);
             }
             v8::Global::new(scope, intrinsics)
         };
+        // Context-owned JS edges preserve the intrinsic bundle after the last
+        // external Realm lease disappears. The Rust slot owns only a plain key.
+        let local_intrinsics = v8::Local::new(scope, &intrinsics);
+        context.set_embedder_data(0, local_intrinsics.into());
+        if context.set_slot(Rc::new(realm.0.key)).is_some() {
+            return Err(Error::BackendUnavailable);
+        }
         self.contexts.insert(
             index,
             ContextEntry {
@@ -438,6 +474,113 @@ impl Entered<'_, '_, '_> {
         }
         result
     }
+    fn native_function(
+        &mut self,
+        callback: NativeCallback,
+        metadata: Option<FunctionMetadata<'_>>,
+    ) -> Result<Root, Error> {
+        self.check_active()?;
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, intrinsics| {
+            let name = metadata
+                .map(|metadata| string(scope, metadata.name))
+                .transpose()?;
+            let id = roots
+                .next_callback
+                .get()
+                .checked_add(1)
+                .ok_or(Error::IdentityExhausted)?;
+            roots.next_callback.set(id);
+            let is_constructor = matches!(callback, NativeCallback::Constructor(_));
+            let lease = Rc::new(CallbackLease { callback, realm });
+            let context = scope.get_current_context();
+            let role = if is_constructor {
+                CallbackRole::ConstructorTarget
+            } else {
+                CallbackRole::Callable
+            };
+            let data = callback_data(scope, context, intrinsics, id, role)?;
+            let function = v8::Function::builder(callback_trampoline)
+                .data(data.into())
+                // Native template metadata narrows internally. Public metadata
+                // is installed independently as an exact own data property.
+                .length(0)
+                .constructor_behavior(if is_constructor {
+                    v8::ConstructorBehavior::Allow
+                } else {
+                    v8::ConstructorBehavior::Throw
+                })
+                .build(scope)
+                .ok_or(Error::BackendUnavailable)?;
+            if let Some(name) = name {
+                function.set_name(name);
+            }
+            if let Some(metadata) = metadata {
+                let key = v8::String::new(scope, "length").ok_or(Error::BackendUnavailable)?;
+                // Every u32 integer is exactly representable by binary64.
+                let length = v8::Number::new(scope, f64::from(metadata.length));
+                let mut descriptor =
+                    v8::PropertyDescriptor::new_from_value_writable(length.into(), false);
+                descriptor.set_enumerable(false);
+                descriptor.set_configurable(true);
+                if function.define_property(scope, key.into(), &descriptor) != Some(true) {
+                    return Err(Error::BackendUnavailable);
+                }
+            }
+            let (value, lifetime_function) = if is_constructor {
+                let data = callback_data(
+                    scope,
+                    context,
+                    intrinsics,
+                    id,
+                    CallbackRole::ConstructorTrap,
+                )?;
+                let trap = v8::Function::builder(callback_trampoline)
+                    .data(data.into())
+                    .constructor_behavior(v8::ConstructorBehavior::Throw)
+                    .build(scope)
+                    .ok_or(Error::BackendUnavailable)?;
+                let handler = private_handler(scope, "construct", trap)?;
+                let proxy = v8::Proxy::new(scope, function.into(), handler)
+                    .ok_or(Error::BackendUnavailable)?;
+                // Never expose the private target through its default prototype.
+                let name = v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
+                let prototype = function
+                    .get(scope, name.into())
+                    .ok_or(Error::BackendUnavailable)?;
+                let prototype = v8::Local::<v8::Object>::try_from(prototype)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                let key = v8::String::new(scope, "constructor").ok_or(Error::BackendUnavailable)?;
+                let mut descriptor =
+                    v8::PropertyDescriptor::new_from_value_writable(proxy.into(), true);
+                descriptor.set_enumerable(false);
+                descriptor.set_configurable(true);
+                if prototype.define_property(scope, key.into(), &descriptor) != Some(true) {
+                    return Err(Error::BackendUnavailable);
+                }
+                (v8::Local::<v8::Value>::from(proxy), trap)
+            } else {
+                (function.into(), function)
+            };
+            let weak_lease = Rc::downgrade(&lease);
+            let weak = v8::Weak::with_guaranteed_finalizer(
+                scope,
+                lifetime_function,
+                Box::new(move || drop(lease)),
+            );
+            roots
+                .callbacks
+                .try_borrow_mut()
+                .map_err(|_| roots.conflict())?
+                .insert(
+                    id,
+                    CallbackEntry {
+                        lease: weak_lease,
+                        _function: weak,
+                    },
+                );
+            roots.retain(scope, realm, value)
+        })
+    }
 }
 
 impl Operations for Entered<'_, '_, '_> {
@@ -467,53 +610,81 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn function(&mut self, callback: &Callback) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, intrinsics| {
-            let id = roots
-                .next_callback
-                .get()
-                .checked_add(1)
-                .ok_or(Error::IdentityExhausted)?;
-            roots.next_callback.set(id);
-            let lease = Rc::new(CallbackLease {
-                callback: callback.clone(),
-                realm,
-            });
-            let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(3) {
-                return Err(Error::BackendUnavailable);
-            }
-            let data = template
-                .new_instance(scope)
-                .ok_or(Error::BackendUnavailable)?;
-            let identity = v8::Integer::new_from_unsigned(scope, id);
-            let context = scope.get_current_context();
-            if !data.set_internal_field(0, identity.into())
-                || !data.set_internal_field(1, context.into())
-                || !data.set_internal_field(2, intrinsics.into())
-            {
-                return Err(Error::BackendUnavailable);
-            }
-            let function = v8::Function::builder(callback_trampoline)
-                .data(data.into())
-                .constructor_behavior(v8::ConstructorBehavior::Throw)
-                .build(scope)
-                .ok_or(Error::BackendUnavailable)?;
-            let weak_lease = Rc::downgrade(&lease);
-            let weak =
-                v8::Weak::with_guaranteed_finalizer(scope, function, Box::new(move || drop(lease)));
-            roots
-                .callbacks
-                .try_borrow_mut()
-                .map_err(|_| roots.conflict())?
-                .insert(
-                    id,
-                    CallbackEntry {
-                        lease: weak_lease,
-                        _function: weak,
-                    },
-                );
-            roots.retain(scope, realm, function.into())
-        })
+        self.native_function(NativeCallback::Callable(callback.clone()), None)
+    }
+
+    fn constructor(
+        &mut self,
+        callback: &ConstructorCallback,
+        metadata: FunctionMetadata<'_>,
+    ) -> Result<Root, Error> {
+        self.native_function(
+            NativeCallback::Constructor(callback.clone()),
+            Some(metadata),
+        )
+    }
+
+    fn constructor_prototype(
+        &mut self,
+        new_target: &Root,
+        fallback: &PrototypeResolver,
+    ) -> Result<Root, Error> {
+        self.validate_root(new_target)?;
+        let shared_roots = self.roots.clone();
+        let result = self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                let target = v8::Local::<v8::Object>::try_from(roots.local(scope, new_target)?)
+                    .map_err(|_| Error::ExpectedFunction)?;
+                // The one original Get occurs only when the typed handler requests
+                // this transition, after its argument conversions have completed.
+                let name = v8::String::new(scope, "prototype").ok_or(Error::BackendUnavailable)?;
+                let prototype = target
+                    .get(scope, name.into())
+                    .ok_or(Error::BackendUnavailable)?;
+                roots.available()?;
+                if prototype.is_object() {
+                    return roots.retain(scope, realm, prototype);
+                }
+                let context = constructor_realm(scope, roots, intrinsics, target)?;
+                roots.available()?;
+                let key = context.get_slot::<RealmKey>().ok_or(Error::ForeignOwner)?;
+                if key.owner != roots.owner {
+                    return Err(Error::ForeignOwner);
+                }
+                // The private typed key proves this is a context initialized by this
+                // owner, including the embedder-data slot's initialization precondition.
+                let bundle = context
+                    .get_embedder_data(scope, 0)
+                    .ok_or(Error::BackendUnavailable)?;
+                let bundle = v8::Local::<v8::Object>::try_from(bundle)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                let scope = &mut v8::ContextScope::new(scope, context);
+                let mut entered = Entered {
+                    scope,
+                    roots: shared_roots,
+                    realm: *key,
+                    intrinsics: bundle,
+                };
+                let result = fallback(&mut Scope {
+                    operations: &mut entered,
+                    invariant: std::marker::PhantomData,
+                })
+                .map(|value| value.root);
+                entered.check_active()?;
+                let root = result?;
+                let prototype = roots.local(entered.scope, &root)?;
+                if !prototype.is_object() {
+                    return Err(Error::ExpectedObject);
+                }
+                Ok(root)
+            },
+        );
+        match result {
+            Err(Error::Exception(exception)) => Err(Error::Exception(exception)),
+            Err(error) => Err(self.roots.fail(error)),
+            result => result,
+        }
     }
 
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error> {
@@ -975,6 +1146,13 @@ fn invoke_callback<'s>(
         v8::Local::<v8::Value>::try_from(intrinsics).map_err(|_| Error::BackendUnavailable)?;
     let intrinsics =
         v8::Local::<v8::Object>::try_from(intrinsics).map_err(|_| Error::BackendUnavailable)?;
+    let role = data
+        .get_internal_field(scope, 3)
+        .ok_or(Error::BackendUnavailable)?;
+    let role = v8::Local::<v8::Value>::try_from(role).map_err(|_| Error::BackendUnavailable)?;
+    let role = v8::Local::<v8::Uint32>::try_from(role)
+        .map_err(|_| Error::BackendUnavailable)?
+        .value();
     // Only a Rust Weak clone leaves the borrow. Upgrading, user invocation,
     // SDK calls and finalizer-driven capture drops happen after it ends.
     let lease = roots
@@ -996,50 +1174,283 @@ fn invoke_callback<'s>(
         intrinsics,
     };
     entered.check_active()?;
-    let receiver = Value {
-        root: roots.retain(entered.scope, lease.realm, arguments.this().into())?,
-        invariant: std::marker::PhantomData,
-    };
-    let mut values = Vec::new();
-    let count = usize::try_from(arguments.length()).map_err(|_| Error::TooManyArguments)?;
-    values
-        .try_reserve_exact(count)
-        .map_err(|_| Error::Allocation)?;
-    for index in 0..arguments.length() {
-        values.push(Value {
-            root: roots.retain(entered.scope, lease.realm, arguments.get(index))?,
-            invariant: std::marker::PhantomData,
-        });
-    }
     enum OwnedCompletion {
         Undefined,
         Return(Root),
+        Construct(Root),
         Throw(Root),
     }
-    // Erase the scope brand only inside this backend, after the callback has
-    // returned. Its public completion can never escape to an outside caller.
-    let outcome = match (lease.callback.0)(
-        &mut Scope {
-            operations: &mut entered,
-            invariant: std::marker::PhantomData,
-        },
-        Arguments { receiver, values },
-    ) {
-        Ok(Completion::Undefined) => Ok(OwnedCompletion::Undefined),
-        Ok(Completion::Return(value)) => Ok(OwnedCompletion::Return(value.root)),
-        Ok(Completion::Throw(value)) => Ok(OwnedCompletion::Throw(value.root)),
-        Err(Error::Exception(exception)) => Ok(OwnedCompletion::Throw(exception.value)),
-        Err(error) => Err(error),
+    let outcome = match (&lease.callback, role) {
+        (NativeCallback::Callable(callback), 0) => {
+            let receiver = Value {
+                root: roots.retain(entered.scope, lease.realm, arguments.this().into())?,
+                invariant: std::marker::PhantomData,
+            };
+            let mut values = Vec::new();
+            let count = usize::try_from(arguments.length()).map_err(|_| Error::TooManyArguments)?;
+            values
+                .try_reserve_exact(count)
+                .map_err(|_| Error::Allocation)?;
+            for index in 0..arguments.length() {
+                values.push(Value {
+                    root: roots.retain(entered.scope, lease.realm, arguments.get(index))?,
+                    invariant: std::marker::PhantomData,
+                });
+            }
+            match (callback.0)(
+                &mut Scope {
+                    operations: &mut entered,
+                    invariant: std::marker::PhantomData,
+                },
+                Arguments { receiver, values },
+            ) {
+                Ok(Completion::Undefined) => Ok(OwnedCompletion::Undefined),
+                Ok(Completion::Return(value)) => Ok(OwnedCompletion::Return(value.root)),
+                Ok(Completion::Throw(value)) => Ok(OwnedCompletion::Throw(value.root)),
+                Err(error) => Err(error),
+            }
+        }
+        (NativeCallback::Constructor(_), 1) => {
+            let error = entered.type_error(
+                &"Constructor requires 'new'"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )?;
+            Ok(OwnedCompletion::Throw(error))
+        }
+        (NativeCallback::Constructor(callback), 2) => {
+            if arguments.length() != 3 {
+                return Err(Error::BackendUnavailable);
+            }
+            let list = v8::Local::<v8::Array>::try_from(arguments.get(1))
+                .map_err(|_| Error::BackendUnavailable)?;
+            let count = usize::try_from(list.length()).map_err(|_| Error::TooManyArguments)?;
+            if count > i32::MAX as usize {
+                return Err(Error::TooManyArguments);
+            }
+            let mut values = Vec::new();
+            values
+                .try_reserve_exact(count)
+                .map_err(|_| Error::Allocation)?;
+            for index in 0..list.length() {
+                let value = list
+                    .get_index(entered.scope, index)
+                    .ok_or(Error::BackendUnavailable)?;
+                values.push(Value {
+                    root: roots.retain(entered.scope, lease.realm, value)?,
+                    invariant: std::marker::PhantomData,
+                });
+            }
+            let new_target = Value {
+                root: roots.retain(entered.scope, lease.realm, arguments.get(2))?,
+                invariant: std::marker::PhantomData,
+            };
+            let outcome = (callback.0.action)(
+                &mut Scope {
+                    operations: &mut entered,
+                    invariant: std::marker::PhantomData,
+                },
+                ConstructorArguments {
+                    values,
+                    new_target,
+                    fallback: callback.0.fallback.clone(),
+                },
+            );
+            match outcome {
+                Ok(ConstructorCompletion::Return(value)) => {
+                    Ok(OwnedCompletion::Construct(value.root))
+                }
+                Ok(ConstructorCompletion::Throw(value)) => Ok(OwnedCompletion::Throw(value.root)),
+                Err(error) => Err(error),
+            }
+        }
+        _ => Err(Error::BackendUnavailable),
     };
     entered.check_active()?;
-    match outcome? {
-        OwnedCompletion::Undefined => Ok(CallbackOutcome::Undefined),
-        OwnedCompletion::Return(root) => {
+    match outcome {
+        Ok(OwnedCompletion::Undefined) => Ok(CallbackOutcome::Undefined),
+        Ok(OwnedCompletion::Return(root)) => {
             Ok(CallbackOutcome::Return(roots.local(entered.scope, &root)?))
         }
-        OwnedCompletion::Throw(root) => {
+        Ok(OwnedCompletion::Construct(root)) => {
+            let value = roots.local(entered.scope, &root)?;
+            if value.is_object() {
+                Ok(CallbackOutcome::Return(value))
+            } else {
+                Err(Error::ExpectedObject)
+            }
+        }
+        Ok(OwnedCompletion::Throw(root)) => {
             Ok(CallbackOutcome::Throw(roots.local(entered.scope, &root)?))
         }
+        Err(Error::Exception(exception)) => Ok(CallbackOutcome::Throw(
+            roots.local(entered.scope, exception.value())?,
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+fn callback_data<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    context: v8::Local<v8::Context>,
+    intrinsics: v8::Local<v8::Object>,
+    id: u32,
+    role: CallbackRole,
+) -> Result<v8::Local<'s, v8::Object>, Error> {
+    let template = v8::ObjectTemplate::new(scope);
+    if !template.set_internal_field_count(4) {
+        return Err(Error::BackendUnavailable);
+    }
+    let data = template
+        .new_instance(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    let id = v8::Integer::new_from_unsigned(scope, id);
+    let role = v8::Integer::new_from_unsigned(scope, role as u32);
+    if !data.set_internal_field(0, id.into())
+        || !data.set_internal_field(1, context.into())
+        || !data.set_internal_field(2, intrinsics.into())
+        || !data.set_internal_field(3, role.into())
+    {
+        return Err(Error::BackendUnavailable);
+    }
+    Ok(data)
+}
+
+fn private_handler<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    name: &str,
+    function: v8::Local<'s, v8::Function>,
+) -> Result<v8::Local<'s, v8::Object>, Error> {
+    let key = v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
+    let null = v8::null(scope);
+    Ok(v8::Object::with_prototype_and_properties(
+        scope,
+        null.into(),
+        &[key.into()],
+        &[function.into()],
+    ))
+}
+
+fn constructor_realm<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    roots: &Roots,
+    intrinsics: v8::Local<v8::Object>,
+    target: v8::Local<v8::Object>,
+) -> Result<v8::Local<'s, v8::Context>, Error> {
+    let mut target = v8::Local::<v8::Value>::from(target);
+    while target.is_proxy() {
+        roots.available()?;
+        let proxy =
+            v8::Local::<v8::Proxy>::try_from(target).map_err(|_| Error::BackendUnavailable)?;
+        if proxy.is_revoked() {
+            let message = v8::String::new(scope, "Cannot resolve a revoked constructor realm")
+                .ok_or(Error::BackendUnavailable)?;
+            let error = v8::Exception::type_error(scope, message);
+            scope.throw_exception(error);
+            return Err(Error::BackendUnavailable);
+        }
+        target = proxy.get_target(scope);
+    }
+    let target = v8::Local::<v8::Object>::try_from(target).map_err(|_| Error::ExpectedFunction)?;
+    // bind reads GetPrototype and CopyNameAndLength. Sanitize name/length reads
+    // to ordinary own DATA values, with no getter or descriptor-trap invocation.
+    let get = v8::Function::builder(sanitized_constructor_get)
+        .data(target.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
+        .build(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    let handler = private_handler(scope, "get", get)?;
+    let sanitized = v8::Proxy::new(scope, target, handler).ok_or(Error::BackendUnavailable)?;
+    let bind = captured_method(scope, intrinsics, 3)?;
+    let undefined = v8::undefined(scope);
+    let shell = bind
+        .call(scope, sanitized.into(), &[undefined.into()])
+        .ok_or(Error::BackendUnavailable)?;
+    roots.available()?;
+    let shell = v8::Local::<v8::Object>::try_from(shell).map_err(|_| Error::BackendUnavailable)?;
+    // The fresh bound shell has no own prototype. Never force through a guest
+    // target's potentially frozen data property and violate Proxy invariants.
+    let get = v8::Function::builder(undefined_constructor_get)
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
+        .build(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    let handler = private_handler(scope, "get", get)?;
+    let forcing = v8::Proxy::new(scope, shell, handler).ok_or(Error::BackendUnavailable)?;
+    let construct = captured_method(scope, intrinsics, 4)?;
+    let object = captured_method(scope, intrinsics, 5)?;
+    let arguments = v8::Array::new(scope, 0);
+    let probe = construct
+        .call(
+            scope,
+            undefined.into(),
+            &[object.into(), arguments.into(), forcing.into()],
+        )
+        .ok_or(Error::BackendUnavailable)?;
+    roots.available()?;
+    let probe = v8::Local::<v8::Object>::try_from(probe).map_err(|_| Error::BackendUnavailable)?;
+    let prototype = probe
+        .get_prototype(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    let prototype =
+        v8::Local::<v8::Object>::try_from(prototype).map_err(|_| Error::BackendUnavailable)?;
+    // The probe object can have A's map context. Its forced intrinsic fallback
+    // prototype is B.Object.prototype and carries the true function realm B.
+    prototype
+        .get_creation_context(scope)
+        .ok_or(Error::BackendUnavailable)
+}
+
+fn undefined_constructor_get(
+    _scope: &mut v8::PinScope,
+    _arguments: v8::FunctionCallbackArguments,
+    mut result: v8::ReturnValue,
+) {
+    result.set_undefined();
+}
+
+fn sanitized_constructor_get(
+    scope: &mut v8::PinScope,
+    arguments: v8::FunctionCallbackArguments,
+    mut result: v8::ReturnValue,
+) {
+    let Some(roots) = scope.get_slot::<Weak<Roots>>().and_then(Weak::upgrade) else {
+        scope.terminate_execution();
+        return;
+    };
+    if roots.available().is_err() {
+        return;
+    }
+    let Ok(target) = v8::Local::<v8::Object>::try_from(arguments.data()) else {
+        roots.fail(Error::BackendUnavailable);
+        return;
+    };
+    let Ok(key) = v8::Local::<v8::Name>::try_from(arguments.get(1)) else {
+        roots.fail(Error::ExpectedPropertyKey);
+        return;
+    };
+    let Some(descriptor) = target.get_own_property_descriptor(scope, key) else {
+        return;
+    };
+    if roots.available().is_err() || descriptor.is_undefined() {
+        return;
+    }
+    let Ok(descriptor) = v8::Local::<v8::Object>::try_from(descriptor) else {
+        roots.fail(Error::BackendUnavailable);
+        return;
+    };
+    let Some(key) = v8::String::new(scope, "value") else {
+        roots.fail(Error::BackendUnavailable);
+        return;
+    };
+    // Do not read an inherited descriptor.value getter for an accessor record.
+    if descriptor.has_own_property(scope, key.into()) != Some(true) {
+        return;
+    }
+    if roots.available().is_err() {
+        return;
+    }
+    if let Some(value) = descriptor.get(scope, key.into()) {
+        result.set(value);
     }
 }
 

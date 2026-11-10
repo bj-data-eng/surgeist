@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use surgeist_bindings_js::{ConstructorCallback, ConstructorCompletion, FunctionMetadata};
 use surgeist_bindings_js::{
     Intrinsic, ObjectPrototype, PropertyDescriptor, PropertyKey, WellKnownSymbol,
 };
@@ -1554,9 +1555,559 @@ fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
     Ok(())
 }
 
+fn install_constructor(
+    execution: &mut Execution<'_>,
+    realm: &Realm,
+    name: &str,
+    length: u32,
+    callback: &ConstructorCallback,
+) -> Result<(), Error> {
+    execution.in_realm(realm, |scope| {
+        let function = scope.constructor(
+            callback,
+            FunctionMetadata {
+                name: &units(name),
+                length,
+            },
+        )?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units(name)), &function)
+    })?
+}
+
+fn fixture_constructor(
+    effects: Rc<Cell<usize>>,
+    fallback_calls: Rc<Cell<usize>>,
+    receipt: DropReceipt,
+) -> ConstructorCallback {
+    ConstructorCallback::new(
+        move |scope| {
+            fallback_calls.set(fallback_calls.get() + 1);
+            let global = scope.global()?;
+            scope.get(&global, PropertyKey::String(&units("fixturePrototype")))
+        },
+        move |scope, arguments| {
+            let _capture = &receipt;
+            let argument = match arguments.get(0) {
+                Some(value) => scope.integer(value, IntegerKind::Long, IntegerMode::Wrap)?,
+                None => IntegerValue::Long(0),
+            };
+            // Actual typed adapters convert their arguments BEFORE this
+            // consuming prototype-selection transition and before native action.
+            let invocation = arguments.select_prototype(scope)?;
+            scope.check_active()?;
+            effects.set(effects.get() + 1);
+            let object = scope.object(ObjectPrototype::Object(invocation.prototype()))?;
+            let global = scope.global()?;
+            let realm = scope.get(&global, PropertyKey::String(&units("realmLabel")))?;
+            scope.set(&object, PropertyKey::String(&units("nativeRealm")), &realm)?;
+            scope.set(
+                &object,
+                PropertyKey::String(&units("newTarget")),
+                invocation.new_target(),
+            )?;
+            let IntegerValue::Long(argument) = argument else {
+                return Err(Error::BackendUnavailable);
+            };
+            let value = scope.primitive(Primitive::Number(f64::from(argument)))?;
+            scope.set(&object, PropertyKey::String(&units("argument")), &value)?;
+            Ok(ConstructorCompletion::Return(object))
+        },
+    )
+}
+
+fn declared_constructors_preserve_calls_metadata_and_installed_descriptors(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    evaluate(
+        &mut execution,
+        &realm,
+        "globalThis.realmLabel = 'A'; globalThis.fixturePrototype = {}",
+    )?;
+    let effects = Rc::new(Cell::new(0));
+    let fallback = Rc::new(Cell::new(0));
+    let drops = Rc::new(Cell::new(0));
+    let callback = fixture_constructor(effects.clone(), fallback, DropReceipt(drops));
+    install_constructor(&mut execution, &realm, "Declared", 2, &callback)?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "Declared.name === 'Declared' && Declared.length === 2 && Declared.prototype.constructor === Declared"
+        )?,
+        units("true")
+    );
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "['name', 'length'].every(key => { const d = Object.getOwnPropertyDescriptor(Declared, key); return !d.writable && !d.enumerable && d.configurable; })"
+        )?,
+        units("true")
+    );
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "try { Declared(); false } catch (error) { error instanceof TypeError }"
+        )?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 0);
+    let entries = Rc::new(Cell::new(0));
+    let observed_entries = entries.clone();
+    let guard = ConstructorCallback::new(
+        |scope| scope.object(ObjectPrototype::Default),
+        move |_, _| {
+            observed_entries.set(observed_entries.get() + 1);
+            Err(Error::BackendUnavailable)
+        },
+    );
+    install_constructor(&mut execution, &realm, "Guarded", 0, &guard)?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "try { Guarded.call({}, 1); false } catch (error) { error instanceof TypeError }"
+        )?,
+        units("true")
+    );
+    assert_eq!(
+        entries.get(),
+        0,
+        "plain calls must not enter the handler at all"
+    );
+    execution.in_realm(&realm, |scope| {
+        let global = scope.global()?;
+        let function = scope.get(&global, PropertyKey::String(&units("Declared")))?;
+        let prototype = scope.object(ObjectPrototype::Default)?;
+        scope.define_property(
+            &prototype,
+            PropertyKey::String(&units("constructor")),
+            PropertyDescriptor::Data {
+                value: &function,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        )?;
+        scope.define_property(
+            &function,
+            PropertyKey::String(&units("prototype")),
+            PropertyDescriptor::Data {
+                value: &prototype,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        )?;
+        let units = [0xd800, 0, 0xdc00];
+        let exact = scope.constructor(
+            &callback,
+            FunctionMetadata {
+                name: &units,
+                length: 3,
+            },
+        )?;
+        let name = scope.get(&exact, PropertyKey::String(&[110, 97, 109, 101]))?;
+        assert_eq!(scope.to_utf16(&name)?, units);
+        Ok::<_, Error>(())
+    })??;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "(() => { const d = Object.getOwnPropertyDescriptor(Declared, 'prototype'); const value = new Declared(7); return !d.writable && !d.enumerable && !d.configurable && Object.getPrototypeOf(value) === Declared.prototype && value.newTarget === Declared && value.nativeRealm === 'A' && value.argument === 7; })()"
+        )?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 1);
+    Ok(())
+}
+
+fn declared_constructor_length_is_exact_u32(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    let effects = Rc::new(Cell::new(0));
+    let observed_effects = effects.clone();
+    let callback = ConstructorCallback::new(
+        |scope| scope.object(ObjectPrototype::Default),
+        move |scope, arguments| {
+            let invocation = arguments.select_prototype(scope)?;
+            scope.check_active()?;
+            observed_effects.set(observed_effects.get() + 1);
+            Ok(ConstructorCompletion::Return(
+                scope.object(ObjectPrototype::Object(invocation.prototype()))?,
+            ))
+        },
+    );
+    let mut failures = Vec::new();
+    for length in [65_535_u32, 65_536, 1_000_000, u32::MAX] {
+        let before = effects.get();
+        let result = execution.in_realm(&realm, |scope| {
+            let function = match scope.constructor(&callback, FunctionMetadata { name: &units("LengthBoundary"), length }) {
+                Ok(function) => function,
+                Err(error) => return Ok::<_, Error>(format!("creation refused: {error}")),
+            };
+            let global = scope.global()?;
+            scope.set(&global, PropertyKey::String(&units("LengthBoundary")), &function)?;
+            // The public own descriptor and bind read observable metadata;
+            // construction still executes the real typed native callback.
+            let value = scope.evaluate(&units("(() => { const descriptor = Object.getOwnPropertyDescriptor(LengthBoundary, 'length'); const bound = LengthBoundary.bind(null, 1); let refused = false; try { LengthBoundary(); } catch (error) { refused = error instanceof TypeError; } const constructed = new LengthBoundary() instanceof LengthBoundary && new bound() instanceof LengthBoundary; return [descriptor.value, [descriptor.writable, descriptor.enumerable, descriptor.configurable].join(','), bound.length, refused, constructed].join('|'); })()"))?;
+            Ok(String::from_utf16_lossy(&scope.to_utf16(&value)?))
+        })??;
+        let expected = format!("{length}|false,false,true|{}|true|true", length - 1);
+        eprintln!("constructor length {length}: {result}");
+        if result != expected {
+            failures.push(format!(
+                "length {length}: expected {expected}, observed {result}"
+            ));
+        }
+        if effects.get() - before != 2 {
+            failures.push(format!(
+                "length {length}: expected two native constructions, observed {}",
+                effects.get() - before
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    Ok(())
+}
+
+fn declared_constructor_prototype_get_follows_conversions_and_preserves_abrupt(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    evaluate(
+        &mut execution,
+        &realm,
+        "globalThis.realmLabel = 'A'; globalThis.fixturePrototype = {}; globalThis.order = []; globalThis.prototypeReads = 0; globalThis.originalAbrupt = {}; globalThis.Other = new Proxy(function Other(){}, {get(target, key, receiver) { if (key === 'prototype') { order.push('prototype'); prototypeReads++; throw originalAbrupt; } return Reflect.get(target, key, receiver); }})",
+    )?;
+    let effects = Rc::new(Cell::new(0));
+    let callback = fixture_constructor(
+        effects.clone(),
+        Rc::new(Cell::new(0)),
+        DropReceipt(Rc::new(Cell::new(0))),
+    );
+    install_constructor(&mut execution, &realm, "Declared", 0, &callback)?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "try { Reflect.construct(Declared, [{valueOf() {order.push('convert'); return 1}}], Other); false } catch (error) { error === originalAbrupt && order.join(',') === 'convert,prototype' && prototypeReads === 1 }"
+        )?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 0);
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "order = []; try { Reflect.construct(Declared, [{valueOf() {order.push('convert'); throw originalAbrupt}}], Other); false } catch (error) { error === originalAbrupt && order.join(',') === 'convert' && prototypeReads === 1 }"
+        )?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 0);
+    let throws = ConstructorCallback::new(
+        |scope| scope.object(ObjectPrototype::Default),
+        |_scope, arguments| {
+            let (mut values, _) = arguments.into_parts();
+            Ok(ConstructorCompletion::Throw(
+                values.pop().ok_or(Error::BackendUnavailable)?,
+            ))
+        },
+    );
+    install_constructor(&mut execution, &realm, "ExplicitThrow", 1, &throws)?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "try { new ExplicitThrow(originalAbrupt); false } catch (error) { error === originalAbrupt }"
+        )?,
+        units("true")
+    );
+    Ok(())
+}
+
+fn declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_independent(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let a = execution.create_realm()?;
+    let b = execution.create_realm()?;
+    let driver = execution.create_realm()?;
+    evaluate(
+        &mut execution,
+        &a,
+        "globalThis.realmLabel = 'A'; globalThis.fixturePrototype = {fallbackRealm:'A'}",
+    )?;
+    evaluate(
+        &mut execution,
+        &b,
+        "globalThis.realmLabel = 'B'; globalThis.fixturePrototype = {fallbackRealm:'B'}",
+    )?;
+    let effects = Rc::new(Cell::new(0));
+    let fallback = Rc::new(Cell::new(0));
+    let drops = Rc::new(Cell::new(0));
+    let callback = fixture_constructor(
+        effects.clone(),
+        fallback.clone(),
+        DropReceipt(drops.clone()),
+    );
+    install_constructor(&mut execution, &a, "Declared", 1, &callback)?;
+    let (constructor, a_type_error) = execution.in_realm(&a, |scope| {
+        let global = scope.global()?;
+        let constructor = scope.get(&global, PropertyKey::String(&units("Declared")))?;
+        let error = scope.get(&global, PropertyKey::String(&units("TypeError")))?;
+        Ok::<_, Error>((scope.retain(&constructor), scope.retain(&error)))
+    })??;
+    execution.in_realm(&b, |scope| {
+        let global = scope.global()?;
+        let constructor = scope.import(&constructor)?;
+        let error = scope.import(&a_type_error)?;
+        scope.set(&global, PropertyKey::String(&units("fromA")), &constructor)?;
+        scope.set(&global, PropertyKey::String(&units("TypeErrorA")), &error)
+    })??;
+    evaluate(
+        &mut execution,
+        &b,
+        "globalThis.prototypeReads = 0; globalThis.extraDescriptorReads = 0; globalThis.extraPrototypeReads = 0; globalThis.metadataReads = 0; globalThis.argumentConversions = 0; globalThis.events = []; const originalConstruct = Reflect.construct; const reflectGet = Reflect.get; const bind = Function.prototype.bind; const freeze = Object.freeze; const define = Object.defineProperty; const getPrototype = Object.getPrototypeOf; globalThis.objectPrototype = {selected:'B-object'}; globalThis.objectTarget = new Proxy(function Other(){}, {get(target,key,receiver) { if (key === 'prototype') {prototypeReads++; events.push('prototype'); return objectPrototype;} return reflectGet(target,key,receiver); }}); const bound = bind.call(function BoundBase(){}, null); for (const key of ['name', 'length']) { define(bound, key, {get() {metadataReads++; throw 'metadata accessor must not run';}, configurable:true}); } define(bound, 'prototype', {get() {prototypeReads++; events.push('prototype'); freeze(bound); return 0;}, configurable:true}); globalThis.frozenTarget = new Proxy(bound, {get: reflectGet, getOwnPropertyDescriptor() {extraDescriptorReads++; throw 'unexpected descriptor trap';}, getPrototypeOf() {extraPrototypeReads++; throw 'unexpected prototype trap';}}); const inner = new Proxy(function DeepBase(){}, {}); globalThis.boundProxyTarget = bind.call(inner, null); define(boundProxyTarget, 'prototype', {value: 0, writable:false, configurable:false}); globalThis.launch = mode => { events.length = 0; const target = mode === 'object' ? objectTarget : mode === 'frozen' ? frozenTarget : boundProxyTarget; const result = originalConstruct(fromA, [{valueOf() {argumentConversions++; events.push('convert'); return 9;}}], target); return result.nativeRealm === 'A' && result.newTarget === target && result.argument === 9 && getPrototype(result) === (mode === 'object' ? objectPrototype : fixturePrototype) && extraDescriptorReads === 0 && extraPrototypeReads === 0 && metadataReads === 0 && (mode === 'bound' || events.join(',') === 'convert,prototype'); }; globalThis.plainCall = () => { try { fromA() } catch (error) { return error instanceof TypeErrorA && !(error instanceof TypeError); } }; globalThis.poison = () => { for (const key of ['get', 'getOwnPropertyDescriptor', 'getPrototypeOf', 'construct', 'apply', 'value']) { define(Object.prototype, key, {get() { throw 'inherited handler/descriptor pollution'; }, configurable:true}); } Reflect.construct = Function.prototype.bind = () => {throw 'replaced intrinsic';}; globalThis.Object = null; }; 0",
+    )?;
+    // Create a Proxy and then its bound shell in A around a function from B.
+    // The bound object's allocation context A is NOT its true function realm B.
+    let b_target = execution.in_realm(&b, |scope| {
+        let value = scope.evaluate(&units("function CrossRealmTarget(){}; CrossRealmTarget"))?;
+        Ok::<_, Error>(scope.retain(&value))
+    })??;
+    execution.in_realm(&a, |scope| {
+        let global = scope.global()?;
+        let target = scope.import(&b_target)?;
+        scope.set(&global, PropertyKey::String(&units("targetFromB")), &target)
+    })??;
+    let cross_bound = execution.in_realm(&a, |scope| {
+        let value = scope.evaluate(&units("globalThis.crossBound = Function.prototype.bind.call(new Proxy(targetFromB, {}), null); Object.defineProperty(crossBound, 'prototype', {value:0, writable:false, configurable:false}); Object.defineProperty(crossBound, 'name', {value:{toString() {throw 'name data must not coerce';}}, configurable:false}); Object.defineProperty(crossBound, 'length', {value:{valueOf() {throw 'length data must not coerce';}}, configurable:false}); crossBound"))?;
+        Ok::<_, Error>(scope.retain(&value))
+    })??;
+    execution.in_realm(&b, |scope| {
+        let global = scope.global()?;
+        let value = scope.import(&cross_bound)?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("boundProxyTarget")),
+            &value,
+        )
+    })??;
+    drop(b_target);
+    drop(cross_bound);
+    let (launch, plain_call, poison) = execution.in_realm(&b, |scope| {
+        let global = scope.global()?;
+        let launch = scope.get(&global, PropertyKey::String(&units("launch")))?;
+        let plain = scope.get(&global, PropertyKey::String(&units("plainCall")))?;
+        let poison = scope.get(&global, PropertyKey::String(&units("poison")))?;
+        Ok::<_, Error>((
+            scope.retain(&launch),
+            scope.retain(&plain),
+            scope.retain(&poison),
+        ))
+    })??;
+    execution.in_realm(&driver, |scope| {
+        let global = scope.global()?;
+        for (name, root) in [
+            ("launchB", &launch),
+            ("plainB", &plain_call),
+            ("poisonB", &poison),
+        ] {
+            let value = scope.import(root)?;
+            scope.set(&global, PropertyKey::String(&units(name)), &value)?;
+        }
+        Ok::<_, Error>(())
+    })??;
+    // Poison A's inherited trap/descriptor fields too. The core's private
+    // handler objects must be null-prototype and descriptor.value must be own.
+    evaluate(
+        &mut execution,
+        &a,
+        "for (const key of ['get', 'getOwnPropertyDescriptor', 'getPrototypeOf', 'construct', 'apply', 'value']) { Object.defineProperty(Object.prototype, key, {get() {throw 'A inherited trap/descriptor pollution';}, configurable:true}); } Reflect.construct = Function.prototype.bind = () => {throw 'A replaced intrinsic';}; globalThis.Object = null;",
+    )?;
+    assert_eq!(
+        evaluate(&mut execution, &driver, "poisonB(); plainB()")?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 0);
+    drop(constructor);
+    drop(a_type_error);
+    drop(launch);
+    drop(plain_call);
+    drop(poison);
+    drop(callback);
+    drop(a);
+    drop(b);
+    execution.memory_pressure();
+    assert_eq!(
+        evaluate(&mut execution, &driver, "launchB('object')")?,
+        units("true")
+    );
+    assert_eq!(fallback.get(), 0);
+    assert_eq!(
+        evaluate(&mut execution, &driver, "launchB('frozen')")?,
+        units("true")
+    );
+    assert_eq!(fallback.get(), 1);
+    assert_eq!(
+        evaluate(&mut execution, &driver, "launchB('bound')")?,
+        units("true")
+    );
+    assert_eq!(fallback.get(), 2);
+    assert_eq!(effects.get(), 3);
+    assert_eq!(drops.get(), 0);
+    evaluate(&mut execution, &driver, "launchB = plainB = poisonB = null")?;
+    evaluate(&mut execution, &driver, "gc()")?;
+    execution.memory_pressure();
+    assert_eq!(drops.get(), 1);
+    Ok(())
+}
+
+fn declared_constructor_revocation_stops_before_fallback_and_native_action(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    evaluate(
+        &mut execution,
+        &realm,
+        "globalThis.realmLabel = 'A'; globalThis.fixturePrototype = {}; const bind = Function.prototype.bind; globalThis.duringGet = Proxy.revocable(function DuringGet(){}, {get(target,key,receiver) {if (key === 'prototype') {duringGet.revoke(); return 0;} return Reflect.get(target,key,receiver);}}); const inner = Proxy.revocable(function Inner(){}, {}); globalThis.revokedBound = bind.call(inner.proxy, null); inner.revoke(); 0",
+    )?;
+    let effects = Rc::new(Cell::new(0));
+    let fallback = Rc::new(Cell::new(0));
+    let callback = fixture_constructor(
+        effects.clone(),
+        fallback.clone(),
+        DropReceipt(Rc::new(Cell::new(0))),
+    );
+    install_constructor(&mut execution, &realm, "Declared", 0, &callback)?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "[duringGet.proxy, revokedBound].every(target => {try {Reflect.construct(Declared, [], target); return false;} catch (error) {return error instanceof TypeError;}})"
+        )?,
+        units("true")
+    );
+    assert_eq!(effects.get(), 0);
+    assert_eq!(fallback.get(), 0);
+    evaluate(
+        &mut execution,
+        &realm,
+        "globalThis.selectedBeforeRevoke = {}; globalThis.objectDuringGet = Proxy.revocable(function ObjectDuringGet(){}, {get(target,key,receiver) {if (key === 'prototype') {objectDuringGet.revoke(); return selectedBeforeRevoke;} return Reflect.get(target,key,receiver);}})",
+    )?;
+    assert_eq!(
+        evaluate(
+            &mut execution,
+            &realm,
+            "Object.getPrototypeOf(Reflect.construct(Declared, [], objectDuringGet.proxy)) === selectedBeforeRevoke"
+        )?,
+        units("true")
+    );
+    assert_eq!(
+        effects.get(),
+        1,
+        "an object prototype does not require GetFunctionRealm after revocation"
+    );
+    assert_eq!(fallback.get(), 0);
+    Ok(())
+}
+
+fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
+    for invalid_return in [false, true] {
+        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut execution = process.execution();
+        let realm = execution.create_realm()?;
+        let effects = Rc::new(Cell::new(0));
+        let observed = effects.clone();
+        let callback = ConstructorCallback::new(
+            move |scope| {
+                if invalid_return {
+                    scope.object(ObjectPrototype::Default)
+                } else {
+                    Err(Error::IntegerOutOfRange)
+                }
+            },
+            move |scope, arguments| {
+                let thrown = scope.string(&units("later throw"))?;
+                let result = arguments.select_prototype(scope);
+                if scope.check_active().is_ok() {
+                    observed.set(observed.get() + 1);
+                }
+                if invalid_return {
+                    result?;
+                    Ok(ConstructorCompletion::Return(
+                        scope.primitive(Primitive::Number(0.0))?,
+                    ))
+                } else {
+                    // The first host failure overrides this later guest throw.
+                    Ok(ConstructorCompletion::Throw(thrown))
+                }
+            },
+        );
+        install_constructor(&mut execution, &realm, "Declared", 0, &callback)?;
+        let error = evaluate(
+            &mut execution,
+            &realm,
+            "const target = (function(){}).bind(null); try { Reflect.construct(Declared, [], target) } catch (_) {} 'must not succeed'",
+        );
+        if invalid_return {
+            assert!(matches!(error, Err(Error::ExpectedObject)));
+            assert_eq!(effects.get(), 1);
+            assert!(matches!(
+                execution.create_realm(),
+                Err(Error::ExpectedObject)
+            ));
+        } else {
+            assert!(matches!(error, Err(Error::IntegerOutOfRange)));
+            assert_eq!(effects.get(), 0);
+            assert!(matches!(
+                execution.create_realm(),
+                Err(Error::IntegerOutOfRange)
+            ));
+        }
+    }
+    let drops = Rc::new(Cell::new(0));
+    {
+        let mut process = Process::bootstrap(EngineKind::V8)?;
+        let mut execution = process.execution();
+        let realm = execution.create_realm()?;
+        evaluate(
+            &mut execution,
+            &realm,
+            "globalThis.realmLabel = 'A'; globalThis.fixturePrototype = {}",
+        )?;
+        let callback = fixture_constructor(
+            Rc::new(Cell::new(0)),
+            Rc::new(Cell::new(0)),
+            DropReceipt(drops.clone()),
+        );
+        install_constructor(&mut execution, &realm, "Declared", 0, &callback)?;
+        drop(callback);
+        evaluate(
+            &mut execution,
+            &realm,
+            "Promise.resolve().then(() => new Declared())",
+        )?;
+        assert_eq!(drops.get(), 0);
+    }
+    assert_eq!(drops.get(), 1);
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
+    if std::env::args().nth(1).as_deref() == Some("--constructor-length") {
+        return declared_constructor_length_is_exact_u32(&mut process);
+    }
     assert!(matches!(
         Process::bootstrap(EngineKind::V8),
         Err(Error::OwnerAlreadyActive)
@@ -1585,6 +2136,13 @@ fn main() -> Result<(), Error> {
     descriptors_preserve_attributes_reentry_and_original_throws(&mut process)?;
     objects_prototypes_and_dense_arrays_preserve_identity(&mut process)?;
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
+    declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
+    declared_constructor_length_is_exact_u32(&mut process)?;
+    declared_constructor_prototype_get_follows_conversions_and_preserves_abrupt(&mut process)?;
+    declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_independent(
+        &mut process,
+    )?;
+    declared_constructor_revocation_stops_before_fallback_and_native_action(&mut process)?;
 
     scalar_construction_preserves_javascript_values(&mut process)?;
     value_classification_uses_language_types_without_guest_hooks(&mut process)?;
@@ -1619,6 +2177,7 @@ fn main() -> Result<(), Error> {
     drop(next);
     host_refusals_are_sticky_and_prevent_native_effects()?;
     new_object_paths_preserve_the_first_host_failure()?;
+    declared_constructor_host_refusals_are_terminal()?;
     scalar_operations_preserve_the_first_host_failure()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"

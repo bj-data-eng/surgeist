@@ -7,7 +7,8 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
 property operations, calls, original exception values, Web IDL primitive
-conversion, scoped Rust callbacks and explicit shared microtask checkpoints.
+conversion, scoped Rust callbacks, declared constructors and explicit shared
+microtask checkpoints.
 Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
 
@@ -45,7 +46,16 @@ remain confined to their scope unless explicitly retained. A callback returns a 
 undefined or an exact guest throw. A returned host error permanently refuses
 the owner. The SDK boxes primitive receivers and maps null/undefined to the
 function's creation-realm global; native adapters still validate brands.
-Functions are callable only; interface constructors require their own contract.
+`Scope::function` remains callable only. `Scope::constructor` uses a distinct
+`ConstructorCallback` with an exact UTF-16 name and full-u32 length. Its handler runs
+in the creation realm, converts arguments, then consumes `select_prototype` to
+read NewTarget.prototype once. A nonobject result resolves the registered
+same-interface prototype in NewTarget's function realm; native creation remains
+in the original realm. Ordinary calls throw TypeError before the handler.
+Construction requires an explicit object result or exact guest throw; a primitive
+return is a terminal host refusal. The adapter still owns native authority and
+interface algorithms. The backend's [qualified constructor path](PROVENANCE.md#declared-constructors)
+avoids allocating a platform receiver before conversion.
 
 Property operations take explicit `PropertyKey` values: exact UTF-16 names or
 existing String/Symbol values, without implicit key coercion. Complete data and

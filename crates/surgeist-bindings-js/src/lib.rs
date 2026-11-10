@@ -295,6 +295,177 @@ impl Callback {
     }
 }
 
+/// Exact declaration metadata for a native constructor function.
+#[derive(Clone, Copy)]
+pub struct FunctionMetadata<'name> {
+    /// Exact UTF-16 name, including unmatched surrogates.
+    pub name: &'name [u16],
+    /// Exact nonnegative own length metadata, preserving the full u32 range.
+    pub length: u32,
+}
+
+type PrototypeResolver =
+    Rc<dyn for<'scope> Fn(&mut Scope<'scope>) -> Result<Value<'scope>, Error> + 'static>;
+type ConstructorBody = dyn for<'scope> Fn(
+        &mut Scope<'scope>,
+        ConstructorArguments<'scope>,
+    ) -> Result<ConstructorCompletion<'scope>, Error>
+    + 'static;
+
+struct ConstructorBehavior {
+    fallback: PrototypeResolver,
+    action: Box<ConstructorBody>,
+}
+
+/// Shared declared-constructor behavior with a realm-specific prototype resolver.
+/// Ordinary calls throw TypeError before the handler runs. Construction requires
+/// an explicitly returned object or an original guest throw; there is no implicit
+/// acceptance of an engine-allocated receiver or native platform wrapper.
+#[derive(Clone)]
+pub struct ConstructorCallback(Rc<ConstructorBehavior>);
+
+impl ConstructorCallback {
+    /// The handler runs in the constructor's creation realm. It converts its
+    /// arguments, then consumes [`ConstructorArguments::select_prototype`] before
+    /// native action. If NewTarget.prototype is not an object, `fallback` runs
+    /// in NewTarget's authenticated function realm and returns that realm's
+    /// registered same-interface prototype. Native-global authentication remains
+    /// the binding adapter's responsibility; this API does not supply a DOM.
+    pub fn new(
+        fallback: impl for<'scope> Fn(&mut Scope<'scope>) -> Result<Value<'scope>, Error> + 'static,
+        action: impl for<'scope> Fn(
+            &mut Scope<'scope>,
+            ConstructorArguments<'scope>,
+        ) -> Result<ConstructorCompletion<'scope>, Error>
+        + 'static,
+    ) -> Self {
+        Self(Rc::new(ConstructorBehavior {
+            fallback: Rc::new(fallback),
+            action: Box::new(action),
+        }))
+    }
+}
+
+/// Supplied constructor arguments and authentic NewTarget. No platform receiver
+/// has been allocated by this boundary. Perform argument conversions before
+/// selecting the prototype, as required by the installed interface algorithm.
+///
+/// NewTarget cannot escape its scope:
+/// ```compile_fail
+/// use surgeist_bindings_js::{ConstructorCallback, ConstructorCompletion, Value};
+/// use std::{cell::RefCell, rc::Rc};
+/// let escaped: Rc<RefCell<Option<Value<'static>>>> = Rc::new(RefCell::new(None));
+/// let constructor = ConstructorCallback::new(
+///     |scope| scope.object(surgeist_bindings_js::ObjectPrototype::Default),
+///     move |_, arguments| {
+///         let (_, target) = arguments.into_parts();
+///         escaped.replace(Some(target));
+///         Err(surgeist_bindings_js::Error::BackendUnavailable)
+///     },
+/// );
+/// ```
+pub struct ConstructorArguments<'scope> {
+    values: Vec<Value<'scope>>,
+    new_target: Value<'scope>,
+    fallback: PrototypeResolver,
+}
+
+impl<'scope> ConstructorArguments<'scope> {
+    /// Number of supplied values, including explicit undefined.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    /// Whether no argument was supplied.
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    /// An omitted argument is None; explicit undefined remains a supplied value.
+    pub fn get(&self, index: usize) -> Option<&Value<'scope>> {
+        self.values.get(index)
+    }
+    /// Authentic NewTarget supplied by construction, without coercion.
+    pub fn new_target(&self) -> &Value<'scope> {
+        &self.new_target
+    }
+    /// Moves the values and authentic NewTarget out without selecting a prototype.
+    pub fn into_parts(self) -> (Vec<Value<'scope>>, Value<'scope>) {
+        (self.values, self.new_target)
+    }
+    /// Reads the original NewTarget.prototype once, preserving abrupt completion.
+    /// Consumption prevents repeating this helper on the same argument bundle.
+    /// The returned prototype is distinct from native creation-realm authority.
+    ///
+    /// The transition cannot be performed twice on one argument bundle:
+    /// ```compile_fail
+    /// use surgeist_bindings_js::{ConstructorCallback, ConstructorCompletion, ObjectPrototype};
+    /// let constructor = ConstructorCallback::new(
+    ///     |scope| scope.object(ObjectPrototype::Default),
+    ///     |scope, arguments| {
+    ///         let _first = arguments.select_prototype(scope)?;
+    ///         let _second = arguments.select_prototype(scope)?;
+    ///         Ok(ConstructorCompletion::Return(scope.object(ObjectPrototype::Default)?))
+    ///     },
+    /// );
+    /// ```
+    pub fn select_prototype(
+        self,
+        scope: &mut Scope<'scope>,
+    ) -> Result<ConstructorInvocation<'scope>, Error> {
+        let root = scope
+            .operations
+            .constructor_prototype(&self.new_target.root, &self.fallback)?;
+        let prototype = scope.value(root);
+        Ok(ConstructorInvocation {
+            values: self.values,
+            new_target: self.new_target,
+            prototype,
+        })
+    }
+}
+
+/// Constructor inputs after one prototype-selection transition. The handler
+/// remains in its original creation realm even when the selected prototype and
+/// NewTarget belong to another realm.
+pub struct ConstructorInvocation<'scope> {
+    values: Vec<Value<'scope>>,
+    new_target: Value<'scope>,
+    prototype: Value<'scope>,
+}
+
+impl<'scope> ConstructorInvocation<'scope> {
+    /// Number of supplied values, including explicit undefined.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    /// Whether no argument was supplied.
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    pub fn get(&self, index: usize) -> Option<&Value<'scope>> {
+        self.values.get(index)
+    }
+    /// Authentic NewTarget supplied by construction, without coercion.
+    pub fn new_target(&self) -> &Value<'scope> {
+        &self.new_target
+    }
+    /// The already-selected prototype, with no further guest property read.
+    pub fn prototype(&self) -> &Value<'scope> {
+        &self.prototype
+    }
+    pub fn into_parts(self) -> (Vec<Value<'scope>>, Value<'scope>, Value<'scope>) {
+        (self.values, self.new_target, self.prototype)
+    }
+}
+
+/// Explicit completion of a declared constructor. Return is checked to contain
+/// an object; a primitive is a terminal host refusal, not a default receiver.
+pub enum ConstructorCompletion<'scope> {
+    /// Return an explicitly created object, checked before SDK completion.
+    Return(Value<'scope>),
+    /// Throw the exact supplied guest value.
+    Throw(Value<'scope>),
+}
+
 /// Receiver and supplied arguments branded to the current callback scope.
 /// An omitted argument is `None`; an explicit `undefined` is a present value.
 ///
@@ -495,6 +666,17 @@ impl<'scope> Scope<'scope> {
     /// identity and preserves its own creation realm.
     pub fn function(&mut self, callback: &Callback) -> Result<Value<'scope>, Error> {
         let root = self.operations.function(callback)?;
+        Ok(self.value(root))
+    }
+
+    /// Creates a declared constructor with exact name/length metadata. Calls
+    /// without construction throw TypeError without invoking its handler.
+    pub fn constructor(
+        &mut self,
+        callback: &ConstructorCallback,
+        metadata: FunctionMetadata<'_>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self.operations.constructor(callback, metadata)?;
         Ok(self.value(root))
     }
 

@@ -1,6 +1,9 @@
 pub(crate) mod v8;
 
-use crate::{Callback, Error, Intrinsic, Primitive, Realm, Root, ValueKind, WellKnownSymbol};
+use crate::{
+    Callback, ConstructorCallback, Error, FunctionMetadata, Intrinsic, Primitive,
+    PrototypeResolver, Realm, Root, ValueKind, WellKnownSymbol,
+};
 
 #[derive(Clone, Copy)]
 pub(crate) enum PropertyKey<'a> {
@@ -67,6 +70,16 @@ pub(crate) trait Operations {
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
+    fn constructor(
+        &mut self,
+        callback: &ConstructorCallback,
+        metadata: FunctionMetadata<'_>,
+    ) -> Result<Root, Error>;
+    fn constructor_prototype(
+        &mut self,
+        new_target: &Root,
+        fallback: &PrototypeResolver,
+    ) -> Result<Root, Error>;
     fn global(&mut self) -> Result<Root, Error>;
     fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error>;
     fn set(&mut self, object: &Root, key: PropertyKey<'_>, value: &Root) -> Result<(), Error>;
