@@ -2439,3 +2439,113 @@ sources = [
   "html/grid/fri03_order_modified_grid.html",
   "html/grid-lanes/fri03_order_modified_lanes.html",
 ]
+
+[[records]]
+source = "html/block/block_align_baseline_child_margin_percent.html"
+source_sha256 = "bb1368935a045ce3121f9b6cde40308ffffd45e3023ab5f9de406f80df256d1b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "1f7a1b8b5150637b5801c575d2e09f9406a55926a117db1f9bc45ef3257005d5"
+content_box_ltr = "48266600e625cb079b97a9d372970e3b85afdb3fe3ab79ae60b94b6ca6ab579e"
+border_box_rtl = "edf63eec1827432a88c302311ac5d12d726deeeea207c622b0f80f1f40e2c3b2"
+content_box_rtl = "c76261bfe1c6d8f4e59d0a75d2a321b0c2527a958bb3060cf4b42171a6e20308"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_multiline.html"
+source_sha256 = "94d26d522287e72f4f438ee9456f64cd4eb96e45df387ec1e76a9a152f190ab1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "632eabd9a5bb851119e665ca1aa0470ecbb8587cb577d22a7fdc4487cb189e18"
+content_box_ltr = "291264a92079a29e931fe9d791489c88bf642a1349710e4fcb540f839ec76221"
+border_box_rtl = "95a4c4d32784125a069ddfe0d51bcf964e0b041dde46f2cadc1b579fa1eaeb67"
+content_box_rtl = "bd285f76e19b44f15a3cb71b0fb067d2cf6addc251ea2a270d015cabbe9e4007"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/block/fri04_sizing_math_functions.html"
+source_sha256 = "1ed272e0490b62572ef1034f8159bd304d299c4bd4795650a4ace3612ae3063a"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2f34787bf44762f0e78237b86c0fe0f2a91f2f9d7299532f528142499bb4b541"
+content_box_ltr = "85156ec22adf3e1d5f1e755e65fbb282eff059bea97ba19cc0e367ecd5d93612"
+border_box_rtl = "e65ead5b3b7a311545bbc5842ac690d531bfa3ef81ef355a1522c1cd4f96c996"
+content_box_rtl = "778bdba16f4d6e83472d901e67fa674f69a69a6a6fb657bcfb741e16faaaaa03"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/flex/fri04_flex_basis_content.html"
+source_sha256 = "0d403c725c2765b143bfc92afb6e56f46272dbedf2e02aa6503b02e9f7171263"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "6f02fab2caf554987fc0702ab97a357507aada9ccd0c26399a4f64eb6c631609"
+content_box_ltr = "2c46a0b1f58b0ecec25413dd687bef2c196cd069d5e8a6d1c610a471033342e3"
+border_box_rtl = "46fa06333877e74a0e5beff76ed099f2d3cd65421b89a73473d6cefe1425e7bd"
+content_box_rtl = "22d53f68646cec1b7c10b0640fee5b16bffb320b682a75244b6f41f3d2c4cee1"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri04_track_math_functions.html"
+source_sha256 = "a49e2c48aa924294fd4f58807f9ad8265be5957bceaab6d26a68e603674fcedd"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "51cf2f0cd1783e393b6b9cfe9cc4de3c5fcaaf880914b55d14cc5706484adc60"
+content_box_ltr = "1454874102ab898da982f15101cfd3cad8b4737486a117826b12e08584033f77"
+border_box_rtl = "ebd3754a68cd8e43fbe8e19d493e97f4ba93c94b8f8abab64c5a37c54157a5e4"
+content_box_rtl = "f95c7d161f2049ae783b019dc491fe59b0bc1e60a1e5c42e96bf5535753b443a"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[matching_publications]]
+edition = "baseline-math"
+sources = [
+  "html/block/block_align_baseline_child_margin_percent.html",
+  "html/grid/grid_align_items_baseline_multiline.html",
+  "html/block/fri04_sizing_math_functions.html",
+  "html/flex/fri04_flex_basis_content.html",
+  "html/grid/fri04_track_math_functions.html",
+]

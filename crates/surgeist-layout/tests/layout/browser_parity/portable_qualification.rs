@@ -617,6 +617,10 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 // Register only a complete publisher terminal after reviewed capture/check.
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
+        "baseline-math",
+        "2c0c8a7c227b8009ba05d1c4b0cdcd2cb8ddbf5120e87a9602daeb82708f400f",
+    ),
+    (
         "grid-order",
         "f527352997769a0c8373662f925d89104e0ddc7b2382e19958adabcf431d77e8",
     ),

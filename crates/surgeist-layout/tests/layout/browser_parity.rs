@@ -532,18 +532,42 @@ fn block_item_boundary_margin_variants_match_browser() {
         ),
     ];
 
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/block");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden = support::Golden::parse(fixture).expect("settled block fixture should parse");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
         assert_eq!(golden.root.style.get("display"), Some("flex"));
+        assert_eq!(golden.root.style.get("align-items"), Some("baseline"));
+        assert_eq!(golden.root.style.get("width"), Some("100px"));
+        assert_eq!(golden.root.style.get("height"), Some("100px"));
         assert_eq!(golden.root.children.len(), 2);
+        assert!(golden.root.children[0].children.is_empty());
         assert_eq!(golden.root.children[1].children.len(), 1);
+        for (child, height) in golden.root.children.iter().zip(["50px", "20px"]) {
+            assert_eq!(child.kind, support::NodeKind::Div);
+            assert_eq!(child.style.get("display"), Some("block"));
+            assert_eq!(child.style.get("width"), Some("50px"));
+            assert_eq!(child.style.get("height"), Some(height));
+            assert!(child.text.is_none());
+        }
+        let nested = &golden.root.children[1].children[0];
+        assert_eq!(nested.kind, support::NodeKind::Div);
+        assert_eq!(nested.style.get("display"), Some("block"));
+        assert_eq!(nested.style.get("width"), Some("50px"));
+        assert_eq!(nested.style.get("height"), Some("10px"));
+        assert!(nested.children.is_empty() && nested.text.is_none());
+        for side in ["margin-top", "margin-right", "margin-bottom", "margin-left"] {
+            assert_eq!(golden.root.children[0].style.get(side), Some("5%"));
+            assert_eq!(nested.style.get(side), Some("1%"));
+        }
         assert_eq!(golden.expectations.children.len(), 2);
         assert_eq!(golden.expectations.children[1].children.len(), 1);
         assert_eq!(golden.expectations.children[1].children[0].y, Some(1.0));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
@@ -803,13 +827,116 @@ fn fri04_c05_fixture_outputs_parse_and_match_surgeist_layout() {
         .unwrap_or_else(|error| panic!("FRI-04 C05 fixture matrix is incomplete: {error}"));
     let corpus_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
 
+    let mut originals = Vec::with_capacity(paths.len());
     for relative in paths {
         let fixture = corpus_root.join(&relative);
         let golden = support::Golden::parse_file(&fixture)
             .unwrap_or_else(|error| panic!("{} failed to parse: {error}", fixture.display()));
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} failed layout comparison: {error}", fixture.display())
-        });
+        assert_fri04_c05_source_intent(&golden);
+        originals.push(fixture);
+    }
+    assert_registered_originals_match(&originals);
+}
+
+fn assert_fri04_c05_source_intent(golden: &support::Golden) {
+    let root = &golden.root;
+    let expected = &golden.expectations;
+    let rtl = golden.name.ends_with("_rtl");
+    assert_eq!(root.kind, support::NodeKind::Div);
+    assert_eq!(root.children.len(), expected.children.len());
+    assert_eq!(expected.height, Some(20.0));
+    for (child, rectangle) in root.children.iter().zip(&expected.children) {
+        assert_eq!(child.kind, support::NodeKind::Div);
+        assert_eq!(child.style.get("height"), Some("20px"));
+        assert!(child.children.is_empty() && child.text.is_none());
+        assert!(rectangle.children.is_empty());
+        assert_eq!((rectangle.y, rectangle.height), (Some(0.0), Some(20.0)));
+    }
+    match golden.name.split_once("__").unwrap().0 {
+        "fri04_sizing_math_functions" => {
+            assert_eq!(root.style.get("display"), Some("block"));
+            assert_eq!(root.style.get("width"), Some("240px"));
+            assert_eq!(root.children.len(), 1);
+            let child = &root.children[0];
+            assert_eq!(child.style.get("width"), Some("calc(50% - 10px)"));
+            assert_eq!(
+                child.style.get("min-width"),
+                Some("max(25%, min(72px, 30%))")
+            );
+            assert_eq!(
+                child.style.get("max-width"),
+                Some("clamp(35%, max(50%, 100px), 70%)")
+            );
+            let basis: surgeist_layout::Scalar = 240.0;
+            let minimum = (0.25 * basis).max((0.30 * basis).min(72.0));
+            let maximum = (0.50 * basis).max(100.0).clamp(0.35 * basis, 0.70 * basis);
+            let width = (0.50 * basis - 10.0).clamp(minimum, maximum);
+            assert_eq!(expected.width, Some(basis));
+            assert_eq!(expected.children[0].width, Some(width));
+            assert_eq!(
+                expected.children[0].x,
+                Some(if rtl { basis - width } else { 0.0 })
+            );
+        }
+        "fri04_flex_basis_content" => {
+            assert_eq!(root.style.get("display"), Some("flex"));
+            assert_eq!(root.style.get("width"), Some("200px"));
+            assert_eq!(root.style.get("height"), Some("20px"));
+            assert_eq!(root.children.len(), 2);
+            assert_eq!(root.children[0].style.get("width"), Some("90px"));
+            assert_eq!(root.children[0].style.get("flex-basis"), Some("content"));
+            assert_eq!(root.children[1].style.get("width"), Some("40px"));
+            for child in &root.children {
+                assert_eq!(child.style.get("min-width"), Some("0px"));
+                assert_eq!(child.style.get("flex-shrink"), Some("0"));
+            }
+            let basis = 200.0;
+            let second_width = 40.0;
+            // Empty content has zero intrinsic width despite the authored 90px.
+            assert_eq!(expected.width, Some(basis));
+            assert_eq!(expected.children[0].width, Some(0.0));
+            assert_eq!(expected.children[1].width, Some(second_width));
+            assert_eq!(expected.children[0].x, Some(if rtl { basis } else { 0.0 }));
+            assert_eq!(
+                expected.children[1].x,
+                Some(if rtl { basis - second_width } else { 0.0 })
+            );
+        }
+        "fri04_track_math_functions" => {
+            assert_eq!(root.style.get("display"), Some("grid"));
+            assert_eq!(root.style.get("width"), Some("240px"));
+            assert_eq!(root.style.get("grid-template-rows"), Some("20px"));
+            assert_eq!(root.style.get("justify-content"), Some("start"));
+            assert_eq!(
+                root.style.get("grid-template-columns"),
+                Some("minmax(calc(25% + 10px),calc(35% + 16px)) fit-content(calc(25% + 15px))")
+            );
+            assert_eq!(root.children.len(), 2);
+            for (child, width) in root.children.iter().zip(["90px", "120px"]) {
+                assert_eq!(child.style.get("width"), Some(width));
+                assert_eq!(child.style.get("min-width"), Some("0px"));
+            }
+            let basis = 240.0;
+            let first_width = 90.0;
+            let second_width = 120.0;
+            let first_track = 0.35 * basis + 16.0;
+            assert_eq!(expected.width, Some(basis));
+            assert_eq!(expected.children[0].width, Some(first_width));
+            assert_eq!(expected.children[1].width, Some(second_width));
+            assert_eq!(
+                expected.children[0].x,
+                Some(if rtl { basis - first_width } else { 0.0 })
+            );
+            assert_eq!(
+                expected.children[1].x,
+                Some(if rtl {
+                    basis - first_track - second_width
+                } else {
+                    first_track
+                })
+            );
+        }
+        _ => panic!("unexpected FRI-04 source: {}", golden.name),
     }
 }
 
@@ -936,7 +1063,54 @@ fn runs_grid_multiline_baseline_fixture_against_surgeist_layout() {
     ))
     .expect("browser parity fixture should parse");
 
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    assert_eq!(golden.root.kind, support::NodeKind::Div);
+    assert_eq!(golden.root.style.get("display"), Some("grid"));
+    assert_eq!(
+        golden.root.style.get("grid-template-columns"),
+        Some("auto auto")
+    );
+    assert_eq!(golden.root.style.get("align-items"), Some("baseline"));
+    assert_eq!(golden.root.style.get("width"), Some("100px"));
+    assert_eq!(golden.root.style.get("height"), Some("100px"));
+    assert_eq!(golden.root.children.len(), 4);
+    assert_eq!(golden.expectations.children.len(), 4);
+    for ((child, expected), (height, nested_count)) in golden
+        .root
+        .children
+        .iter()
+        .zip(&golden.expectations.children)
+        .zip([("50px", 0), ("20px", 1), ("20px", 1), ("50px", 0)])
+    {
+        assert_eq!(child.kind, support::NodeKind::Div);
+        assert_eq!(child.style.get("display"), Some("grid"));
+        assert_eq!(child.style.get("width"), Some("50px"));
+        assert_eq!(child.style.get("height"), Some(height));
+        assert!(child.text.is_none());
+        assert_eq!(child.children.len(), nested_count);
+        assert_eq!(expected.children.len(), nested_count);
+        for nested in &child.children {
+            assert_eq!(nested.kind, support::NodeKind::Div);
+            assert_eq!(nested.style.get("display"), Some("grid"));
+            assert_eq!(nested.style.get("width"), Some("50px"));
+            assert_eq!(nested.style.get("height"), Some("10px"));
+            assert!(nested.children.is_empty() && nested.text.is_none());
+        }
+    }
+    assert_eq!(
+        (golden.expectations.width, golden.expectations.height),
+        (Some(100.0), Some(100.0))
+    );
+    assert!(
+        golden.expectations.children.iter().any(|child| child
+            .y
+            .zip(child.height)
+            .is_some_and(|(top, height)| top + height > 100.0)),
+        "baseline-aligned rows retain overflow below the fixed-height root"
+    );
+    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/xml/grid")
+        .join(format!("{}.xml", golden.name));
+    assert_registered_originals_match(&[original]);
 }
 
 #[test]
