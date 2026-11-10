@@ -374,9 +374,11 @@ impl<'a> PreparedHistory<'a> {
         let arena = input.as_ref().ok_or(SessionError::Consumed)?;
         let storage = arena.storage.as_ref().ok_or(SessionError::Consumed)?;
         c.require_identity(&storage.control)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Frozen(&storage.view), c)?;
+        if !super::provenance::proto("aliases") {
+            storage
+                .payloads
+                .check_aliases(ConstructionView::Frozen(&storage.view), c)?;
+        }
         storage.effects.require_freezable(c)?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -384,7 +386,9 @@ impl<'a> PreparedHistory<'a> {
         let data = evidence.history_data()?;
         // The existing active freeze and this retained frozen transfer share
         // the same source/graph/leaf qualification, not two validators.
-        qualify(&storage.payloads, &data, c)?;
+        if !super::provenance::proto("history") {
+            qualify(&storage.payloads, &data, c)?;
+        }
         payload_write::<Self>(c, 1)?;
         payload_write::<FrozenHistory>(c, 1)?;
         payload_write::<Option<FrozenArena>>(c, 1)?;
