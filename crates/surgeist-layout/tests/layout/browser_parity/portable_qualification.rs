@@ -617,6 +617,10 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 // Register only a complete publisher terminal after reviewed capture/check.
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
+        "grid-order",
+        "f527352997769a0c8373662f925d89104e0ddc7b2382e19958adabcf431d77e8",
+    ),
+    (
         "scriptless-order",
         "9b6957c7042f1732e57035d6e7ceb9bbb78cbe9de94189a8b8cd1313e882fa9a",
     ),

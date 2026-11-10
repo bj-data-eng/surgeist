@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "cac795e857c4629c09dcf7aa2920c1a730f2ee06dda8305e3843bbe0d5205fb2",
+    "xml/grid-lanes/fri03_order_modified_lanes__border_box_ltr.xml": "d558389ab65d54896d72ae1576a32c2cc2a97962d881d65b73d0a794141b5334",
+    "xml/grid-lanes/fri03_order_modified_lanes__border_box_rtl.xml": "ad04c244be3a1253c33ea418b146cb9bf286c665bef98a5d36844fb23b0f4175",
+    "xml/grid-lanes/fri03_order_modified_lanes__content_box_ltr.xml": "fe071d0b50dcd7e4e5d0d94f8c4b6d1bad80c4f1a6b9ca790415f8c8a9085c56",
+    "xml/grid-lanes/fri03_order_modified_lanes__content_box_rtl.xml": "cb72eff17fe53f13c861cd0b5b16ed3737779e8efae78f3af65ba42262dfa79e",
+    "xml/grid/fri03_order_modified_grid__border_box_ltr.xml": "ce1897ac1adb26f00a7ecb5d86272abe6a444205686400fbf836325358b4595e",
+    "xml/grid/fri03_order_modified_grid__border_box_rtl.xml": "60837baa89dac929a943a7f71e6f866ff17e7a1ac36215a18a983d397da7e183",
+    "xml/grid/fri03_order_modified_grid__content_box_ltr.xml": "6bb141ef787b752ddb82c49659acc0be2700aa8994a28189a945748162a29d28",
+    "xml/grid/fri03_order_modified_grid__content_box_rtl.xml": "b81d09aab74142ba9cb91b97aa4d1408e9b1207ffcdc923e9ae30654b993a408"
+  }
+}

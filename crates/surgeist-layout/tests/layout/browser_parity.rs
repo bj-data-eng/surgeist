@@ -614,9 +614,22 @@ fn grid_item_order_variants_match_browser() {
         include_str!("browser_parity/xml/grid/fri03_order_modified_grid__content_box_rtl.xml"),
     ];
 
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/grid");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden = support::Golden::parse(fixture).expect("settled grid-order fixture parses");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
+        assert_eq!(golden.root.style.get("width"), Some("80px"));
+        assert_eq!(golden.root.style.get("height"), Some("20px"));
+        assert_eq!(
+            golden.root.style.get("direction"),
+            Some(if golden.name.ends_with("_rtl") {
+                "rtl"
+            } else {
+                "ltr"
+            })
+        );
         assert_eq!(golden.root.style.get("display"), Some("grid"));
         assert_eq!(
             golden.root.style.get("grid-template-columns"),
@@ -651,9 +664,28 @@ fn grid_item_order_variants_match_browser() {
                 && child.width == Some(20.0)
                 && child.height == Some(20.0)
         }));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
+        assert_eq!(
+            (golden.expectations.x, golden.expectations.y),
+            (Some(0.0), Some(0.0))
+        );
+        // Stable order sorting places source children 1, 3, 0, 2 in the row.
+        let expected_x = if golden.name.ends_with("_rtl") {
+            [Some(20.0), Some(60.0), Some(0.0), Some(40.0)]
+        } else {
+            [Some(40.0), Some(0.0), Some(60.0), Some(20.0)]
+        };
+        assert_eq!(
+            golden
+                .expectations
+                .children
+                .iter()
+                .map(|child| child.x)
+                .collect::<Vec<_>>(),
+            expected_x,
+        );
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
@@ -673,11 +705,25 @@ fn grid_lanes_item_order_variants_match_browser() {
         ),
     ];
 
+    let original_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/grid-lanes");
+    let mut originals = Vec::with_capacity(fixtures.len());
     for fixture in fixtures {
         let golden =
             support::Golden::parse(fixture).expect("settled grid-lanes order fixture parses");
         assert_eq!(golden.root.kind, support::NodeKind::Div);
+        assert_eq!(golden.root.style.get("width"), Some("80px"));
+        assert_eq!(golden.root.style.get("height"), Some("20px"));
+        assert_eq!(
+            golden.root.style.get("direction"),
+            Some(if golden.name.ends_with("_rtl") {
+                "rtl"
+            } else {
+                "ltr"
+            })
+        );
         assert_eq!(golden.root.style.get("display"), Some("grid-lanes"));
+        assert_eq!(golden.root.style.get("grid-auto-flow"), Some("row"));
         assert_eq!(
             golden.root.style.get("grid-template-columns"),
             Some("20px 20px 20px 20px")
@@ -706,11 +752,33 @@ fn grid_lanes_item_order_variants_match_browser() {
             (Some(80.0), Some(20.0))
         );
         assert!(golden.expectations.children.iter().all(|child| {
-            child.children.is_empty() && child.width == Some(20.0) && child.height == Some(20.0)
+            child.children.is_empty()
+                && child.y == Some(0.0)
+                && child.width == Some(20.0)
+                && child.height == Some(20.0)
         }));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", golden.name));
+        assert_eq!(
+            (golden.expectations.x, golden.expectations.y),
+            (Some(0.0), Some(0.0))
+        );
+        // Stable order sorting places source children 1, 3, 0, 2 in the row.
+        let expected_x = if golden.name.ends_with("_rtl") {
+            [Some(20.0), Some(60.0), Some(0.0), Some(40.0)]
+        } else {
+            [Some(40.0), Some(0.0), Some(60.0), Some(20.0)]
+        };
+        assert_eq!(
+            golden
+                .expectations
+                .children
+                .iter()
+                .map(|child| child.x)
+                .collect::<Vec<_>>(),
+            expected_x,
+        );
+        originals.push(original_root.join(format!("{}.xml", golden.name)));
     }
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
