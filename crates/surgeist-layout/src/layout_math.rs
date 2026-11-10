@@ -88,8 +88,8 @@ pub(crate) struct PositionedSizeDeclarations<S: LayoutScalar> {
 /// The ratio works with the box selected by `box-sizing` (Sizing 4 §4.1).
 /// A definite preferred size transfers through the ratio to an automatic
 /// axis. A definite minimum transfers to an indefinite minimum, capped by the
-/// definite preferred and maximum sizes of that axis. A definite maximum
-/// transfers to an indefinite maximum, floored by the definite preferred and
+/// declared preferred and maximum sizes of that axis. A definite maximum
+/// transfers to an indefinite maximum, floored by the declared preferred and
 /// minimum sizes of that axis and by the transferred minimum (Sizing 4 §4.4).
 /// The border box never drops below padding plus border (Sizing 3 §3.1), and
 /// clamping applies the maximum before the minimum so the minimum wins
@@ -117,13 +117,14 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
         } else {
             Size::ZERO
         };
-        let preferred = preferred.apply_aspect_ratio(aspect_ratio);
         let (min, max) = match aspect_ratio {
             Some(ratio) => Self::transfer_limits(preferred, min, max, ratio.get()),
             None => (min, max),
         };
         Self {
-            preferred: preferred.add_optional(box_adjustment),
+            preferred: preferred
+                .apply_aspect_ratio(aspect_ratio)
+                .add_optional(box_adjustment),
             min: min
                 .add_optional(box_adjustment)
                 .unwrap_or(padding_border)
@@ -133,6 +134,8 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
         }
     }
 
+    // Caps and floors come from the declared preferred sizes, not from a size
+    // derived through the ratio. The padding floor is applied later, in `clamp`.
     fn transfer_limits(
         preferred: Size<Option<S>>,
         min: Size<Option<S>>,
