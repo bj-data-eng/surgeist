@@ -23,6 +23,8 @@ mod fixtures;
 mod absolute;
 #[path = "block_tests/clearance_cache_tests.rs"]
 mod clearance_cache;
+#[path = "block_tests/floated_child_margins.rs"]
+mod floated_child_margins;
 #[path = "block_tests/floats_bfcs_tests.rs"]
 mod floats_bfcs;
 #[path = "block_tests/in_flow_margins_tests.rs"]
