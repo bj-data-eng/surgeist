@@ -238,14 +238,19 @@ impl Renderer {
         device_identity: DeviceSlotIdentity,
         account: &Account,
     ) -> Result<SurfaceFrameCommit> {
-        self.execute_render_frame(
-            surface,
-            PreparedRendererExecution::ExactGraph(graph),
-            parameters,
-            device_identity,
-            account,
-        )
-        .await
+        let render_account = account.at(RenderPhase::Render);
+        account
+            .async_phase(
+                RenderPhase::Render,
+                self.execute_render_frame(
+                    surface,
+                    PreparedRendererExecution::ExactGraph(graph),
+                    parameters,
+                    device_identity,
+                    &render_account,
+                ),
+            )
+            .await
     }
 
     async fn execute_render_frame(
