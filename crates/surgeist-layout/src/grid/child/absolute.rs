@@ -3,7 +3,10 @@ use crate::error::{layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::{
     LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide, project_from_start,
 };
-use crate::layout_math::{AbsoluteInsetStartOf, absolute_inset_alignment_offsets};
+use crate::layout_math::{
+    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
+    absolute_inset_alignment_offsets,
+};
 use crate::sizing::resolve::{
     resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
 };
@@ -272,7 +275,7 @@ where
     }
     let known = known
         .apply_aspect_ratio(remaining_ratio)
-        .clamp_optional(min_size, max_size);
+        .clamp_max_before_min_optional(min_size, max_size);
     let fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
         constants.fallback_minimum_outer,
         constants.fallback_maximum_outer,
@@ -319,7 +322,7 @@ where
     )?;
     let final_size = known
         .unwrap_or(output.size)
-        .clamp_optional(min_size, max_size);
+        .clamp_max_before_min_optional(min_size, max_size);
     let justify = child_style
         .justify_self
         .unwrap_or(container_style.justify_items.unwrap_or(AlignItems::Start));
