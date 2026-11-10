@@ -2079,3 +2079,240 @@ mod hosted_style_parent_tests;
 mod beforetoggle;
 
 mod payload_formation_tests;
+
+#[test]
+fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered_native_callbacks()
+{
+    use crate::{
+        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
+        DomElementTaskRuntime, DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSession,
+        DomSessionLimits, DomSourceEventRuntimeLimits, DomStyleRuntimeLimits,
+    };
+    use surgeist_dom::{
+        DomDispatchCustodyLimits, DomElementTaskSourceKind, DomHostedLimits, DomHostedRecordLimits,
+        DomSourceLimits,
+    };
+
+    struct Context {
+        tasks: DomElementTaskRuntime,
+        calls: Vec<(&'static str, &'static str, &'static str)>,
+    }
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+            &mut self.tasks
+        }
+    }
+    let cancel = AtomicBool::new(false);
+    let mut owner = Dom::new(
+        DomLimits::new(
+            32,
+            4096,
+            64,
+            64,
+            64,
+            8,
+            100_000,
+            surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
+        )
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(8, 64, 1_000_000, 1_000_000, 100_000).unwrap(),
+        )
+        .with_details_toggle_intentions(8)
+        .unwrap(),
+    )
+    .unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let details = batch.create_element_ns(&document, Namespace::html(), "details");
+    batch.insert_before(&details, &document, None);
+    let commit = owner.apply(batch, &cancel).unwrap();
+    let target = commit.created(&details).unwrap().unwrap();
+    let mut session = DomSession::new(
+        owner,
+        DomSessionLimits {
+            source_events: DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+            },
+            style: DomStyleRuntimeLimits {
+                roots: 0,
+                completions: 0,
+                reports: 0,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
+            },
+            element_tasks: DomElementTaskRuntimeLimits {
+                tasks: 8,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+            },
+            hosted: DomHostedRuntimeLimits {
+                canonical: DomHostedLimits::new(
+                    DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                    1_000_000,
+                    1_000_000,
+                    100_000,
+                ),
+                tasks: 8,
+                storage_bytes: 1_000_000,
+                scratch_bytes: 1_000_000,
+                work: 100_000,
+            },
+        },
+    )
+    .unwrap();
+    let mut context = Context {
+        tasks: session.element_task_execution(),
+        calls: Vec::new(),
+    };
+    let mut dispatcher = registry::<Context>();
+    let host_callback = DomEventCallback::host(19);
+    let run_limits = DomElementTaskRunLimits {
+        dispatch: limits(),
+        source: DomSourceLimits::new(1_000_000, 4096, 100_000, 16, 64, 64, 1),
+    };
+    let mut previous_task = None;
+    // Details task FIFO prevents a fresh event from overtaking a retained one.
+    // Exercise each new real event after its predecessor's genuine completion.
+    for (open, old, new) in [(true, "closed", "open"), (false, "open", "closed")] {
+        let before = dispatcher
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::Toggle,
+                DomEventCallback::new(|_, _, context: &mut Context, event| {
+                    let payload = event.toggle_event().unwrap();
+                    context
+                        .calls
+                        .push(("before", payload.old_state(), payload.new_state()));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let host = dispatcher
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::Toggle,
+                host_callback.clone(),
+                DomEventListenerOptions {
+                    capture: false,
+                    once: true,
+                },
+            )
+            .unwrap();
+        let after = dispatcher
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::Toggle,
+                DomEventCallback::new(|_, _, context: &mut Context, event| {
+                    let payload = event.toggle_event().unwrap();
+                    context
+                        .calls
+                        .push(("after", payload.old_state(), payload.new_state()));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let mut batch = DomBatch::new();
+        if open {
+            batch.set_attribute(target, "open", "");
+        } else {
+            batch.remove_attribute(target, "open");
+        }
+        session.dom().apply(batch, &cancel).unwrap();
+        context.tasks.ingest(&mut session.dom(), &cancel).unwrap();
+        let first_call = context.calls.len();
+        let mut original_task = None;
+        for _ in 0..2 {
+            let progress = DomElementTaskRuntime::run_next(
+                &mut session.dom(),
+                DomElementTaskSourceKind::DomManipulation,
+                &mut dispatcher,
+                &mut context,
+                run_limits,
+                &cancel,
+            )
+            .unwrap();
+            let DomElementTaskProgress::Retained {
+                task,
+                dispatch: DomEventDispatchOutcome::RetainedHostUnavailable,
+                displaced_owner: None,
+            } = progress
+            else {
+                panic!("unsupported host execution retains the actual Details task: {progress:?}")
+            };
+            assert_eq!(task.id().target(), target);
+            assert_ne!(
+                Some(task.id()),
+                previous_task,
+                "this is a fresh native event"
+            );
+            if let Some(original) = original_task {
+                assert_eq!(task.id(), original, "resume preserves the original event");
+            } else {
+                original_task = Some(task.id());
+            }
+            assert_eq!(context.calls[first_call..], [("before", old, new)]);
+            assert_eq!(
+                context
+                    .tasks
+                    .pending_tasks(DomElementTaskSourceKind::DomManipulation)
+                    .unwrap(),
+                1
+            );
+        }
+        assert!(
+            dispatcher.remove_listener(host),
+            "unsupported selection must leave the exact once registration present"
+        );
+        let progress = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            DomElementTaskSourceKind::DomManipulation,
+            &mut dispatcher,
+            &mut context,
+            run_limits,
+            &cancel,
+        )
+        .unwrap();
+        let DomElementTaskProgress::Complete {
+            task,
+            receipt,
+            displaced_owner: None,
+            ..
+        } = progress
+        else {
+            panic!("removing the unentered host listener permits actual completion: {progress:?}")
+        };
+        assert_eq!(Some(task.id()), original_task);
+        assert_eq!(receipt.original_target(), target);
+        assert_eq!(receipt.event_type(), DomEventType::Toggle);
+        assert_eq!(
+            receipt.callbacks(),
+            2,
+            "the unentered host was never counted"
+        );
+        assert!(receipt.failures().is_empty());
+        assert_eq!(
+            context.calls[first_call..],
+            [("before", old, new), ("after", old, new)],
+            "the native prefix is never replayed and the tail runs only after removal"
+        );
+        assert_eq!(
+            context
+                .tasks
+                .pending_tasks(DomElementTaskSourceKind::DomManipulation)
+                .unwrap(),
+            0
+        );
+        assert!(dispatcher.remove_listener(before));
+        assert!(dispatcher.remove_listener(after));
+        previous_task = original_task;
+    }
+}
