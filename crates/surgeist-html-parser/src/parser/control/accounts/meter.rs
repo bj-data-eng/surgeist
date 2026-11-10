@@ -211,13 +211,18 @@ impl Meter {
     }
 
     fn run(&mut self, changes: &[HtmlChange], check_only: bool) -> Result<(), LedgerError> {
+        if let ([change], false) = (changes, check_only) {
+            // A change is checked before it changes anything, so a batch of
+            // one needs no record of what to restore.
+            return self.step(0, *change, false);
+        }
         self.undo.clear();
         self.undo
             .try_reserve(changes.len())
             .map_err(|_| Error::Allocation)?;
         let mut outcome = Ok(());
         for (item, &change) in changes.iter().enumerate() {
-            outcome = self.step(item, change);
+            outcome = self.step(item, change, true);
             if outcome.is_err() {
                 break;
             }
@@ -269,8 +274,9 @@ impl Meter {
     }
 
     /// Applies one change of a batch, checking the charging scope and then the
-    /// cap scope before anything changes.
-    fn step(&mut self, item: usize, change: HtmlChange) -> Result<(), LedgerError> {
+    /// cap scope before anything changes. With `journal` it records the values
+    /// it replaces, for [`Self::rollback`].
+    fn step(&mut self, item: usize, change: HtmlChange, journal: bool) -> Result<(), LedgerError> {
         match change {
             Change::Work(dimension, amount) => {
                 let charging_total = *HtmlWork::get(&self.charging_work, dimension);
@@ -305,12 +311,14 @@ impl Meter {
                         RefusalReason::Limit { limit },
                     ));
                 }
-                self.undo.push(Undo::Work {
-                    charging: dimension,
-                    charging_total,
-                    cap,
-                    cap_total,
-                });
+                if journal {
+                    self.undo.push(Undo::Work {
+                        charging: dimension,
+                        charging_total,
+                        cap,
+                        cap_total,
+                    });
+                }
                 *HtmlWork::get_mut(&mut self.charging_work, dimension) = charging_next;
                 *HtmlWork::get_mut(&mut self.cap_work, cap) = cap_next;
             }
@@ -336,11 +344,13 @@ impl Meter {
                     ));
                 }
                 let peak = HtmlResource::get_mut(&mut self.peak, resource);
-                self.undo.push(Undo::Live {
-                    resource,
-                    live,
-                    peak: *peak,
-                });
+                if journal {
+                    self.undo.push(Undo::Live {
+                        resource,
+                        live,
+                        peak: *peak,
+                    });
+                }
                 *peak = (*peak).max(next);
                 *HtmlResource::get_mut(&mut self.live, resource) = next;
             }
@@ -355,11 +365,13 @@ impl Meter {
                         RefusalReason::Underflow,
                     ));
                 };
-                self.undo.push(Undo::Live {
-                    resource,
-                    live,
-                    peak: *HtmlResource::get(&self.peak, resource),
-                });
+                if journal {
+                    self.undo.push(Undo::Live {
+                        resource,
+                        live,
+                        peak: *HtmlResource::get(&self.peak, resource),
+                    });
+                }
                 *HtmlResource::get_mut(&mut self.live, resource) = next;
             }
         }
