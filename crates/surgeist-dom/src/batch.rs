@@ -65,6 +65,7 @@ pub(crate) enum Creation {
 
 #[derive(Clone, Debug)]
 pub(crate) enum Command {
+    Normalize(NodeOperand),
     Compound(crate::compound::Edit),
     ExitFullscreen {
         document: NodeOperand,
@@ -179,6 +180,10 @@ pub(crate) enum Command {
         document: Option<NodeOperand>,
     },
     ConstructDocument(crate::hosted::DocumentConstructorContext),
+    SplitText {
+        node: NodeOperand,
+        offset: usize,
+    },
     CloneNode {
         source: NodeOperand,
         subtree: bool,
@@ -591,6 +596,21 @@ impl DomBatch {
         self.commands.push(Command::CloneNode {
             source: source.into(),
             subtree,
+        });
+        ticket
+    }
+    /// Normalize descendant Text nodes through the canonical append/Range/remove
+    /// algorithm. The receiver itself is excluded; removed Text stays detached.
+    pub fn normalize(&mut self, node: impl Into<NodeOperand>) {
+        self.commands.push(Command::Normalize(node.into()));
+    }
+    /// Split one Text at an exact UTF-16 offset, returning the new Text's ticket.
+    /// Insertion, special Range transfers and data deletion remain one atomic edit.
+    pub fn split_text(&mut self, node: impl Into<NodeOperand>, offset: usize) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::SplitText {
+            node: node.into(),
+            offset,
         });
         ticket
     }

@@ -40,6 +40,86 @@ fn source(dom: &mut Dom, edit: DomSourceEdit) -> DomSourceCompletion {
     };
     done
 }
+
+#[test]
+fn split_text_creation_uses_current_owner_document_global_after_adoption() {
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let a = hosted(&mut dom, &mut issuer);
+    let b = hosted(&mut dom, &mut issuer);
+    let mut batch = DomBatch::new();
+    let document = batch.construct_document(
+        issuer
+            .document_constructor_context(&dom, b.global(), &cancel())
+            .unwrap(),
+    );
+    let text = batch.create_text(a.document(), "abcd");
+    let commit = apply(&mut dom, batch);
+    let text = commit.created(&text).unwrap().unwrap();
+    let document = commit.document(&document).unwrap();
+    let mut batch = DomBatch::new();
+    batch.adopt(text, document);
+    apply(&mut dom, batch);
+    let done = source(&mut dom, DomSourceEdit::split_text(text, 2));
+    let Some(DomSourceOutput::Node(new)) = done.output() else {
+        panic!("new Text output")
+    };
+    let snapshot = dom.snapshot();
+    assert_eq!(snapshot.relevant_global(text).unwrap(), Some(a.global()));
+    assert_eq!(snapshot.relevant_global(new).unwrap(), Some(b.global()));
+    assert_eq!(snapshot.node(new).unwrap().owner_document(), Some(document));
+    detached_document(&snapshot, document, Some(b.global()));
+}
+
+#[test]
+fn split_text_runs_as_nested_source_without_completing_the_original_event() {
+    let mut dom = dom();
+    let mut issuer = issuer(&mut dom);
+    let original = hosted(&mut dom, &mut issuer);
+    let executor = dom.bind_source_event_executor(&cancel()).unwrap();
+    let mut batch = DomBatch::new();
+    let dialog = batch.create_element_ns(original.document(), Namespace::html(), "dialog");
+    let text = batch.create_text(original.document(), "abcd");
+    let commit = apply(&mut dom, batch);
+    let target = commit.created(&dialog).unwrap().unwrap();
+    let text = commit.created(&text).unwrap().unwrap();
+    let request = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::show_dialog(target),
+                source_limits(4096),
+                &cancel(),
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Event(request)) =
+            lease.advance(&cancel()).unwrap()
+        else {
+            panic!("actual beforetoggle")
+        };
+        request
+    };
+    let permit = executor.begin_dispatch(&dom, &request, &cancel()).unwrap();
+    let guard = executor.enter_dispatch(&dom, &permit, &cancel()).unwrap();
+    let done = source(&mut dom, DomSourceEdit::split_text(text, 2));
+    let Some(DomSourceOutput::Node(new)) = done.output() else {
+        panic!("actual nested split result")
+    };
+    assert_eq!(
+        dom.snapshot().node(text).unwrap().data(),
+        Some(&"ab".into())
+    );
+    assert_eq!(dom.snapshot().node(new).unwrap().data(), Some(&"cd".into()));
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    drop(guard);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        request.operation()
+    );
+    // The original event has not been dispatched or acknowledged by this split.
+}
 fn issuer(dom: &mut Dom) -> DomHostedSource {
     dom.register_hosted_source(
         DomHostedLimits::new(

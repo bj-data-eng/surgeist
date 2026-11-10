@@ -891,6 +891,8 @@ pub(super) enum Effect {
     },
     Tree(tree::Frame),
     Compound(super::compound::Frame),
+    SplitText(super::text::SplitFrame),
+    Normalize(super::text::NormalizeFrame),
     CompoundTextCleanup(Key),
     Clone(import::Frame),
     Post {
@@ -935,6 +937,7 @@ impl Effect {
             Self::Update { targets, .. } => targets.freeze(draft, cancel),
             Self::Tree(frame) => frame.freeze_worklists(draft, cancel),
             Self::Compound(frame) => frame.freeze(draft, cancel),
+            Self::Normalize(frame) => frame.freeze(draft, cancel),
             _ => Ok(()),
         }
     }
@@ -1025,6 +1028,8 @@ impl EffectFrame {
             Effect::Clear { target } => Effect::Clear { target: *target },
             Effect::Tree(frame) => Effect::Tree(frame.checkpoint(a, cancel)?),
             Effect::Compound(frame) => Effect::Compound(frame.checkpoint(a, cancel)?),
+            Effect::SplitText(frame) => Effect::SplitText(*frame),
+            Effect::Normalize(frame) => Effect::Normalize(frame.checkpoint(a, cancel)?),
             Effect::CompoundTextCleanup(key) => Effect::CompoundTextCleanup(*key),
             Effect::Clone(frame) => Effect::Clone(frame.checkpoint()),
             Effect::Post { list, index, stage } => Effect::Post {
@@ -1303,6 +1308,8 @@ impl Draft {
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
+                    Effect::SplitText(frame) => self.split_text_effect(frame, limits, cancel)?,
+                    Effect::Normalize(frame) => self.normalize_effect(frame, limits, cancel)?,
                     Effect::CompoundTextCleanup(key) => {
                         self.compound_discard_unpublished(key, cancel)?
                     }

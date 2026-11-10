@@ -1937,6 +1937,7 @@ impl DomSourceLease<'_> {
                         | Command::CreateRange { .. }
                         | Command::Import { .. }
                         | Command::CloneNode { .. }
+                        | Command::SplitText { .. }
                         | Command::ConstructDocument(_)
                         | Command::AttachShadow { .. }
                         | Command::CreateHtmlDocument { .. }
