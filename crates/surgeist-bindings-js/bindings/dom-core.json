@@ -4626,7 +4626,7 @@
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "The legacy createEvent interface-name mapping and genuine uninitialized Event object state, including unsupported interface errors; this is distinct from constructing an already initialized Event.",
+          "contract": "The legacy createEvent interface-name mapping and uninitialized Event object state, including unsupported interface errors; this is distinct from constructing an already initialized Event.",
           "source": "https://dom.spec.whatwg.org/commit-snapshots/3071e5f269448350fdea79bb284eedaf17bc431e/#dom-document-createevent",
           "issue": 2278
         }
@@ -5935,7 +5935,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "Create the source standalone HTML Document through real parsing and canonical installation, consuming exact parser options, resulting metadata and associated context; do not reinterpret a finished report as live parser execution. Preserve the declared TrustedHTML-or-string and parser-option union with the genuine trusted-type sink policy.",
+          "contract": "Create the source standalone HTML Document through real parsing and canonical installation, consuming exact parser options, resulting metadata and associated context; do not reinterpret a finished report as live parser execution. Preserve the declared TrustedHTML-or-string and parser-option union with the trusted-type sink policy.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-parsehtmlunsafe"
         },
         {
@@ -5996,7 +5996,7 @@
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "The original Document referrer serialization with its genuine absent-referrer branch, supplied by document creation/loading provenance rather than metadata URL.",
+        "contract": "The original Document referrer serialization with its absent-referrer branch, supplied by document creation/loading provenance rather than metadata URL.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-referrer"
       }
     },
@@ -6028,7 +6028,7 @@
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "The Document loading/readiness state and genuine lifecycle transitions; native inactive/never-navigable proof is not an invented complete/loading value.",
+        "contract": "The Document loading/readiness state and lifecycle transitions; native inactive/never-navigable proof is not an invented complete/loading value.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-readystate"
       }
     },
@@ -6045,7 +6045,7 @@
       "requirements": [
         {
           "owner": "surgeist-runtime",
-          "contract": "A genuine child navigable WindowProxy for a reached named child-window branch, with current authority; canonical names alone cannot fabricate a WindowProxy.",
+          "contract": "A child navigable WindowProxy for a reached named child-window branch, with current authority; canonical names alone cannot fabricate a WindowProxy.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#windowproxy"
         }
       ]
@@ -6255,7 +6255,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "The open dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and genuine script/parser continuation custody; no replay into an immutable offline report.",
+          "contract": "The open dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and script/parser continuation custody; no replay into an immutable offline report.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-open"
         },
         {
@@ -6281,7 +6281,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "The close dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and genuine script/parser continuation custody; no replay into an immutable offline report.",
+          "contract": "The close dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and script/parser continuation custody; no replay into an immutable offline report.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-close"
         },
         {
@@ -6299,7 +6299,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "The write dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and genuine script/parser continuation custody; no replay into an immutable offline report.",
+          "contract": "The write dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and script/parser continuation custody; no replay into an immutable offline report.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-write"
         },
         {
@@ -6317,7 +6317,7 @@
       "requirements": [
         {
           "owner": "surgeist-dom",
-          "contract": "The writeln dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and genuine script/parser continuation custody; no replay into an immutable offline report.",
+          "contract": "The writeln dynamic markup insertion algorithm with its active parser/document-stream state, nesting/destructive-write guards and script/parser continuation custody; no replay into an immutable offline report.",
           "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-document-writeln"
         },
         {
@@ -6488,7 +6488,7 @@
       "kind": "derived",
       "algorithm": "documentorshadowroot.html.activeelement.get",
       "owner": "surgeist-html",
-      "contract": "Compute activeElement from the genuine focused area/chain with the source Document-or-ShadowRoot retargeting and fallback rules; ownerDocument or a generic remembered-focus slot is insufficient.",
+      "contract": "Compute activeElement from the focused area/chain with the source Document-or-ShadowRoot retargeting and fallback rules; ownerDocument or a generic remembered-focus slot is insufficient.",
       "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-documentorshadowroot-activeelement",
       "inputs": [
         {"owner": "surgeist-dom", "path": "crates/surgeist-dom/src/snapshot.rs", "symbol": "focused_area_designation"},
@@ -6850,7 +6850,7 @@
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "The innerText get algorithm with authentic rendered-text/CSS box and line-break observations where required, or its genuine unrendered branch; setter replacement uses the prescribed DOM structure and original Source custody.",
+        "contract": "The innerText get algorithm with authentic rendered-text/CSS box and line-break observations where required, or its unrendered branch; setter replacement uses the prescribed DOM structure and original Source custody.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-innertext"
       }
     },
@@ -6876,7 +6876,7 @@
       "kind": "host",
       "requirement": {
         "owner": "surgeist-runtime",
-        "contract": "The outerText get algorithm with authentic rendered-text/CSS box and line-break observations where required, or its genuine unrendered branch; setter replacement uses the prescribed DOM structure and original Source custody.",
+        "contract": "The outerText get algorithm with authentic rendered-text/CSS box and line-break observations where required, or its unrendered branch; setter replacement uses the prescribed DOM structure and original Source custody.",
         "source": "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-outertext"
       }
     },
