@@ -98,13 +98,19 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
         nested_dispatches: 1,
     })
     .unwrap();
+    let mut context = Cleanup {
+        tasks: session.element_task_execution(),
+        hosted: session.hosted_execution(),
+        calls: 0,
+        exhausted_at: None,
+    };
     let result = session
         .source_execution()
         .service_event(
             &mut session.dom(),
             &before,
             &mut registry,
-            &mut (),
+            &mut context,
             DomSourceEventServiceLimits {
                 source: source_limits(10_000_000),
                 dispatch: dispatch_limits(),
@@ -146,18 +152,6 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
             .task(),
         task.id()
     );
-    let mut context = Cleanup {
-        tasks: session.element_task_execution(),
-        hosted: session.hosted_execution(),
-        calls: 0,
-        exhausted_at: None,
-    };
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 1,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })
-    .unwrap();
     let listener = registry
         .add_listener(
             &mut session.dom(),

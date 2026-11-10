@@ -648,6 +648,64 @@ impl Drop for RunningReservation {
         self.0.running.set(self.0.running.get() - 1);
     }
 }
+enum RegistryAssociation {
+    Unbound,
+    Bound(surgeist_dom::DomEventRegistryAssociation),
+}
+struct PreparedRegistry {
+    // Backing is released before its provisional canonical debit.
+    pending: Vec<std::rc::Weak<EventContinuation>>,
+    association: surgeist_dom::DomEventRegistryAssociation,
+}
+impl RegistryAssociation {
+    fn validate(&self, dom: &Dom) -> Result<(), DomEventDispatchError> {
+        match self {
+            Self::Unbound => Ok(()),
+            Self::Bound(association) => association.validate(dom).map_err(Into::into),
+        }
+    }
+    fn prepare(
+        &self,
+        dom: &mut Dom,
+        pending_events: usize,
+        cancel: &AtomicBool,
+    ) -> Result<Option<PreparedRegistry>, DomEventDispatchError> {
+        match self {
+            Self::Unbound => {
+                let bytes = pending_events
+                    .checked_mul(std::mem::size_of::<std::rc::Weak<EventContinuation>>())
+                    .ok_or(DomEventDispatchError::Admission(
+                        DomEventResource::Allocation,
+                    ))?;
+                let association = dom.bind_event_registry(bytes, cancel)?;
+                let mut pending = Vec::new();
+                pending
+                    .try_reserve_exact(pending_events)
+                    .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+                if pending.capacity() != pending_events {
+                    return Err(DomEventDispatchError::Admission(
+                        DomEventResource::PendingEvents,
+                    ));
+                }
+                Ok(Some(PreparedRegistry {
+                    pending,
+                    association,
+                }))
+            }
+            Self::Bound(_) => Ok(None),
+        }
+    }
+    fn commit(
+        &mut self,
+        prepared: Option<PreparedRegistry>,
+        pending: &mut Vec<std::rc::Weak<EventContinuation>>,
+    ) {
+        if let Some(prepared) = prepared {
+            *pending = prepared.pending;
+            *self = Self::Bound(prepared.association);
+        }
+    }
+}
 /// Runtime's one native listener registry and path/invocation owner.
 /// `C` is the application's actual mutable composition state, e.g. its CSSOM
 /// and Style coordinator; the dispatcher does not own those family semantics.
@@ -656,9 +714,16 @@ pub struct DomEventDispatcher<C> {
     limits: DomEventRegistryLimits,
     slots: Vec<Slot<C>>,
     next_order: u64,
+    pending: Vec<std::rc::Weak<EventContinuation>>,
+    // Drops after the actual callback list. Dispatch reservations hold no lease:
+    // abandoning this dispatcher withdraws its canonical association immediately.
+    association: RegistryAssociation,
 }
 impl<C> DomEventDispatcher<C> {
-    /// Establish a distinct finite registry. Zero bounds intentionally admit no work.
+    /// Establish an empty unbound registry. Its first accepted registration or
+    /// dispatch associates it irreversibly with the canonical DOM's one live
+    /// listener owner. A second live owner cannot select a parallel listener list.
+    /// Zero bounds intentionally admit no work.
     pub fn new(limits: DomEventRegistryLimits) -> Result<Self, DomEventDispatchError> {
         let id = NEXT_REGISTRY
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
@@ -672,6 +737,8 @@ impl<C> DomEventDispatcher<C> {
             limits,
             slots: Vec::new(),
             next_order: 0,
+            pending: Vec::new(),
+            association: RegistryAssociation::Unbound,
         })
     }
     /// Add in deterministic order. The target/type/callback identity/capture key
@@ -686,6 +753,7 @@ impl<C> DomEventDispatcher<C> {
         callback: DomEventCallback<C>,
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DomEventDispatchError> {
+        self.association.validate(dom.raw())?;
         let target = target.into();
         match target {
             DomEventTarget::Node(node) => {
@@ -743,8 +811,12 @@ impl<C> DomEventDispatcher<C> {
                 .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
         }
         // Every fallible Runtime preparation precedes acquiring the canonical
-        // registration. Duplicates returned above retain their original lease.
+        // registration. A refused first registration drops its provisional
+        // association; duplicates retain their original association and lease.
         let synchronous = AtomicBool::new(false);
+        let association =
+            self.association
+                .prepare(dom.raw_mut(), self.limits.pending_events, &synchronous)?;
         let recipient = dom.raw_mut().retain_event_recipient(
             target,
             event_type,
@@ -771,6 +843,7 @@ impl<C> DomEventDispatcher<C> {
             _recipient: recipient,
         });
         self.next_order = order;
+        self.association.commit(association, &mut self.pending);
         Ok(DomEventRegistrationId {
             registry: self.owner.id,
             slot,
@@ -817,6 +890,7 @@ impl<C> DomEventDispatcher<C> {
         cancel: &AtomicBool,
         host: bool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.association.validate(dom)?;
         match event.0.status.get() {
             Status::Ready => (),
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
@@ -846,6 +920,12 @@ impl<C> DomEventDispatcher<C> {
         })? {
             return Err(DomEventDispatchError::ParsedSynchronousPending { requirement });
         }
+        if matches!(self.association, RegistryAssociation::Unbound) {
+            budget.tick().map_err(DomEventDispatchError::Admission)?;
+        }
+        let association = self
+            .association
+            .prepare(dom, self.limits.pending_events, cancel)?;
         let mut path = build_path(
             dom,
             &snapshot,
@@ -929,6 +1009,41 @@ impl<C> DomEventDispatcher<C> {
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
+        // Only active original invocations remain indexed. This index is
+        // bounded by pending_events and its backing was admitted with the
+        // registry association. Reserve its next entry before execution.
+        let mut pending = 0;
+        while pending < self.pending.len() {
+            budget.tick().map_err(DomEventDispatchError::Admission)?;
+            if self.pending[pending]
+                .upgrade()
+                .and_then(|custody| custody.event())
+                .is_some_and(|event| {
+                    !matches!(event.status.get(), Status::Complete | Status::Abandoned)
+                })
+            {
+                pending += 1;
+            } else {
+                self.pending.swap_remove(pending);
+            }
+        }
+        let capacity = association
+            .as_ref()
+            .map_or(self.pending.capacity(), |prepared| {
+                prepared.pending.capacity()
+            });
+        if pending >= capacity {
+            return Err(DomEventDispatchError::Admission(
+                DomEventResource::PendingEvents,
+            ));
+        }
+        let custody = event
+            .0
+            .continuation
+            .upgrade()
+            .ok_or(DomEventDispatchError::Abandoned)?;
+        self.association.commit(association, &mut self.pending);
+        self.pending.push(Rc::downgrade(&custody));
         self.execute(dom, context, event, dispatch, budget, host)
     }
     /// Continue exactly where admission stopped. No already-delivered listener
@@ -952,6 +1067,7 @@ impl<C> DomEventDispatcher<C> {
         cancel: &AtomicBool,
         host: bool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.association.validate(dom)?;
         match event.0.status.get() {
             Status::Running | Status::HostPending => {
                 return Err(DomEventDispatchError::AlreadyDispatching);
@@ -1325,6 +1441,25 @@ impl<C> DomEventDispatcher<C> {
     }
 }
 
+impl<C> Drop for DomEventDispatcher<C> {
+    fn drop(&mut self) {
+        for entry in &self.pending {
+            if let Some(custody) = entry.upgrade() {
+                if let Some(event) = custody.event()
+                    && event.status.get() != Status::Complete
+                {
+                    NativeDomEvent(event).abandon();
+                }
+                // No host call retains a mutable continuation loan. Withdraw
+                // its real Source reentry guard before releasing dispatch state.
+                custody.host.take();
+                if let Ok(mut dispatch) = custody.dispatch.try_borrow_mut() {
+                    dispatch.take();
+                }
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Status {
     Abandoned,
@@ -1414,6 +1549,7 @@ pub(crate) struct DispatchFormation {
 impl NativeDomEventOwner {
     fn new(original: NodeId, data: EventData) -> Self {
         let custody = Rc::new(EventContinuation {
+            event: Cell::new(std::rc::Weak::new()),
             dispatch: RefCell::new(None),
             host: Cell::new(None),
             element_task_payload: RefCell::new(None),
@@ -1432,6 +1568,7 @@ impl NativeDomEventOwner {
             continuation: Rc::downgrade(&custody),
             element_task_payload: RefCell::new(None),
         }));
+        custody.event.set(Rc::downgrade(&event.0));
         Self {
             event,
             _custody: custody,
@@ -1907,6 +2044,7 @@ impl std::ops::Deref for EventPath {
     }
 }
 struct EventContinuation {
+    event: Cell<std::rc::Weak<Event>>,
     dispatch: RefCell<Option<Dispatch>>,
     host: Cell<Option<HostFrame>>,
     // Declared after the actual dispatch so its allocations drop first.
@@ -1919,6 +2057,12 @@ impl std::ops::Deref for EventContinuation {
     }
 }
 impl EventContinuation {
+    fn event(&self) -> Option<Rc<Event>> {
+        let observation = self.event.take();
+        let event = observation.upgrade();
+        self.event.set(observation);
+        event
+    }
     fn settle_element_task(&self) {
         let dispatch = self.dispatch.borrow();
         let own = std::mem::size_of::<Self>()

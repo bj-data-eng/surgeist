@@ -1955,7 +1955,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
                 b.set_attribute(target, "capture-delivered", "yes");
                 apply(dom.raw_mut(), b);
                 c.original = Some(std::mem::replace(listeners, registry()));
-                listeners
+                let refused = listeners
                     .add_listener(
                         dom,
                         target,
@@ -1969,7 +1969,11 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
                         }),
                         DomEventListenerOptions::default(),
                     )
-                    .unwrap();
+                    .unwrap_err();
+                assert_eq!(
+                    refused,
+                    DomEventDispatchError::Dom(DomError::EventRegistryAlreadyBound)
+                );
                 Ok(())
             }),
             DomEventListenerOptions {

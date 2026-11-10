@@ -3,18 +3,6 @@ use super::*;
 use surgeist_html::values::DocumentString;
 
 fn show(session: &mut DomSession, subject: NodeId) {
-    let event = match apply(session, DomSourceEdit::show_dialog(subject)) {
-        DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Event(event),
-            reason: DomSourceUnavailable::Event,
-        } => event,
-        other => panic!("actual Show beforetoggle required: {other:?}"),
-    };
-    assert!(event.cancelable());
-    let payload = event.toggle_event().unwrap();
-    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
-    assert_eq!(payload.new_state(), HtmlDialogState::Open);
-    assert_eq!(payload.source(), None);
     let mut registry = dispatcher();
     registry
         .add_listener(
@@ -33,8 +21,28 @@ fn show(session: &mut DomSession, subject: NodeId) {
         )
         .unwrap();
     let mut calls = 0;
-    let receipt = service(session, &event, &mut registry, &mut calls);
+    show_using(session, subject, &mut registry, &mut calls);
     assert_eq!(calls, 1);
+}
+fn show_using<C>(
+    session: &mut DomSession,
+    subject: NodeId,
+    registry: &mut DomEventDispatcher<C>,
+    context: &mut C,
+) {
+    let event = match apply(session, DomSourceEdit::show_dialog(subject)) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(event),
+            reason: DomSourceUnavailable::Event,
+        } => event,
+        other => panic!("actual Show beforetoggle required: {other:?}"),
+    };
+    assert!(event.cancelable());
+    let payload = event.toggle_event().unwrap();
+    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
+    assert_eq!(payload.new_state(), HtmlDialogState::Open);
+    assert_eq!(payload.source(), None);
+    let receipt = service(session, &event, registry, context);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());
     assert!(!receipt.default_prevented());
@@ -45,8 +53,7 @@ fn show(session: &mut DomSession, subject: NodeId) {
 
 struct Reentry {
     owner: DomElementTaskRuntime,
-    source: DomSourceRuntime,
-    before: DomEventDispatcher<usize>,
+    source: Option<DomSourceRuntime>,
     before_calls: usize,
     parent: Option<DomSourceOperationId>,
     closed: Option<DomSnapshot>,
@@ -62,14 +69,22 @@ impl DomElementTaskEventContext for Reentry {
         &mut self.owner
     }
 }
-fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeId) {
+fn nested_close(
+    dom: &mut DomEventDom<'_>,
+    registry: &mut DomEventDispatcher<Reentry>,
+    context: &mut Reentry,
+    subject: NodeId,
+) {
+    let mut source = context
+        .source
+        .take()
+        .expect("the original Source permission");
     let parent = dom
         .pending_source_edit()
         .expect("the executing Toggle owns its actual Source root")
         .operation();
     context.parent = Some(parent);
-    let request = match context
-        .source
+    let request = match source
         .apply(
             dom,
             DomSourceEdit::close_dialog(subject, Some("closed in first Toggle".into())),
@@ -97,13 +112,12 @@ fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeI
     assert_eq!(payload.old_state(), HtmlDialogState::Open);
     assert_eq!(payload.new_state(), HtmlDialogState::Closed);
     assert_eq!(payload.source(), None);
-    match context
-        .source
+    match source
         .service_event(
             dom,
             &request,
-            &mut context.before,
-            &mut context.before_calls,
+            registry,
+            context,
             DomSourceEventServiceLimits {
                 source: source_limits(),
                 dispatch: dispatch_limits(),
@@ -120,8 +134,7 @@ fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeI
         other => panic!("nested Close must finish its authentic receipt: {other:?}"),
     }
     let done = complete(
-        context
-            .source
+        source
             .resume(
                 dom,
                 request.operation(),
@@ -180,6 +193,7 @@ fn nested_close(dom: &mut DomEventDom<'_>, context: &mut Reentry, subject: NodeI
     context.closed = Some(closed);
     context.replacement = Some(replacement);
     context.plain_close = Some(plain);
+    context.source = Some(source);
 }
 fn check_delivery(progress: DomElementTaskProgress, expected: DomElementTask, callbacks: usize) {
     match progress {
@@ -276,14 +290,14 @@ fn exercise(retain: bool) {
             .task(),
         first.id()
     );
-    let mut before = dispatcher();
-    let before_listener = before
+    let mut registry = dispatcher();
+    let before_listener = registry
         .add_listener(
             &mut session.dom(),
             subject,
             DomEventType::BeforeToggle,
-            DomEventCallback::new(|_, _, calls: &mut usize, event| {
-                *calls += 1;
+            DomEventCallback::new(|_, _, context: &mut Reentry, event| {
+                context.before_calls += 1;
                 assert!(!event.cancelable());
                 event.prevent_default();
                 assert!(!event.default_prevented());
@@ -297,8 +311,7 @@ fn exercise(retain: bool) {
         .unwrap();
     let mut context = Reentry {
         owner: session.element_task_execution(),
-        source: session.source_execution(),
-        before,
+        source: Some(session.source_execution()),
         before_calls: 0,
         parent: None,
         closed: None,
@@ -309,16 +322,15 @@ fn exercise(retain: bool) {
         edits: Vec::new(),
         later_calls: 0,
     };
-    let mut registry = dispatcher();
     let first_listener = registry
         .add_listener(
             &mut session.dom(),
             subject,
             DomEventType::Toggle,
-            DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
+            DomEventCallback::new(move |dom, registry, context: &mut Reentry, event| {
                 context.callbacks.push("first");
                 context.delivered.push(observe(event));
-                nested_close(dom, context, subject);
+                nested_close(dom, registry, context, subject);
                 Ok(())
             }),
             DomEventListenerOptions {
@@ -426,7 +438,7 @@ fn exercise(retain: bool) {
     assert_eq!(context.callbacks, ["first", "later"]);
     assert_eq!(context.before_calls, 1);
     assert_eq!(context.later_calls, 1);
-    assert!(!context.before.remove_listener(before_listener));
+    assert!(!registry.remove_listener(before_listener));
     assert!(!registry.remove_listener(first_listener));
     assert!(context.edits.iter().all(Result::is_ok));
     let replacement = context.replacement.unwrap();
@@ -465,7 +477,26 @@ fn exercise(retain: bool) {
     // The completed first Toggle cleared the newer tracker unconditionally,
     // but not the replacement task. A later Show must therefore append a third
     // task rather than coalesce away that now-untracked replacement.
-    show(&mut session, subject);
+    let show_calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let observed = show_calls.clone();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |_, _, _: &mut Reentry, event| {
+                assert!(event.cancelable());
+                observed.set(observed.get() + 1);
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
+    show_using(&mut session, subject, &mut registry, &mut context);
+    assert_eq!(show_calls.get(), 1);
     let reopened = session.snapshot();
     let next = tasks
         .pending_task(DomElementTaskSourceKind::DomManipulation, 1)

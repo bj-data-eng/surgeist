@@ -103,6 +103,156 @@ fn dispatcher() -> DomEventDispatcher<Vec<u64>> {
     })
     .unwrap()
 }
+
+#[test]
+fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() {
+    let (mut session, document, dialog, _) = fixture();
+    let mut source = session.source_execution();
+    let mut owner = dispatcher();
+    owner
+        .add_listener(
+            &mut session.dom(),
+            dialog,
+            DomEventType::BeforeToggle,
+            DomEventCallback::host(41),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
+    owner
+        .add_listener(
+            &mut session.dom(),
+            dialog,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
+                calls.push(99);
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let request = show(&mut source, &mut session, dialog);
+    let mut calls = Vec::new();
+    let mut invocation = pending(service(
+        &source,
+        &mut session,
+        &request,
+        &mut owner,
+        &mut calls,
+    ));
+    let event = invocation.event().clone();
+    let path = event.composed_path();
+    let parent = session.snapshot().node(dialog).unwrap().parent().unwrap();
+    // The pending host enables nested Source work before owner loss.
+    assert!(matches!(
+        source
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::set_attribute(dialog, "data-before-owner-drop", "kept"),
+                limits().source,
+                &mut services(&mut |_| None),
+                &AtomicBool::new(false)
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    drop(owner);
+    assert_eq!(event.current_target(), None);
+    assert_eq!(event.phase(), DomEventPhase::None);
+    assert_eq!(event.composed_path().count(), 0);
+    assert_eq!(
+        path.collect::<Vec<_>>(),
+        [dialog.into(), parent.into(), document.into()]
+    );
+    assert!(
+        source
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::set_attribute(dialog, "data-after-owner-drop", "forbidden"),
+                limits().source,
+                &mut services(&mut |_| None),
+                &AtomicBool::new(false)
+            )
+            .is_err()
+    );
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot
+            .node(dialog)
+            .unwrap()
+            .attribute(&"data-before-owner-drop".into()),
+        Some(&"kept".into())
+    );
+    assert!(
+        snapshot
+            .node(dialog)
+            .unwrap()
+            .attribute(&"data-after-owner-drop".into())
+            .is_none()
+    );
+    assert!(
+        snapshot
+            .node(dialog)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
+    assert!(session.dom().pending_source_edit().is_some());
+    assert!(calls.is_empty());
+    // A different live registry cannot revive the old token or its Source tail.
+    let (mut fresh, _, target, _) = fixture();
+    let mut fresh_source = fresh.source_execution();
+    let mut replacement = dispatcher();
+    replacement
+        .add_listener(
+            &mut fresh.dom(),
+            target,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut Vec<u64>, event| {
+                calls.push(7);
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    assert!(matches!(
+        invocation.complete(&replacement, Ok(())),
+        Err(DomEventDispatchError::Abandoned)
+    ));
+    let fresh_request = show(&mut fresh_source, &mut fresh, target);
+    let receipt = match service(
+        &fresh_source,
+        &mut fresh,
+        &fresh_request,
+        &mut replacement,
+        &mut calls,
+    ) {
+        DomSourceEventServiceProgress::Serviced { receipt } => receipt,
+        other => panic!("fresh authentic event: {other:?}"),
+    };
+    assert_eq!(receipt.callbacks(), 1);
+    assert_eq!(calls, [7]);
+    assert!(receipt.default_prevented());
+    assert!(receipt.failures().is_empty());
+    assert!(matches!(
+        source.service_event(
+            &mut session.dom(),
+            &request,
+            &mut replacement,
+            &mut calls,
+            limits(),
+            &AtomicBool::new(false)
+        ),
+        Err(crate::DomSourceRuntimeError::SourceEvent(
+            DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Dom(
+                DomError::ForeignOwner
+            ))
+        ))
+    ));
+}
 fn services(
     policy: &mut dyn FnMut(
         &surgeist_dom::DomStyleSource,
@@ -721,12 +871,12 @@ fn abandonment_and_session_drop_close_active_observation_without_successful_sour
                     &AtomicBool::new(false)
                 ),
                 Err(crate::DomSourceRuntimeError::SourceEvent(
-                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Admission(
-                        crate::DomEventResource::NestedDispatches
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Dom(
+                        DomError::ForeignOwner
                     ))
                 ))
             ),
-            "the original running reservation stays owned throughout the host call"
+            "a bound dispatcher cannot execute against a different canonical owner"
         );
         assert_eq!(event.current_target(), Some(dialog.into()));
         let DomShutdownOutcome::Pending {
@@ -792,14 +942,20 @@ fn abandonment_and_session_drop_close_active_observation_without_successful_sour
         assert_eq!(event.phase(), DomEventPhase::None);
         assert_eq!(event.composed_path().count(), 0);
         assert!(calls.is_empty());
-        // A real new owner's event can reuse a dispatcher with one running
-        // and one pending slot only after the old invocation released both.
+        // A different canonical owner requires its own fresh registry. The old
+        // issuer remains bound even after its event or Session is abandoned.
+        let mut next_dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+            registrations: 16,
+            pending_events: 1,
+            nested_dispatches: 1,
+        })
+        .unwrap();
         assert!(matches!(
             service(
                 &next_source,
                 &mut next,
                 &next_request,
-                &mut dispatcher,
+                &mut next_dispatcher,
                 &mut calls
             ),
             DomSourceEventServiceProgress::Serviced { .. }

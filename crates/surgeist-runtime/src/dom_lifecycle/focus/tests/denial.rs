@@ -8,6 +8,24 @@ use std::error::Error;
 type Failure = Box<dyn Error>;
 const RUNTIME_VISITS: u64 = 19;
 
+struct Child {
+    source: DomSourceRuntime,
+    subject: NodeId,
+    work: u64,
+    event: Option<DomSourceEventRequest>,
+    error: Option<crate::DomSourceDriveError>,
+    calls: usize,
+    unexpected: Option<String>,
+}
+struct Adopt {
+    calls: usize,
+    result: Option<Result<DomCommit, DomError>>,
+}
+enum Delivery {
+    Child(Child),
+    Adopt(Adopt),
+}
+
 struct Parked {
     session: DomSession,
     request: DomFocusRequest,
@@ -18,6 +36,8 @@ struct Parked {
     current_document: DocumentId,
     subject: NodeId,
     sentinel: NodeId,
+    // Keep the actual parent dispatch owner live throughout its child's wait.
+    _registry: DomEventDispatcher<Delivery>,
 }
 fn dispatch_limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
@@ -140,33 +160,40 @@ fn parked(
         }
     }
     assert!(completed, "the real B destruction must complete");
-    let (event, parent) = if let Some(cap) = parent_work {
-        struct Child {
-            source: DomSourceRuntime,
-            subject: NodeId,
-            work: u64,
-            event: Option<DomSourceEventRequest>,
-            error: Option<crate::DomSourceDriveError>,
-            calls: usize,
-            unexpected: Option<String>,
-        }
-        let scope = session.source_execution_scope(host, &cancel)?;
-        let parent = start(
-            &mut session,
-            parent_subject,
-            source_limits(cap),
-            Some(&scope),
-        )?;
-        let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-            registrations: 1,
-            pending_events: 1,
-            nested_dispatches: 1,
-        })?;
+    let simultaneous = if parent_work.is_some() { 2 } else { 1 };
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: simultaneous,
+        pending_events: simultaneous,
+        nested_dispatches: simultaneous,
+    })?;
+    registry.add_listener(
+        &mut session.dom(),
+        subject,
+        DomEventType::BeforeToggle,
+        DomEventCallback::new(move |dom, _, context: &mut Delivery, _| {
+            let Delivery::Adopt(context) = context else {
+                panic!("actual child adoption context required")
+            };
+            context.calls += 1;
+            let mut batch = DomBatch::new();
+            batch.insert_before(subject, body_b, None);
+            context.result = Some(dom.apply(batch, &AtomicBool::new(false)));
+            Ok(())
+        }),
+        DomEventListenerOptions {
+            capture: false,
+            once: false,
+        },
+    )?;
+    if parent_work.is_some() {
         registry.add_listener(
             &mut session.dom(),
             parent_subject,
             DomEventType::BeforeToggle,
-            DomEventCallback::new(|dom, _, context: &mut Child, _| {
+            DomEventCallback::new(|dom, _, context: &mut Delivery, _| {
+                let Delivery::Child(context) = context else {
+                    panic!("actual parent callback context required")
+                };
                 context.calls += 1;
                 match context.source.apply(
                     dom,
@@ -196,7 +223,16 @@ fn parked(
                 once: false,
             },
         )?;
-        let mut context = Child {
+    }
+    let (event, parent) = if let Some(cap) = parent_work {
+        let scope = session.source_execution_scope(host, &cancel)?;
+        let parent = start(
+            &mut session,
+            parent_subject,
+            source_limits(cap),
+            Some(&scope),
+        )?;
+        let mut context = Delivery::Child(Child {
             source: session.source_execution(),
             subject,
             work,
@@ -204,7 +240,7 @@ fn parked(
             error: None,
             calls: 0,
             unexpected: None,
-        };
+        });
         let result = session.source_execution().service_event(
             &mut session.dom(),
             &parent,
@@ -216,7 +252,10 @@ fn parked(
             },
             &cancel,
         );
-        if let Some(error) = context.error {
+        let Delivery::Child(mut context) = context else {
+            panic!("parent context retained")
+        };
+        if let Some(error) = context.error.take() {
             return Err(Box::new(error));
         }
         let _ = result?;
@@ -225,6 +264,7 @@ fn parked(
         (
             context
                 .event
+                .take()
                 .expect("the real parent callback started its child"),
             Some(parent),
         )
@@ -234,35 +274,10 @@ fn parked(
             None,
         )
     };
-    struct Adopt {
-        calls: usize,
-        result: Option<Result<DomCommit, DomError>>,
-    }
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 1,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })?;
-    registry.add_listener(
-        &mut session.dom(),
-        subject,
-        DomEventType::BeforeToggle,
-        DomEventCallback::new(move |dom, _, context: &mut Adopt, _| {
-            context.calls += 1;
-            let mut batch = DomBatch::new();
-            batch.insert_before(subject, body_b, None);
-            context.result = Some(dom.apply(batch, &AtomicBool::new(false)));
-            Ok(())
-        }),
-        DomEventListenerOptions {
-            capture: false,
-            once: false,
-        },
-    )?;
-    let mut context = Adopt {
+    let mut context = Delivery::Adopt(Adopt {
         calls: 0,
         result: None,
-    };
+    });
     let progress = session.source_execution().service_event(
         &mut session.dom(),
         &event,
@@ -278,6 +293,9 @@ fn parked(
         progress,
         DomSourceEventServiceProgress::Serviced { .. }
     ));
+    let Delivery::Adopt(context) = context else {
+        panic!("child context retained")
+    };
     assert_eq!(context.calls, 1);
     drop(context.result.unwrap()?);
     let tasks = session.element_task_execution();
@@ -314,6 +332,7 @@ fn parked(
         current_document: b.document(),
         subject,
         sentinel,
+        _registry: registry,
     };
     if prelude {
         let mut parked = parked;

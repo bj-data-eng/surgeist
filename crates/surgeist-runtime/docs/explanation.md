@@ -207,6 +207,21 @@ The durable job preserves the actual event, dispatch permit and completion recei
 across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
 
+`DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
+accepted registration or dispatch claims the canonical DOM's one registry
+association; another dispatcher cannot select a parallel Node or Global list,
+even when it proposes no listeners. The association is irreversible for that
+dispatcher. A foreign owner is refused on registration, dispatch and resume.
+Failed first admission releases its provisional claim. The callback-free DOM
+lease admits its actual body and the dispatcher's bounded weak continuation
+index before allocation, under any enclosing Source allowance. The existing
+fixed Runtime owner is caller-owned formation. Snapshots carry no registry
+authority. Dropping the dispatcher closes pending host reentry, clears active
+event observations and releases reservations without issuing a receipt or
+running the original Source tail. A fresh owner receives no old registrations
+or continuations. These ownership rules do not yet supply arbitrary Event
+construction or signal integration.
+
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;
 cloning a callback preserves its identity, while two callback objects with equal

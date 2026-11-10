@@ -370,24 +370,30 @@ fn removing_one_registry_recipient_keeps_the_other_until_its_exact_removal() {
     let (mut dom, document, root) = native_owner();
     let script = detached_script(&mut dom, document, None);
     let mut first = recipients();
-    let mut second = recipients();
     let first_id = register(&mut dom, &mut first, script, DomEventType::Load, false);
-    let second_id = register(&mut dom, &mut second, script, DomEventType::Error, false);
+    let second_id = register(&mut dom, &mut first, script, DomEventType::Error, false);
     refuse_insertion(&mut dom, script, root, root);
     assert!(first.remove_listener(first_id));
     refuse_insertion(&mut dom, script, root, root);
-    assert!(second.remove_listener(second_id));
+    assert!(first.remove_listener(second_id));
     connect_without_recipient(&mut dom, script, document, root);
 }
 
 #[test]
-fn dropping_registries_releases_only_their_own_ancestor_recipients() {
+fn dropping_registry_releases_only_its_own_ancestor_recipients() {
     let (mut dom, document, root) = native_owner();
     let script = detached_script(&mut dom, document, None);
     let mut first = recipients();
-    let mut second = recipients();
     register(&mut dom, &mut first, root, DomEventType::Load, true);
-    register(&mut dom, &mut second, root, DomEventType::Error, true);
+    let second = dom
+        .retain_event_recipient(
+            root.into(),
+            DomEventType::Error,
+            true,
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+        .unwrap();
     drop(first);
     refuse_insertion(&mut dom, script, root, root);
     drop(second);
@@ -689,7 +695,7 @@ fn canceled_mutation_keeps_recipient_and_false_history_for_the_uncanceled_retry(
 }
 
 #[test]
-fn one_dom_recipient_slot_is_shared_by_registries_and_duplicate_keeps_its_original_lease() {
+fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_original_lease() {
     let (mut dom, document, root) = native_owner();
     dom.set_limits(dom.limits().with_event_recipients(
         DomEventRecipientLimits::new(1, 16_000_000, 16_000_000, 4_000_000).unwrap(),
@@ -698,7 +704,6 @@ fn one_dom_recipient_slot_is_shared_by_registries_and_duplicate_keeps_its_origin
     let first_script = detached_script(&mut dom, document, None);
     let second_script = detached_script(&mut dom, document, None);
     let mut first = recipients();
-    let mut second = recipients();
     let callback = DomEventCallback::new(|_, _, observed: &mut Vec<DomEventType>, event| {
         observed.push(event.event_type());
         Ok(())
@@ -727,7 +732,7 @@ fn one_dom_recipient_slot_is_shared_by_registries_and_duplicate_keeps_its_origin
     // Repeating the exact failed key must still fail: the first refusal must
     // not leave a Runtime registration that bypasses canonical admission.
     for _ in 0..2 {
-        let error = second
+        let error = first
             .add_listener(
                 &mut DomEventDom::borrow(&mut dom),
                 second_script,
@@ -751,17 +756,16 @@ fn one_dom_recipient_slot_is_shared_by_registries_and_duplicate_keeps_its_origin
     assert!(!first.remove_listener(duplicate));
     let second_id = register_callback(
         &mut dom,
-        &mut second,
+        &mut first,
         second_script,
         DomEventType::Error,
         callback,
         DomEventListenerOptions::default(),
     );
-    assert!(!second.remove_listener(first_id));
     assert!(!first.remove_listener(first_id));
     refuse_insertion(&mut dom, second_script, root, root);
     connect_without_recipient(&mut dom, first_script, document, root);
-    assert!(second.remove_listener(second_id));
+    assert!(first.remove_listener(second_id));
     connect_without_recipient(&mut dom, second_script, document, root);
     unprocessed(&before, first_script, document, None);
     unprocessed(&before, second_script, document, None);
@@ -806,17 +810,18 @@ fn runtime_registration_refusal_does_not_consume_the_other_dom_recipient_slot() 
         DomEventDispatchError::Admission(DomEventResource::Registrations)
     );
     // Both canonical slots are usable despite the failed Runtime attempt.
-    let mut second = recipients();
-    let second_id = register(
-        &mut dom,
-        &mut second,
-        second_script,
-        DomEventType::Error,
-        false,
-    );
+    let second = dom
+        .retain_event_recipient(
+            second_script.into(),
+            DomEventType::Error,
+            false,
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+        .unwrap();
     refuse_insertion(&mut dom, first_script, root, root);
     refuse_insertion(&mut dom, second_script, root, root);
-    assert!(second.remove_listener(second_id));
+    drop(second);
     assert!(first.remove_listener(first_id));
     let replacement = register(
         &mut dom,
