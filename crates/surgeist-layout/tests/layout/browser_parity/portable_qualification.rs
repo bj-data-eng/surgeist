@@ -31,6 +31,11 @@ use qualification_catalogue::{Declaration, Record};
 const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 
 type Result<T> = std::result::Result<T, QualificationError>;
+
+#[cfg(test)]
+#[path = "original_diagnostic_tests.rs"]
+mod original_diagnostic_tests;
+
 type PlacementObserver<'a> =
     dyn FnMut(&ObservedPlacement) -> std::result::Result<(), support::Error> + 'a;
 
@@ -200,6 +205,7 @@ struct Freshness {
     owner: PathBuf,
     root: PathBuf,
     artifact_root: String,
+    receipt_name: &'static str,
     pins: BTreeMap<String, String>,
     owner_pins: BTreeMap<String, String>,
     selected_records: BTreeMap<String, Value>,
@@ -209,7 +215,7 @@ impl Freshness {
     fn verify_files(&self) -> Result<()> {
         regular_file(
             &self.owner,
-            &format!("{}/{}", self.artifact_root, authority::TERMINAL),
+            &format!("{}/{}", self.artifact_root, self.receipt_name),
         )?;
         for (path, digest) in &self.pins {
             read_pinned(
@@ -270,7 +276,10 @@ fn record_value(record: &Record) -> Result<Value> {
     serde_json::to_value(record).map_err(|error| malformed(error.to_string()))
 }
 
-fn selected_records(root: &Path, terminal: &Qualification) -> Result<BTreeMap<String, Value>> {
+fn selected_records<Case>(
+    root: &Path,
+    terminal: &authority::QualificationData<Case>,
+) -> Result<BTreeMap<String, Value>> {
     let bytes = read_pinned(root, &terminal.declaration)?;
     let captured = Declaration::parse(&bytes)
         .map_err(|error| malformed(format!("retained catalogue: {error}")))?;
@@ -789,6 +798,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         owner: owner.into(),
         root: root.clone(),
         artifact_root,
+        receipt_name: authority::TERMINAL,
         pins,
         owner_pins: terminal.current_owner_inputs.clone(),
         selected_records: selected_records(&root, &terminal)?,
@@ -836,39 +846,12 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     {
         return Err(changed("complete current-owner input census"));
     }
-    let report_bytes = read_pinned(&root, &terminal.report)?;
-    let report: Report = parse_json(&report_bytes)?;
-    if report.filter.is_some()
-        || report.summary.generated != terminal.cases.len()
-        || report.generated.len() != terminal.cases.len()
-        || report.summary.unsupported != 0
-        || !report.unsupported.is_empty()
-        || report.summary.expected_fail != 0
-        || !report.expected_fail.is_empty()
-        || report.summary.quarantined != 0
-        || !report.quarantined.is_empty()
-        || report.summary.failed_to_generate != 0
-        || !report.failed_to_generate.is_empty()
-        || report.metadata.inputs != terminal.retained_inputs
-    {
-        return Err(changed("complete current generated report census"));
-    }
-    let ownership: Ownership = parse_json(&read_pinned(&root, &terminal.ownership)?)?;
-    let mut expected_outputs =
-        BTreeMap::from([(terminal.report.path.clone(), terminal.report.sha256.clone())]);
-    let mut artifacts = BTreeMap::new();
-    for artifact in &report.generated {
-        if artifacts.insert(artifact.name.as_str(), artifact).is_some()
-            || expected_outputs
-                .insert(artifact.output.clone(), artifact.output_sha256.clone())
-                .is_some()
-        {
-            return Err(malformed("duplicate generated case or output"));
-        }
-    }
-    if ownership.schema_version != 1 || ownership.artifacts != expected_outputs {
-        return Err(changed("complete generated ownership census"));
-    }
+    let (report, report_bytes) = complete_report(&root, &terminal)?;
+    let artifacts: BTreeMap<_, _> = report
+        .generated
+        .iter()
+        .map(|a| (a.name.as_str(), a))
+        .collect();
     let mut records = BTreeMap::new();
     for record in &terminal.records {
         if semantic_record_digest(&record.value)? != record.sha256
@@ -1090,9 +1073,249 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     Ok(AdmittedEdition { freshness, cases })
 }
 
-fn verify_matching_original_selection(
+pub(super) struct AuthenticatedOriginalDiagnostics {
+    cases: BTreeMap<(String, String), support::Golden>,
+}
+
+impl AuthenticatedOriginalDiagnostics {
+    pub(super) fn golden(&self, source: &str, variant: &str) -> Result<&support::Golden> {
+        self.cases
+            .get(&(source.to_owned(), variant.to_owned()))
+            .ok_or_else(|| changed("missing authenticated original diagnostic case"))
+    }
+}
+
+pub(super) fn admit_original_diagnostics(
+    owner: &Path,
+    receipt_sha256: &str,
+) -> Result<AuthenticatedOriginalDiagnostics> {
+    let artifact_root = format!(
+        "tests/layout/browser_parity/captured/{}",
+        authority::ORIGINAL_DIAGNOSTIC_EDITION
+    );
+    let root = owner.join(&artifact_root);
+    let receipt_pin = PathDigest {
+        path: authority::ORIGINAL_DIAGNOSTIC_RECEIPT.into(),
+        sha256: receipt_sha256.into(),
+    };
+    regular_file(owner, &format!("{artifact_root}/{}", receipt_pin.path))?;
+    let bytes = read_pinned(&root, &receipt_pin)?;
+    let receipt = authority::OriginalDiagnosticReceipt::parse(
+        std::str::from_utf8(&bytes).map_err(|error| malformed(error.to_string()))?,
+    )?;
+    if receipt.to_bytes()? != bytes {
+        return Err(malformed("noncanonical original diagnostic receipt"));
+    }
+    let mut pins = receipt.retained_inputs.clone();
+    for entry in [&receipt.report, &receipt.ownership, &receipt_pin]
+        .into_iter()
+        .chain(receipt.cases.iter().map(|case| &case.case.output))
+    {
+        if pins
+            .insert(entry.path.clone(), entry.sha256.clone())
+            .is_some()
+        {
+            return Err(malformed("original diagnostic input/output overlap"));
+        }
+    }
+    let freshness = Freshness {
+        owner: owner.into(),
+        root: root.clone(),
+        artifact_root,
+        receipt_name: authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
+        pins,
+        owner_pins: receipt.current_owner_inputs.clone(),
+        selected_records: selected_records(&root, &receipt)?,
+    };
+    freshness.verify()?;
+    let mut declaration = Declaration::parse(&read_pinned(&root, &receipt.declaration)?)
+        .map_err(|error| malformed(error.to_string()))?;
+    declaration
+        .select_original_diagnostics()
+        .map_err(|error| malformed(error.to_string()))?;
+    let records: BTreeMap<_, _> = declaration
+        .records
+        .iter()
+        .map(|record| (record.source.as_str(), record))
+        .collect();
+    let source_kinds: BTreeMap<_, _> = records
+        .iter()
+        .map(|(source, record)| (*source, record.source_kind))
+        .collect();
+    verify_original_diagnostic_origin(&root, &receipt, &source_kinds)?;
+    let (report, _) = complete_report(&root, &receipt)?;
+    if report.metadata.generator != authority::FIXED_GENERATOR
+        || !report.metadata.source_imports.is_empty()
+    {
+        return Err(changed("original diagnostic report lineage"));
+    }
+    let artifacts: BTreeMap<_, _> = report
+        .generated
+        .iter()
+        .map(|artifact| (artifact.name.as_str(), artifact))
+        .collect();
+    let mut cases = BTreeMap::new();
+    for diagnostic in &receipt.cases {
+        let case = &diagnostic.case;
+        let record = records
+            .get(case.source.as_str())
+            .ok_or_else(|| changed("diagnostic source record"))?;
+        let artifact = artifacts
+            .get(case.name.as_str())
+            .ok_or_else(|| changed("diagnostic generated artifact"))?;
+        let xml = read_pinned(&root, &case.output)?;
+        let xml = std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?;
+        record
+            .verify_original_diagnostic_capture(xml, &case.name, &case.variant)
+            .map_err(|error| changed(error.to_string()))?;
+        let identity =
+            authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+                metadata: &report.metadata,
+                artifact,
+                case,
+                full_inputs: &receipt.retained_inputs,
+                excluded_specs: &BTreeSet::new(),
+                actual_xml_sha256: &sha256(xml.as_bytes()),
+                historical_sha256: Some(&diagnostic.historical.sha256),
+                browser_settings: &receipt.browser_settings,
+                observation_request: "geometry",
+                observation_input_sha256: None,
+            })?;
+        if identity != diagnostic.identity {
+            return Err(changed("original diagnostic capture binding"));
+        }
+        let golden = support::Golden::parse(xml).map_err(|error| changed(error.to_string()))?;
+        if authority::original_diagnostic_differences(&golden)? != diagnostic.raw_differences {
+            return Err(changed(format!(
+                "original diagnostic numeric replay: {}",
+                case.name
+            )));
+        }
+        cases.insert((case.source.clone(), case.variant.clone()), golden);
+    }
+    if cases.len() != artifacts.len() {
+        return Err(changed("complete original diagnostic replay census"));
+    }
+    freshness.verify()?;
+    Ok(AuthenticatedOriginalDiagnostics { cases })
+}
+
+fn verify_original_diagnostic_origin(
     root: &Path,
-    terminal: &Qualification,
+    receipt: &authority::OriginalDiagnosticReceipt,
+    source_kinds: &BTreeMap<&str, authority::SourceKind>,
+) -> Result<()> {
+    let retained_json = |path: &str| -> Result<Value> {
+        let hash = receipt
+            .retained_inputs
+            .get(path)
+            .ok_or_else(|| changed(format!("missing original diagnostic origin input: {path}")))?;
+        parse_json(&read_pinned(
+            root,
+            &PathDigest {
+                path: path.into(),
+                sha256: hash.clone(),
+            },
+        )?)
+    };
+    let source_receipt = retained_json("origin/source-receipt.json")?;
+    let provenance = retained_json("origin/source-provenance.json")?;
+    let sidecar = "html/.surgeist-source.json";
+    if provenance["sidecar"].as_str() != Some(sidecar)
+        || source_receipt["schema_version"].as_u64() != Some(1)
+        || ["schema_version", "specification", "files"]
+            .iter()
+            .any(|key| source_receipt[key] != provenance[key])
+    {
+        return Err(changed("original diagnostic import receipt projection"));
+    }
+    if authority::current_owner_bindings(
+        &receipt.retained_inputs,
+        source_kinds,
+        &BTreeSet::new(),
+        sidecar,
+    )? != receipt.current_owner_inputs
+    {
+        return Err(changed("complete original diagnostic current-owner inputs"));
+    }
+    verify_matching_original_selection(root, receipt, source_kinds, &provenance)?;
+    let imported = source_receipt["files"]
+        .as_array()
+        .ok_or_else(|| malformed("original import file inventory"))?;
+    let authored = source_receipt["specification"]["authored_files"]
+        .as_array()
+        .ok_or_else(|| malformed("original authored source partition"))?;
+    let selected = retained_json("origin/selected-originals.json")?;
+    for entry in selected
+        .as_array()
+        .ok_or_else(|| malformed("selected original sources"))?
+    {
+        let source = entry["source"]
+            .as_str()
+            .and_then(|source| source.strip_prefix("html/"))
+            .ok_or_else(|| malformed("selected original source path"))?;
+        let admitted = match entry["ownership"].as_str() {
+            Some("imported") => imported.iter().any(|file| {
+                file["path"].as_str() == Some(source) && file["sha256"] == entry["sha256"]
+            }),
+            Some("repository-authored") => {
+                authored.iter().any(|file| file.as_str() == Some(source))
+                    && !imported
+                        .iter()
+                        .any(|file| file["path"].as_str() == Some(source))
+            }
+            _ => false,
+        };
+        if !admitted {
+            return Err(changed("selected original diagnostic import partition"));
+        }
+    }
+    Ok(())
+}
+
+fn complete_report<Case>(
+    root: &Path,
+    terminal: &authority::QualificationData<Case>,
+) -> Result<(Report, Vec<u8>)> {
+    let report_bytes = read_pinned(root, &terminal.report)?;
+    let report: Report = parse_json(&report_bytes)?;
+    if report.filter.is_some()
+        || report.summary.generated != terminal.cases.len()
+        || report.generated.len() != terminal.cases.len()
+        || report.summary.unsupported != 0
+        || !report.unsupported.is_empty()
+        || report.summary.expected_fail != 0
+        || !report.expected_fail.is_empty()
+        || report.summary.quarantined != 0
+        || !report.quarantined.is_empty()
+        || report.summary.failed_to_generate != 0
+        || !report.failed_to_generate.is_empty()
+        || report.metadata.inputs != terminal.retained_inputs
+    {
+        return Err(changed("complete current generated report census"));
+    }
+    let ownership: Ownership = parse_json(&read_pinned(root, &terminal.ownership)?)?;
+    let mut expected_outputs =
+        BTreeMap::from([(terminal.report.path.clone(), terminal.report.sha256.clone())]);
+    let mut names = BTreeSet::new();
+    for artifact in &report.generated {
+        if !names.insert(artifact.name.as_str())
+            || expected_outputs
+                .insert(artifact.output.clone(), artifact.output_sha256.clone())
+                .is_some()
+        {
+            return Err(malformed("duplicate generated case or output"));
+        }
+    }
+    if ownership.schema_version != 1 || ownership.artifacts != expected_outputs {
+        return Err(changed("complete generated ownership census"));
+    }
+    Ok((report, report_bytes))
+}
+
+fn verify_matching_original_selection<Case>(
+    root: &Path,
+    terminal: &authority::QualificationData<Case>,
     source_kinds: &BTreeMap<&str, authority::SourceKind>,
     provenance: &Value,
 ) -> Result<()> {

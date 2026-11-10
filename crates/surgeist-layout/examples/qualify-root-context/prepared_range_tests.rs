@@ -152,6 +152,7 @@ fn qualify_retained_prepared_range(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            diagnostic_raw: None,
             geometry_predecessors: BTreeMap::new(),
             policy_raw: &mut raw,
         },

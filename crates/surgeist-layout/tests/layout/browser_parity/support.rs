@@ -962,7 +962,8 @@ impl ComparisonResult {
 }
 
 /// One requested numeric field in source-order box comparison.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum NumericComparisonField {
     X,
     Y,

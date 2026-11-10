@@ -17,10 +17,13 @@ enum Edition {
     Exact(PublishedEdition),
     Specialized(SpecializedProfile),
     Matching(&'static str),
+    GridLanesDiagnostics,
 }
 impl Edition {
     fn name(self) -> &'static str {
-        if let Self::Matching(edition) = self {
+        if self == Self::GridLanesDiagnostics {
+            authority::ORIGINAL_DIAGNOSTIC_EDITION
+        } else if let Self::Matching(edition) = self {
             edition
         } else if let Self::Specialized(profile) = self {
             profile.edition()
@@ -30,13 +33,24 @@ impl Edition {
     }
     fn published(self) -> Option<PublishedEdition> {
         match self {
-            Self::RootContextV4 | Self::Specialized(_) | Self::Matching(_) => None,
+            Self::RootContextV4
+            | Self::Specialized(_)
+            | Self::Matching(_)
+            | Self::GridLanesDiagnostics => None,
             Self::Exact(edition) => Some(edition),
         }
     }
     fn lineage(self) -> SemanticLineage {
         self.published()
             .map_or(SemanticLineage::Focused, SemanticLineage::Published)
+    }
+
+    fn terminal_name(self) -> &'static str {
+        if self == Self::GridLanesDiagnostics {
+            authority::ORIGINAL_DIAGNOSTIC_RECEIPT
+        } else {
+            authority::TERMINAL
+        }
     }
 }
 const PARENT: &str = "tests/layout/browser_parity/captured";
@@ -82,6 +96,12 @@ fn publication_request(mode: QualificationMode) -> Result<(Edition, InputAccess)
         | QualificationMode::DeriveMatching(edition) => {
             (Edition::Matching(edition), InputAccess::ReadOnly)
         }
+        QualificationMode::PublishGridLanesDiagnostics => {
+            (Edition::GridLanesDiagnostics, InputAccess::Prepare)
+        }
+        QualificationMode::CheckGridLanesDiagnostics => {
+            (Edition::GridLanesDiagnostics, InputAccess::ReadOnly)
+        }
         _ => return Err("expected a durable publication mode".into()),
     })
 }
@@ -104,6 +124,12 @@ fn run_with_output(owner: &Path, mode: QualificationMode, output: &mut dyn Write
         None
     };
     let input = match edition {
+        Edition::GridLanesDiagnostics => {
+            let mut input =
+                DeclarationInput::parse(retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes))?;
+            input.declaration.select_original_diagnostics()?;
+            input
+        }
         Edition::Matching(edition) => matching_input(
             retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes),
             edition,
@@ -293,6 +319,8 @@ fn finish(
     }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
+    let diagnostics = edition == Edition::GridLanesDiagnostics;
+    let terminal_name = edition.terminal_name();
     let derive_terminal = mode.derives_terminal();
     let geometry_predecessors = if edition == Edition::RootContextV4 {
         verified_exact_predecessors(owner, PublishedEdition::GridStaticPosition)?
@@ -309,22 +337,28 @@ fn finish(
     let mut snapshot = inventory(root, owner, input, mode, access)?;
     origin.inputs(root, &mut snapshot, access)?;
     let stored_terminal = if has_terminal && matches!(access, InputAccess::ReadOnly) {
-        require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
-        let bytes = fs::read(root.join(authority::TERMINAL))?;
-        if !derive_terminal {
+        require_regular_input(root, &RelativePath::new(terminal_name)?)?;
+        let bytes = fs::read(root.join(terminal_name))?;
+        if diagnostics {
+            authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(&bytes)?)?;
+        } else if !derive_terminal {
             authority::Qualification::parse(std::str::from_utf8(&bytes)?)?;
         }
         Some(bytes)
     } else {
         None
     };
-    check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
+    let stored_file = stored_terminal
+        .as_deref()
+        .map(|bytes| (terminal_name, bytes));
+    check_input_census(root, &snapshot.expected_inputs, stored_file)?;
     let requirements = if let Some(published) = published {
         prebind_current_cases(root, &snapshot, published)?
     } else {
         BTreeMap::new()
     };
     let mut terminal_cases = Vec::new();
+    let mut diagnostic_raw = BTreeMap::new();
     let owner_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
         std::str::from_utf8(owner_bytes()?)?,
         "browser-owner.toml",
@@ -362,6 +396,7 @@ fn finish(
             lineage: edition.lineage(),
             requirements: (published.is_some()).then_some(&requirements),
             terminal_cases: (published.is_some()).then_some(&mut terminal_cases),
+            diagnostic_raw: diagnostics.then_some(&mut diagnostic_raw),
             geometry_predecessors,
             policy_raw: &mut std::io::sink(),
         },
@@ -398,7 +433,7 @@ fn finish(
         InputAccess::ReadOnly,
     )?;
     inventory(root, owner, input, mode, InputAccess::ReadOnly)?;
-    check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
+    check_input_census(root, &snapshot.expected_inputs, stored_file)?;
     if has_terminal {
         if matches!(edition, Edition::Matching(_)) {
             terminal_cases = matching_cases(root, input, &snapshot, &corpus, &report)?;
@@ -415,20 +450,22 @@ fn finish(
         {
             return Err("checked report changed before terminal authority".into());
         }
-        let bytes = terminal_authority(
-            TerminalInput {
-                owner,
-                root,
-                input,
-                inventory: &snapshot,
-                corpus: &corpus,
-                report: &report,
-                origin: &current,
-                edition,
-            },
-            terminal_cases,
-        )?
-        .to_bytes()?;
+        let context = TerminalInput {
+            owner,
+            root,
+            input,
+            inventory: &snapshot,
+            corpus: &corpus,
+            report: &report,
+            origin: &current,
+            edition,
+        };
+        let bytes = if diagnostics {
+            let cases = original_diagnostic_cases(&context, diagnostic_raw)?;
+            terminal_data(context, cases, |case| &case.case, |_| Vec::new())?.to_bytes()?
+        } else {
+            terminal_authority(context, terminal_cases)?.to_bytes()?
+        };
         let publication = match access {
             InputAccess::Prepare => TerminalPublication::Create,
             InputAccess::ReadOnly => {
@@ -442,12 +479,27 @@ fn finish(
                 }
             }
         };
-        publish_terminal(root, &snapshot.expected_inputs, publication, &bytes, output)?;
+        publish_terminal(
+            root,
+            &snapshot.expected_inputs,
+            terminal_name,
+            publication,
+            &bytes,
+            output,
+        )?;
     }
-    eprintln!(
-        "qualify-root-context: durable edition validated at {}; registration is a separate reviewed change",
-        root.display()
-    );
+    if diagnostics {
+        eprintln!(
+            "qualify-root-context: {} authenticated original diagnostic cases retained at {}; raw comparisons are in {terminal_name}",
+            report.generated().len(),
+            root.display()
+        );
+    } else {
+        eprintln!(
+            "qualify-root-context: durable edition validated at {}; registration is a separate reviewed change",
+            root.display()
+        );
+    }
     Ok(())
 }
 
@@ -638,14 +690,14 @@ pub(super) fn require_regular_input(root: &Path, path: &RelativePath) -> Result<
 fn check_input_census(
     root: &Path,
     expected: &BTreeMap<RelativePath, Sha256Digest>,
-    terminal: Option<&[u8]>,
+    terminal: Option<(&str, &[u8])>,
 ) -> Result<()> {
     fn visit(
         root: &Path,
         directory: &Path,
         expected: &BTreeMap<RelativePath, Sha256Digest>,
         seen: &mut BTreeSet<RelativePath>,
-        terminal: Option<&[u8]>,
+        terminal: Option<(&str, &[u8])>,
     ) -> Result<()> {
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
@@ -664,8 +716,8 @@ fn check_input_census(
             let relative = RelativePath::new(relative)?;
             let kind = entry.file_type()?;
             if directory == root
-                && relative.as_str() == authority::TERMINAL
-                && let Some(expected) = terminal
+                && let Some((name, expected)) = terminal
+                && relative.as_str() == name
             {
                 if !kind.is_file() || fs::read(&path)? != expected {
                     return Err("non-regular or changed terminal qualification output".into());
@@ -697,8 +749,8 @@ fn check_input_census(
         }
         Ok(())
     }
-    if terminal.is_some() {
-        require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
+    if let Some((name, _)) = terminal {
+        require_regular_input(root, &RelativePath::new(name)?)?;
     }
     let mut seen = BTreeSet::new();
     visit(root, root, expected, &mut seen, terminal)?;
@@ -960,24 +1012,25 @@ enum TerminalPublication<'a> {
 fn publish_terminal(
     root: &Path,
     expected: &BTreeMap<RelativePath, Sha256Digest>,
+    name: &str,
     publication: TerminalPublication<'_>,
     candidate: &[u8],
     output: &mut dyn Write,
 ) -> Result<()> {
     match publication {
-        TerminalPublication::Create => emit_terminal(root, expected, candidate),
+        TerminalPublication::Create => emit_terminal(root, expected, name, candidate),
         TerminalPublication::Check(stored) => {
             if stored != candidate {
                 return Err(
                     "terminal qualification differs from complete current derivation".into(),
                 );
             }
-            check_input_census(root, expected, Some(candidate))
+            check_input_census(root, expected, Some((name, candidate)))
         }
         TerminalPublication::Derive(stored) => {
-            check_input_census(root, expected, Some(stored))?;
+            check_input_census(root, expected, Some((name, stored)))?;
             output.write_all(candidate)?;
-            check_input_census(root, expected, Some(stored))
+            check_input_census(root, expected, Some((name, stored)))
         }
     }
 }
@@ -987,9 +1040,10 @@ fn publish_terminal(
 fn emit_terminal(
     root: &Path,
     expected: &BTreeMap<RelativePath, Sha256Digest>,
+    name: &str,
     bytes: &[u8],
 ) -> Result<()> {
-    let path = root.join(authority::TERMINAL);
+    let path = root.join(name);
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -997,7 +1051,7 @@ fn emit_terminal(
     let result = (|| -> Result<()> {
         file.write_all(bytes)?;
         file.sync_all()?;
-        check_input_census(root, expected, Some(bytes))
+        check_input_census(root, expected, Some((name, bytes)))
     })();
     drop(file);
     if let Err(error) = result {
@@ -1253,10 +1307,96 @@ struct TerminalInput<'a> {
     origin: &'a Origin,
     edition: Edition,
 }
+
+fn original_diagnostic_cases(
+    context: &TerminalInput<'_>,
+    mut raw: BTreeMap<String, Vec<authority::OriginalDiagnosticDifference>>,
+) -> Result<Vec<authority::OriginalDiagnosticCase>> {
+    let settings = authority::BrowserSettingsWitness::from_official_json(&serde_json::to_vec(
+        context.corpus.browser(),
+    )?)?;
+    let retained = string_inputs(&context.inventory.expected_inputs);
+    let report: serde_json::Value = serde_json::from_slice(&context.report.to_bytes()?)?;
+    let metadata = serde_json::from_value(report["metadata"].clone())?;
+    let mut cases = Vec::new();
+    for generated in context.report.generated() {
+        let artifact: authority::CapturedArtifact =
+            serde_json::from_value(serde_json::to_value(generated)?)?;
+        let record = context
+            .input
+            .declaration
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == artifact.source)
+            .ok_or("undeclared original diagnostic source")?;
+        let authority::MatchingProvenance::Original { historical } =
+            record.matching_provenance(&artifact.variant)?
+        else {
+            return Err("original diagnostic source has no original history".into());
+        };
+        let xml = fs::read_to_string(context.root.join(&artifact.output))?;
+        record.verify_original_diagnostic_capture(&xml, &artifact.name, &artifact.variant)?;
+        let case = authority::CaseDescriptor {
+            name: artifact.name.clone(),
+            source: artifact.source.clone(),
+            variant: artifact.variant.clone(),
+            output: authority::PathDigest {
+                path: artifact.output.clone(),
+                sha256: artifact.output_sha256.clone(),
+            },
+            record_sha256: semantic_record_digest(record)?.as_str().to_owned(),
+        };
+        let identity =
+            authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+                metadata: &metadata,
+                artifact: &artifact,
+                case: &case,
+                full_inputs: &retained,
+                excluded_specs: &BTreeSet::new(),
+                actual_xml_sha256: &authority::sha256(xml.as_bytes()),
+                historical_sha256: Some(&historical.sha256),
+                browser_settings: &settings,
+                observation_request: "geometry",
+                observation_input_sha256: None,
+            })?;
+        let raw_differences = raw
+            .remove(&case.name)
+            .ok_or("missing original diagnostic comparison")?;
+        cases.push(authority::OriginalDiagnosticCase {
+            case,
+            historical,
+            identity,
+            raw_differences,
+        });
+    }
+    if !raw.is_empty() {
+        return Err("unassociated original diagnostic comparisons".into());
+    }
+    Ok(cases)
+}
+
 fn terminal_authority(
     context: TerminalInput<'_>,
     cases: Vec<authority::QualifiedCase>,
 ) -> Result<authority::Qualification> {
+    terminal_data(
+        context,
+        cases,
+        authority::QualifiedCase::descriptor,
+        |case| match case {
+            authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
+            authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
+            authority::QualifiedCase::Matching(_) => Vec::new(),
+        },
+    )
+}
+
+fn terminal_data<Case>(
+    context: TerminalInput<'_>,
+    cases: Vec<Case>,
+    descriptor: fn(&Case) -> &authority::CaseDescriptor,
+    evidence: fn(&Case) -> Vec<&authority::PathDigest>,
+) -> Result<authority::QualificationData<Case>> {
     let TerminalInput {
         owner,
         root,
@@ -1273,7 +1413,7 @@ fn terminal_authority(
     let actual = cases
         .iter()
         .map(|case| {
-            let case = case.descriptor();
+            let case = descriptor(case);
             (case.name.as_str(), case.output.path.as_str())
         })
         .collect::<BTreeSet<_>>();
@@ -1297,16 +1437,30 @@ fn terminal_authority(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let current_owner_inputs =
-        current_owner_inputs(owner, inventory, &input.declaration.records, &cases, origin)?;
+    let semantic_paths = cases
+        .iter()
+        .flat_map(evidence)
+        .map(|binding| binding.path.as_str())
+        .collect();
+    let current_owner_inputs = current_owner_inputs(
+        owner,
+        inventory,
+        &input.declaration.records,
+        &semantic_paths,
+        origin,
+    )?;
     let report_bytes = report.to_bytes()?;
     if fs::read(root.join("xml/generation-reports/all.json"))? != report_bytes {
         return Err("terminal report bytes changed".into());
     }
     let retained_inputs = string_inputs(&inventory.expected_inputs);
     let capture_validation = authority::CaptureValidation::from_retained(&retained_inputs)?;
-    Ok(authority::Qualification {
-        schema_version: authority::TERMINAL_SCHEMA,
+    Ok(authority::QualificationData {
+        schema_version: if edition == Edition::GridLanesDiagnostics {
+            1
+        } else {
+            authority::TERMINAL_SCHEMA
+        },
         edition: edition.name().to_owned(),
         declaration: authority::PathDigest {
             path: "corpus.toml".to_owned(),
@@ -1339,18 +1493,9 @@ fn current_owner_inputs(
     owner: &Path,
     inventory: &Inventory,
     records: &[Record],
-    cases: &[authority::QualifiedCase],
+    semantic: &BTreeSet<&str>,
     origin: &Origin,
 ) -> Result<BTreeMap<String, String>> {
-    let semantic = cases
-        .iter()
-        .flat_map(|case| match case {
-            authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
-            authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
-            authority::QualifiedCase::Matching(_) => Vec::new(),
-        })
-        .map(|binding| binding.path.as_str())
-        .collect::<BTreeSet<_>>();
     let receipt_sidecar = origin
         .receipt_owner
         .as_str()
@@ -1362,7 +1507,7 @@ fn current_owner_inputs(
             .iter()
             .map(|record| (record.source.as_str(), record.source_kind))
             .collect(),
-        &semantic,
+        semantic,
         receipt_sidecar,
     )?;
     for (source, digest) in &current {

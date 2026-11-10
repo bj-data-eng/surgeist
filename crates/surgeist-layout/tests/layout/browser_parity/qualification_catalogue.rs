@@ -113,6 +113,35 @@ pub(crate) struct PairedObservation {
     pub(crate) world_phase_change: bool,
 }
 impl Declaration {
+    pub(crate) fn select_original_diagnostics(
+        &mut self,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let sources = super::capture_authority::GRID_LANES_AXIS_ORIGINAL_SOURCES;
+        self.records
+            .retain(|record| sources.contains(&record.source.as_str()));
+        if self.records.len() != sources.len()
+            || self.records.iter().any(|record| {
+                record.source_kind != SourceKind::Original
+                    || !matches!(
+                        record.expected,
+                        ExpectedDisposition::Generated {
+                            metadata: ExpectedMetadata::AbsoluteLocal {
+                                root_size: None,
+                                ..
+                            }
+                        }
+                    )
+                    || record.relation.is_some()
+                    || record.semantic_specifications.is_some()
+                    || record.specialized_publication.is_some()
+                    || record.matching_publication.is_some()
+            })
+        {
+            return Err("original diagnostics require the complete unqualified Grid Lanes axis source cohort".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn parse(bytes: &[u8]) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mut catalogue: Catalogue =
             surgeist_generator::parse_manifest(std::str::from_utf8(bytes)?, "corpus.toml")?;
@@ -531,6 +560,24 @@ pub(crate) fn verify_absolute_metadata(
 }
 
 impl Record {
+    pub(crate) fn verify_original_diagnostic_capture(
+        &self,
+        current: &str,
+        name: &str,
+        variant: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        if !matches!(
+            self.matching_provenance(variant)?,
+            MatchingProvenance::Original { .. }
+        ) {
+            return Err("diagnostic capture requires an original source".into());
+        }
+        let ExpectedDisposition::Generated { metadata } = &self.expected else {
+            return Err("diagnostic capture requires a Generated source".into());
+        };
+        verify_absolute_metadata(current, metadata, name, variant)
+    }
+
     pub(crate) fn matching_provenance(
         &self,
         variant: &str,

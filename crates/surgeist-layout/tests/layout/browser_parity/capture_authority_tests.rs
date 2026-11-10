@@ -1,6 +1,31 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn original_diagnostic_wire_binds_complete_case_census_and_raw_comparison() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/captured")
+        .join(ORIGINAL_DIAGNOSTIC_EDITION);
+    let raw = std::fs::read_to_string(root.join(ORIGINAL_DIAGNOSTIC_RECEIPT)).unwrap();
+    let receipt = OriginalDiagnosticReceipt::parse(&raw).unwrap();
+    assert_eq!(receipt.to_bytes().unwrap(), raw.as_bytes());
+    let case = &receipt.cases[0];
+    let xml = std::fs::read_to_string(root.join(&case.case.output.path)).unwrap();
+    assert_eq!(sha256(xml.as_bytes()), case.case.output.sha256);
+    let golden = super::super::Golden::parse(&xml).unwrap();
+    assert_eq!(
+        original_diagnostic_differences(&golden).unwrap(),
+        case.raw_differences
+    );
+
+    let mut missing = unique_json(&raw).unwrap();
+    missing["cases"].as_array_mut().unwrap().pop();
+    assert!(OriginalDiagnosticReceipt::parse(&missing.to_string()).is_err());
+    let mut duplicate = unique_json(&raw).unwrap();
+    duplicate["cases"][1] = duplicate["cases"][0].clone();
+    assert!(OriginalDiagnosticReceipt::parse(&duplicate.to_string()).is_err());
+}
+
 const CURRENT_TERMINAL_FIXTURE: &str =
     include_str!("captured/relative-inset-differences/qualification.json");
 

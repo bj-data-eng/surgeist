@@ -27,6 +27,19 @@ const WRAPPING_WORLD_CORNER_EDITION: &str = "wrapping-world-corner-differences";
 pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
+pub(crate) const ORIGINAL_DIAGNOSTIC_EDITION: &str = "grid-lanes-axis-original-diagnostics";
+pub(crate) const ORIGINAL_DIAGNOSTIC_RECEIPT: &str = "diagnostics.json";
+pub(crate) const GRID_LANES_AXIS_ORIGINAL_SOURCES: [&str; 9] = [
+    "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+];
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
 const ROOT_HELPER_OWNER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
 const ROOT_HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
@@ -1282,6 +1295,7 @@ pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
         || matches!(
             edition,
             "root-context-v4"
+                | ORIGINAL_DIAGNOSTIC_EDITION
                 | EDITION
                 | MEASURED_GRID_EDITION
                 | FLEX_TEXT_EDITION
@@ -1447,6 +1461,188 @@ pub(crate) struct QualificationData<Case> {
     pub(crate) capture_validation: CaptureValidation,
 }
 pub(crate) type Qualification = QualificationData<QualifiedCase>;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OriginalDiagnosticDifference {
+    path: String,
+    field: super::NumericComparisonField,
+    browser: super::Scalar,
+    native: super::Scalar,
+}
+
+pub(crate) fn original_diagnostic_differences(
+    golden: &super::Golden,
+) -> Result<Vec<OriginalDiagnosticDifference>> {
+    fn plain_boxes(node: &super::Node, expected: &super::Expectation) -> bool {
+        node.kind == super::NodeKind::Div
+            && node.text.is_none()
+            && [expected.x, expected.y, expected.width, expected.height]
+                .into_iter()
+                .all(|value| value.is_some_and(|value| value.is_finite()))
+            && node.children.len() == expected.children.len()
+            && node
+                .children
+                .iter()
+                .zip(&expected.children)
+                .all(|(child, expected)| plain_boxes(child, expected))
+    }
+    if golden.element_scroll_sizes.is_some()
+        || golden.measured_leaf.is_some()
+        || golden.has_prepared_range_frame()
+        || golden.has_flex_content_text()
+        || golden.root.children.len() != 2
+        || golden.root.children.iter().any(|container| {
+            container.children.len() != 2
+                || container
+                    .children
+                    .iter()
+                    .any(|leaf| !leaf.children.is_empty())
+        })
+        || !plain_boxes(&golden.root, &golden.expectations)
+    {
+        return Err(malformed(
+            "original diagnostics require complete finite plain-box geometry",
+        ));
+    }
+    super::collect_surgeist_numeric_mismatches(golden)
+        .map_err(|error| changed(error.to_string()))?
+        .into_iter()
+        .map(|mismatch| match mismatch {
+            super::NumericMismatch::Layout(value) => Ok(OriginalDiagnosticDifference {
+                path: value.path().to_owned(),
+                field: value.field(),
+                browser: value.browser_value(),
+                native: value.native_value(),
+            }),
+            super::NumericMismatch::ElementScrollSize(_) => {
+                Err(malformed("unexpected original diagnostic observation"))
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OriginalDiagnosticCase {
+    pub(crate) case: CaseDescriptor,
+    pub(crate) historical: PathDigest,
+    pub(crate) identity: IdentityProjection,
+    pub(crate) raw_differences: Vec<OriginalDiagnosticDifference>,
+}
+
+pub(crate) type OriginalDiagnosticReceipt = QualificationData<OriginalDiagnosticCase>;
+
+impl OriginalDiagnosticReceipt {
+    pub(crate) fn parse(raw: &str) -> Result<Self> {
+        unique_json(raw)?;
+        let receipt: Self =
+            serde_json::from_str(raw).map_err(|error| malformed(error.to_string()))?;
+        receipt.validate_original_diagnostics()?;
+        Ok(receipt)
+    }
+
+    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>> {
+        self.validate_original_diagnostics()?;
+        let mut bytes = serde_json::to_vec_pretty(self).map_err(|e| malformed(e.to_string()))?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    }
+
+    fn validate_original_diagnostics(&self) -> Result<()> {
+        let sources: BTreeSet<_> = GRID_LANES_AXIS_ORIGINAL_SOURCES.into_iter().collect();
+        let variants = fixture_cases();
+        if self.schema_version != 1
+            || self.edition != ORIGINAL_DIAGNOSTIC_EDITION
+            || self.declaration.path != "corpus.toml"
+            || self.report.path != "xml/generation-reports/all.json"
+            || self.ownership.path != "xml/generation-ownership.json"
+            || self.retained_inputs.get(&self.declaration.path) != Some(&self.declaration.sha256)
+            || self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
+            || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
+                != Some(&self.capture_validation.validator_helper_sha256)
+            || self.records.len() != sources.len()
+            || self.cases.len() != sources.len() * variants.len()
+        {
+            return Err(malformed("original diagnostic receipt identity or census"));
+        }
+        for binding in [&self.declaration, &self.report, &self.ownership] {
+            digest(&binding.sha256)?;
+        }
+        let mut records = BTreeMap::new();
+        for record in &self.records {
+            if !sources.contains(record.source.as_str())
+                || record.source_kind()? != SourceKind::Original
+                || record.value["source"].as_str() != Some(record.source.as_str())
+                || semantic_record_digest(&record.value)? != record.sha256
+                || records.insert(record.source.as_str(), record).is_some()
+            {
+                return Err(malformed("original diagnostic source projection"));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        let mut historical_paths = BTreeSet::new();
+        for diagnostic in &self.cases {
+            let case = &diagnostic.case;
+            let record = records
+                .get(case.source.as_str())
+                .ok_or_else(|| malformed("original diagnostic case source"))?;
+            let family = case
+                .source
+                .strip_prefix("html/")
+                .and_then(|s| s.strip_suffix(".html"))
+                .ok_or_else(|| malformed("original diagnostic source path"))?;
+            let stem = family
+                .rsplit('/')
+                .next()
+                .ok_or_else(|| malformed("original diagnostic stem"))?;
+            let variant = case.variant.as_str();
+            let identity = &diagnostic.identity;
+            if !variants.iter().any(|(known, _)| *known == variant)
+                || !seen.insert((case.source.as_str(), variant))
+                || case.name != format!("{stem}__{variant}")
+                || case.output.path != format!("xml/{family}__{variant}.xml")
+                || diagnostic.historical.path != format!("historical/{family}__{variant}.xml")
+                || record.value["historical_sha256"][variant].as_str()
+                    != Some(diagnostic.historical.sha256.as_str())
+                || self.retained_inputs.get(&diagnostic.historical.path)
+                    != Some(&diagnostic.historical.sha256)
+                || identity.historical_sha256.as_ref() != Some(&diagnostic.historical.sha256)
+                || identity.policy_source_sha256.is_some()
+                || identity.source != case.source
+                || identity.variant != case.variant
+                || identity.capture_sha256 != case.output.sha256
+                || identity.record_sha256 != case.record_sha256
+                || record.sha256 != case.record_sha256
+                || record.value["source_sha256"].as_str() != Some(identity.source_sha256.as_str())
+                || self.retained_inputs.get(&case.source) != Some(&identity.source_sha256)
+            {
+                return Err(malformed("original diagnostic case binding"));
+            }
+            digest(&case.output.sha256)?;
+            digest(&diagnostic.historical.sha256)?;
+            historical_paths.insert(diagnostic.historical.path.as_str());
+            if diagnostic
+                .raw_differences
+                .iter()
+                .any(|entry| !entry.browser.is_finite() || !entry.native.is_finite())
+            {
+                return Err(malformed("nonfinite original diagnostic difference"));
+            }
+        }
+        if self
+            .retained_inputs
+            .keys()
+            .filter(|path| path.starts_with("historical/"))
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != historical_paths
+        {
+            return Err(malformed("original diagnostic historical input census"));
+        }
+        Ok(())
+    }
+}
 
 impl QualificationData<QualifiedCaseWire> {
     fn bind_source_provenance(self) -> Result<Qualification> {
