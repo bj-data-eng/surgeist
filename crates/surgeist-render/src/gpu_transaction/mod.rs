@@ -2,6 +2,8 @@ use crate::accounting::{Account, RenderPhase};
 mod graph;
 mod readback;
 #[cfg(test)]
+mod scope_tests;
+#[cfg(test)]
 pub(crate) mod test_support;
 mod vello;
 
@@ -106,12 +108,19 @@ impl<'a, T> GpuOperationDraft<'a, T> {
 pub(crate) struct GpuOperationLease {
     signal: Arc<DeviceSignal>,
     generation: u64,
+    #[cfg(test)]
+    cleanup_time: Option<std::rc::Rc<std::cell::Cell<u64>>>,
 }
 
 impl GpuOperationLease {
     pub(crate) fn begin(signal: Arc<DeviceSignal>, generation: u64) -> Self {
         signal.activate(generation);
-        Self { signal, generation }
+        Self {
+            signal,
+            generation,
+            #[cfg(test)]
+            cleanup_time: None,
+        }
     }
 
     #[cfg(test)]
@@ -137,6 +146,10 @@ impl GpuOperationLease {
 impl Drop for GpuOperationLease {
     fn drop(&mut self) {
         self.signal.clear_active(self.generation);
+        #[cfg(test)]
+        if let Some(time) = &self.cleanup_time {
+            time.set(time.get() + 7);
+        }
     }
 }
 
@@ -151,6 +164,8 @@ pub(crate) struct GpuOperationTransaction {
     internal: Option<wgpu::ErrorScopeGuard>,
     lease: GpuOperationLease,
     stage: GpuOperationStage,
+    #[cfg(test)]
+    scope_gate: Option<std::rc::Rc<test_support::ScopePopGate>>,
 }
 
 impl GpuOperationTransaction {
@@ -170,6 +185,8 @@ impl GpuOperationTransaction {
             internal: Some(internal),
             lease,
             stage,
+            #[cfg(test)]
+            scope_gate: None,
         }
     }
 
@@ -178,20 +195,32 @@ impl GpuOperationTransaction {
             .validation
             .take()
             .expect("transaction validation scope must be present")
-            .pop()
-            .await;
+            .pop();
+        #[cfg(test)]
+        if let Some(gate) = &self.scope_gate {
+            gate.wait(test_support::ScopePopPosition::Validation).await;
+        }
+        let validation = validation.await;
         let out_of_memory = self
             .out_of_memory
             .take()
             .expect("transaction out-of-memory scope must be present")
-            .pop()
-            .await;
+            .pop();
+        #[cfg(test)]
+        if let Some(gate) = &self.scope_gate {
+            gate.wait(test_support::ScopePopPosition::OutOfMemory).await;
+        }
+        let out_of_memory = out_of_memory.await;
         let internal = self
             .internal
             .take()
             .expect("transaction internal scope must be present")
-            .pop()
-            .await;
+            .pop();
+        #[cfg(test)]
+        if let Some(gate) = &self.scope_gate {
+            gate.wait(test_support::ScopePopPosition::Internal).await;
+        }
+        let internal = internal.await;
 
         [validation, out_of_memory, internal]
             .into_iter()

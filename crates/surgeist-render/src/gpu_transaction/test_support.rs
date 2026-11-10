@@ -1,6 +1,60 @@
 use crate::accounting::Account;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ScopePopPosition {
+    Validation,
+    OutOfMemory,
+    Internal,
+}
+
+/// A per-owner pause after the real consuming pop. The native result future,
+/// unpopped guards and generation lease remain owned by the real resolver.
+pub(super) struct ScopePopGate {
+    position: ScopePopPosition,
+    reached: std::cell::Cell<bool>,
+    released: std::cell::Cell<bool>,
+    waker: std::cell::RefCell<Option<std::task::Waker>>,
+}
+
+impl ScopePopGate {
+    pub(super) fn new(position: ScopePopPosition) -> std::rc::Rc<Self> {
+        std::rc::Rc::new(Self {
+            position,
+            reached: std::cell::Cell::new(false),
+            released: std::cell::Cell::new(false),
+            waker: std::cell::RefCell::new(None),
+        })
+    }
+
+    pub(super) fn reached(&self) -> bool {
+        self.reached.get()
+    }
+
+    pub(super) fn release(&self) {
+        self.released.set(true);
+        if let Some(waker) = self.waker.borrow_mut().take() {
+            waker.wake();
+        }
+    }
+
+    pub(super) async fn wait(&self, position: ScopePopPosition) {
+        if position != self.position {
+            return;
+        }
+        std::future::poll_fn(|cx| {
+            self.reached.set(true);
+            if self.released.get() {
+                std::task::Poll::Ready(())
+            } else {
+                *self.waker.borrow_mut() = Some(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+    }
+}
+
 use super::{
     GpuOperationDraft, GpuOperationStage, GpuOperationTransaction, InternalVelloPayload,
     VelloResourceCommitProof,
