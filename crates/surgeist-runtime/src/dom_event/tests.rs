@@ -1342,11 +1342,14 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
         ))
     ));
     let observation: NativeDomEvent = (*event).clone();
-    // Observer payload can be borrowed/debugged while task custody is dropped.
-    // Terminal cleanup must release its reservation without borrowing that cell.
-    let observation_borrow = observation.0.path.borrow();
+    // Public immutable path/debug observations cannot obstruct terminal custody
+    // release or keep a running/admission reservation alive.
+    let observation_path = observation.composed_path();
     drop(event);
     assert!(format!("{observation:?}").contains("Abandoned"));
+    assert_eq!(observation.current_target(), None);
+    assert_eq!(observation.phase(), DomEventPhase::None);
+    assert_eq!(observation.composed_path().count(), 0);
     assert!(matches!(
         listeners.resume(
             &mut f.dom,
@@ -1358,7 +1361,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
         Err(DomEventDispatchError::Abandoned)
     ));
     assert_eq!(count, 0);
-    drop(observation_borrow);
+    drop(observation_path);
     let receipt = complete(
         listeners
             .dispatch(

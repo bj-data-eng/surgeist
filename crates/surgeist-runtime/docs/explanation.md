@@ -199,6 +199,45 @@ work. Canonical Source work and dispatcher work retain their separate limits.
 The durable job preserves the actual event, dispatch permit and completion receipt
 across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
+
+For an external synchronous host, register `DomEventCallback::host(key)` instead
+of a borrowed Rust callback. The key is routing data owned by the application;
+cloning a callback preserves its identity, while two callback objects with equal
+keys remain distinct listeners. This Source servicing front offers owned host
+invocation. Other event producers return `RetainedHostUnavailable` at a host
+listener before advancing its cursor or removing a once registration.
+
+A `Retained` result containing `DomEventDispatchOutcome::HostInvocation` supplies
+a move-only `DomEventHostInvocation`. Release the session, dispatcher and
+composition loans before executing the host listener. Its event still exposes
+the actual current target, phase, frozen path and default/propagation controls.
+The original Session retains the event, advanced cursor, once removal, running
+reservation and exact owned canonical Source dispatch guard. Fresh short session
+borrows can therefore execute real nested Source edits and events on the same
+thread. The pending listener prevents later listeners and its parent Source tail
+from running.
+
+After guest execution, use `invocation.complete(&dispatcher, result)` once with
+the original dispatcher. An ordinary guest error becomes a listener failure and
+allows later standard listeners to run. Completion closes the callback's active
+observation and reentry scope, without executing another listener or Source tail.
+Call `service_event` again with the original request and fresh borrows; after its
+actual receipt is accepted, use ordinary `resume` for mandatory Source tails.
+Admission or cancellation during servicing preserves the reported guest result
+and cursor. An unfinished nested Source operation must finish before the parent
+can continue. Foreign completion leaves the original token and scope untouched;
+repeat completion is rejected even after a registration slot has been reused.
+
+Use `invocation.refuse(&dispatcher, error)` for genuine host refusal. The event
+retains this first host failure and cannot issue a successful receipt or run
+later listeners; it is separate from guest exception reporting. Dropping an
+unreported token terminally abandons event delivery, clears active observation
+and closes Source reentry without attesting success. Its original unacknowledged
+Source tail remains pending. Graceful Session shutdown returns the whole pending
+Session; terminal Session drop releases all invocation custody and invalidates
+surviving tokens, even when event observations survive. These transitions invoke
+no guest code and supply no scripting engine or realm implementation.
+
 Callbacks can make ordinary edits or start nested Source work under the exact
 event scope. An unfinished nested operation blocks the outer dispatch until the
 child is serviced; completed callbacks are not replayed. Uncanceled Show queues
