@@ -1141,6 +1141,555 @@ mod tests {
         ]
     }
 
+    fn assert_capture_work(context: &RenderAccountingContext, expected: &[(RenderWork, u64)]) {
+        use surgeist_ledger::Dimension;
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        for &work in RenderWork::ALL {
+            let amount = expected
+                .iter()
+                .find_map(|&(kind, amount)| (kind == work).then_some(amount))
+                .unwrap_or(0);
+            assert_eq!(usage.work(work), amount, "{work:?}");
+        }
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    fn assert_correspondence(error: &Error) {
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "locked native-gradient sampling correspondence changed"
+        );
+        assert!(error.accounting_diagnostic().is_none());
+    }
+
+    #[test]
+    fn short_programs_refuse_at_the_counted_shape_without_backing() {
+        let source = program_records();
+        for count in [0, 1] {
+            let mut context = RenderAccountingContext::default();
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    let mut captured = EndpointRecords::default();
+                    let error = captured
+                        .capture(
+                            0,
+                            GradientSampling::Program(GradientProgram {
+                                records: &source[..count],
+                                endpoints: endpoints(),
+                                coordinates: ProgramCoordinates::Pad,
+                            }),
+                            DrawTag::LINEAR_GRADIENT,
+                            account,
+                        )
+                        .unwrap_err();
+                    assert!(captured.as_slice().is_empty());
+                    assert!(captured.records.is_none());
+                    Err::<(), _>(error)
+                })
+                .unwrap_err();
+            assert_correspondence(&error);
+            // Sampling interpretation, borrowed length, and cardinality decision.
+            assert_capture_work(&context, &[(RenderWork::CoordinateVisits, 3)]);
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(attempt.refusal(), None);
+            assert_eq!(attempt.usage().peak(RenderResource::RetainedCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn program_shape_and_endpoint_probe_cutoffs_keep_the_first_cause() {
+        let source = program_records();
+        // (record count, coordinate cap, probe cap, accepted coordinates,
+        // accepted probes, refused dimension, refused amount).
+        // Five scalar actions qualify sampling, length, shape, word product,
+        // and word capacity before the indivisible pair of endpoint probes.
+        for (count, coordinates, probes, accepted, probed, refused, amount) in [
+            (0, 1, 0, 1, 0, RenderWork::CoordinateVisits, 1),
+            (1, 2, 0, 2, 0, RenderWork::CoordinateVisits, 1),
+            (2, 3, 0, 3, 0, RenderWork::CoordinateVisits, 1),
+            (2, 4, 0, 4, 0, RenderWork::CoordinateVisits, 1),
+            (2, 5, 0, 5, 0, RenderWork::ResourceProbes, 2),
+            (2, 5, 1, 5, 0, RenderWork::ResourceProbes, 2),
+            (2, 5, 2, 5, 2, RenderWork::CoordinateVisits, 1),
+            (2, 6, 2, 6, 2, RenderWork::CoordinateVisits, 1),
+        ] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::CoordinateVisits, coordinates)
+                .unwrap()
+                .with_work_limit(RenderWork::ResourceProbes, probes)
+                .unwrap();
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    let mut captured = EndpointRecords::default();
+                    let result = captured.capture(
+                        0,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source[..count],
+                            endpoints: endpoints(),
+                            coordinates: ProgramCoordinates::Pad,
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    );
+                    assert!(captured.records.is_none());
+                    result
+                })
+                .unwrap_err();
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            let refusal = attempt.refusal().unwrap();
+            // RenderLimits are installed on the attempt root, so that parent
+            // owns the refusal even though Encode submitted the work.
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(refused));
+            assert_eq!(
+                refusal.current(),
+                if refused == RenderWork::ResourceProbes {
+                    probed
+                } else {
+                    accepted
+                }
+            );
+            assert_eq!(refusal.amount(), amount);
+            assert_eq!(
+                refusal.reason(),
+                crate::RenderRefusalReason::Limit {
+                    limit: if refused == RenderWork::ResourceProbes {
+                        probes
+                    } else {
+                        coordinates
+                    },
+                }
+            );
+            assert_eq!(
+                error.accounting_diagnostic(),
+                Some(crate::RenderAccountingError::Refused(refusal))
+            );
+            assert_capture_work(
+                &context,
+                &[
+                    (RenderWork::CoordinateVisits, accepted),
+                    (RenderWork::ResourceProbes, probed),
+                ],
+            );
+            assert_eq!(attempt.usage().peak(RenderResource::RetainedCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn descriptor_ordering_refusals_preserve_the_prior_endpoint_and_backing() {
+        // The first Pad capture has one interpretation decision. A later Pad
+        // capture has that decision, one prior probe, and one ordering decision.
+        for (word, coordinates, probes, expected_refusal) in [
+            (7, 3, 1, None),
+            (6, 3, 1, None),
+            (8, 2, 0, Some(RenderWork::ResourceProbes)),
+            (8, 2, 1, Some(RenderWork::CoordinateVisits)),
+        ] {
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, coordinates)
+                        .unwrap()
+                        .with_work_limit(RenderWork::ResourceProbes, probes)
+                        .unwrap(),
+                ),
+            );
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    let mut captured = EndpointRecords::default();
+                    captured.capture(
+                        7,
+                        GradientSampling::PadRamp(endpoints()),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )?;
+                    let capacity = captured.records.as_ref().unwrap().capacity();
+                    let error = captured
+                        .capture(
+                            word,
+                            GradientSampling::PadRamp(PadEndpoints {
+                                first_color: 123,
+                                ..endpoints()
+                            }),
+                            DrawTag::LINEAR_GRADIENT,
+                            account,
+                        )
+                        .unwrap_err();
+                    assert_eq!(captured.records.as_ref().unwrap().capacity(), capacity);
+                    let [prior] = captured.as_slice() else {
+                        panic!("prior descriptor lost")
+                    };
+                    assert_eq!(prior.word, 7);
+                    let CapturedSampling::PadRamp(prior) = prior.sampling else {
+                        panic!("sampling changed")
+                    };
+                    assert_eq!(prior.first_color, 0xff00_00ff);
+                    assert_eq!(prior.last_color, 0xff00_ff00);
+                    Err::<(), _>(error)
+                })
+                .unwrap_err();
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            if let Some(work) = expected_refusal {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(work));
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.current(),
+                    if work == RenderWork::ResourceProbes {
+                        0
+                    } else {
+                        2
+                    }
+                );
+                assert_eq!(refusal.amount(), 1);
+                assert_eq!(
+                    refusal.reason(),
+                    crate::RenderRefusalReason::Limit {
+                        limit: if work == RenderWork::ResourceProbes {
+                            probes
+                        } else {
+                            coordinates
+                        },
+                    }
+                );
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(crate::RenderAccountingError::Refused(refusal))
+                );
+            } else {
+                assert_correspondence(&error);
+                assert_eq!(attempt.refusal(), None);
+            }
+            assert_capture_work(
+                &context,
+                &[
+                    (
+                        RenderWork::CoordinateVisits,
+                        if expected_refusal.is_some() { 2 } else { 3 },
+                    ),
+                    (RenderWork::ResourceProbes, probes),
+                    (RenderWork::RasterResourceCopies, 1),
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn refused_first_descriptor_copy_leaves_empty_grown_backing_without_a_record() {
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::RasterResourceCopies, 0)
+                    .unwrap(),
+            ),
+        );
+        let mut actual_bytes = 0;
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                let error = captured
+                    .capture(
+                        0,
+                        GradientSampling::PadRamp(endpoints()),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )
+                    .unwrap_err();
+                let backing = captured.records.as_ref().unwrap();
+                assert!(backing.is_empty());
+                assert!(backing.capacity() >= 1);
+                actual_bytes = (backing.capacity() * size_of::<CapturedEndpoint>()) as u64;
+                drop(captured);
+                Err::<(), _>(error)
+            })
+            .unwrap_err();
+        let attempt = context.last_attempt().unwrap().attempt().unwrap();
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Work(RenderWork::RasterResourceCopies)
+        );
+        assert_eq!(refusal.current(), 0);
+        assert_eq!(refusal.amount(), 1);
+        assert_eq!(
+            refusal.reason(),
+            crate::RenderRefusalReason::Limit { limit: 0 }
+        );
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(crate::RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(
+            attempt.usage().peak(RenderResource::RetainedCpuBytes),
+            actual_bytes
+        );
+        assert_capture_work(&context, &[(RenderWork::CoordinateVisits, 1)]);
+    }
+
+    #[test]
+    fn lazy_endpoint_backing_retries_after_actual_capacity_is_released() {
+        let bytes = size_of::<CapturedEndpoint>();
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_retained_bytes(bytes as u64)),
+        );
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                captured.capture(
+                    0,
+                    GradientSampling::PadRamp(endpoints()),
+                    DrawTag::COLOR,
+                    account,
+                )?;
+                assert!(captured.records.is_none());
+                let blocker = account.retained::<u8>(bytes)?;
+                let error = captured
+                    .capture(
+                        0,
+                        GradientSampling::PadRamp(endpoints()),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )
+                    .unwrap_err();
+                let backing = captured.records.as_ref().unwrap();
+                assert!(backing.is_empty());
+                assert_eq!(backing.capacity(), 0);
+                assert_eq!(account.work_count(RenderWork::RasterResourceCopies)?, 0);
+                drop(blocker);
+                captured.capture(
+                    0,
+                    GradientSampling::PadRamp(endpoints()),
+                    DrawTag::LINEAR_GRADIENT,
+                    account,
+                )?;
+                assert_eq!(captured.as_slice().len(), 1);
+                assert_eq!(captured.as_slice()[0].word, 0);
+                assert!(captured.records.as_ref().unwrap().capacity() > 0);
+                drop(captured);
+                Err::<(), _>(error)
+            })
+            .unwrap_err();
+        let attempt = context.last_attempt().unwrap().attempt().unwrap();
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(crate::RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
+        );
+        assert_eq!(refusal.current(), bytes as u64);
+        assert_eq!(refusal.amount(), bytes as u64);
+        assert_eq!(
+            refusal.reason(),
+            crate::RenderRefusalReason::Limit {
+                limit: bytes as u64
+            }
+        );
+        assert_eq!(
+            attempt.usage().peak(RenderResource::RetainedCpuBytes),
+            bytes as u64
+        );
+        assert_capture_work(
+            &context,
+            &[
+                (RenderWork::CoordinateVisits, 2),
+                (RenderWork::RasterResourceCopies, 1),
+            ],
+        );
+    }
+
+    #[test]
+    fn increasing_descriptors_own_exact_multi_record_payloads_and_count_their_work() {
+        let source = program_records();
+        let middle = ProgramRecord {
+            position: 0.25,
+            premultiplied: [0.25, 0.5, 0.0, 0.75],
+            outgoing: ProgramSegment::HintAtEnd,
+        };
+        let multiple = [source[0], middle, source[1]];
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                for (word, records) in [(3, source.as_slice()), (9, multiple.as_slice())] {
+                    captured.capture(
+                        word,
+                        GradientSampling::Program(GradientProgram {
+                            records,
+                            endpoints: endpoints(),
+                            coordinates: ProgramCoordinates::Repeat,
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )?;
+                }
+                for (captured, expected) in captured
+                    .as_slice()
+                    .iter()
+                    .zip([source.as_slice(), multiple.as_slice()])
+                {
+                    let CapturedSampling::Program(program) = &captured.sampling else {
+                        panic!("program lost")
+                    };
+                    assert!(matches!(program.coordinates, ProgramCoordinates::Repeat));
+                    assert_eq!(program.endpoints.first, 0);
+                    assert_eq!(program.endpoints.last, 1.0_f32.to_bits());
+                    assert_eq!(program.endpoints.first_color, 0xff00_00ff);
+                    assert_eq!(program.endpoints.last_color, 0xff00_ff00);
+                    assert_eq!(program.records.len(), expected.len());
+                    for (actual, expected) in program.records.iter().zip(expected) {
+                        assert_eq!(actual.position.to_bits(), expected.position.to_bits());
+                        assert_eq!(
+                            actual.premultiplied.map(f32::to_bits),
+                            expected.premultiplied.map(f32::to_bits)
+                        );
+                    }
+                }
+                let CapturedSampling::Program(program) = &captured.as_slice()[1].sampling else {
+                    panic!("program lost")
+                };
+                assert!(matches!(
+                    program.records[0].outgoing,
+                    ProgramSegment::Power { exponent: 0.5 }
+                ));
+                assert!(matches!(
+                    program.records[1].outgoing,
+                    ProgramSegment::HintAtEnd
+                ));
+                assert!(matches!(
+                    program.records[2].outgoing,
+                    ProgramSegment::Linear
+                ));
+                assert_eq!(
+                    captured
+                        .as_slice()
+                        .iter()
+                        .map(|record| record.word)
+                        .collect::<Vec<_>>(),
+                    [3, 9]
+                );
+                Ok(())
+            })
+            .unwrap();
+        // Per program: ten boundary scalar actions; sixteen per record for
+        // position/channels/premultiplication; n-1 ordering comparisons; two
+        // exponent checks. The second descriptor adds one ordering comparison.
+        assert_capture_work(
+            &context,
+            &[
+                (
+                    RenderWork::CoordinateVisits,
+                    (10 + 16 * 2 + 1 + 2) + (10 + 16 * 3 + 2 + 2) + 1,
+                ),
+                (RenderWork::ResourceProbes, 2 + 2 + 1),
+                (RenderWork::GradientStopVisits, 2 + 3),
+                (RenderWork::RasterResourceCopies, (2 + 1) + (3 + 1)),
+                (RenderWork::StorageRelocations, 1),
+            ],
+        );
+    }
+
+    #[test]
+    fn an_interior_program_record_survives_source_drop_and_serializes_exact_words() {
+        let mut encoding = Encoding::new();
+        let word = append(&mut encoding, peniko::Extend::Repeat);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                {
+                    let [first, last] = program_records();
+                    let source = [
+                        first,
+                        ProgramRecord {
+                            position: 0.25,
+                            premultiplied: [0.25, 0.5, 0.0, 0.75],
+                            outgoing: ProgramSegment::HintAtEnd,
+                        },
+                        last,
+                    ];
+                    captured.capture(
+                        word,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source,
+                            endpoints: endpoints(),
+                            coordinates: ProgramCoordinates::Repeat,
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )?;
+                }
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?
+                .unwrap();
+                assert_eq!(&texture.texels[..512], ramps.data);
+                assert_eq!(layout.draw_data(&packed)[word], (512 << 2) | 3);
+                // Eight descriptor words, then seven words for each supplied stop:
+                // position, four premultiplied channels, segment kind, exponent.
+                assert_eq!(
+                    texture.texels[512..541]
+                        .iter()
+                        .map(|word| u32::from_le(*word))
+                        .collect::<Vec<_>>(),
+                    [
+                        2,
+                        520,
+                        3,
+                        0,
+                        1.0_f32.to_bits(),
+                        0xff00_00ff,
+                        0xff00_ff00,
+                        0,
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        0,
+                        1.0_f32.to_bits(),
+                        1,
+                        0.5_f32.to_bits(),
+                        0.25_f32.to_bits(),
+                        0.25_f32.to_bits(),
+                        0.5_f32.to_bits(),
+                        0,
+                        0.75_f32.to_bits(),
+                        3,
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        0,
+                    ]
+                );
+                assert!(texture.texels[541..].iter().all(|word| *word == 0));
+                Ok(())
+            })
+            .unwrap();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 3 + 3);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), (1024 + 1) * 4);
+    }
+
     #[test]
     fn program_capture_survives_source_drop_and_serializes_exact_words() {
         let mut encoding = Encoding::new();
