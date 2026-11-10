@@ -359,7 +359,7 @@ between a charging scope, its cap scope and a host scope.
 
 A bounded operation of this crate charges its own work before it runs, through a
 `surgeist_ledger::Charge` that the caller supplies. A cursor charges in its
-advancing call, and a description, pool action or layout has a charging method. The
+advancing call, and a description or layout has a charging method. The
 caller decides what a charge means: `Operation::charge_at` and
 `SharedOperation::charge_at` apply it to a ledger scope, and a consumer with its own
 admission rules, such as the parser's first-stop controller, implements the trait

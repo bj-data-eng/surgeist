@@ -932,8 +932,8 @@ parser to refund corresponding capacity. Cleanup does not poll for useful work,
 allocate, infer a capacity or silently discard a refused owner. A preflight
 refusal leaves the retirement cursor at the same allocation for retry. Parser
 then releases its independent payload/effect/evidence ticket banks in their
-existing order. Shared strings and attributes are dropped from records before
-their retained parser payload tickets are reclaimed, preserving alias checks.
+existing order. Strings and attributes are dropped from records before their
+retained parser payload tickets are reclaimed.
 
 These snapshots/actions replace private `VectorCapacity<Record>` accesses in
 session reserve/release, private `SharedAllocation<Arena>` in freeze/recovery and

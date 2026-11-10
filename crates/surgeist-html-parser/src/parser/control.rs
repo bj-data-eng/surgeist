@@ -157,9 +157,9 @@ pub enum HtmlParseInvariant {
     ///   disagrees, or a new row cannot be registered;
     /// - a position, count or text extent is outside what it indexes, or
     ///   registry arithmetic over one overflows;
-    /// - an owner, lease, pool, ticket, attribute edit, pending operation,
-    ///   terminal slot or finalization state that is kept in a slot is absent,
-    ///   or is occupied when the step needs it free;
+    /// - an owner, lease, ticket, attribute edit, pending operation or
+    ///   terminal slot that is kept in a slot is absent, or is occupied when
+    ///   the step needs it free;
     /// - a retained step lacks the value its stage consumes: the form-owner
     ///   reset's owner or stage, the stage of an attribute bank, a text-run
     ///   scan's run kind, a recognition cursor's result, or an image-source

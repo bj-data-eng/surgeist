@@ -27,7 +27,7 @@
 //! - [`charging_tariffs`] connects a scope that charges to the scope that carries
 //!   its caps. Each of the eight parser work categories converts to
 //!   [`HtmlWork::Credits`] at rate one, which defines the parser's
-//!   `WorkCredits` total and the single pool-work count of the DOM adapter once.
+//!   `WorkCredits` total.
 //!   Every other dimension keeps its identity.
 //! - [`aggregate_tariffs`] connects a cap scope to a host or aggregate scope.
 //!   Every dimension keeps its identity except the dimensions with
@@ -167,7 +167,7 @@
 //!
 //! A bounded operation of this crate charges its own work through a
 //! [`surgeist_ledger::Charge`] that its caller supplies, before the work runs. A
-//! cursor charges in its advancing call, and a description, pool action or layout
+//! cursor charges in its advancing call, and a description or layout
 //! has a charging method. Each charges the dimensions of this schema in the
 //! batches and the order the consumers charge them. The parser, the DOM and
 //! semantics implement the trait over their own accounting. An operation that can
