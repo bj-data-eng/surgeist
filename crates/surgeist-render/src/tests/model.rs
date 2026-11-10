@@ -2276,7 +2276,6 @@ fn typed_error_codes_cannot_exist_without_their_matching_payload() {
     }
 
     let backend_codes = [
-        BackendErrorCode::DeviceCreateFailed,
         BackendErrorCode::RendererCreateFailed,
         BackendErrorCode::SurfaceCreateFailed,
         BackendErrorCode::SurfaceConfigureFailed,

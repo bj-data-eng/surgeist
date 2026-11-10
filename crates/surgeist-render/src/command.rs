@@ -814,36 +814,30 @@ fn commands_contain_backdrop_capture(
 }
 
 fn nested_backdrop_capture_error() -> Error {
-    let mut error = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+    Error::unsupported_render_primitive(UnsupportedPrimitive::new(
         PrimitiveFamily::OffscreenPipeline,
         PrimitiveOperation::BroadBackdropExecution,
-    ));
-    error.append_message(
+    )).append_message(
         ": nested backdrop capture crosses a layer isolation boundary and is not normalized in this task",
-    );
-    error
+    )
 }
 
 fn transformed_backdrop_capture_error() -> Error {
-    let mut error = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+    Error::unsupported_render_primitive(UnsupportedPrimitive::new(
         PrimitiveFamily::OffscreenPipeline,
         PrimitiveOperation::BroadBackdropExecution,
-    ));
-    error.append_message(
+    )).append_message(
         ": transformed backdrop capture requires coordinate-space reconciliation before materialized execution",
-    );
-    error
+    )
 }
 
 fn repeated_top_level_backdrop_capture_error() -> Error {
-    let mut error = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+    Error::unsupported_render_primitive(UnsupportedPrimitive::new(
         PrimitiveFamily::OffscreenPipeline,
         PrimitiveOperation::BroadBackdropExecution,
-    ));
-    error.append_message(
+    )).append_message(
         ": repeated top-level backdrop capture requires staged source reconciliation before materialized execution",
-    );
-    error
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -885,7 +879,7 @@ fn is_zero_blur_solid_text_shadow_subset(shadows: &ShadowList, account: &Account
 }
 
 fn unsupported_text_shadow_error(plan: TextShadowPlan) -> Error {
-    let mut error = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
+    let error = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
         PrimitiveFamily::Shadows,
         PrimitiveOperation::TextShadow,
     ));
@@ -893,15 +887,14 @@ fn unsupported_text_shadow_error(plan: TextShadowPlan) -> Error {
         TextShadowPlan::SupportedZeroBlurSolid | TextShadowPlan::UnsupportedZeroBlurSolid => {
             error.append_message(
                 ": zero-blur solid text shadows could be represented as repeated shifted glyph draws behind text, but this renderer has not claimed or enabled that executable subset yet",
-            );
+            )
         }
         TextShadowPlan::UnsupportedGlyphAlphaCapture => {
             error.append_message(
                 ": text-shadow execution depends on glyph-alpha/offscreen text capture before blurred shadows can be composited behind text",
-            );
+            )
         }
     }
-    error
 }
 
 impl RenderShape {

@@ -375,9 +375,10 @@ fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
 
 fn validate_nonempty_stops(stops: &[GradientStop]) -> Result<()> {
     if stops.is_empty() {
-        let mut error = Error::invalid_value("gradient stops", "[]", "must not be empty");
-        error.replace_message("gradient stops must not be empty");
-        return Err(error);
+        return Err(
+            Error::invalid_value("gradient stops", "[]", "must not be empty")
+                .replace_message("gradient stops must not be empty"),
+        );
     }
     Ok(())
 }
