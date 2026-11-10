@@ -162,7 +162,7 @@ impl Draft {
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             growth,
-            size_of::<Vec<u16>>() + old_api.shared_code_units().capacity() * size_of::<u16>(),
+            size_of::<Vec<u16>>() + old_api.retained_units() * size_of::<u16>(),
         );
         let (raw, payload) = source::formation::shared_string(self, raw, cancel)?;
         self.textarea_put_raw(key, raw, payload, limits, cancel)?;

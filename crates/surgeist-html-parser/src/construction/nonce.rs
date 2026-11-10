@@ -147,10 +147,7 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) {
                 c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if Arc::ptr_eq(
-                    value.shared_code_units(),
-                    attribute.value().shared_code_units(),
-                ) {
+                if value.shares_storage_with(attribute.value()) {
                     #[cfg(test)]
                     assert_eq!(
                         self.payloads.first_string_sharing(attribute.value()),

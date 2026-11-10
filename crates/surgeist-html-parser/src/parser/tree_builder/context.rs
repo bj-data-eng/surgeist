@@ -5552,7 +5552,7 @@ mod owned_fragment_details_effect_tests {
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let before = attributes(&session, &mut c, &node);
         assert_eq!(before, literals(&[("name", "g")]));
@@ -5570,7 +5570,7 @@ mod owned_fragment_details_effect_tests {
                 .value
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr(),
             pointer
         );
@@ -5681,7 +5681,7 @@ mod owned_fragment_details_effect_tests {
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &parent);
         let mut input = attribute(&mut lexer, &mut c);
         let alias = input.as_ref().unwrap().value.value.text().clone();
-        let pointer = alias.shared_code_units().as_ptr();
+        let pointer = alias.code_units().as_ptr();
         assert_eq!(
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
             Err(SessionError::AliasedPayload)
@@ -5693,7 +5693,7 @@ mod owned_fragment_details_effect_tests {
                 .value
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr(),
             pointer
         );
@@ -5736,7 +5736,7 @@ mod owned_fragment_details_effect_tests {
                 .value
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr();
             let expected = if cancelled {
                 request.cancellation().cancel();
@@ -5769,7 +5769,7 @@ mod owned_fragment_details_effect_tests {
                     .value
                     .value
                     .text()
-                    .shared_code_units()
+                    .code_units()
                     .as_ptr(),
                 pointer
             );
@@ -5814,7 +5814,7 @@ mod owned_fragment_details_effect_tests {
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let foreign_usage = foreign.usage().clone();
         let expected = HtmlParseStop::InternalInvariant(
@@ -5831,7 +5831,7 @@ mod owned_fragment_details_effect_tests {
                 .value
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr(),
             pointer
         );

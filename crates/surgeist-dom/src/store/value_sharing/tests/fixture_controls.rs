@@ -189,10 +189,13 @@ fn each_mode_preserves_paired_checkpoint_restore_and_closing() {
         let selected =
             admitted(|a| session.share_string(&DocumentString::from("base-text"), a)).unwrap();
         if mode == Layers::Combined {
-            assert!(Arc::ptr_eq(
-                selected.as_ref().unwrap().value().shared_code_units(),
-                base_text.shared_code_units()
-            ));
+            assert!(
+                selected
+                    .as_ref()
+                    .unwrap()
+                    .value()
+                    .shares_storage_with(&base_text)
+            );
         } else {
             assert!(selected.is_none());
         }
@@ -263,34 +266,29 @@ fn native_values_keep_mandatory_atoms_and_select_only_the_enabled_backings() {
         );
         assert!(!left.same_attribute_storage(other));
         assert_eq!(
-            Arc::ptr_eq(
-                left.attributes()[0].value().shared_code_units(),
-                other.attributes()[0].value().shared_code_units()
-            ),
+            left.attributes()[0]
+                .value()
+                .shares_storage_with(other.attributes()[0].value()),
             mode == Layers::Combined
         );
         assert_eq!(
-            Arc::ptr_eq(
-                before
-                    .node(text)
-                    .unwrap()
-                    .data()
-                    .unwrap()
-                    .shared_code_units(),
-                before
-                    .node(equal_text)
-                    .unwrap()
-                    .data()
-                    .unwrap()
-                    .shared_code_units()
-            ),
+            before
+                .node(text)
+                .unwrap()
+                .data()
+                .unwrap()
+                .shares_storage_with(before.node(equal_text).unwrap().data().unwrap()),
             mode == Layers::Combined
         );
         for id in [caller_first, caller_second] {
-            assert!(Arc::ptr_eq(
-                before.node(id).unwrap().data().unwrap().shared_code_units(),
-                caller_shared.shared_code_units()
-            ));
+            assert!(
+                before
+                    .node(id)
+                    .unwrap()
+                    .data()
+                    .unwrap()
+                    .shares_storage_with(&caller_shared)
+            );
         }
 
         let usage = dom.usage();
@@ -303,20 +301,14 @@ fn native_values_keep_mandatory_atoms_and_select_only_the_enabled_backings() {
         assert_eq!(after.stamp(), before.stamp());
         assert_eq!(dom.usage(), usage);
         assert!(left.same_attribute_storage(after.node(first).unwrap().as_element().unwrap()));
-        assert!(Arc::ptr_eq(
+        assert!(
             before
                 .node(text)
                 .unwrap()
                 .data()
                 .unwrap()
-                .shared_code_units(),
-            after
-                .node(text)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units()
-        ));
+                .shares_storage_with(after.node(text).unwrap().data().unwrap())
+        );
 
         let mut lease = dom
             .begin_source_edit(
@@ -389,20 +381,14 @@ fn every_mode_preserves_mandatory_source_refusal_and_unpublished_cancellation() 
             DomError::Cancelled
         );
         assert_eq!(dom.snapshot().stamp(), before.stamp());
-        assert!(Arc::ptr_eq(
+        assert!(
             dom.snapshot()
                 .node(text)
                 .unwrap()
                 .data()
                 .unwrap()
-                .shared_code_units(),
-            before
-                .node(text)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units()
-        ));
+                .shares_storage_with(before.node(text).unwrap().data().unwrap())
+        );
 
         let mut lease = dom
             .begin_source_edit(

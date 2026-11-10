@@ -1,6 +1,6 @@
 //! Exact public microdata ownership, admission and publication contracts.
 #![forbid(unsafe_code)]
-use std::sync::Arc;
+
 use surgeist_html::{
     attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport},
     bounded::microdata::{
@@ -102,10 +102,7 @@ fn original_utf16_ranges_first_duplicates_and_itemprop_suppression_are_retained(
         report.processing_tokens().collect::<Vec<_>>(),
         vec![&[97][..], &[65][..], &[120, 46, 58, 0xd800, 0xa0][..]]
     );
-    assert!(Arc::ptr_eq(
-        report.raw().unwrap().shared_code_units(),
-        raw.shared_code_units()
-    ));
+    assert!(report.raw().unwrap().shares_storage_with(&raw));
     assert!(!report.local_author_conforming());
     assert!(owner.is_none());
 }
@@ -212,7 +209,7 @@ fn unexecuted_reservation_refuses_and_can_be_retried_but_post_reserve_error_stop
     );
     assert!(meter.reservations[0].1 >= 1);
     assert!(try_finish(&mut owner).unwrap_err().is_stopped());
-    assert_eq!(Arc::strong_count(raw.shared_code_units()), 1);
+    assert_eq!(raw.block().holders(), 1);
     assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
 }
 #[test]

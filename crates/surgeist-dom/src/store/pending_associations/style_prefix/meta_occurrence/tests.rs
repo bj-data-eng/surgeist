@@ -62,14 +62,14 @@ fn ready() -> (
         let parser = CssParserContext::default();
         let sheet = CssParser::new(parser, Default::default())
             .parse_sheet_utf16(
-                prep.request().text().shared_code_units().clone(),
+                prep.request().text().to_shared_utf16(),
                 CssUtf16InputLimits::default(),
                 || prep.step(&flag()),
             )
             .unwrap();
         let media = CssMediaQueryList::parse_utf16(
             &CssParser::new(parser, Default::default()),
-            prep.request().media().unwrap().shared_code_units().clone(),
+            prep.request().media().unwrap().to_shared_utf16(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
@@ -220,8 +220,8 @@ fn owning_name_output_survives_command_and_dom_until_its_original_receipt_drops(
         (candidate, done)
     };
     let done = &outcome.1;
-    let weak = Arc::downgrade(done.occurrence().content().shared_code_units());
-    let capacity = done.occurrence().content().shared_code_units().capacity();
+    let weak = done.occurrence().content().block().downgrade();
+    let capacity = done.occurrence().content().retained_units();
     assert_eq!(
         done._meter.own_usage(),
         custody::Usage::new(
@@ -366,7 +366,7 @@ fn consuming_commit_refusal_keeps_external_name_candidate_custody_on_the_live_ho
         .prepare_meta_occurrence(&wanted, &cap, &flag())
         .unwrap();
     let candidate = prep.occurrence().content().clone();
-    let capacity = candidate.shared_code_units().capacity();
+    let capacity = candidate.retained_units();
     let name_usage = custody::Usage::new(
         size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
         capacity,

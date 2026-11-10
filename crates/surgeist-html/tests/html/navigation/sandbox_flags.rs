@@ -321,7 +321,7 @@ fn cancellation_at_every_reached_action_keeps_exact_raw_backing_and_retry_value(
     let mut units = Vec::with_capacity(4096);
     units.extend("allow-forms \tallow-scripts unknown".encode_utf16());
     let backing = Arc::new(units);
-    let raw = DocumentString::from_shared_code_units(backing.clone());
+    let raw = DocumentString::from_shared_utf16(backing.clone());
     let holders = Arc::strong_count(&backing);
     let mut required = 0;
     let expected = HtmlSandboxFlags::parse_with(&raw, || {
@@ -348,7 +348,7 @@ fn cancellation_at_every_reached_action_keeps_exact_raw_backing_and_retry_value(
         );
         assert_eq!(admitted, cancel_before);
         assert_eq!(Arc::strong_count(&backing), holders);
-        assert!(Arc::ptr_eq(raw.shared_code_units(), &backing));
+        assert!(Arc::ptr_eq(&raw.to_shared_utf16(), &backing));
     }
     assert_eq!(parse(&raw), expected);
     assert_eq!(raw.code_units(), backing.as_slice());

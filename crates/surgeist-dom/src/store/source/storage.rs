@@ -29,7 +29,7 @@ impl Payload {
         self.add_units(other.units)
     }
     pub fn string(&mut self, string: &DocumentString) -> Result<(), DomError> {
-        let capacity = string.shared_code_units().capacity();
+        let capacity = string.retained_units();
         self.empty_string()?;
         self.bank::<u16>(capacity)?;
         self.add_units(capacity)

@@ -220,7 +220,7 @@ fn exact_upper_frame_refusal_retry_preserves_original_root_names_serial_and_rele
                 .state()
                 .unwrap()
                 .names()
-                .map(|n| n.shared_code_units().clone())
+                .cloned()
                 .collect::<Vec<_>>(),
             std::rc::Rc::downgrade(root.bound().unwrap()),
             state.work.get(),
@@ -268,7 +268,7 @@ fn exact_upper_frame_refusal_retry_preserves_original_root_names_serial_and_rele
         assert_eq!(root.label, label);
         assert_eq!(root.serial, serial);
         for (actual, old) in root.sheet_sets.state().unwrap().names().zip(&names) {
-            assert!(Arc::ptr_eq(actual.shared_code_units(), old));
+            assert!(actual.shares_storage_with(old));
         }
         assert!(
             matches!(&root.resource,RootResource::ReleasedForHostedDestruction { cleanup,at_withdrawal } if *cleanup==output.cleanup_operation() && at_withdrawal==output.withdrawal_cssom_snapshot().revision())

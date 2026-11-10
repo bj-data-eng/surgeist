@@ -135,7 +135,7 @@ impl Draft {
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             growth,
-            size_of::<Vec<u16>>() + normalized.shared_code_units().capacity() * size_of::<u16>(),
+            size_of::<Vec<u16>>() + normalized.retained_units() * size_of::<u16>(),
         );
         self.with_control_formed(key, cancel, formation, |control| {
             control.message = normalized;

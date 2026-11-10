@@ -2722,7 +2722,7 @@ fn fixed_unrelated_spare_utf16_backing_scale() {
             let mut backing = Vec::with_capacity(capacity);
             backing.push(0xd800);
             let value = DocumentString::from_utf16(backing);
-            assert_eq!(value.shared_code_units().capacity(), capacity);
+            assert_eq!(value.retained_units(), capacity);
             // Equal authored values deliberately preserve old backing. End
             // that field occurrence before installing the next actual extent;
             // both public setup operations stay outside measurement.
@@ -2741,7 +2741,7 @@ fn fixed_unrelated_spare_utf16_backing_scale() {
                 .attribute(&"data-spare".into())
                 .unwrap();
             assert_eq!(retained.code_units(), &[0xd800]);
-            assert_eq!(retained.shared_code_units().capacity(), capacity);
+            assert_eq!(retained.retained_units(), capacity);
             eprintln!(
                 "scale spare_utf16 managed={managed} capacity_code_units={capacity} logical_code_units=1 unrelated_rows=1 usage={:?} limits={:?}",
                 fixture.dom.usage(),
@@ -2778,7 +2778,7 @@ fn fixed_unrelated_spare_utf16_backing_scale() {
                     .attribute(&"data-spare".into())
                     .unwrap();
                 assert_eq!(retained.code_units(), &[0xd800]);
-                assert_eq!(retained.shared_code_units().capacity(), capacity);
+                assert_eq!(retained.retained_units(), capacity);
             }
         }
     }

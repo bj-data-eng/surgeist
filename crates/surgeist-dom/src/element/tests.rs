@@ -146,7 +146,7 @@ fn enumerate(attributes: Option<&AttributeStorage>) -> (usize, usize, usize) {
             .chain([name.local_name(), attribute.value()])
         {
             logical += value.len();
-            let capacity = value.shared_code_units().capacity();
+            let capacity = value.retained_units();
             units += capacity;
             bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
         }

@@ -13,7 +13,7 @@ use crate::internal::values::name_index::{
     HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexSlots, HtmlNameIndexStep,
     HtmlNameIndexVacancy,
 };
-use crate::internal::values::{Attribute, ReserveOutcome};
+use crate::internal::values::{Attribute, ReserveOutcome, WeakTextBlock};
 use surgeist_ledger::{Change, Charge};
 
 /// Which protocol an attribute edit follows. It is fixed when the edit begins.
@@ -247,7 +247,7 @@ impl HtmlConstructionAttributeDescription<'_> {
 
 #[derive(Debug)]
 struct NameDecision {
-    name: Weak<Vec<u16>>,
+    name: WeakTextBlock,
     keep: bool,
 }
 /// What the edit has established, which is exactly the data its next step needs. The setup
@@ -1305,9 +1305,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                         }
                     } else {
                         let prior = prior.ok_or(HtmlConstructionCause::AttributeNameMismatch)?;
-                        if c.decisions[index].name.as_ptr()
-                            != Arc::as_ptr(prior.shared_code_units())
-                        {
+                        if c.decisions[index].name.address() != prior.block().address() {
                             return Err(HtmlConstructionCause::AttributeNameMismatch.into());
                         }
                         CandidatePhase::PriorName {
@@ -1458,7 +1456,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                 }
                 CandidatePhase::IndexPrior { index } => {
                     let prior = prior.ok_or(HtmlConstructionCause::AttributeNameMismatch)?;
-                    if c.decisions[index].name.as_ptr() != Arc::as_ptr(prior.shared_code_units()) {
+                    if c.decisions[index].name.address() != prior.block().address() {
                         return Err(HtmlConstructionCause::AttributeNameMismatch.into());
                     }
                     CandidatePhase::IndexPriorName {
@@ -1507,7 +1505,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                 }
                 CandidatePhase::Witness => {
                     c.decisions.push(NameDecision {
-                        name: Arc::downgrade(c.name.shared_code_units()),
+                        name: c.name.block().downgrade(),
                         keep: !c.found,
                     });
                     c.plan.initialized_len = c.decisions.len();
@@ -1842,14 +1840,10 @@ fn minus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
 fn identical_name(left: &QualifiedName, right: &QualifiedName) -> bool {
     let namespace = match (left.namespace().uri(), right.namespace().uri()) {
         (None, None) => true,
-        (Some(a), Some(b)) => Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()),
+        (Some(a), Some(b)) => a.shares_storage_with(b),
         _ => false,
     };
-    namespace
-        && Arc::ptr_eq(
-            left.local_name().shared_code_units(),
-            right.local_name().shared_code_units(),
-        )
+    namespace && left.local_name().shares_storage_with(right.local_name())
 }
 impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
     /// The element's shared attribute backing, as
@@ -2108,8 +2102,8 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         .get(s.plan_index)
                         .ok_or(HtmlConstructionCause::AttributeOrderMismatch)?;
                     if attribute.name().namespace().uri().is_some()
-                        || decision.name.as_ptr()
-                            != Arc::as_ptr(attribute.name().local_name().shared_code_units())
+                        || decision.name.address()
+                            != attribute.name().local_name().block().address()
                     {
                         return Err(HtmlConstructionCause::AttributeNameMismatch.into());
                     }
@@ -2713,7 +2707,7 @@ mod tests {
 
     struct UnchangedAttributes {
         backing: *const Vec<Attribute>,
-        fields: Vec<(*const Vec<u16>, *const Vec<u16>)>,
+        fields: Vec<(usize, usize)>,
         capacity: HtmlConstructionAttributeCapacity,
         usage: HtmlConstructionUsage,
         records: usize,
@@ -2727,8 +2721,8 @@ mod tests {
                     .iter()
                     .map(|attribute| {
                         (
-                            Arc::as_ptr(attribute.name().local_name().shared_code_units()),
-                            Arc::as_ptr(attribute.value().shared_code_units()),
+                            attribute.name().local_name().block().address(),
+                            attribute.value().block().address(),
                         )
                     })
                     .collect(),
@@ -2769,13 +2763,10 @@ mod tests {
                 assert!(attribute.name().namespace().uri().is_none());
                 assert!(attribute.name().prefix().is_none());
                 assert_eq!(
-                    Arc::as_ptr(attribute.name().local_name().shared_code_units()),
+                    attribute.name().local_name().block().address(),
                     name_backing
                 );
-                assert_eq!(
-                    Arc::as_ptr(attribute.value().shared_code_units()),
-                    value_backing
-                );
+                assert_eq!(attribute.value().block().address(), value_backing);
             }
         }
         fn assert_abort_and_retirement(
@@ -2849,15 +2840,14 @@ mod tests {
         );
         let original = UnchangedAttributes::capture(&edit);
         let mut incoming = Some(attribute("b", "replacement"));
-        let name = Arc::as_ptr(
-            incoming
-                .as_ref()
-                .unwrap()
-                .name()
-                .local_name()
-                .shared_code_units(),
-        );
-        let value = Arc::as_ptr(incoming.as_ref().unwrap().value().shared_code_units());
+        let name = incoming
+            .as_ref()
+            .unwrap()
+            .name()
+            .local_name()
+            .block()
+            .address();
+        let value = incoming.as_ref().unwrap().value().block().address();
         assert_slot_refused(
             edit.replace(0, &mut incoming).unwrap(),
             HtmlConstructionCause::DuplicateAttribute {
@@ -2873,11 +2863,8 @@ mod tests {
         assert_eq!(incoming.value().to_utf8().unwrap(), "replacement");
         assert!(incoming.name().namespace().uri().is_none());
         assert!(incoming.name().prefix().is_none());
-        assert_eq!(
-            Arc::as_ptr(incoming.name().local_name().shared_code_units()),
-            name
-        );
-        assert_eq!(Arc::as_ptr(incoming.value().shared_code_units()), value);
+        assert_eq!(incoming.name().local_name().block().address(), name);
+        assert_eq!(incoming.value().block().address(), value);
         let expected = [("a", "one"), ("b", "two"), ("c", "three")];
         original.assert_unchanged(&edit, &target, &expected);
         original.assert_abort_and_retirement(edit, target, &expected);
@@ -2895,15 +2882,14 @@ mod tests {
             );
             let original = UnchangedAttributes::capture(&edit);
             let mut incoming = Some(attribute("new", "candidate"));
-            let name = Arc::as_ptr(
-                incoming
-                    .as_ref()
-                    .unwrap()
-                    .name()
-                    .local_name()
-                    .shared_code_units(),
-            );
-            let value = Arc::as_ptr(incoming.as_ref().unwrap().value().shared_code_units());
+            let name = incoming
+                .as_ref()
+                .unwrap()
+                .name()
+                .local_name()
+                .block()
+                .address();
+            let value = incoming.as_ref().unwrap().value().block().address();
             assert_slot_refused(
                 edit.replace(index, &mut incoming).unwrap(),
                 HtmlConstructionCause::CapacityMismatch.error(),
@@ -2913,11 +2899,8 @@ mod tests {
                 .expect("invalid index retains the actual incoming attribute");
             assert_eq!(incoming.name().local_name().to_utf8().unwrap(), "new");
             assert_eq!(incoming.value().to_utf8().unwrap(), "candidate");
-            assert_eq!(
-                Arc::as_ptr(incoming.name().local_name().shared_code_units()),
-                name
-            );
-            assert_eq!(Arc::as_ptr(incoming.value().shared_code_units()), value);
+            assert_eq!(incoming.name().local_name().block().address(), name);
+            assert_eq!(incoming.value().block().address(), value);
             let expected = [("a", "one"), ("b", "two")];
             original.assert_unchanged(&edit, &target, &expected);
             original.assert_abort_and_retirement(edit, target, &expected);
@@ -3718,11 +3701,7 @@ mod tests {
         // Original exact comparisons: old a:a, old a:b, prior a:b, one u16 each.
         assert_eq!(inspected, 3 * 2 * size_of::<u16>());
         assert_eq!(witnesses, 2);
-        assert!(
-            names
-                .iter()
-                .all(|name| Arc::strong_count(name.shared_code_units()) == 1)
-        );
+        assert!(names.iter().all(|name| name.block().holders() == 1));
         let snapshot = edit.stage.plan().unwrap();
         assert_eq!(snapshot.initialized_len(), 2);
         assert_eq!(snapshot.element_size(), size_of::<NameDecision>());

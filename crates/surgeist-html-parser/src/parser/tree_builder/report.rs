@@ -1119,11 +1119,11 @@ mod tests {
         let report = HtmlParseReport::take_document(&mut input).unwrap();
         let snapshot = report.usage().clone();
         let alias = first_text(report.document().unwrap()).clone();
-        let weak = std::sync::Arc::downgrade(alias.shared_code_units());
+        let weak = alias.block().downgrade();
         assert_eq!(alias.code_units().as_ptr(), pointer);
         drop(report);
         assert_eq!(alias.code_units(), &[65]);
-        assert_eq!(weak.strong_count(), 1);
+        assert_eq!(weak.holders(), 1);
         assert!(
             snapshot
                 .resource(crate::HtmlParseResource::ManagedUtf16Units)

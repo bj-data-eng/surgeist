@@ -175,17 +175,16 @@ impl DomStyleRuntime {
         let mut surviving_units = 0usize;
         for (name_index, name) in next.names().enumerate() {
             step(&prep, &steps)?;
-            let allocation = name.shared_code_units();
             let mut duplicate = false;
             for previous in next.names().take(name_index) {
                 step(&prep, &steps)?;
-                duplicate |= Arc::ptr_eq(allocation, previous.shared_code_units());
+                duplicate |= name.shares_storage_with(previous);
             }
             if duplicate {
                 continue;
             }
-            let bytes = allocation
-                .capacity()
+            let bytes = name
+                .retained_units()
                 .checked_mul(size_of::<u16>())
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
                 .ok_or(DomStyleRuntimeError::Admission)?;
@@ -197,14 +196,14 @@ impl DomStyleRuntime {
                 if let Some(old) = root.sheet_sets.state() {
                     for old in old.names() {
                         step(&prep, &steps)?;
-                        existing |= Arc::ptr_eq(allocation, old.shared_code_units());
+                        existing |= name.shares_storage_with(old);
                     }
                 }
             }
             if !existing {
                 custody.add(bytes)?;
             }
-            if Arc::ptr_eq(allocation, prep.occurrence().content().shared_code_units()) {
+            if name.shares_storage_with(prep.occurrence().content()) {
                 if !existing {
                     custody.shared = custody
                         .shared
@@ -216,14 +215,14 @@ impl DomStyleRuntime {
                     .checked_add(bytes)
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 surviving_units = surviving_units
-                    .checked_add(allocation.capacity())
+                    .checked_add(name.retained_units())
                     .ok_or(DomStyleRuntimeError::Admission)?;
                 // The output can outlive every Runtime row. Its independent
                 // closing custody includes each actual other name allocation.
                 custody.add(bytes)?;
                 custody.units = custody
                     .units
-                    .checked_add(allocation.capacity())
+                    .checked_add(name.retained_units())
                     .ok_or(DomStyleRuntimeError::Admission)?;
             }
             prep.admit_runtime(custody.usage()?, cancel)

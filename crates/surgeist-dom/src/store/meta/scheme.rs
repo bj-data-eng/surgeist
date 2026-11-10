@@ -50,7 +50,7 @@ pub(super) fn parse(
     });
     let report = CssColorScheme::parse_utf16(
         &CssParser::new(context, Default::default()),
-        content.shared_code_units().clone(),
+        content.to_shared_utf16(),
         limits,
         |event| {
             draft.meta_step(cancel)?;

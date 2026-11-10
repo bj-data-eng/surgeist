@@ -33,7 +33,7 @@ pub(super) fn stage(prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>) {
     let parser = CssParserContext::default();
     let sheet = CssParser::new(parser, Default::default())
         .parse_sheet_utf16(
-            prep.request().text().shared_code_units().clone(),
+            prep.request().text().to_shared_utf16(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
@@ -42,7 +42,7 @@ pub(super) fn stage(prep: &mut DomParsedHtmlStyleSheetPreparation<'_, '_, '_>) {
         &CssParser::new(parser, Default::default()),
         prep.request()
             .media()
-            .map_or_else(Arc::default, |s| s.shared_code_units().clone()),
+            .map_or_else(Arc::default, |s| s.to_shared_utf16()),
         CssUtf16InputLimits::default(),
         || prep.step(&flag()),
     )

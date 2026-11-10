@@ -447,7 +447,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
             .current,
         22
     );
-    let name_backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
+    let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
         .name
         .origins
@@ -494,7 +494,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let retained = input.as_ref().map(|tag| {
         (
             tag.kind,
-            Arc::as_ptr(tag.name.value.text().shared_code_units()),
+            tag.name.value.text().block().address(),
             tag.name.value.text().code_units().to_vec(),
             tag.attributes.len(),
             tag.name

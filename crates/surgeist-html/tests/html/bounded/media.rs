@@ -131,29 +131,17 @@ fn value_completion_precedes_theme_scan_and_assembly_shares_each_original_attrib
     }
     assert_eq!(work, [1; 12]);
     assert_eq!(owner.theme_color(), Ok(true));
-    let raw_count = std::sync::Arc::strong_count(raw.value().shared_code_units());
-    let name_count = std::sync::Arc::strong_count(name.value().shared_code_units());
+    let raw_count = raw.value().block().holders();
+    let name_count = name.value().block().holders();
     owner
         .assemble(|| {
-            assert_eq!(
-                std::sync::Arc::strong_count(raw.value().shared_code_units()),
-                raw_count
-            );
-            assert_eq!(
-                std::sync::Arc::strong_count(name.value().shared_code_units()),
-                name_count
-            );
+            assert_eq!(raw.value().block().holders(), raw_count);
+            assert_eq!(name.value().block().holders(), name_count);
             Ok::<_, &str>(())
         })
         .unwrap();
-    assert_eq!(
-        std::sync::Arc::strong_count(raw.value().shared_code_units()),
-        raw_count + 1
-    );
-    assert_eq!(
-        std::sync::Arc::strong_count(name.value().shared_code_units()),
-        name_count + 1
-    );
+    assert_eq!(raw.value().block().holders(), raw_count + 1);
+    assert_eq!(name.value().block().holders(), name_count + 1);
     let report = owner_value.finish().unwrap();
     assert_eq!(
         report.meta_placement(),

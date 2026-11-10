@@ -415,7 +415,7 @@ impl Index {
             let mut units = 0usize;
             for name in [&fact.slot, &fact.light].into_iter().flatten() {
                 if let Some(value) = &name.value {
-                    let capacity = value.shared_code_units().capacity();
+                    let capacity = value.retained_units();
                     bytes = bytes
                         .checked_add(size_of::<Vec<u16>>())
                         .and_then(|v| {

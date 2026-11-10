@@ -41,7 +41,7 @@ impl From<HtmlValuePoolUsage> for Storage {
     }
 }
 fn string_storage(value: &DocumentString) -> Storage {
-    let capacity = value.shared_code_units().capacity();
+    let capacity = value.retained_units();
     Storage {
         bytes: size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
         units: capacity,
@@ -376,8 +376,8 @@ macro_rules! driver_sanity {
                 let independent = $input(&meter, 41);
                 let distinct = $input(&meter, 42);
                 assert!(!Arc::ptr_eq(
-                    original.value.$shared(),
-                    independent.value.$shared()
+                    &original.value.$shared(),
+                    &independent.value.$shared()
                 ));
                 let root = owner.begin();
                 assert_eq!(owner.run(&original.value, true).label(), "Offered");
@@ -385,8 +385,8 @@ macro_rules! driver_sanity {
                     panic!("independently allocated equal nonempty value must hit");
                 };
                 assert!(Arc::ptr_eq(
-                    output.value.$shared(),
-                    original.value.$shared()
+                    &output.value.$shared(),
+                    &original.value.$shared()
                 ));
                 assert_eq!(output.value, original.value);
                 // Three caller occurrences and the separately preadmitted
@@ -415,8 +415,8 @@ macro_rules! driver_sanity {
                     "held output survives owner disposal"
                 );
                 assert!(Arc::ptr_eq(
-                    output.value.$shared(),
-                    original.value.$shared()
+                    &output.value.$shared(),
+                    &original.value.$shared()
                 ));
             }
             assert_eq!(meter.0.live.get(), Storage::default());
@@ -430,7 +430,7 @@ driver_sanity!(
     HtmlStringPool,
     string,
     string_storage,
-    shared_code_units
+    to_shared_utf16
 );
 driver_sanity!(
     public_attribute_driver_transfers_hit_custody_and_releases_all_receipts,
@@ -487,7 +487,7 @@ macro_rules! seal_case {
             let Done::Hit(hit) = owner.run(&original.value, false) else {
                 panic!("frozen read lost original candidate")
             };
-            assert!(Arc::ptr_eq(hit.value.$shared(), original.value.$shared()));
+            assert!(Arc::ptr_eq(&hit.value.$shared(), &original.value.$shared()));
             assert_eq!(owner.run(&transient.value, false).label(), "Miss");
             owner.pool.validate_seal(&frozen).unwrap();
             owner.abort_seal(frozen);
@@ -502,7 +502,7 @@ seal_case!(
     string_seal_refuses_marks_and_preserves_rollback_then_frozen_state,
     Strings,
     string,
-    shared_code_units
+    to_shared_utf16
 );
 seal_case!(
     attribute_seal_refuses_marks_and_preserves_rollback_then_frozen_state,
@@ -556,7 +556,7 @@ macro_rules! long_root_case {
             fn membership(owner: &mut $owner, values: &[Held<$value>]) -> Vec<bool> {
                 values.iter().map(|input| match owner.run(&input.value, false) {
                     Done::Hit(output) => {
-                        assert!(Arc::ptr_eq(output.value.$shared(), input.value.$shared()));
+                        assert!(Arc::ptr_eq(&output.value.$shared(), &input.value.$shared()));
                         true
                     }
                     Done::Miss => false,
@@ -620,7 +620,7 @@ macro_rules! long_root_case {
                         let Done::Hit(output) = owner.run(&independent.value, false) else {
                             panic!("late admitted live pattern was not reusable");
                         };
-                        assert!(Arc::ptr_eq(output.value.$shared(), input.value.$shared()));
+                        assert!(Arc::ptr_eq(&output.value.$shared(), &input.value.$shared()));
                         held_outputs.push(output);
                     }
                 }
@@ -647,7 +647,7 @@ macro_rules! long_root_case {
                 assert_eq!(membership(&mut owner, &baseline), initial_members);
                 assert_eq!(held_outputs.len(), 9);
                 for (n, output) in held_outputs.iter().enumerate() {
-                    assert!(Arc::ptr_eq(output.value.$shared(), late[n / 3].value.$shared()));
+                    assert!(Arc::ptr_eq(&output.value.$shared(), &late[n / 3].value.$shared()));
                 }
                 eprintln!("{}: successful_changes=516, retained_hits={}, actions={}, reads={}, spent_work={}, pool_bytes={}",
                     stringify!($test), held_outputs.len(), meter.0.actions.get(), meter.0.reads.get(), meter.0.spent.get(), owner.storage().bytes);
@@ -661,7 +661,7 @@ long_root_case!(
     Strings,
     string,
     DocumentString,
-    shared_code_units
+    to_shared_utf16
 );
 long_root_case!(
     attribute_single_root_keeps_admitting_late_patterns_and_restores_accepted_and_nested_changes,
@@ -812,7 +812,7 @@ macro_rules! public_guard_edges {
                 assert!(matches!(owner.run(&expired.value, true), Done::Offered));
                 let seal = owner.prepare(root).unwrap();
                 owner.seal(seal);
-                let weak = Arc::downgrade(expired.value.$shared());
+                let weak = Arc::downgrade(&expired.value.$shared());
                 drop(expired);
                 assert!(weak.upgrade().is_none());
                 let query = $input(&meter, 72);
@@ -870,7 +870,7 @@ public_guard_edges!(
     HtmlStringPoolResult,
     DocumentString,
     string,
-    shared_code_units
+    to_shared_utf16
 );
 public_guard_edges!(
     public_attribute_guards_cleanup_cancel_panic_dead_upgrade_and_supersession,
@@ -965,7 +965,7 @@ macro_rules! miss_promotion {
                     value: selected.into_value(),
                     _receipt: candidate,
                 };
-                assert!(Arc::ptr_eq(selected.value.$shared(), input.value.$shared()));
+                assert!(Arc::ptr_eq(&selected.value.$shared(), &input.value.$shared()));
 
                 // The same borrowed operand cannot promote after an actual
                 // competing operation or after a checkpoint invalidates it.
@@ -996,7 +996,7 @@ macro_rules! miss_promotion {
                 empty.restore(mark);
                 empty.abort(empty_root);
                 owner.abort(root);
-                assert!(Arc::ptr_eq(selected.value.$shared(), input.value.$shared()));
+                assert!(Arc::ptr_eq(&selected.value.$shared(), &input.value.$shared()));
             }
             assert_eq!(meter.0.live.get(), Storage::default());
         }
@@ -1011,7 +1011,7 @@ miss_promotion!(
     DocumentString,
     DocumentString::from_utf16(vec![0xd800; 65]),
     string_storage,
-    shared_code_units,
+    to_shared_utf16,
     1,
     65
 );
@@ -1061,8 +1061,8 @@ macro_rules! freeze_readiness_only {
                 let equal = $input(&meter, 41);
                 let transient = $input(&meter, 42);
                 assert!(!Arc::ptr_eq(
-                    original.value.$shared(),
-                    equal.value.$shared()
+                    &original.value.$shared(),
+                    &equal.value.$shared()
                 ));
                 let root = owner.begin();
                 assert_eq!(owner.run(&original.value, true).label(), "Offered");
@@ -1094,8 +1094,8 @@ macro_rules! freeze_readiness_only {
                 };
                 $assert_literal(&before_freeze.value);
                 assert!(Arc::ptr_eq(
-                    before_freeze.value.$shared(),
-                    original.value.$shared()
+                    &before_freeze.value.$shared(),
+                    &original.value.$shared()
                 ));
                 let seal = owner.prepare(root).unwrap();
                 owner.pool.validate_seal(&seal).unwrap();
@@ -1106,8 +1106,8 @@ macro_rules! freeze_readiness_only {
                 };
                 $assert_literal(&after_seal.value);
                 assert!(Arc::ptr_eq(
-                    after_seal.value.$shared(),
-                    original.value.$shared()
+                    &after_seal.value.$shared(),
+                    &original.value.$shared()
                 ));
                 assert_eq!(owner.storage(), sealed_storage);
                 let fresh = owner.begin();
@@ -1115,8 +1115,8 @@ macro_rules! freeze_readiness_only {
                 drop(owner);
                 $assert_literal(&after_seal.value);
                 assert!(Arc::ptr_eq(
-                    after_seal.value.$shared(),
-                    original.value.$shared()
+                    &after_seal.value.$shared(),
+                    &original.value.$shared()
                 ));
             }
             assert_eq!(meter.0.live.get(), Storage::default());
@@ -1144,7 +1144,7 @@ freeze_readiness_only!(
     Strings,
     HtmlStringPool,
     string,
-    shared_code_units,
+    to_shared_utf16,
     assert_freeze_string
 );
 freeze_readiness_only!(

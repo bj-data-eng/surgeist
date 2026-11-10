@@ -162,7 +162,7 @@ mod tests {
             )
             .unwrap();
         let second_value = DocumentString::from_utf16(vec![0xd800, 0, 120]);
-        let original = Arc::downgrade(second_value.shared_code_units());
+        let original = second_value.block().downgrade();
         let input = attributes!(&draft, second_value, &cancel);
         let refusal = payload::identity_refusal::Refusal::begin();
         let second = draft.form_attributes(input, None, &cancel).unwrap();
@@ -176,12 +176,8 @@ mod tests {
             "unused input fields are destroyed"
         );
         assert_eq!(second.value[0].value().code_units(), &[0xd800, 0, 120]);
-        assert_eq!(second.value[0].value().shared_code_units().capacity(), 17);
-        let local = second.value[0]
-            .name()
-            .local_name()
-            .shared_code_units()
-            .capacity();
+        assert_eq!(second.value[0].value().retained_units(), 17);
+        let local = second.value[0].name().local_name().retained_units();
         let expected = custody::Usage::new(
             2 * size_of::<Vec<u16>>() + (local + 17) * size_of::<u16>(),
             local + 17,
@@ -221,14 +217,14 @@ mod tests {
         let NewNode::Text(first_text) = first.value() else {
             panic!("actual Text");
         };
-        assert_eq!(first_text.shared_code_units().capacity(), 19);
+        assert_eq!(first_text.retained_units(), 19);
         let selected = custody::Usage::new(size_of::<Vec<u16>>() + 19 * size_of::<u16>(), 19);
         assert_eq!(first.debit().usage(), selected);
         let extra = custody::Usage::new(777, 111);
         for retained_occurrence in [false, true] {
             let value = DocumentString::from_utf16(vec![0xd800, 0, 120]);
-            let original = Arc::downgrade(value.shared_code_units());
-            let capacity = value.shared_code_units().capacity();
+            let original = value.block().downgrade();
+            let capacity = value.retained_units();
             let original_extent = custody::Usage::new(
                 size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
                 capacity,
@@ -248,10 +244,7 @@ mod tests {
             let NewNode::Text(value) = result.value() else {
                 panic!("same Text kind");
             };
-            assert!(Arc::ptr_eq(
-                value.shared_code_units(),
-                first_text.shared_code_units()
-            ));
+            assert!(value.shares_storage_with(first_text));
             assert_eq!(value.code_units(), &[0xd800, 0, 120]);
             assert!(original.upgrade().is_none());
             assert_eq!(
@@ -269,7 +262,7 @@ mod tests {
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
         draft.ensure_sharing(&dom.value_sharing, &cancel).unwrap();
         let text = DocumentString::from_utf16(vec![0xd800, 0]);
-        let pointer = Arc::as_ptr(text.shared_code_units());
+        let pointer = text.block().address();
         let debit = draft
             .custody_ledger()
             .retain(custody::Usage::new(37, 5), |_| Ok(()))
@@ -285,7 +278,7 @@ mod tests {
         let NewNode::Comment(text) = result.value() else {
             panic!("same node kind");
         };
-        assert_eq!(Arc::as_ptr(text.shared_code_units()), pointer);
+        assert_eq!(text.block().address(), pointer);
         assert_eq!(result.debit().usage(), custody::Usage::new(37, 5));
         assert_eq!(draft.custody_ledger().total(), baseline);
     }

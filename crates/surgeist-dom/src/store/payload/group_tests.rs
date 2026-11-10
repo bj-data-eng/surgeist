@@ -112,7 +112,7 @@ fn source_leaf_factory_transfers_original_text_once_and_refuses_before_build_at_
             ledger: ledger.clone(),
             during_drop: during_drop.clone(),
         };
-        let weak = Arc::downgrade(input.value.shared_code_units());
+        let weak = input.value.block().downgrade();
         let called = std::cell::Cell::new(false);
         let own = Usage::new(size_of::<Payload<OriginalText>>(), 0)
             .checked_add(actual)

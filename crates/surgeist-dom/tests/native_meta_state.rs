@@ -382,12 +382,11 @@ fn work_and_cancellation_refuse_without_publication_even_for_equal_final_history
     assert!(commit.changes().changes().is_empty());
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert_eq!(dom.usage(), usage);
-    assert!(std::sync::Arc::ptr_eq(
-        language(&before, document).unwrap().shared_code_units(),
-        language(&dom.snapshot(), document)
+    assert!(
+        language(&before, document)
             .unwrap()
-            .shared_code_units(),
-    ));
+            .shares_storage_with(language(&dom.snapshot(), document).unwrap())
+    );
 }
 
 #[test]

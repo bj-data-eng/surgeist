@@ -20,10 +20,7 @@ fn executed_string_hash_and_collision_comparison_count_raw_units_and_headers_sep
     ] {
         let original = DocumentString::from_utf16(RAW.to_vec());
         let input = DocumentString::from_utf16(literal.to_vec());
-        assert!(!Arc::ptr_eq(
-            original.shared_code_units(),
-            input.shared_code_units()
-        ));
+        assert!(!original.shares_storage_with(&input));
         let mut pool = HtmlStringPool::new();
         pool.inner.collision = true;
         seed_string(&mut pool, &original);
@@ -34,10 +31,7 @@ fn executed_string_hash_and_collision_comparison_count_raw_units_and_headers_sep
             Outcome::Hit(output) => {
                 assert!(hit);
                 assert_eq!(output.code_units(), RAW);
-                assert!(Arc::ptr_eq(
-                    output.shared_code_units(),
-                    original.shared_code_units()
-                ));
+                assert!(output.shares_storage_with(&original));
             }
             Outcome::Miss => assert!(!hit),
             other => panic!("literal collision result: {other:?}"),
@@ -150,14 +144,8 @@ fn empty_reserved_and_ineligible_inputs_distinguish_headers_from_unread_capacity
             panic!("exact empty value");
         };
         assert!(output.is_empty());
-        assert_eq!(
-            output.shared_code_units().capacity(),
-            original.shared_code_units().capacity()
-        );
-        assert!(Arc::ptr_eq(
-            output.shared_code_units(),
-            original.shared_code_units()
-        ));
+        assert_eq!(output.retained_units(), original.retained_units());
+        assert!(output.shares_storage_with(&original));
         assert_eq!(
             observed.read(),
             Executed {
@@ -176,7 +164,7 @@ fn empty_reserved_and_ineligible_inputs_distinguish_headers_from_unread_capacity
         DocumentString::from_utf16(vec![0xd800; MAX_UNITS + 1]),
         DocumentString::from_utf16(Vec::with_capacity(MAX_UNITS + 1)),
     ] {
-        let backing = input.shared_code_units().clone();
+        let backing = input.to_shared_utf16();
         let mut pool = HtmlStringPool::new();
         let observed = ObserveExecution::start();
         let mut admitted = Budget::default();
@@ -193,7 +181,7 @@ fn empty_reserved_and_ineligible_inputs_distinguish_headers_from_unread_capacity
             }
         );
         assert_eq!(admitted.inspected, 0);
-        assert!(Arc::ptr_eq(input.shared_code_units(), &backing));
+        assert!(Arc::ptr_eq(&input.to_shared_utf16(), &backing));
         assert_eq!(pool.heap_usage().bytes(), 0);
         report("ineligible_string", observed.read(), &admitted);
     }
@@ -332,10 +320,7 @@ fn refused_or_cancelled_reads_do_not_execute_and_same_action_retry_keeps_complet
             panic!("same admitted comparison retry");
         };
         assert!(operation.is_none());
-        assert!(Arc::ptr_eq(
-            output.value().shared_code_units(),
-            original.shared_code_units()
-        ));
+        assert!(output.value().shares_storage_with(&original));
         assert_eq!(
             observed.read(),
             Executed {
@@ -353,7 +338,7 @@ fn refused_or_cancelled_reads_do_not_execute_and_same_action_retry_keeps_complet
 fn first_action_cancellation_and_next_run_refusal_leave_exact_hash_prefixes() {
     for cancelled in [false, true] {
         let input = DocumentString::from_utf16(RAW.to_vec());
-        let original = input.shared_code_units().clone();
+        let original = input.to_shared_utf16();
         let mut pool = HtmlStringPool::new();
         let observed = ObserveExecution::start();
         let mut admitted = Budget {
@@ -384,7 +369,7 @@ fn first_action_cancellation_and_next_run_refusal_leave_exact_hash_prefixes() {
         assert_eq!(admitted.inspected, 0);
         assert_eq!(admitted.visits, usize::from(!cancelled));
         assert_eq!(input.code_units(), RAW);
-        assert!(Arc::ptr_eq(input.shared_code_units(), &original));
+        assert!(Arc::ptr_eq(&input.to_shared_utf16(), &original));
         assert_eq!(pool.heap_usage().bytes(), 0);
     }
 }

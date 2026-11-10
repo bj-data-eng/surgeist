@@ -29,7 +29,7 @@ fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidate
     let mut units = Vec::with_capacity(19);
     units.extend_from_slice(&[120, 0xd800, 0]);
     let value = DocumentString::from_utf16(units);
-    let unused = Arc::downgrade(value.shared_code_units());
+    let unused = value.block().downgrade();
     let mut first = DomBatch::new();
     let element =
         first.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
@@ -65,7 +65,7 @@ fn retained_prepared_root_bypasses_sibling_and_abort_releases_only_its_candidate
         panic!("actual Text values")
     };
     assert!(
-        Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()),
+        a.shares_storage_with(b),
         "the aborted root leaves the next real transaction usable"
     );
 }
@@ -206,8 +206,5 @@ fn cold_checkpoint_can_close_late_root_at_the_actual_source_publication_fence() 
     let DomNodeKind::Text(actual) = dom.state.node(dom.owner, text).unwrap().kind() else {
         panic!("published Text")
     };
-    assert!(Arc::ptr_eq(
-        actual.shared_code_units(),
-        selected.value().shared_code_units()
-    ));
+    assert!(actual.shares_storage_with(selected.value()));
 }

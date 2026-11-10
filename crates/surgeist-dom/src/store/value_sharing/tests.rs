@@ -219,7 +219,7 @@ fn close_refusal_keeps_original_mark_and_root_restorable() {
 }
 
 fn raw_string(value: &DocumentString) -> custody::Usage {
-    let capacity = value.shared_code_units().capacity();
+    let capacity = value.retained_units();
     custody::Usage::new(
         size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
         capacity,
@@ -331,10 +331,7 @@ fn string_reuse_preserves_raw_units_and_cancellation_error_and_releases_owner() 
         .unwrap()
         .unwrap();
     assert_eq!(selected.value().code_units(), [0xd800, 0, 0xdc00]);
-    assert!(Arc::ptr_eq(
-        selected.value().shared_code_units(),
-        original.shared_code_units()
-    ));
+    assert!(selected.value().shares_storage_with(&original));
     drop(selected);
     let baseline = f.ledger.total();
     let cancelled = AtomicBool::new(true);
@@ -580,10 +577,13 @@ fn unique_repeated_and_mixed_streams_report_bounded_actual_owner_overhead() {
                 };
                 let selected = session.share_string(&string, &mut admission).unwrap();
                 if mode != "unique" && i != 0 {
-                    assert!(Arc::ptr_eq(
-                        selected.as_ref().unwrap().value().shared_code_units(),
-                        hot_string.shared_code_units()
-                    ));
+                    assert!(
+                        selected
+                            .as_ref()
+                            .unwrap()
+                            .value()
+                            .shares_storage_with(&hot_string)
+                    );
                 }
                 drop(selected);
                 match session.probe_bank(bank.entries(), &mut admission).unwrap() {
@@ -656,16 +656,13 @@ fn empty_reserved_values_are_real_candidates_and_oversized_inputs_bypass_bounded
     let selected = admitted(|a| session.share_string(&empty, a))
         .unwrap()
         .unwrap();
-    assert!(Arc::ptr_eq(
-        selected.value().shared_code_units(),
-        reserved_string.shared_code_units()
-    ));
+    assert!(selected.value().shares_storage_with(&reserved_string));
     assert_eq!(
-        selected.value().shared_code_units().capacity(),
-        reserved_string.shared_code_units().capacity()
+        selected.value().retained_units(),
+        reserved_string.retained_units()
     );
     drop(selected);
-    assert_eq!(empty.shared_code_units().capacity(), 0);
+    assert_eq!(empty.retained_units(), 0);
 
     let stable = f.ledger.total();
     let mut probe_steps = None;
@@ -1160,8 +1157,5 @@ fn optional_bank_exhaustion_does_not_break_real_style_preflight_or_acknowledged_
     let before_text = published.node(detached_text).unwrap().data().unwrap();
     let after_text = after_noop.node(detached_text).unwrap().data().unwrap();
     assert_eq!(after_text.code_units(), [107, 101, 112, 116]);
-    assert!(Arc::ptr_eq(
-        before_text.shared_code_units(),
-        after_text.shared_code_units()
-    ));
+    assert!(before_text.shares_storage_with(after_text));
 }

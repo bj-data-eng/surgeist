@@ -50,14 +50,14 @@ fn input(
     let parser = CssParserContext::default();
     let sheet = CssParser::new(parser, Default::default())
         .parse_sheet_utf16(
-            prep.request().text().shared_code_units().clone(),
+            prep.request().text().to_shared_utf16(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )
         .unwrap();
     let media = CssMediaQueryList::parse_utf16(
         &CssParser::new(parser, Default::default()),
-        prep.request().media().unwrap().shared_code_units().clone(),
+        prep.request().media().unwrap().to_shared_utf16(),
         CssUtf16InputLimits::default(),
         || prep.step(&flag()),
     )
@@ -301,7 +301,7 @@ fn original_control_refuses_the_actual_final_css_postgrammar_poll_then_raised_re
             .begin_parsed_html_style(id, envelope(), &flag())
             .unwrap();
         let prep = hold.prepare_create_sheet(&cap, &flag()).unwrap();
-        prep.request().text().shared_code_units().clone()
+        prep.request().text().to_shared_utf16()
     };
     let polls = std::cell::Cell::new(0u64);
     {

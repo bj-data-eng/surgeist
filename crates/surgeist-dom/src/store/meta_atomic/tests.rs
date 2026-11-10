@@ -818,13 +818,8 @@ fn replacement_bank_overlap_refuses_before_growing_the_retained_old_bank() {
 fn shared_content_and_reinserted_meta_keep_distinct_occurrences_with_one_actual_payload() {
     let mut f = fixture(u64::MAX);
     let content = DocumentString::from("B".repeat(4096));
-    let native = DomMetaAtomicLimits::new(
-        1_000_000,
-        content.shared_code_units().capacity(),
-        1_000_000,
-        128,
-    )
-    .unwrap();
+    let native =
+        DomMetaAtomicLimits::new(1_000_000, content.retained_units(), 1_000_000, 128).unwrap();
     let mut batch = DomBatch::new();
     let first = insert(&mut batch, f.docs[0], f.heads[0], content.clone());
     insert(&mut batch, f.docs[0], f.heads[0], content);
@@ -837,10 +832,7 @@ fn shared_content_and_reinserted_meta_keep_distinct_occurrences_with_one_actual_
     assert_eq!(rows[0].meta(), rows[2].meta());
     assert_ne!(rows[0].meta(), rows[1].meta());
     for row in rows {
-        assert!(Arc::ptr_eq(
-            rows[0].content().shared_code_units(),
-            row.content().shared_code_units()
-        ));
+        assert!(rows[0].content().shares_storage_with(row.content()));
     }
     let (commit, dead) = prepared.commit(&flag()).unwrap().into_parts();
     assert_eq!(commit.roots().len(), 1);

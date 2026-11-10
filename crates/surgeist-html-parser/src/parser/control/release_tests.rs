@@ -256,7 +256,7 @@ fn ticket_for(
     value: &surgeist_html::values::DocumentString,
 ) -> DocumentStringAllocation {
     let mut ticket = c.prepare_text_append_allocation().unwrap();
-    ticket.vector_capacity = value.shared_code_units().capacity();
+    ticket.vector_capacity = value.retained_units();
     ticket.units = value.len() as u64;
     ticket
 }
@@ -282,7 +282,7 @@ fn restoring_a_text_ticket_that_already_has_backing_is_refused() {
     let mut c = control();
     let value = text(&[65]);
     let mut ticket = ticket_for(&mut c, &value);
-    ticket.backing = Some(Arc::downgrade(value.shared_code_units()));
+    ticket.backing = Some(value.block().downgrade());
     let before = c.usage().clone();
     assert_eq!(
         c.restore_text_append_ticket(&mut ticket, &value),
@@ -368,7 +368,7 @@ fn recording_growth_against_a_bound_ticket_reports_the_capacity_mismatch() {
     let mut c = control();
     let value = text(&[65]);
     let mut ticket = ticket_for(&mut c, &value);
-    ticket.backing = Some(Arc::downgrade(value.shared_code_units()));
+    ticket.backing = Some(value.block().downgrade());
     let before = c.usage().clone();
     assert_eq!(
         c.record_text_append_capacity(&mut ticket, capacity, capacity.capacity()),
@@ -384,7 +384,7 @@ fn retaining_a_failed_text_ticket_bound_to_other_backing_is_refused() {
     let value = text(&[65]);
     let other = text(&[66]);
     let mut ticket = ticket_for(&mut c, &value);
-    ticket.backing = Some(Arc::downgrade(other.shared_code_units()));
+    ticket.backing = Some(other.block().downgrade());
     assert_eq!(
         c.retain_failed_text_append_ticket(&mut ticket, &value),
         Err(MISMATCH)

@@ -474,9 +474,7 @@ fn non_power_of_two_original_content_owns_its_real_utf16_capacity() {
         text.code_units(),
         "1;report-uri xyz".encode_utf16().collect::<Vec<_>>()
     );
-    assert!(
-        report.retained_construction_utf16_units() >= text.shared_code_units().capacity() as u64
-    );
+    assert!(report.retained_construction_utf16_units() >= text.retained_units() as u64);
 }
 
 #[test]

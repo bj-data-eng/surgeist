@@ -30,7 +30,7 @@ fn qname(local: &str) -> QualifiedName {
     QualifiedName::new(Namespace::none(), None, local)
 }
 fn string_bytes(value: &DocumentString) -> usize {
-    size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+    size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>()
 }
 fn name_bytes(value: &QualifiedName) -> usize {
     value.namespace().uri().map_or(0, string_bytes)
@@ -101,10 +101,12 @@ fn owned_values_admit_actual_reserved_capacity_exactly_and_refuse_one_byte_short
         value.attributes.shared_attributes(),
         attrs.shared_attributes()
     ));
-    assert!(Arc::ptr_eq(
-        value.name.local_name().shared_code_units(),
-        name.local_name().shared_code_units()
-    ));
+    assert!(
+        value
+            .name
+            .local_name()
+            .shares_storage_with(name.local_name())
+    );
     assert!(attrs.shared_attributes().capacity() > attrs.len());
 }
 
@@ -194,10 +196,11 @@ fn borrowed_values_preserve_order_text_backings_and_saved_is() {
     assert_eq!(value.name(), &name);
     assert_eq!(value.attributes().as_slice(), attrs);
     assert_eq!(value.is_value(), &HtmlCapturedIsValue::Value(saved));
-    assert!(Arc::ptr_eq(
-        value.attributes().as_slice()[0].value().shared_code_units(),
-        attrs[0].value().shared_code_units()
-    ));
+    assert!(
+        value.attributes().as_slice()[0]
+            .value()
+            .shares_storage_with(attrs[0].value())
+    );
     assert_eq!(owner.usage().element_value_bytes(), bytes);
 }
 
@@ -368,7 +371,7 @@ fn actual_name_unit_limit_precedes_owned_cloning_and_later_interruption() {
     let (mut owner, doc) =
         builder_with(HtmlCaptureLimits::new(20, 100, 100, 3, 20, 0, 0, 1_000_000));
     let before = owner.usage();
-    let original_strong = Arc::strong_count(input.large.shared_code_units());
+    let original_strong = input.large.block().holders();
     let observed_unadmitted_clone = Cell::new(false);
     let result = owner.add_element_from_inputs(
         &doc,
@@ -377,7 +380,7 @@ fn actual_name_unit_limit_precedes_owned_cloning_and_later_interruption() {
         HtmlCapturedIsValue::Absent,
         HtmlCaptureRegistryInput::Null,
         || {
-            if Arc::strong_count(input.large.shared_code_units()) > original_strong {
+            if input.large.block().holders() > original_strong {
                 observed_unadmitted_clone.set(true);
                 Err("unadmitted clone reached a later callback")
             } else {
@@ -396,10 +399,7 @@ fn actual_name_unit_limit_precedes_owned_cloning_and_later_interruption() {
         ))
     );
     assert!(!observed_unadmitted_clone.get());
-    assert_eq!(
-        Arc::strong_count(input.large.shared_code_units()),
-        original_strong
-    );
+    assert_eq!(input.large.block().holders(), original_strong);
     assert_eq!(owner.usage(), before);
     assert_eq!(owner.data.records.len(), 1);
 }

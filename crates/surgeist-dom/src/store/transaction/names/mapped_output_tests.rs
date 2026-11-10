@@ -49,7 +49,7 @@ fn raw_extent(entries: &[FormPastName<Key>], capacity: usize) -> custody::Usage 
         + capacity * size_of::<FormPastName<NodeId>>();
     let mut units = 0;
     for entry in entries {
-        let capacity = entry.name.shared_code_units().capacity();
+        let capacity = entry.name.retained_units();
         bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
         units += capacity;
     }

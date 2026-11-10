@@ -62,14 +62,14 @@ macro_rules! recurring {
                 let selected = run(&mut pool, &equal, false, &mut remaining)
                     .unwrap_or_else(|| panic!("recurring live candidate lost after {} unique insertions despite a hit after each prior insertion", unique + 1));
                 assert_eq!(selected, hot);
-                assert!(Arc::ptr_eq(selected.$shared(), hot.$shared()));
-                assert!(!Arc::ptr_eq(selected.$shared(), equal.$shared()));
+                assert!(Arc::ptr_eq(&selected.$shared(), &hot.$shared()));
+                assert!(!Arc::ptr_eq(&selected.$shared(), &equal.$shared()));
                 outputs.push(selected);
             }
             pool.abort_root(root).unwrap();
             assert_eq!(pool.heap_usage(), baseline);
             let selected = run(&mut pool, &make(500), false, &mut remaining).unwrap();
-            assert!(Arc::ptr_eq(selected.$shared(), hot.$shared()));
+            assert!(Arc::ptr_eq(&selected.$shared(), &hot.$shared()));
             drop(pool);
             assert_eq!(outputs.len(), 24);
             for output in outputs.iter().skip(1).step_by(2) { assert_eq!(output, &hot); }
@@ -83,7 +83,7 @@ recurring!(
     HtmlStringPoolResult,
     DocumentString,
     |id: u16| DocumentString::from_utf16(vec![0xd800, 0, id]),
-    shared_code_units
+    to_shared_utf16
 );
 recurring!(
     recurring_attribute_bank_survives_one_use_collision_pollution,
@@ -155,7 +155,7 @@ macro_rules! probe_authority {
             let equal = make(500);
             let selected = run(&mut pool, &equal, false, &mut remaining).expect("immutable lookup remains usable without mutation authority");
             assert_eq!(selected, original);
-            assert!(Arc::ptr_eq(selected.$shared(), original.$shared()));
+            assert!(Arc::ptr_eq(&selected.$shared(), &original.$shared()));
             assert_eq!(pool.heap_usage(), baseline);
             for mark in marks { pool.accept_mark(mark).unwrap(); }
             if let Some(root) = suspended {
@@ -184,7 +184,7 @@ probe_authority!(
     HtmlStringPoolResult,
     DocumentString,
     |id: u16| DocumentString::from_utf16(vec![0xd800, 0, id]),
-    shared_code_units,
+    to_shared_utf16,
     0
 );
 probe_authority!(
@@ -194,7 +194,7 @@ probe_authority!(
     HtmlStringPoolResult,
     DocumentString,
     |id: u16| DocumentString::from_utf16(vec![0xd800, 0, id]),
-    shared_code_units,
+    to_shared_utf16,
     1
 );
 probe_authority!(
@@ -204,7 +204,7 @@ probe_authority!(
     HtmlStringPoolResult,
     DocumentString,
     |id: u16| DocumentString::from_utf16(vec![0xd800, 0, id]),
-    shared_code_units,
+    to_shared_utf16,
     2
 );
 probe_authority!(

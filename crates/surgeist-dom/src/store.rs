@@ -3684,7 +3684,7 @@ impl Draft {
                 #[cfg(test)]
                 source::formation::mutation_observation::grew(
                     growth,
-                    size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>(),
+                    size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>(),
                 );
                 let kind = match self.node(node)?.kind() {
                     transaction::KindRead::Text(_) => NewNode::Text(value),

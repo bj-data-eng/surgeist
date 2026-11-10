@@ -56,7 +56,7 @@ impl Fact {
             && self.select == other.select
             && match (&self.name, &other.name) {
                 (None, None) => true,
-                (Some(a), Some(b)) => Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()),
+                (Some(a), Some(b)) => a.shares_storage_with(b),
                 _ => false,
             }
     }

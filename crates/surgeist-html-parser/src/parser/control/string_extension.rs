@@ -31,19 +31,17 @@ impl ParseControl {
         if let Err(stop) = self.admit_string_extension(allocation, &value) {
             return Err(StringExtensionRefused { stop, value });
         }
-        let mut shared = Arc::clone(value.shared_code_units());
-        drop(value);
+        let mut value = value;
         // The ticket's Weak is the only other pointer to the backing. It goes
         // while the backing is mutated and returns on every path.
         drop(allocation.backing.take());
-        let result = match Arc::get_mut(&mut shared) {
+        let result = match value.unique_units_mut() {
             Some(vector) => self.extend_vector(allocation, vector, units),
             None => self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::SharedAllocationAliased,
             )),
         };
-        allocation.backing = Some(Arc::downgrade(&shared));
-        let value = DocumentString::from_shared_code_units(shared);
+        allocation.backing = Some(value.block().downgrade());
         match result {
             Ok(()) => Ok(value),
             Err(stop) => Err(StringExtensionRefused { stop, value }),
@@ -67,7 +65,7 @@ impl ParseControl {
             (HtmlParseWorkCategory::ProviderCall, 2),
             (
                 HtmlParseWorkCategory::CopyByte,
-                const { (size_of::<u64>() + size_of::<Option<Weak<Vec<u16>>>>()) as u64 },
+                const { (size_of::<u64>() + size_of::<Option<WeakTextBlock>>()) as u64 },
             ),
             (HtmlParseWorkCategory::RecordWrite, 2),
         ])
@@ -158,7 +156,7 @@ mod tests {
         let mut c = control();
         let (value, mut allocation) = registered(&mut c, &[1, 2, 3, 4, 5]);
         // Capacities 1, 2, 4 and 8 hold five units.
-        assert_eq!(value.shared_code_units().capacity(), 8);
+        assert_eq!(value.retained_units(), 8);
         let reserved = work(&c, HtmlParseWorkCategory::ReserveByte);
         let copied = work(&c, HtmlParseWorkCategory::CopyByte);
         let bytes = current(&c, HtmlParseResource::ManagedCapacityBytes);
@@ -167,12 +165,12 @@ mod tests {
             .ok()
             .unwrap();
         assert_eq!(value.code_units(), [1, 2, 3, 4, 5, 6, 7, 8]);
-        assert_eq!(value.shared_code_units().capacity(), 8);
+        assert_eq!(value.retained_units(), 8);
         assert_eq!(work(&c, HtmlParseWorkCategory::ReserveByte), reserved);
         // The three units, six bytes, and the ticket's fixed fields.
         assert_eq!(
             work(&c, HtmlParseWorkCategory::CopyByte) - copied,
-            6 + (size_of::<u64>() + size_of::<Option<Weak<Vec<u16>>>>()) as u64
+            6 + (size_of::<u64>() + size_of::<Option<WeakTextBlock>>()) as u64
         );
         assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 8);
         assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), bytes);
@@ -198,7 +196,7 @@ mod tests {
         let expected: Vec<u16> = (0..40).collect();
         assert_eq!(value.code_units(), expected);
         // One unit at a time from nothing: capacities 1, 2, 4, 8, 16, 32 and 64.
-        assert_eq!(value.shared_code_units().capacity(), 64);
+        assert_eq!(value.retained_units(), 64);
         assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 40);
         assert_eq!(
             current(&c, HtmlParseResource::ManagedCapacityBytes),
@@ -302,7 +300,7 @@ mod tests {
         assert_eq!(c.stop(), Some(refused.stop));
         // Nothing was reserved or appended, so the ticket still names the value as it was.
         assert_eq!(refused.value.code_units(), [1, 2, 3, 4, 5]);
-        assert_eq!(refused.value.shared_code_units().capacity(), 8);
+        assert_eq!(refused.value.retained_units(), 8);
         assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), before);
         assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 5);
         drop(refused.value);

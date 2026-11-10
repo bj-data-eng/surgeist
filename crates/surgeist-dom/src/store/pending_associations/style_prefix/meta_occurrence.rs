@@ -258,7 +258,7 @@ impl<'dom> DomParsedHtmlStyleRuntimeHold<'dom> {
             .executed_prefix
             .try_lock()
             .map_err(|e| notification::guard_error(e, self.meter.entry().id))?;
-        let capacity = occurrence.content().shared_code_units().capacity();
+        let capacity = occurrence.content().retained_units();
         let name_usage = custody::Usage::new(
             capacity
                 .checked_mul(size_of::<u16>())

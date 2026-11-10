@@ -240,7 +240,7 @@ impl Draft {
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             growth,
-            size_of::<Vec<u16>>() + output.shared_code_units().capacity() * size_of::<u16>(),
+            size_of::<Vec<u16>>() + output.retained_units() * size_of::<u16>(),
         );
         self.input_put_value(
             key,
@@ -271,7 +271,7 @@ impl Draft {
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             growth,
-            size_of::<Vec<u16>>() + raw.value.shared_code_units().capacity() * size_of::<u16>(),
+            size_of::<Vec<u16>>() + raw.value.retained_units() * size_of::<u16>(),
         );
         match input_type.sanitization() {
             HtmlInputValueSanitization::String(policy) => {
@@ -718,7 +718,7 @@ impl Draft {
         #[cfg(test)]
         source::formation::mutation_observation::grew(
             alias,
-            size_of::<Vec<u16>>() + name.value.shared_code_units().capacity() * size_of::<u16>(),
+            size_of::<Vec<u16>>() + name.value.retained_units() * size_of::<u16>(),
         );
         #[cfg(test)]
         super::control::participant_tests::radio_discovery_started(self);

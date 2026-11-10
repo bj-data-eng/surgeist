@@ -816,8 +816,8 @@ mod attribute_copy_observation {
                 .into_iter()
                 .flatten()
             {
-                registered_bytes += size_of::<Vec<u16>>()
-                    + string.shared_code_units().capacity() * size_of::<u16>();
+                registered_bytes +=
+                    size_of::<Vec<u16>>() + string.retained_units() * size_of::<u16>();
             }
         }
         Ok(Some(Boundary {
@@ -854,8 +854,8 @@ mod attribute_copy_observation {
                 .into_iter()
                 .flatten()
                 {
-                    boundary.required += size_of::<Vec<u16>>()
-                        + string.shared_code_units().capacity() * size_of::<u16>();
+                    boundary.required +=
+                        size_of::<Vec<u16>>() + string.retained_units() * size_of::<u16>();
                 }
             }
             boundary.admitted = draft.source_storage_bytes(cancel)? + draft.source_other_bytes;
@@ -889,8 +889,7 @@ mod attribute_copy_observation {
             .into_iter()
             .flatten()
             {
-                expected += size_of::<Vec<u16>>()
-                    + string.shared_code_units().capacity() * size_of::<u16>();
+                expected += size_of::<Vec<u16>>() + string.retained_units() * size_of::<u16>();
             }
             boundary.hook_expected = expected;
             boundary.hook_live = draft.source_formation_bytes.load(Ordering::Relaxed);
@@ -915,7 +914,7 @@ mod tests {
         new: &DocumentString,
     ) -> custody::Usage {
         fn string(value: &DocumentString, bytes: &mut usize, units: &mut usize) {
-            let capacity = value.shared_code_units().capacity();
+            let capacity = value.retained_units();
             *bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
             *units += capacity;
         }
@@ -1303,8 +1302,7 @@ mod dialog_tail_tests {
         // Real immutable operand occurrences, independently priced from their
         // actual UTF16 banks; inline frame fields belong to the effect bank.
         let bytes = 2 * size_of::<Vec<u16>>()
-            + (changed.local_name().shared_code_units().capacity()
-                + new_value.shared_code_units().capacity())
+            + (changed.local_name().retained_units() + new_value.retained_units())
                 * size_of::<u16>();
         let units = changed.local_name().len() + new_value.len();
         let operation = draft

@@ -829,7 +829,7 @@ mod source_tests {
                 (metered.work, metered.peak, metered.live),
                 (ordinary.work, ordinary.peak, 0)
             );
-            let retained_units = output.value.shared_code_units().capacity();
+            let retained_units = output.value.retained_units();
             let retained_bytes = size_of::<Vec<u16>>() + retained_units * size_of::<u16>();
             assert_eq!(source.owned_payload().bytes, 0);
             assert_eq!(source.owned_payload().units, 0);
@@ -843,10 +843,7 @@ mod source_tests {
             );
             if case == 0 {
                 assert_eq!(retained_units, 256);
-                assert!(Arc::ptr_eq(
-                    current.shared_code_units(),
-                    output.value.shared_code_units()
-                ));
+                assert!(current.shares_storage_with(&output.value));
             }
             let InputValue { value, payload } = output;
             drop(value);
@@ -1048,10 +1045,7 @@ mod source_tests {
             );
             if allowance == 256 {
                 let InputValue { value, payload } = result.unwrap();
-                assert!(Arc::ptr_eq(
-                    current.shared_code_units(),
-                    value.shared_code_units()
-                ));
+                assert!(current.shares_storage_with(&value));
                 assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 256);
                 drop(value);
                 drop(payload);
@@ -1063,7 +1057,7 @@ mod source_tests {
                         limit: 255
                     })
                 );
-                assert_eq!(Arc::strong_count(current.shared_code_units()), 1);
+                assert_eq!(current.block().holders(), 1);
             }
             assert_eq!(meter.live, 0);
             assert!(meter.work > 0);

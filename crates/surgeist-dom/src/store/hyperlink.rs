@@ -706,7 +706,7 @@ mod tests {
                         .unwrap();
                     assert!(observation.url().is_none());
                     assert_eq!(observation.raw().code_units(), &[u16::from(b'r')]);
-                    assert!(observation.raw().shared_code_units().capacity() >= 65_536);
+                    assert!(observation.raw().retained_units() >= 65_536);
                 }
             }
             Err(DomError::ResourceLimit {

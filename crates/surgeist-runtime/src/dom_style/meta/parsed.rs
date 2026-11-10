@@ -511,14 +511,13 @@ impl DomStyleRuntime {
             // envelope while still checking Runtime's own storage limit.
             for (name_index, name) in next.names().enumerate() {
                 steps.joined(&preparation)?;
-                let allocation = name.shared_code_units();
                 let mut retained = false;
                 for root in roots.iter() {
                     steps.joined(&preparation)?;
                     if let Some(current) = root.sheet_sets.state() {
                         for old in current.names() {
                             steps.joined(&preparation)?;
-                            retained |= Arc::ptr_eq(allocation, old.shared_code_units());
+                            retained |= name.shares_storage_with(old);
                         }
                     }
                 }
@@ -528,12 +527,12 @@ impl DomStyleRuntime {
                         .chain(previous.observation.last_selected_name())
                     {
                         steps.joined(&preparation)?;
-                        retained |= Arc::ptr_eq(allocation, old.shared_code_units());
+                        retained |= name.shares_storage_with(old);
                     }
                 }
                 for old in next.names().take(name_index) {
                     steps.joined(&preparation)?;
-                    retained |= Arc::ptr_eq(allocation, old.shared_code_units());
+                    retained |= name.shares_storage_with(old);
                 }
                 if retained {
                     continue;
@@ -541,9 +540,9 @@ impl DomStyleRuntime {
                 let mut shared_dom = false;
                 for original in preparation.occurrences() {
                     steps.joined(&preparation)?;
-                    shared_dom |= Arc::ptr_eq(allocation, original.content().shared_code_units());
+                    shared_dom |= name.shares_storage_with(original.content());
                 }
-                let units = allocation.capacity();
+                let units = name.retained_units();
                 let bytes = units
                     .checked_mul(size_of::<u16>())
                     .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))

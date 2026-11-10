@@ -296,7 +296,7 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
                 .current,
             22
         );
-        let backing = Arc::as_ptr(tag.as_ref().unwrap().name.value.text().shared_code_units());
+        let backing = tag.as_ref().unwrap().name.value.text().block().address();
         assert!(matches!(
             session.allocate_html_tag_for_creation(
                 &mut c,
@@ -311,7 +311,7 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
             }))
         ));
         assert_eq!(
-            Arc::as_ptr(tag.as_ref().unwrap().name.value.text().shared_code_units()),
+            tag.as_ref().unwrap().name.value.text().block().address(),
             backing
         );
         release_token_kind(&mut Some(TokenKind::Tag(tag.take().unwrap())), &mut c).unwrap();

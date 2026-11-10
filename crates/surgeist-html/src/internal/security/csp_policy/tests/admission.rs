@@ -18,7 +18,7 @@ fn empty_and_interrupted_request_return_the_original_owned_input() {
     ));
     assert!(error.retained.is_empty());
     let input = DocumentString::from_utf16([0xd800, 49]);
-    let backing = input.shared_code_units().clone();
+    let backing = input.to_shared_utf16();
     let mut budget = Budget::unlimited();
     budget.cancelled = true;
     let error = owner
@@ -30,7 +30,7 @@ fn empty_and_interrupted_request_return_the_original_owned_input() {
         error.error,
         HtmlCspError::Interrupted(Stop::Cancelled)
     ));
-    assert!(Arc::ptr_eq(&backing, error.retained.shared_code_units()));
+    assert!(Arc::ptr_eq(&backing, &error.retained.to_shared_utf16()));
     assert_eq!(budget.spent, 0);
     let r = owner
         .request_meta_insertion_with(&association, p.profile(), error.retained, &mut allow)
@@ -73,14 +73,14 @@ fn request_one_short_work_storage_and_atomic_admission_never_change_association(
             Stop::Cancelled => unreachable!(),
         }
         let input = DocumentString::from("1");
-        let backing = input.shared_code_units().clone();
+        let backing = input.to_shared_utf16();
         let error = owner
             .request_meta_insertion_with(&association, p.profile(), input, &mut |layout| {
                 budget.admit(layout)
             })
             .unwrap_err();
         assert!(matches!(error.error, HtmlCspError::Interrupted(actual) if actual == resource));
-        assert!(Arc::ptr_eq(&backing, error.retained.shared_code_units()));
+        assert!(Arc::ptr_eq(&backing, &error.retained.to_shared_utf16()));
         assert!(association.latest().is_none());
         assert!(association.policy().profile().is_none());
     }

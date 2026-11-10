@@ -945,18 +945,11 @@ impl Operation {
         {
             self.draft.source_step(cancel)?;
             units = units
-                .checked_add(string.shared_code_units().capacity())
+                .checked_add(string.retained_units())
                 .ok_or(DomError::RepresentationExhausted)?;
             bytes = bytes
                 .checked_add(size_of::<Vec<u16>>())
-                .and_then(|n| {
-                    n.checked_add(
-                        string
-                            .shared_code_units()
-                            .capacity()
-                            .checked_mul(size_of::<u16>())?,
-                    )
-                })
+                .and_then(|n| n.checked_add(string.retained_units().checked_mul(size_of::<u16>())?))
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         // The default nonce has a real empty Vec backing too. Form it only
@@ -2658,10 +2651,10 @@ impl DomSourceLease<'_> {
             || observation.source.stamp != request.source.stamp
             || observation.source.element != request.source.element
             || !Arc::ptr_eq(&observation.source.text, &request.source.text)
-            || !Arc::ptr_eq(
-                observation.source.nonce.shared_code_units(),
-                request.source.nonce.shared_code_units(),
-            )
+            || !observation
+                .source
+                .nonce
+                .shares_storage_with(&request.source.nonce)
             || op.receipt.is_some()
         {
             return Err(DomError::StyleFactsMismatch);
@@ -2683,7 +2676,7 @@ impl DomSourceLease<'_> {
         let mut units = observation.source.retained_units()?;
         for policy in observation.policies.iter() {
             op.draft.source_step(cancel)?;
-            let capacity = policy.shared_code_units().capacity();
+            let capacity = policy.retained_units();
             bytes = bytes
                 .checked_add(size_of::<Vec<u16>>())
                 .and_then(|n| n.checked_add(capacity.checked_mul(size_of::<u16>())?))
@@ -4654,18 +4647,15 @@ pub(in crate::store) mod accounting_tests {
             .input_state()
             .unwrap();
         assert!(!original.flags().checkedness());
-        let original_buffer = original.current_value().shared_code_units().clone();
+        let original_buffer = original.current_value().to_shared_utf16();
         assert!(matches!(
             original.image_history(),
             surgeist_html::elements::input::HtmlInputImageHistory::NeverEntered
         ));
         // Independent raw capacity oracle for this selected Input body. Name,
         // attributes and every other feature remain original child aliases.
-        let native_units = original.current_value().shared_code_units().capacity()
-            + original
-                .custom_validity_message()
-                .shared_code_units()
-                .capacity();
+        let native_units = original.current_value().retained_units()
+            + original.custom_validity_message().retained_units();
         assert!(native_units > 0);
         let original_element = before.node(input).unwrap().as_element().unwrap();
         let original_native = original_element.input_payload().unwrap().clone();
@@ -4690,7 +4680,7 @@ pub(in crate::store) mod accounting_tests {
         assert!(current.flags().checkedness());
         assert!(Arc::ptr_eq(
             &original_buffer,
-            current.current_value().shared_code_units()
+            &current.current_value().to_shared_utf16()
         ));
         let current_element = op.draft.element(Key::Existing(input)).unwrap().language();
         assert!(Arc::ptr_eq(
@@ -4714,11 +4704,11 @@ pub(in crate::store) mod accounting_tests {
         assert!(element.input_state().unwrap().flags().checkedness());
         assert!(Arc::ptr_eq(
             &original_buffer,
-            element
+            &element
                 .input_state()
                 .unwrap()
                 .current_value()
-                .shared_code_units()
+                .to_shared_utf16()
         ));
         assert!(Arc::ptr_eq(
             &changed_native,
@@ -6217,7 +6207,7 @@ pub(in crate::store) mod accounting_tests {
             panic!("original Text")
         };
         assert_eq!(value.code_units(), &[0xd800]);
-        assert_eq!(value.shared_code_units().capacity(), 65_536);
+        assert_eq!(value.retained_units(), 65_536);
         drop(prepared);
         assert_eq!(draft.custody_ledger().total().units(), units);
     }
@@ -6328,10 +6318,10 @@ pub(in crate::store) mod accounting_tests {
                     DomNodeKind::Document(metadata) => {
                         [metadata.content_type(), metadata.encoding(), metadata.url()]
                             .into_iter()
-                            .map(|s| s.shared_code_units().capacity())
+                            .map(|s| s.retained_units())
                             .sum::<usize>()
                     }
-                    DomNodeKind::Text(value) => value.shared_code_units().capacity(),
+                    DomNodeKind::Text(value) => value.retained_units(),
                     _ => panic!("Document and Text fixture"),
                 })
                 .sum::<usize>();
@@ -6348,12 +6338,12 @@ pub(in crate::store) mod accounting_tests {
             let Command::ReplaceData { data, .. } = &op.commands[0] else {
                 panic!("original replacement command")
             };
-            let input_units = data.shared_code_units().capacity();
+            let input_units = data.retained_units();
             let field = op.draft.node(Key::Existing(text)).unwrap();
             let transaction::KindRead::Text(value) = field.kind() else {
                 panic!("actual changed Text field")
             };
-            let field_units = value.shared_code_units().capacity();
+            let field_units = value.retained_units();
             assert_eq!(
                 value.code_units(),
                 DocumentString::from("replacement").code_units()

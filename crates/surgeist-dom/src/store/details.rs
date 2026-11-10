@@ -750,10 +750,7 @@ mod tests {
             .details_attribute_value(key, KnownHtmlAttribute::Name, &cancel)
             .unwrap()
             .unwrap();
-        assert!(Arc::ptr_eq(
-            first.value.shared_code_units(),
-            second.value.shared_code_units()
-        ));
+        assert!(first.value.shares_storage_with(&second.value));
         assert_eq!(
             draft.source_formation_bytes.load(Ordering::Relaxed),
             bytes * 2

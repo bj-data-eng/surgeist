@@ -1,6 +1,8 @@
 //! New API characterization: no preimplementation callable pool existed.
 use super::*;
-use crate::{internal::values::Namespace, internal::values::QualifiedName};
+use crate::{
+    internal::values::Namespace, internal::values::QualifiedName, internal::values::WeakTextBlock,
+};
 use std::{cell::Cell, sync::Mutex};
 
 #[derive(Clone, Copy, Default)]
@@ -263,12 +265,9 @@ fn independently_allocated_exact_utf16_reuses_live_backing_without_copying_input
     ] {
         let mut reserved = Vec::with_capacity(units.len() + 11);
         reserved.extend_from_slice(&units);
-        let original = DocumentString::from_shared_code_units(Arc::new(reserved));
+        let original = DocumentString::from_utf16(reserved);
         let input = DocumentString::from_utf16(units.clone());
-        assert!(!Arc::ptr_eq(
-            original.shared_code_units(),
-            input.shared_code_units()
-        ));
+        assert!(!original.shares_storage_with(&input));
         let mut pool = HtmlStringPool::new();
         seed_string(&mut pool, &original);
         let Outcome::Hit(output) =
@@ -276,19 +275,10 @@ fn independently_allocated_exact_utf16_reuses_live_backing_without_copying_input
         else {
             panic!("exact live match required");
         };
-        assert!(Arc::ptr_eq(
-            original.shared_code_units(),
-            output.shared_code_units()
-        ));
-        assert_eq!(
-            output.shared_code_units().capacity(),
-            original.shared_code_units().capacity()
-        );
+        assert!(original.shares_storage_with(&output));
+        assert_eq!(output.retained_units(), original.retained_units());
         assert_eq!(input.code_units(), units);
-        assert!(!Arc::ptr_eq(
-            input.shared_code_units(),
-            output.shared_code_units()
-        ));
+        assert!(!input.shares_storage_with(&output));
         assert_eq!(pool.heap_usage(), raw(&pool.inner));
     }
 }
@@ -443,14 +433,14 @@ fn forced_string_collisions_compare_each_raw_unit_without_decoding_or_folding() 
 #[test]
 fn caller_shared_values_keep_capacity_and_empty_reserved_banks_are_real_candidates() {
     let backing = Arc::new(Vec::<u16>::with_capacity(31));
-    let original = DocumentString::from_shared_code_units(backing.clone());
+    let original = DocumentString::from_shared_utf16(backing.clone());
     let mut pool = HtmlStringPool::new();
     seed_string(&mut pool, &original);
     let mut budget = Budget::default();
     let Outcome::Hit(value) = strings(&mut pool, &original, false, &mut budget).unwrap() else {
         panic!("same backing");
     };
-    assert!(Arc::ptr_eq(&backing, value.shared_code_units()));
+    assert!(Arc::ptr_eq(&backing, &value.to_shared_utf16()));
     assert_eq!(budget.inspected, 0);
     let values = Vec::<Attribute>::with_capacity(7);
     let original = crate::internal::values::bounded::HtmlAttributeStorage::from_shared_attributes(
@@ -477,7 +467,7 @@ fn caller_shared_values_keep_capacity_and_empty_reserved_banks_are_real_candidat
 #[test]
 fn one_short_entry_refusal_then_exact_admission_keeps_input_and_old_pool_valid() {
     let input = DocumentString::from("alpha");
-    let backing = input.shared_code_units().clone();
+    let backing = input.to_shared_utf16();
     let mut pool = HtmlStringPool::new();
     let root = pool.begin_root().unwrap();
     let requested = PAGE * size_of::<Slot<DocumentString>>()
@@ -493,7 +483,7 @@ fn one_short_entry_refusal_then_exact_admission_keeps_input_and_old_pool_valid()
         Stop::Bytes
     );
     assert_eq!(pool.heap_usage().bytes(), 0);
-    assert!(Arc::ptr_eq(&backing, input.shared_code_units()));
+    assert!(Arc::ptr_eq(&backing, &input.to_shared_utf16()));
     let mut exact = Budget {
         pool: requested,
         ..Budget::default()
@@ -583,7 +573,7 @@ fn strong_upgrade_is_reserved_before_obtaining_the_candidate_and_transfers_its_c
         );
         assert_eq!(budget.upgrades, 0, "refusal precedes actual upgrade");
         assert_eq!(
-            Arc::strong_count(original.shared_code_units()),
+            original.block().holders(),
             1,
             "no unadmitted strong holder was retained"
         );
@@ -598,10 +588,7 @@ fn strong_upgrade_is_reserved_before_obtaining_the_candidate_and_transfers_its_c
         panic!("exact upgrade");
     };
     assert_eq!(budget.upgrades, 1);
-    assert!(Arc::ptr_eq(
-        original.shared_code_units(),
-        output.shared_code_units()
-    ));
+    assert!(original.shares_storage_with(&output));
     drop(pool);
     assert_eq!(output.code_units(), &[97, 0xd800]);
 }
@@ -611,7 +598,7 @@ fn dead_weak_keeps_only_target_space_and_incremental_replacement_releases_it() {
     let mut pool = HtmlStringPool::new();
     pool.inner.collision = true;
     let original = DocumentString::from("old");
-    let weak = Arc::downgrade(original.shared_code_units());
+    let weak = original.block().downgrade();
     seed_string(&mut pool, &original);
     let retained = pool.heap_usage();
     drop(original);
@@ -658,10 +645,11 @@ fn probe_misses_never_offer_the_original_and_final_bank_offer_preserves_componen
         selected.shared_attributes(),
         final_bank.shared_attributes()
     ));
-    assert!(Arc::ptr_eq(
-        selected.as_slice()[0].value().shared_code_units(),
-        component.shared_code_units()
-    ));
+    assert!(
+        selected.as_slice()[0]
+            .value()
+            .shares_storage_with(&component)
+    );
     assert!(!Arc::ptr_eq(
         selected.shared_attributes(),
         original.shared_attributes()
@@ -728,17 +716,14 @@ fn replacement_overlap_requires_another_weak_occurrence_and_abort_restores_old_b
         else {
             panic!("restored candidate");
         };
-        assert!(Arc::ptr_eq(
-            selected.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert!(selected.shares_storage_with(value));
     }
 }
 
 #[test]
 fn candidate_output_moves_its_reservation_and_drops_data_before_the_receipt() {
     struct Receipt {
-        target: Weak<Vec<u16>>,
+        target: WeakTextBlock,
     }
     impl Drop for Receipt {
         fn drop(&mut self) {
@@ -762,7 +747,7 @@ fn candidate_output_moves_its_reservation_and_drops_data_before_the_receipt() {
     }
     let mut pool = HtmlStringPool::new();
     let original = DocumentString::from("transfer");
-    let target = Arc::downgrade(original.shared_code_units());
+    let target = original.block().downgrade();
     seed_string(&mut pool, &original);
     let input = DocumentString::from("transfer");
     let mut owner = Some(pool.probe(&input));
@@ -879,10 +864,7 @@ fn hot_repeated_content_mixed_with_unique_ids_shares_while_live_and_remains_boun
         match strings(&mut pool, &incoming, false, &mut Budget::default()).unwrap() {
             Outcome::Hit(selected) => {
                 hits += 1;
-                assert!(Arc::ptr_eq(
-                    selected.shared_code_units(),
-                    retained_hot.shared_code_units()
-                ));
+                assert!(selected.shares_storage_with(&retained_hot));
                 assert_eq!(selected.code_units(), incoming.code_units());
             }
             Outcome::Miss => {
@@ -1005,14 +987,12 @@ fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
             Outcome::Hit(selected) => {
                 hot_hits += 1;
                 assert_eq!(selected.code_units(), units);
-                assert!(offered_hot.iter().any(|prior| Arc::ptr_eq(
-                    prior.shared_code_units(),
-                    selected.shared_code_units()
-                )));
-                assert!(!Arc::ptr_eq(
-                    incoming.shared_code_units(),
-                    selected.shared_code_units()
-                ));
+                assert!(
+                    offered_hot
+                        .iter()
+                        .any(|prior| prior.shares_storage_with(&selected))
+                );
+                assert!(!incoming.shares_storage_with(&selected));
                 selected
             }
             Outcome::Miss => {
@@ -1026,14 +1006,8 @@ fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
                     other => panic!("same miss offered without intervening mutation: {other:?}"),
                 }
                 let fallback = incoming.clone();
-                assert!(Arc::ptr_eq(
-                    fallback.shared_code_units(),
-                    incoming.shared_code_units()
-                ));
-                assert_eq!(
-                    fallback.shared_code_units().capacity(),
-                    incoming.shared_code_units().capacity()
-                );
+                assert!(fallback.shares_storage_with(&incoming));
+                assert_eq!(fallback.retained_units(), incoming.retained_units());
                 fallback
             }
             other => panic!("qualified read-only hot probe: {other:?}"),
@@ -1050,10 +1024,7 @@ fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
     let Outcome::Hit(selected) = measured(&mut pool, &equal, false) else {
         panic!("last retained live candidate remains probeable");
     };
-    assert!(Arc::ptr_eq(
-        selected.shared_code_units(),
-        retained.shared_code_units()
-    ));
+    assert!(selected.shares_storage_with(&retained));
     pool.restore_mark(mark).unwrap();
     assert_eq!(pool.heap_usage(), baseline);
     assert_eq!(pool.inner.cursors, cursors);
@@ -1062,20 +1033,14 @@ fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
         let Outcome::Hit(restored) = measured(&mut pool, &input, false) else {
             panic!("known pre-root candidate");
         };
-        assert!(Arc::ptr_eq(
-            restored.shared_code_units(),
-            original.shared_code_units()
-        ));
+        assert!(restored.shares_storage_with(original));
     }
     pool.abort_root(root).unwrap();
     assert_eq!(pool.heap_usage(), baseline);
     drop(pool);
     assert_eq!(outputs.len(), rows.len() * 2);
     for (row, pair) in outputs.as_chunks::<2>().0.iter().enumerate() {
-        assert!(Arc::ptr_eq(
-            pair[0].shared_code_units(),
-            rows[row].shared_code_units()
-        ));
+        assert!(pair[0].shares_storage_with(&rows[row]));
         assert_eq!(pair[1].code_units(), literals[row % literals.len()]);
     }
     eprintln!(
@@ -1112,10 +1077,7 @@ fn nested_restore_and_root_abort_restore_evicted_backings_cursors_and_actual_met
     else {
         panic!("original candidate restored");
     };
-    assert!(Arc::ptr_eq(
-        restored.shared_code_units(),
-        baseline.shared_code_units()
-    ));
+    assert!(restored.shares_storage_with(&baseline));
     let mark = pool.mark(&root).unwrap().unwrap();
     assert!(matches!(
         strings(&mut pool, &values[0], true, &mut Budget::default()).unwrap(),
@@ -1160,7 +1122,7 @@ fn cancelled_spent_work_and_unaccepted_preparation_do_not_mutate_or_replace_inpu
     let mut pool = HtmlStringPool::new();
     let root = pool.begin_root().unwrap();
     let input = DocumentString::from("keep");
-    let backing = input.shared_code_units().clone();
+    let backing = input.to_shared_utf16();
     assert_eq!(
         strings(
             &mut pool,
@@ -1204,7 +1166,7 @@ fn cancelled_spent_work_and_unaccepted_preparation_do_not_mutate_or_replace_inpu
     assert!(matches!(operation.inner.state, State::Commit(_)));
     drop(operation);
     assert_eq!(pool.heap_usage().bytes(), 0);
-    assert!(Arc::ptr_eq(&backing, input.shared_code_units()));
+    assert!(Arc::ptr_eq(&backing, &input.to_shared_utf16()));
     pool.abort_root(root).unwrap();
 }
 
@@ -1444,16 +1406,16 @@ fn ineligible_lengths_and_capacities_bypass_before_unit_reads_and_pool_drop_rele
         assert_eq!(pool.heap_usage().bytes(), 0);
     }
     let value = DocumentString::from("held");
-    let weak = Arc::downgrade(value.shared_code_units());
+    let weak = value.block().downgrade();
     seed_string(&mut pool, &value);
     assert_eq!(
-        Arc::weak_count(value.shared_code_units()),
+        value.block().weak_holders(),
         2,
         "test observes physical references, never grants custody"
     );
     drop(pool);
-    assert_eq!(Arc::weak_count(value.shared_code_units()), 1);
-    assert_eq!(weak.upgrade().unwrap().as_slice(), &[104, 101, 108, 100]);
+    assert_eq!(value.block().weak_holders(), 1);
+    assert_eq!(weak.upgrade().unwrap().units(), &[104, 101, 108, 100]);
 }
 
 #[test]
@@ -1503,10 +1465,7 @@ fn incomplete_finish_retains_the_original_operation_and_large_components_bypass_
         "only the eligible local name was read"
     );
     assert_eq!(pool.heap_usage().bytes(), 0);
-    assert!(Arc::ptr_eq(
-        original.as_slice()[0].value().shared_code_units(),
-        large.shared_code_units()
-    ));
+    assert!(original.as_slice()[0].value().shares_storage_with(&large));
 }
 
 // Existing callable-boundary regression: Prepare has already retained a real
@@ -1558,7 +1517,7 @@ macro_rules! abandoned_preparation_cleanup {
                 "abandonment actually destroyed that provisional occurrence"
             );
             assert_eq!(pool.heap_usage(), before);
-            assert!(Arc::ptr_eq(&backing, input.$shared()));
+            assert!(Arc::ptr_eq(&backing, &input.$shared()));
             assert_eq!(input.$shared().capacity(), capacity);
             pool.abort_root(root).unwrap();
             assert!(
@@ -1574,7 +1533,7 @@ abandoned_preparation_cleanup!(
     abandoned_string_preparation_prepays_its_actual_weak_cleanup,
     HtmlStringPool,
     DocumentString::from_utf16(vec![0xd800, 0, 65]),
-    shared_code_units
+    to_shared_utf16
 );
 abandoned_preparation_cleanup!(
     abandoned_attribute_preparation_prepays_its_actual_weak_cleanup,
@@ -1637,7 +1596,7 @@ fn prepared_cleanup_covers_real_page_drop_when_the_following_checkpoint_reserve_
             * (size_of::<Option<UndoPage<DocumentString>>>()
                 + size_of::<Vec<Option<UndoPage<DocumentString>>>>())
     );
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(input.block().weak_holders(), 0);
     assert_eq!(pool.heap_usage().bytes(), 0);
     drop(operation);
     pool.abort_root(root).unwrap();
@@ -1653,7 +1612,7 @@ fn prepared_cleanup_survives_abandonment_staleness_rejection_and_root_close() {
         let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
         let closing = action.layout().closing_work();
         pool.perform(&mut operation, action).unwrap();
-        assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+        assert_eq!(input.block().weak_holders(), 1);
         observed.reset();
         match mode {
             0 => {} // Dropping the caller-owned operation abandons Commit.
@@ -1705,7 +1664,7 @@ fn prepared_cleanup_survives_abandonment_staleness_rejection_and_root_close() {
         assert_eq!(cleanup.entries, 1);
         assert!(closing.record_visits() >= cleanup.slots + cleanup.entries);
         assert!(closing.provider_calls() >= 3, "Weak/page/log releases");
-        assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+        assert_eq!(input.block().weak_holders(), 0);
         assert_eq!(pool.heap_usage().bytes(), 0);
         if let Some(root) = root {
             pool.abort_root(root).unwrap();
@@ -1718,7 +1677,7 @@ fn string_upgrade_prepays_last_strong_cleanup_on_abandonment_and_stale_action() 
     for mode in 0..4 {
         let mut pool = HtmlStringPool::new();
         let original = DocumentString::from_utf16(vec![0xd800, 0, 65]);
-        let target = Arc::downgrade(original.shared_code_units());
+        let target = original.block().downgrade();
         seed_string(&mut pool, &original);
         let input = DocumentString::from_utf16(vec![0xd800, 0, 65]);
         let (mut operation, action) = string_before(&mut pool, &input, false, Phase::Upgrade);
@@ -1793,7 +1752,7 @@ fn preparation_cleanup_work_refuses_one_short_then_retries_the_same_action_exact
     };
     assert_eq!(short.admit(&action).unwrap_err(), Stop::Work);
     assert_eq!(observed.read().slots, 0);
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(input.block().weak_holders(), 0);
     assert_eq!(pool.heap_usage().bytes(), 0);
     let mut admitted = Budget {
         work: exact,
@@ -1802,11 +1761,11 @@ fn preparation_cleanup_work_refuses_one_short_then_retries_the_same_action_exact
     admitted.admit(&action).unwrap();
     assert_eq!(admitted.work, 0);
     pool.perform(&mut operation, action).unwrap();
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+    assert_eq!(input.block().weak_holders(), 1);
     drop(operation);
     assert_eq!(observed.read().slots, 8);
     assert_eq!(observed.read().entries, 1);
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(input.block().weak_holders(), 0);
     pool.abort_root(root).unwrap();
 }
 
@@ -1838,7 +1797,7 @@ fn attribute_upgrade_prepays_last_strong_bank_and_every_nested_string_handle() {
                 attribute.name().local_name(),
                 attribute.value(),
             ]
-            .map(|string| Arc::downgrade(string.shared_code_units()))
+            .map(|string| string.block().downgrade())
         })
         .collect();
     assert_eq!(nested.len(), 256);
@@ -1967,7 +1926,7 @@ fn prepaid_disposal_bounds_empty_sealed_active_undo_and_replaced_owner_drops() {
         let slots: usize = pool.inner.pages.iter().flatten().map(Vec::len).sum();
         let entries: usize = values
             .iter()
-            .map(|value| Arc::weak_count(value.shared_code_units()))
+            .map(|value| value.block().weak_holders())
             .sum();
         let undo = undo_cells(&pool.inner);
         let pages = pool.inner.pages.iter().flatten().count();
@@ -1994,11 +1953,7 @@ fn prepaid_disposal_bounds_empty_sealed_active_undo_and_replaced_owner_drops() {
         assert_eq!(disposal.copied_bytes(), 0);
         assert_eq!(disposal.inspected_bytes(), 0);
         assert_eq!(disposal.reserve_bytes(), 0);
-        assert!(
-            values
-                .iter()
-                .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
-        );
+        assert!(values.iter().all(|value| value.block().weak_holders() == 0));
         assert_eq!(
             values[131].code_units(),
             "held:131".encode_utf16().collect::<Vec<_>>()
@@ -2126,10 +2081,7 @@ fn accepting_older_mark_preserves_younger_rollback_and_outer_first_before() {
         else {
             panic!("younger rollback retains accepted older writes")
         };
-        assert!(Arc::ptr_eq(
-            selected.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert!(selected.shares_storage_with(value));
     }
     pool.abort_root(root).unwrap();
     assert_eq!(pool.heap_usage(), baseline);
@@ -2141,10 +2093,7 @@ fn accepting_older_mark_preserves_younger_rollback_and_outer_first_before() {
         else {
             panic!("outer first-before survives non-LIFO acceptance")
         };
-        assert!(Arc::ptr_eq(
-            selected.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert!(selected.shares_storage_with(value));
     }
 }
 
@@ -2157,14 +2106,14 @@ fn checkpoint_change_invalidates_provisional_owner_before_it_can_write_another_l
     let (mut operation, action) = string_before(&mut pool, &input, true, Phase::Prepare);
     pool.perform(&mut operation, action).unwrap();
     let commit = pool.next_action(&mut operation).unwrap().unwrap();
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 1);
+    assert_eq!(input.block().weak_holders(), 1);
     let mark = pool.mark(&root).unwrap().unwrap();
     assert_eq!(
         pool.perform(&mut operation, commit).unwrap(),
         HtmlValuePoolProgress::Finished
     );
     assert_eq!(pool.heap_usage().bytes(), 0);
-    assert_eq!(Arc::weak_count(input.shared_code_units()), 0);
+    assert_eq!(input.block().weak_holders(), 0);
     assert_eq!(observed.read().slots, PAGE);
     pool.restore_mark(mark).unwrap();
     pool.abort_root(root).unwrap();
@@ -2204,18 +2153,10 @@ fn accepting_redundant_before_images_releases_their_actual_weak_allowances() {
             Outcome::Offered
         ));
     }
-    assert!(
-        first
-            .iter()
-            .all(|value| Arc::weak_count(value.shared_code_units()) == 1)
-    );
+    assert!(first.iter().all(|value| value.block().weak_holders() == 1));
     let before = pool.heap_usage();
     pool.accept_mark(older).unwrap();
-    assert!(
-        first
-            .iter()
-            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
-    );
+    assert!(first.iter().all(|value| value.block().weak_holders() == 0));
     assert_eq!(pool.heap_usage(), raw(&pool.inner));
     assert!(pool.heap_usage().bytes() <= before.bytes() - 4 * size_of::<Vec<u16>>());
     pool.restore_mark(younger).unwrap();
@@ -2226,10 +2167,7 @@ fn accepting_redundant_before_images_releases_their_actual_weak_allowances() {
         else {
             panic!("younger restores accepted state")
         };
-        assert!(Arc::ptr_eq(
-            selected.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert!(selected.shares_storage_with(value));
     }
     pool.abort_root(root).unwrap();
     assert_eq!(pool.heap_usage().bytes(), 0);
@@ -2238,7 +2176,7 @@ fn accepting_redundant_before_images_releases_their_actual_weak_allowances() {
             .iter()
             .chain(&second)
             .chain(&third)
-            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
+            .all(|value| value.block().weak_holders() == 0)
     );
 }
 
@@ -2271,10 +2209,7 @@ fn disposal_prepays_initialized_data_in_root_and_every_active_checkpoint_layer()
     let slots: usize = pool.inner.pages.iter().flatten().map(Vec::len).sum();
     let saved_cells = undo_cells(&pool.inner);
     let directory_cells: usize = frames(&pool.inner).map(|frame| frame.pages.len()).sum();
-    let entries: usize = held
-        .iter()
-        .map(|value| Arc::weak_count(value.shared_code_units()))
-        .sum();
+    let entries: usize = held.iter().map(|value| value.block().weak_holders()).sum();
     let backings = pool.inner.pages.iter().flatten().count() + undo_backings(&pool.inner);
     observed.reset();
     drop(pool); // No root/mark close or failure-time callback is required.
@@ -2283,10 +2218,7 @@ fn disposal_prepays_initialized_data_in_root_and_every_active_checkpoint_layer()
     assert_eq!(actual.entries, entries);
     assert!(work.record_visits() >= slots + saved_cells + directory_cells + entries);
     assert!(work.provider_calls() >= entries + backings);
-    assert!(
-        held.iter()
-            .all(|value| Arc::weak_count(value.shared_code_units()) == 0)
-    );
+    assert!(held.iter().all(|value| value.block().weak_holders() == 0));
     for (index, value) in held.iter().enumerate() {
         assert_eq!(
             value.code_units(),
@@ -2307,7 +2239,7 @@ fn optional_owner_exhaustion_completed_bypass_is_not_a_mandatory_promotion_error
     pool.inner.owner = None;
     pool.inner.disabled = true;
     let input = DocumentString::from("original");
-    let backing = input.shared_code_units().clone();
+    let backing = input.to_shared_utf16();
     let mut operation = Some(pool.probe(&input));
     assert!(
         pool.next_action(operation.as_mut().unwrap())
@@ -2325,7 +2257,7 @@ fn optional_owner_exhaustion_completed_bypass_is_not_a_mandatory_promotion_error
         HtmlStringPoolResult::Bypassed
     ));
     assert_eq!(pool.heap_usage().bytes(), 0);
-    assert!(Arc::ptr_eq(input.shared_code_units(), &backing));
+    assert!(Arc::ptr_eq(&input.to_shared_utf16(), &backing));
 }
 
 // Executed reads are separate from Budget's admitted public descriptors. These

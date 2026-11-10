@@ -1,6 +1,6 @@
 //! Optional immutable sharing through public DOM construction and edits.
 //! Pointer observations accompany exact content, native hooks and snapshots.
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::atomic::AtomicBool;
 
 use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
@@ -213,20 +213,12 @@ fn independently_created_text_shares_without_changing_siblings_or_snapshots() {
         assert_eq!(before.node(id).unwrap().data().unwrap().code_units(), RAW);
     }
     assert!(
-        Arc::ptr_eq(
-            before
-                .node(first)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units(),
-            before
-                .node(second)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units()
-        ),
+        before
+            .node(first)
+            .unwrap()
+            .data()
+            .unwrap()
+            .shares_storage_with(before.node(second).unwrap().data().unwrap()),
         "independent equal Text values must share"
     );
 }
@@ -255,20 +247,12 @@ fn completed_text_replacement_reuses_an_existing_equal_value() {
         assert_eq!(after.node(id).unwrap().data().unwrap().code_units(), RAW);
     }
     assert!(
-        Arc::ptr_eq(
-            after
-                .node(edited)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units(),
-            after
-                .node(existing)
-                .unwrap()
-                .data()
-                .unwrap()
-                .shared_code_units()
-        ),
+        after
+            .node(edited)
+            .unwrap()
+            .data()
+            .unwrap()
+            .shares_storage_with(after.node(existing).unwrap().data().unwrap()),
         "completed Text replacement must select the existing immutable value"
     );
 }
@@ -328,16 +312,10 @@ fn different_ordered_banks_share_equal_strings_but_keep_order_prefixes_and_ids()
     }
     assert!(!std::ptr::eq(left, right));
     assert!(
-        Arc::ptr_eq(
-            left[1].value().shared_code_units(),
-            right[0].value().shared_code_units()
-        ),
+        left[1].value().shares_storage_with(right[0].value()),
         "different banks must still reuse repeated value strings"
     );
-    assert!(Arc::ptr_eq(
-        left[2].value().shared_code_units(),
-        right[2].value().shared_code_units()
-    ));
+    assert!(left[2].value().shares_storage_with(right[2].value()));
 }
 
 fn padded(value: &str, capacity: usize) -> DocumentString {
@@ -354,13 +332,8 @@ fn equal_smaller_noop_candidates_keep_original_backings_usage_and_history() {
     let original_text = padded("repeat-text", 511);
     let smaller_attribute = units(&[114, 101, 112, 101, 97, 116, 45, 118, 97, 108, 117, 101]);
     let smaller_text = units(&[114, 101, 112, 101, 97, 116, 45, 116, 101, 120, 116]);
-    assert!(
-        original_attribute.shared_code_units().capacity()
-            > smaller_attribute.shared_code_units().capacity()
-    );
-    assert!(
-        original_text.shared_code_units().capacity() > smaller_text.shared_code_units().capacity()
-    );
+    assert!(original_attribute.retained_units() > smaller_attribute.retained_units());
+    assert!(original_text.retained_units() > smaller_text.retained_units());
     let mut batch = DomBatch::new();
     let element = batch.create_element(document, "cell");
     batch.set_attribute(&element, "data", original_attribute.clone());
@@ -401,23 +374,19 @@ fn equal_smaller_noop_candidates_keep_original_backings_usage_and_history() {
         [114, 101, 112, 101, 97, 116, 45, 118, 97, 108, 117, 101]
     );
     assert!(std::ptr::eq(old_bank, new_bank));
-    assert!(Arc::ptr_eq(
-        new_bank[0].value().shared_code_units(),
-        original_attribute.shared_code_units()
-    ));
+    assert!(new_bank[0].value().shares_storage_with(&original_attribute));
     assert_eq!(
         after.node(text).unwrap().data().unwrap().code_units(),
         [114, 101, 112, 101, 97, 116, 45, 116, 101, 120, 116]
     );
-    assert!(Arc::ptr_eq(
+    assert!(
         after
             .node(text)
             .unwrap()
             .data()
             .unwrap()
-            .shared_code_units(),
-        original_text.shared_code_units()
-    ));
+            .shares_storage_with(&original_text)
+    );
 }
 
 #[test]
@@ -547,20 +516,12 @@ fn one_long_native_transaction_reuses_first_late_hot_patterns() {
             .unwrap()
             .attributes(),
     );
-    let text_shared = Arc::ptr_eq(
-        snapshot
-            .node(first_text)
-            .unwrap()
-            .data()
-            .unwrap()
-            .shared_code_units(),
-        snapshot
-            .node(second_text)
-            .unwrap()
-            .data()
-            .unwrap()
-            .shared_code_units(),
-    );
+    let text_shared = snapshot
+        .node(first_text)
+        .unwrap()
+        .data()
+        .unwrap()
+        .shares_storage_with(snapshot.node(second_text).unwrap().data().unwrap());
     assert!(
         bank_shared && text_shared,
         "late hot patterns in one transaction must reuse backing: bank={bank_shared}, Text={text_shared}"
@@ -654,37 +615,23 @@ fn later_values_and_text_reuse_existing_canonical_name_text_without_rebinding_at
             .is_empty()
     );
     assert!(
-        Arc::ptr_eq(
-            namespace.text().shared_code_units(),
-            attributes[0].value().shared_code_units()
-        ),
+        namespace.text().shares_storage_with(attributes[0].value()),
         "a later value must reuse the actual canonical namespace text"
     );
     assert!(
-        Arc::ptr_eq(
-            local.text().shared_code_units(),
-            attributes[1].value().shared_code_units()
-        ),
+        local.text().shares_storage_with(attributes[1].value()),
         "a later value must reuse the actual canonical local-name text"
     );
-    assert!(Arc::ptr_eq(
-        namespace.text().shared_code_units(),
-        after
-            .node(namespace_text)
-            .unwrap()
-            .data()
-            .unwrap()
-            .shared_code_units()
-    ));
-    assert!(Arc::ptr_eq(
-        local.text().shared_code_units(),
-        after
-            .node(local_text)
-            .unwrap()
-            .data()
-            .unwrap()
-            .shared_code_units()
-    ));
+    assert!(
+        namespace
+            .text()
+            .shares_storage_with(after.node(namespace_text).unwrap().data().unwrap())
+    );
+    assert!(
+        local
+            .text()
+            .shares_storage_with(after.node(local_text).unwrap().data().unwrap())
+    );
 }
 
 fn prefix_seed(dom: &mut Dom, document: DocumentId) -> (NodeId, NodeId) {
@@ -785,17 +732,11 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
         );
         assert_eq!(name.local_name_atom().same_identity(&local), Ok(true));
         assert!(
-            Arc::ptr_eq(
-                name.prefix().unwrap().shared_code_units(),
-                seeded_text.shared_code_units()
-            ),
+            name.prefix().unwrap().shares_storage_with(seeded_text),
             "new native/imported prefix must reuse an earlier immutable Text value"
         );
     }
-    assert!(Arc::ptr_eq(
-        seeded_value.shared_code_units(),
-        seeded_text.shared_code_units()
-    ));
+    assert!(seeded_value.shares_storage_with(seeded_text));
 
     let mut destination = owner();
     let target_document = document(&mut destination);
@@ -844,19 +785,18 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
     let target_text_value = imported_snapshot.node(target_text).unwrap().data().unwrap();
     assert_eq!(target_text_value.code_units(), [112]);
     assert!(
-        Arc::ptr_eq(
-            imported_name.prefix().unwrap().shared_code_units(),
-            target_text_value.shared_code_units()
-        ),
+        imported_name
+            .prefix()
+            .unwrap()
+            .shares_storage_with(target_text_value),
         "foreign import must select the destination owner's earlier prefix backing"
     );
     let target_seed_node = imported_snapshot.node(target_seed).unwrap();
-    assert!(Arc::ptr_eq(
+    assert!(
         target_seed_node.as_element().unwrap().attributes()[0]
             .value()
-            .shared_code_units(),
-        target_text_value.shared_code_units()
-    ));
+            .shares_storage_with(target_text_value)
+    );
 
     // Public names are immutable. Removing/re-adding this attribute changes its
     // prefix and order through the actual attribute hooks, with a new value.
@@ -880,10 +820,13 @@ fn new_and_imported_prefixes_reuse_earlier_values_without_merging_names_or_mutat
         Ok(true)
     );
     assert_eq!(changed.name().prefix().unwrap().code_units(), [112]);
-    assert!(Arc::ptr_eq(
-        changed.name().prefix().unwrap().shared_code_units(),
-        seeded_text.shared_code_units()
-    ));
+    assert!(
+        changed
+            .name()
+            .prefix()
+            .unwrap()
+            .shares_storage_with(seeded_text)
+    );
     assert_eq!(changed.attributes().len(), 2);
     assert_eq!(
         changed.attributes()[0].name().local_name().code_units(),
@@ -1181,10 +1124,7 @@ fn distinct_rows_keep_parentage_and_ids_while_equal_child_values_share() {
             cell.as_element().unwrap().attributes()
         ));
         let text = snapshot.node(texts[index]).unwrap().data().unwrap();
-        assert!(Arc::ptr_eq(
-            first_text.shared_code_units(),
-            text.shared_code_units()
-        ));
+        assert!(first_text.shares_storage_with(text));
     }
 }
 
@@ -1204,7 +1144,7 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
         data.extend_from_slice(&[65, 0xd800, 0, 0xdc00]);
     }
     let caller = DocumentString::from_utf16(data);
-    let capacity = caller.shared_code_units().capacity();
+    let capacity = caller.retained_units();
     assert_large_pattern(&caller);
     let mut dom = owner();
     let document = document(&mut dom);
@@ -1228,11 +1168,8 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     let original_text = before.node(text).unwrap().data().unwrap();
     for value in [original_attributes[0].value(), original_text] {
         assert_large_pattern(value);
-        assert_eq!(value.shared_code_units().capacity(), capacity);
-        assert!(Arc::ptr_eq(
-            caller.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert_eq!(value.retained_units(), capacity);
+        assert!(caller.shares_storage_with(value));
     }
 
     let mut batch = DomBatch::new();
@@ -1248,11 +1185,8 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
     );
     let unchanged_text = attribute_changed.node(text).unwrap().data().unwrap();
     assert_large_pattern(unchanged_text);
-    assert_eq!(unchanged_text.shared_code_units().capacity(), capacity);
-    assert!(Arc::ptr_eq(
-        caller.shared_code_units(),
-        unchanged_text.shared_code_units()
-    ));
+    assert_eq!(unchanged_text.retained_units(), capacity);
+    assert!(caller.shares_storage_with(unchanged_text));
     assert_large_pattern(original_attributes[0].value());
 
     let mut batch = DomBatch::new();
@@ -1285,10 +1219,7 @@ fn large_caller_shared_values_keep_backing_capacity_and_snapshot_edit_isolation(
         unchanged_text,
     ] {
         assert_large_pattern(value);
-        assert_eq!(value.shared_code_units().capacity(), capacity);
-        assert!(Arc::ptr_eq(
-            caller.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert_eq!(value.retained_units(), capacity);
+        assert!(caller.shares_storage_with(value));
     }
 }

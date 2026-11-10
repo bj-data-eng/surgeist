@@ -33,7 +33,7 @@ fn preformation_extent_matches_the_actual_retained_record() {
         assert_eq!(before, record.retained_storage_usage());
         assert_eq!(
             before.utf16_extent(),
-            record.serialization().shared_code_units().capacity(),
+            record.serialization().retained_units(),
         );
     }
 }
@@ -46,14 +46,14 @@ fn actual_spare_utf16_capacity_is_charged_without_retaining_or_replacing_the_inp
     spare.extend_from_slice(&small);
     let small = DocumentString::from_utf16(small);
     let spare_backing = Arc::new(spare);
-    let spare = DocumentString::from_shared_code_units(spare_backing.clone());
+    let spare = DocumentString::from_shared_utf16(spare_backing.clone());
     let count = Arc::strong_count(&spare_backing);
     let small_usage = HtmlBaseUrlRecord::observed_storage_usage(&small).unwrap();
     let usage = HtmlBaseUrlRecord::observed_storage_usage(&spare).unwrap();
     assert_eq!(Arc::strong_count(&spare_backing), count);
-    assert!(Arc::ptr_eq(spare.shared_code_units(), &spare_backing));
+    assert!(Arc::ptr_eq(&spare.to_shared_utf16(), &spare_backing));
     assert_eq!(spare.code_units(), small.code_units());
-    let extra = spare_backing.capacity() - small.shared_code_units().capacity();
+    let extra = spare_backing.capacity() - small.retained_units();
     assert!(extra > 0);
     assert_eq!(usage.utf16_extent(), spare_backing.capacity());
     assert_eq!(usage.utf16_extent() - small_usage.utf16_extent(), extra);
@@ -66,7 +66,7 @@ fn actual_spare_utf16_capacity_is_charged_without_retaining_or_replacing_the_inp
             .unwrap();
     assert_eq!(record.retained_storage_usage(), usage);
     assert!(Arc::ptr_eq(
-        record.serialization().shared_code_units(),
+        &record.serialization().to_shared_utf16(),
         &spare_backing
     ));
     assert_eq!(record, record.clone());

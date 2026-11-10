@@ -11,7 +11,7 @@ impl SessionStorage {
         control.require_document_string(text.value.allocation(), text.value.text())?;
         text.origins.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
+        if text.value.text().block().holders() != 1 {
             return Err(SessionError::AliasedPayload);
         }
         Ok(())
@@ -324,7 +324,7 @@ impl SessionStorage {
         };
         control.require_document_string(allocation, value)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(value.shared_code_units()) != if native { 2 } else { 1 } {
+        if value.block().holders() != if native { 2 } else { 1 } {
             return Err(SessionError::AliasedPayload);
         }
         if let Some(group) = origins {

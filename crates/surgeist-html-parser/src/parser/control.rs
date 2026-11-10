@@ -17,6 +17,7 @@ use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlChange, HtmlLedgerOutcome, HtmlResource, HtmlWork, classify,
     record_largest, retained_provider_storage,
 };
+use surgeist_html::values::WeakTextBlock;
 use surgeist_ledger::Change;
 
 mod accounts;
@@ -2177,14 +2178,14 @@ impl ParseControl {
         }
         if allocation.backing.is_some()
             || value.len() as u64 != allocation.units
-            || value.shared_code_units().capacity() != allocation.vector_capacity
+            || value.retained_units() != allocation.vector_capacity
             || value.code_units().as_ptr() as usize != allocation.data_pointer
         {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::CapacityMismatch,
             ));
         }
-        allocation.backing = Some(Arc::downgrade(value.shared_code_units()));
+        allocation.backing = Some(value.block().downgrade());
         Ok(())
     }
     pub(crate) fn require_document_string(
@@ -2253,9 +2254,9 @@ impl ParseControl {
         if allocation
             .backing
             .as_ref()
-            .is_none_or(|backing| backing.as_ptr() != Arc::as_ptr(value.shared_code_units()))
+            .is_none_or(|backing| backing.address() != value.block().address())
             || value.len() as u64 != allocation.units
-            || value.shared_code_units().capacity() != allocation.vector_capacity
+            || value.retained_units() != allocation.vector_capacity
         {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::CapacityMismatch,
@@ -2311,7 +2312,7 @@ impl ParseControl {
             self.release_document_string(allocation)?;
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let units = text.shared_code_units().capacity();
+        let units = text.retained_units();
         let admitted = self
             .charge(HtmlParseWorkCategory::ProviderCall, 2)
             .and_then(|()| self.acquire_retained_provider(bytes as u64, units as u64, 1));
@@ -2354,7 +2355,7 @@ impl ParseControl {
             && allocation
                 .backing
                 .as_ref()
-                .is_some_and(|backing| backing.strong_count() != 0)
+                .is_some_and(|backing| backing.holders() != 0)
         {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::SharedAllocationAliased,
@@ -2439,7 +2440,7 @@ pub(crate) struct DocumentStringAllocation {
     wrapper_bytes: u64,
     resource: HtmlParseResource,
     data_pointer: usize,
-    backing: Option<Weak<Vec<u16>>>,
+    backing: Option<WeakTextBlock>,
     finalized: bool,
 }
 impl DocumentStringAllocation {

@@ -1425,7 +1425,7 @@ impl StyleState {
                         request
                             .source()
                             .media()
-                            .map(|value| value.shared_code_units().clone())
+                            .map(|value| value.to_shared_utf16())
                             .unwrap_or_default(),
                         self.limits.css_input,
                         poll,
@@ -1438,7 +1438,7 @@ impl StyleState {
                         surgeist_dom::DomStyleRootKind::Document
                     ) && let Some(title) = request.source().title()
                     {
-                        inputs.title = title.shared_code_units().clone();
+                        inputs.title = title.to_shared_utf16();
                     }
                     sheet_sets = self.prepare_added_sheet_sets(
                         index,
@@ -1585,7 +1585,7 @@ impl StyleState {
                     request
                         .source()
                         .media()
-                        .map(|value| value.shared_code_units().clone())
+                        .map(|value| value.to_shared_utf16())
                         .unwrap_or_default(),
                     self.limits.css_input,
                     || {

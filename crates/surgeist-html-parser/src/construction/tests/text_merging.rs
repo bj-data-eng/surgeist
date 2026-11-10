@@ -67,9 +67,9 @@ fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {
             else {
                 panic!("actual text")
             };
-            assert!(value.shared_code_units().capacity() - value.len() >= 4);
-            assert_eq!(Arc::strong_count(value.shared_code_units()), 2);
-            assert_eq!(Arc::weak_count(value.shared_code_units()), 1);
+            assert!(value.retained_units() - value.len() >= 4);
+            assert_eq!(value.block().holders(), 2);
+            assert_eq!(value.block().weak_holders(), 1);
             storage
                 .evidence
                 .as_ref()
@@ -166,10 +166,7 @@ fn text_append_current_ticket_lookup_is_independent_of_unrelated_payloads() {
         else {
             panic!("actual text")
         };
-        assert!(Arc::ptr_eq(
-            native.shared_code_units(),
-            value.shared_code_units()
-        ));
+        assert!(native.shares_storage_with(value));
         session.release(&mut c).unwrap();
         storage_zero(&c);
         visits.push(work);

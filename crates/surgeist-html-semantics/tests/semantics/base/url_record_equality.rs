@@ -228,8 +228,8 @@ fn exact_work_and_each_callback_failure_remain_distinct_from_inequality() {
 fn cancellation_before_each_reached_read_propagates_without_changing_records() {
     let left = observed("x:abc#left", Some(5));
     let right = observed("x:abc#right", Some(5));
-    let left_backing = left.serialization().shared_code_units().clone();
-    let right_backing = right.serialization().shared_code_units().clone();
+    let left_backing = left.serialization().to_shared_utf16();
+    let right_backing = right.serialization().to_shared_utf16();
     for stop_before in 0..12 {
         let cancel = AtomicBool::new(false);
         let mut admitted = 0;
@@ -247,11 +247,11 @@ fn cancellation_before_each_reached_read_propagates_without_changing_records() {
         assert_eq!(admitted, stop_before);
         assert!(std::sync::Arc::ptr_eq(
             &left_backing,
-            left.serialization().shared_code_units()
+            &left.serialization().to_shared_utf16()
         ));
         assert!(std::sync::Arc::ptr_eq(
             &right_backing,
-            right.serialization().shared_code_units()
+            &right.serialization().to_shared_utf16()
         ));
         assert!(
             equal(&left, &right),

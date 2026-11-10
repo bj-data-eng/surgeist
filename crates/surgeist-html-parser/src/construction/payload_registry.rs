@@ -705,7 +705,7 @@ impl PayloadStorage {
     pub(super) fn first_string_sharing(&self, value: &DocumentString) -> Option<usize> {
         self.values.iter().position(|row| {
             matches!(row, RetainedPayload::String { value: stored, .. }
-                if Arc::ptr_eq(value.shared_code_units(), stored.shared_code_units()))
+                if value.shares_storage_with(stored))
         })
     }
     /// Every join must name exactly what a front-to-back scan of the registry
@@ -812,16 +812,14 @@ impl PayloadStorage {
                     let stored = location.value(records, &self.values, index, control)?;
                     cleanup_charge(control, HtmlParseWorkCategory::ProviderCall, 2)?;
                     let expected = if let Some(stored) = stored {
-                        if !Arc::ptr_eq(stored.shared_code_units(), value.shared_code_units()) {
+                        if !stored.shares_storage_with(value) {
                             return Err(SessionError::AliasedPayload);
                         }
                         2
                     } else {
                         1
                     };
-                    if !allocation.finalized()
-                        && Arc::strong_count(value.shared_code_units()) != expected
-                    {
+                    if !allocation.finalized() && value.block().holders() != expected {
                         return Err(SessionError::AliasedPayload);
                     }
                 }

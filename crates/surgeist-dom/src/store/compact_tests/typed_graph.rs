@@ -18,7 +18,7 @@ impl Raw {
         self.units = self.units.checked_add(units).unwrap();
     }
     fn text(&mut self, value: &DocumentString) {
-        let capacity = value.shared_code_units().capacity();
+        let capacity = value.retained_units();
         self.bytes(size_of::<Vec<u16>>() + capacity * size_of::<u16>());
         self.units(capacity);
     }

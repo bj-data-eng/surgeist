@@ -83,18 +83,33 @@ semantics signatures.
 
 ### Shared exact strings and ordered attributes
 
-`DocumentString` continues to store one `Arc<Vec<u16>>`. Cloning preserves that
-backing; isolated surrogates, nulls and whitespace remain exact. There is no
-parser or semantic replacement string type and no conversion through UTF-8 at
-an inter-crate boundary.
+`DocumentString` is a 16-byte handle: a shared `TextBlock` of UTF-16 code units and the range
+of the block it covers. Cloning copies the handle and shares the block. Equality and hashing
+compare the code units, so equal content in different blocks or at different positions is equal.
+Isolated surrogates, nulls and whitespace remain exact. There is no parser or semantic
+replacement string type and no conversion through UTF-8 at an inter-crate boundary.
 
-Replace `DocumentString::backing` with a public read-only
-`shared_code_units(&self) -> &Arc<Vec<u16>>` and add
-`from_shared_code_units(Arc<Vec<u16>>) -> Self`. Every sequence is valid in this
-value domain, so adopting backing needs no textual validation. These methods
-allow the parser's existing allocation ledger to qualify the actual allocation
-without a second copy or a fabricated capacity. They do not expose mutable
-access to an immutable string.
+`DocumentString::from_utf16` and the `From<&str>` and `From<String>` conversions build a private
+block holding exactly the string, one allocation for an authored string. `TextBlock::string`
+returns a string over a range of a block and rejects a reversed range, a range past the block and
+a range that does not fit the handle. A string over a whole block has no range limit.
+
+Every sequence is valid in this value domain, so adopting backing needs no textual validation.
+The accessors that let the parser's allocation ledger and the DOM's accounting qualify the actual
+allocation without a second copy or a fabricated capacity are named for their role:
+
+- `shares_storage_with` reports that two strings are the same range of the same block;
+- `retained_units` reports the capacity of the block a string keeps alive, spare capacity
+  included;
+- `block` lends the `TextBlock`, which reports its holders, hands out a weak reference and an
+  address, and indexes its units by range;
+- `unique_units_mut` lends the units of a string that covers its whole block when nothing else
+  holds the block, for the construction owner to grow or truncate in place;
+- `to_shared_utf16` hands a string over its whole block as the block's own `Arc<Vec<u16>>`
+  without a copy and copies a partial range, and `from_shared_utf16` adopts such a vector without
+  a copy, for interfaces that still take `Arc<Vec<u16>>`.
+
+A string never exposes mutable access while another holder can observe it.
 
 `OrderedAttributes::shared_attributes(&self) -> &Arc<Vec<Attribute>>` lends the
 actual immutable backing and retained capacity without a clone or validation

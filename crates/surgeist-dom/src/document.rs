@@ -157,7 +157,7 @@ impl HostedDocumentInputs {
         }
         if let Some(referrer) = &self.0.referrer {
             units = units
-                .checked_add(referrer.shared_code_units().capacity())
+                .checked_add(referrer.retained_units())
                 .ok_or(DomError::RepresentationExhausted)?;
         }
         Ok(units)
@@ -686,7 +686,7 @@ impl DomDocumentMetadata {
         }
         for string in self.retained_strings() {
             units = units
-                .checked_add(string.shared_code_units().capacity())
+                .checked_add(string.retained_units())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
         if let DomDocumentCreationCause::ParsedOffline { url, .. } = &self.cause {
@@ -717,8 +717,7 @@ impl DomDocumentMetadata {
                 .and_then(|n| {
                     n.checked_add(
                         string
-                            .shared_code_units()
-                            .capacity()
+                            .retained_units()
                             .checked_mul(std::mem::size_of::<u16>())?,
                     )
                 })
@@ -751,7 +750,7 @@ impl DomDocumentMetadata {
                 self.meta
                     .as_ref()
                     .and_then(|meta| meta.pragma_language.as_ref())
-                    .map_or(0, |value| value.shared_code_units().capacity()),
+                    .map_or(0, |value| value.retained_units()),
             )
             .and_then(|units| {
                 units.checked_add(

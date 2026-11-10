@@ -74,10 +74,7 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
         report.occurrence_units(0),
         Some(&[65, 76, 84, 69, 82, 78, 65, 84, 69][..])
     );
-    assert!(std::sync::Arc::ptr_eq(
-        report.rel().unwrap().shared_code_units(),
-        rel.shared_code_units()
-    ));
+    assert!(report.rel().unwrap().shares_storage_with(&rel));
 }
 #[test]
 fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_without_admission() {

@@ -18,10 +18,7 @@ fn name_hash_and_equal_candidate_count_completed_raw_units() {
     assert_eq!(counts.name_hash_units, 3);
     assert_eq!(counts.name_comparison_pairs, 0);
     let equal = DocumentString::from_utf16(vec![97, 0xd800, 0]);
-    assert!(!Arc::ptr_eq(
-        input.shared_code_units(),
-        equal.shared_code_units()
-    ));
+    assert!(!input.shares_storage_with(&equal));
     let measurement = Measurement::begin().unwrap();
     let second = admitted(|a| operation.reserve(equal, a)).unwrap().publish();
     let counts = measurement.finish(Hooks::default()).unwrap();

@@ -103,10 +103,7 @@ fn hidden_input_ordered_initialization_reset_and_frozen_values_are_independent()
             unreachable!()
         };
         if let Some(native) = storage.form_attribute(&mut c, node.index, "value").unwrap() {
-            assert!(!Arc::ptr_eq(
-                native.shared_code_units(),
-                internal.shared_code_units()
-            ));
+            assert!(!native.shares_storage_with(internal));
         }
         assert!(storage.payloads.values.iter().any(|p| matches!(
             p,
@@ -1116,7 +1113,7 @@ fn checkbox_clone_copies_actual_dirty_current_and_four_flags_but_not_user_validi
     let RetainedPayload::String { value: b, .. } = &storage.payloads.values[b] else {
         panic!("cloned raw");
     };
-    assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
+    assert!(!a.shares_storage_with(b));
     assert_eq!(a.code_units(), [67, 13, 10]);
     assert_eq!(b.code_units(), [67, 13, 10]);
     let mut buffer = Utf16Buffer::new(&mut c).unwrap();
@@ -1374,7 +1371,7 @@ fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags()
         let RetainedPayload::String { value: b, .. } = &storage.payloads.values[b] else {
             panic!("copy raw")
         };
-        assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
+        assert!(!a.shares_storage_with(b));
         assert_eq!(a.code_units(), [65, 13, 66, 10, 67]);
         assert_eq!(b.code_units(), [65, 13, 66, 10, 67]);
         // Author-prohibited checked/readonly remain actual native attributes;
@@ -1759,7 +1756,7 @@ fn text_input_copy_clone_preserves_actual_type_and_independent_internal_default_
     let RetainedPayload::String { value: b, .. } = &storage.payloads.values[raw_b] else {
         unreachable!()
     };
-    assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
+    assert!(!a.shares_storage_with(b));
     assert_eq!(a.code_units(), [65, 66, 67]);
     assert_eq!(b.code_units(), [65, 66, 67]);
     let mut buffer = Utf16Buffer::new(&mut c).unwrap();

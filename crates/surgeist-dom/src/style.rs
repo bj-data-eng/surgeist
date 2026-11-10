@@ -177,7 +177,7 @@ impl DomStyleSource {
         let mut units = self.text.capacity();
         for string in self.retained_strings() {
             units = units
-                .checked_add(string.shared_code_units().capacity())
+                .checked_add(string.retained_units())
                 .ok_or(crate::DomError::RepresentationExhausted)?;
         }
         units = units
@@ -202,8 +202,7 @@ impl DomStyleSource {
                 .and_then(|n| {
                     n.checked_add(
                         string
-                            .shared_code_units()
-                            .capacity()
+                            .retained_units()
                             .checked_mul(std::mem::size_of::<u16>())?,
                     )
                 })

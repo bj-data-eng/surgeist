@@ -1195,10 +1195,7 @@ impl Finalizing {
             if let Some(selected) = pools.string(value, c)? {
                 let mut pending = Pending::new(selected, c);
                 let (selected, c) = pending.parts()?;
-                if !Arc::ptr_eq(
-                    value.shared_code_units(),
-                    selected.value.shared_code_units(),
-                ) {
+                if !value.shares_storage_with(&selected.value) {
                     payload_write::<Option<usize>>(c, 1)?;
                     let index = updates.push(slot, &selected.value, c)?;
                     join_at_mut(&mut self.joins, c, slot)?.update = Some(index);
@@ -1432,10 +1429,7 @@ impl Finalizing {
             c,
         );
         let (output, c) = pending.parts()?;
-        if Arc::ptr_eq(
-            value.shared_code_units(),
-            output.selected.value.shared_code_units(),
-        ) {
+        if value.shares_storage_with(&output.selected.value) {
             payload_write::<DocumentStringAllocation>(c, 1)?;
             return promote_string(&mut self.payloads, c, slot);
         }
@@ -1498,8 +1492,7 @@ impl Finalizing {
             {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let bytes = component
-                    .shared_code_units()
-                    .capacity()
+                    .retained_units()
                     .checked_mul(mem::size_of::<u16>())
                     .and_then(|n| n.checked_add(mem::size_of::<Vec<u16>>()))
                     .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?
@@ -1812,11 +1805,8 @@ mod tests {
         let input = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
         let equal = DocumentString::from_utf16([65, 0xd800, 0, 0xdc00].repeat(repetitions));
         assert_eq!(input.len(), expected_units);
-        assert!(!Arc::ptr_eq(
-            input.shared_code_units(),
-            equal.shared_code_units()
-        ));
-        let capacity = input.shared_code_units().capacity();
+        assert!(!input.shares_storage_with(&equal));
+        let capacity = input.retained_units();
         let mut c = ParseControl::new(
             crate::parser::tree_builder::tests::limits(100),
             crate::HtmlParseCancellation::new(),
@@ -1845,10 +1835,7 @@ mod tests {
                 .string(&equal, sharing.control)
                 .unwrap()
                 .expect("cold miss retained an eligible string");
-            assert!(Arc::ptr_eq(
-                selected.value.shared_code_units(),
-                input.shared_code_units()
-            ));
+            assert!(selected.value.shares_storage_with(&input));
             assert_eq!(selected.value.len(), expected_units);
             for chunk in selected.value.code_units().as_chunks::<4>().0 {
                 assert_eq!(chunk, &[65, 0xd800, 0, 0xdc00]);
@@ -1860,7 +1847,7 @@ mod tests {
         // including pool data-before-credit cleanup; work is never refunded.
         super::super::tests::storage_zero(&c);
         assert!(c.stop().is_none());
-        assert_eq!(input.shared_code_units().capacity(), capacity);
+        assert_eq!(input.retained_units(), capacity);
         assert_eq!(input.len(), expected_units);
         assert_eq!(equal.len(), expected_units);
         for value in [&input, &equal] {

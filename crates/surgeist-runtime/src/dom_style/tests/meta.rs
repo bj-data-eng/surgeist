@@ -852,7 +852,7 @@ fn detached_empty_and_shadow_only_meta_do_not_select_a_document_set() {
 #[test]
 fn shared_original_name_backing_is_charged_once_across_native_and_runtime_owners() {
     let raw = DocumentString::from_utf16(vec![0x0042, 0xd800, 0x0062]);
-    let capacity = raw.shared_code_units().capacity();
+    let capacity = raw.retained_units();
     assert!(capacity > 0);
     for admitted_units in [capacity - 1, capacity] {
         let (mut session, document) = native_session();
@@ -884,10 +884,7 @@ fn shared_original_name_backing_is_charged_once_across_native_and_runtime_owners
             ));
             for row in joined.preferences() {
                 assert_eq!(row.observation().preferred_name(), &raw);
-                assert!(Arc::ptr_eq(
-                    row.observation().preferred_name().shared_code_units(),
-                    raw.shared_code_units()
-                ));
+                assert!(row.observation().preferred_name().shares_storage_with(&raw));
                 assert_eq!(row.observation().revision(), before.revision() + 1);
             }
         } else {

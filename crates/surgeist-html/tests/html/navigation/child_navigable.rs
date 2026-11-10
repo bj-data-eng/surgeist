@@ -52,7 +52,7 @@ fn nonempty_src_borrows_exact_units_without_trimming_repair_or_retention() {
         "path#part".encode_utf16().collect(),
     ] {
         let backing = Arc::new(units);
-        let raw = DocumentString::from_shared_code_units(backing.clone());
+        let raw = DocumentString::from_shared_utf16(backing.clone());
         let owners = Arc::strong_count(&backing);
         let decision = frame_iframe_src_with(Some(&raw), || Ok::<_, ()>(())).unwrap();
         let HtmlFrameIframeSrcDecision::ParseSrc(borrowed) = decision else {

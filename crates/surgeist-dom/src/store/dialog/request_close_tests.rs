@@ -72,11 +72,11 @@ fn nullable_request_storage_preserves_utf16_snapshot_and_counts_each_occurrence(
     );
     let family = staged.element(key).unwrap().language().native_family();
     let retained = source::storage::family_payload(family, || Ok(())).unwrap();
-    assert_eq!(retained.units, value.shared_code_units().capacity() * 2);
+    assert_eq!(retained.units, value.retained_units() * 2);
     assert_eq!(
         retained.bytes,
         size_of::<payload::Payload<DomDialogState>>()
-            + 2 * (size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>())
+            + 2 * (size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>())
     );
     publish(&mut dom, staged);
     let saved = dom.snapshot();

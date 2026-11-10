@@ -61,8 +61,7 @@ impl Session {
         // input by extent. An already active HTML producer remains governed
         // by its own advertised descriptors and eligibility checks.
         if self.is_dormant()
-            && (value.len() > banks::MAX_UNITS
-                || value.shared_code_units().capacity() > banks::MAX_UNITS)
+            && (value.len() > banks::MAX_UNITS || value.retained_units() > banks::MAX_UNITS)
         {
             #[cfg(test)]
             metric(Event::SharingStringBypassed);

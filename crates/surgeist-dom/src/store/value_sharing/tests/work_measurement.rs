@@ -245,10 +245,7 @@ fn string_driver_reports_attempts_outcomes_and_admitted_coordinates_not_phase_co
             .unwrap()
             .unwrap();
     let counts = measurement.finish(Hooks::default()).unwrap();
-    assert!(Arc::ptr_eq(
-        selected.value().shared_code_units(),
-        original.shared_code_units()
-    ));
+    assert!(selected.value().shares_storage_with(&original));
     assert_eq!(counts.sharing_string_probes, 2);
     assert_eq!(counts.sharing_string_offer_promotions, 1);
     assert_eq!(counts.sharing_string_offers, 1);

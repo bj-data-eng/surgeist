@@ -33,7 +33,7 @@ impl Facts {
             && self.form_present == other.form_present
             && self.radio == other.radio
             && match (&self.name, &other.name) {
-                (Some(a), Some(b)) => Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()),
+                (Some(a), Some(b)) => a.shares_storage_with(b),
                 (None, None) => true,
                 _ => false,
             }

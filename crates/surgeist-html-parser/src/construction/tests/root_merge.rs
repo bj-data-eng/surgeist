@@ -833,7 +833,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
             panic!("tag")
         };
         let setup = c.usage().resource(HtmlParseResource::WorkCredits).current;
-        let lexical_name = second.name.value.text().shared_code_units().as_ptr();
+        let lexical_name = second.name.value.text().code_units().as_ptr();
         let mut input = Some(second);
         let result = session.add_attributes_if_missing(&mut c, &root, &mut input);
         let completed = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -865,10 +865,7 @@ fn merge_work_boundaries_retain_record_registry_owners_and_cleanup_all_staged_st
             assert_eq!(actual.value().to_utf8().unwrap(), value);
         }
         if let Some(tag) = &input {
-            assert_eq!(
-                tag.name.value.text().shared_code_units().as_ptr(),
-                lexical_name
-            );
+            assert_eq!(tag.name.value.text().code_units().as_ptr(), lexical_name);
             assert_eq!(tag.attributes.len(), 2);
             for (attribute, (name, value)) in tag
                 .attributes

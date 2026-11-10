@@ -222,7 +222,7 @@ impl ParseControl {
             (HtmlParseWorkCategory::ProviderCall, 1),
             (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
-        let capacity = value.shared_code_units().capacity();
+        let capacity = value.retained_units();
         let bytes = capacity
             .checked_mul(size_of::<u16>())
             .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
@@ -237,7 +237,7 @@ impl ParseControl {
             wrapper_bytes: size_of::<Vec<u16>>() as u64,
             resource: HtmlParseResource::ManagedUtf16Units,
             data_pointer: value.code_units().as_ptr() as usize,
-            backing: Some(Arc::downgrade(value.shared_code_units())),
+            backing: Some(value.block().downgrade()),
             finalized: true,
         })
     }
@@ -400,8 +400,7 @@ mod tests {
             let mut vector = Vec::with_capacity(37);
             vector.extend([0xd800, 65]);
             let value = DocumentString::from_utf16(vector);
-            let bytes = (value.shared_code_units().capacity() * size_of::<u16>()
-                + size_of::<Vec<u16>>()) as u64;
+            let bytes = (value.retained_units() * size_of::<u16>() + size_of::<Vec<u16>>()) as u64;
             let mut c = control();
             c.test_limit(
                 HtmlParseResource::ManagedCapacityBytes,
@@ -412,7 +411,7 @@ mod tests {
                 assert!(
                     matches!(result, Err(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
                 );
-                assert_eq!(Arc::weak_count(value.shared_code_units()), 0);
+                assert_eq!(value.block().weak_holders(), 0);
                 assert_eq!(c.usage().actual_capacity_bytes(), 0);
                 assert_eq!(
                     c.usage()
@@ -435,7 +434,7 @@ mod tests {
                 c.release_document_string(ticket).unwrap();
                 assert_eq!(held.code_units(), &[0xd800, 65]);
                 assert_eq!(c.usage().actual_capacity_bytes(), 0);
-                assert_eq!(Arc::weak_count(held.shared_code_units()), 0);
+                assert_eq!(held.block().weak_holders(), 0);
             }
         }
     }

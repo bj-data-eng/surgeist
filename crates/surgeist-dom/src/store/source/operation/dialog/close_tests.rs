@@ -67,7 +67,7 @@ fn is_limit(error: DomError, resource: DomResource, amount: usize) {
 fn close_observation_owns_exactly_one_original_result_backing_at_each_limit() {
     for units in [0, 17] {
         let value = result(units);
-        let weak = Arc::downgrade(value.shared_code_units());
+        let weak = value.block().downgrade();
         let (mut dom, _, subject, event) = close_observer(Some(value));
         let occurrence_bytes = size_of::<Vec<u16>>() + units * size_of::<u16>();
         // Enumerate this original command occurrence independently. Its
@@ -156,7 +156,7 @@ fn advance_rebase(
 fn original_result_survives_same_owner_admission_refusal_and_transfers_once_on_rebase() {
     for units in [0, 23] {
         let value = result(units);
-        let weak = Arc::downgrade(value.shared_code_units());
+        let weak = value.block().downgrade();
         let (mut dom, executor, subject, event) = close_observer(Some(value));
         attest(
             &mut dom,
@@ -200,7 +200,7 @@ fn original_result_survives_same_owner_admission_refusal_and_transfers_once_on_r
     }
 }
 
-fn assert_original_result(dom: &Dom, weak: &std::sync::Weak<Vec<u16>>) {
+fn assert_original_result(dom: &Dom, weak: &surgeist_html::values::WeakTextBlock) {
     let op = dom.source_operation.as_ref().unwrap();
     let OperationRoot::Edit(
         [
@@ -213,10 +213,7 @@ fn assert_original_result(dom: &Dom, weak: &std::sync::Weak<Vec<u16>>) {
     else {
         panic!("one original result-bearing command");
     };
-    assert!(std::sync::Weak::ptr_eq(
-        weak,
-        &Arc::downgrade(value.shared_code_units())
-    ));
+    assert_eq!(weak.address(), value.block().address());
 }
 
 fn refuse_original_observation(dom: &mut Dom, event: &DomSourceEventRequest, units: usize) {
@@ -276,7 +273,7 @@ fn nested_close_inputs_and_callback_input_remain_distinct_until_their_real_owner
     setup.set_attribute(second, "open", "");
     dom.apply(setup, &cancel).unwrap();
     let outer_value = result(17);
-    let outer_weak = Arc::downgrade(outer_value.shared_code_units());
+    let outer_weak = outer_value.block().downgrade();
     let outer = {
         let mut lease = dom
             .begin_source_edit(
@@ -297,7 +294,7 @@ fn nested_close_inputs_and_callback_input_remain_distinct_until_their_real_owner
         .enter_dispatch(&dom, &outer_permit, &cancel)
         .unwrap();
     let child_value = result(23);
-    let child_weak = Arc::downgrade(child_value.shared_code_units());
+    let child_weak = child_value.block().downgrade();
     let child = {
         let mut lease = dom
             .begin_source_edit(
@@ -319,9 +316,9 @@ fn nested_close_inputs_and_callback_input_remain_distinct_until_their_real_owner
         .enter_dispatch(&dom, &child_permit, &cancel)
         .unwrap();
     let callback_value = DocumentString::from("a distinct callback value");
-    let callback_weak = Arc::downgrade(callback_value.shared_code_units());
-    assert!(!std::sync::Weak::ptr_eq(&outer_weak, &child_weak));
-    assert!(!std::sync::Weak::ptr_eq(&outer_weak, &callback_weak));
+    let callback_weak = callback_value.block().downgrade();
+    assert_ne!(outer_weak.address(), child_weak.address());
+    assert_ne!(outer_weak.address(), callback_weak.address());
     let mut callback = DomBatch::new();
     callback.set_attribute(second, "data-callback", callback_value);
     callback.remove_attribute(second, "open");
@@ -458,9 +455,7 @@ fn parent_after_child_observe(
     setup.set_attribute(first, "open", "");
     setup.set_attribute(second, "open", "");
     dom.apply(setup, &cancel).unwrap();
-    let outer_weak = value
-        .as_ref()
-        .map(|value| Arc::downgrade(value.shared_code_units()));
+    let outer_weak = value.as_ref().map(|value| value.block().downgrade());
     let outer = {
         let mut lease = dom
             .begin_source_edit(DomSourceEdit::close_dialog(first, value), limits(), &cancel)
@@ -478,7 +473,7 @@ fn parent_after_child_observe(
         .unwrap();
     observe(&mut dom);
     let child_value = result(23);
-    let child_weak = Arc::downgrade(child_value.shared_code_units());
+    let child_weak = child_value.block().downgrade();
     let child = {
         let mut lease = dom
             .begin_source_edit(
@@ -501,10 +496,10 @@ fn parent_after_child_observe(
         .unwrap();
     observe(&mut dom);
     let callback_value = DocumentString::from("a distinct callback value");
-    let callback_weak = Arc::downgrade(callback_value.shared_code_units());
+    let callback_weak = callback_value.block().downgrade();
     if let Some(outer_weak) = &outer_weak {
-        assert!(!std::sync::Weak::ptr_eq(outer_weak, &child_weak));
-        assert!(!std::sync::Weak::ptr_eq(outer_weak, &callback_weak));
+        assert_ne!(outer_weak.address(), child_weak.address());
+        assert_ne!(outer_weak.address(), callback_weak.address());
     }
     let mut callback = DomBatch::new();
     callback.set_attribute(second, "data-callback", callback_value);
@@ -588,7 +583,7 @@ fn parent_after_child_observe(
 fn parent_result_rebases_once_after_actual_child_and_distinct_callback_overlap() {
     for units in [0, 17] {
         let value = result(units);
-        let weak = Arc::downgrade(value.shared_code_units());
+        let weak = value.block().downgrade();
         let (mut dom, subject, event) = parent_after_child(Some(value));
         refuse_original_observation(&mut dom, &event, units);
         assert_original_result(&dom, &weak);

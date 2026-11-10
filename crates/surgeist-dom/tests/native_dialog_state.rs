@@ -308,13 +308,7 @@ fn source_return_value_retains_spare_backing_and_cancellation_never_publishes() 
     drop(lease);
     let current = dom.snapshot();
     assert_eq!(dialog(&current, node).return_value().code_units(), [0xd800]);
-    assert!(
-        dialog(&current, node)
-            .return_value()
-            .shared_code_units()
-            .capacity()
-            >= 4096
-    );
+    assert!(dialog(&current, node).return_value().retained_units() >= 4096);
     assert_eq!(dialog(&before, node).return_value().code_units(), []);
     closed_services(dialog(&current, node));
 }

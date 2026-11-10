@@ -189,7 +189,7 @@ fn frozen_href_and_url_spare_backing_are_counted_per_occurrence() {
     let revision = revision();
     let record = url(&revision, 41);
     let href = padded("x", 43);
-    let extent = href.shared_code_units().capacity();
+    let extent = href.retained_units();
     let nested = record.retained_storage_usage();
     let rows = vec![
         HtmlCapturedFrozenBase::new(

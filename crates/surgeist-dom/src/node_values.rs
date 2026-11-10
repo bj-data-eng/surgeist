@@ -598,10 +598,7 @@ pub(crate) mod source_observation {
                         + value.capacity()
                         + pairs
                             .iter()
-                            .map(|(name, value)| {
-                                name.shared_code_units().capacity()
-                                    + value.shared_code_units().capacity()
-                            })
+                            .map(|(name, value)| name.retained_units() + value.retained_units())
                             .sum::<usize>();
                     (
                         units * size_of::<u16>()

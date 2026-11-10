@@ -2333,40 +2333,33 @@ fn assert_distinct_report_banks_share_strings(fragment: bool) {
         elements[1].attributes().shared_attributes()
     ));
     let attributes = elements.map(HtmlElement::attributes);
-    assert!(std::sync::Arc::ptr_eq(
-        attributes[0].as_slice()[1].value().shared_code_units(),
-        attributes[1].as_slice()[1].value().shared_code_units()
-    ));
+    assert!(
+        attributes[0].as_slice()[1]
+            .value()
+            .shares_storage_with(attributes[1].as_slice()[1].value())
+    );
     for ordinal in 0..2 {
-        assert!(std::sync::Arc::ptr_eq(
+        assert!(
             attributes[0].as_slice()[ordinal]
                 .name()
                 .local_name()
-                .shared_code_units(),
-            attributes[1].as_slice()[ordinal]
-                .name()
-                .local_name()
-                .shared_code_units()
-        ));
+                .shares_storage_with(attributes[1].as_slice()[ordinal].name().local_name())
+        );
     }
-    assert!(std::sync::Arc::ptr_eq(
-        elements[0].name().local_name().shared_code_units(),
-        elements[1].name().local_name().shared_code_units()
-    ));
-    assert!(std::sync::Arc::ptr_eq(
+    assert!(
+        elements[0]
+            .name()
+            .local_name()
+            .shares_storage_with(elements[1].name().local_name())
+    );
+    assert!(
         elements[0]
             .name()
             .namespace()
             .uri()
             .unwrap()
-            .shared_code_units(),
-        elements[1]
-            .name()
-            .namespace()
-            .uri()
-            .unwrap()
-            .shared_code_units()
-    ));
+            .shares_storage_with(elements[1].name().namespace().uri().unwrap())
+    );
 }
 
 fn assert_independent_report_text_shares_strings(fragment: bool) {
@@ -2396,10 +2389,7 @@ fn assert_independent_report_text_shares_strings(fragment: bool) {
         prefix + 16,
         HtmlParseOriginKind::CharacterReference,
     );
-    assert!(std::sync::Arc::ptr_eq(
-        first.shared_code_units(),
-        second.shared_code_units()
-    ));
+    assert!(first.shares_storage_with(second));
 }
 
 #[test]
@@ -2477,12 +2467,9 @@ fn report_value_sharing_preserves_raw_surrogates_and_each_source_interval() {
         assert_eq!(location.source_range().start(), [18, 26][index]);
         assert_eq!(location.source_range().end(), [19, 27][index]);
     }
-    assert!(std::sync::Arc::ptr_eq(
-        first.shared_code_units(),
-        second.shared_code_units()
-    ));
+    assert!(first.shares_storage_with(second));
     let held = first.clone();
-    let weak = std::sync::Arc::downgrade(held.shared_code_units());
+    let weak = held.block().downgrade();
     let usage = report.usage().clone();
     cancel.cancel();
     assert_eq!(report.usage(), &usage);
@@ -2637,10 +2624,7 @@ fn assert_late_report_patterns(fragment: bool) {
         late[0].attributes().shared_attributes(),
         late[1].attributes().shared_attributes()
     ));
-    assert!(std::sync::Arc::ptr_eq(
-        texts[0].1.shared_code_units(),
-        texts[1].1.shared_code_units()
-    ));
+    assert!(texts[0].1.shares_storage_with(texts[1].1));
 }
 
 fn assert_empty_report_values(fragment: bool) {
@@ -2672,14 +2656,11 @@ fn assert_empty_report_values(fragment: bool) {
         elements[2].attributes().shared_attributes(),
         elements[3].attributes().shared_attributes()
     ));
-    assert!(std::sync::Arc::ptr_eq(
+    assert!(
         elements[2].attributes().as_slice()[0]
             .value()
-            .shared_code_units(),
-        elements[2].attributes().as_slice()[1]
-            .value()
-            .shared_code_units()
-    ));
+            .shares_storage_with(elements[2].attributes().as_slice()[1].value())
+    );
 }
 
 fn assert_report_prefix_roles(fragment: bool) {
@@ -2745,14 +2726,11 @@ fn assert_report_prefix_roles(fragment: bool) {
         elements[0].attributes().shared_attributes(),
         elements[1].attributes().shared_attributes()
     ));
-    assert!(std::sync::Arc::ptr_eq(
+    assert!(
         elements[0].attributes().as_slice()[0]
             .value()
-            .shared_code_units(),
-        elements[0].attributes().as_slice()[1]
-            .value()
-            .shared_code_units()
-    ));
+            .shares_storage_with(elements[0].attributes().as_slice()[1].value())
+    );
 }
 
 fn assert_oversized_report_banks(fragment: bool) {

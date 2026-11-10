@@ -817,6 +817,10 @@ impl HtmlCapturedFragment {
     }
 }
 /// Exact immutable payloads; kind-specific builders supply only applicable facts.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The capture retains each node payload inline and accounts that record layout; an indirection for elements would add an unadmitted allocation per element"
+)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCapturedNodeKind {
     Document(HtmlCapturedDocument),

@@ -306,17 +306,17 @@ mod tests {
             .image_source(&mut c, node.index)
             .unwrap()
             .unwrap();
-        assert!(!Arc::ptr_eq(
-            textarea_raw(&session.active().unwrap().payloads, &mut c, old)
+        assert!(
+            !textarea_raw(&session.active().unwrap().payloads, &mut c, old)
                 .unwrap()
-                .shared_code_units(),
-            session
-                .active()
-                .unwrap()
-                .image_source_value(&mut c, native)
-                .unwrap()
-                .shared_code_units()
-        ));
+                .shares_storage_with(
+                    session
+                        .active()
+                        .unwrap()
+                        .image_source_value(&mut c, native)
+                        .unwrap()
+                )
+        );
         for expected in [
             [66].as_slice(),
             [66].as_slice(),
@@ -461,14 +461,13 @@ mod tests {
                 assert_eq!(coordinate, cloned_coordinate);
                 assert_eq!((cloned_coordinate.x(), cloned_coordinate.y()), (0, 0));
                 assert_ne!(a, b);
-                assert!(!Arc::ptr_eq(
-                    textarea_raw(&session.active().unwrap().payloads, &mut c, a)
+                assert!(
+                    !textarea_raw(&session.active().unwrap().payloads, &mut c, a)
                         .unwrap()
-                        .shared_code_units(),
-                    textarea_raw(&session.active().unwrap().payloads, &mut c, b)
-                        .unwrap()
-                        .shared_code_units()
-                ));
+                        .shares_storage_with(
+                            textarea_raw(&session.active().unwrap().payloads, &mut c, b).unwrap()
+                        )
+                );
             }
             session
                 .active_mut()
@@ -508,7 +507,7 @@ mod tests {
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let HtmlNodeKind::Element(element) = &session
             .active()
@@ -531,7 +530,7 @@ mod tests {
                 .value
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr(),
             pointer
         );

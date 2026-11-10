@@ -1,5 +1,4 @@
 use super::*;
-use std::sync::Arc;
 use surgeist_html::{
     construction::HtmlDocumentMode,
     values::{Attribute, DocumentString, Namespace, QualifiedName},
@@ -31,7 +30,7 @@ fn padded(local: &str, capacity: usize) -> DocumentString {
     DocumentString::from_utf16(units)
 }
 fn raw_string(value: &DocumentString) -> (usize, usize) {
-    let cap = value.shared_code_units().capacity();
+    let cap = value.retained_units();
     (size_of::<Vec<u16>>() + cap * size_of::<u16>(), cap)
 }
 fn raw_name(value: &QualifiedName) -> (usize, usize) {
@@ -139,12 +138,11 @@ fn borrowed_destination_and_old_record_bank_fit_exactly_and_refuse_one_short() {
     assert_eq!(element.attributes().as_slice(), source.as_slice());
     assert_eq!(element.attributes().shared_attributes().capacity(), 1);
     assert!(source.capacity() > element.attributes().shared_attributes().capacity());
-    assert!(Arc::ptr_eq(
+    assert!(
         element.attributes().as_slice()[0]
             .value()
-            .shared_code_units(),
-        source[0].value().shared_code_units()
-    ));
+            .shares_storage_with(source[0].value())
+    );
 }
 
 #[test]
@@ -193,7 +191,7 @@ fn borrowed_duplicate_refusal_drops_the_destination_and_can_retry_on_original_ow
         Attribute::new(qname("value"), "second"),
     ];
     let before = owner.storage_usage();
-    let strong = Arc::strong_count(attrs[0].value().shared_code_units());
+    let strong = attrs[0].value().block().holders();
     let failure = owner
         .add_element(&doc, &local, attrs.as_slice(), None, generous(), &cancel)
         .unwrap_err();
@@ -212,10 +210,7 @@ fn borrowed_duplicate_refusal_drops_the_destination_and_can_retry_on_original_ow
         owner.control.temporary_usage(),
         HtmlOptionValueStorageUsage::default()
     );
-    assert_eq!(
-        Arc::strong_count(attrs[0].value().shared_code_units()),
-        strong
-    );
+    assert_eq!(attrs[0].value().block().holders(), strong);
     owner
         .add_element(&doc, &local, &attrs[..1], None, generous(), &cancel)
         .unwrap();
@@ -233,7 +228,7 @@ fn work_and_cancellation_refusals_drop_every_unpublished_borrowed_payload() {
         let (mut owner, doc) = setup();
         let cancel = AtomicBool::new(false);
         let before = owner.storage_usage();
-        let strong = Arc::strong_count(attrs[0].value().shared_code_units());
+        let strong = attrs[0].value().block().holders();
         let failure = owner
             .add_element(
                 &doc,
@@ -253,10 +248,7 @@ fn work_and_cancellation_refusals_drop_every_unpublished_borrowed_payload() {
             owner.control.temporary_usage(),
             HtmlOptionValueStorageUsage::default()
         );
-        assert_eq!(
-            Arc::strong_count(attrs[0].value().shared_code_units()),
-            strong
-        );
+        assert_eq!(attrs[0].value().block().holders(), strong);
         owner
             .add_element(&doc, &local, attrs.as_slice(), None, generous(), &cancel)
             .unwrap();

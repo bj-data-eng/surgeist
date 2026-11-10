@@ -114,9 +114,7 @@ impl Draft {
         #[cfg(test)]
         let namespace_before = xml_observation::before(
             self,
-            namespace
-                .uri()
-                .map_or(0, |uri| uri.shared_code_units().capacity()),
+            namespace.uri().map_or(0, |uri| uri.retained_units()),
             cancel,
         )?;
         let (namespace, payload) = if let Some(uri) = namespace.uri() {
@@ -490,7 +488,7 @@ mod xml_observation {
         let Some((bytes, units, byte_limit, unit_limit)) = before else {
             return;
         };
-        let capacity = actual.shared_code_units().capacity();
+        let capacity = actual.retained_units();
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let state = state.as_mut().expect("bound observer");

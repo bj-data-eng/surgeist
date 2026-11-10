@@ -109,10 +109,9 @@ impl Extent {
     ) -> Result<(), HtmlCaptureElementError<E>> {
         step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
         self.units = add(self.units, value.len())?;
-        self.retained_units = add(self.retained_units, value.shared_code_units().capacity())?;
+        self.retained_units = add(self.retained_units, value.retained_units())?;
         let bytes = value
-            .shared_code_units()
-            .capacity()
+            .retained_units()
             .checked_mul(size_of::<u16>())
             .ok_or(HtmlCaptureError::RepresentationExhausted)?;
         self.bytes = add(self.bytes, add(size_of::<Vec<u16>>(), bytes)?)?;

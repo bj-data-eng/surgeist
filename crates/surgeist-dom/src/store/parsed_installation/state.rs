@@ -153,8 +153,7 @@ pub(super) fn admit_history(
     let source = report.source();
     let source_bytes = if let Some(utf16) = source.as_utf16() {
         utf16
-            .shared_code_units()
-            .capacity()
+            .retained_units()
             .checked_mul(size_of::<u16>())
             .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
             .ok_or(Error::RepresentationExhausted)?
@@ -165,7 +164,7 @@ pub(super) fn admit_history(
         .map_err(|_| Error::RepresentationExhausted)?;
     if let Some(utf16) = source.as_utf16() {
         units = units
-            .checked_add(utf16.shared_code_units().capacity())
+            .checked_add(utf16.retained_units())
             .ok_or(Error::RepresentationExhausted)?;
     }
     // The URL owner's actual payload and this exact encoding-label backing
@@ -181,8 +180,7 @@ pub(super) fn admit_history(
                 n.checked_add(
                     environment
                         .encoding_label
-                        .shared_code_units()
-                        .capacity()
+                        .retained_units()
                         .checked_mul(size_of::<u16>())?,
                 )
             })
