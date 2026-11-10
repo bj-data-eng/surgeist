@@ -194,8 +194,7 @@ impl DeviceCapabilities {
         }
 
         Err(Error::runtime_unavailable(
-            RuntimeOperation::EffectRendering,
-            RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy },
+            RuntimeCapabilityUnavailable::effect_format_unavailable(policy),
             "the selected GPU has no effect working format permitted by the configured quality policy",
         ))
     }
@@ -233,8 +232,7 @@ impl DeviceCapabilities {
         }
 
         Err(Error::runtime_unavailable(
-            RuntimeOperation::EffectTextureAllocation,
-            RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { requested, maximum },
+            RuntimeCapabilityUnavailable::texture_dimension_exceeded(requested, maximum),
             format!(
                 "effect texture extent {}x{} exceeds the selected device limit of {maximum}",
                 requested.width(),
@@ -292,8 +290,7 @@ impl DeviceCapabilities {
         }
 
         Err(Error::runtime_unavailable(
-            RuntimeOperation::EffectRendering,
-            RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy },
+            RuntimeCapabilityUnavailable::effect_format_unavailable(policy),
             format!(
                 "the selected GPU does not support {texture_format:?} with exact usage {usage:?}"
             ),
@@ -360,9 +357,14 @@ impl DeviceTerminalSignal {
     }
 
     pub(crate) fn error(&self, operation: RuntimeOperation) -> Error {
-        let diagnostic =
-            RuntimeCapabilityUnavailable::try_new(operation, self.unavailable_reason())
-                .expect("terminal-device diagnostics always use a permitted operation/reason pair");
+        let diagnostic = match self {
+            Self::Lost { reason, .. } => {
+                RuntimeCapabilityUnavailable::device_lost(operation, *reason)
+            }
+            Self::Faulted { kind, .. } => {
+                RuntimeCapabilityUnavailable::device_faulted(operation, *kind)
+            }
+        };
         Error::runtime_capability_unavailable(diagnostic)
             .append_message(format_args!(": {}", self.message()))
     }
@@ -779,6 +781,50 @@ mod error_context_tests {
             let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
             assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
             assert_eq!(diagnostic.reason(), reason);
+        }
+    }
+    #[test]
+    fn terminal_issuers_preserve_every_operation_payload_and_suffix() {
+        for operation in [
+            RuntimeOperation::AdapterSelection,
+            RuntimeOperation::SurfaceRendering,
+            RuntimeOperation::SurfaceReadback,
+            RuntimeOperation::SurfaceResume,
+            RuntimeOperation::EffectRendering,
+            RuntimeOperation::EffectTextureAllocation,
+            RuntimeOperation::EffectPresentation,
+        ] {
+            for reason in [DeviceLossReason::Unknown, DeviceLossReason::Destroyed] {
+                let terminal = DeviceTerminalSignal::lost(reason, "literal device loss".into());
+                let expected = RuntimeCapabilityUnavailableReason::DeviceLost { reason };
+                assert_eq!(terminal.unavailable_reason(), expected);
+                let error = terminal.error(operation);
+                let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+                assert_eq!(diagnostic.operation(), operation);
+                assert_eq!(diagnostic.reason(), expected);
+                assert_eq!(
+                    error.message(),
+                    "runtime capability is unavailable: literal device loss"
+                );
+            }
+            for kind in [
+                GpuFaultKind::Validation,
+                GpuFaultKind::OutOfMemory,
+                GpuFaultKind::Internal,
+            ] {
+                let terminal =
+                    DeviceTerminalSignal::faulted(kind, "literal GPU fault".into(), Some(7));
+                let expected = RuntimeCapabilityUnavailableReason::DeviceFaulted { kind };
+                assert_eq!(terminal.unavailable_reason(), expected);
+                let error = terminal.error(operation);
+                let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+                assert_eq!(diagnostic.operation(), operation);
+                assert_eq!(diagnostic.reason(), expected);
+                assert_eq!(
+                    error.message(),
+                    "runtime capability is unavailable: literal GPU fault"
+                );
+            }
         }
     }
 }

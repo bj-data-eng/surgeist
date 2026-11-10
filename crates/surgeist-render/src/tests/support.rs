@@ -6,9 +6,8 @@ use crate::{
     FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterList, FilterOp, FontData,
     FontRef, Image, ImageBuffer, ImageFit, ImageQuality, Layer, Options, Parameters, PhysicalSize,
     Point, Rect, RenderSurfaceAvailability, Renderer, ResolvedLayerAlphaMask,
-    RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
-    Shape, Size, Stats, Stroke, Surface, TextGlyph, TextPaint, TextRun, TextRunBounds, Transform,
-    UnitFilterAmount,
+    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shape, Size, Stats, Stroke,
+    Surface, TextGlyph, TextPaint, TextRun, TextRunBounds, Transform, UnitFilterAmount,
     backend::DeviceSignal,
     command,
     filter::BlurPolicy,
@@ -643,15 +642,11 @@ pub(super) fn assert_runtime_device_lost(
     reason: DeviceLossReason,
 ) {
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), operation);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                operation,
-                RuntimeCapabilityUnavailableReason::DeviceLost { reason },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::DeviceLost { reason }
     );
 }
 
@@ -661,15 +656,11 @@ pub(super) fn assert_surface_unavailable(
     state: RenderSurfaceAvailability,
 ) {
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), operation);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                operation,
-                RuntimeCapabilityUnavailableReason::SurfaceUnavailable { state },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::SurfaceUnavailable { state }
     );
 }
 

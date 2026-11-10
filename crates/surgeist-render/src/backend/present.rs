@@ -15,10 +15,7 @@ use crate::error::Result;
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 use crate::{
-    error::{
-        BackendErrorCode, Error, RenderSurfaceAvailability, RuntimeCapabilityUnavailableReason,
-        RuntimeOperation,
-    },
+    error::{BackendErrorCode, Error, RuntimeCapabilityUnavailable, RuntimeOperation},
     geometry::PhysicalSize,
     gpu_transaction::{GpuOperationStage, GpuOperationTransaction},
     pass::PreparedGraph,
@@ -38,8 +35,7 @@ pub(super) fn require_presented_device_identity(
 ) -> Result<DeviceSlotIdentity> {
     identity.ok_or_else(|| {
         Error::runtime_unavailable(
-            RuntimeOperation::AdapterSelection,
-            RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+            RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
             "no compatible WGPU adapter is available for the presentation surface",
         )
     })
@@ -161,28 +157,19 @@ pub(super) fn exact_presented_graph_target(
                 }
                 PresentedLifecycle::NonRenderable { .. } => {
                     return Err(Error::runtime_unavailable(
-                        RuntimeOperation::SurfaceRendering,
-                        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                            state: RenderSurfaceAvailability::NonRenderable,
-                        },
+                        RuntimeCapabilityUnavailable::rendering_nonrenderable(),
                         "presented exact graph output is not renderable",
                     ));
                 }
                 PresentedLifecycle::Occluded { .. } => {
                     return Err(Error::runtime_unavailable(
-                        RuntimeOperation::SurfaceRendering,
-                        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                            state: RenderSurfaceAvailability::Occluded,
-                        },
+                        RuntimeCapabilityUnavailable::rendering_occluded(),
                         "presented exact graph output is occluded",
                     ));
                 }
                 PresentedLifecycle::Lost => {
                     return Err(Error::runtime_unavailable(
-                        RuntimeOperation::SurfaceRendering,
-                        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                            state: RenderSurfaceAvailability::Lost,
-                        },
+                        RuntimeCapabilityUnavailable::rendering_lost(),
                         "presented exact graph output is lost",
                     ));
                 }
@@ -284,10 +271,7 @@ async fn finish_presented_acquire_failure(
             "surface is outdated and requires reconfiguration",
         ),
         PresentedAcquireFailure::Occluded => Error::runtime_unavailable(
-            RuntimeOperation::SurfaceRendering,
-            RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                state: RenderSurfaceAvailability::Occluded,
-            },
+            RuntimeCapabilityUnavailable::rendering_occluded(),
             "surface is occluded",
         ),
         PresentedAcquireFailure::Timeout => Error::new(
@@ -295,10 +279,7 @@ async fn finish_presented_acquire_failure(
             "timed out acquiring surface texture",
         ),
         PresentedAcquireFailure::Lost => Error::runtime_unavailable(
-            RuntimeOperation::SurfaceRendering,
-            RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                state: RenderSurfaceAvailability::Lost,
-            },
+            RuntimeCapabilityUnavailable::rendering_lost(),
             "surface was lost",
         ),
         PresentedAcquireFailure::Validation => Error::new(

@@ -15,10 +15,10 @@ use crate::{
     OffscreenPipelineCapabilities, Options, Paint, Parameters, PhysicalSize, Point,
     PrimitiveFamily, PrimitiveOperation, Radii, Rect, RenderRoute, RenderSurfaceAvailability,
     Renderer, ResolvedImageResource, ResolvedLayerAlphaMask, ResourceCacheBudget, Result,
-    RuntimeCapabilities, RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason,
-    RuntimeOperation, Scene, Shadow, Shape, Size, Stats, Surface, SurfaceResourceState, TextGlyph,
-    TextPaint, TextRun, TextRunBounds, Transform, UnitFilterAmount, UnresolvedResource,
-    UnresolvedResourceKind, UnsupportedPrimitive,
+    RuntimeCapabilities, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shadow,
+    Shape, Size, Stats, Surface, SurfaceResourceState, TextGlyph, TextPaint, TextRun,
+    TextRunBounds, Transform, UnitFilterAmount, UnresolvedResource, UnresolvedResourceKind,
+    UnsupportedPrimitive,
     backend::{
         Backend, CustomSpineEncodingObservationForTest, DeviceCapabilities, DeviceSignal,
         DeviceSlotIdentity, DeviceTerminalSignal, OffscreenLocalSceneRenderRequest,
@@ -6468,16 +6468,13 @@ fn assert_precision_resolution_matrix() {
             None => {
                 let error = resolution
                     .expect_err("the unavailable format should reject the requested policy");
-                let expected_diagnostic = RuntimeCapabilityUnavailable::try_new(
-                    RuntimeOperation::EffectRendering,
-                    RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy },
-                )
-                .unwrap();
-                assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+                let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+                assert_eq!(diagnostic.operation(), RuntimeOperation::EffectRendering);
                 assert_eq!(
-                    error.runtime_capability_unavailable_diagnostic(),
-                    Some(&expected_diagnostic),
+                    diagnostic.reason(),
+                    RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy }
                 );
+                assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
             }
         }
     }
@@ -6586,16 +6583,16 @@ fn effect_texture_dimension_is_rejected_before_allocation() {
         "over-limit effect extent reached allocation"
     );
     assert_eq!(resources_after.entry_count, resources_before.entry_count);
-    let expected_diagnostic = RuntimeCapabilityUnavailable::try_new(
-        RuntimeOperation::EffectTextureAllocation,
-        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { requested, maximum },
-    )
-    .unwrap();
-    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(&expected_diagnostic),
+        diagnostic.operation(),
+        RuntimeOperation::EffectTextureAllocation
     );
+    assert_eq!(
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { requested, maximum }
+    );
+    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
 
     let capabilities = DeviceCapabilities::from_test_facts(true, true, maximum);
     for requested in [PhysicalSize::new(1, 1), PhysicalSize::new(maximum, maximum)] {
@@ -7538,14 +7535,14 @@ fn extreme_effect_extent_reports_device_dimension_before_descriptor_byte_overflo
         ErrorCode::RuntimeCapabilityUnavailable,
         "extreme effect extent returned the wrong diagnostic before selected-device validation"
     );
-    let expected = RuntimeCapabilityUnavailable::try_new(
-        RuntimeOperation::EffectTextureAllocation,
-        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { requested, maximum },
-    )
-    .unwrap();
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(&expected)
+        diagnostic.operation(),
+        RuntimeOperation::EffectTextureAllocation
+    );
+    assert_eq!(
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { requested, maximum }
     );
 }
 
@@ -8541,6 +8538,45 @@ fn zero_sized_mask_image_annihilates_without_texture_allocation() {
         ),
         "zero mask allocated a substitute texture"
     );
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+#[ignore = "requires WGPU_BACKEND= in an isolated test process"]
+fn resource_preparation_without_adapter_returns_setup_refusal() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = Size::new(16.0, 12.0);
+    let surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let stats_before = renderer.stats();
+    let capabilities_before = renderer.runtime_capabilities(&surface);
+    assert_eq!(
+        capabilities_before,
+        RuntimeCapabilities::Unavailable(RuntimeCapabilityUnavailableReason::AdapterUnavailable)
+    );
+
+    let error = renderer
+        .resource_preparation_observation_for_test(
+            composition_commands_for_test(),
+            size,
+            1.0,
+            Color::BLACK,
+            Format::Rgba8,
+        )
+        .expect_err("resource preparation without a selected adapter must return a setup refusal");
+
+    assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::AdapterSelection);
+    assert_eq!(
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::AdapterUnavailable
+    );
+    assert_eq!(
+        error.message(),
+        "resource preparation coverage requires a ready default device"
+    );
+    assert_eq!(renderer.stats(), stats_before);
+    assert_eq!(renderer.runtime_capabilities(&surface), capabilities_before);
 }
 
 #[test]
@@ -12143,15 +12179,11 @@ fn assert_ready_device_state_exposes_owned_wgpu_handles(ready: &ReadyDeviceState
 
 fn assert_runtime_adapter_unavailable(error: &Error, operation: RuntimeOperation) {
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), operation);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                operation,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::AdapterUnavailable
     );
 }
 

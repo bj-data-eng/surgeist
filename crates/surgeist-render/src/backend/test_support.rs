@@ -21,7 +21,7 @@ use crate::{
     command::OffscreenBounds,
     error::{
         BackendErrorCode, DeviceLossReason, Error, GpuFaultKind, Result,
-        RuntimeCapabilityUnavailableReason, RuntimeOperation,
+        RuntimeCapabilityUnavailable, RuntimeOperation,
     },
     gpu_transaction::{
         GpuOperationStage, GraphOutputCommit, GraphSubmissionPayload, InternalVelloPayload,
@@ -221,8 +221,7 @@ pub(crate) async fn render_exact_headless_graph_surface(
         } => (*device_identity, *physical_size),
         SurfaceBackend::ContractOnly { .. } => {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the exact test graph executor requires a device-backed headless surface",
             ));
         }
@@ -1340,8 +1339,7 @@ impl Backend {
     pub(crate) async fn add_device_slot_for_test(&mut self) -> Result<DeviceSlotIdentity> {
         self.new_device(None).await?.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::AdapterSelection,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                 "the donor WGPU device could not be created",
             )
         })

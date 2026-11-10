@@ -2,8 +2,8 @@ use crate::{
     Attachment, Color, DeviceLossReason, EffectQualityPolicy, Error, ErrorCode, Format,
     GpuFaultKind, Image, ImageBuffer, ImageFit, Options, Parameters, PhysicalSize, PresentMode,
     Rect, RenderRoute, RenderSurfaceAvailability, Renderer, ResourceCacheBudget, Result,
-    RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
-    Size, Stats, Surface, SurfaceOptions, SurfaceResourceState, SurfaceState,
+    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Size, Stats, Surface,
+    SurfaceOptions, SurfaceResourceState, SurfaceState,
 };
 
 use crate::{
@@ -296,17 +296,13 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
         .first_terminal()
         .expect("the injected readback loss must be terminal")
         .error(RuntimeOperation::SurfaceReadback);
+    let diagnostic = lost.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceReadback);
     assert_eq!(
-        lost.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceReadback,
-                RuntimeCapabilityUnavailableReason::DeviceLost {
-                    reason: DeviceLossReason::Destroyed,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::DeviceLost {
+            reason: DeviceLossReason::Destroyed
+        }
     );
 
     let faulted_signal = DeviceSignal::new_for_test();
@@ -318,17 +314,13 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
         .first_terminal()
         .expect("the injected readback fault must be terminal")
         .error(RuntimeOperation::SurfaceReadback);
+    let diagnostic = faulted.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceReadback);
     assert_eq!(
-        faulted.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceReadback,
-                RuntimeCapabilityUnavailableReason::DeviceFaulted {
-                    kind: GpuFaultKind::Internal,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::DeviceFaulted {
+            kind: GpuFaultKind::Internal
+        }
     );
 
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
@@ -1733,6 +1725,83 @@ fn assert_explicit_lost_resize_recovery(
 
 #[cfg(feature = "render-window")]
 #[test]
+fn presented_resize_reports_configure_phase_only_when_configuration_is_required() {
+    use crate::{
+        RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderEvent, RenderPhase,
+        RenderPhaseFilter, RenderProfile,
+    };
+
+    fn configure_routing_clock() -> std::time::Duration {
+        static TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        std::time::Duration::from_nanos(TICKS.fetch_add(1, Ordering::SeqCst))
+    }
+
+    let accounting = RenderAccountingOptions::new()
+        .with_clock(RenderClock::Host(configure_routing_clock))
+        .with_profile(RenderProfile::Detailed {
+            timing: true,
+            event_limit: 128,
+            filter: RenderPhaseFilter::Phase(RenderPhase::Configure),
+        });
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default().with_accounting(accounting),
+    ))
+    .expect("configuration reporting requires a compatible device");
+    let mut surface = configured_display_free_presented_surface_for_test(&mut renderer);
+    surface.resize(Size::new(3.0, 2.0), 1.0).unwrap();
+
+    let scene = Scene::new();
+    let parameters = Parameters::default();
+    let configured_stats = pollster::block_on(renderer.render(&mut surface, &scene, parameters))
+        .expect("render must configure and publish the resized target");
+    assert_eq!(renderer.stats(), configured_stats);
+    assert_eq!(surface.last_parameters, Some(parameters));
+    assert_eq!(surface.physical_size(), PhysicalSize::new(3, 2));
+    assert_eq!(
+        renderer.default_device_active_operation_generation_for_test(),
+        None
+    );
+    let configured_resource = presented_resource_id_for_test(&surface);
+    assert!(configured_resource.is_some());
+    {
+        let report = renderer.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+        let attempt = report.attempt().unwrap();
+        assert!(attempt.phase_count(RenderPhase::Configure) > 0);
+        assert!(attempt.phase_elapsed(RenderPhase::Configure).unwrap() > std::time::Duration::ZERO);
+        assert!(attempt.events().any(|event| matches!(event,
+            RenderEvent::Phase { phase: RenderPhase::Configure, duration: Some(duration), .. }
+                if duration > std::time::Duration::ZERO
+        )));
+    }
+
+    let unchanged_stats = pollster::block_on(renderer.render(&mut surface, &scene, parameters))
+        .expect("unchanged ready targets must publish without configuring again");
+    assert_eq!(renderer.stats(), unchanged_stats);
+    assert_eq!(surface.last_parameters, Some(parameters));
+    assert_eq!(
+        presented_resource_id_for_test(&surface),
+        configured_resource
+    );
+    assert_eq!(
+        renderer.default_device_active_operation_generation_for_test(),
+        None
+    );
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+    let attempt = report.attempt().unwrap();
+    assert_eq!(attempt.phase_count(RenderPhase::Configure), 0);
+    assert!(!attempt.events().any(|event| matches!(
+        event,
+        RenderEvent::Phase {
+            phase: RenderPhase::Configure,
+            ..
+        }
+    )));
+}
+
+#[cfg(feature = "render-window")]
+#[test]
 fn available_resize_pending_resume_retains_installed_attachment_and_target() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("available-resume coverage requires a compatible device");
@@ -2452,17 +2521,13 @@ fn zero_size_headless_render_diagnoses_and_read_returns_empty() {
         pollster::block_on(renderer.render(&mut surface, &Scene::new(), Parameters::default()))
             .expect_err("zero-area headless rendering must be rejected before planning");
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                    state: RenderSurfaceAvailability::NonRenderable,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+            state: RenderSurfaceAvailability::NonRenderable
+        }
     );
 
     let image = pollster::block_on(renderer.read_headless(&surface))
@@ -2484,17 +2549,13 @@ fn nonzero_headless_read_before_publication_reports_uninitialized_without_map() 
     let error = pollster::block_on(renderer.read_headless(&surface))
         .expect_err("a nonzero headless surface has no readable publication before render");
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceReadback);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceReadback,
-                RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                    state: RenderSurfaceAvailability::Uninitialized,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+            state: RenderSurfaceAvailability::Uninitialized
+        }
     );
     assert_eq!(
         surface.resource_state(),

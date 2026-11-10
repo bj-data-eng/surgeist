@@ -11,6 +11,7 @@ pub(crate) use test_support::{
     unsupported_graph_diagnostic_for_test,
 };
 
+use crate::error::{SurfaceDiagnosticOperation, SurfaceIoOperation};
 use dispatch::runtime_surface_format;
 pub use options::{Antialiasing, EffectQualityPolicy, Options, ResourceCacheBudget};
 
@@ -66,6 +67,34 @@ fn ensure_presented_device_available_after_creation(
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PresentedConfigurationOperation {
+    Rendering,
+    #[cfg(any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    Resume,
+}
+
+impl PresentedConfigurationOperation {
+    #[cfg(any(
+        test,
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    const fn runtime_operation(self) -> RuntimeOperation {
+        match self {
+            Self::Rendering => RuntimeOperation::SurfaceRendering,
+            #[cfg(any(
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
+            Self::Resume => RuntimeOperation::SurfaceResume,
+        }
+    }
+}
+
 impl Renderer {
     /// Creates a GPU-only renderer with the supplied fixed [`Options`].
     ///
@@ -114,26 +143,41 @@ impl Renderer {
         options: SurfaceOptions,
     ) -> Result<Surface> {
         validate_surface_options(options)?;
-        self.create_surface_with_configuration_operation(
+        Self::create_surface_with_configuration_operation(
+            self.backend.as_mut(),
+            self.identity.clone(),
+            self.default_device,
             attachment,
             options,
-            RuntimeOperation::SurfaceRendering,
+            PresentedConfigurationOperation::Rendering,
             None,
         )
         .await
     }
 
     async fn create_surface_with_configuration_operation(
-        &mut self,
+        backend: Option<&mut Backend>,
+        renderer_identity: RendererIdentity,
+        default_device: Option<DeviceSlotIdentity>,
         attachment: Attachment,
         options: SurfaceOptions,
-        configuration_operation: RuntimeOperation,
+        configuration_operation: PresentedConfigurationOperation,
         preferred_device: Option<DeviceSlotIdentity>,
     ) -> Result<Surface> {
         match attachment {
-            Attachment::Headless => self.create_headless_surface(options).await,
+            Attachment::Headless => {
+                Self::create_headless_surface_with_backend(
+                    backend,
+                    default_device,
+                    renderer_identity,
+                    options,
+                )
+                .await
+            }
             Attachment::WebCanvas(canvas) => {
-                self.create_web_canvas_surface(
+                Self::create_web_canvas_surface(
+                    backend,
+                    renderer_identity,
                     canvas,
                     options,
                     configuration_operation,
@@ -143,10 +187,9 @@ impl Renderer {
             }
             #[cfg(feature = "render-window")]
             Attachment::Window(handle) => {
-                let Some(backend) = self.backend.as_mut() else {
+                let Some(backend) = backend else {
                     return Err(Error::runtime_unavailable(
-                        RuntimeOperation::AdapterSelection,
-                        RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                        RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                         "no compatible wgpu adapter is available",
                     ));
                 };
@@ -155,13 +198,13 @@ impl Renderer {
                     .create_presented_surface(
                         handle.clone(),
                         preferred_device,
-                        configuration_operation,
+                        configuration_operation.runtime_operation(),
                     )
                     .await?;
                 ensure_presented_device_available_after_creation(
                     backend,
                     device_identity,
-                    configuration_operation,
+                    configuration_operation.runtime_operation(),
                 )?;
                 let mut created = Surface::with_backend(
                     Attachment::Window(handle),
@@ -171,9 +214,10 @@ impl Renderer {
                         device_identity,
                         state: PresentedSurfaceState::new(physical_size, ResizeState::Idle),
                     },
-                    self.identity.clone(),
+                    renderer_identity,
                 );
-                self.configure_presented_surface_if_needed(
+                Self::configure_presented_surface_with_backend(
+                    backend,
                     &mut created,
                     configuration_operation,
                     None,
@@ -186,10 +230,11 @@ impl Renderer {
 
     #[cfg(all(feature = "render-web", target_arch = "wasm32"))]
     async fn create_web_canvas_surface(
-        &mut self,
+        backend: Option<&mut Backend>,
+        renderer_identity: RendererIdentity,
         canvas: WebCanvas,
         options: SurfaceOptions,
-        configuration_operation: RuntimeOperation,
+        configuration_operation: PresentedConfigurationOperation,
         preferred_device: Option<DeviceSlotIdentity>,
     ) -> Result<Surface> {
         let Some(html_canvas) = canvas.html_canvas() else {
@@ -198,10 +243,9 @@ impl Renderer {
                 format!("web canvas surface '{}' has no canvas handle", canvas.id()),
             ));
         };
-        let Some(backend) = self.backend.as_mut() else {
+        let Some(backend) = backend else {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::AdapterSelection,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                 "no compatible WebGPU adapter is available",
             ));
         };
@@ -210,13 +254,13 @@ impl Renderer {
             .create_presented_surface(
                 wgpu::SurfaceTarget::Canvas(html_canvas),
                 preferred_device,
-                configuration_operation,
+                configuration_operation.runtime_operation(),
             )
             .await?;
         ensure_presented_device_available_after_creation(
             backend,
             device_identity,
-            configuration_operation,
+            configuration_operation.runtime_operation(),
         )?;
         let mut created = Surface::with_backend(
             Attachment::WebCanvas(canvas),
@@ -226,19 +270,25 @@ impl Renderer {
                 device_identity,
                 state: PresentedSurfaceState::new(physical_size, ResizeState::Idle),
             },
-            self.identity.clone(),
+            renderer_identity,
         );
-        self.configure_presented_surface_if_needed(&mut created, configuration_operation, None)
-            .await?;
+        Self::configure_presented_surface_with_backend(
+            backend,
+            &mut created,
+            configuration_operation,
+            None,
+        )
+        .await?;
         Ok(created)
     }
 
     #[cfg(not(all(feature = "render-web", target_arch = "wasm32")))]
     async fn create_web_canvas_surface(
-        &mut self,
+        _backend: Option<&mut Backend>,
+        _renderer_identity: RendererIdentity,
         canvas: WebCanvas,
         _options: SurfaceOptions,
-        _configuration_operation: RuntimeOperation,
+        _configuration_operation: PresentedConfigurationOperation,
         _preferred_device: Option<DeviceSlotIdentity>,
     ) -> Result<Surface> {
         let _ = canvas;
@@ -265,6 +315,21 @@ impl Renderer {
     }
 
     async fn create_headless_surface(&mut self, options: SurfaceOptions) -> Result<Surface> {
+        Self::create_headless_surface_with_backend(
+            self.backend.as_mut(),
+            self.default_device,
+            self.identity.clone(),
+            options,
+        )
+        .await
+    }
+
+    async fn create_headless_surface_with_backend(
+        backend: Option<&mut Backend>,
+        default_device: Option<DeviceSlotIdentity>,
+        renderer_identity: RendererIdentity,
+        options: SurfaceOptions,
+    ) -> Result<Surface> {
         validate_surface_options(options)?;
         if options.format != Format::Rgba8 {
             return Err(Error::new(
@@ -273,9 +338,7 @@ impl Renderer {
             ));
         }
         let physical_size = physical_size(options.size, options.scale)?;
-        let backend = if let (Some(backend), Some(device_identity)) =
-            (self.backend.as_mut(), self.default_device)
-        {
+        let backend = if let (Some(backend), Some(device_identity)) = (backend, default_device) {
             if let Some(error) =
                 backend.terminal_error(device_identity, RuntimeOperation::AdapterSelection)
             {
@@ -294,7 +357,7 @@ impl Renderer {
             Attachment::Headless,
             options,
             backend,
-            self.identity.clone(),
+            renderer_identity,
         ))
     }
 
@@ -304,10 +367,10 @@ impl Renderer {
     /// same value is idempotent; invalid, unavailable, foreign, or stale surfaces
     /// return their typed diagnostic without changing committed resources.
     pub fn set_surface_resizing(&mut self, surface: &mut Surface, resizing: bool) -> Result<()> {
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        surface.ensure_available(RuntimeOperation::SurfaceRendering)?;
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        surface.ensure_available(SurfaceIoOperation::Rendering)?;
 
         #[cfg(not(any(
             feature = "render-window",
@@ -341,52 +404,65 @@ impl Renderer {
     async fn configure_presented_surface_if_needed(
         &mut self,
         surface: &mut Surface,
-        operation: RuntimeOperation,
         observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
-        let (device_identity, native, requested_physical_size, present_mode, needs_configuration) =
-            match &surface.backend {
-                SurfaceBackend::Presented {
-                    surface: native,
-                    device_identity,
-                    state,
-                } => (
-                    *device_identity,
-                    native.as_ref(),
-                    state.requested_physical_size(),
-                    surface.options.present_mode.into(),
-                    state.needs_configuration(),
-                ),
-                SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => {
-                    return Ok(());
-                }
-            };
-        if !needs_configuration {
+        let SurfaceBackend::Presented { state, .. } = &surface.backend else {
+            return Ok(());
+        };
+        if !state.needs_configuration() {
             return Ok(());
         }
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                operation,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "no compatible wgpu adapter is available",
             )
         })?;
+        Self::configure_presented_surface_with_backend(
+            backend,
+            surface,
+            PresentedConfigurationOperation::Rendering,
+            observer,
+        )
+        .await
+    }
+
+    #[cfg(any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    async fn configure_presented_surface_with_backend(
+        backend: &mut Backend,
+        surface: &mut Surface,
+        operation: PresentedConfigurationOperation,
+        observer: Option<&crate::accounting::Account>,
+    ) -> Result<()> {
+        let SurfaceBackend::Presented {
+            surface: native,
+            device_identity,
+            state,
+        } = &mut surface.backend
+        else {
+            return Ok(());
+        };
+        if !state.needs_configuration() {
+            return Ok(());
+        }
+        let device_identity = *device_identity;
+        let operation = operation.runtime_operation();
         let draft = backend
             .configure_presented_surface(
                 device_identity,
                 operation,
-                native,
-                requested_physical_size,
-                present_mode,
+                native.as_ref(),
+                state.requested_physical_size(),
+                surface.options.present_mode.into(),
                 observer,
             )
             .await?;
         let publication_signal = backend.publication_signal(device_identity, operation)?;
         let result = publication_signal.commit_if_no_terminal(operation, || {
-            let SurfaceBackend::Presented { surface, state, .. } = &mut surface.backend else {
-                unreachable!("presented configuration must commit into the originating surface");
-            };
-            surface.commit_configuration(draft);
+            native.commit_configuration(draft);
             state.commit_configuration();
         });
         if let Err(error) = result {
@@ -403,7 +479,6 @@ impl Renderer {
     async fn configure_presented_surface_if_needed(
         &mut self,
         _surface: &mut Surface,
-        _operation: RuntimeOperation,
         _observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
         Ok(())
@@ -446,79 +521,70 @@ impl Renderer {
             all(feature = "render-web", target_arch = "wasm32")
         )))]
         let _ = attachment;
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceResume)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceResume)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceResume)?;
-
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Resume)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Resume)?;
         match &surface.backend {
             #[cfg(any(
                 feature = "render-window",
                 all(feature = "render-web", target_arch = "wasm32")
             ))]
-            SurfaceBackend::Presented { state, .. } => {
+            SurfaceBackend::Presented {
+                state,
+                device_identity,
+                ..
+            } => {
+                let device_identity = *device_identity;
+                let renderer_identity = self.identity.clone();
+                let default_device = self.default_device;
+                let backend = self.surface_backend_for_device(
+                    device_identity,
+                    SurfaceDiagnosticOperation::Resume,
+                )?;
                 let action = Surface::presented_resume_action(surface.state, state.lifecycle());
                 let resizing = state.lifecycle().resize_state();
-                self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceResume)?;
+                if let Some(error) =
+                    backend.terminal_error(device_identity, RuntimeOperation::SurfaceResume)
+                {
+                    return Err(error);
+                }
                 surface.ensure_attachment_compatible(&attachment)?;
                 match action {
                     super::surface::PresentedResumeAction::NoOp => Ok(()),
                     super::surface::PresentedResumeAction::ConfigureExisting => {
-                        self.configure_presented_surface_if_needed(
+                        Self::configure_presented_surface_with_backend(
+                            backend,
                             surface,
-                            RuntimeOperation::SurfaceResume,
+                            PresentedConfigurationOperation::Resume,
                             None,
                         )
                         .await
                     }
-                    super::surface::PresentedResumeAction::Configure => {
-                        self.recreate_presented_surface_for_resume(
-                            surface, attachment, resizing, true,
+                    action @ (super::surface::PresentedResumeAction::Configure
+                    | super::surface::PresentedResumeAction::Recreate) => {
+                        let mut next = Self::create_surface_with_configuration_operation(
+                            Some(backend),
+                            renderer_identity,
+                            default_device,
+                            attachment,
+                            surface.options,
+                            PresentedConfigurationOperation::Resume,
+                            Some(device_identity),
                         )
-                        .await
-                    }
-                    super::surface::PresentedResumeAction::Recreate => {
-                        self.recreate_presented_surface_for_resume(
-                            surface, attachment, resizing, false,
-                        )
-                        .await
+                        .await?;
+                        next.last_parameters = surface.last_parameters;
+                        if matches!(action, super::surface::PresentedResumeAction::Configure) {
+                            next.renderer_identity = surface.renderer_identity.clone();
+                        }
+                        if let SurfaceBackend::Presented { state, .. } = &mut next.backend {
+                            state.set_resizing(resizing);
+                        }
+                        *surface = next;
+                        Ok(())
                     }
                 }
             }
             SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => unreachable!(),
         }
-    }
-
-    #[cfg(any(
-        feature = "render-window",
-        all(feature = "render-web", target_arch = "wasm32")
-    ))]
-    async fn recreate_presented_surface_for_resume(
-        &mut self,
-        surface: &mut Surface,
-        attachment: Attachment,
-        resizing: ResizeState,
-        preserve_renderer_identity: bool,
-    ) -> Result<()> {
-        let preferred_device = surface
-            .device_identity()
-            .expect("a presented surface must retain its device slot identity");
-        let mut next = self
-            .create_surface_with_configuration_operation(
-                attachment,
-                surface.options,
-                RuntimeOperation::SurfaceResume,
-                Some(preferred_device),
-            )
-            .await?;
-        next.last_parameters = surface.last_parameters;
-        if preserve_renderer_identity {
-            next.renderer_identity = surface.renderer_identity.clone();
-        }
-        if let SurfaceBackend::Presented { state, .. } = &mut next.backend {
-            state.set_resizing(resizing);
-        }
-        *surface = next;
-        Ok(())
     }
 
     /// Projects immutable runtime-phase capabilities of the device selected by `surface`.
@@ -600,21 +666,23 @@ impl Renderer {
         surface: Option<&Surface>,
     ) -> Result<RenderDeviceSnapshot> {
         let identity = if let Some(surface) = surface {
-            self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
+            self.validate_surface_renderer_identity(
+                surface,
+                SurfaceDiagnosticOperation::Rendering,
+            )?;
             surface.device_identity()
         } else {
             self.default_device
         }
         .ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::AdapterSelection,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                 "no selected accounting device",
             )
         })?;
         let backend = self.backend.as_ref().ok_or_else(|| {
             surface_identity_mismatch(
-                RuntimeOperation::SurfaceRendering,
+                SurfaceDiagnosticOperation::Rendering,
                 SurfaceIdentityMismatchKind::StaleDeviceGeneration,
             )
         })?;
@@ -622,7 +690,7 @@ impl Renderer {
             .generation(identity)
             .map_err(|_| {
                 surface_identity_mismatch(
-                    RuntimeOperation::SurfaceRendering,
+                    SurfaceDiagnosticOperation::Rendering,
                     SurfaceIdentityMismatchKind::StaleDeviceGeneration,
                 )
             })?
@@ -645,7 +713,7 @@ impl Renderer {
     fn validate_surface_renderer_identity(
         &self,
         surface: &Surface,
-        operation: RuntimeOperation,
+        operation: SurfaceDiagnosticOperation,
     ) -> Result<()> {
         if self.identity.matches(&surface.renderer_identity) {
             return Ok(());
@@ -659,35 +727,46 @@ impl Renderer {
     fn validate_surface_device_identity(
         &mut self,
         surface: &Surface,
-        operation: RuntimeOperation,
+        operation: SurfaceDiagnosticOperation,
     ) -> Result<()> {
         let Some(device_identity) = surface.device_identity() else {
             return Ok(());
         };
-        if self
-            .backend
-            .as_mut()
-            .is_some_and(|backend| backend.has_device_slot(device_identity))
-        {
-            return Ok(());
+        self.surface_backend_for_device(device_identity, operation)
+            .map(|_| ())
+    }
+
+    fn surface_backend_for_device(
+        &mut self,
+        device_identity: DeviceSlotIdentity,
+        operation: SurfaceDiagnosticOperation,
+    ) -> Result<&mut Backend> {
+        let backend = self.backend.as_mut().ok_or_else(|| {
+            surface_identity_mismatch(
+                operation,
+                SurfaceIdentityMismatchKind::StaleDeviceGeneration,
+            )
+        })?;
+        if !backend.has_device_slot(device_identity) {
+            return Err(surface_identity_mismatch(
+                operation,
+                SurfaceIdentityMismatchKind::StaleDeviceGeneration,
+            ));
         }
-        Err(surface_identity_mismatch(
-            operation,
-            SurfaceIdentityMismatchKind::StaleDeviceGeneration,
-        ))
+        Ok(backend)
     }
 
     fn validate_surface_operation_backend(
         &self,
         surface: &Surface,
-        operation: RuntimeOperation,
+        operation: SurfaceDiagnosticOperation,
     ) -> Result<()> {
         let supported = match operation {
-            RuntimeOperation::SurfaceReadback => matches!(
+            SurfaceDiagnosticOperation::Readback => matches!(
                 surface.backend,
                 SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. }
             ),
-            RuntimeOperation::SurfaceResume => {
+            SurfaceDiagnosticOperation::Resume => {
                 #[cfg(any(
                     feature = "render-window",
                     all(feature = "render-web", target_arch = "wasm32")
@@ -703,7 +782,7 @@ impl Renderer {
                     false
                 }
             }
-            _ => true,
+            SurfaceDiagnosticOperation::Rendering => true,
         };
         if supported {
             Ok(())
@@ -765,13 +844,31 @@ fn runtime_surface_unavailable_reason(
 }
 
 fn surface_identity_mismatch(
-    operation: RuntimeOperation,
+    operation: SurfaceDiagnosticOperation,
     kind: SurfaceIdentityMismatchKind,
 ) -> Error {
-    let diagnostic = RuntimeCapabilityUnavailable::try_new(
-        operation,
-        RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { kind },
-    )
-    .expect("surface identity mismatch is valid for every surface operation");
-    Error::runtime_capability_unavailable(diagnostic)
+    Error::runtime_capability_unavailable(RuntimeCapabilityUnavailable::surface_identity_mismatch(
+        operation, kind,
+    ))
+}
+
+#[cfg(test)]
+mod configuration_operation_tests {
+    use super::*;
+
+    #[test]
+    fn configuration_operations_project_to_their_literal_runtime_operations() {
+        assert_eq!(
+            PresentedConfigurationOperation::Rendering.runtime_operation(),
+            RuntimeOperation::SurfaceRendering
+        );
+        #[cfg(any(
+            feature = "render-window",
+            all(feature = "render-web", target_arch = "wasm32")
+        ))]
+        assert_eq!(
+            PresentedConfigurationOperation::Resume.runtime_operation(),
+            RuntimeOperation::SurfaceResume
+        );
+    }
 }

@@ -37,10 +37,10 @@ impl Renderer {
         attempt: &mut ReadbackAttempt,
     ) -> Result<ReadbackOutput> {
         let account = attempt.account().clone();
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceReadback)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceReadback)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceReadback)?;
-        surface.ensure_available(RuntimeOperation::SurfaceReadback)?;
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Readback)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Readback)?;
+        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Readback)?;
+        surface.ensure_available(SurfaceIoOperation::Readback)?;
         let (device_identity, texture, physical_size) = match &surface.backend {
             SurfaceBackend::ContractOnly { physical_size }
                 if physical_size.width() == 0 || physical_size.height() == 0 =>
@@ -49,8 +49,7 @@ impl Renderer {
             }
             SurfaceBackend::ContractOnly { .. } => {
                 return Err(Error::runtime_unavailable(
-                    RuntimeOperation::SurfaceReadback,
-                    RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                    RuntimeCapabilityUnavailable::readback_adapter_unavailable(),
                     "no compatible wgpu adapter is available",
                 ));
             }
@@ -66,10 +65,7 @@ impl Renderer {
                 ..
             } => {
                 return Err(Error::runtime_unavailable(
-                    RuntimeOperation::SurfaceReadback,
-                    RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                        state: RenderSurfaceAvailability::Uninitialized,
-                    },
+                    RuntimeCapabilityUnavailable::readback_uninitialized(),
                     "headless surface has no published texture",
                 ));
             }
@@ -87,8 +83,7 @@ impl Renderer {
         self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceReadback)?;
         let Some(backend) = self.backend.as_mut() else {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceReadback,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::readback_adapter_unavailable(),
                 "no compatible wgpu adapter is available",
             ));
         };

@@ -1,8 +1,11 @@
+#[cfg(feature = "render-window")]
+use super::PresentedConfigurationOperation;
 use super::{
     Renderer,
     dispatch::{RendererFrameDispatch, runtime_surface_format},
     publication::RenderPublication,
 };
+use super::{SurfaceDiagnosticOperation, SurfaceIoOperation};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -45,15 +48,13 @@ impl Renderer {
     > {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello transaction coverage requires a ready default device",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello transaction coverage requires a renderer backend",
             )
         })?;
@@ -70,15 +71,13 @@ impl Renderer {
     ) -> Result<()> {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello failure coverage requires a ready default device",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello failure coverage requires a renderer backend",
             )
         })?;
@@ -99,15 +98,13 @@ impl Renderer {
     ) -> Result<()> {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello accounting coverage requires a ready default device",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello accounting coverage requires a renderer backend",
             )
         })?;
@@ -127,15 +124,13 @@ impl Renderer {
     ) -> Result<ResourceManagerObservationForTest> {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello cancellation coverage requires a ready default device",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "internal Vello cancellation coverage requires a renderer backend",
             )
         })?;
@@ -208,8 +203,7 @@ impl Renderer {
     pub(crate) async fn add_donor_device_slot_for_test(&mut self) -> Result<DeviceSlotIdentity> {
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the renderer has no backend to receive a donor wgpu device",
             )
         })?;
@@ -223,8 +217,7 @@ impl Renderer {
         let account = Account::for_test();
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "real second-slot WGPU coverage requires a renderer backend",
             )
         })?;
@@ -354,16 +347,14 @@ impl Renderer {
         };
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::EffectRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                 "resource preparation coverage requires a ready default device",
             )
         })?;
         let policy = self.options.effect_quality_policy();
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::EffectRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
                 "resource preparation coverage requires a renderer backend",
             )
         })?;
@@ -456,15 +447,13 @@ impl Renderer {
     ) -> Result<ImageBuffer> {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "required render-texture readback needs an available wgpu device",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "required render-texture readback needs an available wgpu backend",
             )
         })?;
@@ -562,15 +551,13 @@ impl Renderer {
         let account = Account::for_test();
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "real GPU error-scope coverage requires a host adapter",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "real GPU error-scope coverage requires a host adapter",
             )
         })?;
@@ -606,15 +593,13 @@ impl Renderer {
         let account = Account::for_test();
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "real GPU clear/fill probe requires a host adapter",
             )
         })?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "real GPU clear/fill probe requires a host adapter",
             )
         })?;
@@ -711,12 +696,8 @@ impl Renderer {
         &mut self,
         surface: &mut Surface,
     ) -> Result<()> {
-        self.configure_presented_surface_if_needed(
-            surface,
-            RuntimeOperation::SurfaceRendering,
-            None,
-        )
-        .await
+        self.configure_presented_surface_if_needed(surface, None)
+            .await
     }
 
     pub(crate) fn display_free_presented_surface_for_test(
@@ -725,8 +706,7 @@ impl Renderer {
     ) -> Result<Surface> {
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "display-free presented configuration coverage requires a host adapter",
             )
         })?;
@@ -753,15 +733,13 @@ impl Renderer {
         let physical_size = physical_size(options.size, options.scale)?;
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "display-free presented configuration coverage requires a renderer backend",
             )
         })?;
         if !backend.has_device_slot(device_identity) {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the display-free presented fixture requires a current device slot",
             ));
         }
@@ -822,86 +800,65 @@ impl Renderer {
                 "display-free resume support requires its own presented fixture",
             ));
         }
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceResume)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceResume)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceResume)?;
-        let SurfaceBackend::Presented { state, .. } = &surface.backend else {
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Resume)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Resume)?;
+        let SurfaceBackend::Presented {
+            state,
+            device_identity,
+            ..
+        } = &surface.backend
+        else {
             unreachable!("display-free resume support requires a presented surface");
         };
+        let device_identity = *device_identity;
+        let renderer_identity = self.identity.clone();
+        let backend =
+            self.surface_backend_for_device(device_identity, SurfaceDiagnosticOperation::Resume)?;
         let action = Surface::presented_resume_action(surface.state, state.lifecycle());
         let resizing = state.lifecycle().resize_state();
-        self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceResume)?;
+        if let Some(error) =
+            backend.terminal_error(device_identity, RuntimeOperation::SurfaceResume)
+        {
+            return Err(error);
+        }
         surface.ensure_attachment_compatible(&attachment)?;
         match action {
             super::super::surface::PresentedResumeAction::NoOp => Ok(()),
             super::super::surface::PresentedResumeAction::ConfigureExisting => {
                 if let Some(reason) = loss_before_configuration {
-                    let device_identity = surface
-                        .device_identity()
-                        .expect("a presented surface must retain its device slot identity");
-                    self.signal_device_loss_for_test(device_identity, reason);
+                    backend.signal_loss_for_test(device_identity, reason);
                 }
-                self.configure_presented_surface_if_needed(
+                Self::configure_presented_surface_with_backend(
+                    backend,
                     surface,
-                    RuntimeOperation::SurfaceResume,
+                    PresentedConfigurationOperation::Resume,
                     None,
                 )
                 .await
             }
-            super::super::surface::PresentedResumeAction::Configure => {
-                self.recreate_display_free_presented_surface_for_resume_for_test(
-                    surface,
-                    attachment,
-                    resizing,
-                    loss_before_configuration,
-                )
-                .await
-            }
-            super::super::surface::PresentedResumeAction::Recreate => {
-                self.recreate_display_free_presented_surface_for_resume_for_test(
-                    surface,
-                    attachment,
-                    resizing,
-                    loss_before_configuration,
-                )
-                .await
+            super::super::surface::PresentedResumeAction::Configure
+            | super::super::surface::PresentedResumeAction::Recreate => {
+                let mut next = Self::create_display_free_presented_surface_with_configuration_operation_for_test(
+                    backend, renderer_identity, attachment, surface.options,
+                    PresentedConfigurationOperation::Resume, Some(device_identity), loss_before_configuration,
+                ).await?;
+                next.last_parameters = surface.last_parameters;
+                next.renderer_identity = surface.renderer_identity.clone();
+                if let SurfaceBackend::Presented { state, .. } = &mut next.backend {
+                    state.set_resizing(resizing);
+                }
+                *surface = next;
+                Ok(())
             }
         }
-    }
-
-    async fn recreate_display_free_presented_surface_for_resume_for_test(
-        &mut self,
-        surface: &mut Surface,
-        attachment: Attachment,
-        resizing: super::super::surface::ResizeState,
-        loss_before_configuration: Option<DeviceLossReason>,
-    ) -> Result<()> {
-        let preferred_device = surface
-            .device_identity()
-            .expect("a presented surface must retain its device slot identity");
-        let mut next = self
-            .create_display_free_presented_surface_with_configuration_operation_for_test(
-                attachment,
-                surface.options,
-                RuntimeOperation::SurfaceResume,
-                Some(preferred_device),
-                loss_before_configuration,
-            )
-            .await?;
-        next.last_parameters = surface.last_parameters;
-        next.renderer_identity = surface.renderer_identity.clone();
-        if let SurfaceBackend::Presented { state, .. } = &mut next.backend {
-            state.set_resizing(resizing);
-        }
-        *surface = next;
-        Ok(())
     }
 
     async fn create_display_free_presented_surface_with_configuration_operation_for_test(
-        &mut self,
+        backend: &mut Backend,
+        renderer_identity: super::super::surface::RendererIdentity,
         attachment: Attachment,
         options: SurfaceOptions,
-        configuration_operation: RuntimeOperation,
+        configuration_operation: PresentedConfigurationOperation,
         preferred_device: Option<DeviceSlotIdentity>,
         loss_before_configuration: Option<DeviceLossReason>,
     ) -> Result<Surface> {
@@ -913,17 +870,10 @@ impl Renderer {
             ));
         }
         let physical_size = physical_size(options.size, options.scale)?;
-        let backend = self.backend.as_mut().ok_or_else(|| {
-            Error::runtime_unavailable(
-                RuntimeOperation::AdapterSelection,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-                "display-free presented configuration coverage requires a renderer backend",
-            )
-        })?;
         let (surface, device_identity) = backend
             .create_display_free_presented_surface_for_test(
                 preferred_device,
-                configuration_operation,
+                configuration_operation.runtime_operation(),
                 options.format,
             )
             .await?;
@@ -933,7 +883,7 @@ impl Renderer {
         super::ensure_presented_device_available_after_creation(
             backend,
             device_identity,
-            configuration_operation,
+            configuration_operation.runtime_operation(),
         )?;
         let mut created = Surface::with_backend(
             attachment,
@@ -946,10 +896,15 @@ impl Renderer {
                     super::super::surface::ResizeState::Idle,
                 ),
             },
-            self.identity.clone(),
+            renderer_identity,
         );
-        self.configure_presented_surface_if_needed(&mut created, configuration_operation, None)
-            .await?;
+        Self::configure_presented_surface_with_backend(
+            backend,
+            &mut created,
+            configuration_operation,
+            None,
+        )
+        .await?;
         Ok(created)
     }
 }
@@ -1296,11 +1251,7 @@ impl Renderer {
                     )
                 })?;
                 renderer
-                    .configure_presented_surface_if_needed(
-                        surface,
-                        RuntimeOperation::SurfaceRendering,
-                        Some(account),
-                    )
+                    .configure_presented_surface_if_needed(surface, Some(account))
                     .await?;
                 let frame = renderer
                     .execute_exact_graph_for_test(
@@ -1372,12 +1323,8 @@ impl Renderer {
         if reconfigure_outdated
             && matches!(&frame, Err(error) if error.code() == ErrorCode::SurfaceOutdated)
         {
-            self.configure_presented_surface_if_needed(
-                surface,
-                RuntimeOperation::SurfaceRendering,
-                Some(account),
-            )
-            .await?;
+            self.configure_presented_surface_if_needed(surface, Some(account))
+                .await?;
         }
         frame
     }
@@ -1468,16 +1415,15 @@ impl Renderer {
         &mut self,
         surface: &Surface,
     ) -> Result<DeviceSlotIdentity> {
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        surface.ensure_available(RuntimeOperation::SurfaceRendering)?;
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        surface.ensure_available(SurfaceIoOperation::Rendering)?;
         surface.ensure_renderable()?;
         self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceRendering)?;
         surface.device_identity().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the private base graph forced route requires a device-backed surface",
             )
         })
@@ -1512,11 +1458,7 @@ impl Renderer {
                     )
                 })?;
                 renderer
-                    .configure_presented_surface_if_needed(
-                        surface,
-                        RuntimeOperation::SurfaceRendering,
-                        Some(account),
-                    )
+                    .configure_presented_surface_if_needed(surface, Some(account))
                     .await?;
                 let frame = renderer
                     .execute_fixture_graph_for_test(surface, device_identity, graph, account, true)
@@ -1552,16 +1494,15 @@ impl Renderer {
         working_format: WorkingFormat,
         account: &Account,
     ) -> Result<ColorFilterFixturePreparationForTest> {
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        surface.ensure_available(RuntimeOperation::SurfaceRendering)?;
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        surface.ensure_available(SurfaceIoOperation::Rendering)?;
         surface.ensure_renderable()?;
         self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceRendering)?;
         let device_identity = surface.device_identity().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the private color-filter fixture requires a device-backed surface",
             )
         })?;
@@ -1583,8 +1524,7 @@ impl Renderer {
             .as_mut()
             .ok_or_else(|| {
                 Error::runtime_unavailable(
-                    RuntimeOperation::SurfaceRendering,
-                    RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                    RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                     "the private color-filter fixture requires a renderer backend",
                 )
             })?
@@ -1648,11 +1588,7 @@ impl Renderer {
                     )
                 })?;
                 renderer
-                    .configure_presented_surface_if_needed(
-                        surface,
-                        RuntimeOperation::SurfaceRendering,
-                        Some(account),
-                    )
+                    .configure_presented_surface_if_needed(surface, Some(account))
                     .await?;
                 let frame = renderer
                     .execute_fixture_graph_for_test(surface, device_identity, graph, account, false)
@@ -1763,11 +1699,7 @@ impl Renderer {
                     )
                 })?;
                 renderer
-                    .configure_presented_surface_if_needed(
-                        surface,
-                        RuntimeOperation::SurfaceRendering,
-                        Some(account),
-                    )
+                    .configure_presented_surface_if_needed(surface, Some(account))
                     .await?;
                 let frame = renderer
                     .execute_fixture_graph_for_test(surface, device_identity, graph, account, false)

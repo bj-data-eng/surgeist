@@ -21,6 +21,7 @@ use crate::backend::{
     RendererExactSurfaceGraph as ExactSurfaceGraph,
     render_renderer_exact_headless_graph_surface as render_exact_headless_graph_surface,
 };
+use crate::error::{SurfaceDiagnosticOperation, SurfaceIoOperation};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -28,7 +29,7 @@ use crate::backend::{
 use crate::surface::SurfaceBackend;
 use crate::{
     BackendErrorCode, Error, ErrorCode, Format, Parameters, PrimitiveFamily, PrimitiveOperation,
-    RenderRoute, Result, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Surface,
+    RenderRoute, Result, RuntimeCapabilityUnavailable, RuntimeOperation, Scene, Surface,
     UnsupportedPrimitive,
     backend::{
         DeviceCapabilities, DeviceSlotIdentity, SurfaceFrameCommit, render_internal_vello_surface,
@@ -113,12 +114,8 @@ impl Renderer {
                 &account.at(RenderPhase::FramePrepare),
             )
         })?;
-        self.configure_presented_surface_if_needed(
-            surface,
-            RuntimeOperation::SurfaceRendering,
-            Some(account),
-        )
-        .await?;
+        self.configure_presented_surface_if_needed(surface, Some(account))
+            .await?;
         let route = match &execution {
             PreparedRendererExecution::DirectVello(_) => RenderRoute::DirectVello,
             PreparedRendererExecution::ExactGraph(_) => RenderRoute::GpuGraph,
@@ -147,24 +144,22 @@ impl Renderer {
         &mut self,
         surface: &Surface,
     ) -> Result<DeviceSlotIdentity> {
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceRendering)?;
-        surface.ensure_available(RuntimeOperation::SurfaceRendering)?;
+        self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_operation_backend(surface, SurfaceDiagnosticOperation::Rendering)?;
+        self.validate_surface_device_identity(surface, SurfaceDiagnosticOperation::Rendering)?;
+        surface.ensure_available(SurfaceIoOperation::Rendering)?;
         surface.ensure_renderable()?;
         self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceRendering)?;
 
         let Some(device_identity) = surface.device_identity() else {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "no compatible wgpu adapter is available",
             ));
         };
         if self.backend.is_none() {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "no compatible wgpu adapter is available",
             ));
         }
@@ -315,12 +310,8 @@ impl Renderer {
         }
         let frame = match frame {
             Err(error) if error.code() == ErrorCode::SurfaceOutdated => {
-                self.configure_presented_surface_if_needed(
-                    surface,
-                    RuntimeOperation::SurfaceRendering,
-                    Some(account),
-                )
-                .await?;
+                self.configure_presented_surface_if_needed(surface, Some(account))
+                    .await?;
                 return Err(error);
             }
             Err(error) => return Err(error),

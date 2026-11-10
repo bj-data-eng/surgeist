@@ -7,7 +7,7 @@ use crate::accounting::Account;
 #[cfg(test)]
 use crate::{
     BackendErrorCode, Error, Format, Options, Parameters, PhysicalSize, Result,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation,
+    RuntimeCapabilityUnavailable, RuntimeOperation,
     command::OffscreenBounds,
     geometry::physical_size,
     gpu_transaction::GpuOperationStage,
@@ -211,8 +211,7 @@ pub(super) async fn render_internal_vello_local_scene_to_offscreen_texture(
     let Some((backend, device_identity)) = context else {
         offscreen_local_scene_texture_descriptor_for_physical_size(physical_size, format)?;
         return Err(Error::runtime_unavailable(
-            RuntimeOperation::SurfaceRendering,
-            RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+            RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
             "offscreen Vello local scene rendering requires an available wgpu device context",
         ));
     };
