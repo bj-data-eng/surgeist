@@ -5,10 +5,10 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use super::Operations;
+use super::{ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
 use crate::{
-    Arguments, Callback, Completion, Error, Exception, ExceptionPhase, Primitive, Realm,
-    RealmIdentity, RealmKey, Root, RootIdentity, Scope, Value, ValueKind,
+    Arguments, Callback, Completion, Error, Exception, ExceptionPhase, Intrinsic, Primitive, Realm,
+    RealmIdentity, RealmKey, Root, RootIdentity, Scope, Value, ValueKind, WellKnownSymbol,
 };
 
 #[cfg(test)]
@@ -181,7 +181,7 @@ impl Roots {
 struct ContextEntry {
     identity: Weak<RealmIdentity>,
     context: v8::Global<v8::Context>,
-    set: v8::Global<v8::Function>,
+    intrinsics: v8::Global<v8::Object>,
 }
 
 pub(crate) struct Engine {
@@ -251,13 +251,13 @@ impl Engine {
         let pinned = std::pin::pin!(v8::HandleScope::new(&mut self.isolate));
         let scope = &mut pinned.init();
         let local = v8::Local::new(scope, &context.context);
-        let setter = v8::Local::new(scope, &context.set);
+        let intrinsics = v8::Local::new(scope, &context.intrinsics);
         let scope = &mut v8::ContextScope::new(scope, local);
         let mut entered = Entered {
             scope,
             roots: self.roots.clone(),
             realm: realm.0.key,
-            setter,
+            intrinsics,
         };
         let result = operation(&mut entered);
         entered.check_active()?;
@@ -305,7 +305,7 @@ impl super::Engine for Engine {
         let pinned = std::pin::pin!(v8::HandleScope::new(&mut self.isolate));
         let scope = &mut pinned.init();
         let context = v8::Context::new(scope, Default::default());
-        let setter = {
+        let intrinsics = {
             let scope = &mut v8::ContextScope::new(scope, context);
             let reflect_key = v8::String::new(scope, "Reflect").ok_or(Error::BackendUnavailable)?;
             let reflect = context
@@ -314,20 +314,38 @@ impl super::Engine for Engine {
                 .ok_or(Error::BackendUnavailable)?;
             let reflect = v8::Local::<v8::Object>::try_from(reflect)
                 .map_err(|_| Error::BackendUnavailable)?;
-            let set_key = v8::String::new(scope, "set").ok_or(Error::BackendUnavailable)?;
-            let setter = reflect
-                .get(scope, set_key.into())
+            let setter = pristine_method(scope, reflect, "set")?;
+            // Object::set_prototype swallows proxy exceptions in this SDK.
+            // The pristine Reflect method preserves both false and thrown values.
+            let set_prototype = pristine_method(scope, reflect, "setPrototypeOf")?;
+            let array = v8::Array::new(scope, 0);
+            let prototype = array
+                .get_prototype(scope)
                 .ok_or(Error::BackendUnavailable)?;
-            let setter = v8::Local::<v8::Function>::try_from(setter)
+            let prototype = v8::Local::<v8::Object>::try_from(prototype)
                 .map_err(|_| Error::BackendUnavailable)?;
-            v8::Global::new(scope, setter)
+            let array_values = pristine_method(scope, prototype, "values")?;
+            let template = v8::ObjectTemplate::new(scope);
+            if !template.set_internal_field_count(3) {
+                return Err(Error::BackendUnavailable);
+            }
+            let intrinsics = template
+                .new_instance(scope)
+                .ok_or(Error::BackendUnavailable)?;
+            if !intrinsics.set_internal_field(0, setter.into())
+                || !intrinsics.set_internal_field(1, array_values.into())
+                || !intrinsics.set_internal_field(2, set_prototype.into())
+            {
+                return Err(Error::BackendUnavailable);
+            }
+            v8::Global::new(scope, intrinsics)
         };
         self.contexts.insert(
             index,
             ContextEntry {
                 identity: Rc::downgrade(&realm.0),
                 context: v8::Global::new(scope, context),
-                set: setter,
+                intrinsics,
             },
         );
         self.next_realm = index;
@@ -391,7 +409,7 @@ struct Entered<'entry, 's, 'isolate> {
     scope: &'entry mut v8::PinScope<'s, 'isolate>,
     roots: Rc<Roots>,
     realm: RealmKey,
-    setter: v8::Local<'s, v8::Function>,
+    intrinsics: v8::Local<'s, v8::Object>,
 }
 
 impl Entered<'_, '_, '_> {
@@ -402,14 +420,14 @@ impl Entered<'_, '_, '_> {
             &mut v8::PinScope<'s, '_>,
             &Roots,
             RealmKey,
-            v8::Local<'s, v8::Function>,
+            v8::Local<'s, v8::Object>,
         ) -> Result<T, Error>,
     ) -> Result<T, Error> {
         self.check_active()?;
         let caught = std::pin::pin!(v8::TryCatch::new(self.scope));
         let caught = &mut caught.init();
-        let setter = v8::Local::new(caught, self.setter);
-        let result = operation(caught, &self.roots, self.realm, setter);
+        let intrinsics = v8::Local::new(caught, self.intrinsics);
+        let result = operation(caught, &self.roots, self.realm, intrinsics);
         self.roots.available()?;
         if caught.has_terminated() || !caught.can_continue() {
             return Err(Error::Terminated);
@@ -438,15 +456,18 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, _setter| {
-            let message = string(scope, message)?;
-            let exception = v8::Exception::type_error(scope, message);
-            roots.retain(scope, realm, exception)
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, _intrinsics| {
+                let message = string(scope, message)?;
+                let exception = v8::Exception::type_error(scope, message);
+                roots.retain(scope, realm, exception)
+            },
+        )
     }
 
     fn function(&mut self, callback: &Callback) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, setter| {
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, intrinsics| {
             let id = roots
                 .next_callback
                 .get()
@@ -468,7 +489,7 @@ impl Operations for Entered<'_, '_, '_> {
             let context = scope.get_current_context();
             if !data.set_internal_field(0, identity.into())
                 || !data.set_internal_field(1, context.into())
-                || !data.set_internal_field(2, setter.into())
+                || !data.set_internal_field(2, intrinsics.into())
             {
                 return Err(Error::BackendUnavailable);
             }
@@ -496,83 +517,101 @@ impl Operations for Entered<'_, '_, '_> {
     }
 
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Compile, |scope, _roots, _realm, _setter| {
-            let source = string(scope, source)?;
-            let script =
-                v8::Script::compile(scope, source, None).ok_or(Error::BackendUnavailable)?;
-            // Compilation is complete. Run catches are separated so callers can
-            // distinguish a syntax exception from an exception during execution.
-            Ok(v8::Global::new(scope, script))
-        })
+        self.attempt(
+            ExceptionPhase::Compile,
+            |scope, _roots, _realm, _intrinsics| {
+                let source = string(scope, source)?;
+                let script =
+                    v8::Script::compile(scope, source, None).ok_or(Error::BackendUnavailable)?;
+                // Compilation is complete. Run catches are separated so callers can
+                // distinguish a syntax exception from an exception during execution.
+                Ok(v8::Global::new(scope, script))
+            },
+        )
         .and_then(|script| {
-            self.attempt(ExceptionPhase::Evaluate, |scope, roots, realm, _setter| {
-                let script = v8::Local::new(scope, &script);
-                let value = script.run(scope).ok_or(Error::BackendUnavailable)?;
-                roots.retain(scope, realm, value)
-            })
+            self.attempt(
+                ExceptionPhase::Evaluate,
+                |scope, roots, realm, _intrinsics| {
+                    let script = v8::Local::new(scope, &script);
+                    let value = script.run(scope).ok_or(Error::BackendUnavailable)?;
+                    roots.retain(scope, realm, value)
+                },
+            )
         })
     }
 
     fn string(&mut self, units: &[u16]) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, _setter| {
-            let value = string(scope, units)?;
-            roots.retain(scope, realm, value.into())
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, _intrinsics| {
+                let value = string(scope, units)?;
+                roots.retain(scope, realm, value.into())
+            },
+        )
     }
 
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error> {
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, _setter| {
-            let value = match primitive {
-                Primitive::Undefined => v8::undefined(scope).into(),
-                Primitive::Null => v8::null(scope).into(),
-                Primitive::Boolean(value) => v8::Boolean::new(scope, value).into(),
-                Primitive::Number(value) => v8::Number::new(scope, value).into(),
-            };
-            roots.retain(scope, realm, value)
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, _intrinsics| {
+                let value = match primitive {
+                    Primitive::Undefined => v8::undefined(scope).into(),
+                    Primitive::Null => v8::null(scope).into(),
+                    Primitive::Boolean(value) => v8::Boolean::new(scope, value).into(),
+                    Primitive::Number(value) => v8::Number::new(scope, value).into(),
+                };
+                roots.retain(scope, realm, value)
+            },
+        )
     }
 
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            let value = roots.local(scope, value)?;
-            let kind = if value.is_undefined() {
-                ValueKind::Undefined
-            } else if value.is_null() {
-                ValueKind::Null
-            } else if value.is_boolean() {
-                ValueKind::Boolean
-            } else if value.is_number() {
-                ValueKind::Number
-            } else if value.is_big_int() {
-                ValueKind::BigInt
-            } else if value.is_string() {
-                ValueKind::String
-            } else if value.is_symbol() {
-                ValueKind::Symbol
-            } else if value.is_object() {
-                ValueKind::Object
-            } else {
-                return Err(Error::BackendUnavailable);
-            };
-            Ok(kind)
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let value = roots.local(scope, value)?;
+                let kind = if value.is_undefined() {
+                    ValueKind::Undefined
+                } else if value.is_null() {
+                    ValueKind::Null
+                } else if value.is_boolean() {
+                    ValueKind::Boolean
+                } else if value.is_number() {
+                    ValueKind::Number
+                } else if value.is_big_int() {
+                    ValueKind::BigInt
+                } else if value.is_string() {
+                    ValueKind::String
+                } else if value.is_symbol() {
+                    ValueKind::Symbol
+                } else if value.is_object() {
+                    ValueKind::Object
+                } else {
+                    return Err(Error::BackendUnavailable);
+                };
+                Ok(kind)
+            },
+        )
     }
 
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            // In the pinned SDK, Value::is_function delegates Value::IsFunction
-            // to V8's internal IsCallable (v8/src/api/api.cc), not a JSFunction
-            // shape check. It includes classes and revoked callable proxies.
-            Ok(roots.local(scope, value)?.is_function())
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                // In the pinned SDK, Value::is_function delegates Value::IsFunction
+                // to V8's internal IsCallable (v8/src/api/api.cc), not a JSFunction
+                // shape check. It includes classes and revoked callable proxies.
+                Ok(roots.local(scope, value)?.is_function())
+            },
+        )
     }
 
     fn global(&mut self) -> Result<Root, Error> {
         self.attempt(
             ExceptionPhase::PropertyRead,
-            |scope, roots, realm, _setter| {
+            |scope, roots, realm, _intrinsics| {
                 let context = scope.get_current_context();
                 let value = context.global(scope);
                 roots.retain(scope, realm, value.into())
@@ -580,15 +619,15 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn get(&mut self, object: &Root, name: &[u16]) -> Result<Root, Error> {
+    fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error> {
         self.validate_root(object)?;
         self.attempt(
             ExceptionPhase::PropertyRead,
-            |scope, roots, realm, _setter| {
+            |scope, roots, realm, _intrinsics| {
                 let value = roots.local(scope, object)?;
                 let object =
                     v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedObject)?;
-                let name = string(scope, name)?;
+                let name = property_key(scope, roots, key)?;
                 let value = object
                     .get(scope, name.into())
                     .ok_or(Error::BackendUnavailable)?;
@@ -597,20 +636,21 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn set(&mut self, object: &Root, name: &[u16], value: &Root) -> Result<(), Error> {
+    fn set(&mut self, object: &Root, key: PropertyKey<'_>, value: &Root) -> Result<(), Error> {
         self.validate_root(object)?;
         self.validate_root(value)?;
         self.attempt(
             ExceptionPhase::PropertyWrite,
-            |scope, roots, _realm, setter| {
+            |scope, roots, _realm, intrinsics| {
                 let object = roots.local(scope, object)?;
                 let object =
                     v8::Local::<v8::Object>::try_from(object).map_err(|_| Error::ExpectedObject)?;
-                let name = string(scope, name)?;
+                let name = property_key(scope, roots, key)?;
                 let value = roots.local(scope, value)?;
                 // Object::set returns true even when a nonwritable property silently
                 // rejects the value. Retain the pristine intrinsic at realm creation
                 // so its real Boolean result cannot be replaced by guest globals.
+                let setter = captured_method(scope, intrinsics, 0)?;
                 let receiver = v8::undefined(scope);
                 let accepted = setter
                     .call(scope, receiver.into(), &[object.into(), name.into(), value])
@@ -620,6 +660,146 @@ impl Operations for Entered<'_, '_, '_> {
                 } else {
                     Err(Error::PropertyRejected)
                 }
+            },
+        )
+    }
+
+    fn define_property(
+        &mut self,
+        object: &Root,
+        key: PropertyKey<'_>,
+        descriptor: PropertyDescriptor<'_>,
+    ) -> Result<(), Error> {
+        self.validate_root(object)?;
+        self.attempt(
+            ExceptionPhase::DefineProperty,
+            |scope, roots, _realm, _intrinsics| {
+                let object = v8::Local::<v8::Object>::try_from(roots.local(scope, object)?)
+                    .map_err(|_| Error::ExpectedObject)?;
+                let key = property_key(scope, roots, key)?;
+                let (mut descriptor, enumerable, configurable) = match descriptor {
+                    PropertyDescriptor::Data {
+                        value,
+                        writable,
+                        enumerable,
+                        configurable,
+                    } => (
+                        v8::PropertyDescriptor::new_from_value_writable(
+                            roots.local(scope, value)?,
+                            writable,
+                        ),
+                        enumerable,
+                        configurable,
+                    ),
+                    PropertyDescriptor::Accessor {
+                        get,
+                        set,
+                        enumerable,
+                        configurable,
+                    } => {
+                        let get = accessor(scope, roots, get)?;
+                        let set = accessor(scope, roots, set)?;
+                        (
+                            v8::PropertyDescriptor::new_from_get_set(get, set),
+                            enumerable,
+                            configurable,
+                        )
+                    }
+                };
+                descriptor.set_enumerable(enumerable);
+                descriptor.set_configurable(configurable);
+                match object.define_property(scope, key, &descriptor) {
+                    Some(true) => Ok(()),
+                    Some(false) => Err(Error::PropertyRejected),
+                    None => Err(Error::BackendUnavailable),
+                }
+            },
+        )
+    }
+
+    fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, _intrinsics| {
+                let prototype = prototype_value(scope, roots, prototype)?;
+                let object = v8::Object::with_prototype_and_properties(scope, prototype, &[], &[]);
+                roots.retain(scope, realm, object.into())
+            },
+        )
+    }
+
+    fn set_prototype(
+        &mut self,
+        object: &Root,
+        prototype: ObjectPrototype<'_>,
+    ) -> Result<(), Error> {
+        self.validate_root(object)?;
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, _realm, intrinsics| {
+                let object = v8::Local::<v8::Object>::try_from(roots.local(scope, object)?)
+                    .map_err(|_| Error::ExpectedObject)?;
+                let prototype = prototype_value(scope, roots, prototype)?;
+                let setter = captured_method(scope, intrinsics, 2)?;
+                let receiver = v8::undefined(scope);
+                let accepted = setter
+                    .call(scope, receiver.into(), &[object.into(), prototype])
+                    .ok_or(Error::BackendUnavailable)?;
+                roots.available()?;
+                if accepted.is_true() {
+                    Ok(())
+                } else {
+                    Err(Error::PropertyRejected)
+                }
+            },
+        )
+    }
+
+    fn array(&mut self, values: &[Root]) -> Result<Root, Error> {
+        self.check_active()?;
+        super::validate_array_length(values.len())?;
+        for value in values {
+            self.validate_root(value)?;
+        }
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, _intrinsics| {
+                let mut elements = Vec::new();
+                elements
+                    .try_reserve_exact(values.len())
+                    .map_err(|_| Error::Allocation)?;
+                for value in values {
+                    elements.push(roots.local(scope, value)?);
+                }
+                let array = v8::Array::new_with_elements(scope, &elements);
+                roots.retain(scope, realm, array.into())
+            },
+        )
+    }
+
+    fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, realm, _intrinsics| {
+                let symbol = match symbol {
+                    WellKnownSymbol::Iterator => v8::Symbol::get_iterator(scope),
+                    WellKnownSymbol::ToStringTag => v8::Symbol::get_to_string_tag(scope),
+                    WellKnownSymbol::Unscopables => v8::Symbol::get_unscopables(scope),
+                };
+                roots.retain(scope, realm, symbol.into())
+            },
+        )
+    }
+
+    fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, intrinsics| {
+                let index = match intrinsic {
+                    Intrinsic::ArrayValues => 1,
+                };
+                let method = captured_method(scope, intrinsics, index)?;
+                roots.retain(scope, realm, method.into())
             },
         )
     }
@@ -639,66 +819,79 @@ impl Operations for Entered<'_, '_, '_> {
         for argument in arguments {
             self.validate_root(argument)?;
         }
-        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, _setter| {
-            let function = roots.local(scope, function)?;
-            let function = v8::Local::<v8::Function>::try_from(function)
-                .map_err(|_| Error::ExpectedFunction)?;
-            let receiver = roots.local(scope, receiver)?;
-            let mut values = Vec::new();
-            values
-                .try_reserve_exact(arguments.len())
-                .map_err(|_| Error::Allocation)?;
-            for argument in arguments {
-                values.push(roots.local(scope, argument)?);
-            }
-            let value = function
-                .call(scope, receiver, &values)
-                .ok_or(Error::BackendUnavailable)?;
-            roots.retain(scope, realm, value)
-        })
+        self.attempt(
+            ExceptionPhase::Invoke,
+            |scope, roots, realm, _intrinsics| {
+                let function = roots.local(scope, function)?;
+                let function = v8::Local::<v8::Function>::try_from(function)
+                    .map_err(|_| Error::ExpectedFunction)?;
+                let receiver = roots.local(scope, receiver)?;
+                let mut values = Vec::new();
+                values
+                    .try_reserve_exact(arguments.len())
+                    .map_err(|_| Error::Allocation)?;
+                for argument in arguments {
+                    values.push(roots.local(scope, argument)?);
+                }
+                let value = function
+                    .call(scope, receiver, &values)
+                    .ok_or(Error::BackendUnavailable)?;
+                roots.retain(scope, realm, value)
+            },
+        )
     }
 
     fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            let value = roots.local(scope, value)?;
-            let string = value.to_string(scope).ok_or(Error::BackendUnavailable)?;
-            roots.available()?;
-            let mut units = Vec::new();
-            units
-                .try_reserve_exact(string.length())
-                .map_err(|_| Error::Allocation)?;
-            units.resize(string.length(), 0);
-            string.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
-            Ok(units)
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let value = roots.local(scope, value)?;
+                let string = value.to_string(scope).ok_or(Error::BackendUnavailable)?;
+                roots.available()?;
+                let mut units = Vec::new();
+                units
+                    .try_reserve_exact(string.length())
+                    .map_err(|_| Error::Allocation)?;
+                units.resize(string.length(), 0);
+                string.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
+                Ok(units)
+            },
+        )
     }
 
     fn to_boolean(&mut self, value: &Root) -> Result<bool, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            Ok(roots.local(scope, value)?.boolean_value(scope))
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| Ok(roots.local(scope, value)?.boolean_value(scope)),
+        )
     }
 
     fn to_number(&mut self, value: &Root) -> Result<f64, Error> {
         self.validate_root(value)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            roots
-                .local(scope, value)?
-                .number_value(scope)
-                .ok_or(Error::BackendUnavailable)
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                roots
+                    .local(scope, value)?
+                    .number_value(scope)
+                    .ok_or(Error::BackendUnavailable)
+            },
+        )
     }
 
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error> {
         self.validate_root(left)?;
         self.validate_root(right)?;
-        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
-            let left = roots.local(scope, left)?;
-            let right = roots.local(scope, right)?;
-            Ok(left.strict_equals(right))
-        })
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let left = roots.local(scope, left)?;
+                let right = roots.local(scope, right)?;
+                Ok(left.strict_equals(right))
+            },
+        )
     }
 }
 
@@ -775,12 +968,13 @@ fn invoke_callback<'s>(
         .ok_or(Error::BackendUnavailable)?;
     let context =
         v8::Local::<v8::Context>::try_from(context).map_err(|_| Error::BackendUnavailable)?;
-    let setter = data
+    let intrinsics = data
         .get_internal_field(scope, 2)
         .ok_or(Error::BackendUnavailable)?;
-    let setter = v8::Local::<v8::Value>::try_from(setter).map_err(|_| Error::BackendUnavailable)?;
-    let setter =
-        v8::Local::<v8::Function>::try_from(setter).map_err(|_| Error::BackendUnavailable)?;
+    let intrinsics =
+        v8::Local::<v8::Value>::try_from(intrinsics).map_err(|_| Error::BackendUnavailable)?;
+    let intrinsics =
+        v8::Local::<v8::Object>::try_from(intrinsics).map_err(|_| Error::BackendUnavailable)?;
     // Only a Rust Weak clone leaves the borrow. Upgrading, user invocation,
     // SDK calls and finalizer-driven capture drops happen after it ends.
     let lease = roots
@@ -799,7 +993,7 @@ fn invoke_callback<'s>(
         scope,
         roots: roots.clone(),
         realm: lease.realm,
-        setter,
+        intrinsics,
     };
     entered.check_active()?;
     let receiver = Value {
@@ -845,6 +1039,83 @@ fn invoke_callback<'s>(
         }
         OwnedCompletion::Throw(root) => {
             Ok(CallbackOutcome::Throw(roots.local(entered.scope, &root)?))
+        }
+    }
+}
+
+fn pristine_method<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    object: v8::Local<v8::Object>,
+    name: &str,
+) -> Result<v8::Local<'s, v8::Function>, Error> {
+    let name = v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
+    let method = object
+        .get(scope, name.into())
+        .ok_or(Error::BackendUnavailable)?;
+    v8::Local::<v8::Function>::try_from(method).map_err(|_| Error::BackendUnavailable)
+}
+
+fn captured_method<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    intrinsics: v8::Local<v8::Object>,
+    index: usize,
+) -> Result<v8::Local<'s, v8::Function>, Error> {
+    let method = intrinsics
+        .get_internal_field(scope, index)
+        .ok_or(Error::BackendUnavailable)?;
+    let method = v8::Local::<v8::Value>::try_from(method).map_err(|_| Error::BackendUnavailable)?;
+    v8::Local::<v8::Function>::try_from(method).map_err(|_| Error::BackendUnavailable)
+}
+
+fn property_key<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    roots: &Roots,
+    key: PropertyKey<'_>,
+) -> Result<v8::Local<'s, v8::Name>, Error> {
+    match key {
+        PropertyKey::String(units) => Ok(string(scope, units)?.into()),
+        PropertyKey::Value(root) => {
+            // Owner validation precedes handle opening; this safe predicate
+            // never performs ToPropertyKey or runs guest conversion hooks.
+            let value = roots.local(scope, root)?;
+            v8::Local::<v8::Name>::try_from(value).map_err(|_| Error::ExpectedPropertyKey)
+        }
+    }
+}
+
+fn accessor<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    roots: &Roots,
+    value: Option<&Root>,
+) -> Result<v8::Local<'s, v8::Value>, Error> {
+    let value = match value {
+        Some(root) => roots.local(scope, root)?,
+        None => v8::undefined(scope).into(),
+    };
+    if value.is_undefined() || value.is_function() {
+        Ok(value)
+    } else {
+        Err(Error::ExpectedAccessor)
+    }
+}
+
+fn prototype_value<'s>(
+    scope: &v8::PinScope<'s, '_>,
+    roots: &Roots,
+    prototype: ObjectPrototype<'_>,
+) -> Result<v8::Local<'s, v8::Value>, Error> {
+    match prototype {
+        ObjectPrototype::Null => Ok(v8::null(scope).into()),
+        ObjectPrototype::Default => v8::Object::new(scope)
+            .get_prototype(scope)
+            .ok_or(Error::BackendUnavailable),
+        ObjectPrototype::Object(root) => {
+            let value = roots.local(scope, root)?;
+            if value.is_object() {
+                Ok(value)
+            } else {
+                Err(Error::ExpectedObject)
+            }
         }
     }
 }

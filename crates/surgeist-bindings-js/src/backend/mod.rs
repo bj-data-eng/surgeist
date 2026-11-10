@@ -1,6 +1,46 @@
 pub(crate) mod v8;
 
-use crate::{Callback, Error, Primitive, Realm, Root, ValueKind};
+use crate::{Callback, Error, Intrinsic, Primitive, Realm, Root, ValueKind, WellKnownSymbol};
+
+#[derive(Clone, Copy)]
+pub(crate) enum PropertyKey<'a> {
+    String(&'a [u16]),
+    Value(&'a Root),
+}
+
+pub(crate) enum PropertyDescriptor<'a> {
+    Data {
+        value: &'a Root,
+        writable: bool,
+        enumerable: bool,
+        configurable: bool,
+    },
+    Accessor {
+        get: Option<&'a Root>,
+        set: Option<&'a Root>,
+        enumerable: bool,
+        configurable: bool,
+    },
+}
+
+pub(crate) enum ObjectPrototype<'a> {
+    Default,
+    Null,
+    Object(&'a Root),
+}
+
+// Embedding policy for the pinned backend, not the ECMAScript array limit.
+// fixed-array-base.h permits 16 Mi elements in its lower-limits SDK build and
+// 128 Mi otherwise. The minimum is safe for every supported pinned build mode.
+const MAX_ARRAY_ELEMENTS: usize = 16 * 1024 * 1024;
+
+pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
+    if length > MAX_ARRAY_ELEMENTS {
+        Err(Error::ArrayTooLong)
+    } else {
+        Ok(())
+    }
+}
 
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
@@ -28,8 +68,20 @@ pub(crate) trait Operations {
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
     fn global(&mut self) -> Result<Root, Error>;
-    fn get(&mut self, object: &Root, name: &[u16]) -> Result<Root, Error>;
-    fn set(&mut self, object: &Root, name: &[u16], value: &Root) -> Result<(), Error>;
+    fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error>;
+    fn set(&mut self, object: &Root, key: PropertyKey<'_>, value: &Root) -> Result<(), Error>;
+    fn define_property(
+        &mut self,
+        object: &Root,
+        key: PropertyKey<'_>,
+        descriptor: PropertyDescriptor<'_>,
+    ) -> Result<(), Error>;
+    fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
+    fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)
+    -> Result<(), Error>;
+    fn array(&mut self, values: &[Root]) -> Result<Root, Error>;
+    fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Root, Error>;
+    fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
     fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
     -> Result<Root, Error>;
     fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error>;

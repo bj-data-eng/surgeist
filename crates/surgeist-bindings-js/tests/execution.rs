@@ -1,5 +1,8 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use surgeist_bindings_js::{
+    Intrinsic, ObjectPrototype, PropertyDescriptor, PropertyKey, WellKnownSymbol,
+};
 
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode,
@@ -54,10 +57,10 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
         let root = scope.import(&object)?;
         let current = scope.evaluate(&units("retained.count++; retained"))?;
         assert!(scope.strict_equals(&root, &current)?);
-        let count = scope.get(&root, &units("count"))?;
+        let count = scope.get(&root, PropertyKey::String(&units("count")))?;
         assert_eq!(scope.to_utf16(&count)?, units("2"));
         let global = scope.global()?;
-        scope.set(&global, &units("fromRust"), &root)?;
+        scope.set(&global, PropertyKey::String(&units("fromRust")), &root)?;
         Ok::<_, Error>(())
     })??;
     assert_eq!(
@@ -72,7 +75,7 @@ fn realm_and_root_contracts(process: &mut Process) -> Result<(), Error> {
     assert_eq!(evaluate(&mut execution, &b, "name")?, units("B"));
     execution.in_realm(&b, |scope| {
         let object = scope.import(&object)?;
-        let count = scope.get(&object, &units("count"))?;
+        let count = scope.get(&object, PropertyKey::String(&units("count")))?;
         assert_eq!(scope.to_utf16(&count)?, units("2"));
         Ok::<_, Error>(())
     })??;
@@ -88,8 +91,8 @@ fn utf16_is_code_unit_exact(process: &mut Process) -> Result<(), Error> {
         assert_eq!(scope.to_utf16(&value)?, original);
         let global = scope.global()?;
         let name = [0xd800, 0, 0x70];
-        scope.set(&global, &name, &value)?;
-        let read = scope.get(&global, &name)?;
+        scope.set(&global, PropertyKey::String(&name), &value)?;
+        let read = scope.get(&global, PropertyKey::String(&name))?;
         assert_eq!(scope.to_utf16(&read)?, original);
         let source = [0x27, 0xd800, 0x27];
         let value = scope.evaluate(&source)?;
@@ -152,7 +155,7 @@ fn properties_and_calls_refuse_invalid_values(process: &mut Process) -> Result<(
     execution.in_realm(&realm, |scope| {
         let primitive = scope.evaluate(&units("3"))?;
         assert!(matches!(
-            scope.get(&primitive, &units("x")),
+            scope.get(&primitive, PropertyKey::String(&units("x"))),
             Err(Error::ExpectedObject)
         ));
         assert!(matches!(
@@ -162,18 +165,18 @@ fn properties_and_calls_refuse_invalid_values(process: &mut Process) -> Result<(
         let object = scope.evaluate(&units("Object.freeze({x: 1})"))?;
         scope.evaluate(&units("Reflect.set = () => true"))?;
         assert!(matches!(
-            scope.set(&object, &units("x"), &primitive),
+            scope.set(&object, PropertyKey::String(&units("x")), &primitive),
             Err(Error::PropertyRejected)
         ));
         let getter = scope.evaluate(&units("({get x() { throw 17 }})"))?;
-        match scope.get(&getter, &units("x")) {
+        match scope.get(&getter, PropertyKey::String(&units("x"))) {
             Err(Error::Exception(exception)) => {
                 assert_eq!(exception.phase(), ExceptionPhase::PropertyRead)
             }
             _ => return Err(Error::BackendUnavailable),
         }
         let setter = scope.evaluate(&units("({set x(value) { throw value }})"))?;
-        match scope.set(&setter, &units("x"), &primitive) {
+        match scope.set(&setter, PropertyKey::String(&units("x")), &primitive) {
             Err(Error::Exception(exception)) => {
                 assert_eq!(exception.phase(), ExceptionPhase::PropertyWrite)
             }
@@ -265,7 +268,7 @@ fn web_idl_integer_conversion_preserves_coercion_and_exact_modulo(
                 Err(Error::Exception(exception)) => {
                     assert_eq!(exception.phase(), ExceptionPhase::Coerce);
                     let thrown = scope.import(exception.value())?;
-                    let name = scope.get(&thrown, &units("name"))?;
+                    let name = scope.get(&thrown, PropertyKey::String(&units("name")))?;
                     assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
                 }
                 _ => return Err(Error::BackendUnavailable),
@@ -510,7 +513,7 @@ fn web_idl_primitive_coercion_runs_once_and_preserves_original_throws(
                 };
                 assert_eq!(exception.phase(), ExceptionPhase::Coerce);
                 let thrown = scope.import(exception.value())?;
-                let name = scope.get(&thrown, &units("name"))?;
+                let name = scope.get(&thrown, PropertyKey::String(&units("name")))?;
                 assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
             }
         }
@@ -528,7 +531,7 @@ fn install(
     execution.in_realm(realm, |scope| {
         let function = scope.function(callback)?;
         let global = scope.global()?;
-        scope.set(&global, &units(name), &function)
+        scope.set(&global, PropertyKey::String(&units(name)), &function)
     })?
 }
 
@@ -553,7 +556,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
         assert!(!arguments.is_empty());
         let first = arguments.get(0).ok_or(Error::BackendUnavailable)?;
         assert_eq!(scope.to_utf16(first)?, units("undefined"));
-        let receiver = scope.get(arguments.receiver(), &units("tag"))?;
+        let receiver = scope.get(arguments.receiver(), PropertyKey::String(&units("tag")))?;
         assert_eq!(scope.to_utf16(&receiver)?, units("receiver"));
         let (_, mut values) = arguments.into_parts();
         Ok(Completion::Return(
@@ -625,7 +628,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
     {
         let (receiver_function, creation_global) = execution.in_realm(&a, |scope| {
             let global = scope.global()?;
-            let function = scope.get(&global, &units("returnsReceiver"))?;
+            let function = scope.get(&global, PropertyKey::String(&units("returnsReceiver")))?;
             Ok::<_, Error>((scope.retain(&function), scope.retain(&global)))
         })??;
         execution.in_realm(&b, |scope| {
@@ -659,7 +662,7 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
         // setter intrinsic, including after the public creation-realm expires.
         let global = scope.global()?;
         let value = scope.string(&units("set through A"))?;
-        scope.set(&global, &units("fromCallback"), &value)?;
+        scope.set(&global, PropertyKey::String(&units("fromCallback")), &value)?;
         Ok(Completion::Return(
             scope.evaluate(&units("name + ':' + fromCallback"))?,
         ))
@@ -669,13 +672,13 @@ fn native_callbacks_preserve_arguments_completions_and_creation_realm(
         let global = scope.global()?;
         // Deliberately form function -> data -> context -> global -> function.
         // Only guest heap edges may sustain this otherwise unreachable cycle.
-        scope.set(&global, &units("ownedInA"), &function)?;
+        scope.set(&global, PropertyKey::String(&units("ownedInA")), &function)?;
         Ok::<_, Error>(scope.retain(&function))
     })??;
     execution.in_realm(&b, |scope| {
         let function = scope.import(&function)?;
         let global = scope.global()?;
-        scope.set(&global, &units("fromA"), &function)
+        scope.set(&global, PropertyKey::String(&units("fromA")), &function)
     })??;
     evaluate(
         &mut execution,
@@ -749,7 +752,7 @@ fn native_callbacks_recurse_and_release_self_cleared_roots(
     let root = execution.in_realm(&realm, |scope| {
         let function = scope.function(&callback)?;
         let global = scope.global()?;
-        scope.set(&global, &units("recursive"), &function)?;
+        scope.set(&global, PropertyKey::String(&units("recursive")), &function)?;
         Ok::<_, Error>(scope.retain(&function))
     })??;
     custody.replace(Some(root));
@@ -1110,7 +1113,7 @@ fn callable_classification_includes_classes_and_revoked_callable_proxies(
             };
             assert_eq!(exception.phase(), ExceptionPhase::Invoke);
             let thrown = scope.import(exception.value())?;
-            let name = scope.get(&thrown, &units("name"))?;
+            let name = scope.get(&thrown, PropertyKey::String(&units("name")))?;
             assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
             // Revocation and an unsuccessful call do not remove [[Call]].
             assert!(scope.is_callable(&function)?);
@@ -1216,7 +1219,7 @@ fn scalar_operations_preserve_the_first_host_failure() -> Result<(), Error> {
         &Callback::new(move |scope, arguments| {
             let value = arguments.get(0).ok_or(Error::BackendUnavailable)?;
             let global = scope.global()?;
-            let fail = scope.get(&global, &units("failScalar"))?;
+            let fail = scope.get(&global, PropertyKey::String(&units("failScalar")))?;
             let receiver = scope.primitive(Primitive::Undefined)?;
             assert!(matches!(
                 scope.call(&fail, &receiver, &[]),
@@ -1239,6 +1242,315 @@ fn scalar_operations_preserve_the_first_host_failure() -> Result<(), Error> {
         Err(Error::Allocation)
     ));
     assert!(checked.get());
+    Ok(())
+}
+
+fn property_keys_are_exact_and_never_coerce(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let object = scope.object(ObjectPrototype::Null)?;
+        let name = [0xd800, 0, 0xdc00];
+        let key = scope.string(&name)?;
+        let value = scope.string(&units("value"))?;
+        scope.set(&object, PropertyKey::String(&name), &value)?;
+        let read = scope.get(&object, PropertyKey::Value(&key))?;
+        assert!(scope.strict_equals(&read, &value)?);
+        let other = scope.string(&units("replacement"))?;
+        scope.set(&object, PropertyKey::Value(&key), &other)?;
+        let read = scope.get(&object, PropertyKey::String(&name))?;
+        assert!(scope.strict_equals(&read, &other)?);
+        for (symbol, source) in [(WellKnownSymbol::Iterator, "Symbol.iterator"), (WellKnownSymbol::ToStringTag, "Symbol.toStringTag"), (WellKnownSymbol::Unscopables, "Symbol.unscopables")] {
+            let symbol = scope.well_known_symbol(symbol)?;
+            let original = scope.evaluate(&units(source))?;
+            assert!(scope.strict_equals(&symbol, &original)?);
+            scope.set(&object, PropertyKey::Value(&symbol), &value)?;
+            let read = scope.get(&object, PropertyKey::Value(&original))?;
+            assert!(scope.strict_equals(&read, &value)?);
+        }
+        let tag = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
+        scope.define_property(&object, PropertyKey::Value(&tag), PropertyDescriptor::Data { value: &value, writable: false, enumerable: false, configurable: true })?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("symbolKeyed")), &object)?;
+        let exact = scope.evaluate(&units("Object.prototype.toString.call(symbolKeyed) === '[object value]' && Object.getOwnPropertyDescriptor(symbolKeyed, Symbol.toStringTag).writable === false"))?;
+        assert!(scope.boolean(&exact)?);
+        // An invalid key must not invoke either ToPropertyKey hooks or target
+        // traps. Refusal is a typed Rust result, with no guest TypeError.
+        let target = scope.evaluate(&units("globalThis.keyEffects = 0; new Proxy({}, {get() {keyEffects++; return 1}, set() {keyEffects++; return true}, defineProperty() {keyEffects++; return true}})"))?;
+        for source in ["0", "null", "undefined", "true", "1n", "({[Symbol.toPrimitive]() { keyEffects++; throw 7; }})"] {
+            let key = scope.evaluate(&units(source))?;
+            assert!(matches!(scope.get(&target, PropertyKey::Value(&key)), Err(Error::ExpectedPropertyKey)));
+            assert!(matches!(scope.set(&target, PropertyKey::Value(&key), &value), Err(Error::ExpectedPropertyKey)));
+            assert!(matches!(scope.define_property(&target, PropertyKey::Value(&key), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true }), Err(Error::ExpectedPropertyKey)));
+        }
+        let effects = scope.evaluate(&units("keyEffects"))?;
+        assert_eq!(scope.to_utf16(&effects)?, units("0"));
+        let original = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
+        scope.evaluate(&units("globalThis.Symbol = {iterator: 'poisoned'}"))?;
+        let actual = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
+        assert!(scope.strict_equals(&actual, &original)?);
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn descriptors_preserve_attributes_reentry_and_original_throws(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let object = scope.object(ObjectPrototype::Default)?;
+        let value = scope.object(ObjectPrototype::Null)?;
+        scope.define_property(&object, PropertyKey::String(&units("data")), PropertyDescriptor::Data { value: &value, writable: false, enumerable: false, configurable: false })?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("described")), &object)?;
+        scope.set(&global, PropertyKey::String(&units("describedValue")), &value)?;
+        let exact = scope.evaluate(&units("(() => { const d = Object.getOwnPropertyDescriptor(described, 'data'); return d.value === describedValue && d.writable === false && d.enumerable === false && d.configurable === false && !('get' in d) && !('set' in d); })()"))?;
+        assert!(scope.boolean(&exact)?);
+        assert!(matches!(scope.define_property(&object, PropertyKey::String(&units("data")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: false, configurable: false }), Err(Error::PropertyRejected)));
+        scope.define_property(&object, PropertyKey::String(&units("mutable")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true })?;
+        let exact = scope.evaluate(&units("(() => { const d = Object.getOwnPropertyDescriptor(described, 'mutable'); return d.value === describedValue && d.writable && d.enumerable && d.configurable && !('get' in d) && !('set' in d); })()"))?;
+        assert!(scope.boolean(&exact)?);
+        let get = scope.function(&Callback::new(|scope, arguments| {
+            Ok(Completion::Return(scope.get(arguments.receiver(), PropertyKey::String(&units("stored")))?))
+        }))?;
+        let set = scope.function(&Callback::new(|scope, arguments| {
+            scope.set(arguments.receiver(), PropertyKey::String(&units("stored")), arguments.get(0).ok_or(Error::BackendUnavailable)?)?;
+            Ok(Completion::Undefined)
+        }))?;
+        scope.define_property(&object, PropertyKey::String(&units("accessor")), PropertyDescriptor::Accessor { get: Some(&get), set: Some(&set), enumerable: true, configurable: true })?;
+        scope.set(&object, PropertyKey::String(&units("accessor")), &value)?;
+        let read = scope.get(&object, PropertyKey::String(&units("accessor")))?;
+        assert!(scope.strict_equals(&read, &value)?);
+        scope.set(&global, PropertyKey::String(&units("descriptorGet")), &get)?;
+        scope.set(&global, PropertyKey::String(&units("descriptorSet")), &set)?;
+        let exact = scope.evaluate(&units("(() => { const d = Object.getOwnPropertyDescriptor(described, 'accessor'); return d.get === descriptorGet && d.set === descriptorSet && d.enumerable && d.configurable && !('value' in d) && !('writable' in d); })()"))?;
+        assert!(scope.boolean(&exact)?);
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        scope.define_property(&object, PropertyKey::String(&units("empty")), PropertyDescriptor::Accessor { get: None, set: Some(&undefined), enumerable: false, configurable: true })?;
+        let exact = scope.evaluate(&units("(() => { const d = Object.getOwnPropertyDescriptor(described, 'empty'); return d.get === undefined && d.set === undefined && !d.enumerable && d.configurable; })()"))?;
+        assert!(scope.boolean(&exact)?);
+        let callable = scope.evaluate(&units("new Proxy(() => 1, {})"))?;
+        scope.define_property(&object, PropertyKey::String(&units("callable")), PropertyDescriptor::Accessor { get: Some(&callable), set: None, enumerable: false, configurable: true })?;
+        for source in ["null", "0", "'not callable'", "({get call() {throw 1}})"] {
+            let invalid = scope.evaluate(&units(source))?;
+            for descriptor in [PropertyDescriptor::Accessor { get: Some(&invalid), set: None, enumerable: true, configurable: true }, PropertyDescriptor::Accessor { get: None, set: Some(&invalid), enumerable: true, configurable: true }] {
+                assert!(matches!(scope.define_property(&object, PropertyKey::String(&units("invalid")), descriptor), Err(Error::ExpectedAccessor)));
+            }
+        }
+        let rejects = scope.evaluate(&units("new Proxy({}, {defineProperty() { return false; }})"))?;
+        assert!(matches!(scope.define_property(&rejects, PropertyKey::String(&units("x")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true }), Err(Error::PropertyRejected)));
+        let thrown = scope.evaluate(&units("globalThis.descriptorThrown = {}; new Proxy({}, {defineProperty() { throw descriptorThrown; }})"))?;
+        let exception = match scope.define_property(&thrown, PropertyKey::String(&units("x")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true }) { Err(Error::Exception(exception)) => exception, _ => return Err(Error::BackendUnavailable) };
+        assert_eq!(exception.phase(), ExceptionPhase::DefineProperty);
+        let actual = scope.import(exception.value())?;
+        let original = scope.evaluate(&units("descriptorThrown"))?;
+        assert!(scope.strict_equals(&actual, &original)?);
+        // Reenter these same public primitives from a proxy's define trap.
+        let reenter = scope.function(&Callback::new(|scope, _| {
+            let object = scope.object(ObjectPrototype::Null)?;
+            let value = scope.string(&units("nested"))?;
+            scope.define_property(&object, PropertyKey::String(&units("x")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true })?;
+            Ok(Completion::Return(scope.get(&object, PropertyKey::String(&units("x")))?))
+        }))?;
+        scope.set(&global, PropertyKey::String(&units("reenterDefine")), &reenter)?;
+        let proxy = scope.evaluate(&units("globalThis.definitionReentry = ''; new Proxy({}, {defineProperty(target, key, descriptor) { definitionReentry = reenterDefine(); return Reflect.defineProperty(target, key, descriptor); }})"))?;
+        scope.define_property(&proxy, PropertyKey::String(&units("x")), PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true })?;
+        let observed = scope.evaluate(&units("definitionReentry"))?;
+        assert_eq!(scope.to_utf16(&observed)?, units("nested"));
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn objects_prototypes_and_dense_arrays_preserve_identity(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let default = scope.object(ObjectPrototype::Default)?;
+        let null = scope.object(ObjectPrototype::Null)?;
+        let custom = scope.object(ObjectPrototype::Object(&null))?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("defaultObject")), &default)?;
+        scope.set(&global, PropertyKey::String(&units("nullObject")), &null)?;
+        scope.set(&global, PropertyKey::String(&units("customObject")), &custom)?;
+        let correct = scope.evaluate(&units("Object.getPrototypeOf(defaultObject) === Object.prototype && Object.getPrototypeOf(nullObject) === null && Object.getPrototypeOf(customObject) === nullObject"))?;
+        assert!(scope.boolean(&correct)?);
+        scope.set_prototype(&custom, ObjectPrototype::Default)?;
+        scope.set_prototype(&default, ObjectPrototype::Null)?;
+        let correct = scope.evaluate(&units("Object.getPrototypeOf(defaultObject) === null && Object.getPrototypeOf(customObject) === Object.prototype"))?;
+        assert!(scope.boolean(&correct)?);
+        scope.set_prototype(&custom, ObjectPrototype::Object(&default))?;
+        assert!(matches!(scope.set_prototype(&default, ObjectPrototype::Object(&custom)), Err(Error::PropertyRejected)));
+        let primitive = scope.primitive(Primitive::Number(1.0))?;
+        assert!(matches!(scope.object(ObjectPrototype::Object(&primitive)), Err(Error::ExpectedObject)));
+        assert!(matches!(scope.set_prototype(&primitive, ObjectPrototype::Null), Err(Error::ExpectedObject)));
+        assert!(matches!(scope.set_prototype(&custom, ObjectPrototype::Object(&primitive)), Err(Error::ExpectedObject)));
+        let frozen = scope.evaluate(&units("Object.preventExtensions({})"))?;
+        assert!(matches!(scope.set_prototype(&frozen, ObjectPrototype::Null), Err(Error::PropertyRejected)));
+        let rejects = scope.evaluate(&units("new Proxy({}, {setPrototypeOf() {return false}})"))?;
+        assert!(matches!(scope.set_prototype(&rejects, ObjectPrototype::Null), Err(Error::PropertyRejected)));
+        let throwing = scope.evaluate(&units("globalThis.prototypeThrown = {}; new Proxy({}, {setPrototypeOf() {throw prototypeThrown}})"))?;
+        let exception = match scope.set_prototype(&throwing, ObjectPrototype::Null) { Err(Error::Exception(exception)) => exception, _ => return Err(Error::BackendUnavailable) };
+        assert_eq!(exception.phase(), ExceptionPhase::Prototype);
+        let thrown = scope.import(exception.value())?;
+        let original = scope.evaluate(&units("prototypeThrown"))?;
+        assert!(scope.strict_equals(&thrown, &original)?);
+        let values = [scope.object(ObjectPrototype::Null)?, scope.primitive(Primitive::Undefined)?, scope.string(&[0xd800])?];
+        let array = scope.array(&values)?;
+        let first = scope.get(&array, PropertyKey::String(&units("0")))?;
+        assert!(scope.strict_equals(&first, &values[0])?);
+        scope.set(&global, PropertyKey::String(&units("denseArray")), &array)?;
+        let exact = scope.evaluate(&units("Array.isArray(denseArray) && denseArray.length === 3 && [0, 1, 2].every(index => Object.hasOwn(denseArray, index)) && denseArray[1] === undefined && denseArray[2].charCodeAt(0) === 0xd800 && !Object.hasOwn(denseArray, 3)"))?;
+        assert!(scope.boolean(&exact)?);
+        let empty = scope.array(&[])?;
+        let length = scope.get(&empty, PropertyKey::String(&units("length")))?;
+        assert_eq!(scope.to_utf16(&length)?, units("0"));
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn captured_intrinsics_survive_guest_replacement_and_realm_lease_release(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let a = execution.create_realm()?;
+    let b = execution.create_realm()?;
+    let drops = Rc::new(Cell::new(0));
+    let receipt = DropReceipt(drops.clone());
+    let callback = Callback::new(move |scope, _| {
+        let _capture = &receipt;
+        let value = scope.primitive(Primitive::Number(7.0))?;
+        let array = scope.array(&[value])?;
+        let iterator_method = scope.intrinsic(Intrinsic::ArrayValues)?;
+        let iterator = scope.call(&iterator_method, &array, &[])?;
+        let next = scope.get(&iterator, PropertyKey::String(&units("next")))?;
+        let result = scope.call(&next, &iterator, &[])?;
+        let value = scope.get(&result, PropertyKey::String(&units("value")))?;
+        let object = scope.object(ObjectPrototype::Default)?;
+        scope.set_prototype(&object, ObjectPrototype::Null)?;
+        scope.set(&object, PropertyKey::String(&units("value")), &value)?;
+        Ok(Completion::Return(
+            scope.get(&object, PropertyKey::String(&units("value")))?,
+        ))
+    });
+    let root = execution.in_realm(&a, |scope| {
+        let original = scope.intrinsic(Intrinsic::ArrayValues)?;
+        let actual = scope.evaluate(&units("Array.prototype.values"))?;
+        assert!(scope.strict_equals(&original, &actual)?);
+        let global = scope.global()?;
+        let function = scope.function(&callback)?;
+        scope.set(&global, PropertyKey::String(&units("cycle")), &function)?;
+        Ok::<_, Error>(scope.retain(&function))
+    })??;
+    execution.in_realm(&b, |scope| {
+        let global = scope.global()?;
+        let function = scope.import(&root)?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("fromAIntrinsic")),
+            &function,
+        )
+    })??;
+    evaluate(
+        &mut execution,
+        &a,
+        "Reflect.set = Reflect.setPrototypeOf = Array.prototype.values = () => { throw 'replaced intrinsic'; }; globalThis.Array = null;",
+    )?;
+    drop(root);
+    drop(callback);
+    drop(a);
+    execution.memory_pressure();
+    assert_eq!(
+        evaluate(&mut execution, &b, "fromAIntrinsic()")?,
+        units("7")
+    );
+    assert_eq!(drops.get(), 0);
+    evaluate(&mut execution, &b, "fromAIntrinsic = null")?;
+    evaluate(&mut execution, &b, "gc()")?;
+    execution.memory_pressure();
+    assert_eq!(drops.get(), 1);
+    Ok(())
+}
+
+fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    let checks = Rc::new(Cell::new(0));
+    install(
+        &mut execution,
+        &realm,
+        "failNewPaths",
+        &Callback::new(|_, _| Err(Error::IntegerOutOfRange)),
+    )?;
+    let observed = checks.clone();
+    install(
+        &mut execution,
+        &realm,
+        "testNewPaths",
+        &Callback::new(move |scope, _| {
+            let object = scope.object(ObjectPrototype::Null)?;
+            let value = scope.primitive(Primitive::Undefined)?;
+            let values = [scope.primitive(Primitive::Null)?];
+            let _failure = scope.evaluate(&units("try { failNewPaths() } catch (_) {}"));
+            // Record refusal results outside guest code. Assertions inside a failed
+            // callback could be masked by the already sticky first host failure.
+            let mut count = 0;
+            count += usize::from(matches!(
+                scope.get(&object, PropertyKey::Value(&value)),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.set(&object, PropertyKey::Value(&value), &value),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.define_property(
+                    &object,
+                    PropertyKey::Value(&value),
+                    PropertyDescriptor::Data {
+                        value: &value,
+                        writable: true,
+                        enumerable: true,
+                        configurable: true
+                    }
+                ),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.object(ObjectPrototype::Default),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.set_prototype(&object, ObjectPrototype::Default),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.array(&values),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.well_known_symbol(WellKnownSymbol::Iterator),
+                Err(Error::IntegerOutOfRange)
+            ));
+            count += usize::from(matches!(
+                scope.intrinsic(Intrinsic::ArrayValues),
+                Err(Error::IntegerOutOfRange)
+            ));
+            observed.set(count);
+            Ok(Completion::Undefined)
+        }),
+    )?;
+    assert!(matches!(
+        evaluate(&mut execution, &realm, "testNewPaths()"),
+        Err(Error::IntegerOutOfRange)
+    ));
+    assert_eq!(checks.get(), 8);
     Ok(())
 }
 
@@ -1269,6 +1581,11 @@ fn main() -> Result<(), Error> {
     native_callbacks_recurse_and_release_self_cleared_roots(&mut process)?;
     native_callback_guest_throws_remain_exact(&mut process)?;
     native_callback_capture_collection_and_owner_teardown(&mut process)?;
+    property_keys_are_exact_and_never_coerce(&mut process)?;
+    descriptors_preserve_attributes_reentry_and_original_throws(&mut process)?;
+    objects_prototypes_and_dense_arrays_preserve_identity(&mut process)?;
+    captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
+
     scalar_construction_preserves_javascript_values(&mut process)?;
     value_classification_uses_language_types_without_guest_hooks(&mut process)?;
     callable_classification_includes_classes_and_revoked_callable_proxies(&mut process)?;
@@ -1301,6 +1618,7 @@ fn main() -> Result<(), Error> {
     drop(execution);
     drop(next);
     host_refusals_are_sticky_and_prevent_native_effects()?;
+    new_object_paths_preserve_the_first_host_failure()?;
     scalar_operations_preserve_the_first_host_failure()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"

@@ -91,7 +91,7 @@ impl Host {
             .with_context(realm, |entered| {
                 entered.attempt(
                     ExceptionPhase::PropertyWrite,
-                    |scope, _roots, _realm, _setter| {
+                    |scope, _roots, _realm, _intrinsics| {
                         let context = scope.get_current_context();
                         for (name, function) in [
                             ("getCounter", v8::Function::new(scope, get_counter)),
@@ -547,6 +547,14 @@ fn clear_rooted(
 #[test]
 fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     v8::V8::set_flags_from_string("--expose-gc");
+    // Scalar validation exercises the declared embedding boundary without an
+    // enormous element allocation or a fabricated slice.
+    assert!(crate::backend::validate_array_length(16_777_216).is_ok());
+    assert!(matches!(
+        crate::backend::validate_array_length(16_777_217),
+        Err(Error::ArrayTooLong)
+    ));
+
     repeated_native_access_preserves_javascript_identity_and_native_mutation()?;
     live_javascript_wrapper_keeps_native_alive_and_garbage_collection_releases_it()?;
     collected_wrapper_can_be_recreated_for_a_still_owned_native()?;

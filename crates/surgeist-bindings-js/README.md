@@ -47,6 +47,12 @@ the owner. The SDK boxes primitive receivers and maps null/undefined to the
 function's creation-realm global; native adapters still validate brands.
 Functions are callable only; interface constructors require their own contract.
 
+Property operations take explicit `PropertyKey` values: exact UTF-16 names or
+existing String/Symbol values, without implicit key coercion. Complete data and
+accessor descriptors, explicit prototypes, dense arrays and selected pristine
+intrinsics support binding installation without evaluating source snippets.
+Array construction has the [qualified embedding bound](PROVENANCE.md#scoped-object-operations).
+
 Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 `to_utf16` conversion follows JavaScript ToString and can itself throw.
 Checkpoints are shared across realms. The current SDK checkpoint swallows job

@@ -360,6 +360,121 @@ pub enum Completion<'scope> {
     Throw(Value<'scope>),
 }
 
+/// A property name already expressed as exact UTF-16 or a scoped String/Symbol.
+/// Dynamic values are checked without ToPropertyKey or guest coercion.
+#[derive(Clone, Copy)]
+pub enum PropertyKey<'key, 'scope> {
+    /// Exact code units, including unmatched surrogates and embedded NUL.
+    String(&'key [u16]),
+    /// An existing String or Symbol. Other language types are refused.
+    Value(&'key Value<'scope>),
+}
+
+impl<'key, 'scope> PropertyKey<'key, 'scope> {
+    fn input(self) -> backend::PropertyKey<'key> {
+        match self {
+            Self::String(units) => backend::PropertyKey::String(units),
+            Self::Value(value) => backend::PropertyKey::Value(&value.root),
+        }
+    }
+}
+
+/// Well-known symbol identities supplied by the engine, without global lookup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WellKnownSymbol {
+    Iterator,
+    ToStringTag,
+    Unscopables,
+}
+
+/// A specific realm-pristine intrinsic needed by binding algorithms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Intrinsic {
+    ArrayValues,
+}
+
+/// The complete shape of an own property. Data and accessor fields cannot mix.
+/// `None` and explicit undefined accessor values both specify an absent getter
+/// or setter; every other accessor must be callable.
+///
+/// Borrowed property data cannot escape its scope:
+/// ```compile_fail
+/// use surgeist_bindings_js::{Execution, Realm, PropertyDescriptor};
+/// fn escape(execution: &mut Execution<'_>, realm: &Realm) {
+///     let descriptor = execution.in_realm(realm, |scope| {
+///         let value = scope.string(&[65]).unwrap();
+///         PropertyDescriptor::Data { value: &value, writable: true, enumerable: true, configurable: true }
+///     });
+/// }
+/// ```
+#[derive(Clone, Copy)]
+pub enum PropertyDescriptor<'value, 'scope> {
+    Data {
+        value: &'value Value<'scope>,
+        writable: bool,
+        enumerable: bool,
+        configurable: bool,
+    },
+    Accessor {
+        get: Option<&'value Value<'scope>>,
+        set: Option<&'value Value<'scope>>,
+        enumerable: bool,
+        configurable: bool,
+    },
+}
+
+impl<'value, 'scope> PropertyDescriptor<'value, 'scope> {
+    fn input(self) -> backend::PropertyDescriptor<'value> {
+        match self {
+            Self::Data {
+                value,
+                writable,
+                enumerable,
+                configurable,
+            } => backend::PropertyDescriptor::Data {
+                value: &value.root,
+                writable,
+                enumerable,
+                configurable,
+            },
+            Self::Accessor {
+                get,
+                set,
+                enumerable,
+                configurable,
+            } => backend::PropertyDescriptor::Accessor {
+                get: get.map(|value| &value.root),
+                set: set.map(|value| &value.root),
+                enumerable,
+                configurable,
+            },
+        }
+    }
+}
+
+/// Explicit prototype selection for object construction and mutation.
+#[derive(Clone, Copy)]
+pub enum ObjectPrototype<'value, 'scope> {
+    /// The selected realm's original Object.prototype.
+    Default,
+    /// No prototype.
+    Null,
+    /// An existing object; primitives, including an implicit null, are refused.
+    Object(&'value Value<'scope>),
+}
+
+impl<'value, 'scope> ObjectPrototype<'value, 'scope> {
+    fn input(self) -> backend::ObjectPrototype<'value> {
+        match self {
+            Self::Default => backend::ObjectPrototype::Default,
+            Self::Null => backend::ObjectPrototype::Null,
+            Self::Object(value) => backend::ObjectPrototype::Object(&value.root),
+        }
+    }
+}
+
 /// Binding operations, independent of the concrete engine's handle types.
 pub struct Scope<'scope> {
     operations: &'scope mut dyn backend::Operations,
@@ -437,21 +552,86 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
-    /// Reads a named property. Getters may run guest code and throw.
-    pub fn get(&mut self, object: &Value<'scope>, name: &[u16]) -> Result<Value<'scope>, Error> {
-        let root = self.operations.get(&object.root, name)?;
+    /// Reads a String/Symbol property. Getters may run guest code and throw.
+    /// Invalid dynamic keys produce [`Error::ExpectedPropertyKey`] without coercion.
+    pub fn get(
+        &mut self,
+        object: &Value<'scope>,
+        key: PropertyKey<'_, 'scope>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self.operations.get(&object.root, key.input())?;
         Ok(self.value(root))
     }
 
-    /// Sets a named property. Setters may run guest code and throw. A false
+    /// Sets a String/Symbol property. Setters may run guest code and throw. A false
     /// internal Set result is reported as [`Error::PropertyRejected`].
     pub fn set(
         &mut self,
         object: &Value<'scope>,
-        name: &[u16],
+        key: PropertyKey<'_, 'scope>,
         value: &Value<'scope>,
     ) -> Result<(), Error> {
-        self.operations.set(&object.root, name, &value.root)
+        self.operations.set(&object.root, key.input(), &value.root)
+    }
+
+    /// Defines one complete own property. Proxy traps can reenter or throw;
+    /// Boolean rejection is [`Error::PropertyRejected`].
+    pub fn define_property(
+        &mut self,
+        object: &Value<'scope>,
+        key: PropertyKey<'_, 'scope>,
+        descriptor: PropertyDescriptor<'_, 'scope>,
+    ) -> Result<(), Error> {
+        self.operations
+            .define_property(&object.root, key.input(), descriptor.input())
+    }
+
+    /// Creates an empty object with an explicit prototype selection.
+    pub fn object(
+        &mut self,
+        prototype: ObjectPrototype<'_, 'scope>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self.operations.object(prototype.input())?;
+        Ok(self.value(root))
+    }
+
+    /// Changes an object's prototype. Cycles, nonextensibility and proxy refusal
+    /// produce [`Error::PropertyRejected`]; trap exceptions preserve their value.
+    pub fn set_prototype(
+        &mut self,
+        object: &Value<'scope>,
+        prototype: ObjectPrototype<'_, 'scope>,
+    ) -> Result<(), Error> {
+        self.operations
+            .set_prototype(&object.root, prototype.input())
+    }
+
+    /// Creates a dense array in this realm, preserving value identity and order.
+    /// Every supplied value creates an own index, including explicit undefined.
+    /// The embedding policy allows at most 16,777,216 elements, the minimum
+    /// capacity of supported pinned SDK build modes; this is not a JS limit.
+    pub fn array(&mut self, values: &[Value<'scope>]) -> Result<Value<'scope>, Error> {
+        self.check_active()?;
+        backend::validate_array_length(values.len())?;
+        let mut roots = Vec::new();
+        roots
+            .try_reserve_exact(values.len())
+            .map_err(|_| Error::Allocation)?;
+        roots.extend(values.iter().map(|value| value.root.clone()));
+        let root = self.operations.array(&roots)?;
+        Ok(self.value(root))
+    }
+
+    /// Retrieves a well-known Symbol identity without consulting user globals.
+    pub fn well_known_symbol(&mut self, symbol: WellKnownSymbol) -> Result<Value<'scope>, Error> {
+        let root = self.operations.well_known_symbol(symbol)?;
+        Ok(self.value(root))
+    }
+
+    /// Retrieves a specifically captured pristine intrinsic from this realm.
+    pub fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Value<'scope>, Error> {
+        let root = self.operations.intrinsic(intrinsic)?;
+        Ok(self.value(root))
     }
 
     /// Calls a function with an explicit receiver and arguments. Callability,

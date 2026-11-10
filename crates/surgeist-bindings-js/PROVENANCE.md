@@ -66,3 +66,22 @@ or dynamically unloaded. Per-owner roots, contexts and isolate use safe RAII.
 The [crate notice](NOTICE.md) distinguishes SDK, native V8 and bundled-library
 terms. A source-qualified dependency notice is not certification of every
 possible downstream executable or static-link composition.
+
+## Scoped object operations
+
+The backend captures pristine `Reflect.set` and `Reflect.setPrototypeOf` to
+preserve Boolean rejection and original proxy exceptions. The SDK's direct
+prototype setter suppresses proxy trap exceptions in the pinned
+[`SetPrototypeImpl`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/api/api.cc)
+path. These functions and the selected `Array.prototype.values` intrinsic are
+retained in private managed heap data. Callback registrations retain those heap
+edges rather than adding persistent Rust roots back to their creation context.
+
+Rust-side dense array construction is limited to **16,777,216 elements**, checked
+before root-vector allocation and SDK construction. This is an embedding policy,
+not the JavaScript array-length limit. The pinned
+[`fixed-array-base.h`](https://github.com/denoland/v8/blob/c4ca1eccb90c5464d826b7713dc27178a53b0cfe/src/objects/fixed-array-base.h)
+defines a capacity of 16 Mi elements in lower-limits mode and 128 Mi otherwise.
+The safe SDK exposes no runtime query for that build choice; the conservative
+minimum avoids its capacity checks in either mode. Boundary qualification uses
+scalar length checks, without allocating an enormous array.

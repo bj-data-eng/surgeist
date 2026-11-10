@@ -10,6 +10,8 @@ pub enum ExceptionPhase {
     Evaluate,
     PropertyRead,
     PropertyWrite,
+    DefineProperty,
+    Prototype,
     Invoke,
     Coerce,
 }
@@ -53,6 +55,12 @@ pub enum Error {
     StringTooLong,
     /// The argument list exceeds the backend's supported call bound.
     TooManyArguments,
+    /// An array exceeds the embedding policy's conservative pinned SDK capacity.
+    ArrayTooLong,
+    /// A dynamic property key was neither String nor Symbol.
+    ExpectedPropertyKey,
+    /// A descriptor accessor was neither callable nor undefined.
+    ExpectedAccessor,
     /// This operation requires an object or function, respectively.
     ExpectedObject,
     ExpectedFunction,
@@ -90,6 +98,9 @@ impl fmt::Display for Error {
             Self::IdentityExhausted => "execution identity space is exhausted",
             Self::Allocation => "binding storage allocation was refused",
             Self::StringTooLong => "the string exceeds the backend limit",
+            Self::ArrayTooLong => "the array exceeds the backend element limit",
+            Self::ExpectedPropertyKey => "a property key must be String or Symbol",
+            Self::ExpectedAccessor => "an accessor must be callable or undefined",
             Self::TooManyArguments => "the argument list exceeds the backend limit",
             Self::ExpectedObject => "an object is required",
             Self::ExpectedFunction => "a callable function is required",
