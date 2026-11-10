@@ -143,7 +143,7 @@ fn pending(progress: DomSourceEventServiceProgress) -> DomEventHostInvocation {
         dispatch: DomEventDispatchOutcome::HostInvocation(invocation),
     } = progress
     else {
-        panic!("host listener is genuinely selected: {progress:?}")
+        panic!("host listener is selected: {progress:?}")
     };
     invocation
 }

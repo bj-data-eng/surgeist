@@ -228,7 +228,7 @@ and cursor. An unfinished nested Source operation must finish before the parent
 can continue. Foreign completion leaves the original token and scope untouched;
 repeat completion is rejected even after a registration slot has been reused.
 
-Use `invocation.refuse(&dispatcher, error)` for genuine host refusal. The event
+Use `invocation.refuse(&dispatcher, error)` for host refusal. The event
 retains this first host failure and cannot issue a successful receipt or run
 later listeners; it is separate from guest exception reporting. Dropping an
 unreported token terminally abandons event delivery, clears active observation

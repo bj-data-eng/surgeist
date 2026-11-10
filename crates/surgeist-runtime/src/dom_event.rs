@@ -503,7 +503,7 @@ impl DomEventHostInvocation {
     ) -> Result<(), DomEventDispatchError> {
         self.report(dispatcher, HostResult::Returned(result))
     }
-    /// Record a genuine host refusal once. It closes reentry and terminally
+    /// Record a host refusal once. It closes reentry and terminally
     /// prevents a successful event receipt. Subsequent servicing returns this
     /// same first refusal; it does not reinterpret it as a guest exception.
     pub fn refuse<C>(

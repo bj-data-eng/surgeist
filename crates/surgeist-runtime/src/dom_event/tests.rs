@@ -2176,7 +2176,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
     };
     let mut previous_task = None;
     // Details task FIFO prevents a fresh event from overtaking a retained one.
-    // Exercise each new real event after its predecessor's genuine completion.
+    // Exercise each new real event after its predecessor completes.
     for (open, old, new) in [(true, "closed", "open"), (false, "open", "closed")] {
         let before = dispatcher
             .add_listener(
