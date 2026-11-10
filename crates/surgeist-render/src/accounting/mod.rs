@@ -449,6 +449,8 @@ pub(crate) struct Account {
 /// Lends one pinned future without moving its inline state into Ledger's
 /// callback. The callback owns this guard, so cancellation drops the underlying
 /// future in place before Ledger closes the phase. The outer owner then sees None.
+/// Reborrowing consumed storage stays pending without work or an output; a
+/// present future retains its own polling contract.
 struct PhaseFuture<'a, F> {
     future: std::pin::Pin<&'a mut Option<F>>,
 }
@@ -459,12 +461,10 @@ impl<F: std::future::Future> std::future::Future for PhaseFuture<'_, F> {
         self: std::pin::Pin<&mut Self>,
         context: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.get_mut()
-            .future
-            .as_mut()
-            .as_pin_mut()
-            .expect("owned phase future")
-            .poll(context)
+        match self.get_mut().future.as_mut().as_pin_mut() {
+            Some(future) => future.poll(context),
+            None => std::task::Poll::Pending,
+        }
     }
 }
 impl<F> Drop for PhaseFuture<'_, F> {
