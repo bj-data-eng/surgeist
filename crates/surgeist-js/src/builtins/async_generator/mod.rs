@@ -136,8 +136,7 @@ impl AsyncGenerator {
                     .promise()
                     .constructor()?,
                 context,
-            )
-            .js_expect("cannot fail with promise constructor")?;
+            )?;
 
             // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
             // 4. IfAbruptRejectPromise(result, promiseCapability).
@@ -230,8 +229,7 @@ impl AsyncGenerator {
                     .promise()
                     .constructor()?,
                 context,
-            )
-            .js_expect("cannot fail with promise constructor")?;
+            )?;
 
             // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
             // 4. IfAbruptRejectPromise(result, promiseCapability).
@@ -319,8 +317,7 @@ impl AsyncGenerator {
                     .promise()
                     .constructor()?,
                 context,
-            )
-            .js_expect("cannot fail with promise constructor")?;
+            )?;
 
             // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
             // 4. IfAbruptRejectPromise(result, promiseCapability).
