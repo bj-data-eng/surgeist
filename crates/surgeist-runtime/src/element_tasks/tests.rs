@@ -1261,3 +1261,5 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
 mod queue_tests;
 
 mod close_tests;
+
+mod counter_custody_tests;
