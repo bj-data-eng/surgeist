@@ -12,7 +12,10 @@
 // governed by HTML 877d6146487f15b15bc8dd0e3c625063a37b456a §13.2.4.2.
 
 use super::super::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
-use surgeist_html::values::{DocumentString, QualifiedName};
+use surgeist_html::{
+    values::{DocumentString, QualifiedName},
+    vocabulary::{MATHML_SPECIAL_ELEMENTS, SVG_SPECIAL_ELEMENTS},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Scope {
@@ -65,9 +68,18 @@ pub(super) fn local_in(
     choices: &[&'static str],
     control: &mut ParseControl,
 ) -> Result<bool, HtmlParseStop> {
+    local_in_names(name, choices.iter().copied(), control)
+}
+
+/// [`local_in`] over any sequence of names, charged the same way.
+pub(super) fn local_in_names(
+    name: &QualifiedName,
+    choices: impl IntoIterator<Item = &'static str>,
+    control: &mut ParseControl,
+) -> Result<bool, HtmlParseStop> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let local = name.local_name();
-    for &choice in choices {
+    for choice in choices {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if ascii_eq(local, choice, control)? {
             return Ok(true);
@@ -282,14 +294,20 @@ pub(super) fn in_set(
         return Ok(false);
     }
     if namespace(name, MATHML, c)? {
-        return local_in(
+        return local_in_names(
             name,
-            &["mi", "mo", "mn", "ms", "mtext", "annotation-xml"],
+            MATHML_SPECIAL_ELEMENTS
+                .iter()
+                .map(|known| known.local_name()),
             c,
         );
     }
     if namespace(name, SVG, c)? {
-        return local_in(name, &["foreignObject", "desc", "title"], c);
+        return local_in_names(
+            name,
+            SVG_SPECIAL_ELEMENTS.iter().map(|known| known.local_name()),
+            c,
+        );
     }
     Ok(false)
 }

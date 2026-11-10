@@ -304,6 +304,14 @@ fn inventory_source_identity_selects_the_html_edition_independently_of_the_parse
         VOCABULARY_SOURCE.original_html_sha256(),
         "877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f"
     );
+    assert_eq!(
+        VOCABULARY_SOURCE.retained_syntax_capture(),
+        "references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md"
+    );
+    assert_eq!(
+        VOCABULARY_SOURCE.retained_syntax_capture_sha256(),
+        "db1eaacc388d494736080301dd18e9147feb39f2651e2bc7fbeed36ee2cfb214"
+    );
     assert!(VOCABULARY_SOURCE.elements_url().ends_with("/#elements-3"));
     assert!(
         VOCABULARY_SOURCE

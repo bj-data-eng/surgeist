@@ -7,8 +7,19 @@
 
 use surgeist_html::{
     values::{DocumentString, Namespace, QualifiedName},
-    vocabulary::{KnownHtmlElement, KnownHtmlEventHandler},
+    vocabulary::{
+        ElementKey, KnownHtmlElement, KnownHtmlEventHandler, KnownMathmlElement, KnownSvgElement,
+    },
 };
+
+const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
+const MATHML_NAMESPACE: &str = "http://www.w3.org/1998/Math/MathML";
+const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
+
+fn key(namespace: &str, local: &[u16]) -> ElementKey {
+    let uri: Vec<u16> = namespace.encode_utf16().collect();
+    ElementKey::from_units(Some(&uri), local)
+}
 
 /// Units that replace, or are inserted into, a spelling: ASCII letters and
 /// punctuation of the vocabulary, case counterparts, controls, the edges of the
@@ -171,6 +182,11 @@ fn html_element_recognition_equals_the_vocabulary_table_over_every_probe() {
             expected,
             "{units:?}"
         );
+        assert_eq!(KnownHtmlElement::from_units(&units), expected, "{units:?}");
+        let html_key = key(HTML_NAMESPACE, &units);
+        assert_eq!(html_key.html(), expected, "{units:?}");
+        assert_eq!(html_key.is_known(), expected.is_some(), "{units:?}");
+        assert_eq!(html_key, ElementKey::from_name(&html_name(&units)));
     }
     // Every spelling is a probe, and the neighbours of each are mostly misses.
     assert!(recognized >= KnownHtmlElement::ALL.len());
@@ -232,4 +248,84 @@ fn event_handler_recognition_equals_the_vocabulary_table_over_every_probe() {
         );
     }
     assert!(recognized >= KnownHtmlEventHandler::ALL.len());
+}
+
+#[test]
+fn mathml_name_recognition_equals_the_vocabulary_table_over_every_probe() {
+    let reference = Reference::new(KnownMathmlElement::ALL, KnownMathmlElement::local_name);
+    let mut recognized = 0;
+    for units in reference.probes() {
+        let expected = reference.expected(&units);
+        recognized += usize::from(expected.is_some());
+        let mathml_key = key(MATHML_NAMESPACE, &units);
+        assert_eq!(mathml_key.mathml(), expected, "{units:?}");
+        assert_eq!(mathml_key.is_known(), expected.is_some(), "{units:?}");
+        assert_eq!(mathml_key.html(), None);
+        assert_eq!(mathml_key.svg(), None);
+    }
+    assert!(recognized >= KnownMathmlElement::ALL.len());
+}
+
+#[test]
+fn svg_name_recognition_equals_the_vocabulary_table_over_every_probe() {
+    let reference = Reference::new(KnownSvgElement::ALL, KnownSvgElement::local_name);
+    let mut recognized = 0;
+    for units in reference.probes() {
+        let expected = reference.expected(&units);
+        recognized += usize::from(expected.is_some());
+        let svg_key = key(SVG_NAMESPACE, &units);
+        assert_eq!(svg_key.svg(), expected, "{units:?}");
+        assert_eq!(svg_key.is_known(), expected.is_some(), "{units:?}");
+        assert_eq!(svg_key.html(), None);
+        assert_eq!(svg_key.mathml(), None);
+    }
+    assert!(recognized >= KnownSvgElement::ALL.len());
+}
+
+/// The units of an ASCII string, computed where the lookups are evaluated as constants.
+const fn units<const N: usize>(ascii: &str) -> [u16; N] {
+    let mut units = [0; N];
+    let bytes = ascii.as_bytes();
+    let mut position = 0;
+    while position < N {
+        units[position] = bytes[position] as u16;
+        position += 1;
+    }
+    units
+}
+
+const DIV: [u16; 3] = units("div");
+const MISSPELLED: [u16; 4] = units("divv");
+const HTML_URI: [u16; HTML_NAMESPACE.len()] = units(HTML_NAMESPACE);
+
+// Evaluation as a constant admits no allocation, so these constants show that a lookup
+// allocates nothing.
+const DIV_ELEMENT: Option<KnownHtmlElement> = KnownHtmlElement::from_units(&DIV);
+const MISSPELLED_ELEMENT: Option<KnownHtmlElement> = KnownHtmlElement::from_units(&MISSPELLED);
+const ONCLICK_HANDLER: Option<KnownHtmlEventHandler> =
+    KnownHtmlEventHandler::from_local_units(&units::<7>("onclick"));
+const DIV_KEY: ElementKey = ElementKey::from_units(Some(&HTML_URI), &DIV);
+
+#[test]
+fn lookups_evaluate_as_constants() {
+    assert_eq!(DIV_ELEMENT, Some(KnownHtmlElement::Div));
+    assert_eq!(MISSPELLED_ELEMENT, None);
+    assert_eq!(ONCLICK_HANDLER, Some(KnownHtmlEventHandler::Onclick));
+    assert_eq!(DIV_KEY, ElementKey::from(KnownHtmlElement::Div));
+}
+
+#[test]
+fn an_input_longer_than_every_name_matches_nothing() {
+    let longest = KnownHtmlElement::ALL
+        .iter()
+        .map(|known| known.local_name().len())
+        .max()
+        .unwrap();
+    let mut units: Vec<u16> = "div".encode_utf16().collect();
+    units.resize(longest + 1, 0x61);
+    assert_eq!(KnownHtmlElement::from_units(&units), None);
+    let huge = vec![0x61; 1 << 22];
+    assert_eq!(KnownHtmlElement::from_units(&huge), None);
+    assert_eq!(KnownHtmlEventHandler::from_local_units(&huge), None);
+    assert!(!key(HTML_NAMESPACE, &huge).is_known());
 }

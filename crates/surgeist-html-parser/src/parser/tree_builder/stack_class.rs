@@ -12,7 +12,10 @@ use super::{
     tag_sets::{self, HTML, MATHML, SVG},
 };
 use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
-use surgeist_html::values::QualifiedName;
+use surgeist_html::{
+    values::QualifiedName,
+    vocabulary::{MATHML_SCOPE_BOUNDARIES, SVG_SCOPE_BOUNDARIES},
+};
 
 /// A kind of open element the stack lists by index, in ascending order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -87,13 +90,19 @@ impl ElementClass {
         }
         // annotation-xml bounds scope whatever its encoding.
         let bounds = if tag_sets::namespace(name, MATHML, control)? {
-            tag_sets::local_in(
+            tag_sets::local_in_names(
                 name,
-                &["mi", "mo", "mn", "ms", "mtext", "annotation-xml"],
+                MATHML_SCOPE_BOUNDARIES
+                    .iter()
+                    .map(|known| known.local_name()),
                 control,
             )?
         } else if tag_sets::namespace(name, SVG, control)? {
-            tag_sets::local_in(name, &["foreignObject", "desc", "title"], control)?
+            tag_sets::local_in_names(
+                name,
+                SVG_SCOPE_BOUNDARIES.iter().map(|known| known.local_name()),
+                control,
+            )?
         } else {
             false
         };

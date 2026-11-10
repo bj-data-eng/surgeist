@@ -31,6 +31,7 @@ use surgeist_html::{
         HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
     },
     values::DocumentString,
+    vocabulary::{KnownMathmlElement, KnownSvgElement},
 };
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -247,7 +248,7 @@ impl HeadState<'_> {
             return Ok(false);
         }
         if tag_sets::namespace(name, MATHML, c)?
-            && tag_sets::local_in(name, &["annotation-xml"], c)?
+            && tag_sets::local_in(name, &[KnownMathmlElement::AnnotationXml.local_name()], c)?
             && matches!(kind, Some((TagKind::Start, _)))
             && self.token_in(&["svg"], c)?.is_some()
         {
@@ -277,8 +278,10 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<HeadStep, HeadError> {
         self.admit_hidden_capability(c)?;
-        let svg_script =
-            namespace == ForeignNamespace::Svg && self.token_in(&["script"], c)?.is_some();
+        let svg_script = namespace == ForeignNamespace::Svg
+            && self
+                .token_in(&[KnownSvgElement::Script.local_name()], c)?
+                .is_some();
         let place = self.before.kernel.appropriate_place(None, c)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let pending = self.pending.as_mut().ok_or(HeadError::MissingInput)?;
@@ -594,7 +597,9 @@ impl HeadState<'_> {
         }
         let current = self.before.kernel.current(c)?;
         if self.foreign_namespace(c)? == Some(ForeignNamespace::Svg)
-            && self.token_in(&["script"], c)?.is_some()
+            && self
+                .token_in(&[KnownSvgElement::Script.local_name()], c)?
+                .is_some()
         {
             let name = self
                 .before
@@ -602,7 +607,7 @@ impl HeadState<'_> {
                 .session
                 .element_name(c, &current)?
                 .ok_or(KernelError::EmptyStack)?;
-            if tag_sets::local_in(name, &["script"], c)? {
+            if tag_sets::local_in(name, &[KnownSvgElement::Script.local_name()], c)? {
                 return Ok(Some(self.svg_end(&current, c)?));
             }
         }

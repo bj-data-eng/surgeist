@@ -7040,6 +7040,11 @@ pub fn surgeist_html::values::QualifiedName::local_name(&self) -> &surgeist_html
 pub fn surgeist_html::values::QualifiedName::namespace_uri(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::values::QualifiedName::prefix(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub mod surgeist_html::vocabulary
+pub enum surgeist_html::vocabulary::ElementNamespace
+pub surgeist_html::vocabulary::ElementNamespace::Html
+pub surgeist_html::vocabulary::ElementNamespace::MathMl
+pub surgeist_html::vocabulary::ElementNamespace::Other
+pub surgeist_html::vocabulary::ElementNamespace::Svg
 pub enum surgeist_html::vocabulary::HtmlEventHandlerApplicability
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::AllHtmlElements
 pub surgeist_html::vocabulary::HtmlEventHandlerApplicability::BodyElement
@@ -7190,7 +7195,7 @@ pub surgeist_html::vocabulary::KnownHtmlAttribute::Wrap
 pub surgeist_html::vocabulary::KnownHtmlAttribute::Writingsuggestions
 impl surgeist_html::vocabulary::KnownHtmlAttribute
 pub const surgeist_html::vocabulary::KnownHtmlAttribute::ALL: &'static [Self]
-pub fn surgeist_html::vocabulary::KnownHtmlAttribute::local_name(self) -> &'static str
+pub const fn surgeist_html::vocabulary::KnownHtmlAttribute::local_name(self) -> &'static str
 pub fn surgeist_html::vocabulary::KnownHtmlAttribute::qualified_name(self) -> surgeist_html::values::QualifiedName
 impl surgeist_html::vocabulary::KnownHtmlAttribute
 pub fn surgeist_html::vocabulary::KnownHtmlAttribute::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
@@ -7311,12 +7316,15 @@ pub surgeist_html::vocabulary::KnownHtmlElement::Video
 pub surgeist_html::vocabulary::KnownHtmlElement::Wbr
 impl surgeist_html::vocabulary::KnownHtmlElement
 pub const surgeist_html::vocabulary::KnownHtmlElement::ALL: &'static [Self]
-pub fn surgeist_html::vocabulary::KnownHtmlElement::local_name(self) -> &'static str
+pub const fn surgeist_html::vocabulary::KnownHtmlElement::local_name(self) -> &'static str
 pub fn surgeist_html::vocabulary::KnownHtmlElement::qualified_name(self) -> surgeist_html::values::QualifiedName
 impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
+pub const fn surgeist_html::vocabulary::KnownHtmlElement::from_units(units: &[u16]) -> core::option::Option<Self>
 impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::inventory_row(self) -> &'static surgeist_html::vocabulary::ElementInventoryRow
+impl core::convert::From<surgeist_html::vocabulary::KnownHtmlElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownHtmlElement) -> Self
 pub enum surgeist_html::vocabulary::KnownHtmlEventHandler
 pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onafterprint
 pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onauxclick
@@ -7409,14 +7417,74 @@ pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onwaiting
 pub surgeist_html::vocabulary::KnownHtmlEventHandler::Onwheel
 impl surgeist_html::vocabulary::KnownHtmlEventHandler
 pub const surgeist_html::vocabulary::KnownHtmlEventHandler::ALL: &'static [Self]
-pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::local_name(self) -> &'static str
+pub const fn surgeist_html::vocabulary::KnownHtmlEventHandler::local_name(self) -> &'static str
 pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::qualified_name(self) -> surgeist_html::values::QualifiedName
 impl surgeist_html::vocabulary::KnownHtmlEventHandler
 pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::applicability(self) -> surgeist_html::vocabulary::HtmlEventHandlerApplicability
 impl surgeist_html::vocabulary::KnownHtmlEventHandler
 pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::applies_to(self, element: surgeist_html::vocabulary::KnownHtmlElement) -> bool
-pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::from_local_units(units: &[u16]) -> core::option::Option<Self>
+pub const fn surgeist_html::vocabulary::KnownHtmlEventHandler::from_local_units(units: &[u16]) -> core::option::Option<Self>
 pub fn surgeist_html::vocabulary::KnownHtmlEventHandler::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
+pub enum surgeist_html::vocabulary::KnownMathmlElement
+pub surgeist_html::vocabulary::KnownMathmlElement::AnnotationXml
+pub surgeist_html::vocabulary::KnownMathmlElement::Mi
+pub surgeist_html::vocabulary::KnownMathmlElement::Mn
+pub surgeist_html::vocabulary::KnownMathmlElement::Mo
+pub surgeist_html::vocabulary::KnownMathmlElement::Ms
+pub surgeist_html::vocabulary::KnownMathmlElement::Mtext
+impl surgeist_html::vocabulary::KnownMathmlElement
+pub const surgeist_html::vocabulary::KnownMathmlElement::ALL: &'static [Self]
+pub const fn surgeist_html::vocabulary::KnownMathmlElement::local_name(self) -> &'static str
+pub fn surgeist_html::vocabulary::KnownMathmlElement::qualified_name(self) -> surgeist_html::values::QualifiedName
+impl core::convert::From<surgeist_html::vocabulary::KnownMathmlElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownMathmlElement) -> Self
+pub enum surgeist_html::vocabulary::KnownSvgElement
+pub surgeist_html::vocabulary::KnownSvgElement::AltGlyph
+pub surgeist_html::vocabulary::KnownSvgElement::AltGlyphDef
+pub surgeist_html::vocabulary::KnownSvgElement::AltGlyphItem
+pub surgeist_html::vocabulary::KnownSvgElement::AnimateColor
+pub surgeist_html::vocabulary::KnownSvgElement::AnimateMotion
+pub surgeist_html::vocabulary::KnownSvgElement::AnimateTransform
+pub surgeist_html::vocabulary::KnownSvgElement::ClipPath
+pub surgeist_html::vocabulary::KnownSvgElement::Desc
+pub surgeist_html::vocabulary::KnownSvgElement::FeBlend
+pub surgeist_html::vocabulary::KnownSvgElement::FeColorMatrix
+pub surgeist_html::vocabulary::KnownSvgElement::FeComponentTransfer
+pub surgeist_html::vocabulary::KnownSvgElement::FeComposite
+pub surgeist_html::vocabulary::KnownSvgElement::FeConvolveMatrix
+pub surgeist_html::vocabulary::KnownSvgElement::FeDiffuseLighting
+pub surgeist_html::vocabulary::KnownSvgElement::FeDisplacementMap
+pub surgeist_html::vocabulary::KnownSvgElement::FeDistantLight
+pub surgeist_html::vocabulary::KnownSvgElement::FeDropShadow
+pub surgeist_html::vocabulary::KnownSvgElement::FeFlood
+pub surgeist_html::vocabulary::KnownSvgElement::FeFuncA
+pub surgeist_html::vocabulary::KnownSvgElement::FeFuncB
+pub surgeist_html::vocabulary::KnownSvgElement::FeFuncG
+pub surgeist_html::vocabulary::KnownSvgElement::FeFuncR
+pub surgeist_html::vocabulary::KnownSvgElement::FeGaussianBlur
+pub surgeist_html::vocabulary::KnownSvgElement::FeImage
+pub surgeist_html::vocabulary::KnownSvgElement::FeMerge
+pub surgeist_html::vocabulary::KnownSvgElement::FeMergeNode
+pub surgeist_html::vocabulary::KnownSvgElement::FeMorphology
+pub surgeist_html::vocabulary::KnownSvgElement::FeOffset
+pub surgeist_html::vocabulary::KnownSvgElement::FePointLight
+pub surgeist_html::vocabulary::KnownSvgElement::FeSpecularLighting
+pub surgeist_html::vocabulary::KnownSvgElement::FeSpotLight
+pub surgeist_html::vocabulary::KnownSvgElement::FeTile
+pub surgeist_html::vocabulary::KnownSvgElement::FeTurbulence
+pub surgeist_html::vocabulary::KnownSvgElement::ForeignObject
+pub surgeist_html::vocabulary::KnownSvgElement::GlyphRef
+pub surgeist_html::vocabulary::KnownSvgElement::LinearGradient
+pub surgeist_html::vocabulary::KnownSvgElement::RadialGradient
+pub surgeist_html::vocabulary::KnownSvgElement::Script
+pub surgeist_html::vocabulary::KnownSvgElement::TextPath
+pub surgeist_html::vocabulary::KnownSvgElement::Title
+impl surgeist_html::vocabulary::KnownSvgElement
+pub const surgeist_html::vocabulary::KnownSvgElement::ALL: &'static [Self]
+pub const fn surgeist_html::vocabulary::KnownSvgElement::local_name(self) -> &'static str
+pub fn surgeist_html::vocabulary::KnownSvgElement::qualified_name(self) -> surgeist_html::values::QualifiedName
+impl core::convert::From<surgeist_html::vocabulary::KnownSvgElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownSvgElement) -> Self
 pub struct surgeist_html::vocabulary::AttributeInventoryRow
 impl surgeist_html::vocabulary::AttributeInventoryRow
 pub fn surgeist_html::vocabulary::AttributeInventoryRow::all_html_elements(self) -> bool
@@ -7440,6 +7508,26 @@ pub fn surgeist_html::vocabulary::ElementInventoryRow::name(self) -> &'static st
 pub fn surgeist_html::vocabulary::ElementInventoryRow::parents(self) -> &'static str
 pub fn surgeist_html::vocabulary::ElementInventoryRow::references(self) -> &'static [&'static str]
 pub fn surgeist_html::vocabulary::ElementInventoryRow::row(self) -> u16
+pub struct surgeist_html::vocabulary::ElementKey(_)
+impl surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> Self
+pub const fn surgeist_html::vocabulary::ElementKey::from_units(namespace: core::option::Option<&[u16]>, local_name: &[u16]) -> Self
+pub const fn surgeist_html::vocabulary::ElementKey::html(self) -> core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>
+pub const fn surgeist_html::vocabulary::ElementKey::is_foreign_special(self) -> bool
+pub const fn surgeist_html::vocabulary::ElementKey::is_known(self) -> bool
+pub const fn surgeist_html::vocabulary::ElementKey::is_mathml_text_integration_point(self) -> bool
+pub const fn surgeist_html::vocabulary::ElementKey::is_svg_html_integration_point(self) -> bool
+pub const fn surgeist_html::vocabulary::ElementKey::mathml(self) -> core::option::Option<surgeist_html::vocabulary::KnownMathmlElement>
+pub const fn surgeist_html::vocabulary::ElementKey::namespace(self) -> surgeist_html::vocabulary::ElementNamespace
+pub const fn surgeist_html::vocabulary::ElementKey::svg(self) -> core::option::Option<surgeist_html::vocabulary::KnownSvgElement>
+impl core::convert::From<surgeist_html::vocabulary::KnownHtmlElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownHtmlElement) -> Self
+impl core::convert::From<surgeist_html::vocabulary::KnownMathmlElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownMathmlElement) -> Self
+impl core::convert::From<surgeist_html::vocabulary::KnownSvgElement> for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::from(known: surgeist_html::vocabulary::KnownSvgElement) -> Self
+impl core::fmt::Debug for surgeist_html::vocabulary::ElementKey
+pub fn surgeist_html::vocabulary::ElementKey::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::vocabulary::VocabularySource
 impl surgeist_html::vocabulary::VocabularySource
 pub fn surgeist_html::vocabulary::VocabularySource::attributes_url(self) -> &'static str
@@ -7447,7 +7535,16 @@ pub fn surgeist_html::vocabulary::VocabularySource::elements_url(self) -> &'stat
 pub fn surgeist_html::vocabulary::VocabularySource::original_html_sha256(self) -> &'static str
 pub fn surgeist_html::vocabulary::VocabularySource::retained_capture(self) -> &'static str
 pub fn surgeist_html::vocabulary::VocabularySource::retained_capture_sha256(self) -> &'static str
+pub fn surgeist_html::vocabulary::VocabularySource::retained_syntax_capture(self) -> &'static str
+pub fn surgeist_html::vocabulary::VocabularySource::retained_syntax_capture_sha256(self) -> &'static str
 pub fn surgeist_html::vocabulary::VocabularySource::revision(self) -> &'static str
+pub const surgeist_html::vocabulary::MATHML_SCOPE_BOUNDARIES: [surgeist_html::vocabulary::KnownMathmlElement; 6]
+pub const surgeist_html::vocabulary::MATHML_SPECIAL_ELEMENTS: [surgeist_html::vocabulary::KnownMathmlElement; 6]
+pub const surgeist_html::vocabulary::MATHML_TEXT_INTEGRATION_POINTS: [surgeist_html::vocabulary::KnownMathmlElement; 5]
+pub const surgeist_html::vocabulary::SVG_HTML_INTEGRATION_POINTS: [surgeist_html::vocabulary::KnownSvgElement; 3]
+pub const surgeist_html::vocabulary::SVG_SCOPE_BOUNDARIES: [surgeist_html::vocabulary::KnownSvgElement; 3]
+pub const surgeist_html::vocabulary::SVG_SPECIAL_ELEMENTS: [surgeist_html::vocabulary::KnownSvgElement; 3]
+pub const surgeist_html::vocabulary::SVG_TAG_NAME_ADJUSTMENTS: &[(&str, surgeist_html::vocabulary::KnownSvgElement)]
 pub const surgeist_html::vocabulary::VOCABULARY_SOURCE: surgeist_html::vocabulary::VocabularySource
 pub fn surgeist_html::vocabulary::attribute_inventory() -> &'static [surgeist_html::vocabulary::AttributeInventoryRow]
 pub fn surgeist_html::vocabulary::element_inventory() -> &'static [surgeist_html::vocabulary::ElementInventoryRow]

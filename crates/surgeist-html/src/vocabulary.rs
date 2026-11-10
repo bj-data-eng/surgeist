@@ -3,9 +3,19 @@
 //! Inventory records reproduce non-normative index rows. Their printed syntax,
 //! categories, and applicability are discovery evidence, not complete validation,
 //! recovery, semantic defaults, or runtime execution contracts. A caller must use
-//! each linked defining clause for those rules. Open families, foreign vocabulary,
-//! and obsolete recovery names are outside the closed enums. The event handler
-//! content attributes are a separate closed enum, [`KnownHtmlEventHandler`].
+//! each linked defining clause for those rules. Open families, foreign vocabulary
+//! beyond the names below, and obsolete recovery names are outside the closed
+//! enums. The event handler content attributes are a separate closed enum,
+//! [`KnownHtmlEventHandler`].
+//!
+//! The MathML and SVG names that the tree construction algorithm adjusts or tests
+//! by name are two further closed enums, [`KnownMathmlElement`] and
+//! [`KnownSvgElement`], with the algorithm's tables over them
+//! ([`SVG_TAG_NAME_ADJUSTMENTS`] and the integration point, special and scope
+//! groups). They are taken from the pinned syntax clauses, not from the index.
+//! An [`ElementKey`] reduces an element's namespace and local name to one integer
+//! over these vocabularies. Recognition of the element and event handler names is
+//! a generated perfect hash over UTF-16 code units, with no allocation.
 //!
 //! Index portions incorporated into this source are copyright © WHATWG (Apple,
 //! Google, Mozilla, Microsoft), under BSD 3-Clause as specified by the exact
@@ -13,6 +23,8 @@
 //! The source edition and adaptation notice are in `licenses/whatwg/NOTICE.md`.
 //! The generator expands the heading group and preserves contextual index rows.
 
+pub use crate::internal::values::element_key::{ElementKey, ElementNamespace};
+use crate::internal::values::name_hash::{self, NameHash};
 use crate::values::{DocumentString, Namespace, QualifiedName};
 
 fn exact_string(value: &DocumentString, expected: &str) -> bool {
@@ -28,7 +40,7 @@ macro_rules! vocabulary {
         $(#[$meta])*
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         pub enum $name {
-            $(#[doc = concat!("The `", $local, "` name in the pinned inventory.")]
+            $(#[doc = concat!("The `", $local, "` name of this vocabulary.")]
             $variant),*
         }
 
@@ -37,7 +49,7 @@ macro_rules! vocabulary {
             pub const ALL: &'static [Self] = &[$(Self::$variant),*];
 
             /// Returns the exact canonical local-name spelling.
-            pub fn local_name(self) -> &'static str {
+            pub const fn local_name(self) -> &'static str {
                 match self { $(Self::$variant => $local),* }
             }
 
@@ -47,7 +59,33 @@ macro_rules! vocabulary {
             }
         }
     };
+    ($(#[$meta:meta])* $name:ident, $namespace:ident, $hash:ident, [$($variant:ident => $local:literal),* $(,)?]) => {
+        vocabulary!($(#[$meta])* $name, $namespace, [$($variant => $local),*]);
+
+        impl $name {
+            /// The slot of the vocabulary's hash that a lookup of `units` selects.
+            #[cfg(test)]
+            pub(crate) const fn selected_position(units: &[u16]) -> Option<usize> {
+                $hash.candidate(units)
+            }
+
+            /// The entry whose canonical spelling is exactly `units`, by the generated perfect
+            /// hash of the vocabulary: no allocation, and work bounded by the longest spelling.
+            pub(crate) const fn recognize(units: &[u16]) -> Option<Self> {
+                let Some(position) = $hash.candidate(units) else {
+                    return None;
+                };
+                match name_hash::at(Self::ALL, position) {
+                    Some(known) if name_hash::units_spell(units, known.local_name()) => Some(known),
+                    _ => None,
+                }
+            }
+        }
+    };
 }
+
+#[cfg(test)]
+mod recognition_tests;
 
 impl KnownHtmlElement {
     /// Recognizes an exact HTML namespace and local name, ignoring the prefix.
@@ -58,26 +96,17 @@ impl KnownHtmlElement {
         if !crate::internal::values::is_html_namespace_uri(name.namespace_uri()) {
             return None;
         }
-        let units = name.local_name().code_units();
-        let sorted = Self::sorted_by_name();
-        sorted
-            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
-            .ok()
-            .and_then(|index| sorted.get(index).copied())
+        Self::from_units(name.local_name().code_units())
     }
 
-    /// The known elements in the order of their local names' UTF-16 code units, built once.
-    fn sorted_by_name() -> &'static [Self] {
-        static SORTED: std::sync::OnceLock<Vec<KnownHtmlElement>> = std::sync::OnceLock::new();
-        SORTED.get_or_init(|| {
-            let mut sorted = Self::ALL.to_vec();
-            sorted.sort_by(|left, right| {
-                left.local_name()
-                    .encode_utf16()
-                    .cmp(right.local_name().encode_utf16())
-            });
-            sorted
-        })
+    /// Recognizes the local name of an HTML element, as UTF-16 code units.
+    ///
+    /// The units must spell a canonical local name exactly: case is not folded and a lone
+    /// surrogate or a non-ASCII unit matches nothing. The lookup is a generated perfect hash
+    /// over the units, `const`, without allocation, and its work is bounded by the longest
+    /// spelling whatever the length of `units`.
+    pub const fn from_units(units: &[u16]) -> Option<Self> {
+        Self::recognize(units)
     }
 }
 
@@ -132,12 +161,11 @@ impl KnownHtmlEventHandler {
 
     /// Recognizes the local name of a no-namespace attribute, as UTF-16 code
     /// units, as an event handler content attribute of the pinned index.
-    pub fn from_local_units(units: &[u16]) -> Option<Self> {
-        let sorted = Self::sorted_by_name();
-        sorted
-            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
-            .ok()
-            .and_then(|index| sorted.get(index).copied())
+    ///
+    /// The lookup is a generated perfect hash over the units, `const`, without allocation, and
+    /// its work is bounded by the longest spelling whatever the length of `units`.
+    pub const fn from_local_units(units: &[u16]) -> Option<Self> {
+        Self::recognize(units)
     }
 
     /// Whether this attribute is an event handler content attribute of `element`,
@@ -148,20 +176,6 @@ impl KnownHtmlEventHandler {
             HtmlEventHandlerApplicability::BodyElement => element == KnownHtmlElement::Body,
         }
     }
-
-    /// The known handlers in the order of their local names' UTF-16 code units, built once.
-    fn sorted_by_name() -> &'static [Self] {
-        static SORTED: std::sync::OnceLock<Vec<KnownHtmlEventHandler>> = std::sync::OnceLock::new();
-        SORTED.get_or_init(|| {
-            let mut sorted = Self::ALL.to_vec();
-            sorted.sort_by(|left, right| {
-                left.local_name()
-                    .encode_utf16()
-                    .cmp(right.local_name().encode_utf16())
-            });
-            sorted
-        })
-    }
 }
 
 /// Source identity for the generated non-normative vocabulary inventories.
@@ -171,6 +185,8 @@ pub struct VocabularySource {
     original_html_sha256: &'static str,
     retained_capture: &'static str,
     retained_capture_sha256: &'static str,
+    retained_syntax_capture: &'static str,
+    retained_syntax_capture_sha256: &'static str,
     elements_url: &'static str,
     attributes_url: &'static str,
 }
@@ -194,6 +210,17 @@ impl VocabularySource {
     /// Returns the SHA-256 of the exact retained Markdown input bytes.
     pub fn retained_capture_sha256(self) -> &'static str {
         self.retained_capture_sha256
+    }
+
+    /// Returns the repository-relative retained syntax capture, the input of the foreign names
+    /// and tables.
+    pub fn retained_syntax_capture(self) -> &'static str {
+        self.retained_syntax_capture
+    }
+
+    /// Returns the SHA-256 of the exact retained syntax capture bytes.
+    pub fn retained_syntax_capture_sha256(self) -> &'static str {
+        self.retained_syntax_capture_sha256
     }
 
     /// Returns the immutable snapshot's non-normative element index URL.
@@ -350,12 +377,13 @@ pub fn attribute_inventory() -> &'static [AttributeInventoryRow] {
 }
 
 // BEGIN GENERATED VOCABULARY
-// Generated by tools/generate_vocabulary.py from retained non-normative indexes.
+// Generated by tools/generate_vocabulary.py from retained non-normative indexes and
+// the retained syntax capture of the same edition.
 
 #[rustfmt::skip]
 vocabulary! {
     /// Individually named HTML elements in the pinned modern element index.
-    KnownHtmlElement, html, [
+    KnownHtmlElement, html, ELEMENT_NAME_HASH, [
         A => "a",
         Abbr => "abbr",
         Address => "address",
@@ -626,7 +654,7 @@ vocabulary! {
 #[rustfmt::skip]
 vocabulary! {
     /// Event handler content attributes in the pinned event handler index.
-    KnownHtmlEventHandler, none, [
+    KnownHtmlEventHandler, none, EVENT_HANDLER_NAME_HASH, [
         Onafterprint => "onafterprint",
         Onauxclick => "onauxclick",
         Onbeforeinput => "onbeforeinput",
@@ -718,6 +746,107 @@ vocabulary! {
         Onwheel => "onwheel",
     ]
 }
+
+#[rustfmt::skip]
+const ELEMENT_NAME_HASH: NameHash = NameHash::new(0, 15, &[(0, 5), (0, 0), (1, 19), (0, 0), (1, 18), (0, 0), (0, 6), (0, 3), (2, 32), (1, 12), (10, 14), (0, 23), (0, 11), (0, 12), (2, 93), (0, 3), (0, 30), (0, 53), (3, 31), (0, 0), (0, 60), (0, 106), (1, 8), (0, 69), (0, 0), (0, 29), (2, 84), (32, 18), (12, 104)], &[98, 70, 103, 74, 11, 93, 85, 59, 83, 29, 22, 96, 1, 43, 20, 38, 3, 104, 94, 30, 73, 91, 53, 101, 12, 82, 95, 111, 21, 80, 44, 55, 14, 112, 47, 34, 78, 24, 42, 60, 108, 25, 62, 28, 48, 76, 64, 16, 86, 52, 17, 58, 99, 15, 69, 26, 40, 109, 9, 92, 61, 68, 13, 97, 54, 84, 45, 10, 67, 39, 19, 2, 66, 81, 36, 105, 63, 88, 32, 41, 50, 35, 18, 33, 106, 57, 65, 49, 46, 71, 77, 79, 31, 27, 8, 102, 51, 72, 23, 56, 110, 4, 5, 107, 6, 89, 75, 100, 87, 90, 37, 7, 0]);
+#[rustfmt::skip]
+const EVENT_HANDLER_NAME_HASH: NameHash = NameHash::new(1, 25, &[(0, 24), (0, 0), (0, 0), (0, 7), (1, 2), (0, 2), (0, 17), (1, 14), (0, 25), (0, 0), (0, 37), (0, 30), (1, 29), (0, 35), (0, 8), (0, 50), (7, 63), (4, 22), (0, 22), (5, 61), (42, 27), (0, 75), (5, 10)], &[81, 17, 24, 64, 74, 53, 5, 0, 6, 16, 8, 88, 82, 42, 46, 79, 75, 15, 33, 45, 48, 38, 1, 7, 19, 62, 41, 12, 20, 37, 50, 32, 84, 54, 10, 65, 26, 76, 25, 69, 56, 85, 27, 3, 73, 9, 55, 35, 66, 22, 30, 58, 51, 72, 70, 40, 31, 71, 87, 59, 78, 68, 67, 47, 77, 28, 13, 2, 43, 63, 61, 21, 60, 11, 80, 52, 44, 23, 36, 86, 49, 18, 14, 39, 57, 4, 83, 34, 29]);
+
+#[rustfmt::skip]
+vocabulary! {
+    /// MathML element names that the pinned tree construction algorithm tests by name.
+    KnownMathmlElement, mathml, MATHML_NAME_HASH, [
+        Mi => "mi",
+        Mo => "mo",
+        Mn => "mn",
+        Ms => "ms",
+        Mtext => "mtext",
+        AnnotationXml => "annotation-xml",
+    ]
+}
+
+#[rustfmt::skip]
+vocabulary! {
+    /// SVG element names that the pinned tree construction algorithm adjusts or tests by name.
+    KnownSvgElement, svg, SVG_NAME_HASH, [
+        AltGlyph => "altGlyph",
+        AltGlyphDef => "altGlyphDef",
+        AltGlyphItem => "altGlyphItem",
+        AnimateColor => "animateColor",
+        AnimateMotion => "animateMotion",
+        AnimateTransform => "animateTransform",
+        ClipPath => "clipPath",
+        FeBlend => "feBlend",
+        FeColorMatrix => "feColorMatrix",
+        FeComponentTransfer => "feComponentTransfer",
+        FeComposite => "feComposite",
+        FeConvolveMatrix => "feConvolveMatrix",
+        FeDiffuseLighting => "feDiffuseLighting",
+        FeDisplacementMap => "feDisplacementMap",
+        FeDistantLight => "feDistantLight",
+        FeDropShadow => "feDropShadow",
+        FeFlood => "feFlood",
+        FeFuncA => "feFuncA",
+        FeFuncB => "feFuncB",
+        FeFuncG => "feFuncG",
+        FeFuncR => "feFuncR",
+        FeGaussianBlur => "feGaussianBlur",
+        FeImage => "feImage",
+        FeMerge => "feMerge",
+        FeMergeNode => "feMergeNode",
+        FeMorphology => "feMorphology",
+        FeOffset => "feOffset",
+        FePointLight => "fePointLight",
+        FeSpecularLighting => "feSpecularLighting",
+        FeSpotLight => "feSpotLight",
+        FeTile => "feTile",
+        FeTurbulence => "feTurbulence",
+        ForeignObject => "foreignObject",
+        GlyphRef => "glyphRef",
+        LinearGradient => "linearGradient",
+        RadialGradient => "radialGradient",
+        TextPath => "textPath",
+        Desc => "desc",
+        Title => "title",
+        Script => "script",
+    ]
+}
+
+#[rustfmt::skip]
+const MATHML_NAME_HASH: NameHash = NameHash::new(4, 14, &[(0, 0), (3, 2)], &[4, 5, 3, 2, 0, 1]);
+#[rustfmt::skip]
+const SVG_NAME_HASH: NameHash = NameHash::new(1, 19, &[(0, 0), (1, 4), (2, 16), (5, 0), (0, 12), (0, 6), (0, 8), (2, 39), (36, 34), (0, 0)], &[35, 11, 0, 23, 29, 8, 37, 3, 15, 33, 18, 19, 10, 12, 28, 7, 27, 30, 9, 6, 24, 17, 39, 25, 31, 21, 2, 16, 20, 4, 22, 5, 13, 38, 14, 36, 32, 26, 1, 34]);
+
+/// The pinned SVG tag name adjustment table (rules for parsing tokens in foreign content,
+/// 13.2.6.5): each lowercase tag name of an SVG element and the mixed-case element name
+/// it becomes, in the table's order.
+#[rustfmt::skip]
+pub const SVG_TAG_NAME_ADJUSTMENTS: &[(&str, KnownSvgElement)] = &[("altglyph", KnownSvgElement::AltGlyph), ("altglyphdef", KnownSvgElement::AltGlyphDef), ("altglyphitem", KnownSvgElement::AltGlyphItem), ("animatecolor", KnownSvgElement::AnimateColor), ("animatemotion", KnownSvgElement::AnimateMotion), ("animatetransform", KnownSvgElement::AnimateTransform), ("clippath", KnownSvgElement::ClipPath), ("feblend", KnownSvgElement::FeBlend), ("fecolormatrix", KnownSvgElement::FeColorMatrix), ("fecomponenttransfer", KnownSvgElement::FeComponentTransfer), ("fecomposite", KnownSvgElement::FeComposite), ("feconvolvematrix", KnownSvgElement::FeConvolveMatrix), ("fediffuselighting", KnownSvgElement::FeDiffuseLighting), ("fedisplacementmap", KnownSvgElement::FeDisplacementMap), ("fedistantlight", KnownSvgElement::FeDistantLight), ("fedropshadow", KnownSvgElement::FeDropShadow), ("feflood", KnownSvgElement::FeFlood), ("fefunca", KnownSvgElement::FeFuncA), ("fefuncb", KnownSvgElement::FeFuncB), ("fefuncg", KnownSvgElement::FeFuncG), ("fefuncr", KnownSvgElement::FeFuncR), ("fegaussianblur", KnownSvgElement::FeGaussianBlur), ("feimage", KnownSvgElement::FeImage), ("femerge", KnownSvgElement::FeMerge), ("femergenode", KnownSvgElement::FeMergeNode), ("femorphology", KnownSvgElement::FeMorphology), ("feoffset", KnownSvgElement::FeOffset), ("fepointlight", KnownSvgElement::FePointLight), ("fespecularlighting", KnownSvgElement::FeSpecularLighting), ("fespotlight", KnownSvgElement::FeSpotLight), ("fetile", KnownSvgElement::FeTile), ("feturbulence", KnownSvgElement::FeTurbulence), ("foreignobject", KnownSvgElement::ForeignObject), ("glyphref", KnownSvgElement::GlyphRef), ("lineargradient", KnownSvgElement::LinearGradient), ("radialgradient", KnownSvgElement::RadialGradient), ("textpath", KnownSvgElement::TextPath)];
+
+#[rustfmt::skip]
+/// The MathML elements that are MathML text integration points (13.2.6).
+pub const MATHML_TEXT_INTEGRATION_POINTS: [KnownMathmlElement; 5] = [KnownMathmlElement::Mi, KnownMathmlElement::Mo, KnownMathmlElement::Mn, KnownMathmlElement::Ms, KnownMathmlElement::Mtext];
+
+#[rustfmt::skip]
+/// The SVG elements that are HTML integration points by name (13.2.6). A MathML `annotation-xml`
+/// is one only with a matching `encoding` attribute.
+pub const SVG_HTML_INTEGRATION_POINTS: [KnownSvgElement; 3] = [KnownSvgElement::ForeignObject, KnownSvgElement::Desc, KnownSvgElement::Title];
+
+#[rustfmt::skip]
+/// The MathML elements in the special category (13.2.4.2).
+pub const MATHML_SPECIAL_ELEMENTS: [KnownMathmlElement; 6] = [KnownMathmlElement::Mi, KnownMathmlElement::Mo, KnownMathmlElement::Mn, KnownMathmlElement::Ms, KnownMathmlElement::Mtext, KnownMathmlElement::AnnotationXml];
+
+#[rustfmt::skip]
+/// The SVG elements in the special category (13.2.4.2).
+pub const SVG_SPECIAL_ELEMENTS: [KnownSvgElement; 3] = [KnownSvgElement::ForeignObject, KnownSvgElement::Desc, KnownSvgElement::Title];
+
+#[rustfmt::skip]
+/// The MathML elements among the element types of the default scope (13.2.4.2).
+pub const MATHML_SCOPE_BOUNDARIES: [KnownMathmlElement; 6] = [KnownMathmlElement::Mi, KnownMathmlElement::Mo, KnownMathmlElement::Mn, KnownMathmlElement::Ms, KnownMathmlElement::Mtext, KnownMathmlElement::AnnotationXml];
+
+#[rustfmt::skip]
+/// The SVG elements among the element types of the default scope (13.2.4.2).
+pub const SVG_SCOPE_BOUNDARIES: [KnownSvgElement; 3] = [KnownSvgElement::ForeignObject, KnownSvgElement::Desc, KnownSvgElement::Title];
 
 impl KnownHtmlEventHandler {
     /// The elements this event handler content attribute applies to, as the index states.
@@ -823,6 +952,8 @@ pub const VOCABULARY_SOURCE: VocabularySource = VocabularySource {
     original_html_sha256: "877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f",
     retained_capture: "references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md",
     retained_capture_sha256: "9a4eb2fadb24bcce029c108b4935fb447befd44cc54563ce59cc3846117c676e",
+    retained_syntax_capture: "references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md",
+    retained_syntax_capture_sha256: "db1eaacc388d494736080301dd18e9147feb39f2651e2bc7fbeed36ee2cfb214",
     elements_url: "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#elements-3",
     attributes_url: "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attributes-3",
 };
