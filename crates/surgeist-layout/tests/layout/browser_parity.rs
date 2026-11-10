@@ -438,36 +438,37 @@ fn normalized_flex_collapse_chrome_variants_match_reviewed_geometry() {
         })
         .collect::<Vec<_>>();
 
-    for path in paths {
-        let golden = support::Golden::parse_file(&path)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", path.display()));
-        let expected = if golden
-            .name
-            .starts_with("fri07_collapsed_strut_single_line__")
-        {
-            format!("{}/0: y mismatch, expected 0, got 5", golden.name)
-        } else if golden.name.starts_with("fri07_collapsed_strut_wrapping__") {
-            format!("{}: height mismatch, expected 157, got 68", golden.name)
-        } else if golden.name.ends_with("_ltr") {
-            format!("{}/0: y mismatch, expected 6, got 27", golden.name)
-        } else {
-            format!("{}/0: y mismatch, expected 134, got 113", golden.name)
-        };
-        let actual = support::assert_surgeist_matches(&golden)
-            .expect_err("qualified Chrome row must retain its reviewed mismatch")
-            .to_string();
-        assert_eq!(actual, expected, "{}", path.display());
+    assert_eq!(paths.len(), 12, "all three differing Flex families");
+    let edition = registered_current_edition().expect("current captures must authenticate");
+    let selected = registered_outputs_for_originals(&edition, &paths);
+    let run = edition.execute_selected(&selected).unwrap();
+    assert_eq!(run.cases.len(), 12);
+    for case in &run.cases {
+        let differences = case
+            .raw
+            .as_ref()
+            .unwrap_or_else(|error| panic!("{} failed raw comparison: {error}", case.output));
+        assert!(
+            !differences.is_empty(),
+            "{} unexpectedly matches",
+            case.output
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+        eprintln!("{} raw differences: {differences:?}", case.output);
     }
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
 }
 
 #[test]
 fn runs_browser_parity_smoke_fixture_against_surgeist_layout() {
-    let golden = support::Golden::parse(include_str!(
-        "browser_parity/xml/block/block_basic__border_box_ltr.xml"
-    ))
-    .expect("browser parity fixture should parse");
-
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    let original = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml");
+    assert_registered_originals_match(&[original]);
 }
 
 fn clear_browser_control_observations(expectation: &mut support::Expectation) {
@@ -930,16 +931,11 @@ fn assert_calc_fixture_family_matches(family: &str) {
     )
     .unwrap_or_else(|error| panic!("{error}"));
 
-    for fixture in fixtures
+    let originals = fixtures
         .into_iter()
         .filter_map(|(relative, fixture)| paths.contains(&relative).then_some(fixture))
-    {
-        let golden = support::Golden::parse_file(&fixture)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", fixture.display()));
-        support::assert_surgeist_matches(&golden).unwrap_or_else(|error| {
-            panic!("{} failed layout comparison: {error}", fixture.display())
-        });
-    }
+        .collect::<Vec<_>>();
+    assert_registered_originals_match(&originals);
 }
 
 fn calc_fixture_family_paths(
@@ -2196,7 +2192,7 @@ fn filtered_parity_fixtures(
 }
 
 #[test]
-fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal() {
+fn current_br_metric_fixtures_match_ordinary_geometry_and_font_bands() {
     let fixtures = support::fixture_files("xml")
         .expect("fixtures should load")
         .into_iter()
@@ -2207,30 +2203,98 @@ fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal
         })
         .collect::<Vec<_>>();
     assert_eq!(fixtures.len(), 24, "all six original metric families");
-    let mut failures = Vec::new();
-    for fixture in fixtures {
-        let golden = support::Golden::parse_file(&fixture).expect("fixture should parse");
-        match support::assert_surgeist_matches(&golden) {
-            Ok(()) => panic!(
-                "{} unexpectedly claims native font-band support",
-                fixture.display()
-            ),
-            Err(error)
-                if error
-                    .to_string()
-                    .contains("unsupported browser BR font-band observation") => {}
-            Err(error) => failures.push(format!(
-                "{} failed before band qualification: {error}",
-                fixture.display()
-            )),
-        }
+    let edition = registered_current_edition().expect("current captures must authenticate");
+    let selected = registered_outputs_for_originals(&edition, &fixtures);
+    let run = edition.execute_selected(&selected).unwrap();
+    assert_eq!(run.cases.len(), 24);
+    for case in &run.cases {
+        assert!(
+            case.raw.as_ref().is_ok_and(Vec::is_empty),
+            "{}: {:?}",
+            case.output,
+            case.raw
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
 }
 
 fn registered_current_edition() -> Result<portable_qualification::AdmittedRegistry, String> {
     portable_qualification::admit_registered(Path::new(env!("CARGO_MANIFEST_DIR")))
         .map_err(|error| error.to_string())
+}
+
+fn registered_outputs_for_originals(
+    edition: &portable_qualification::AdmittedRegistry,
+    originals: &[PathBuf],
+) -> BTreeSet<String> {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let corpus = owner
+        .join("tests/layout/browser_parity")
+        .canonicalize()
+        .unwrap();
+    originals
+        .iter()
+        .map(|original| {
+            let original = original.canonicalize().unwrap();
+            let relative = original.strip_prefix(&corpus).unwrap();
+            let matching = edition
+                .outputs()
+                .filter(|output| Path::new(output).ends_with(relative))
+                .collect::<Vec<_>>();
+            let [output] = matching.as_slice() else {
+                panic!(
+                    "{} requires exactly one registered current capture, found {matching:?}",
+                    original.display()
+                );
+            };
+            let mut edition_root = owner.join(output);
+            for _ in relative.components() {
+                assert!(edition_root.pop());
+            }
+            let retained = edition_root
+                .join("historical")
+                .join(relative.strip_prefix("xml").unwrap());
+            assert_eq!(
+                std::fs::read(&original).unwrap(),
+                std::fs::read(&retained).unwrap(),
+                "{} differs from the registered capture's historical input",
+                original.display()
+            );
+            output.clone()
+        })
+        .collect()
+}
+
+fn assert_registered_originals_match(originals: &[PathBuf]) {
+    assert!(
+        !originals.is_empty(),
+        "original selection must not be empty"
+    );
+    let edition = registered_current_edition().expect("current captures must authenticate");
+    let selected = registered_outputs_for_originals(&edition, originals);
+    let run = edition.execute_selected(&selected).unwrap();
+    assert_eq!(run.cases.len(), originals.len());
+    for case in &run.cases {
+        assert!(
+            case.raw.as_ref().is_ok_and(Vec::is_empty),
+            "{}: {:?}",
+            case.output,
+            case.raw
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
 }
 
 fn selected_current_outputs(
@@ -2295,7 +2359,7 @@ fn combined_inventory_filter_preserves_original_only_execution_without_current_c
     let selected = select_parity_inventory(
         support::fixture_files("xml").expect("original fixtures"),
         Some(&edition),
-        Some("xml/block/block_basic__border_box_ltr.xml"),
+        Some("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml"),
     )
     .expect("original-only match must satisfy combined filter");
     assert!(selected.current.is_empty());

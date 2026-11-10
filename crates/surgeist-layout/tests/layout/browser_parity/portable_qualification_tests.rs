@@ -134,6 +134,7 @@ impl Draft {
 }
 struct Fixture {
     owner: PathBuf,
+    edition: Edition,
     terminal: Value,
     terminal_sha256: String,
 }
@@ -211,6 +212,7 @@ impl Fixture {
         fs::create_dir(&owner).unwrap();
         let mut fixture = Self {
             owner,
+            edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
             terminal: Value::Null,
             terminal_sha256: String::new(),
         };
@@ -220,13 +222,13 @@ impl Fixture {
         fixture
     }
     fn root(&self) -> PathBuf {
-        self.owner.join(authority::ARTIFACT_ROOT)
+        self.owner.join(self.edition.artifact_root())
     }
     fn admit(&self) -> Result<AdmittedEdition> {
         admit(
             &self.owner,
             Registration {
-                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
+                edition: self.edition,
                 terminal_sha256: &self.terminal_sha256,
             },
         )
@@ -1440,5 +1442,172 @@ fn registered_sideways_flex_preserves_both_policies_and_complete_raw_fields() {
             assert_eq!(assignments[1].fields.len(), 1);
             assert!(assignments[1].fields[0].contains("path: \"/3/0\""));
         }
+    }
+}
+
+fn matching_fixture(observed_width: u32) -> Fixture {
+    let mut fixture = Fixture::new();
+    let old_root = fixture.root();
+    let new_root = fixture
+        .owner
+        .join("tests/layout/browser_parity/captured/synthetic-box-controls");
+    fs::rename(&old_root, &new_root).unwrap();
+    let mut terminal = fixture.terminal.clone();
+    let mut record = terminal["records"][0]["value"].clone();
+    let mut declaration = String::from_utf8(declaration_bytes(&record))
+        .unwrap()
+        .split("\n[records.semantic_specifications.")
+        .next()
+        .unwrap()
+        .to_owned();
+    declaration = declaration.replace("source_kind = \"authored\"", "source_kind = \"original\"");
+    let mut retained: BTreeMap<String, String> =
+        serde_json::from_value(terminal["retained_inputs"].clone()).unwrap();
+    let removed: Vec<_> = retained
+        .keys()
+        .filter(|p| p.starts_with("semantic/") || p.as_str() == POLICY)
+        .cloned()
+        .collect();
+    for path in removed {
+        retained.remove(&path);
+        fs::remove_file(new_root.join(path)).unwrap();
+    }
+    let mut owner_pins: BTreeMap<String, String> =
+        serde_json::from_value(terminal["current_owner_inputs"].clone()).unwrap();
+    owner_pins.retain(|path, _| !path.starts_with("semantic/") && path != POLICY);
+    let mut report = read_value(&new_root, REPORT);
+    let mut historical = BTreeMap::new();
+    let mut history_lines = String::new();
+    for variant in VARIANTS {
+        let output = output_path(variant);
+        let xml =
+            authored_xml(variant).replace("width=\"21\"", &format!("width=\"{observed_width}\""));
+        put(&new_root, &output, xml.as_bytes());
+        let predecessor = output.replacen("xml/", "historical/", 1);
+        let hash = sha256(xml.as_bytes());
+        put(&new_root, &predecessor, xml.as_bytes());
+        retained.insert(predecessor, hash.clone());
+        historical.insert(variant, hash.clone());
+        history_lines.push_str(&format!("{variant} = {hash:?}\n"));
+        let owner = format!("tests/layout/browser_parity/{output}");
+        put(&fixture.owner, &owner, xml.as_bytes());
+        owner_pins.insert(owner, hash.clone());
+        let artifact = report["generated"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|a| a["variant"] == variant)
+            .unwrap();
+        artifact["output_sha256"] = json!(hash);
+    }
+    declaration = declaration.replace(
+        "[records.historical_sha256]\n",
+        &format!("[records.historical_sha256]\n{history_lines}"),
+    );
+    declaration.push_str(&format!("\n[[matching_publications]]\nedition = \"synthetic-box-controls\"\nsources = [{SOURCE:?}]\n"));
+    put(&new_root, "corpus.toml", declaration.as_bytes());
+    put(&fixture.owner, OWNER_DECLARATION, declaration.as_bytes());
+    retained.insert("corpus.toml".into(), sha256(declaration.as_bytes()));
+    record["source_kind"] = json!("original");
+    record["historical_sha256"] = json!(historical);
+    record["semantic_specifications"] = Value::Null;
+    record["matching_publication"] = json!("synthetic-box-controls");
+    let record_sha = semantic_record_digest(&record).unwrap();
+    report["metadata"]["inputs"] = json!(retained);
+    let report_raw = bytes(&report);
+    put(&new_root, REPORT, &report_raw);
+    let parsed_report: Report = parse_json(&report_raw).unwrap();
+    let settings = BrowserSettingsWitness::from_official_json(SETTINGS.as_bytes()).unwrap();
+    let mut outputs = BTreeMap::from([(REPORT.to_owned(), sha256(&report_raw))]);
+    let cases: Vec<_> = parsed_report.generated.iter().map(|artifact| {
+        outputs.insert(artifact.output.clone(),artifact.output_sha256.clone());
+        let descriptor = CaseDescriptor { name: artifact.name.clone(), source: SOURCE.into(), variant: artifact.variant.clone(),
+            output: PathDigest { path: artifact.output.clone(), sha256: artifact.output_sha256.clone() }, record_sha256: record_sha.clone() };
+        let predecessor = artifact.output.replacen("xml/","historical/",1);
+        let history = PathDigest { path: predecessor.clone(), sha256: retained[&predecessor].clone() };
+        let identity = authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+            metadata: &parsed_report.metadata, artifact, case: &descriptor, full_inputs: &retained, excluded_specs: &BTreeSet::new(),
+            actual_xml_sha256: &artifact.output_sha256, historical_sha256: Some(&history.sha256), browser_settings: &settings,
+            observation_request: "geometry", observation_input_sha256: None,
+        }).unwrap();
+        json!({"case":descriptor,"historical":history,"matching":"geometry","identity":identity})
+    }).collect();
+    let ownership = bytes(&json!({"schema_version":1,"artifacts":outputs}));
+    put(&new_root, OWNERSHIP, &ownership);
+    terminal["edition"] = json!("synthetic-box-controls");
+    terminal["records"] = json!([{"source":SOURCE,"sha256":record_sha,"value":record}]);
+    terminal["cases"] = json!(cases);
+    terminal["declaration"]["sha256"] = json!(retained["corpus.toml"]);
+    terminal["retained_inputs"] = json!(retained);
+    terminal["current_owner_inputs"] = json!(owner_pins);
+    terminal["report"]["sha256"] = json!(sha256(&report_raw));
+    terminal["ownership"]["sha256"] = json!(sha256(&ownership));
+    fixture.edition = Edition::Matching("synthetic-box-controls");
+    fixture.terminal = terminal;
+    fixture.anchor_terminal_bytes(&terminal_bytes(&fixture.terminal));
+    fixture
+}
+
+#[test]
+fn matching_portable_admission_revalidates_complete_policy_free_capture_and_freshness() {
+    let fixture = matching_fixture(20);
+    let edition = fixture.admit().unwrap();
+    let result = edition.execute_selected(&fixture.all()).unwrap();
+    assert!(result.current_coverage_complete());
+    assert_eq!(result.cases.len(), 4);
+    assert!(
+        result
+            .cases
+            .iter()
+            .all(|case| case.raw.as_ref().unwrap().is_empty() && case.qualified.is_ok())
+    );
+    put(&fixture.owner, OWNER_SOURCE, b"changed original source");
+    assert!(
+        edition
+            .execute_selected(&fixture.all())
+            .unwrap()
+            .freshness_error
+            .is_some()
+    );
+}
+
+#[test]
+fn matching_portable_admission_refuses_missing_changed_observations_and_raw_mismatches() {
+    assert!(matching_fixture(21).admit().is_err());
+    for changed in [
+        "missing-input",
+        "changed-history",
+        "changed-context",
+        "changed-packet",
+        "missing-variant",
+    ] {
+        let mut fixture = matching_fixture(20);
+        match changed {
+            "missing-input" => fs::remove_file(fixture.root().join(SOURCE)).unwrap(),
+            "changed-history" => {
+                let history = fixture.terminal["cases"][0]["historical"]["path"]
+                    .as_str()
+                    .unwrap();
+                put(&fixture.root(), history, b"changed observation");
+            }
+            "changed-context" | "changed-packet" => {
+                let output = output_path(VARIANTS[0]);
+                let xml = fs::read_to_string(fixture.root().join(&output)).unwrap();
+                let xml = if changed == "changed-context" {
+                    xml.replace(
+                        "hypothetical-display=\"flex\"",
+                        "hypothetical-display=\"grid\"",
+                    )
+                } else {
+                    xml.replace("width=\"20\"", "width=\"21\"")
+                };
+                put(&fixture.root(), &output, xml.as_bytes());
+            }
+            "missing-variant" => fixture.rewrite_terminal(|terminal| {
+                terminal["cases"].as_array_mut().unwrap().pop();
+            }),
+            _ => unreachable!(),
+        }
+        assert!(fixture.admit().is_err(), "{changed}");
     }
 }

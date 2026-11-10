@@ -827,3 +827,42 @@ fn late_terminal_census_failure_removes_only_the_owned_terminal_output() {
         b"preexisting authority"
     );
 }
+
+#[test]
+fn matching_cli_dispatches_the_named_cohort_to_the_publication_owner() {
+    for (command, expected_access) in [
+        ("--publish-matching-geometry", InputAccess::Prepare),
+        ("--check-published-matching-geometry", InputAccess::ReadOnly),
+    ] {
+        let arguments = vec![command.to_owned(), "box-controls".to_owned()];
+        let (fixture, mode) = crate::parse_arguments(&arguments).unwrap();
+        assert_eq!(fixture, None);
+        let (edition, access) = publication_request(mode).unwrap();
+        assert_eq!(edition, Edition::Matching("box-controls"));
+        assert!(matches!(
+            (access, expected_access),
+            (InputAccess::Prepare, InputAccess::Prepare)
+                | (InputAccess::ReadOnly, InputAccess::ReadOnly)
+        ));
+        let selected = matching_input(DECLARATION, edition.name()).unwrap();
+        assert_eq!(
+            selected
+                .declaration
+                .records
+                .iter()
+                .map(|r| r.source.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "html/block/block_basic.html",
+                "html/block/block_calc_width_margin.html",
+                "html/flex/flex_calc_basis_margin_gap.html",
+                "html/grid/grid_calc_track_and_item_margin.html",
+            ])
+        );
+        let parent = Directory::new();
+        let created = create_edition(&parent.0, edition).unwrap();
+        assert_eq!(created, parent.0.join("box-controls"));
+        assert!(create_edition(&parent.0, edition).is_err());
+    }
+    assert!(matching_input(DECLARATION, "unknown-controls").is_err());
+}

@@ -395,7 +395,8 @@ pub(crate) struct IdentityProjection {
     inputs: BTreeMap<String, String>,
     linked_resources: BTreeMap<String, String>,
     font_demand: String,
-    policy_source_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    policy_source_sha256: Option<String>,
 }
 pub(crate) struct VerifiedIdentity {
     identity: CaseIdentity,
@@ -447,11 +448,23 @@ pub(crate) struct IdentityInputs<'a> {
     pub(crate) observation_request: &'a str,
     pub(crate) observation_input_sha256: Option<&'a str>,
 }
-/// Pure calculation shared by issuer and portable consumer. The caller first
-/// checks actual bytes, full report/input census, selected mapping and owner
-/// freshness. No value from a stored IdentityProjection enters this function.
-pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result<VerifiedIdentity> {
-    let IdentityInputs {
+/// Policy-free source, artifact, report, resource and browser-profile binding.
+pub(crate) struct CaptureBindingInputs<'a> {
+    pub(crate) metadata: &'a CaptureMetadata,
+    pub(crate) artifact: &'a CapturedArtifact,
+    pub(crate) case: &'a CaseDescriptor,
+    pub(crate) full_inputs: &'a BTreeMap<String, String>,
+    pub(crate) excluded_specs: &'a BTreeSet<String>,
+    pub(crate) actual_xml_sha256: &'a str,
+    pub(crate) historical_sha256: Option<&'a str>,
+    pub(crate) browser_settings: &'a BrowserSettingsWitness,
+    pub(crate) observation_request: &'a str,
+    pub(crate) observation_input_sha256: Option<&'a str>,
+}
+pub(crate) fn capture_binding_from_verified_inputs(
+    input: CaptureBindingInputs<'_>,
+) -> Result<IdentityProjection> {
+    let CaptureBindingInputs {
         metadata,
         artifact,
         case,
@@ -459,7 +472,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         excluded_specs,
         actual_xml_sha256,
         historical_sha256,
-        policy_sha256,
         browser_settings,
         observation_request,
         observation_input_sha256,
@@ -586,7 +598,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             if case.source != original_subgrid_body::SOURCE
                 || artifact.source_sha256 != original_subgrid_body::SOURCE_SHA256
                 || request_sha256 != sha256(original_subgrid_body::REQUEST)
-                || policy_sha256 != proof_sha256
                 || !artifact.linked_resources.is_empty()
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
@@ -618,7 +629,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             if case.source != atomic_percentage::SOURCE
                 || artifact.source_sha256 != atomic_percentage::SOURCE_SHA256
                 || request_sha256 != sha256(atomic_percentage::REQUEST)
-                || policy_sha256 != proof_sha256
                 || !artifact.linked_resources.is_empty()
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
@@ -652,7 +662,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             if case.source != horizontal_br::SOURCE
                 || artifact.source_sha256 != horizontal_br::SOURCE_SHA256
                 || request_sha256 != sha256(horizontal_br::REQUEST)
-                || policy_sha256 != proof_sha256
                 || !artifact.linked_resources.is_empty()
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
@@ -684,7 +693,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 .ok_or_else(|| changed("vertical BR source identity"))?;
             if artifact.source_sha256 != source_sha256
                 || request_sha256 != sha256(vertical_br::REQUEST)
-                || policy_sha256 != proof_sha256
                 || !artifact.linked_resources.is_empty()
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
@@ -716,7 +724,6 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 .ok_or_else(|| changed("empty-line BR source identity"))?;
             if artifact.source_sha256 != source_sha256
                 || request_sha256 != sha256(empty_line_br::REQUEST)
-                || policy_sha256 != proof_sha256
                 || !artifact.linked_resources.is_empty()
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
@@ -829,6 +836,33 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         ))
         .map_err(|e| malformed(e.to_string()))?,
     );
+    for hash in [
+        &artifact.source_sha256,
+        actual_xml_sha256,
+        &case.record_sha256,
+        &metadata.browser_executable_sha256,
+    ] {
+        digest(hash)?;
+    }
+    if let Some(hash) = historical_sha256 {
+        digest(hash)?;
+    }
+    for map in [full_inputs, &artifact.linked_resources] {
+        for (name, hash) in map {
+            path(name)?;
+            digest(hash)?;
+        }
+    }
+    for name in [
+        &case.source,
+        &case.output.path,
+        &metadata.browser_executable,
+    ] {
+        path(name)?;
+    }
+    if case.name.is_empty() || metadata.generator.is_empty() || metadata.engine_version.is_empty() {
+        return Err(malformed("empty capture binding identity"));
+    }
     let projection = IdentityProjection {
         source: case.source.clone(),
         source_sha256: artifact.source_sha256.clone(),
@@ -848,8 +882,41 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         inputs,
         linked_resources: artifact.linked_resources.clone(),
         font_demand: font_demand.to_owned(),
-        policy_source_sha256: policy_sha256.to_owned(),
+        policy_source_sha256: None,
     };
+    Ok(projection)
+}
+/// Exact and specialized policy identity is layered over the common capture binding.
+pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result<VerifiedIdentity> {
+    let policy = input.policy_sha256;
+    digest(policy)?;
+    let required = match input.observation_request {
+        "original-subgrid-body" => Some(sha256(original_subgrid_body::PROOF_SCRIPT)),
+        "prepared-atomic-percentage" => Some(sha256(atomic_percentage::SCRIPT.as_bytes())),
+        "horizontal-br-font-band" => Some(sha256(super::br_font_band::SCRIPT.as_bytes())),
+        "vertical-br-font-band" => Some(sha256(vertical_br::SCRIPT.as_bytes())),
+        "empty-line-br-font-band" => Some(sha256(empty_line_br::SCRIPT.as_bytes())),
+        _ => None,
+    };
+    if required
+        .as_deref()
+        .is_some_and(|expected| expected != policy)
+    {
+        return Err(changed("specialized proof policy identity"));
+    }
+    let mut projection = capture_binding_from_verified_inputs(CaptureBindingInputs {
+        metadata: input.metadata,
+        artifact: input.artifact,
+        case: input.case,
+        full_inputs: input.full_inputs,
+        excluded_specs: input.excluded_specs,
+        actual_xml_sha256: input.actual_xml_sha256,
+        historical_sha256: input.historical_sha256,
+        browser_settings: input.browser_settings,
+        observation_request: input.observation_request,
+        observation_input_sha256: input.observation_input_sha256,
+    })?;
+    projection.policy_source_sha256 = Some(policy.to_owned());
     let identity = CaseIdentity::from_verified_projection(
         serde_json::to_value(&projection).map_err(|e| malformed(e.to_string()))?,
     )?;
@@ -1127,11 +1194,51 @@ pub(crate) struct SpecializedCase {
     pub(crate) identity: IdentityProjection,
 }
 
+pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
+    if edition.is_empty()
+        || edition.starts_with('-')
+        || edition.ends_with('-')
+        || !edition
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        || SpecializedProfile::from_edition(edition).is_some()
+        || matches!(
+            edition,
+            "root-context-v4"
+                | EDITION
+                | MEASURED_GRID_EDITION
+                | FLEX_TEXT_EDITION
+                | GRID_STATIC_POSITION_EDITION
+                | RELATIVE_INSET_EDITION
+                | WRAPPING_WORLD_CORNER_EDITION
+        )
+    {
+        return Err(malformed("invalid matching edition identifier"));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum MatchingCategory {
+    Geometry,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MatchingCase {
+    pub(crate) case: CaseDescriptor,
+    pub(crate) historical: PathDigest,
+    pub(crate) matching: MatchingCategory,
+    pub(crate) identity: IdentityProjection,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub(crate) enum QualifiedCase {
     Exact(ExactCase),
     Specialized(SpecializedCase),
+    Matching(MatchingCase),
 }
 
 impl QualifiedCase {
@@ -1139,6 +1246,7 @@ impl QualifiedCase {
         match self {
             Self::Exact(case) => &case.case,
             Self::Specialized(case) => &case.case,
+            Self::Matching(case) => &case.case,
         }
     }
 
@@ -1146,6 +1254,7 @@ impl QualifiedCase {
         match self {
             Self::Exact(case) => &case.identity,
             Self::Specialized(case) => &case.identity,
+            Self::Matching(case) => &case.identity,
         }
     }
 }
@@ -1173,15 +1282,40 @@ impl Qualification {
         Ok(bytes)
     }
     pub(crate) fn parse(raw: &str) -> Result<Self> {
-        unique_json(raw)?;
+        let wire = unique_json(raw)?;
+        if wire
+            .get("cases")
+            .and_then(Value::as_array)
+            .is_some_and(|cases| {
+                cases.iter().any(|case| {
+                    case.get("matching").is_some()
+                        && case
+                            .get("identity")
+                            .is_some_and(|identity| identity.get("policy_source_sha256").is_some())
+                })
+            })
+        {
+            return Err(malformed(
+                "matching capture binding cannot contain policy identity",
+            ));
+        }
         let value: Self = serde_json::from_str(raw).map_err(|e| malformed(e.to_string()))?;
         value.validate()?;
         Ok(value)
     }
     fn validate(&self) -> Result<()> {
         let specialized = SpecializedProfile::from_edition(&self.edition);
+        let matching = self
+            .cases
+            .iter()
+            .any(|case| matches!(case, QualifiedCase::Matching(_)));
+        if matching {
+            validate_matching_edition(&self.edition)?;
+        }
+
         if self.schema_version != TERMINAL_SCHEMA
-            || (specialized.is_none()
+            || (!matching
+                && specialized.is_none()
                 && !matches!(
                     self.edition.as_str(),
                     EDITION
@@ -1249,7 +1383,10 @@ impl Qualification {
                 return Err(malformed("terminal case record association changed"));
             }
             match (case, specialized) {
-                (QualifiedCase::Exact(case), None) => {
+                (QualifiedCase::Exact(case), None) if !matching => {
+                    if case.identity.policy_source_sha256.is_none() {
+                        return Err(malformed("missing exact policy identity"));
+                    }
                     if case.requirements.case_id != descriptor.name
                         || case.requirements.output != descriptor.output.path
                     {
@@ -1269,6 +1406,48 @@ impl Qualification {
                 {
                     self.validate_specialized(case, profile, record)?;
                 }
+                (QualifiedCase::Matching(case), None)
+                    if matching
+                        && variants
+                            .insert((descriptor.source.as_str(), descriptor.variant.as_str())) =>
+                {
+                    let family = descriptor
+                        .source
+                        .strip_prefix("html/")
+                        .and_then(|s| s.strip_suffix(".html"))
+                        .ok_or_else(|| malformed("matching source path"))?;
+                    let stem = family
+                        .rsplit('/')
+                        .next()
+                        .ok_or_else(|| malformed("matching source stem"))?;
+                    let variant = descriptor.variant.as_str();
+                    if record.value["matching_publication"] != self.edition
+                        || record.value["source_kind"] != "original"
+                        || !record.value["semantic_specifications"].is_null()
+                        || !record.value["specialized_publication"].is_null()
+                        || !record.value["relation"].is_null()
+                        || record.value["expected"]["kind"] != "generated"
+                        || record.value["historical_sha256"]
+                            .as_object()
+                            .map(|m| m.len())
+                            != Some(fixture_cases().len())
+                        || !fixture_cases().iter().any(|(v, _)| *v == variant)
+                        || descriptor.name != format!("{stem}__{variant}")
+                        || descriptor.output.path != format!("xml/{family}__{variant}.xml")
+                        || case.historical.path != format!("historical/{family}__{variant}.xml")
+                        || record.value["historical_sha256"][variant] != case.historical.sha256
+                        || case.identity.historical_sha256.as_ref() != Some(&case.historical.sha256)
+                        || record.value["source_sha256"] != case.identity.source_sha256
+                        || self.retained_inputs.get(&descriptor.source)
+                            != Some(&case.identity.source_sha256)
+                        || case.identity.policy_source_sha256.is_some()
+                    {
+                        return Err(malformed(
+                            "matching terminal source, category or predecessor changed",
+                        ));
+                    }
+                    self.require_retained(&case.historical)?;
+                }
                 _ => return Err(malformed("terminal edition or variant association changed")),
             }
             let identity = case.identity();
@@ -1279,6 +1458,16 @@ impl Qualification {
             {
                 return Err(malformed("stored projection/case association changed"));
             }
+        }
+        if matching
+            && (self.cases.len() != self.records.len() * fixture_cases().len()
+                || self.records.iter().any(|record| {
+                    fixture_cases()
+                        .iter()
+                        .any(|(variant, _)| !variants.contains(&(record.source.as_str(), *variant)))
+                }))
+        {
+            return Err(malformed("incomplete matching terminal census"));
         }
         for map in [&self.retained_inputs, &self.current_owner_inputs] {
             for (name, hash) in map {
@@ -1357,7 +1546,9 @@ impl Qualification {
                 super::br_font_band::empty_line_evidence() == case.evidence
             }
         };
-        if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()
+        if !evidence_matches
+            || case.identity.policy_source_sha256.as_deref()
+                != Some(case.evidence.policy_digest().as_str())
         {
             return Err(malformed("specialized terminal policy identity changed"));
         }

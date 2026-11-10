@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/block_basic__border_box_ltr.xml": "5fe3e4823616063952c65f640315daffd4ee6308a62046b50c43a2c0f299e274",
+    "xml/block/block_basic__border_box_rtl.xml": "b97f94bcb292fc694cde2daa812479c1aee142593c0a9057b0ae2e64f325a3c2",
+    "xml/block/block_basic__content_box_ltr.xml": "f0f39042f3073b5e8ed59c5d6362d1e1fc807ced28e69359b81f61cd65e90ec2",
+    "xml/block/block_basic__content_box_rtl.xml": "6042532e7ad71ca19eed3ae46ac4766e5f21486ed923ba4af6253fdbfd6573c2",
+    "xml/block/block_calc_width_margin__border_box_ltr.xml": "ef61e06917626a642ae21d912ce3264cbe7d5b18c223ea462329b8203351a685",
+    "xml/block/block_calc_width_margin__border_box_rtl.xml": "13cdc608169577035798e01382c491eef5bae313cee5570cfe35731621c525a1",
+    "xml/block/block_calc_width_margin__content_box_ltr.xml": "cde85ce6ef487235f1c01e9b571d165d3a18231984b6118c878751f0e64d467d",
+    "xml/block/block_calc_width_margin__content_box_rtl.xml": "7eabcb30f4299a26af320fa6442f0ada9e3b733044f86032d94e74568a75a44b",
+    "xml/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "240185966304f8f8dce8baee60222d9e71e3eaeeb4f652e35757b7c6f156c498",
+    "xml/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "4a369aa6b0f56f2f8074fa9ab11b0b86c9363dd0e0f8dac39230042fdd91cccf",
+    "xml/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "b2c5406d388de66ed4e5bc0e4e45acaa48a81ed18d5497ea6a728155dfe2152e",
+    "xml/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "0965169ab8fe03c8fb690450415ff2a1972b4c85e7f7bfc4866ba4f10580114b",
+    "xml/generation-reports/all.json": "8386d1afa28e6ea207953404f4fe154a37d418ce49295f3220fa4fe7fffb20a2",
+    "xml/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "698a7901adc007136b1f3ae5346549d26e5f74602fef83018d4a7fcf9ff8b185",
+    "xml/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "e80362ed6203af81340d387094350c40bd6336b67a345230bdde031ac426e68f",
+    "xml/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "89ef2eaf49d3d1b5cdc1e75a4e79c8a2212a9562ddb9d1334a1bbbc26ff2208e",
+    "xml/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "66078b4c0481949418410e41140e7710ec396a0fce724cf4c81e4ffcada57793"
+  }
+}

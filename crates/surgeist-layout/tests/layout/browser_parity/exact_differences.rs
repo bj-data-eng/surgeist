@@ -1419,6 +1419,61 @@ fn source_census(
     Ok(out)
 }
 
+/// Complete plain-box geometry comparison without a difference policy or native oracle.
+pub(crate) fn compare_matching_geometry(
+    golden: &Golden,
+) -> Result<(
+    Vec<String>,
+    std::result::Result<QualifiedComparison, String>,
+)> {
+    if !matches!(
+        golden.viewport.root_context,
+        super::RootContext::Qualified(_)
+    ) || golden.has_element_scroll_sizes()
+        || golden.has_prepared_range_frame()
+        || golden.measured_leaf.is_some()
+        || golden.has_flex_content_text()
+    {
+        return Err(unsupported(
+            "/",
+            "matching geometry requires qualified plain-box capture",
+        ));
+    }
+    fn finite(expected: &Expectation) -> Result<()> {
+        if [expected.x, expected.y, expected.width, expected.height]
+            .into_iter()
+            .any(|value| value.is_none_or(|v| !v.is_finite()))
+        {
+            return Err(malformed(
+                "matching geometry requires finite x/y/width/height for every box",
+            ));
+        }
+        for child in &expected.children {
+            finite(child)?;
+        }
+        Ok(())
+    }
+    finite(&golden.expectations)?;
+    let source = source_census(&golden.root, &golden.expectations, None, false)?;
+    let completed = collect_captured_comparison(golden, &source)?;
+    let raw: Vec<_> = completed
+        .raw_differences()
+        .map(|field| format!("{field:?}"))
+        .collect();
+    let qualified = if raw.is_empty() {
+        Ok(QualifiedComparison {
+            raw: RawVerdict::Matches,
+            qualified: QualifiedVerdict::MatchingControl,
+        })
+    } else {
+        Err(format!(
+            "matching geometry has {} raw differences",
+            raw.len()
+        ))
+    };
+    Ok((raw, qualified))
+}
+
 pub(crate) fn complete_captured_comparison(
     golden: &Golden,
     spec: &ResolvedSpec<'_>,

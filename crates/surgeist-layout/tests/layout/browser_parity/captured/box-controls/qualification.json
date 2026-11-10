@@ -1,0 +1,1234 @@
+{
+  "schema_version": 3,
+  "edition": "box-controls",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "f378854bc05d5a65a60654b5c5136adaadf9ffe935455d3acf9f0c2cc7a966f5"
+  },
+  "records": [
+    {
+      "source": "html/block/block_basic.html",
+      "sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "border_box_rtl": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "content_box_ltr": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "content_box_rtl": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88"
+        },
+        "matching_publication": "box-controls",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/block_basic.html",
+        "source_kind": "original",
+        "source_sha256": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e"
+      }
+    },
+    {
+      "source": "html/block/block_calc_width_margin.html",
+      "sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "border_box_rtl": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "content_box_ltr": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "content_box_rtl": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94"
+        },
+        "matching_publication": "box-controls",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/block_calc_width_margin.html",
+        "source_kind": "original",
+        "source_sha256": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce"
+      }
+    },
+    {
+      "source": "html/flex/flex_calc_basis_margin_gap.html",
+      "sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "flex",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "border_box_rtl": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "content_box_ltr": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "content_box_rtl": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb"
+        },
+        "matching_publication": "box-controls",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "source_kind": "original",
+        "source_sha256": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439"
+      }
+    },
+    {
+      "source": "html/grid/grid_calc_track_and_item_margin.html",
+      "sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "grid",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "border_box_rtl": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "content_box_ltr": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "content_box_rtl": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4"
+        },
+        "matching_publication": "box-controls",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "source_kind": "original",
+        "source_sha256": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "8386d1afa28e6ea207953404f4fe154a37d418ce49295f3220fa4fe7fffb20a2"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "9269b8bc5fa02afee5a22ad741cbc2af770cfdd5a1a2d410d3ad508c9ba55477"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "block_basic__border_box_ltr",
+        "source": "html/block/block_basic.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/block_basic__border_box_ltr.xml",
+          "sha256": "5fe3e4823616063952c65f640315daffd4ee6308a62046b50c43a2c0f299e274"
+        },
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28"
+      },
+      "historical": {
+        "path": "historical/block/block_basic__border_box_ltr.xml",
+        "sha256": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_basic.html",
+        "source_sha256": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+        "variant": "border_box_ltr",
+        "historical_sha256": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+        "capture_sha256": "5fe3e4823616063952c65f640315daffd4ee6308a62046b50c43a2c0f299e274",
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "1104a8f439ce51963ad5b45b87e8d19fcb1c5b603d30f2417b9e46bbe1234399",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_basic__border_box_rtl",
+        "source": "html/block/block_basic.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/block_basic__border_box_rtl.xml",
+          "sha256": "b97f94bcb292fc694cde2daa812479c1aee142593c0a9057b0ae2e64f325a3c2"
+        },
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28"
+      },
+      "historical": {
+        "path": "historical/block/block_basic__border_box_rtl.xml",
+        "sha256": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_basic.html",
+        "source_sha256": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+        "variant": "border_box_rtl",
+        "historical_sha256": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+        "capture_sha256": "b97f94bcb292fc694cde2daa812479c1aee142593c0a9057b0ae2e64f325a3c2",
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "fcefc66a67c5e52a62a8fc611d1abf6db175762ba0fbfcca43cdb63208b07683",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_basic__content_box_ltr",
+        "source": "html/block/block_basic.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/block_basic__content_box_ltr.xml",
+          "sha256": "f0f39042f3073b5e8ed59c5d6362d1e1fc807ced28e69359b81f61cd65e90ec2"
+        },
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28"
+      },
+      "historical": {
+        "path": "historical/block/block_basic__content_box_ltr.xml",
+        "sha256": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_basic.html",
+        "source_sha256": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+        "variant": "content_box_ltr",
+        "historical_sha256": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+        "capture_sha256": "f0f39042f3073b5e8ed59c5d6362d1e1fc807ced28e69359b81f61cd65e90ec2",
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "1fce39337e37271b155a6c472b0e8f31eee4e5af4a0ed94dfcf61f84056014f7",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_basic__content_box_rtl",
+        "source": "html/block/block_basic.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/block_basic__content_box_rtl.xml",
+          "sha256": "6042532e7ad71ca19eed3ae46ac4766e5f21486ed923ba4af6253fdbfd6573c2"
+        },
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28"
+      },
+      "historical": {
+        "path": "historical/block/block_basic__content_box_rtl.xml",
+        "sha256": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_basic.html",
+        "source_sha256": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+        "variant": "content_box_rtl",
+        "historical_sha256": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+        "capture_sha256": "6042532e7ad71ca19eed3ae46ac4766e5f21486ed923ba4af6253fdbfd6573c2",
+        "record_sha256": "1a81b422addd21a4025a711734e7a5f5f390dc229bfb12dbd173c85cd3756c28",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "d5a30680f8009b4d449b06c980dd493fc3fc65ae12f90e4dbe10e87c827c24ff",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_calc_width_margin__border_box_ltr",
+        "source": "html/block/block_calc_width_margin.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/block_calc_width_margin__border_box_ltr.xml",
+          "sha256": "ef61e06917626a642ae21d912ce3264cbe7d5b18c223ea462329b8203351a685"
+        },
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95"
+      },
+      "historical": {
+        "path": "historical/block/block_calc_width_margin__border_box_ltr.xml",
+        "sha256": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_calc_width_margin.html",
+        "source_sha256": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+        "variant": "border_box_ltr",
+        "historical_sha256": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+        "capture_sha256": "ef61e06917626a642ae21d912ce3264cbe7d5b18c223ea462329b8203351a685",
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "d03e2645a73894f7281bbdad5f4ef639cc25e27089a9dca75e01d8ab424b51e8",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_calc_width_margin__border_box_rtl",
+        "source": "html/block/block_calc_width_margin.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/block_calc_width_margin__border_box_rtl.xml",
+          "sha256": "13cdc608169577035798e01382c491eef5bae313cee5570cfe35731621c525a1"
+        },
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95"
+      },
+      "historical": {
+        "path": "historical/block/block_calc_width_margin__border_box_rtl.xml",
+        "sha256": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_calc_width_margin.html",
+        "source_sha256": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+        "variant": "border_box_rtl",
+        "historical_sha256": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+        "capture_sha256": "13cdc608169577035798e01382c491eef5bae313cee5570cfe35731621c525a1",
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "b969c631042aa8d9e2af70844e9e6a34ed2e9cea89288bec5014592956e6fc60",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_calc_width_margin__content_box_ltr",
+        "source": "html/block/block_calc_width_margin.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/block_calc_width_margin__content_box_ltr.xml",
+          "sha256": "cde85ce6ef487235f1c01e9b571d165d3a18231984b6118c878751f0e64d467d"
+        },
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95"
+      },
+      "historical": {
+        "path": "historical/block/block_calc_width_margin__content_box_ltr.xml",
+        "sha256": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_calc_width_margin.html",
+        "source_sha256": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+        "variant": "content_box_ltr",
+        "historical_sha256": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+        "capture_sha256": "cde85ce6ef487235f1c01e9b571d165d3a18231984b6118c878751f0e64d467d",
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "49783028bf2588fc0fd6b47f5555a5365399f13a5ad10718c1dfc9380c148a28",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "block_calc_width_margin__content_box_rtl",
+        "source": "html/block/block_calc_width_margin.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/block_calc_width_margin__content_box_rtl.xml",
+          "sha256": "7eabcb30f4299a26af320fa6442f0ada9e3b733044f86032d94e74568a75a44b"
+        },
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95"
+      },
+      "historical": {
+        "path": "historical/block/block_calc_width_margin__content_box_rtl.xml",
+        "sha256": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/block/block_calc_width_margin.html",
+        "source_sha256": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+        "variant": "content_box_rtl",
+        "historical_sha256": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+        "capture_sha256": "7eabcb30f4299a26af320fa6442f0ada9e3b733044f86032d94e74568a75a44b",
+        "record_sha256": "39129e54aa27216fb0a819d156cad175658f2a666dc14345dd53e11b602c3c95",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "830c985c9f8246b5b8f78fa11a8498293805a0893d0a85f006e491c90d14246c",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "flex_calc_basis_margin_gap__border_box_ltr",
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/flex/flex_calc_basis_margin_gap__border_box_ltr.xml",
+          "sha256": "240185966304f8f8dce8baee60222d9e71e3eaeeb4f652e35757b7c6f156c498"
+        },
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02"
+      },
+      "historical": {
+        "path": "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml",
+        "sha256": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "source_sha256": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+        "variant": "border_box_ltr",
+        "historical_sha256": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+        "capture_sha256": "240185966304f8f8dce8baee60222d9e71e3eaeeb4f652e35757b7c6f156c498",
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "8fe2cb5a583273ddbff2ab3e73333733291f6e3bbd3e8d750ab04ce46de15c35",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "flex_calc_basis_margin_gap__border_box_rtl",
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/flex/flex_calc_basis_margin_gap__border_box_rtl.xml",
+          "sha256": "4a369aa6b0f56f2f8074fa9ab11b0b86c9363dd0e0f8dac39230042fdd91cccf"
+        },
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02"
+      },
+      "historical": {
+        "path": "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml",
+        "sha256": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "source_sha256": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+        "variant": "border_box_rtl",
+        "historical_sha256": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+        "capture_sha256": "4a369aa6b0f56f2f8074fa9ab11b0b86c9363dd0e0f8dac39230042fdd91cccf",
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "d3df3a7c27319c997afe98f2b99569d256253b26937ac8501a9bf3b7fbd43bc1",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "flex_calc_basis_margin_gap__content_box_ltr",
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/flex/flex_calc_basis_margin_gap__content_box_ltr.xml",
+          "sha256": "b2c5406d388de66ed4e5bc0e4e45acaa48a81ed18d5497ea6a728155dfe2152e"
+        },
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02"
+      },
+      "historical": {
+        "path": "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml",
+        "sha256": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "source_sha256": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+        "variant": "content_box_ltr",
+        "historical_sha256": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+        "capture_sha256": "b2c5406d388de66ed4e5bc0e4e45acaa48a81ed18d5497ea6a728155dfe2152e",
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "1104e4fc7a0c8384b342e38291f6a39eca2eb8721098b97334488918d3169a44",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "flex_calc_basis_margin_gap__content_box_rtl",
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/flex/flex_calc_basis_margin_gap__content_box_rtl.xml",
+          "sha256": "0965169ab8fe03c8fb690450415ff2a1972b4c85e7f7bfc4866ba4f10580114b"
+        },
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02"
+      },
+      "historical": {
+        "path": "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml",
+        "sha256": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/flex/flex_calc_basis_margin_gap.html",
+        "source_sha256": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+        "variant": "content_box_rtl",
+        "historical_sha256": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+        "capture_sha256": "0965169ab8fe03c8fb690450415ff2a1972b4c85e7f7bfc4866ba4f10580114b",
+        "record_sha256": "8c0873414f21119b9f425e06e8e3df8cebc45e2b5999a738de486cc51eb1bb02",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "309d2b0b9f6a5abdd58e8bfc6d83ff21cc271f6be7c02d3791faa15f5bed798e",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_calc_track_and_item_margin__border_box_ltr",
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/grid/grid_calc_track_and_item_margin__border_box_ltr.xml",
+          "sha256": "698a7901adc007136b1f3ae5346549d26e5f74602fef83018d4a7fcf9ff8b185"
+        },
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5"
+      },
+      "historical": {
+        "path": "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml",
+        "sha256": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "source_sha256": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+        "variant": "border_box_ltr",
+        "historical_sha256": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+        "capture_sha256": "698a7901adc007136b1f3ae5346549d26e5f74602fef83018d4a7fcf9ff8b185",
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "759aa33588f0f5694aac3e41a86006f8afa787257141822a96864d6fd270680c",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_calc_track_and_item_margin__border_box_rtl",
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/grid/grid_calc_track_and_item_margin__border_box_rtl.xml",
+          "sha256": "e80362ed6203af81340d387094350c40bd6336b67a345230bdde031ac426e68f"
+        },
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5"
+      },
+      "historical": {
+        "path": "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml",
+        "sha256": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "source_sha256": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+        "variant": "border_box_rtl",
+        "historical_sha256": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+        "capture_sha256": "e80362ed6203af81340d387094350c40bd6336b67a345230bdde031ac426e68f",
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c5859aabc32130a3d2c4fc6a3b93d5fc372c7e449ca4945cd7dd0398984ad0f6",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_calc_track_and_item_margin__content_box_ltr",
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/grid/grid_calc_track_and_item_margin__content_box_ltr.xml",
+          "sha256": "89ef2eaf49d3d1b5cdc1e75a4e79c8a2212a9562ddb9d1334a1bbbc26ff2208e"
+        },
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5"
+      },
+      "historical": {
+        "path": "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml",
+        "sha256": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "source_sha256": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+        "variant": "content_box_ltr",
+        "historical_sha256": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+        "capture_sha256": "89ef2eaf49d3d1b5cdc1e75a4e79c8a2212a9562ddb9d1334a1bbbc26ff2208e",
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "f676132ac1e2c4eeb5755f762420c529b1afc6003a64454eb31466019905d888",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "grid_calc_track_and_item_margin__content_box_rtl",
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/grid/grid_calc_track_and_item_margin__content_box_rtl.xml",
+          "sha256": "66078b4c0481949418410e41140e7710ec396a0fce724cf4c81e4ffcada57793"
+        },
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5"
+      },
+      "historical": {
+        "path": "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml",
+        "sha256": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4"
+      },
+      "matching": "geometry",
+      "identity": {
+        "source": "html/grid/grid_calc_track_and_item_margin.html",
+        "source_sha256": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+        "variant": "content_box_rtl",
+        "historical_sha256": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+        "capture_sha256": "66078b4c0481949418410e41140e7710ec396a0fce724cf4c81e4ffcada57793",
+        "record_sha256": "b29ccec4a5ef0bd20d0150b2613221c3af5cd88c36dba42a9fbbb79f57c969a5",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "2aedc4df4eaf261aea5f905f7a68b0b974d6a0d326a506b98dc4a99b52735211",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+          "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+          "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+          "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+          "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+          "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+          "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+          "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+          "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+          "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+          "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+          "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+          "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+          "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+          "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+          "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+          "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "f378854bc05d5a65a60654b5c5136adaadf9ffe935455d3acf9f0c2cc7a966f5",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+    "historical/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+    "historical/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+    "historical/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+    "historical/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+    "historical/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+    "historical/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+    "historical/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+    "historical/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+    "historical/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+    "historical/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+    "historical/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+    "historical/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+    "historical/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+    "historical/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+    "historical/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4",
+    "html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+    "html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+    "html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+    "html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+    "origin/selected-originals.json": "d9636b708a478b800c4291576f35dec793e0190d2323a27aea9902fcc1649853",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  },
+  "current_owner_inputs": {
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/block/block_basic.html": "185320c1320f84774efa6a99e25ec18543d4463ab02eaddb203410cb9859c73e",
+    "tests/layout/browser_parity/html/block/block_calc_width_margin.html": "e40496ab951b538645bab1983cb6f415c3dbc35a799ddf730d9a78ab6371bdce",
+    "tests/layout/browser_parity/html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
+    "tests/layout/browser_parity/html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
+    "tests/layout/browser_parity/xml/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
+    "tests/layout/browser_parity/xml/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
+    "tests/layout/browser_parity/xml/block/block_basic__content_box_rtl.xml": "cbd091e98c8bbdd3df3a058369ea46f54a823315f21b18f3863125bcb2b8de88",
+    "tests/layout/browser_parity/xml/block/block_calc_width_margin__border_box_ltr.xml": "9d4782cf3928d3ae362e302192acd7d5a3f264ac69c85e092c21fd6177d0f34c",
+    "tests/layout/browser_parity/xml/block/block_calc_width_margin__border_box_rtl.xml": "d0a50c526ace0edc0a06c65660f7a16bb7787ff94c21d3999bf3f429d355150c",
+    "tests/layout/browser_parity/xml/block/block_calc_width_margin__content_box_ltr.xml": "9459a14dda6cece84c321ac06d97186166a720b8bf3ac89cf1fe82b4a98a4070",
+    "tests/layout/browser_parity/xml/block/block_calc_width_margin__content_box_rtl.xml": "78ef8284b9a63b55777dc630661453c55692b4f1e1c516a883b504cf2fde4e94",
+    "tests/layout/browser_parity/xml/flex/flex_calc_basis_margin_gap__border_box_ltr.xml": "40a68f067f3cc57384adfefde4001cb6ae74a0e27c8c35bbb2568eb35e009f23",
+    "tests/layout/browser_parity/xml/flex/flex_calc_basis_margin_gap__border_box_rtl.xml": "06f2bba632ab6e6f00eb4c466cb41aada6bf314580911f684d0b68c2d4094b0f",
+    "tests/layout/browser_parity/xml/flex/flex_calc_basis_margin_gap__content_box_ltr.xml": "f5b0407ff42a0d3e7e08a66fe9384787b4e6398f18015760a8c6906bc8a0bb3f",
+    "tests/layout/browser_parity/xml/flex/flex_calc_basis_margin_gap__content_box_rtl.xml": "aea965206344bd36c626ee90f09387a23c1f8d2c1c913b07a8054193968801bb",
+    "tests/layout/browser_parity/xml/grid/grid_calc_track_and_item_margin__border_box_ltr.xml": "394e5341b42bab91cd549b53cb52f035acc58f52d9f5cb1f62ad1ffc81aa58ae",
+    "tests/layout/browser_parity/xml/grid/grid_calc_track_and_item_margin__border_box_rtl.xml": "261c4fb9fa591b7b4ed34470deacf147e3a1bb165b01f0ec2e3998561aaa69f2",
+    "tests/layout/browser_parity/xml/grid/grid_calc_track_and_item_margin__content_box_ltr.xml": "2fb1c0177e92ef1f24db936caac3bd78d8329d3eedf1b8d33b33ae5b3763005a",
+    "tests/layout/browser_parity/xml/grid/grid_calc_track_and_item_margin__content_box_rtl.xml": "eef7aebb047a62cf80295a82f34cbd299ddb816346fe9d692ab070b3e3f7aaa4"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-flex-composition-v1",
+    "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "validator_profile": "root-context-flex-composition-v1",
+    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  }
+}
