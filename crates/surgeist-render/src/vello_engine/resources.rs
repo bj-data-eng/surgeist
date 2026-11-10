@@ -1279,6 +1279,10 @@ mod tests {
 mod collection_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "resources/individual_commit_tests.rs"]
+mod individual_commit_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod gradient_extent_tests {
     use super::*;
 
