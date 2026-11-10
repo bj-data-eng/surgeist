@@ -9,6 +9,8 @@
 //! mode without timing.
 //!
 //! Run with `cargo bench --offline --locked -j 1 -p surgeist-html-parser --bench parse`.
+//! A first argument without a leading dash selects the documents whose name contains it, as in
+//! `--bench parse -- table-heavy`.
 
 use std::{fmt::Write as _, hint::black_box, time::Instant};
 
@@ -127,6 +129,9 @@ fn main() {
         ("table-heavy", documents::table_heavy()),
         ("many-diagnostics", documents::many_diagnostics()),
     ];
+    let filter = std::env::args()
+        .skip(1)
+        .find(|argument| !argument.starts_with('-'));
     println!("rounds per document: {ROUNDS} (after one warm-up parse)");
     println!();
     println!(
@@ -136,6 +141,12 @@ fn main() {
     let mut details = String::new();
     let mut summary = String::new();
     for (name, text) in &documents {
+        if filter
+            .as_ref()
+            .is_some_and(|wanted| !name.contains(wanted.as_str()))
+        {
+            continue;
+        }
         let source = HtmlSource::utf8(text.as_str());
         let usage = parse(&source);
         let mut rounds: Vec<f64> = (0..ROUNDS).map(|_| timed(&source, None)).collect();
