@@ -15,7 +15,9 @@ const VARIANTS: [&str; 4] = [
 ];
 const SOURCE: &str = "html/qualification/portable-empty.html";
 const POLICY: &str = "docs/portable-fixed-box-policy.md";
-const OWNER_SOURCE: &str = "tests/layout/browser_parity/html/qualification/portable-empty.html";
+const OWNER_SOURCE: &str = "examples/qualify-root-context/html/qualification/portable-empty.html";
+const ORIGINAL_OWNER_SOURCE: &str =
+    "tests/layout/browser_parity/html/qualification/portable-empty.html";
 const BASE_CSS: &str = "scripts/gentest/test_base_style.css";
 const OWNER_GLOBAL: &str = "tests/layout/browser_parity/scripts/gentest/test_base_style.css";
 const PRODUCER_HELPER: &str = "scripts/gentest/test_helper.js";
@@ -273,6 +275,14 @@ impl Fixture {
     }
     fn seal(&mut self, mut draft: Draft) {
         let root = self.root();
+        let source_receipt = bytes(
+            &json!({"schema_version":1,"source":"synthetic","files":{SOURCE:sha256(SOURCE_BYTES)}}),
+        );
+        let source_provenance = bytes(&json!({
+            "sidecar": RECEIPT_SIDECAR,
+            "source": "synthetic-portable-test",
+            "receipt_sha256": sha256(&source_receipt),
+        }));
         let base = BTreeMap::from([
             (SOURCE.to_owned(), SOURCE_BYTES.to_vec()),
             (POLICY.to_owned(), POLICY_BYTES.to_vec()),
@@ -285,20 +295,9 @@ impl Fixture {
                 "browser-owner.toml".to_owned(),
                 b"[browser]\nsource = \"synthetic-portable-test\"\nversion = \"1\"\n".to_vec(),
             ),
-            (
-                RECEIPT.to_owned(),
-                bytes(
-                    &json!({"schema_version":1,"source":"synthetic","files":{SOURCE:sha256(SOURCE_BYTES)}}),
-                ),
-            ),
-            (
-                PROVENANCE.to_owned(),
-                bytes(&json!({"sidecar":RECEIPT_SIDECAR,"source":"synthetic-portable-test"})),
-            ),
-            (
-                SELECTED_ORIGINALS.to_owned(),
-                bytes(&json!({"schema_version":1,"records":[]})),
-            ),
+            (RECEIPT.to_owned(), source_receipt),
+            (PROVENANCE.to_owned(), source_provenance),
+            (SELECTED_ORIGINALS.to_owned(), b"[]".to_vec()),
         ]);
         for (path, contents) in &base {
             put(&root, path, contents);
@@ -1475,6 +1474,19 @@ fn matching_fixture(observed_width: u32) -> Fixture {
     let mut owner_pins: BTreeMap<String, String> =
         serde_json::from_value(terminal["current_owner_inputs"].clone()).unwrap();
     owner_pins.retain(|path, _| !path.starts_with("semantic/") && path != POLICY);
+    let source = fs::read(fixture.owner.join(OWNER_SOURCE)).unwrap();
+    let source_sha256 = sha256(&source);
+    assert_eq!(owner_pins.remove(OWNER_SOURCE), Some(source_sha256.clone()));
+    fs::remove_file(fixture.owner.join(OWNER_SOURCE)).unwrap();
+    put(&fixture.owner, ORIGINAL_OWNER_SOURCE, &source);
+    owner_pins.insert(ORIGINAL_OWNER_SOURCE.to_owned(), source_sha256.clone());
+    let selected = bytes(&json!([{
+        "source": SOURCE,
+        "ownership": "imported",
+        "sha256": source_sha256,
+    }]));
+    put(&new_root, SELECTED_ORIGINALS, &selected);
+    retained.insert(SELECTED_ORIGINALS.to_owned(), sha256(&selected));
     let mut report = read_value(&new_root, REPORT);
     let mut historical = BTreeMap::new();
     let mut history_lines = String::new();
@@ -1561,7 +1573,11 @@ fn matching_portable_admission_revalidates_complete_policy_free_capture_and_fres
             .iter()
             .all(|case| case.raw.as_ref().unwrap().is_empty() && case.qualified.is_ok())
     );
-    put(&fixture.owner, OWNER_SOURCE, b"changed original source");
+    put(
+        &fixture.owner,
+        ORIGINAL_OWNER_SOURCE,
+        b"changed original source",
+    );
     assert!(
         edition
             .execute_selected(&fixture.all())
