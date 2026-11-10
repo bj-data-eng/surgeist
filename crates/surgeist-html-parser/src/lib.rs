@@ -16,20 +16,21 @@
         clippy::arithmetic_side_effects
     )
 )]
-// A parse records its detail only when its request selects it, and without the
-// `detail` feature no request can. The recording code and the data it keeps
-// stay compiled, constant-folded away by the unselected control, and the types
-// that read them do not exist, so what only those readers use is unused.
-#![cfg_attr(not(feature = "detail"), allow(dead_code))]
-
 use surgeist_html_semantics::*;
 mod accounting;
+// A parse records its detail only when its request selects it, and without the
+// `detail` feature no request can. The recording code and the data it keeps in
+// these modules stay compiled, constant-folded away by the unselected control,
+// and the types that read them do not exist, so what only those readers use is
+// unused.
+#[cfg_attr(not(feature = "detail"), allow(dead_code))]
 mod construction;
 mod detail;
 #[cfg(feature = "detail")]
 mod detail_view;
 mod keyed;
 mod meta_csp;
+#[cfg_attr(not(feature = "detail"), allow(dead_code))]
 mod parser;
 pub use meta_csp::{HtmlParseCspFailure, HtmlParseCspFailureKind};
 mod request;

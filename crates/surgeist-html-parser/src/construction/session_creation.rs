@@ -257,6 +257,7 @@ impl ParserArenaSession {
         profile: CreationProfile<'_, '_>,
         context: CreationContext<'_>,
     ) -> Result<ParserNode, SessionError> {
+        let profile_installs_later = !matches!(profile, CreationProfile::Ordinary);
         let node = self.allocate_for_creation(
             control,
             input,
@@ -266,9 +267,12 @@ impl ParserArenaSession {
             context,
         )?;
         // The elements that install their attributes one at a time have them
-        // all once the creation is complete.
-        self.active_mut()?
-            .record_event_handler_starts(control, node.index, 0)?;
+        // all once the creation is complete; the others recorded theirs when
+        // they were allocated.
+        if profile_installs_later {
+            self.active_mut()?
+                .record_event_handler_starts(control, node.index, 0)?;
+        }
         Ok(node)
     }
     pub(super) fn allocate_for_creation(

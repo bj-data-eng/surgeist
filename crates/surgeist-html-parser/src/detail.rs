@@ -24,6 +24,18 @@ use std::{error::Error, fmt, ops};
 /// selects any of the three. Each flag adds only its own records and the
 /// reader of them.
 ///
+/// The resources a kind charges, as the `usage` of a report states them:
+///
+/// - `SourceMapEntries` and `SourceMapPayloadUnits`: the source map, the lexical
+///   and omission records and the history, which share the origin and cause
+///   graph and its rows, and the locations of the diagnostics.
+/// - `Diagnostics` and `DiagnosticPayloadUnits`: the diagnostics.
+///
+/// A parse that selects none charges and reaches none of the four. The start
+/// positions of scripts, styles and event handler content attributes are kept
+/// whatever is selected and charge `AuxiliaryEntries`, 16 bytes for each handler
+/// attribute, and the pending association values charge the managed storage.
+///
 /// The default selection is [`Self::NONE`].
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[must_use]

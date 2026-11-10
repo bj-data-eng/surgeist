@@ -130,6 +130,8 @@ pub(crate) struct ReportStorage {
     history: FrozenHistory,
     closed_common: bool,
     associated_slot: Option<usize>,
+    /// The start positions by node, built at the first read.
+    pub(super) starts: std::sync::OnceLock<positions::StartIndex>,
 }
 pub(crate) struct PreparedReportStorage<'a> {
     history: PreparedHistory<'a>,
@@ -774,6 +776,7 @@ impl<'a> PreparedReportStorage<'a> {
             history: self.history.commit()?,
             closed_common: self.closed_common,
             associated_slot: self.associated_slot,
+            starts: std::sync::OnceLock::new(),
         })
     }
 }

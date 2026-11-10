@@ -18,5 +18,4 @@ surgeist-html-semantics = { path = "../surgeist-html-semantics", version = "=0.1
 surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 
 [dev-dependencies]
-surgeist-html-parser = { path = "../surgeist-html-parser", version = "=0.1.0", features = ["detail"] }
 surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }

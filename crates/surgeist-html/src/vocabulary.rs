@@ -127,12 +127,7 @@ impl KnownHtmlEventHandler {
         if name.namespace_uri().is_some() {
             return None;
         }
-        let units = name.local_name().code_units();
-        let sorted = Self::sorted_by_name();
-        sorted
-            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
-            .ok()
-            .and_then(|index| sorted.get(index).copied())
+        Self::from_local_units(name.local_name().code_units())
     }
 
     /// Recognizes the local name of a no-namespace attribute, as UTF-16 code

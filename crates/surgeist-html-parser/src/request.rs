@@ -475,6 +475,7 @@ pub(crate) struct DocumentRequestParts {
     base_facts: Option<crate::HtmlParseBaseFacts>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     accounting: RequestAccounting,
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
@@ -483,6 +484,7 @@ impl DocumentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
     }
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     pub(crate) fn detail(&self) -> DetailSet {
         self.detail
     }
@@ -789,6 +791,7 @@ pub(crate) struct FragmentRequestParts {
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     accounting: RequestAccounting,
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
@@ -797,6 +800,7 @@ impl FragmentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
     }
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
     pub(crate) fn detail(&self) -> DetailSet {
         self.detail
     }

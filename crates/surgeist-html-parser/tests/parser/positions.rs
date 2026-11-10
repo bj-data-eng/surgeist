@@ -180,7 +180,7 @@ fn a_handler_merged_into_body_keeps_the_position_of_the_tag_that_added_it() {
 
 #[test]
 fn a_reconstructed_formatting_element_keeps_the_position_of_its_original_tag() {
-    // `<b onclick=1>` ends at column 14. The paragraph break closes the b, and
+    // `<b onclick=1>` follows `<p>` and ends at column 17. The paragraph break closes the b, and
     // the reconstruction creates a second one from the same token.
     let report = parse(HtmlSource::utf8("<p><b onclick=1>x<p>y"));
     let positions: Vec<_> = elements(&report)
@@ -229,5 +229,55 @@ fn elements_that_install_their_attributes_one_at_a_time_record_their_handlers() 
     ] {
         let report = parse(HtmlSource::utf8(text));
         assert_eq!(handlers(&report, local), vec![(0, (1, column))], "{text}");
+    }
+}
+
+#[test]
+fn every_position_of_a_document_of_many_elements_is_read_back() {
+    // Each group is three lines: a script (tag end at column 9), a style (column
+    // 8) and a div with two handlers (`<div onclick=1 onmouseover=2>` is 29
+    // units, so column 30).
+    const GROUPS: usize = 100;
+    let text =
+        "<script></script>\n<style></style>\n<div onclick=1 onmouseover=2></div>\n".repeat(GROUPS);
+    let report = parse(HtmlSource::utf8(text));
+    let all = elements(&report);
+    let named = |local: &str| -> Vec<HtmlNodeId> {
+        all.iter()
+            .filter(|(name, _)| name == local)
+            .map(|(_, id)| id.clone())
+            .collect()
+    };
+    let (scripts, styles, divs) = (named("script"), named("style"), named("div"));
+    assert_eq!(
+        (scripts.len(), styles.len(), divs.len()),
+        (GROUPS, GROUPS, GROUPS)
+    );
+    for group in 0..GROUPS {
+        let line = 3 * group + 1;
+        let script = report.script_position(&scripts[group]).unwrap().unwrap();
+        assert_eq!(
+            (script.line(), script.column()),
+            (line, 9),
+            "script {group}"
+        );
+        let style = report.style_position(&styles[group]).unwrap().unwrap();
+        assert_eq!(
+            (style.line(), style.column()),
+            (line + 1, 8),
+            "style {group}"
+        );
+        let handlers: Vec<_> = report
+            .event_handler_positions(&divs[group])
+            .map(|entry| {
+                let (attribute, position) = entry.unwrap();
+                (attribute, position.line(), position.column())
+            })
+            .collect();
+        assert_eq!(
+            handlers,
+            vec![(0, line + 2, 30), (1, line + 2, 30)],
+            "div {group}"
+        );
     }
 }

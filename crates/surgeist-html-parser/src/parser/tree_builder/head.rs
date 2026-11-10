@@ -907,6 +907,16 @@ impl HeadState<'_> {
         rule: crate::construction::evidence::HtmlParseDiagnosticRule,
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
+        // A parse that did not select diagnostics builds none.
+        if !self
+            .before
+            .kernel
+            .session
+            .evidence(c)?
+            .records_diagnostics()
+        {
+            return Ok(());
+        }
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,

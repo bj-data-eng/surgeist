@@ -7,6 +7,7 @@
 
 use super::report::ReportStorage;
 use super::*;
+use std::collections::HashMap;
 use surgeist_html::{
     construction::{HtmlNodeId, HtmlNodeKind},
     values::Namespace,
@@ -27,8 +28,6 @@ impl SessionStorage {
         let Some(offset) = self.token_end else {
             return Ok(());
         };
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let body = self.html_local(c, node, "body")?;
         let mut index = from;
         loop {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -54,19 +53,26 @@ impl SessionStorage {
             } else {
                 None
             };
-            if let Some(handler) = handler
-                && (handler.applicability()
+            if let Some(handler) = handler {
+                let applies = handler.applicability()
                     == surgeist_html::vocabulary::HtmlEventHandlerApplicability::AllHtmlElements
-                    || body)
-            {
-                self.push_event_handler_start(
-                    c,
-                    payload_registry::EventHandlerStart {
-                        node,
-                        attribute: index,
-                        offset,
-                    },
-                )?;
+                    || self.html_local(c, node, "body")?;
+                if applies {
+                    let (Ok(node), Ok(attribute)) = (u32::try_from(node), u32::try_from(index))
+                    else {
+                        return Err(c
+                            .stop_representation(HtmlParseResource::AuxiliaryEntries)
+                            .into());
+                    };
+                    self.push_event_handler_start(
+                        c,
+                        payload_registry::EventHandlerStart {
+                            node,
+                            attribute,
+                            offset,
+                        },
+                    )?;
+                }
             }
             index = index.checked_add(1).ok_or_else(|| latch_registry_row(c))?;
         }
@@ -146,52 +152,90 @@ impl SessionStorage {
     }
 }
 
+/// The start positions of a report by node, built when the first is read: one
+/// pass over the registry, then a constant-time read per node. The index is not
+/// part of the accounted parse; it holds one entry per script, style and event
+/// handler content attribute the parser created.
+#[derive(Default)]
+pub(crate) struct StartIndex {
+    script: HashMap<HtmlNodeId, usize>,
+    style: HashMap<HtmlNodeId, usize>,
+    handlers: HashMap<HtmlNodeId, Vec<(usize, usize)>>,
+}
+
+impl StartIndex {
+    fn build(storage: &FrozenStorage) -> Self {
+        let id_of = |index: usize| storage.view.node_at(index).map(|node| node.as_node().id());
+        let mut index = Self::default();
+        for row in &storage.payloads.values {
+            match row {
+                RetainedPayload::Script {
+                    node: Some(node),
+                    metadata,
+                } => {
+                    if let (Some(id), Some(start)) = (id_of(*node), metadata.start) {
+                        index.script.insert(id, start);
+                    }
+                }
+                RetainedPayload::Style { node, state } => {
+                    if let (Some(id), Some(start)) = (id_of(*node), state.start) {
+                        index.style.insert(id, start);
+                    }
+                }
+                RetainedPayload::EventHandlerStarts(list) => {
+                    for start in list.as_slice() {
+                        let (Ok(node), Ok(attribute)) = (
+                            usize::try_from(start.node),
+                            usize::try_from(start.attribute),
+                        ) else {
+                            continue;
+                        };
+                        if let Some(id) = id_of(node) {
+                            index
+                                .handlers
+                                .entry(id)
+                                .or_default()
+                                .push((attribute, start.offset));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for starts in index.handlers.values_mut() {
+            starts.sort_unstable();
+        }
+        index
+    }
+}
+
 /// The start positions a report holds, read by node.
 impl ReportStorage {
+    fn starts(&self) -> &StartIndex {
+        self.starts
+            .get_or_init(|| StartIndex::build(self.history().storage()))
+    }
     /// The offset at which the start tag of the parser-created script `id`
     /// ended.
     pub(crate) fn script_start(&self, id: &HtmlNodeId) -> Option<usize> {
-        let storage = self.history().storage();
-        storage.payloads.values.iter().find_map(|row| match row {
-            RetainedPayload::Script {
-                node: Some(node),
-                metadata,
-            } => Self::is_node(storage, *node, id)
-                .then_some(metadata.start)
-                .flatten(),
-            _ => None,
-        })
+        self.starts().script.get(id).copied()
     }
     /// The offset at which the start tag of the parser-created style `id`
     /// ended.
     pub(crate) fn style_start(&self, id: &HtmlNodeId) -> Option<usize> {
-        let storage = self.history().storage();
-        storage.payloads.values.iter().find_map(|row| match row {
-            RetainedPayload::Style { node, state } => Self::is_node(storage, *node, id)
-                .then_some(state.start)
-                .flatten(),
-            _ => None,
-        })
-    }
-    fn is_node(storage: &FrozenStorage, index: usize, id: &HtmlNodeId) -> bool {
-        storage
-            .view
-            .node_at(index)
-            .is_some_and(|node| node.as_node().id() == *id)
+        self.starts().style.get(id).copied()
     }
     /// The attribute indices and start offsets of the event handler content
-    /// attributes of `id`, in the order the parser created them.
+    /// attributes of `id`, in attribute order.
     pub(crate) fn event_handler_starts<'a>(
         &'a self,
         id: &'a HtmlNodeId,
     ) -> impl Iterator<Item = (usize, usize)> + 'a {
-        let storage = self.history().storage();
-        let starts = storage.payloads.values.iter().find_map(|row| match row {
-            RetainedPayload::EventHandlerStarts(list) => Some(list.as_slice()),
-            _ => None,
-        });
-        starts.into_iter().flatten().filter_map(move |start| {
-            Self::is_node(storage, start.node, id).then_some((start.attribute, start.offset))
-        })
+        self.starts()
+            .handlers
+            .get(id)
+            .into_iter()
+            .flatten()
+            .copied()
     }
 }

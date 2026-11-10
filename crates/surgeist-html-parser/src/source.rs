@@ -176,7 +176,8 @@ impl HtmlSource {
     /// The line and column of `offset`, in this source's coordinates.
     ///
     /// The line index is built when the first position is read, and the parse
-    /// itself counts no line. An offset that is past the end or splits a UTF-8
+    /// itself counts no line. The index holds 8 bytes for each line of the source
+    /// and is not charged to any parse limit. An offset that is past the end or splits a UTF-8
     /// scalar has no position.
     pub fn position(&self, offset: usize) -> Result<HtmlSourcePosition, HtmlSourceRangeError> {
         // The same validation as an empty range at `offset`.

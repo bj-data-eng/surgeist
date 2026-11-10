@@ -284,9 +284,9 @@ pub enum HtmlParseFormEvidence {
 /// which its element's start tag ended.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct EventHandlerStart {
-    pub(crate) node: usize,
+    pub(crate) node: u32,
     /// The index of the attribute among the attributes of its element.
-    pub(crate) attribute: usize,
+    pub(crate) attribute: u32,
     pub(crate) offset: usize,
 }
 

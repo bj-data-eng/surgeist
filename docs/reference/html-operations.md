@@ -2714,7 +2714,9 @@ selects none, which is the default, charges and retains less: it records no sour
 omission, history or diagnostic entry, so the `SourceMapEntries`, `SourceMapPayloadUnits`,
 `Diagnostics` and `DiagnosticPayloadUnits` figures are zero and the work credits and managed
 capacity fall by the work and storage that produced them. The table is not measured again for
-that selection, so a limit sized from it still admits every parse of the same input. A figure is a range
+that selection. The figures fell for the documents measured; a pending association copies the
+values of a `style`, `meta` or `base` occurrence under every selection, so a document with many
+of them costs more managed storage than the table's figure. A figure is a range
 over those sizes, and the high end is the figure to size a limit by: a capacity or a layout
 steps up when a buffer doubles, so the cost per unit depends on where a document ends in the
 doubling. Work credits are deterministic: a build profile does not change them. The cost is

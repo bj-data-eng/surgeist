@@ -57,7 +57,7 @@ mod input_color;
 mod input_image;
 pub(crate) mod meta;
 pub(crate) mod pending_association;
-mod positions;
+pub(crate) mod positions;
 pub(crate) mod style;
 #[cfg(test)]
 use input_image::append_native_input_value;

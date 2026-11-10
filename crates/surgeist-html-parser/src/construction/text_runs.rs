@@ -434,22 +434,25 @@ pub(crate) fn split_leading_ascii_whitespace(
     if cut == text.value.text().len() {
         return Ok(Some(take_payload(input, control)?));
     }
-    let mut covered = 0;
-    for origin in text.origins.as_slice() {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if origin.start != covered
-            || origin.end <= origin.start
-            || origin.end > text.value.text().len()
-        {
+    // Without a graph the text keeps no origins to cover or to split.
+    if control.detail().records_graph() {
+        let mut covered = 0;
+        for origin in text.origins.as_slice() {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if origin.start != covered
+                || origin.end <= origin.start
+                || origin.end > text.value.text().len()
+            {
+                return Err(SessionError::OriginSplitUnavailable);
+            }
+            if origin.start < cut && cut < origin.end {
+                return Err(SessionError::OriginSplitUnavailable);
+            }
+            covered = origin.end;
+        }
+        if covered != text.value.text().len() {
             return Err(SessionError::OriginSplitUnavailable);
         }
-        if origin.start < cut && cut < origin.end {
-            return Err(SessionError::OriginSplitUnavailable);
-        }
-        covered = origin.end;
-    }
-    if covered != text.value.text().len() {
-        return Err(SessionError::OriginSplitUnavailable);
     }
     let prefix = slice_text(text, 0, cut, control)?;
     let suffix = match slice_text(text, cut, text.value.text().len(), control) {
