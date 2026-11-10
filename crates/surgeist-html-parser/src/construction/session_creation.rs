@@ -183,7 +183,7 @@ impl ParserArenaSession {
         current_form: Option<&ParserNode>,
         context: CreationContext<'_>,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_for_creation(
+        self.allocate_recorded_creation(
             control,
             input,
             intended_parent,
@@ -201,7 +201,7 @@ impl ParserArenaSession {
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
-        self.allocate_for_creation(
+        self.allocate_recorded_creation(
             control,
             input,
             location.intended_parent,
@@ -219,7 +219,7 @@ impl ParserArenaSession {
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
-        self.allocate_for_creation(
+        self.allocate_recorded_creation(
             control,
             input,
             location.intended_parent,
@@ -237,7 +237,7 @@ impl ParserArenaSession {
         capability: &crate::parser::tree_builder::ConstructionCapability<'_>,
     ) -> Result<ParserNode, SessionError> {
         capability.validate_session(control, self)?;
-        self.allocate_for_creation(
+        self.allocate_recorded_creation(
             control,
             input,
             location.intended_parent,
@@ -245,6 +245,31 @@ impl ParserArenaSession {
             CreationProfile::Select(capability, token_source),
             location.context,
         )
+    }
+    /// Creates the element and records the start positions of its event
+    /// handler content attributes.
+    pub(super) fn allocate_recorded_creation(
+        &mut self,
+        control: &mut ParseControl,
+        input: &mut Option<Tag>,
+        intended_parent: &ParserNode,
+        current_form: Option<&ParserNode>,
+        profile: CreationProfile<'_, '_>,
+        context: CreationContext<'_>,
+    ) -> Result<ParserNode, SessionError> {
+        let node = self.allocate_for_creation(
+            control,
+            input,
+            intended_parent,
+            current_form,
+            profile,
+            context,
+        )?;
+        // The elements that install their attributes one at a time have them
+        // all once the creation is complete.
+        self.active_mut()?
+            .record_event_handler_starts(control, node.index, 0)?;
+        Ok(node)
     }
     pub(super) fn allocate_for_creation(
         &mut self,

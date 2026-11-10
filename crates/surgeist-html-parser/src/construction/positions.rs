@@ -105,6 +105,18 @@ impl SessionStorage {
         c: &mut ParseControl,
         start: payload_registry::EventHandlerStart,
     ) -> Result<(), SessionError> {
+        if let Some(slot) = self.handler_starts
+            && let Some(RetainedPayload::EventHandlerStarts(list)) = self.payloads.values.get(slot)
+            && list
+                .as_slice()
+                .iter()
+                .rev()
+                .take_while(|earlier| earlier.node == start.node)
+                .any(|earlier| earlier.attribute == start.attribute)
+        {
+            // The creation recorded it already.
+            return Ok(());
+        }
         let slot = match self.handler_starts {
             Some(slot) => slot,
             None => {

@@ -214,3 +214,20 @@ fn a_position_past_the_end_or_inside_a_scalar_is_refused() {
     assert_eq!(pair(Some(crlf.position(2).unwrap())), position(1, 3));
     assert_eq!(pair(Some(crlf.position(3).unwrap())), position(2, 1));
 }
+
+#[test]
+fn elements_that_install_their_attributes_one_at_a_time_record_their_handlers() {
+    // `<input onclick=1 value=2>` is 25 units, `<select onchange=1>` 19 and
+    // `<details onclick=1>` 19: each handler is at index 0.
+    for (text, local, column) in [
+        ("<input onclick=1 value=2>", "input", 26),
+        ("<select onchange=1>", "select", 20),
+        ("<details onclick=1>", "details", 20),
+        ("<textarea onselect=1>", "textarea", 22),
+        ("<img onerror=1>", "img", 16),
+        ("<a onclick=1>", "a", 14),
+    ] {
+        let report = parse(HtmlSource::utf8(text));
+        assert_eq!(handlers(&report, local), vec![(0, (1, column))], "{text}");
+    }
+}

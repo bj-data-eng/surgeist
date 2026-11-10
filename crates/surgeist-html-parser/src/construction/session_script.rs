@@ -133,7 +133,7 @@ impl ParserArenaSession {
                 },
             )
             .map_err(|_| latch_registry_row(control))?;
-        let node = self.allocate_for_creation(
+        let node = self.allocate_recorded_creation(
             control,
             input,
             &parent,
