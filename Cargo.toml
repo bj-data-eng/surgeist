@@ -68,6 +68,7 @@ rust-version = "1.99.1"
 resolver = "3"
 default-members = ["."]
 members = [
+    "crates/surgeist-bindings-js",
     "crates/surgeist-ledger",
     "crates/surgeist-animation",
     "crates/surgeist-color",

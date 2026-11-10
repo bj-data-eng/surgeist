@@ -21,6 +21,12 @@ their upstream legal text and modification notices. The 14 originally imported
 `LICENSE` files contained identical text, preserved in one shared copy here; the root
 project's own license remains separate.
 
+The external JavaScript backend in
+[`surgeist-bindings-js`](crates/surgeist-bindings-js/README.md) uses the pinned
+Rust SDK and native V8 library. Its [dependency notice](crates/surgeist-bindings-js/NOTICE.md)
+links complete SDK, V8 and selected bundled-library legal material, with the
+source-qualified coverage distinguished from a downstream binary inventory.
+
 The owned [`surgeist-shaper`](crates/surgeist-shaper/README.md) crate carries the
 maintained Harfrust implementation and its upstream legal material.
 

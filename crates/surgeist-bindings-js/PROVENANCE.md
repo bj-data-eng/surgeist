@@ -1,0 +1,68 @@
+# External JavaScript backend
+
+The direct dependency is crates.io `v8` exactly **152.2.0**, the Rust SDK from
+[`denoland/rusty_v8`](https://github.com/denoland/rusty_v8/tree/v152.2.0).
+The root lockfile authenticates its package with SHA-256
+`a10fe1a92da5c32c7c7f838ce36c0ccfcfd5edf0865b58bdde820aa64cea9888`.
+Its packaged VCS record names `2768994f664e8a6e3aba27503606c58339136e2a`
+and marks the package dirty; this identifies provenance, not byte identity
+with a clean checkout. Surgeist does not ingest its implementation.
+
+The manifest uses the SDK's defaults, including `use_custom_libcxx`.
+The qualified configuration is Rust **1.99.1**, edition **2024**, native
+**aarch64-apple-darwin**, SDK default features, and the upstream release static
+library. Other SDK targets/features have not been executed or qualified here.
+Owned library/test code uses only safe SDK operations. Safe pinned initialization
+replaces convenience scope macros whose expansion contains unsafe code.
+
+## Native archive
+
+The selected [release asset](https://github.com/denoland/rusty_v8/releases/tag/v152.2.0)
+is `librusty_v8_release_aarch64-apple-darwin.a.gz`, **40,635,999 bytes**.
+The release API publishes SHA-256
+`a4a5484444ad4b5f10dc7bed141236dd9dbeabf2006d14520f19b935d4db4227`.
+The qualified decompressed archive is **157,813,600 bytes**, SHA-256
+`680617c57021c1ad7490749e4c10c4504978e84c3e3a288b8bb39a31a9e0d1f8`.
+This is release metadata and observed-byte qualification, not an independent
+reproducible build or a publisher signature.
+
+[`tools/native.py`](tools/native.py) validates this exact archive and supplies
+`RUSTY_V8_ARCHIVE` and `RUSTY_V8_ARCHIVE_SHA256` before executing a command.
+By default it refuses missing/mismatched input and performs no download.
+Explicit `--download` retrieves only the pinned asset, verifies its published
+compressed digest and bounded decoded bytes, and refuses to overwrite an
+existing mismatched archive. No source build, toolchain or makefile is used.
+
+From the repository root, with the archive in a chosen cache location:
+
+```sh
+python3 crates/surgeist-bindings-js/tools/native.py --archive /absolute/path/librusty_v8.a -- cargo test --offline --locked -j 1 -p surgeist-bindings-js
+```
+
+Use `--download` before `--` only when acquisition is authorized and necessary.
+Cargo's `--offline` does not itself disable native build-script downloads, so
+the explicit local artifact is required for reproducible offline verification.
+The runner's initial artifact is for the native target only; cross compilation
+requires separate target/artifact qualification. Cache retention follows the
+repository's normal owned-cache cleanup guidance.
+
+## Ownership constraints
+
+The pinned SDK's `OwnedIsolate::new` enters the isolate, and its destructor
+checks that it is current before exiting. A HandleScope does not switch
+isolates. Accordingly `Process` owns the only entered isolate until teardown;
+temporary `Execution` guards only borrow it. A static owner token refuses a
+second live process token before creating another isolate. Non-Send/non-Sync
+owners, scoped values and private owner-checked roots prevent unsupported thread
+entry and foreign handle conversion.
+
+The SDK initialization contract additionally requires protection-key ancestry on
+some x86 hosts. Bootstrap records and confines all future engine entry to the
+actual initializing thread rather than permitting arbitrary pre-existing pools.
+The ARM64 results do not qualify a future worker-transfer or shared-isolate API.
+The process-lived platform is initialized once and deliberately never disposed
+or dynamically unloaded. Per-owner roots, contexts and isolate use safe RAII.
+
+The [crate notice](NOTICE.md) distinguishes SDK, native V8 and bundled-library
+terms. A source-qualified dependency notice is not certification of every
+possible downstream executable or static-link composition.

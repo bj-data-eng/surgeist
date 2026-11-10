@@ -1,0 +1,90 @@
+use std::fmt;
+
+use crate::Root;
+
+/// Operation that produced a guest exception.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ExceptionPhase {
+    Compile,
+    Evaluate,
+    PropertyRead,
+    PropertyWrite,
+    Invoke,
+    Coerce,
+}
+
+/// An original guest-thrown value, retained without invoking guest diagnostics.
+#[derive(Clone, Debug)]
+pub struct Exception {
+    pub(crate) phase: ExceptionPhase,
+    pub(crate) value: Root,
+}
+
+impl Exception {
+    /// Boundary at which this exception arose.
+    pub fn phase(&self) -> ExceptionPhase {
+        self.phase
+    }
+
+    /// Original thrown value; import into a scope of its owning heap.
+    pub fn value(&self) -> &Root {
+        &self.value
+    }
+}
+
+/// Typed refusal before invalid engine access, or a captured guest failure.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum Error {
+    /// Bootstrap is already held by another live process token.
+    OwnerAlreadyActive,
+    /// Only the thread that initialized the platform may acquire this backend.
+    WrongThread,
+    /// Realm or value belongs to a different or already destroyed heap.
+    ForeignOwner,
+    /// A previously valid identity is no longer available.
+    ExpiredIdentity,
+    /// A monotonic identity cannot advance without reuse.
+    IdentityExhausted,
+    /// A Rust-side allocation was refused.
+    Allocation,
+    /// A string exceeds the backend's supported code-unit bound.
+    StringTooLong,
+    /// The argument list exceeds the backend's supported call bound.
+    TooManyArguments,
+    /// This operation requires an object or function, respectively.
+    ExpectedObject,
+    ExpectedFunction,
+    /// Guest Set rejected the property update.
+    PropertyRejected,
+    /// Execution was terminated by the backend.
+    Terminated,
+    /// The backend could not complete and supplied no guest exception.
+    BackendUnavailable,
+    /// The original guest-thrown value and operation phase.
+    Exception(Exception),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::OwnerAlreadyActive => "an execution owner is already active",
+            Self::WrongThread => "the backend belongs to a different thread",
+            Self::ForeignOwner => "the capability belongs to a different heap",
+            Self::ExpiredIdentity => "the capability has expired",
+            Self::IdentityExhausted => "execution identity space is exhausted",
+            Self::Allocation => "binding storage allocation was refused",
+            Self::StringTooLong => "the string exceeds the backend limit",
+            Self::TooManyArguments => "the argument list exceeds the backend limit",
+            Self::ExpectedObject => "an object is required",
+            Self::ExpectedFunction => "a callable function is required",
+            Self::PropertyRejected => "the object rejected the property update",
+            Self::Terminated => "JavaScript execution was terminated",
+            Self::BackendUnavailable => "the JavaScript backend is unavailable",
+            Self::Exception(_) => "JavaScript threw an exception",
+        })
+    }
+}
+
+impl std::error::Error for Error {}

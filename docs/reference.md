@@ -30,8 +30,11 @@ inherits the workspace's Rust edition and minimum version. Its Harfrust 0.6.2 or
 are recorded in its provenance.
 It is distinct from the facade's geometry crate `surgeist-shape`.
 
-JavaScript exposure is planned in `surgeist-bindings-js` over an external
-ECMAScript engine. Native framework crates remain usable without scripting.
+[`surgeist-bindings-js`](../crates/surgeist-bindings-js/README.md) supplies the safe
+embedding core over external V8: a thread-affine heap owner, independent realms,
+scoped values, checked persistent roots and explicit job checkpoints. Native
+Web IDL and framework object exposure remain planned. Native framework crates
+remain usable without scripting.
 [Host regression inputs](../tests/fixtures/js-bindings/README.md) retain the
 engine-independent identity, string, callback and cleanup requirements.
 

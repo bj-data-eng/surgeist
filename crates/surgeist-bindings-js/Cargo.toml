@@ -1,0 +1,19 @@
+[package]
+name = "surgeist-bindings-js"
+readme = "README.md"
+description = "Safe JavaScript embedding and native Surgeist bindings."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+v8 = "=152.2.0"
+
+[lints]
+workspace = true
+
+[[test]]
+name = "execution"
+harness = false
