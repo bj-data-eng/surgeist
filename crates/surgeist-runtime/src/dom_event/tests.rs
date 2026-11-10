@@ -5,6 +5,10 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
 
 impl<C> DomEventDispatcher<C> {
+    pub(crate) fn inspect_pending_index_bytes(&self) -> usize {
+        self.pending.capacity() * std::mem::size_of::<ContinuationObservation>()
+    }
+
     /// Test-only raw backing observation. Empty and actively removed entries
     /// retain no body; an expired nonempty Weak still retains its target area.
     pub(crate) fn inspect_retired_continuation_storage(&self) -> (usize, usize) {

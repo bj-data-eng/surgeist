@@ -14,6 +14,8 @@ use surgeist_dom::{
     DomSourceEdit, DomSourceRequest, Namespace, NodeId,
 };
 
+mod dynamic_custody;
+
 fn limits() -> DomSourceEventServiceLimits {
     DomSourceEventServiceLimits {
         source: DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 8),

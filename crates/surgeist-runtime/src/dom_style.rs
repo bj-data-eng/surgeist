@@ -2803,6 +2803,7 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod dynamic_event_custody;
     mod meta;
     mod meta_source;
     mod parsed_associations;
