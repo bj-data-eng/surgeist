@@ -3144,6 +3144,10 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::Normalize(node) => {
+                let node = self.resolve(node.clone())?;
+                self.normalize(node, limits, cancelled)?;
+            }
             Command::Compound(edit) => self.compound_edit(edit, limits, cancelled)?,
             Command::SplitText { node, offset } => {
                 let node = self.resolve(node.clone())?;

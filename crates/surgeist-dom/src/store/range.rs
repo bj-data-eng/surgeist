@@ -517,6 +517,42 @@ impl Draft {
         }
         Ok(())
     }
+    /// DOM3071 normalize step 6, before removing any member of the chain.
+    pub(super) fn range_normalize_text(
+        &mut self,
+        node: Key,
+        next: Key,
+        length: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.live_key(node);
+        let next = self.live_key(next);
+        let parent = self.node(next)?.parent().ok_or(DomError::NotFound)?;
+        let index = self.range_child_index(parent, next, cancel)?;
+        let mut participants = self.range_participants(next, cancel)?;
+        self.add_range_participants(parent, &mut participants, cancel)?;
+        for id in participants.iter() {
+            self.source_step(cancel)?;
+            let mut record = self.range_record(id)?;
+            let old = record;
+            for point in [&mut record.start, &mut record.end] {
+                if point.container == next {
+                    point.container = node;
+                    point.offset = point
+                        .offset
+                        .checked_add(length)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                } else if point.container == parent && point.offset == index {
+                    point.container = node;
+                    point.offset = length;
+                }
+            }
+            if record != old {
+                self.replace_range_record(id, record, cancel)?;
+            }
+        }
+        Ok(())
+    }
     /// DOM3071 split step 7, after insertion and before ordinary replace-data.
     pub(super) fn range_split_text(
         &mut self,

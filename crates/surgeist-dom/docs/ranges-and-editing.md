@@ -54,8 +54,28 @@ retain their Range containers and apply ordinary deletion clamping.
 Source retains one original split through service refusal, lease drop and
 cancellation after publication. Ordinary batches retain their atomic external
 service refusal. The represented family is Text: CDATASection is not currently
-represented or emulated. Node.normalize is not yet provided by this native
-surface.
+represented or emulated.
+
+## Text normalization
+
+`DomBatch::normalize` and `DomSourceEdit::normalize` visit ordinary descendants
+in tree order. The receiver is excluded, so normalizing a Text does not remove
+or rewrite that Text. Empty descendant Text is removed; each nonempty Text
+receives the exact concatenated data from its contiguous exclusive Text
+neighbors. After replacement and its hooks, current following siblings supply
+the special Range transfers into the surviving Text, including parent offsets
+at those siblings' indices. The selected contiguous neighbors are then removed
+in source order. Their detached identities and data remain available.
+
+Only ordinary child edges participate. A shadow tree or Template contents is
+normalized when supplied as the receiver, not through its host's ownership
+edge. The represented Text family is exclusive Text; the separate CDATASection
+family remains outside the native surface selected by the foundation contract.
+Already single nonempty descendant Text still runs the source's replace-data
+hook with empty appended data. Source retains its actual append, Range and
+removal stages across service refusal, lease drop and cancellation after
+publication. Normalization creates no result ticket or fabricated creation
+identity.
 
 ## designMode state and setter
 

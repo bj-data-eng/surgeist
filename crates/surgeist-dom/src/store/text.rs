@@ -11,7 +11,291 @@ pub(super) struct SplitFrame {
     inserted: bool,
 }
 
+pub(super) enum NormalizeFrame {
+    Visit {
+        root: Key,
+        node: Key,
+    },
+    Transfer {
+        root: Key,
+        node: Key,
+        length: usize,
+    },
+    Remove {
+        root: Key,
+        node: Key,
+        nodes: select::ScratchVec<Key>,
+        index: usize,
+    },
+}
+impl NormalizeFrame {
+    pub(super) fn freeze(&mut self, draft: &Draft, cancel: &AtomicBool) -> Result<(), DomError> {
+        match self {
+            Self::Remove { nodes, .. } => nodes.freeze(draft, cancel),
+            _ => Ok(()),
+        }
+    }
+    pub(super) fn checkpoint(
+        &self,
+        a: &mut source::checkpoint::Admission<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        Ok(match self {
+            Self::Visit { root, node } => Self::Visit {
+                root: *root,
+                node: *node,
+            },
+            Self::Transfer { root, node, length } => Self::Transfer {
+                root: *root,
+                node: *node,
+                length: *length,
+            },
+            Self::Remove {
+                root,
+                node,
+                nodes,
+                index,
+            } => Self::Remove {
+                root: *root,
+                node: *node,
+                nodes: nodes.checkpoint(a, cancel)?,
+                index: *index,
+            },
+        })
+    }
+}
+
 impl Draft {
+    pub(super) fn normalize(
+        &mut self,
+        root: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        self.source_step(cancel)?;
+        if let Some(node) = self.node(root)?.children().first() {
+            self.push_effect(
+                select::Effect::Normalize(NormalizeFrame::Visit { root, node }),
+                self.effect_scoped,
+                cancel,
+            )?;
+        }
+        self.run_effects(limits, cancel)
+    }
+
+    fn text_next_descendant(
+        &self,
+        root: Key,
+        mut node: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Option<Key>, DomError> {
+        self.source_step(cancel)?;
+        if let Some(child) = self.node(node)?.children().first() {
+            return Ok(Some(child));
+        }
+        while self.canonical_key(node) != self.canonical_key(root) {
+            self.source_step(cancel)?;
+            if let Some(next) = self.next_sibling(node) {
+                return Ok(Some(next));
+            }
+            let Some(parent) = self.node(node)?.parent() else {
+                return Ok(None);
+            };
+            node = parent;
+        }
+        Ok(None)
+    }
+
+    fn text_span(
+        &self,
+        node: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(Key, std::ops::Range<usize>, usize), DomError> {
+        let parent = self.node(node)?.parent().ok_or(DomError::NotFound)?;
+        let children = self.node(parent)?.children();
+        let mut position = None;
+        for (index, child) in children.iter().enumerate() {
+            self.source_step(cancel)?;
+            if self.canonical_key(child) == self.canonical_key(node) {
+                position = Some(index);
+                break;
+            }
+        }
+        let position = position.ok_or(DomError::NotFound)?;
+        let mut start = position;
+        while start > 0 {
+            self.source_step(cancel)?;
+            let previous = children.get(start - 1).ok_or(DomError::NotFound)?;
+            if !matches!(self.node(previous)?.kind(), transaction::KindRead::Text(_)) {
+                break;
+            }
+            start -= 1;
+        }
+        let mut end = position + 1;
+        while let Some(next) = children.get(end) {
+            self.source_step(cancel)?;
+            if !matches!(self.node(next)?.kind(), transaction::KindRead::Text(_)) {
+                break;
+            }
+            end += 1;
+        }
+        Ok((parent, start..end, position))
+    }
+
+    pub(super) fn normalize_effect(
+        &mut self,
+        frame: NormalizeFrame,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        match frame {
+            NormalizeFrame::Visit { root, node } => {
+                let length = match self.node(node)?.kind() {
+                    transaction::KindRead::Text(data) => Some(data.len()),
+                    transaction::KindRead::Document(_)
+                    | transaction::KindRead::Element(_)
+                    | transaction::KindRead::DocumentFragment
+                    | transaction::KindRead::ShadowRoot(_)
+                    | transaction::KindRead::Comment(_)
+                    | transaction::KindRead::ProcessingInstruction(_)
+                    | transaction::KindRead::DocumentType(_) => None,
+                };
+                if length == Some(0) {
+                    // The cursor leaves the removed node through its actual former
+                    // tree position, never through the now-detached Text's parent.
+                    if let Some(next) = self.text_next_descendant(root, node, cancel)? {
+                        self.push_effect(
+                            select::Effect::Normalize(NormalizeFrame::Visit { root, node: next }),
+                            self.effect_scoped,
+                            cancel,
+                        )?;
+                    }
+                    self.remove(node, limits, cancel)?;
+                } else if let Some(length) = length {
+                    let (parent, span, position) = self.text_span(node, cancel)?;
+                    let children = self.node(parent)?.children();
+                    let mut size = 0usize;
+                    for index in span.clone().filter(|index| *index != position) {
+                        self.source_step(cancel)?;
+                        let child = children.get(index).ok_or(DomError::NotFound)?;
+                        let transaction::KindRead::Text(data) = self.node(child)?.kind() else {
+                            return Err(DomError::WrongNodeKind);
+                        };
+                        size = size
+                            .checked_add(data.len())
+                            .ok_or(DomError::RepresentationExhausted)?;
+                    }
+                    let formation = source::formation::Formation::new(self, cancel)?;
+                    let mut data = source::formation::utf16_buffer(
+                        size,
+                        limits.units,
+                        formation.as_ref(),
+                        cancel,
+                    )?;
+                    #[cfg(test)]
+                    let mut copied = transaction::CopyObservation::default();
+                    for index in span.filter(|index| *index != position) {
+                        self.source_step(cancel)?;
+                        let child = children.get(index).ok_or(DomError::NotFound)?;
+                        let transaction::KindRead::Text(text) = self.node(child)?.kind() else {
+                            return Err(DomError::WrongNodeKind);
+                        };
+                        for unit in text.code_units() {
+                            self.source_step(cancel)?;
+                            data.push(*unit);
+                            #[cfg(test)]
+                            copied.pushed::<u16>();
+                        }
+                    }
+                    self.push_effect(
+                        select::Effect::Normalize(NormalizeFrame::Transfer { root, node, length }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.replace_data(node, length, 0, &data, limits, cancel)?;
+                    drop(data);
+                    drop(formation);
+                } else if let Some(next) = self.text_next_descendant(root, node, cancel)? {
+                    self.push_effect(
+                        select::Effect::Normalize(NormalizeFrame::Visit { root, node: next }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                }
+            }
+            NormalizeFrame::Transfer {
+                root,
+                node,
+                mut length,
+            } => {
+                // Replacement and all its hooks precede these fresh sibling reads.
+                let mut current = self.next_sibling(node);
+                while let Some(next) = current {
+                    self.source_step(cancel)?;
+                    let transaction::KindRead::Text(data) = self.node(next)?.kind() else {
+                        break;
+                    };
+                    let size = data.len();
+                    self.range_normalize_text(node, next, length, cancel)?;
+                    length = length
+                        .checked_add(size)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                    current = self.next_sibling(next);
+                }
+                // Select the source's actual removal set after endpoint transfers.
+                let (parent, span, position) = self.text_span(node, cancel)?;
+                let mut nodes = self.effect_vec();
+                self.select_reserve(&mut nodes, span.len().saturating_sub(1), cancel)?;
+                for index in span.filter(|index| *index != position) {
+                    self.source_step(cancel)?;
+                    nodes.push(
+                        self.node(parent)?
+                            .children()
+                            .get(index)
+                            .ok_or(DomError::NotFound)?,
+                    );
+                }
+                self.push_effect(
+                    select::Effect::Normalize(NormalizeFrame::Remove {
+                        root,
+                        node,
+                        nodes,
+                        index: 0,
+                    }),
+                    self.effect_scoped,
+                    cancel,
+                )?;
+            }
+            NormalizeFrame::Remove {
+                root,
+                node,
+                nodes,
+                index,
+            } => {
+                if let Some(&next) = nodes.get(index) {
+                    self.push_effect(
+                        select::Effect::Normalize(NormalizeFrame::Remove {
+                            root,
+                            node,
+                            nodes,
+                            index: index + 1,
+                        }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                    self.remove(next, limits, cancel)?;
+                } else if let Some(next) = self.text_next_descendant(root, node, cancel)? {
+                    self.push_effect(
+                        select::Effect::Normalize(NormalizeFrame::Visit { root, node: next }),
+                        self.effect_scoped,
+                        cancel,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn split_text(
         &mut self,
         node: Key,
