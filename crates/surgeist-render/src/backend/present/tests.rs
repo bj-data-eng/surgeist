@@ -77,7 +77,7 @@ impl AcquireFixture {
         set_presented_acquire_outcome_for_test(&mut surface, outcome);
         // Enter the same valid eligibility boundary as the real exact caller.
         exact_presented_graph_target(
-            &surface,
+            &mut surface,
             WorkingFormat::ReducedPrecision,
             Format::Rgba8,
             Some(PhysicalSize::new(2, 2)),
@@ -154,6 +154,17 @@ impl AcquireFixture {
     }
 }
 
+fn qualified_target(surface: &mut Surface) -> ExactPresentedGraphTarget<'_> {
+    exact_presented_graph_target(
+        surface,
+        WorkingFormat::ReducedPrecision,
+        Format::Rgba8,
+        Some(PhysicalSize::new(2, 2)),
+    )
+    .unwrap()
+    .0
+}
+
 fn reach_gate<F: Future + ?Sized>(
     mut future: Pin<&mut F>,
     gate: &ScopePopGate,
@@ -212,13 +223,7 @@ fn unpolled_exact_acquire_drops_prepared_before_transaction_arguments() {
         generation,
         move || recorded.borrow_mut().push(resources.observation_for_test()),
     );
-    drop(acquire_exact_presented_graph_texture(
-        &mut surface,
-        &fixture.device,
-        prepared,
-        transaction,
-        &account,
-    ));
+    drop(qualified_target(&mut surface).acquire(&fixture.device, prepared, transaction, &account));
     let recorded = at_drop.borrow();
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].active_frame_count, 0);
@@ -263,8 +268,7 @@ fn refused_exact_acquire_drops_transaction_before_initialized_prepared_local() {
                 generation,
                 move || recorded.borrow_mut().push(resources.observation_for_test()),
             );
-            pollster::block_on(acquire_exact_presented_graph_texture(
-                &mut surface,
+            pollster::block_on(qualified_target(&mut surface).acquire(
                 &fixture.device,
                 prepared,
                 transaction,
@@ -357,15 +361,10 @@ fn canceled_acquire_finish_discards_resources_without_advancing_lifecycle_at_eac
                         let account = attempt.account();
                         if exact {
                             let prepared = fixture.prepare(account);
-                            acquire_exact_presented_graph_texture(
-                                &mut surface,
-                                &fixture.device,
-                                prepared,
-                                transaction,
-                                account,
-                            )
-                            .await
-                            .map(drop)
+                            qualified_target(&mut surface)
+                                .acquire(&fixture.device, prepared, transaction, account)
+                                .await
+                                .map(drop)
                         } else {
                             let SurfaceBackend::Presented {
                                 surface: native,
@@ -470,15 +469,10 @@ fn acquire_scope_failure_keeps_first_cause_and_applies_lifecycle_only_after_fini
                 let mut future: Pin<Box<dyn Future<Output = Result<()>> + '_>> =
                     if let Some(prepared) = prepared {
                         Box::pin(async {
-                            acquire_exact_presented_graph_texture(
-                                &mut surface,
-                                &fixture.device,
-                                prepared,
-                                transaction,
-                                &account,
-                            )
-                            .await
-                            .map(drop)
+                            qualified_target(&mut surface)
+                                .acquire(&fixture.device, prepared, transaction, &account)
+                                .await
+                                .map(drop)
                         })
                     } else {
                         let SurfaceBackend::Presented {

@@ -138,12 +138,19 @@ impl Backend {
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 pub(super) fn exact_presented_graph_target(
-    surface: &Surface,
+    surface: &mut Surface,
     selected_working_format: WorkingFormat,
     graph_output_format: Format,
     known_output_extent: Option<PhysicalSize>,
-) -> Result<(DeviceSlotIdentity, PhysicalSize, Format, WorkingFormat)> {
-    let (device_identity, physical_size, output_format) = match &surface.backend {
+) -> Result<(
+    ExactPresentedGraphTarget<'_>,
+    DeviceSlotIdentity,
+    PhysicalSize,
+    Format,
+    WorkingFormat,
+)> {
+    let (native, state, device_identity, physical_size, output_format) = match &mut surface.backend
+    {
         SurfaceBackend::Presented {
             surface: native,
             device_identity,
@@ -201,7 +208,13 @@ pub(super) fn exact_presented_graph_target(
                     ));
                 }
             };
-            (*device_identity, physical_size, output_format)
+            (
+                &**native,
+                state,
+                *device_identity,
+                physical_size,
+                output_format,
+            )
         }
         SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => {
             return Err(Error::new(
@@ -221,11 +234,22 @@ pub(super) fn exact_presented_graph_target(
         ));
     }
     Ok((
+        ExactPresentedGraphTarget { native, state },
         device_identity,
         physical_size,
         output_format,
         selected_working_format,
     ))
+}
+
+/// Exclusive qualification retained until one exact presented acquisition.
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+pub(super) struct ExactPresentedGraphTarget<'surface> {
+    native: &'surface PresentedSurface,
+    state: &'surface mut PresentedSurfaceState,
 }
 
 #[cfg(any(
@@ -295,118 +319,93 @@ async fn finish_presented_acquire_failure(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
-pub(super) async fn acquire_exact_presented_graph_texture<'a>(
-    surface: &mut Surface,
-    device: &wgpu::Device,
-    prepared: PreparedGraph<'a>,
-    transaction: GpuOperationTransaction,
-    account: &Account,
-) -> Result<(
-    AcquiredPresentedSurfaceTexture,
-    PreparedGraph<'a>,
-    GpuOperationTransaction,
-)> {
-    let mut prepared = Some(prepared);
-    let mut transaction = Some(transaction);
-    let acquired = match &mut surface.backend {
-        SurfaceBackend::Presented {
-            surface: native,
-            state,
-            ..
-        } => match account.phase(RenderPhase::Acquire, || {
+impl ExactPresentedGraphTarget<'_> {
+    pub(super) async fn acquire<'a>(
+        self,
+        device: &wgpu::Device,
+        prepared_graph: PreparedGraph<'a>,
+        gpu_transaction: GpuOperationTransaction,
+        account: &Account,
+    ) -> Result<(
+        AcquiredPresentedSurfaceTexture,
+        PreparedGraph<'a>,
+        GpuOperationTransaction,
+    )> {
+        // Keep these initialized locals in this order: admission failure drops
+        // the transaction before the prepared graph, unlike unpolled arguments.
+        let prepared = prepared_graph;
+        let transaction = gpu_transaction;
+        let acquired = match account.phase(RenderPhase::Acquire, || {
             account
                 .at(RenderPhase::Acquire)
                 .work(RenderWork::SurfaceAcquisitions, 1)?;
-            Ok(native.acquire_texture(device))
+            Ok(self.native.acquire_texture(device))
         })? {
             PresentedSurfaceAcquire::Success(acquired) => acquired,
             PresentedSurfaceAcquire::Suboptimal(acquired) => {
                 drop(acquired);
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Suboptimal,
                     account,
                 )
                 .await?);
             }
             PresentedSurfaceAcquire::Outdated => {
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Outdated,
                     account,
                 )
                 .await?);
             }
             PresentedSurfaceAcquire::Occluded => {
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Occluded,
                     account,
                 )
                 .await?);
             }
             PresentedSurfaceAcquire::Timeout => {
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Timeout,
                     account,
                 )
                 .await?);
             }
             PresentedSurfaceAcquire::Lost => {
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Lost,
                     account,
                 )
                 .await?);
             }
             PresentedSurfaceAcquire::Validation => {
-                drop(prepared.take());
+                drop(prepared);
                 return Err(finish_presented_acquire_failure(
-                    transaction
-                        .take()
-                        .expect("presented transaction must remain available"),
-                    state,
+                    transaction,
+                    self.state,
                     PresentedAcquireFailure::Validation,
                     account,
                 )
                 .await?);
             }
-        },
-        SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => {
-            unreachable!("presented exact graph output changed after eligibility validation")
-        }
-    };
-    Ok((
-        acquired,
-        prepared
-            .take()
-            .expect("prepared graph must remain available after successful acquire"),
-        transaction
-            .take()
-            .expect("presented transaction must remain available after successful acquire"),
-    ))
+        };
+        Ok((acquired, prepared, transaction))
+    }
 }
 
 #[cfg(any(
@@ -494,10 +493,10 @@ async fn acquire_internal_vello_surface_texture(
     native: &PresentedSurface,
     device: &wgpu::Device,
     state: &mut PresentedSurfaceState,
-    transaction: GpuOperationTransaction,
+    gpu_transaction: GpuOperationTransaction,
     account: &Account,
 ) -> Result<(AcquiredPresentedSurfaceTexture, GpuOperationTransaction)> {
-    let mut transaction = Some(transaction);
+    let transaction = gpu_transaction;
     let surface_texture = match account.phase(RenderPhase::Acquire, || {
         account
             .at(RenderPhase::Acquire)
@@ -508,9 +507,7 @@ async fn acquire_internal_vello_surface_texture(
         PresentedSurfaceAcquire::Suboptimal(surface_texture) => {
             drop(surface_texture);
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Suboptimal,
                 account,
@@ -519,9 +516,7 @@ async fn acquire_internal_vello_surface_texture(
         }
         PresentedSurfaceAcquire::Outdated => {
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Outdated,
                 account,
@@ -530,9 +525,7 @@ async fn acquire_internal_vello_surface_texture(
         }
         PresentedSurfaceAcquire::Occluded => {
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Occluded,
                 account,
@@ -541,9 +534,7 @@ async fn acquire_internal_vello_surface_texture(
         }
         PresentedSurfaceAcquire::Timeout => {
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Timeout,
                 account,
@@ -552,9 +543,7 @@ async fn acquire_internal_vello_surface_texture(
         }
         PresentedSurfaceAcquire::Lost => {
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Lost,
                 account,
@@ -563,9 +552,7 @@ async fn acquire_internal_vello_surface_texture(
         }
         PresentedSurfaceAcquire::Validation => {
             return Err(finish_presented_acquire_failure(
-                transaction
-                    .take()
-                    .expect("present transaction must remain available"),
+                transaction,
                 state,
                 PresentedAcquireFailure::Validation,
                 account,
@@ -573,10 +560,5 @@ async fn acquire_internal_vello_surface_texture(
             .await?);
         }
     };
-    Ok((
-        surface_texture,
-        transaction
-            .take()
-            .expect("present transaction must remain available after successful acquire"),
-    ))
+    Ok((surface_texture, transaction))
 }

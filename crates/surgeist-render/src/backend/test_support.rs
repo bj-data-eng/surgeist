@@ -399,7 +399,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
         ExactSurfaceGraphStage::TestFilter(graph) => graph,
     };
     let selected_working_format = graph.working_format();
-    let (device_identity, physical_size, output_format, selected_working_format) =
+    let (target, device_identity, physical_size, output_format, selected_working_format) =
         present::exact_presented_graph_target(
             surface,
             selected_working_format,
@@ -441,14 +441,9 @@ pub(crate) async fn render_exact_presented_graph_surface(
             "prepared presented exact test graph output changed after eligibility validation",
         ));
     }
-    let acquired = present::acquire_exact_presented_graph_texture(
-        surface,
-        &device,
-        prepared,
-        transaction,
-        account,
-    )
-    .await?;
+    let acquired = target
+        .acquire(&device, prepared, transaction, account)
+        .await?;
     let (acquired, mut prepared, transaction) = acquired;
     let output_view = account.phase(crate::accounting::RenderPhase::GpuPrepare, || {
         acquired.create_view(

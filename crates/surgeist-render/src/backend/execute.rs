@@ -680,7 +680,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
     graph: OwnedBox<ExactSurfaceGraph>,
     account: &Account,
 ) -> Result<SurfaceFrameCommit> {
-    let (device_identity, physical_size, output_format, selected_working_format) =
+    let (target, device_identity, physical_size, output_format, selected_working_format) =
         present::exact_presented_graph_target(
             surface,
             graph.working_format(),
@@ -730,14 +730,9 @@ pub(crate) async fn render_exact_presented_graph_surface(
         ));
     }
 
-    let acquired = present::acquire_exact_presented_graph_texture(
-        surface,
-        &device,
-        prepared,
-        transaction,
-        account,
-    )
-    .await?;
+    let acquired = target
+        .acquire(&device, prepared, transaction, account)
+        .await?;
     let (acquired, mut prepared, transaction) = acquired;
     let output_view = account.phase(RenderPhase::GpuPrepare, || {
         acquired.create_view(&generation, Some(&account.at(RenderPhase::GpuPrepare)))
