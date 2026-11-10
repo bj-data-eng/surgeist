@@ -42,7 +42,7 @@ fn aggregate(
     account: &Account,
     count: usize,
 ) -> VelloResourceLeaseAggregate {
-    // Spare capacity also exercises a genuinely allocated empty collection.
+    // Spare capacity also exercises an allocated empty collection.
     let mut aggregate = VelloResourceLeaseAggregate::new(account, 3).unwrap();
     for _ in 0..count {
         let mut recording = RecordingBuilder::new(account).unwrap();
@@ -65,17 +65,17 @@ fn identity(
 }
 
 fn active_leases(aggregate: &VelloResourceLeaseAggregate) -> &AccountedVec<VelloResourceLease> {
-    aggregate.leases.as_ref().unwrap()
+    aggregate.leases.backing_for_test()
 }
 
 fn clean_leases(
     aggregate: &ScopeResolvedVelloResourceLeaseAggregate,
 ) -> &AccountedVec<VelloResourceLease> {
-    aggregate.leases.as_ref().unwrap()
+    aggregate.leases.backing_for_test()
 }
 
 fn pending_leases(pending: &PendingVelloResourceCommit) -> &AccountedVec<VelloResourceLease> {
-    pending.leases.as_ref().unwrap()
+    pending.leases.backing_for_test()
 }
 
 fn frame_identities(leases: &[VelloResourceLease]) -> Vec<crate::resource::FrameIdentity> {

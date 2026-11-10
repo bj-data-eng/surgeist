@@ -271,12 +271,12 @@ pub(crate) struct ScopeResolvedVelloResourceLease {
 /// Owns every non-clone lease encoded under one checked Vello scope.
 #[must_use = "active Vello resource aggregates must be scope-resolved or aborted"]
 pub(crate) struct VelloResourceLeaseAggregate {
-    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
+    leases: crate::accounting::DisposingVec<VelloResourceLease>,
 }
 
 #[must_use = "scope-clean Vello resource aggregates must be committed or aborted"]
 pub(crate) struct ScopeResolvedVelloResourceLeaseAggregate {
-    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
+    leases: crate::accounting::DisposingVec<VelloResourceLease>,
 }
 
 #[must_use]
@@ -289,7 +289,7 @@ pub(crate) struct CommittedVelloResources {
 /// Keeps a scope-clean resource lease uncertain until the owning GPU transaction succeeds.
 #[must_use = "pending Vello resources must be committed by their transaction or aborted on drop"]
 pub(crate) struct PendingVelloResourceCommit {
-    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
+    leases: crate::accounting::DisposingVec<VelloResourceLease>,
 }
 
 /// Sealed one-shot state proving that every pending Vello frame currently has
@@ -310,44 +310,39 @@ impl PendingVelloResourceCommit {
         lease.consume_pending_atlas_recovery();
         leases.push(lease.lease)?;
         Ok(Self {
-            leases: Some(leases),
+            leases: crate::accounting::DisposingVec::new(leases, dispose_vello_leases),
         })
     }
-    pub(crate) fn from_aggregate(mut aggregate: ScopeResolvedVelloResourceLeaseAggregate) -> Self {
-        let mut leases = aggregate.leases.take().expect("owned clean aggregate");
+    pub(crate) fn from_aggregate(aggregate: ScopeResolvedVelloResourceLeaseAggregate) -> Self {
+        let mut leases = aggregate.leases.into_inner();
         for lease in leases.iter_mut() {
             lease.pending.consume_pending_atlas_recovery();
         }
         Self {
-            leases: Some(leases),
+            leases: crate::accounting::DisposingVec::new(leases, dispose_vello_leases),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn allocation_summary_for_test(&self) -> VelloResourceAllocationSummaryForTest {
-        self.leases
-            .as_ref()
-            .expect("owned pending leases")
-            .iter()
-            .fold(
-                VelloResourceAllocationSummaryForTest::default(),
-                |mut summary, lease| {
-                    summary.extend(lease.allocation_summary.clone());
-                    summary
-                },
-            )
+        self.leases.as_slice().iter().fold(
+            VelloResourceAllocationSummaryForTest::default(),
+            |mut summary, lease| {
+                summary.extend(lease.allocation_summary.clone());
+                summary
+            },
+        )
     }
 
     #[cfg(test)]
     pub(crate) fn lease_count_for_test(&self) -> usize {
-        self.leases.as_ref().expect("owned pending leases").len()
+        self.leases.len()
     }
 
     #[cfg(test)]
     pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {
         self.leases
-            .as_ref()
-            .expect("owned pending leases")
+            .as_slice()
             .first()
             .expect("the accounting-poison fixture requires one pending Vello resource lease")
             .pending
@@ -357,7 +352,7 @@ impl PendingVelloResourceCommit {
     }
 
     fn ensure_commit_ready(&self) -> Result<()> {
-        for lease in self.leases.as_ref().expect("owned pending leases").iter() {
+        for lease in self.leases.as_slice().iter() {
             lease.pending.ensure_commit_ready()?;
         }
         Ok(())
@@ -374,23 +369,15 @@ impl AccountingReadyVelloResourceCommit {
         self.pending.ensure_commit_ready()
     }
 
-    pub(crate) fn commit(mut self, _proof: VelloResourceCommitProof) -> Result<FrameCleanup> {
+    pub(crate) fn commit(self, _proof: VelloResourceCommitProof) -> Result<FrameCleanup> {
         self.ensure_commit_ready()?;
         let mut cleanup = FrameCleanup::default();
-        let leases = self.pending.leases.take().expect("owned pending leases");
+        let leases = self.pending.leases.into_inner();
         for lease in leases {
             cleanup =
                 cleanup.followed_by(lease.into_committed_resources()?.into_frame_cleanup())?;
         }
         cleanup.into_accounting_result()
-    }
-}
-
-impl Drop for PendingVelloResourceCommit {
-    fn drop(&mut self) {
-        if let Some(leases) = self.leases.take() {
-            let _ = abort_vello_leases(leases);
-        }
     }
 }
 
@@ -599,41 +586,30 @@ impl VelloResourceLease {
 impl VelloResourceLeaseAggregate {
     pub(crate) fn new(account: &crate::accounting::Account, capacity: usize) -> Result<Self> {
         Ok(Self {
-            leases: Some(crate::accounting::AccountedVec::new(
-                account,
-                capacity,
-                crate::RenderResource::ScratchCpuBytes,
-            )?),
+            leases: crate::accounting::DisposingVec::new(
+                crate::accounting::AccountedVec::new(
+                    account,
+                    capacity,
+                    crate::RenderResource::ScratchCpuBytes,
+                )?,
+                dispose_vello_leases,
+            ),
         })
     }
     pub(crate) fn push(&mut self, lease: VelloResourceLease) -> Result<()> {
-        self.leases
-            .as_mut()
-            .expect("owned active aggregate")
-            .push(lease)
+        self.leases.push(lease)
     }
-    pub(crate) fn after_clean_scope(mut self) -> ScopeResolvedVelloResourceLeaseAggregate {
+    pub(crate) fn after_clean_scope(self) -> ScopeResolvedVelloResourceLeaseAggregate {
         ScopeResolvedVelloResourceLeaseAggregate {
-            leases: self.leases.take(),
+            leases: self.leases,
         }
     }
-    pub(crate) fn abort(mut self) -> AbortedVelloResources {
-        abort_vello_leases(self.leases.take().expect("owned active aggregate"))
+    pub(crate) fn abort(self) -> AbortedVelloResources {
+        abort_vello_leases(self.leases.into_inner())
     }
 }
-impl Drop for VelloResourceLeaseAggregate {
-    fn drop(&mut self) {
-        if let Some(leases) = self.leases.take() {
-            let _ = abort_vello_leases(leases);
-        }
-    }
-}
-impl Drop for ScopeResolvedVelloResourceLeaseAggregate {
-    fn drop(&mut self) {
-        if let Some(leases) = self.leases.take() {
-            let _ = abort_vello_leases(leases);
-        }
-    }
+fn dispose_vello_leases(leases: crate::accounting::AccountedVec<VelloResourceLease>) {
+    let _ = abort_vello_leases(leases);
 }
 fn abort_vello_leases(
     leases: crate::accounting::AccountedVec<VelloResourceLease>,

@@ -645,6 +645,54 @@ pub(crate) struct AccountedVec<T> {
     values: Vec<T>,
     hold: Option<Hold>,
 }
+
+/// Owns complete vector custody until disposal or consuming extraction.
+pub(crate) struct DisposingVec<T> {
+    vector: AccountedVec<T>,
+    dispose: Option<fn(AccountedVec<T>)>,
+}
+impl<T> DisposingVec<T> {
+    pub(crate) fn new(vector: AccountedVec<T>, dispose: fn(AccountedVec<T>)) -> Self {
+        Self {
+            vector,
+            dispose: Some(dispose),
+        }
+    }
+    pub(crate) fn push(&mut self, value: T) -> Result<()> {
+        self.vector.push(value)
+    }
+    pub(crate) fn as_slice(&self) -> &[T] {
+        self.vector.as_slice()
+    }
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.vector.len()
+    }
+    #[cfg(test)]
+    pub(crate) fn backing_for_test(&self) -> &AccountedVec<T> {
+        &self.vector
+    }
+    pub(crate) fn into_inner(mut self) -> AccountedVec<T> {
+        self.dispose = None;
+        // Only infallible moves follow disarming. The inert source is consumed.
+        AccountedVec {
+            values: std::mem::take(&mut self.vector.values),
+            hold: self.vector.hold.take(),
+        }
+    }
+}
+impl<T> Drop for DisposingVec<T> {
+    fn drop(&mut self) {
+        if let Some(dispose) = self.dispose.take() {
+            let vector = AccountedVec {
+                values: std::mem::take(&mut self.vector.values),
+                hold: self.vector.hold.take(),
+            };
+            dispose(vector);
+        }
+    }
+}
+
 pub(crate) struct AppendSlot<'a, T> {
     values: &'a mut Vec<T>,
 }
@@ -1879,3 +1927,6 @@ mod vector_capability_tests;
 
 #[cfg(test)]
 mod lexical_disposal_tests;
+
+#[cfg(test)]
+mod disposing_vec_tests;

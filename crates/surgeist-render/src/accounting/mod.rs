@@ -32,9 +32,9 @@ pub use model::*;
 #[cfg(test)]
 pub(crate) use storage::packed_size;
 pub(crate) use storage::{
-    AccountedVec, DisposalCompletion, Hold, OwnedBox, PackedProducer, PreparationValue,
-    SharedValue, StorageAccount, StorageContractError, StorageSizing, preparation_backing,
-    reserve_backing_with,
+    AccountedVec, DisposalCompletion, DisposingVec, Hold, OwnedBox, PackedProducer,
+    PreparationValue, SharedValue, StorageAccount, StorageContractError, StorageSizing,
+    preparation_backing, reserve_backing_with,
 };
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
