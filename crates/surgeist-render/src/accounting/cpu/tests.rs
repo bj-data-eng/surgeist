@@ -701,6 +701,216 @@ fn maintenance_fault_preserves_first_diagnostic_and_does_not_block_release_or_cl
     assert!(cpu.ensure_healthy().is_err());
 }
 
+#[test]
+fn mandatory_phase_returns_actual_values_and_closes_once_on_return_error_and_unwind() {
+    use crate::accounting::{RenderCpuEvent, RenderPhaseFilter};
+    use std::sync::atomic::AtomicUsize;
+
+    static TIME: AtomicU64 = AtomicU64::new(0);
+    static READS: AtomicUsize = AtomicUsize::new(0);
+    fn now() -> Duration {
+        READS.fetch_add(1, Ordering::SeqCst);
+        Duration::from_millis(TIME.load(Ordering::SeqCst))
+    }
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Summary { timing: true },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 128,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: true,
+            event_limit: 128,
+            filter: RenderPhaseFilter::All,
+        },
+    ] {
+        TIME.store(0, Ordering::SeqCst);
+        READS.store(0, Ordering::SeqCst);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new()
+                .with_profile(profile)
+                .with_clock(RenderClock::Host(now)),
+        )
+        .unwrap();
+        let account = cpu.at(RenderCpuScope::Cleanup);
+        let calls = AtomicUsize::new(0);
+        let value = String::from("the original moved result");
+        let value_address = value.as_ptr();
+        let returned = account.maintenance_phase(|| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            TIME.fetch_add(7, Ordering::SeqCst);
+            value
+        });
+        assert_eq!(returned.as_ptr(), value_address);
+        assert_eq!(returned, "the original moved result");
+        let error = String::from("the original callback error");
+        let error_address = error.as_ptr();
+        let returned: std::result::Result<String, String> = account.maintenance_phase(|| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            TIME.fetch_add(7, Ordering::SeqCst);
+            Err(error)
+        });
+        let returned_error = returned.unwrap_err();
+        assert_eq!(returned_error.as_ptr(), error_address);
+        assert_eq!(returned_error, "the original callback error");
+        let hold = account.acquire(RenderResource::ScratchCpuBytes, 3).unwrap();
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                account.maintenance_phase(|| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    drop(hold);
+                    TIME.fetch_add(7, Ordering::SeqCst);
+                    panic!("mandatory callback fixture unwind");
+                });
+            }))
+            .is_err()
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        let snapshot = cpu.snapshot().unwrap();
+        assert_eq!(snapshot.usage().live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(snapshot.fault(), None);
+        let timed = matches!(
+            profile,
+            RenderProfile::Summary { timing: true } | RenderProfile::Detailed { timing: true, .. }
+        );
+        assert_eq!(
+            snapshot.scope_elapsed(RenderCpuScope::Cleanup),
+            timed.then_some(Duration::from_millis(21))
+        );
+        if matches!(profile, RenderProfile::Detailed { .. }) {
+            let phases: Vec<_> = snapshot
+                .events()
+                .filter_map(|event| match event {
+                    RenderCpuEvent::Phase {
+                        scope: RenderCpuScope::Cleanup,
+                        duration,
+                        ..
+                    } => Some(duration),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(phases, vec![timed.then_some(Duration::from_millis(7)); 3]);
+        }
+        drop(account);
+        drop(cpu);
+        if !timed {
+            assert_eq!(READS.load(Ordering::SeqCst), 0);
+        }
+    }
+}
+
+#[test]
+fn foreign_phase_entry_still_runs_cleanup_and_preserves_the_first_fault() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    let foreign = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    for first in [
+        None,
+        Some(RenderAccountingError::CpuAllocation {
+            scope: RenderCpuScope::FrameBacking,
+            resource: RenderResource::RetainedCpuBytes,
+        }),
+    ] {
+        // Private owning fault injection: public construction always pairs these
+        // scopes with their own Ledger. Exercise the real foreign-scope refusal.
+        let mut scopes = cpu.0.core.scopes;
+        scopes[RenderCpuScope::Cleanup.index()] =
+            foreign.0.core.scopes[RenderCpuScope::Cleanup.index()];
+        let account = CpuAccount {
+            core: Arc::new(Core {
+                ledger: cpu.0.core.ledger.clone(),
+                scopes,
+                observer_budget: cpu.0.core.observer_budget,
+                fault: Mutex::new(first),
+            }),
+            owner: None,
+            scope: RenderCpuScope::Cleanup,
+        };
+        let hold = cpu
+            .at(RenderCpuScope::FrameBacking)
+            .acquire(RenderResource::ScratchCpuBytes, 5)
+            .unwrap();
+        let mut calls = 0;
+        let returned = account.maintenance_phase(|| {
+            calls += 1;
+            drop(hold);
+            String::from("cleaned despite entry refusal")
+        });
+        assert_eq!(returned, "cleaned despite entry refusal");
+        assert_eq!(calls, 1);
+        assert_eq!(
+            *account.core.lock(),
+            first.or(Some(RenderAccountingError::Invariant))
+        );
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+    }
+}
+
+#[test]
+fn foreign_phase_completion_records_a_render_association_fault_without_retry() {
+    use crate::accounting::{RenderCpuEvent, RenderPhaseFilter};
+    let _serial = CLOCK_LOCK.lock().unwrap();
+    let options = || {
+        RenderAccountingOptions::new()
+            .with_profile(RenderProfile::Detailed {
+                timing: true,
+                event_limit: 64,
+                filter: RenderPhaseFilter::All,
+            })
+            .with_clock(RenderClock::Host(clock))
+    };
+    for first in [
+        None,
+        Some(RenderAccountingError::CpuAllocation {
+            scope: RenderCpuScope::FrameBacking,
+            resource: RenderResource::RetainedCpuBytes,
+        }),
+    ] {
+        let cpu = RendererCpu::new(options()).unwrap();
+        let foreign = RendererCpu::new(options()).unwrap();
+        let observation = foreign
+            .0
+            .core
+            .ledger
+            .begin_phase(foreign.0.core.scopes[RenderCpuScope::Cleanup.index()])
+            .unwrap();
+        if let Some(first) = first {
+            cpu.0.core.remember(first);
+        }
+        // Only this owning private probe can violate the guard constructor's
+        // core/marker pairing. It is not a publicly constructible failure.
+        let phase = MaintenancePhase {
+            core: cpu.0.core.clone(),
+            observation: Some(observation),
+        };
+        let reads = CLOCK_READS.load(Ordering::Relaxed);
+        drop(phase);
+        assert_eq!(CLOCK_READS.load(Ordering::Relaxed), reads);
+        assert_eq!(
+            cpu.fault(),
+            first.or(Some(RenderAccountingError::Invariant))
+        );
+        for owner in [&cpu, &foreign] {
+            assert!(!owner.snapshot().unwrap().events().any(|event| matches!(
+                event,
+                RenderCpuEvent::Phase {
+                    scope: RenderCpuScope::Cleanup,
+                    ..
+                }
+            )));
+        }
+        assert_eq!(foreign.fault(), None);
+    }
+}
+
 static CLOCK_LOCK: Mutex<()> = Mutex::new(());
 static CLOCK_READS: AtomicU64 = AtomicU64::new(0);
 fn clock() -> Duration {

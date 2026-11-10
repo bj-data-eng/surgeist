@@ -12,7 +12,7 @@ use std::{
     ops::AsyncFnOnce,
     sync::{Arc, Mutex, MutexGuard},
 };
-use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, Tariffs};
+use surgeist_ledger::{Change, Checkpoint, Limits, Operation, PhaseObservation, Scope, Tariffs};
 
 const SCOPE_COUNT: usize = RenderCpuScope::ALL.len();
 
@@ -282,6 +282,24 @@ pub(crate) struct CpuAccount {
     owner: Option<Arc<State>>,
     scope: RenderCpuScope,
 }
+
+/// Completes one mandatory lifetime observation on its originating core. No
+/// registry owner or forward participant is retained, including during unwind.
+pub(super) struct MaintenancePhase {
+    core: Arc<Core>,
+    observation: Option<PhaseObservation>,
+}
+impl Drop for MaintenancePhase {
+    fn drop(&mut self) {
+        if let Some(observation) = self.observation.take()
+            && self.core.ledger.end_phase(observation).is_err()
+        {
+            // Only a foreign observation can be rejected. That would violate
+            // Render's private core/marker association, not a Ledger contract.
+            self.core.remember(RenderAccountingError::Invariant);
+        }
+    }
+}
 impl fmt::Debug for CpuAccount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CpuAccount")
@@ -308,18 +326,24 @@ impl CpuAccount {
         self.core.apply(self.scope, Change::Work(work, amount))
     }
     pub(crate) fn maintenance_phase<T>(&self, run: impl FnOnce() -> T) -> T {
-        let mut run = Some(run);
-        match self
+        let _phase = self.begin_maintenance_phase();
+        run()
+    }
+    pub(super) fn begin_maintenance_phase(&self) -> MaintenancePhase {
+        let observation = match self
             .core
             .ledger
-            .with_phase(self.core.scopes[self.scope.index()], || {
-                run.take().expect("owned maintenance callback")()
-            }) {
-            Ok(value) => value,
+            .begin_phase(self.core.scopes[self.scope.index()])
+        {
+            Ok(observation) => Some(observation),
             Err(error) => {
                 self.core.remember(self.core.diagnostic(error));
-                run.take().expect("unstarted maintenance callback")()
+                None
             }
+        };
+        MaintenancePhase {
+            core: self.core.clone(),
+            observation,
         }
     }
     pub(crate) fn preview(&self, resource: RenderResource, amount: usize) -> Result<()> {
