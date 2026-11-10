@@ -248,6 +248,12 @@ touches and journals their old values, so its cost does not grow with the width
 of the sets; a refused batch is rolled back from the journal and leaves usage,
 peaks and direct custody as they were.
 
+A batch of one work change on a wide dimension set, in an operation with no
+profile and no checkpoint limit, on a chain of up to four scopes, is checked
+against every scope on the chain first and changes usage only when all accept,
+so it keeps no journal. A refusal, an unreadable scope or a longer chain is
+admitted by the general path instead.
+
 Platforms without a supported standard clock can select untimed profiling
 or supply a monotonic source through `Operation::with_profile_clock`.
 A phase callback borrows the operation through a `Phase` view, so the ledger

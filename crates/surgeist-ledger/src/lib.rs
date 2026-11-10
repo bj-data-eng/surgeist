@@ -677,6 +677,15 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         if changes.is_empty() {
             return Ok(());
         }
+        if let [Change::Work(dimension, amount)] = *changes
+            && const { in_place::wide::<W, R>() }
+            && in_place::one_work_allowed()
+            && self.profile.is_empty()
+            && !self.checkpoints.configured()
+            && in_place::admit_one_work(&mut self.scopes, origin, dimension, amount)
+        {
+            return Ok(());
+        }
         let result = self.admit_batch(scope, origin, changes);
         if !self.profile.is_empty() || self.checkpoints.configured() {
             self.observe_admission(scope, changes, result)?;
@@ -946,7 +955,7 @@ impl<W: Dimension, R: Dimension> Drop for Phase<'_, W, R> {
 ///
 /// This is the dense admission. `in_place.rs` applies the same rules to a small
 /// batch on a wide pair; a change to an admission rule here changes there too,
-/// and the comparison test in `tests.rs` runs both on the same input.
+/// and the comparison tests in `tests.rs` run both on the same input.
 struct Admission<'a, W: Dimension, R: Dimension> {
     scopes: &'a mut [ScopeEntry<W, R>],
     defect: &'a OnceLock<Defect>,

@@ -8,9 +8,17 @@
 //! items in input order, each from the origin towards the root, each scope
 //! checking its own cap before its tariff projects the change into its parent.
 //!
+//! A batch of one work change on a chain of up to four scopes skips the journal:
+//! a first pass checks every hop from the origin to the root, and a second pass
+//! commits the new values. The pass admits only a change every hop accepts: a
+//! refusal, an unreadable scope or a longer chain goes to the general path, which
+//! reports the refusal or the defect. Batches of a few changes use a journal
+//! sized for them instead of the full one.
+//!
 //! The rules live in two places: here and in `Admission` in `lib.rs`. A change to
-//! an admission rule changes both, and the comparison test in `tests.rs` runs the
-//! two on the same random input.
+//! an admission rule changes both, and the comparison tests in `tests.rs` run
+//! the dense admission, the in-place store and the journal-free pass on the same
+//! random input.
 
 use std::sync::OnceLock;
 
@@ -36,6 +44,24 @@ thread_local! {
     /// Makes this thread's batches use one store, so a test can compare the
     /// two stores on the same input.
     pub(crate) static FORCE: std::cell::Cell<Force> = const { std::cell::Cell::new(Force::Auto) };
+
+    /// How many batches this thread committed through [`admit_one_work`].
+    pub(crate) static ONE_WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+
+    /// How many batches this thread handed from [`admit_one_work`] to the
+    /// general path.
+    pub(crate) static ONE_WORK_DECLINED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether the journal-free pass may run. A test forcing the dense admission
+/// excludes it.
+#[inline(always)]
+pub(crate) fn one_work_allowed() -> bool {
+    #[cfg(test)]
+    if FORCE.get() == Force::Dense {
+        return false;
+    }
+    true
 }
 
 /// Words of usage a dimension pair holds: one per work dimension, and a live
@@ -88,6 +114,12 @@ pub(crate) fn preferred<W: Dimension, R: Dimension>(
 /// The number of values the journal restores.
 const JOURNAL: usize = 24;
 
+/// The journal of a one-change batch on a chain of up to three scopes.
+const SHORT_JOURNAL: usize = 4;
+
+/// The journal of a batch of up to four changes on a chain of up to two scopes.
+const MID_JOURNAL: usize = 12;
+
 /// What a journal entry restores.
 #[derive(Clone, Copy)]
 enum Key<W: Dimension, R: Dimension> {
@@ -114,16 +146,16 @@ enum Stop<W: Dimension, R: Dimension> {
 }
 
 /// One batch changing the scopes in place.
-struct Batch<'a, W: Dimension, R: Dimension> {
+struct Batch<'a, W: Dimension, R: Dimension, const J: usize> {
     scopes: &'a mut [ScopeEntry<W, R>],
     defect: &'a OnceLock<Defect>,
     scope: Scope,
     origin: usize,
-    journal: [Option<Saved<W, R>>; JOURNAL],
+    journal: [Option<Saved<W, R>>; J],
     used: usize,
 }
 
-impl<'a, W: Dimension, R: Dimension> Batch<'a, W, R> {
+impl<'a, W: Dimension, R: Dimension, const J: usize> Batch<'a, W, R, J> {
     fn new(
         scopes: &'a mut [ScopeEntry<W, R>],
         defect: &'a OnceLock<Defect>,
@@ -135,7 +167,7 @@ impl<'a, W: Dimension, R: Dimension> Batch<'a, W, R> {
             defect,
             scope,
             origin,
-            journal: [None; JOURNAL],
+            journal: [None; J],
             used: 0,
         }
     }
@@ -379,7 +411,11 @@ impl<'a, W: Dimension, R: Dimension> Batch<'a, W, R> {
 }
 
 /// Admits a batch in place. Returns `false`, with nothing changed, when the
-/// batch touches more values than the journal holds.
+/// batch touches more values than the journal holds. A batch of one change
+/// tries a journal for a short chain first, and a batch of up to four changes
+/// one for a few values, so a small batch does not initialize the full journal;
+/// a batch that overflows a journal is rolled back and tried with the next
+/// larger one.
 #[inline(never)]
 pub(crate) fn admit<W: Dimension, R: Dimension>(
     scopes: &mut [ScopeEntry<W, R>],
@@ -388,7 +424,30 @@ pub(crate) fn admit<W: Dimension, R: Dimension>(
     origin: usize,
     changes: &[Change<W, R>],
 ) -> Result<bool, Error<W, R>> {
-    let mut batch = Batch::new(scopes, defect, scope, origin);
+    if changes.len() == 1 {
+        match admit_with::<W, R, SHORT_JOURNAL>(scopes, defect, scope, origin, changes) {
+            Ok(false) => {}
+            other => return other,
+        }
+    }
+    if changes.len() <= 4 {
+        match admit_with::<W, R, MID_JOURNAL>(scopes, defect, scope, origin, changes) {
+            Ok(false) => {}
+            other => return other,
+        }
+    }
+    admit_with::<W, R, JOURNAL>(scopes, defect, scope, origin, changes)
+}
+
+#[inline(always)]
+fn admit_with<W: Dimension, R: Dimension, const J: usize>(
+    scopes: &mut [ScopeEntry<W, R>],
+    defect: &OnceLock<Defect>,
+    scope: Scope,
+    origin: usize,
+    changes: &[Change<W, R>],
+) -> Result<bool, Error<W, R>> {
+    let mut batch = Batch::<W, R, J>::new(scopes, defect, scope, origin);
     match batch.run(changes) {
         Ok(()) => Ok(true),
         Err(Stop::Error(error)) => {
@@ -412,7 +471,29 @@ pub(crate) fn check<W: Dimension, R: Dimension>(
     origin: usize,
     changes: &[Change<W, R>],
 ) -> Option<Result<(), Error<W, R>>> {
-    let mut batch = Batch::new(scopes, defect, scope, origin);
+    if changes.len() == 1
+        && let Some(done) =
+            check_with::<W, R, SHORT_JOURNAL>(scopes, defect, scope, origin, changes)
+    {
+        return Some(done);
+    }
+    if changes.len() <= 4
+        && let Some(done) = check_with::<W, R, MID_JOURNAL>(scopes, defect, scope, origin, changes)
+    {
+        return Some(done);
+    }
+    check_with::<W, R, JOURNAL>(scopes, defect, scope, origin, changes)
+}
+
+#[inline(always)]
+fn check_with<W: Dimension, R: Dimension, const J: usize>(
+    scopes: &mut [ScopeEntry<W, R>],
+    defect: &OnceLock<Defect>,
+    scope: Scope,
+    origin: usize,
+    changes: &[Change<W, R>],
+) -> Option<Result<(), Error<W, R>>> {
+    let mut batch = Batch::<W, R, J>::new(scopes, defect, scope, origin);
     let outcome = batch.run(changes);
     batch.rollback();
     match outcome {
@@ -420,4 +501,71 @@ pub(crate) fn check<W: Dimension, R: Dimension>(
         Err(Stop::Error(error)) => Some(Err(error)),
         Err(Stop::Full) => None,
     }
+}
+
+/// Admits one work change without a journal: a first pass checks every hop from
+/// the origin to the root and a second pass commits them. Returns `false`, with
+/// nothing changed, when any hop refuses or cannot be read, or when the chain is
+/// longer than the hops it holds. The caller then admits the batch through the
+/// general path, which reports the refusal or the defect.
+#[inline(always)]
+pub(crate) fn admit_one_work<W: Dimension, R: Dimension>(
+    scopes: &mut [ScopeEntry<W, R>],
+    origin: usize,
+    dimension: W,
+    amount: u64,
+) -> bool {
+    let committed = one_work(scopes, origin, dimension, amount);
+    #[cfg(test)]
+    if committed {
+        ONE_WORK.set(ONE_WORK.get().saturating_add(1));
+    } else {
+        ONE_WORK_DECLINED.set(ONE_WORK_DECLINED.get().saturating_add(1));
+    }
+    committed
+}
+
+#[inline(never)]
+fn one_work<W: Dimension, R: Dimension>(
+    scopes: &mut [ScopeEntry<W, R>],
+    origin: usize,
+    dimension: W,
+    amount: u64,
+) -> bool {
+    const HOPS: usize = 4;
+    let mut hops: [(usize, W, u64); HOPS] = [(origin, dimension, amount); HOPS];
+    let mut count = 0_usize;
+    let mut index = origin;
+    let mut dimension = dimension;
+    let mut amount = amount;
+    loop {
+        let Some(slot) = hops.get_mut(count) else {
+            return false;
+        };
+        let Some(entry) = scopes.get(index) else {
+            return false;
+        };
+        let held = *W::get(&entry.usage.work, dimension);
+        let Ok(next) = increase(held, amount, entry.limits.work(dimension)) else {
+            return false;
+        };
+        *slot = (index, dimension, next);
+        count = count.saturating_add(1);
+        let Some(parent) = &entry.parent else {
+            break;
+        };
+        let tariff = *W::get(&parent.tariffs.work, dimension);
+        let Some(scaled) = amount.checked_mul(tariff.scale) else {
+            return false;
+        };
+        amount = scaled;
+        dimension = tariff.target;
+        index = parent.index;
+    }
+    for &(index, dimension, next) in hops.iter().take(count) {
+        if let Some(entry) = scopes.get_mut(index) {
+            *W::get_mut(&mut entry.usage.work, dimension) = next;
+        }
+    }
+    true
 }
