@@ -77,6 +77,7 @@ mod backend;
 pub mod conversion;
 pub mod declarations;
 mod error;
+mod host;
 mod idl;
 mod owner;
 
@@ -84,6 +85,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use error::{Error, Exception, ExceptionPhase};
+pub use host::{HostFailure, HostFailureSlot, RealmAuthority, RealmId, RecordFailure};
 pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 
 /// Engine selected before creating any realm or heap values.
@@ -236,7 +238,7 @@ impl Execution<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct RealmKey {
     owner: u64,
     index: u64,
@@ -675,6 +677,36 @@ pub struct Scope<'scope> {
 }
 
 impl<'scope> Scope<'scope> {
+    /// Observes the actual selected scope realm. In a native callback this
+    /// is its creation realm; it says nothing about a guest caller, incumbent
+    /// settings, a native Global, or permission to access a Document.
+    pub fn realm_authority(&self) -> Result<RealmAuthority, Error> {
+        self.check_active()?;
+        let owner = self.operations.owner_state();
+        Ok(RealmAuthority {
+            key: self.operations.realm_key(),
+            owner: Rc::downgrade(&owner),
+        })
+    }
+
+    /// Latches a prepared native refusal in this process and requests engine
+    /// termination. The first existing refusal wins. This does not throw a
+    /// catchable guest value or promise immediate stack unwinding.
+    /// Pending cleanup can still stop guest work while this method records the
+    /// selected native cause at the active boundary.
+    pub fn refuse_host(&self, failure: &HostFailure) -> Error {
+        if failure.owner != self.operations.owner_state().id() {
+            return match self.check_active() {
+                Ok(()) => self.operations.refuse(Error::ForeignOwner),
+                Err(first) => first,
+            };
+        }
+        if let Err(first) = self.operations.check_host_failure_report() {
+            return first;
+        }
+        self.operations.refuse(Error::HostFailure(failure.clone()))
+    }
+
     /// Refuses native continuation after a terminal host failure or execution
     /// termination. Native adapters must call this after guest reentry and
     /// before making their own externally observable mutations.

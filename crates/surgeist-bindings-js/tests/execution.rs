@@ -1,3 +1,6 @@
+#[path = "execution/host.rs"]
+mod host;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use surgeist_bindings_js::{ConstructorCallback, ConstructorCompletion, FunctionMetadata};
@@ -2148,6 +2151,7 @@ fn main() -> Result<(), Error> {
     value_classification_uses_language_types_without_guest_hooks(&mut process)?;
     callable_classification_includes_classes_and_revoked_callable_proxies(&mut process)?;
     scalar_and_classification_operations_work_in_native_callbacks(&mut process)?;
+    host::observed_realm_is_the_callback_creation_realm(&mut process)?;
 
     let (old_realm, old_value) = {
         let mut execution = process.execution();
@@ -2180,6 +2184,10 @@ fn main() -> Result<(), Error> {
     new_object_paths_preserve_the_first_host_failure()?;
     declared_constructor_host_refusals_are_terminal()?;
     scalar_operations_preserve_the_first_host_failure()?;
+    host::refusal_preserves_actual_native_error_and_expiry()?;
+    host::prepared_slot_cannot_replace_an_earlier_failure()?;
+    host::direct_failure_returns_validate_owner()?;
+    host::rejected_failure_drop_stays_in_callback_guard()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"
     );

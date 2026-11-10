@@ -49,6 +49,13 @@ and continuation after guest coercion must also check the sticky failure before
 accepting native work. Refusal preserves the original host error and still
 permits required resource cleanup.
 
+Native host adapters may observe the entered realm and weak process liveness
+through `Scope::realm_authority`. In a callback this observes its creation realm;
+the adapter separately authenticates native authority. `HostFailureSlot` accepts
+pre-admitted storage and freezes one original typed native cause without a late
+allocation. The cause and its debit travel together with retained failure tokens.
+`Scope::refuse_host` preserves the first host failure, distinct from a guest throw.
+
 `Callback` supports recursive Rust callables through `Scope::function`.
 Arguments preserve omission versus explicit undefined; values and completions
 remain confined to their scope unless explicitly retained. A callback returns a value,

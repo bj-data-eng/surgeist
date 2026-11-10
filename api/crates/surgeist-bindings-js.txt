@@ -343,6 +343,7 @@ pub surgeist_bindings_js::Error::ExpectedPropertyKey
 pub surgeist_bindings_js::Error::ExpiredIdentity
 pub surgeist_bindings_js::Error::FloatOutOfRange
 pub surgeist_bindings_js::Error::ForeignOwner
+pub surgeist_bindings_js::Error::HostFailure(surgeist_bindings_js::HostFailure)
 pub surgeist_bindings_js::Error::IdentityExhausted
 pub surgeist_bindings_js::Error::IntegerOutOfRange
 pub surgeist_bindings_js::Error::OwnerAlreadyActive
@@ -355,6 +356,7 @@ pub surgeist_bindings_js::Error::WrongThread
 impl core::convert::From<surgeist_bindings_js::conversion::Failure> for surgeist_bindings_js::Error
 pub fn surgeist_bindings_js::Error::from(failure: surgeist_bindings_js::conversion::Failure) -> Self
 impl core::error::Error for surgeist_bindings_js::Error
+pub fn surgeist_bindings_js::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_bindings_js::Error
 pub fn surgeist_bindings_js::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_bindings_js::ExceptionPhase
@@ -413,6 +415,13 @@ pub surgeist_bindings_js::PropertyDescriptor::Data::writable: bool
 pub enum surgeist_bindings_js::PropertyKey<'key, 'scope>
 pub surgeist_bindings_js::PropertyKey::String(&'key [u16])
 pub surgeist_bindings_js::PropertyKey::Value(&'key surgeist_bindings_js::Value<'scope>)
+pub enum surgeist_bindings_js::RecordFailure<E>
+pub surgeist_bindings_js::RecordFailure::Inactive
+pub surgeist_bindings_js::RecordFailure::Inactive::cause: E
+pub surgeist_bindings_js::RecordFailure::Inactive::error: surgeist_bindings_js::Error
+pub surgeist_bindings_js::RecordFailure::Occupied
+pub surgeist_bindings_js::RecordFailure::Occupied::cause: E
+pub surgeist_bindings_js::RecordFailure::Occupied::first: surgeist_bindings_js::HostFailure
 pub enum surgeist_bindings_js::ValueKind
 pub surgeist_bindings_js::ValueKind::BigInt
 pub surgeist_bindings_js::ValueKind::Boolean
@@ -479,12 +488,33 @@ pub fn surgeist_bindings_js::Execution<'_>::drop(&mut self)
 pub struct surgeist_bindings_js::FunctionMetadata<'name>
 pub surgeist_bindings_js::FunctionMetadata::length: u32
 pub surgeist_bindings_js::FunctionMetadata::name: &'name [u16]
+pub struct surgeist_bindings_js::HostFailure
+impl surgeist_bindings_js::HostFailure
+pub fn surgeist_bindings_js::HostFailure::cause<E: core::error::Error + 'static>(&self) -> core::option::Option<&E>
+impl core::error::Error for surgeist_bindings_js::HostFailure
+pub fn surgeist_bindings_js::HostFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for surgeist_bindings_js::HostFailure
+pub fn surgeist_bindings_js::HostFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for surgeist_bindings_js::HostFailure
+pub fn surgeist_bindings_js::HostFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_bindings_js::HostFailureSlot<E, Storage>
+impl<E: core::error::Error + 'static, Storage: 'static> surgeist_bindings_js::HostFailureSlot<E, Storage>
+pub fn surgeist_bindings_js::HostFailureSlot<E, Storage>::new(authority: &surgeist_bindings_js::RealmAuthority, storage: Storage) -> core::result::Result<Self, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::HostFailureSlot<E, Storage>::record(&self, cause: E) -> core::result::Result<surgeist_bindings_js::HostFailure, surgeist_bindings_js::RecordFailure<E>>
+pub const fn surgeist_bindings_js::HostFailureSlot<E, Storage>::storage_bytes() -> usize
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Process::conversion_cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::Process::execution(&mut self) -> surgeist_bindings_js::Execution<'_>
 pub struct surgeist_bindings_js::Realm(_)
+pub struct surgeist_bindings_js::RealmAuthority
+impl surgeist_bindings_js::RealmAuthority
+pub fn surgeist_bindings_js::RealmAuthority::check_owner_active(&self) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::RealmAuthority::identity(&self) -> surgeist_bindings_js::RealmId
+impl core::fmt::Debug for surgeist_bindings_js::RealmAuthority
+pub fn surgeist_bindings_js::RealmAuthority::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_bindings_js::RealmId(_)
 pub struct surgeist_bindings_js::Root(_)
 pub struct surgeist_bindings_js::Scope<'scope>
 impl<'scope> surgeist_bindings_js::Scope<'scope>
@@ -509,6 +539,8 @@ pub fn surgeist_bindings_js::Scope<'scope>::is_callable(&mut self, value: &surge
 pub fn surgeist_bindings_js::Scope<'scope>::kind(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::ValueKind, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::object(&mut self, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::primitive(&mut self, primitive: surgeist_bindings_js::Primitive) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::realm_authority(&self) -> core::result::Result<surgeist_bindings_js::RealmAuthority, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::refuse_host(&self, failure: &surgeist_bindings_js::HostFailure) -> surgeist_bindings_js::Error
 pub fn surgeist_bindings_js::Scope<'scope>::retain(&self, value: &surgeist_bindings_js::Value<'scope>) -> surgeist_bindings_js::Root
 pub fn surgeist_bindings_js::Scope<'scope>::set(&mut self, object: &surgeist_bindings_js::Value<'scope>, key: surgeist_bindings_js::PropertyKey<'_, 'scope>, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::set_prototype(&mut self, object: &surgeist_bindings_js::Value<'scope>, prototype: surgeist_bindings_js::ObjectPrototype<'_, 'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>

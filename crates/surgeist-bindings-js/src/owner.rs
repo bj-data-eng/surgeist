@@ -53,11 +53,30 @@ impl OwnerState {
         }
     }
 
+    /// Admit custody of a selected cause while the active boundary is still
+    /// choosing its result. Pending cleanup continues to refuse execution.
+    pub(crate) fn check_host_failure_report(&self) -> Result<(), Error> {
+        if self.boundaries.get() != 0
+            && !self.closed.get()
+            && matches!(self.failure(), Some(Failure::Cleanup(_)))
+        {
+            return Ok(());
+        }
+        self.available()
+    }
+
     fn failure(&self) -> Option<Failure> {
         let failure = self.failure.take();
         let result = failure.clone();
         self.failure.set(failure);
         result
+    }
+
+    fn qualify_error(&self, error: Error) -> Error {
+        match &error {
+            Error::HostFailure(failure) if failure.owner != self.id => Error::ForeignOwner,
+            _ => error,
+        }
     }
 
     /// Records the first failure without touching an SDK handle. The backend
@@ -71,6 +90,7 @@ impl OwnerState {
                 error
             }
             _ => {
+                let error = self.qualify_error(error);
                 self.failure.set(Some(Failure::Host(error.clone())));
                 error
             }
@@ -105,9 +125,9 @@ impl OwnerState {
                     drop(value);
                     Err(cleanup_error(None, cleanup))
                 }
-                Err(error) => Err(combine(error, cleanup)),
+                Err(error) => Err(combine(self.qualify_error(error), cleanup)),
             },
-            None => result,
+            None => result.map_err(|error| self.qualify_error(error)),
         }
     }
 

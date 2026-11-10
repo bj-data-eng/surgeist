@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::Root;
 use crate::conversion::{CleanupFailure, LedgerError, Rule};
+use crate::{HostFailure, Root};
 
 /// Operation that produced a guest exception.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +48,8 @@ impl Exception {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// Original typed native host failure, distinct from a guest exception.
+    HostFailure(HostFailure),
     /// Binding-owned conversion work or storage was refused by Ledger.
     ConversionLedger(LedgerError),
     /// Fatal cleanup failed; its selected primary, if any, is retained exactly.
@@ -104,6 +106,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::HostFailure(_) => "native host refused execution",
             Self::ConversionLedger(_) => "binding conversion admission failed",
             Self::ConversionCleanup(_) => "binding conversion cleanup failed",
             Self::OwnerAlreadyActive => "an execution owner is already active",
@@ -132,4 +135,11 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::HostFailure(failure) => Some(failure),
+            _ => None,
+        }
+    }
+}

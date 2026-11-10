@@ -68,6 +68,7 @@ struct Roots {
     next_callback: Cell<u32>,
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
+    cleanup_interrupt: Cell<bool>,
     // User panic payloads remain owned until teardown outside native callback
     // frames. Their arbitrary destructors follow ordinary Rust drop behavior.
     panic_payloads: Cell<Vec<Box<dyn std::any::Any + Send>>>,
@@ -139,6 +140,11 @@ impl Roots {
             // Cleanup can latch the shared failure without using this SDK
             // adapter. Interrupt before returning through a native callback
             // or accepting another engine operation, even in that case.
+            if matches!(result, Err(Error::ConversionCleanup(_)))
+                && !self.interrupt.is_execution_terminating()
+            {
+                self.cleanup_interrupt.set(true);
+            }
             self.interrupt.terminate_execution();
         }
         result
@@ -241,6 +247,7 @@ impl Engine {
             next_callback: Cell::new(0),
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
+            cleanup_interrupt: Cell::new(false),
             panic_payloads: Cell::new(Vec::new()),
         });
         isolate.set_slot(Rc::downgrade(&roots));
@@ -607,12 +614,25 @@ impl Entered<'_, '_, '_> {
 }
 
 impl Operations for Entered<'_, '_, '_> {
+    fn realm_key(&self) -> RealmKey {
+        self.realm
+    }
+
     fn owner_state(&self) -> Rc<OwnerState> {
         self.roots.owner.clone()
     }
 
     fn refuse(&self, error: Error) -> Error {
         self.roots.fail(error)
+    }
+    fn check_host_failure_report(&self) -> Result<(), Error> {
+        self.roots.owner.check_host_failure_report()?;
+        // An interrupt requested for pending cleanup stops guest continuation.
+        // It does not choose the cause of the still-active result boundary.
+        if self.scope.is_execution_terminating() && !self.roots.cleanup_interrupt.get() {
+            return Err(Error::Terminated);
+        }
+        Ok(())
     }
     fn check_active(&self) -> Result<(), Error> {
         self.roots.available()?;
@@ -1137,10 +1157,19 @@ fn callback_trampoline<'s>(
     // through the SDK ABI. Arbitrary capture destructors and SDK fatal errors
     // are not promised to be recoverable or universally panic free.
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        invoke_callback(scope, &arguments, &roots)
+        match invoke_callback(scope, &arguments, &roots) {
+            Ok(outcome) => Some(outcome),
+            Err(error) => {
+                // Selection can discard an owned native cause or storage
+                // guard. Dispose of callback errors within this unwind guard.
+                roots.fail(error);
+                None
+            }
+        }
     }));
     let outcome = match outcome {
-        Ok(outcome) => outcome,
+        Ok(Some(outcome)) => outcome,
+        Ok(None) => return,
         Err(payload) => {
             let selected = roots.owner.finalize::<()>(Err(Error::CallbackPanicked));
             if let Err(error) = selected {
@@ -1159,14 +1188,11 @@ fn callback_trampoline<'s>(
         return;
     }
     match outcome {
-        Ok(CallbackOutcome::Undefined) => (),
-        Ok(CallbackOutcome::Return(value)) => result.set(value),
-        Ok(CallbackOutcome::Throw(value)) => {
+        CallbackOutcome::Undefined => (),
+        CallbackOutcome::Return(value) => result.set(value),
+        CallbackOutcome::Throw(value) => {
             // All operation-local TryCatch frames have finished by this point.
             scope.throw_exception(value);
-        }
-        Err(error) => {
-            roots.fail(error);
         }
     }
 }

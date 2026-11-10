@@ -2,7 +2,7 @@ pub(crate) mod v8;
 
 use crate::{
     Callback, ConstructorCallback, Error, FunctionMetadata, Intrinsic, Primitive,
-    PrototypeResolver, Realm, Root, ValueKind, WellKnownSymbol,
+    PrototypeResolver, Realm, RealmKey, Root, ValueKind, WellKnownSymbol,
 };
 
 #[derive(Clone, Copy)]
@@ -75,8 +75,10 @@ pub(crate) trait Engine {
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
+    fn realm_key(&self) -> RealmKey;
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn refuse(&self, error: Error) -> Error;
+    fn check_host_failure_report(&self) -> Result<(), Error>;
     fn check_active(&self) -> Result<(), Error>;
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
