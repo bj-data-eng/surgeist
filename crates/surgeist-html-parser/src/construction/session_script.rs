@@ -128,11 +128,12 @@ impl ParserArenaSession {
                         script_type: None,
                         result: HtmlScriptResult::Uninitialized,
                         steps_when_result_ready: None,
+                        start: storage.token_end,
                     },
                 },
             )
             .map_err(|_| latch_registry_row(control))?;
-        let node = self.allocate_for_creation(
+        let node = self.allocate_recorded_creation(
             control,
             input,
             &parent,

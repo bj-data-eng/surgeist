@@ -14,9 +14,9 @@ use super::{
     seal::{OrdinaryInitialization, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
     terminal::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
 };
-use crate::construction::{
-    SessionClass, SessionError, evidence::HtmlParseDiagnostics, session_class,
-};
+#[cfg(any(feature = "detail", test))]
+use crate::construction::evidence::HtmlParseDiagnostics;
+use crate::construction::{SessionClass, SessionError, session_class};
 use crate::parser::control::{HtmlParseStop, HtmlParseUnsupportedState, HtmlParseUsage};
 use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlSource};
 
@@ -370,7 +370,13 @@ impl HtmlParseFailure {
             FailureStorage::FragmentFrozen(o) => o.parts.after_cleanup(),
         }
     }
+    #[cfg(any(feature = "detail", test))]
     pub fn diagnostics(&self) -> Option<HtmlParseDiagnostics<'_>> {
+        self.stored_diagnostics()
+            .filter(|diagnostics| diagnostics.selected)
+    }
+    #[cfg(any(feature = "detail", test))]
+    fn stored_diagnostics(&self) -> Option<HtmlParseDiagnostics<'_>> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.diagnostics(),
             FailureStorage::Ordinary(o) => o.diagnostics(),

@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{bank, environment, limits, record};
 use surgeist_html::{attributes::HtmlReferrerPolicy, values::DocumentString};
 use surgeist_html_parser::*;
@@ -21,7 +23,7 @@ fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
     result
 }
 fn parse(source: &str) -> HtmlParseReport {
-    HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+    crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
         .parse()
         .unwrap()
 }
@@ -109,7 +111,7 @@ fn known_true_refresh_returns_before_later_missing_url_observation() {
     let encoding = HtmlBaseEncoding::fresh();
     // Arbitrarily large delay is never narrowed to a machine integer. The
     // closed Do-nothing branch still sets the flag before later early return.
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content=999999999999999999999999999999999999><meta http-equiv=refresh content='0; url=unobserved'>"), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content=999999999999999999999999999999999999><meta http-equiv=refresh content='0; url=unobserved'>"), limits())
         .with_base_facts(environment(&base, &encoding)).unwrap().parse().unwrap();
     let states = rows(&report);
     assert!(known_refresh(&states[0]));
@@ -120,7 +122,7 @@ fn unavailable_refresh_never_becomes_false_or_speculatively_runs_later_refresh()
     let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
     let base = record(&revision, "https://example.test/", false, None);
     let encoding = HtmlBaseEncoding::fresh();
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content='0; url=unobserved'><meta http-equiv=refresh content=0><meta http-equiv=content-language content=ko>"), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content='0; url=unobserved'><meta http-equiv=refresh content=0><meta http-equiv=content-language content=ko>"), limits())
         .with_base_facts(environment(&base, &encoding)).unwrap().parse().unwrap();
     let states = rows(&report);
     let HtmlParseMetaRefresh::Unavailable(missing) = states[0].refresh() else {
@@ -181,7 +183,7 @@ fn refresh_uses_observed_failure_and_javascript_before_successful_actual_parse()
                 ),
             ],
         );
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
             .with_encoding_url_facts(vec![facts])
@@ -226,7 +228,7 @@ fn base_after_unavailable_csp_is_explicitly_unavailable_and_earlier_frozen_value
             HtmlBaseFactsLimits::new(20, 10_000, 100_000),
         )
         .unwrap();
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .with_base_facts(facts)
             .unwrap()
             .parse()
@@ -295,7 +297,7 @@ fn refresh_uses_source_time_base_and_requires_independent_full_revision() {
             true,
         ),
     ] {
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .with_base_facts(facts.clone())
             .unwrap()
             .with_encoding_url_facts(vec![
@@ -337,7 +339,7 @@ fn refresh_uses_source_time_base_and_requires_independent_full_revision() {
         HtmlBaseFactsLimits::new(20, 10_000, 100_000),
     )
     .unwrap();
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><meta http-equiv=refresh content='0;url=x'>"),
         limits(),
     )
@@ -367,7 +369,7 @@ fn unknown_csp_invalidates_required_url_context_without_erasing_known_document_u
         let source = format!(
             "<!doctype html><head><meta http-equiv=content-security-policy content=\"base-uri 'none'\"><meta http-equiv=refresh content='{content}'></head>"
         );
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .with_base_facts(environment(&base, &encoding))
             .unwrap()
             .with_encoding_url_facts(vec![bank(
@@ -431,7 +433,7 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
         HtmlBaseFactsLimits::new(20, 10_000, 100_000),
     )
     .unwrap();
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><meta http-equiv=refresh content='0;url=x'><base href=new></option></select>"), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8("<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><meta http-equiv=refresh content='0;url=x'><base href=new></option></select>"), limits())
         .with_base_facts(facts).unwrap().with_encoding_url_facts(vec![
             bank(&old, &encoding, vec![HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Failure)]),
             bank(&new, &encoding, vec![HtmlEncodingUrlParseObservation::new("x".into(), HtmlEncodingUrlParseOutcome::Parsed(record(&revision, "https://example.test/new/x", false, None)))])

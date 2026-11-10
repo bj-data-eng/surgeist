@@ -49,6 +49,13 @@ pub(super) struct SessionStorage {
     /// raises the floor to the end of the registry, which makes every earlier
     /// row stale at once.
     pub(super) style_order_floor: usize,
+    /// The offset at which the start tag being processed ended: where the
+    /// parser creates the script, style and event handler content attributes of
+    /// that tag.
+    pub(super) token_end: Option<usize>,
+    /// The row listing the start positions of event handler content attributes,
+    /// once the parser has created one.
+    pub(super) handler_starts: Option<usize>,
     /// The main tree, the tree rooted at record 0, has held no style element
     /// since the session began and nothing has dropped that knowledge: its
     /// order is empty without a row, and the first style inserted into it
@@ -160,6 +167,8 @@ impl SessionStorage {
             failed_text_append: None,
             appended_units: None,
             style_order_floor: 0,
+            token_end: None,
+            handler_starts: None,
             main_tree_styleless: true,
             style_subtree: None,
             detached_order: None,

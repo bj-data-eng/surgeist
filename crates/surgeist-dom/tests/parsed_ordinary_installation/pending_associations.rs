@@ -227,34 +227,12 @@ fn parsed_known_null_style_later_edits_use_actual_native_processing() {
 }
 
 fn preferred(report: &HtmlParseReport) -> Vec<Vec<u16>> {
-    let history = report.history_view();
     let mut rows = report.pending_associations();
     let mut names = Vec::new();
     loop {
         match rows.advance() {
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
-                let mut scratch =
-                    vec![surgeist_html_parser::HtmlParseHistoryFrame::default(); history.len()];
-                let mut cursor = history
-                    .cursor(row.preferred_name().unwrap(), &mut scratch, None)
-                    .unwrap();
-                let mut name = Vec::new();
-                loop {
-                    match cursor.advance() {
-                        surgeist_html_parser::HtmlParseHistoryStep::Fault(fault) => {
-                            panic!("{fault}")
-                        }
-                        surgeist_html_parser::HtmlParseHistoryStep::Leaf(leaf) => {
-                            name.extend_from_slice(leaf.units())
-                        }
-                        surgeist_html_parser::HtmlParseHistoryStep::Progress => {}
-                        surgeist_html_parser::HtmlParseHistoryStep::Complete => break,
-                        surgeist_html_parser::HtmlParseHistoryStep::Cancelled => {
-                            panic!("uncancelled history")
-                        }
-                    }
-                }
-                names.push(name);
+                names.push(row.preferred_name().unwrap().code_units().to_vec());
             }
             Step::Complete => break,
             _ => {}
@@ -611,7 +589,6 @@ fn pending_association_style_meta_style_order_and_template_documents_remain_orig
         match cursor.advance() {
             Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => {
-                assert!(row.cause().is_some());
                 let context = row.context();
                 let role = surgeist_html_parser::HtmlParseAssociationContextRole::DocumentUrl;
                 assert_eq!(

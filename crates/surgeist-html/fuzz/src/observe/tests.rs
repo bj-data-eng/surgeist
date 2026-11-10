@@ -4,6 +4,8 @@ use super::*;
 fn parsed_nodes(source: &str) -> Vec<NativeNode> {
     let limits = crate::codec::limits(crate::codec::CAPS).expect("documented envelope");
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source.to_owned()), limits)
+        .with_detail(surgeist_html_parser::DetailSet::ALL)
+        .unwrap()
         .parse()
         .expect("literal parses inside the generous envelope");
     native(&report).expect("bounded native tree")
@@ -61,7 +63,9 @@ fn work_cut(
     caps[19] = cap;
     let limits = crate::codec::limits(caps).expect("documented envelope");
     let source = HtmlSource::utf8("<!DOCTYPE html><p>a</p><p>b</p>".to_owned());
-    let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+    let request = HtmlDocumentParseRequest::offline(source.clone(), limits)
+        .with_detail(surgeist_html_parser::DetailSet::ALL)
+        .unwrap();
     let cancel = request.cancellation().clone();
     let failure = request
         .parse()
@@ -119,7 +123,9 @@ fn balanced_recipes_reject_a_stop_on_a_cap_the_case_did_not_lower() {
     let limits = crate::codec::limits(crate::codec::CAPS).expect("documented envelope");
     let text = UnicodeSource::Utf8("a".repeat(100_001));
     let source = HtmlSource::utf8("a".repeat(100_001));
-    let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+    let request = HtmlDocumentParseRequest::offline(source.clone(), limits)
+        .with_detail(surgeist_html_parser::DetailSet::ALL)
+        .unwrap();
     let cancel = request.cancellation().clone();
     let failure = request
         .parse()
@@ -163,6 +169,8 @@ fn retained_and_dropped_diagnostics_are_checked_against_the_configured_cap() {
     let text = UnicodeSource::Utf8(literal.clone());
     let source = HtmlSource::utf8(literal);
     let report = HtmlDocumentParseRequest::offline(source.clone(), limits)
+        .with_detail(surgeist_html_parser::DetailSet::ALL)
+        .unwrap()
         .parse()
         .expect("a diagnostics cap bounds retention, not the parse");
     let spec = |diagnostics_cap: u64| {

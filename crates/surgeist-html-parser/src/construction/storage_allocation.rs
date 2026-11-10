@@ -301,7 +301,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         raw: FrozenUtf16,
     ) -> Result<usize, SessionError> {
-        let origins = if let Some(evidence) = &mut self.evidence {
+        let origins = if let Some(evidence) = self.graph() {
             match evidence.rule_group(control, raw.text().len()) {
                 Ok(group) => Some(group),
                 Err(error) => {
@@ -882,6 +882,7 @@ impl SessionStorage {
             self.initial_meta_attributes(control, node.index)?;
             self.association_initial_attributes(control, node.index)?;
             self.register_base(control, node.index, base::ResponseDomain::Unavailable)?;
+            self.record_event_handler_starts(control, node.index, 0)?;
             Ok(node)
         })();
         release_token_attributes(attributes, control)?;

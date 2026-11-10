@@ -93,6 +93,8 @@ pub(crate) enum DiagnosticAdmission {
     Retained(DiagnosticId),
     /// The cap was already reached: the diagnostic was counted and not kept.
     Dropped,
+    /// The parse did not select diagnostics: nothing was counted or kept.
+    Unselected,
 }
 pub(crate) struct DiagnosticId {
     index: usize,
@@ -115,6 +117,8 @@ pub(crate) struct ParseEvidence {
     dropped: u64,
     pub(super) native: super::provenance::NativeProvenance,
     diagnostics_taken: bool,
+    /// The detail the parse selected: what this owner records.
+    detail: crate::DetailSet,
 }
 /// The terminal consumer receives only committed diagnostics and their actual
 /// issuer. No native association, construction cause or source-map draft can
@@ -125,6 +129,8 @@ pub(crate) struct FailureDiagnosticEvidence {
     records: OwnedVec<HtmlParseDiagnostic>,
     locations: OwnedVec<HtmlParseDiagnosticLocation>,
     dropped: u64,
+    /// Whether the parse selected diagnostics.
+    selected: bool,
 }
 /// Fixed borrowed lender of committed diagnostics. It carries no execution authority,
 /// allocation ticket or native storage, and each observation uses constant work.
@@ -141,6 +147,8 @@ pub struct HtmlParseDiagnostics<'a> {
     records: &'a [HtmlParseDiagnostic],
     locations: &'a [HtmlParseDiagnosticLocation],
     dropped: u64,
+    /// Whether the parse selected diagnostics.
+    pub(crate) selected: bool,
 }
 impl HtmlParseDiagnostics<'_> {
     /// The number of retained diagnostics: the first ones the parse emitted.
@@ -193,6 +201,7 @@ impl FailureDiagnosticEvidence {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
             dropped: self.dropped,
+            selected: self.selected,
         }
     }
 
@@ -250,6 +259,7 @@ impl ParseEvidence {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
             dropped: self.dropped,
+            selected: self.records_diagnostics(),
         }
     }
 
@@ -288,7 +298,25 @@ impl ParseEvidence {
             dropped: 0,
             native,
             diagnostics_taken: false,
+            detail: c.detail(),
         })
+    }
+    /// Whether the parse selected diagnostics. A parse that did not records
+    /// none, charges none and keeps no storage for them.
+    pub(crate) fn records_diagnostics(&self) -> bool {
+        self.detail.contains(crate::DetailSet::DIAGNOSTICS)
+    }
+    /// Whether the parse selected the source map.
+    pub(crate) fn records_source_map(&self) -> bool {
+        self.detail.contains(crate::DetailSet::SOURCE_MAP)
+    }
+    /// Whether the parse selected the lexical records.
+    pub(crate) fn records_lexical(&self) -> bool {
+        self.detail.contains(crate::DetailSet::LEXICAL)
+    }
+    /// Whether the parse records the origin and cause graph.
+    pub(crate) fn records_graph(&self) -> bool {
+        self.detail.records_graph()
     }
     pub(crate) fn append(
         &mut self,
@@ -298,6 +326,9 @@ impl ParseEvidence {
         rule: HtmlParseDiagnosticRule,
         input: DiagnosticLocationInput<'_>,
     ) -> Result<DiagnosticAdmission, HtmlParseStop> {
+        if !self.records_diagnostics() {
+            return Ok(DiagnosticAdmission::Unselected);
+        }
         let source = input.source;
         // Ownership precedes every charge and the cap read, so a foreign
         // controller is refused whether or not its own cap is reached.
@@ -477,6 +508,7 @@ impl ParseEvidence {
             dropped,
             native,
             diagnostics_taken: _,
+            detail,
         } = evidence;
         // Same-owner flat vectors, exact checked capacities and their aggregate
         // logical/capacity totals were proved above. No ledger mutation intervenes,
@@ -490,6 +522,7 @@ impl ParseEvidence {
             records,
             locations,
             dropped,
+            selected: detail.contains(crate::DetailSet::DIAGNOSTICS),
         }))
     }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
@@ -590,6 +623,7 @@ impl ParserArenaSession {
             records,
             locations,
             dropped: mem::take(&mut evidence.dropped),
+            selected: evidence.records_diagnostics(),
         })
     }
     /// Before reclamation, move only actual committed diagnostic ownership.
@@ -670,6 +704,7 @@ mod tests {
         match admission.unwrap() {
             DiagnosticAdmission::Retained(id) => id,
             DiagnosticAdmission::Dropped => panic!("the diagnostic was dropped"),
+            DiagnosticAdmission::Unselected => panic!("the diagnostic was not selected"),
         }
     }
     fn owner(
@@ -1780,6 +1815,7 @@ mod tests {
             records: &records,
             locations: &[],
             dropped: 0,
+            selected: true,
         };
         assert_eq!(view.len(), 1);
         assert_eq!(
@@ -1827,6 +1863,7 @@ mod tests {
             limits(100),
             HtmlParseCancellation::new(),
             request.lease(),
+            crate::DetailSet::ALL,
         );
         c.admit_source(&source).unwrap();
         let mut evidence = ParseEvidence::prepare(&mut c).unwrap();

@@ -179,3 +179,84 @@ pub(crate) fn fragment_context_for(
     let capture = builder.finish().unwrap();
     HtmlFragmentContext::element(&capture, &capture.subject_id(&element).unwrap()).unwrap()
 }
+
+/// An offline document request that selects every kind of parse detail, for the
+/// tests that read it.
+pub(crate) fn offline_all(source: HtmlSource, limits: HtmlParseLimits) -> HtmlDocumentParseRequest {
+    HtmlDocumentParseRequest::offline(source, limits)
+        .with_detail(DetailSet::ALL)
+        .expect("the detail feature is enabled in these tests")
+}
+
+/// The readers a report had before they moved to its detail, for the tests
+/// whose requests select every kind.
+pub(crate) trait ReportDetail {
+    fn associations(&self) -> HtmlParseAssociations<'_>;
+    fn history_view(&self) -> HtmlParseHistory<'_>;
+    fn diagnostics(&self) -> HtmlParseDiagnostics<'_>;
+}
+
+impl ReportDetail for HtmlParseReport {
+    fn associations(&self) -> HtmlParseAssociations<'_> {
+        self.detail()
+            .expect("the request selected detail")
+            .associations()
+            .expect("the request selected the source map")
+    }
+    fn history_view(&self) -> HtmlParseHistory<'_> {
+        self.detail()
+            .expect("the request selected detail")
+            .history()
+            .expect("the request selected the history")
+    }
+    fn diagnostics(&self) -> HtmlParseDiagnostics<'_> {
+        self.detail()
+            .expect("the request selected detail")
+            .diagnostics()
+            .expect("the request selected diagnostics")
+    }
+}
+
+/// The recorded cause of a value of a report whose request selected every kind.
+pub(crate) trait SubjectCause<'a> {
+    fn cause(&self) -> Option<HtmlParseCause<'a>>;
+}
+
+impl<'a, T: HtmlParseCaused<'a>> SubjectCause<'a> for T {
+    fn cause(&self) -> Option<HtmlParseCause<'a>> {
+        HtmlParseCaused::recorded_cause(self)
+    }
+}
+
+/// A fragment request that selects every kind of parse detail.
+pub(crate) fn fragment_all(
+    source: HtmlSource,
+    context: HtmlFragmentContext,
+    limits: HtmlParseLimits,
+) -> Result<HtmlFragmentParseRequest, HtmlParseRequestError> {
+    HtmlFragmentParseRequest::new(source, context, limits).map(select_all)
+}
+
+/// As [`fragment_all`], with the scripting mode and the shadow-root choice.
+pub(crate) fn fragment_all_with_options(
+    source: HtmlSource,
+    context: HtmlFragmentContext,
+    limits: HtmlParseLimits,
+    requested: surgeist_html::parsing::HtmlParserScriptingMode,
+    allow_declarative_shadow_roots: bool,
+) -> Result<HtmlFragmentParseRequest, HtmlParseRequestError> {
+    HtmlFragmentParseRequest::with_options(
+        source,
+        context,
+        limits,
+        requested,
+        allow_declarative_shadow_roots,
+    )
+    .map(select_all)
+}
+
+fn select_all(request: HtmlFragmentParseRequest) -> HtmlFragmentParseRequest {
+    request
+        .with_detail(DetailSet::ALL)
+        .expect("the detail feature is enabled in these tests")
+}

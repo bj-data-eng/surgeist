@@ -108,6 +108,14 @@ pub(crate) struct RangeEdge {
     pub(crate) group: usize,
     pub(crate) cause: usize,
 }
+impl RangeEdge {
+    /// The edge of a parse that records no graph: it names no group or cause,
+    /// and the computation carrying it is dropped before anything stores it.
+    pub(crate) const UNRECORDED: Self = Self {
+        group: usize::MAX,
+        cause: usize::MAX,
+    };
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RangeOriginal {
     FreshEmpty,
@@ -173,6 +181,7 @@ impl RangeComputation {
 /// The actual source selected by the Color update algorithm. A missing
 /// installed default is distinct from an installed empty string.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(not(any(feature = "detail", test)), allow(clippy::enum_variant_names))]
 pub enum HtmlParseColorValueSource {
     MissingInstalledValue,
     InstalledValue,
@@ -1489,6 +1498,10 @@ impl ParseEvidence {
         }
         payload_write::<Option<crate::HtmlSource>>(c, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        if !self.records_graph() {
+            self.native.source = Some(source.clone());
+            return Ok(());
+        }
         let cause = self.append_cause(c, ConstructionCause::Request)?;
         payload_write::<Option<usize>>(c, 1)?;
         self.native.source = Some(source.clone());
@@ -1916,7 +1929,7 @@ impl SessionStorage {
         if intended_parent.is_some_and(|parent| parent >= records) {
             return Err(SessionError::ForeignNode);
         }
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = self.graph() else {
             return Ok(None);
         };
         let previous = evidence.current_cause(c)?;
@@ -1974,7 +1987,7 @@ impl SessionStorage {
         let RetainedPayload::String { origins: old, .. } = self.payloads.row(c, old_slot)? else {
             return Err(SessionError::WrongToken);
         };
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = graph_in(&mut self.evidence) else {
             return Ok(None);
         };
         let incoming = match incoming {
@@ -2084,7 +2097,7 @@ impl SessionStorage {
         offset: usize,
         total: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        if self.evidence.is_none() {
+        if self.graph().is_none() {
             return Ok(None);
         }
         let left = match self.payloads.row(c, old)? {
@@ -2095,7 +2108,7 @@ impl SessionStorage {
         let RetainedPayload::String { origins: right, .. } = self.payloads.row(c, incoming)? else {
             return Err(SessionError::WrongToken);
         };
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = graph_in(&mut self.evidence) else {
             return Ok(None);
         };
         // An absent group is explicitly source independent. It is never
@@ -2145,6 +2158,16 @@ impl SessionStorage {
             .as_ref()
             .ok_or(SessionError::WrongToken)?
             .observed_origins(group, c)
+    }
+    /// Whether the parse records the origin and cause graph.
+    pub(super) fn graph_recorded(&self) -> bool {
+        self.evidence
+            .as_ref()
+            .is_some_and(ParseEvidence::records_graph)
+    }
+    /// The evidence, when the parse records the origin and cause graph.
+    pub(super) fn graph(&mut self) -> Option<&mut ParseEvidence> {
+        graph_in(&mut self.evidence)
     }
     pub(super) fn origin_evidence(
         &mut self,
@@ -2380,6 +2403,10 @@ impl SessionStorage {
         slot: usize,
     ) -> Result<RangeEdge, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        if !c.detail().records_graph() {
+            // The computation that carries the edge is dropped unrecorded.
+            return Ok(RangeEdge::UNRECORDED);
+        }
         let RetainedPayload::String {
             origins: Some(group),
             ..
@@ -2401,7 +2428,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         units: usize,
         computation: RangeComputation,
-    ) -> Result<OriginGroupRef, SessionError> {
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
         self.prepare_input_group(c, units, InputValueComputation::Range(computation))
     }
     pub(super) fn prepare_input_group(
@@ -2409,8 +2436,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         units: usize,
         computation: InputValueComputation,
-    ) -> Result<OriginGroupRef, SessionError> {
-        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        // The computation that names the origin groups of its operands is
+        // recorded only with the graph those groups belong to.
+        let Some(evidence) = graph_in(&mut self.evidence) else {
+            return Ok(None);
+        };
         validate_input_computation(
             c,
             computation,
@@ -2455,7 +2486,7 @@ impl SessionStorage {
                 retirement: None,
             },
         )?;
-        Ok(reference)
+        Ok(Some(reference))
     }
 }
 impl ParseEvidence {
@@ -2473,6 +2504,10 @@ impl ParseEvidence {
         &self,
         c: &mut ParseControl,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
+        // A parse that records no graph has no cause to name.
+        if !self.records_graph() {
+            return Ok(None);
+        }
         self.native
             .current
             .map(|index| self.cause_ref(index, c))
@@ -2531,6 +2566,10 @@ impl SessionStorage {
             mut origins,
             original,
         } = copy;
+        if !c.detail().records_graph() {
+            origins.release(c)?;
+            return self.register_group_string_owned(c, value, None);
+        }
         match self.origin_evidence(c) {
             Ok(_) => (),
             Err(error) => {
@@ -2614,8 +2653,15 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         trigger: ParserTrigger<'_>,
-    ) -> Result<ConstructionCauseRef, SessionError> {
-        self.evidence(c)?.parser_trigger(c, trigger)
+    ) -> Result<Option<ConstructionCauseRef>, SessionError> {
+        // The start tag being processed ends here, for the positions the
+        // parser keeps whatever detail the parse selected.
+        self.active_mut()?.token_end = Some(trigger.source.end());
+        let evidence = self.evidence(c)?;
+        if !evidence.records_graph() {
+            return Ok(None);
+        }
+        evidence.parser_trigger(c, trigger).map(Some)
     }
 }
 
@@ -2875,6 +2921,9 @@ impl ParseEvidence {
         if let Some(source) = source {
             c.require_source_range(source)?;
         }
+        if !self.records_source_map() {
+            return Ok(());
+        }
         payload_write::<NativeAssociation>(c, 1)?;
         if source.is_some() {
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
@@ -2983,6 +3032,20 @@ impl ParserArenaSession {
             return Err(SessionError::WrongToken);
         }
         if evidence.native.projection_complete {
+            return Ok(());
+        }
+        if !evidence.records_graph() {
+            // A parse that records no graph has no group to certify and no
+            // row to project: its projection is complete and empty.
+            if evidence.native.projection.is_some() {
+                return Err(SessionError::WrongToken);
+            }
+            let mut rows = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+            rows.require_owner(c)?;
+            payload_write::<Option<OwnedVec<NativeAssociation>>>(c, 1)?;
+            evidence.native.projection = Some(rows);
+            payload_write::<bool>(c, 1)?;
+            evidence.native.projection_complete = true;
             return Ok(());
         }
         // Successful completed projection certifies every real history leaf,
@@ -3096,31 +3159,33 @@ impl ParserArenaSession {
                 {
                     return Err(SessionError::WrongToken);
                 }
-                payload_write::<NativeAssociation>(c, 1)?;
-                evidence
-                    .native
-                    .projection
-                    .as_mut()
-                    .ok_or(SessionError::WrongToken)?
-                    .reserve_geometric(c, 1)?;
-                evidence
-                    .native
-                    .projection
-                    .as_mut()
-                    .ok_or(SessionError::WrongToken)?
-                    .try_push(
-                        c,
-                        NativeAssociation {
-                            group: None,
-                            relation: HtmlParseAssociationRelation::Creation,
-                            destination: NativeDestination::Node(*node),
-                            start: 0,
-                            end: 0,
-                            source: None,
-                            kind: None,
-                            cause: cause.index,
-                        },
-                    )?;
+                if evidence.records_source_map() {
+                    payload_write::<NativeAssociation>(c, 1)?;
+                    evidence
+                        .native
+                        .projection
+                        .as_mut()
+                        .ok_or(SessionError::WrongToken)?
+                        .reserve_geometric(c, 1)?;
+                    evidence
+                        .native
+                        .projection
+                        .as_mut()
+                        .ok_or(SessionError::WrongToken)?
+                        .try_push(
+                            c,
+                            NativeAssociation {
+                                group: None,
+                                relation: HtmlParseAssociationRelation::Creation,
+                                destination: NativeDestination::Node(*node),
+                                start: 0,
+                                end: 0,
+                                source: None,
+                                kind: None,
+                                cause: cause.index,
+                            },
+                        )?;
+                }
                 continue;
             }
             let RetainedPayload::String {
@@ -3174,9 +3239,13 @@ impl ParserArenaSession {
             .as_ref()
             .ok_or(SessionError::WrongToken)?
             .len();
-        evidence.project_lineage(c)?;
-        evidence.project_causes(c)?;
-        evidence.project_lexical(c)?;
+        if evidence.records_source_map() {
+            evidence.project_lineage(c)?;
+            evidence.project_causes(c)?;
+        }
+        if evidence.records_lexical() {
+            evidence.project_lexical(c)?;
+        }
         c.checkpoint()?;
         payload_write::<bool>(c, 1)?;
         evidence.native.projection_complete = true;
@@ -3324,7 +3393,7 @@ impl SessionStorage {
         }
         let mut slots = [None; 2];
         for entry in slots.iter_mut().take(count) {
-            let Some(evidence) = &mut self.evidence else {
+            let Some(evidence) = self.graph() else {
                 break;
             };
             if evidence.native.source.is_none() {
@@ -3354,7 +3423,7 @@ impl SessionStorage {
         if source >= self.construction.storage(c)?.len() {
             return Err(SessionError::ForeignNode);
         }
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = self.graph() else {
             return Ok(None);
         };
         let previous = evidence.current_cause(c)?;
@@ -3379,7 +3448,7 @@ impl SessionStorage {
         if let Some(source) = source {
             c.require_source_range(source)?;
         }
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = self.graph() else {
             return Ok(None);
         };
         let previous = evidence.current_cause(c)?;
@@ -3403,7 +3472,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         previous: Option<&ConstructionCauseRef>,
     ) -> Result<(), SessionError> {
-        let Some(evidence) = &mut self.evidence else {
+        let Some(evidence) = self.graph() else {
             return Ok(());
         };
         if let Some(previous) = previous {
@@ -3823,6 +3892,26 @@ pub(super) fn copy_generated_input_value(
     slot: usize,
 ) -> Result<FieldCopy, SessionError> {
     let value = admitted_input_string(payloads, c, slot)?;
+    if !c.detail().records_graph() {
+        // No origin group names this value, so its copy has none to preserve.
+        let mut buffer = Utf16Buffer::new(c)?;
+        if let Err(error) = buffer.extend_units(value.code_units(), c) {
+            buffer.release(c)?;
+            return Err(error.into());
+        }
+        let origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+        return match buffer.freeze(c) {
+            Ok(value) => Ok(FieldCopy {
+                value,
+                origins,
+                original: None,
+            }),
+            Err(error) => {
+                origins.release(c)?;
+                Err(error.into())
+            }
+        };
+    }
     let RetainedPayload::String {
         origins: Some(group),
         ..
@@ -3996,4 +4085,10 @@ mod character_reference_origin_tests {
             Err(SessionError::WrongToken)
         ));
     }
+}
+
+/// The evidence in `slot`, when the parse records the origin and cause graph.
+/// It borrows only the evidence, so the rest of the storage stays usable.
+pub(super) fn graph_in(slot: &mut Option<ParseEvidence>) -> Option<&mut ParseEvidence> {
+    slot.as_mut().filter(|evidence| evidence.records_graph())
 }

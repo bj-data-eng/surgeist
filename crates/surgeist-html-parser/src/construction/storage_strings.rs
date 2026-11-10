@@ -37,7 +37,13 @@ impl SessionStorage {
         value: FrozenUtf16,
         origins: Option<OwnedVec<HtmlParseTextOrigin>>,
     ) -> Result<(DocumentString, usize), SessionError> {
-        let origins = if let Some(origins) = origins {
+        let origins = if !control.detail().records_graph() {
+            // No group names this value, and no origin was recorded for it.
+            if let Some(origins) = origins {
+                origins.release(control)?;
+            }
+            None
+        } else if let Some(origins) = origins {
             let evidence = match self.origin_evidence(control) {
                 Ok(evidence) => evidence,
                 Err(error) => {

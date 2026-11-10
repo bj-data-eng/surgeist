@@ -11,6 +11,8 @@ pub(super) struct StyleMetadata {
     pub(super) state: surgeist_html::elements::style::HtmlStyleState,
     pub(super) parser_document: Option<DocumentRef>,
     pub(super) cause: Option<provenance::ConstructionCauseRef>,
+    /// The offset at which the start tag of a parser-created style ended.
+    pub(super) start: Option<usize>,
 }
 impl SessionStorage {
     pub(super) fn initialize_style(
@@ -33,6 +35,7 @@ impl SessionStorage {
                         state: surgeist_html::elements::style::HtmlStyleState::fresh(),
                         parser_document: None,
                         cause,
+                        start: self.token_end,
                     },
                 },
             )

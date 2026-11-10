@@ -92,6 +92,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 *request.limits(),
                 request.cancellation().clone(),
                 request.accounting().lease(),
+                request.detail(),
             ),
             prologue: None,
             tokenizer: None,

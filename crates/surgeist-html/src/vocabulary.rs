@@ -4,7 +4,8 @@
 //! categories, and applicability are discovery evidence, not complete validation,
 //! recovery, semantic defaults, or runtime execution contracts. A caller must use
 //! each linked defining clause for those rules. Open families, foreign vocabulary,
-//! event handlers, and obsolete recovery names are outside the closed enums.
+//! and obsolete recovery names are outside the closed enums. The event handler
+//! content attributes are a separate closed enum, [`KnownHtmlEventHandler`].
 //!
 //! Index portions incorporated into this source are copyright © WHATWG (Apple,
 //! Google, Mozilla, Microsoft), under BSD 3-Clause as specified by the exact
@@ -103,6 +104,63 @@ impl KnownHtmlAttribute {
         attribute_inventory()
             .iter()
             .filter(move |row| row.attribute == self)
+    }
+}
+
+/// The elements an event handler content attribute applies to, as the pinned
+/// event handler index states them.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum HtmlEventHandlerApplicability {
+    /// Every HTML element.
+    AllHtmlElements,
+    /// The `body` element only: the event handlers of the `Window` object it exposes.
+    BodyElement,
+}
+
+impl KnownHtmlEventHandler {
+    /// Recognizes an exact no-namespace attribute name, ignoring the prefix, as an
+    /// event handler content attribute of the pinned index.
+    ///
+    /// The name is classified, not the element. An attribute applies to an element
+    /// only where [`Self::applies_to`] holds.
+    pub fn from_name(name: &(impl crate::values::HtmlNameInput + ?Sized)) -> Option<Self> {
+        if name.namespace_uri().is_some() {
+            return None;
+        }
+        Self::from_local_units(name.local_name().code_units())
+    }
+
+    /// Recognizes the local name of a no-namespace attribute, as UTF-16 code
+    /// units, as an event handler content attribute of the pinned index.
+    pub fn from_local_units(units: &[u16]) -> Option<Self> {
+        let sorted = Self::sorted_by_name();
+        sorted
+            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
+            .ok()
+            .and_then(|index| sorted.get(index).copied())
+    }
+
+    /// Whether this attribute is an event handler content attribute of `element`,
+    /// an HTML element.
+    pub fn applies_to(self, element: KnownHtmlElement) -> bool {
+        match self.applicability() {
+            HtmlEventHandlerApplicability::AllHtmlElements => true,
+            HtmlEventHandlerApplicability::BodyElement => element == KnownHtmlElement::Body,
+        }
+    }
+
+    /// The known handlers in the order of their local names' UTF-16 code units, built once.
+    fn sorted_by_name() -> &'static [Self] {
+        static SORTED: std::sync::OnceLock<Vec<KnownHtmlEventHandler>> = std::sync::OnceLock::new();
+        SORTED.get_or_init(|| {
+            let mut sorted = Self::ALL.to_vec();
+            sorted.sort_by(|left, right| {
+                left.local_name()
+                    .encode_utf16()
+                    .cmp(right.local_name().encode_utf16())
+            });
+            sorted
+        })
     }
 }
 
@@ -563,6 +621,200 @@ vocabulary! {
         Wrap => "wrap",
         Writingsuggestions => "writingsuggestions",
     ]
+}
+
+#[rustfmt::skip]
+vocabulary! {
+    /// Event handler content attributes in the pinned event handler index.
+    KnownHtmlEventHandler, none, [
+        Onafterprint => "onafterprint",
+        Onauxclick => "onauxclick",
+        Onbeforeinput => "onbeforeinput",
+        Onbeforematch => "onbeforematch",
+        Onbeforeprint => "onbeforeprint",
+        Onbeforeunload => "onbeforeunload",
+        Onbeforetoggle => "onbeforetoggle",
+        Onblur => "onblur",
+        Oncancel => "oncancel",
+        Oncanplay => "oncanplay",
+        Oncanplaythrough => "oncanplaythrough",
+        Onchange => "onchange",
+        Onclick => "onclick",
+        Onclose => "onclose",
+        Oncommand => "oncommand",
+        Oncontextlost => "oncontextlost",
+        Oncontextmenu => "oncontextmenu",
+        Oncontextrestored => "oncontextrestored",
+        Oncopy => "oncopy",
+        Oncuechange => "oncuechange",
+        Oncut => "oncut",
+        Ondblclick => "ondblclick",
+        Ondrag => "ondrag",
+        Ondragend => "ondragend",
+        Ondragenter => "ondragenter",
+        Ondragleave => "ondragleave",
+        Ondragover => "ondragover",
+        Ondragstart => "ondragstart",
+        Ondrop => "ondrop",
+        Ondurationchange => "ondurationchange",
+        Onemptied => "onemptied",
+        Onended => "onended",
+        Onerror => "onerror",
+        Onfocus => "onfocus",
+        Onformdata => "onformdata",
+        Onhashchange => "onhashchange",
+        Oninput => "oninput",
+        Oninvalid => "oninvalid",
+        Onkeydown => "onkeydown",
+        Onkeypress => "onkeypress",
+        Onkeyup => "onkeyup",
+        Onlanguagechange => "onlanguagechange",
+        Onload => "onload",
+        Onloadeddata => "onloadeddata",
+        Onloadedmetadata => "onloadedmetadata",
+        Onloadstart => "onloadstart",
+        Onmessage => "onmessage",
+        Onmessageerror => "onmessageerror",
+        Onmousedown => "onmousedown",
+        Onmouseenter => "onmouseenter",
+        Onmouseleave => "onmouseleave",
+        Onmousemove => "onmousemove",
+        Onmouseout => "onmouseout",
+        Onmouseover => "onmouseover",
+        Onmouseup => "onmouseup",
+        Onoffline => "onoffline",
+        Ononline => "ononline",
+        Onpagehide => "onpagehide",
+        Onpagereveal => "onpagereveal",
+        Onpageshow => "onpageshow",
+        Onpageswap => "onpageswap",
+        Onpaste => "onpaste",
+        Onpause => "onpause",
+        Onplay => "onplay",
+        Onplaying => "onplaying",
+        Onpopstate => "onpopstate",
+        Onprogress => "onprogress",
+        Onratechange => "onratechange",
+        Onreset => "onreset",
+        Onresize => "onresize",
+        Onrejectionhandled => "onrejectionhandled",
+        Onscroll => "onscroll",
+        Onscrollend => "onscrollend",
+        Onsecuritypolicyviolation => "onsecuritypolicyviolation",
+        Onseeked => "onseeked",
+        Onseeking => "onseeking",
+        Onselect => "onselect",
+        Onslotchange => "onslotchange",
+        Onstalled => "onstalled",
+        Onstorage => "onstorage",
+        Onsubmit => "onsubmit",
+        Onsuspend => "onsuspend",
+        Ontimeupdate => "ontimeupdate",
+        Ontoggle => "ontoggle",
+        Onunhandledrejection => "onunhandledrejection",
+        Onunload => "onunload",
+        Onvolumechange => "onvolumechange",
+        Onwaiting => "onwaiting",
+        Onwheel => "onwheel",
+    ]
+}
+
+impl KnownHtmlEventHandler {
+    /// The elements this event handler content attribute applies to, as the index states.
+    #[rustfmt::skip]
+    pub fn applicability(self) -> HtmlEventHandlerApplicability {
+        match self {
+            Self::Onafterprint => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onauxclick => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onbeforeinput => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onbeforematch => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onbeforeprint => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onbeforeunload => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onbeforetoggle => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onblur => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncancel => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncanplay => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncanplaythrough => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onchange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onclick => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onclose => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncommand => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncontextlost => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncontextmenu => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncontextrestored => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncopy => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncuechange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oncut => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondblclick => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondrag => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondragend => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondragenter => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondragleave => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondragover => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondragstart => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondrop => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ondurationchange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onemptied => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onended => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onerror => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onfocus => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onformdata => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onhashchange => HtmlEventHandlerApplicability::BodyElement,
+            Self::Oninput => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Oninvalid => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onkeydown => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onkeypress => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onkeyup => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onlanguagechange => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onload => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onloadeddata => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onloadedmetadata => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onloadstart => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmessage => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onmessageerror => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onmousedown => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmouseenter => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmouseleave => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmousemove => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmouseout => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmouseover => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onmouseup => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onoffline => HtmlEventHandlerApplicability::BodyElement,
+            Self::Ononline => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onpagehide => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onpagereveal => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onpageshow => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onpageswap => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onpaste => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onpause => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onplay => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onplaying => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onpopstate => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onprogress => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onratechange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onreset => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onresize => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onrejectionhandled => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onscroll => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onscrollend => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onsecuritypolicyviolation => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onseeked => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onseeking => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onselect => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onslotchange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onstalled => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onstorage => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onsubmit => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onsuspend => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ontimeupdate => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Ontoggle => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onunhandledrejection => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onunload => HtmlEventHandlerApplicability::BodyElement,
+            Self::Onvolumechange => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onwaiting => HtmlEventHandlerApplicability::AllHtmlElements,
+            Self::Onwheel => HtmlEventHandlerApplicability::AllHtmlElements,
+        }
+    }
 }
 
 /// Immutable source identity for these generated inventory records.

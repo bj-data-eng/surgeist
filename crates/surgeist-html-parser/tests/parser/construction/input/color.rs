@@ -1,4 +1,6 @@
 use crate::parser::support::limits;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 use surgeist_html::{
     attributes::{HtmlInputType, input_colorspace::HtmlInputColorSpace},
@@ -10,10 +12,10 @@ use surgeist_html::{
     values::{Attribute, DocumentString},
 };
 use surgeist_html_parser::{
-    HtmlColorProcessingError, HtmlDocumentParseRequest, HtmlParseColorOperandRole,
-    HtmlParseColorValueSource, HtmlParseCompletion, HtmlParseFailureReason, HtmlParseHistoryFrame,
-    HtmlParseHistoryStep, HtmlParseLimits, HtmlParseMetadataStep, HtmlParseReadiness,
-    HtmlParseResource, HtmlParseStop, HtmlSource,
+    HtmlColorProcessingError, HtmlParseColorOperandRole, HtmlParseColorValueSource,
+    HtmlParseCompletion, HtmlParseFailureReason, HtmlParseHistoryFrame, HtmlParseHistoryStep,
+    HtmlParseLimits, HtmlParseMetadataStep, HtmlParseReadiness, HtmlParseResource, HtmlParseStop,
+    HtmlSource,
 };
 
 #[test]
@@ -23,7 +25,7 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
     // authored attribute. CSS Color 4's red is opaque sRGB (255, 0, 0); absent
     // alpha and the default Limited sRGB state request lowercase HTML hex.
     let literal = "<!doctype html><form id=f><input type=color value=red>Z</form>";
-    let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits());
+    let request = crate::parser::support::offline_all(HtmlSource::utf8(literal), limits());
     let report = request
         .parse()
         .expect("ordinary Color input must complete its source-defined value update");
@@ -121,7 +123,7 @@ fn color_input_preserves_red_default_and_publishes_sanitized_current_with_form_s
 #[test]
 fn color_currentcolor_without_palette_is_unavailable_and_reclaims_partial_construction() {
     let source = HtmlSource::utf8("<!doctype html><p>A&amp;B<input type=color value=currentcolor>");
-    let failure = HtmlDocumentParseRequest::offline(source.clone(), limits())
+    let failure = crate::parser::support::offline_all(source.clone(), limits())
         .parse()
         .unwrap_err();
     assert_eq!(
@@ -225,9 +227,10 @@ fn color_independent_literals_preserve_defaults_and_source_ordered_alpha_colorsp
         let literal = format!("<!doctype html><input {attributes}>Z");
         assert!(attributes.len() < 96);
         assert!(expected_default.is_none_or(|value| value.encode_utf16().count() < 64));
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), matrix_limits())
-            .parse()
-            .unwrap_or_else(|error| panic!("{attributes}: {error:?}"));
+        let report =
+            crate::parser::support::offline_all(HtmlSource::utf8(literal), matrix_limits())
+                .parse()
+                .unwrap_or_else(|error| panic!("{attributes}: {error:?}"));
         let document = report.document().unwrap();
         let html = document
             .root()
@@ -282,7 +285,7 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
         "<!doctype html><input type=color value='r&#101;d' alpha colorspace=limited-srgb>Z";
     let units: Vec<u16> = literal.encode_utf16().collect();
     let source = HtmlSource::utf16(DocumentString::from_utf16(units.clone()));
-    let report = HtmlDocumentParseRequest::offline(source.clone(), matrix_limits())
+    let report = crate::parser::support::offline_all(source.clone(), matrix_limits())
         .parse()
         .unwrap();
     assert_eq!(

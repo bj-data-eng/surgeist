@@ -1,6 +1,6 @@
 //! Bounded original occurrences and immutable inputs; no CSSOM execution.
 use super::*;
-use history::{FrozenHistory, HtmlParseOriginGroup};
+use history::FrozenHistory;
 use surgeist_html::construction::{HtmlDocumentMode, HtmlNode, HtmlNodeId, HtmlNodeKind};
 
 /// An original occurrence, qualified by its immutable construction result.
@@ -74,6 +74,12 @@ pub enum HtmlParseAssociationOccurrenceKind {
     UnsupportedLinkExtension,
 }
 
+/// A value an occurrence reads after the parse: a copy of a field as it was
+/// when the occurrence was recorded, held by a row of its own. The field may
+/// change or be replaced afterwards, and the occurrence keeps what it saw.
+#[derive(Clone, Copy)]
+pub(super) struct ValueRow(usize);
+
 pub(super) struct DocumentCapture {
     document: DocumentRef,
     count: usize,
@@ -92,8 +98,8 @@ pub(super) struct Inputs {
     connected: bool,
     type_eligible: bool,
     document_tree: bool,
-    attributes: [Option<OriginGroupRef>; 5],
-    text: OwnedVec<OriginGroupRef>,
+    attributes: [Option<ValueRow>; 5],
+    text: OwnedVec<ValueRow>,
     /// The tree's style elements in tree order when this occurrence was
     /// recorded: the first `len` entries of a shared `StyleOrder` row.
     order: Option<OrderRef>,
@@ -133,7 +139,7 @@ pub(super) struct Context {
     body: bool,
     base_document: Option<usize>,
     first_base: Option<usize>,
-    base_input: Option<OriginGroupRef>,
+    base_input: Option<ValueRow>,
     base_observation: Option<usize>,
     captured: Option<usize>,
     policy_missing: bool,
@@ -150,8 +156,8 @@ pub(super) struct Occurrence {
     cause: Option<provenance::ConstructionCauseRef>,
     kind: HtmlParseAssociationOccurrenceKind,
     inputs: Option<Inputs>,
-    preferred: Option<OriginGroupRef>,
-    base_changed_input: Option<OriginGroupRef>,
+    preferred: Option<ValueRow>,
+    base_changed_input: Option<ValueRow>,
     context: Context,
     requires_processing: bool,
     may_have_sheet: bool,
@@ -221,42 +227,33 @@ impl SessionStorage {
             .map_err(|_| latch_registry_row(c))?;
         Ok(slot)
     }
-    /// A reference never adds a strong alias to mutable/reclaimable backing.
+    /// A copy of the string at `slot` in a row of its own, so the occurrence
+    /// adds no alias to mutable or reclaimable backing and keeps the value it
+    /// saw.
     fn association_string(
         &mut self,
         c: &mut ParseControl,
         slot: usize,
-    ) -> Result<OriginGroupRef, SessionError> {
-        let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(slot)
-        else {
+    ) -> Result<ValueRow, SessionError> {
+        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) else {
             return Err(latch_registry_row(c));
         };
-        if let Some(group) = origins {
-            return self
-                .evidence
-                .as_ref()
-                .ok_or(SessionError::WrongToken)?
-                .copy_group_reference(c, group);
+        let mut buffer = Utf16Buffer::new(c)?;
+        if let Err(stop) = buffer.extend_units(value.code_units(), c) {
+            buffer.release(c)?;
+            return Err(stop.into());
         }
-        let units = value.len();
-        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
-        let group = evidence.source_independent_group(c, units)?;
-        evidence.bind_leaf_value(c, &group, slot)?;
-        let retained = evidence.copy_group_reference(c, &group)?;
-        payload_write::<Option<OriginGroupRef>>(c, 1)?;
-        let Some(RetainedPayload::String { origins, .. }) = self.payloads.values.get_mut(slot)
-        else {
-            return Err(latch_registry_row(c));
-        };
-        *origins = Some(retained);
-        Ok(group)
+        let frozen = buffer.freeze(c)?;
+        let (native, row) = self.register_group_string_owned(c, frozen, None)?;
+        drop(native);
+        Ok(ValueRow(row))
     }
     fn association_attribute(
         &mut self,
         c: &mut ParseControl,
         node: usize,
         local: &str,
-    ) -> Result<Option<OriginGroupRef>, SessionError> {
+    ) -> Result<Option<ValueRow>, SessionError> {
         let mut position = None;
         let HtmlNodeKind::Element(element) = self
             .construction
@@ -305,7 +302,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-    ) -> Result<Option<OriginGroupRef>, SessionError> {
+    ) -> Result<Option<ValueRow>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::Nonce {
@@ -1478,21 +1475,18 @@ fn context_epoch(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationContext
         slot,
     }
 }
-/// The group a stored reference names, or the fault.
-fn group<'a>(
-    history: &'a FrozenHistory,
-    value: &OriginGroupRef,
-) -> Result<HtmlParseOriginGroup<'a>, Fault> {
-    history
-        .view()
-        .group(value.index)
-        .ok_or(unresolved(read::HtmlParseUnresolvedKind::Group))
+/// The value a stored row holds, or the fault.
+fn value<'a>(storage: &'a FrozenStorage, row: &ValueRow) -> Result<&'a DocumentString, Fault> {
+    match storage.payloads.values.get(row.0) {
+        Some(RetainedPayload::String { value, .. }) => Ok(value),
+        _ => Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
+    }
 }
-fn optional_group<'a>(
-    history: &'a FrozenHistory,
-    value: Option<&OriginGroupRef>,
-) -> Result<Option<HtmlParseOriginGroup<'a>>, Fault> {
-    value.map(|value| group(history, value)).transpose()
+fn optional_value<'a>(
+    storage: &'a FrozenStorage,
+    row: Option<&ValueRow>,
+) -> Result<Option<&'a DocumentString>, Fault> {
+    row.map(|row| value(storage, row)).transpose()
 }
 pub struct HtmlParseAssociationDocument<'a> {
     anchor: Anchor<'a>,
@@ -1530,9 +1524,6 @@ impl<'a> HtmlParseAssociationDocument<'a> {
             .missing_at
             .map(|slot| identity(self.anchor, slot))
     }
-    pub fn history(&self) -> crate::construction::read::HtmlParseHistory<'a> {
-        crate::construction::read::HtmlParseHistory::new(self.anchor.history)
-    }
 }
 /// An occurrence with everything it names resolved when it is lent, so the
 /// readers of the view cannot fail afterwards.
@@ -1546,8 +1537,8 @@ pub struct HtmlParseAssociationOccurrence<'a> {
     document: Resolved<'a>,
     previous_document: Option<Resolved<'a>>,
     cause: Option<read::HtmlParseCause<'a>>,
-    preferred: Option<HtmlParseOriginGroup<'a>>,
-    base_changed_input: Option<HtmlParseOriginGroup<'a>>,
+    preferred: Option<&'a DocumentString>,
+    base_changed_input: Option<&'a DocumentString>,
     style: Option<HtmlParseAssociationStyleInputs<'a>>,
     context: HtmlParseAssociationContext<'a>,
 }
@@ -1589,8 +1580,8 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
             document: Resolved::new(storage, &value.document)?,
             previous_document: Resolved::optional(storage, value.previous_document.as_ref())?,
             cause,
-            preferred: optional_group(history, value.preferred.as_ref())?,
-            base_changed_input: optional_group(history, value.base_changed_input.as_ref())?,
+            preferred: optional_value(storage, value.preferred.as_ref())?,
+            base_changed_input: optional_value(storage, value.base_changed_input.as_ref())?,
             style,
             context: HtmlParseAssociationContext::new(
                 anchor,
@@ -1644,16 +1635,17 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
             .prior_style
             .map(|slot| identity(self.anchor, slot))
     }
-    /// `None` when the occurrence has no cause.
-    pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
+    pub(crate) fn recorded_cause(&self) -> Option<read::HtmlParseCause<'a>> {
         self.cause
     }
-    /// `None` when there is no preferred name.
-    pub fn preferred_name(&self) -> Option<HtmlParseOriginGroup<'a>> {
+    /// The name of a preferred-name change as it was when the change was
+    /// recorded. `None` when there is no preferred name.
+    pub fn preferred_name(&self) -> Option<&'a DocumentString> {
         self.preferred
     }
+    /// The `href` of a Base change as it was when the change was recorded.
     /// `None` when there is no changed input.
-    pub fn base_changed_input(&self) -> Option<HtmlParseOriginGroup<'a>> {
+    pub fn base_changed_input(&self) -> Option<&'a DocumentString> {
         self.base_changed_input
     }
     pub fn style(&self) -> Option<HtmlParseAssociationStyleInputs<'a>> {
@@ -1668,7 +1660,7 @@ pub struct HtmlParseAssociationStyleInputs<'a> {
     anchor: Anchor<'a>,
     value: &'a Inputs,
     parser_document: Option<Resolved<'a>>,
-    attributes: [Option<HtmlParseOriginGroup<'a>>; 5],
+    attributes: [Option<&'a DocumentString>; 5],
 }
 impl<'a> HtmlParseAssociationStyleInputs<'a> {
     fn new(
@@ -1678,7 +1670,7 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
     ) -> Result<Self, Fault> {
         let mut attributes = [None; 5];
         for (resolved, stored) in attributes.iter_mut().zip(&value.attributes) {
-            *resolved = optional_group(anchor.history, stored.as_ref())?;
+            *resolved = optional_value(anchor.storage, stored.as_ref())?;
         }
         Ok(Self {
             anchor,
@@ -1705,9 +1697,11 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
     pub fn text_len(&self) -> usize {
         self.value.text.len()
     }
-    /// `None` past the text. A group the history no longer holds is a fault.
-    pub fn text(&self, index: usize) -> Result<Option<HtmlParseOriginGroup<'a>>, Fault> {
-        optional_group(self.anchor.history, self.value.text.as_slice().get(index))
+    /// The text of the style at `index`, as it was when the occurrence was
+    /// recorded. `None` past the text. A value the report no longer holds is a
+    /// fault.
+    pub fn text(&self, index: usize) -> Result<Option<&'a DocumentString>, Fault> {
+        optional_value(self.anchor.storage, self.value.text.as_slice().get(index))
     }
     pub fn sheet_order_len(&self) -> usize {
         self.value.order.map_or(0, |order| order.len)
@@ -1734,7 +1728,7 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
     pub fn attribute(
         &self,
         attribute: surgeist_html::vocabulary::KnownHtmlAttribute,
-    ) -> Option<HtmlParseOriginGroup<'a>> {
+    ) -> Option<&'a DocumentString> {
         let [kind, media, title, blocking, nonce] = self.attributes;
         match attribute {
             surgeist_html::vocabulary::KnownHtmlAttribute::Type => kind,
@@ -1758,7 +1752,7 @@ pub struct HtmlParseAssociationContext<'a> {
     base_facts: Option<&'a crate::HtmlParseBaseFacts>,
     captured_context: Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     first_base: Option<HtmlNode<'a>>,
-    base_input: Option<HtmlParseOriginGroup<'a>>,
+    base_input: Option<&'a DocumentString>,
     observation: Option<&'a surgeist_html_semantics::HtmlBaseParseObservation>,
     /// For a captured Document: its identity and the context that captured it.
     captured: Option<(
@@ -1827,7 +1821,7 @@ impl<'a> HtmlParseAssociationContext<'a> {
             base_facts,
             captured_context,
             first_base,
-            base_input: optional_group(anchor.history, value.base_input.as_ref())?,
+            base_input: optional_value(storage, value.base_input.as_ref())?,
             observation,
             captured: match document {
                 DocumentRef::Captured(id) => Some((
@@ -1978,8 +1972,9 @@ impl<'a> HtmlParseAssociationContext<'a> {
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {
         self.first_base
     }
+    /// The first Base's `href` as it was when the occurrence was recorded.
     /// `None` when there is no input.
-    pub fn base_input(&self) -> Option<HtmlParseOriginGroup<'a>> {
+    pub fn base_input(&self) -> Option<&'a DocumentString> {
         self.base_input
     }
     pub fn base_observation(&self) -> Option<usize> {
@@ -2093,8 +2088,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 .into_iter()
                 .flatten()
                 {
-                    evidence.require_group(reference)?;
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    require_value_row(storage, reference, slot, c)?;
                 }
                 if let Some(inputs) = &value.inputs {
                     inputs.text.require_disposal_owner(c)?;
@@ -2116,8 +2110,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                         .flatten()
                         .chain(inputs.text.as_slice())
                     {
-                        evidence.require_group(reference)?;
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                        require_value_row(storage, reference, slot, c)?;
                     }
                     if let Some(document) = &inputs.parser_document {
                         storage.validate_association_document(c, document)?;
@@ -2240,6 +2233,25 @@ fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), HtmlPar
         None => Ok(()),
     }
 }
+/// A value row an occurrence names must be a string row registered before the
+/// occurrence's own row.
+fn require_value_row(
+    storage: &FrozenStorage,
+    row: &ValueRow,
+    occurrence: usize,
+    c: &mut ParseControl,
+) -> Result<(), SessionError> {
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    if row.0 >= occurrence
+        || !matches!(
+            storage.payloads.values.get(row.0),
+            Some(RetainedPayload::String { .. })
+        )
+    {
+        return Err(latch_registry_row(c));
+    }
+    Ok(())
+}
 pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedStorageUsage {
     value.usage
 }
@@ -2271,21 +2283,12 @@ mod tests {
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap(),
         }
     }
-    fn read_group(
-        session: &ParserArenaSession,
-        c: &mut ParseControl,
-        group: &OriginGroupRef,
-    ) -> Vec<u16> {
+    fn read_group(session: &ParserArenaSession, _c: &mut ParseControl, row: &ValueRow) -> Vec<u16> {
         let storage = session.active().unwrap();
-        let value = storage
-            .evidence
-            .as_ref()
-            .unwrap()
-            .materialize_group(c, &storage.payloads, group)
-            .unwrap();
-        let units = value.text().code_units().to_vec();
-        value.release(c).unwrap();
-        units
+        let Some(RetainedPayload::String { value, .. }) = storage.payloads.values.get(row.0) else {
+            panic!("a value row holds a string")
+        };
+        value.code_units().to_vec()
     }
     #[test]
     fn original_coalesced_text_retitle_removal_and_document_move_keep_old_exact_inputs() {
@@ -2453,8 +2456,7 @@ mod tests {
         super::super::tests::storage_zero(&c);
     }
     #[test]
-    fn association_reference_promotes_unmapped_backing_before_retirement_and_sticky_cancel_cleanup()
-    {
+    fn an_association_value_survives_the_retirement_of_its_source_and_sticky_cancel_cleanup() {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8(""),
             super::super::tests::limits(),
@@ -2479,18 +2481,10 @@ mod tests {
             .unwrap()
             .retire_registered_string(&mut c, slot)
             .unwrap();
-        assert!(matches!(
-            session.active().unwrap().payloads.values[slot],
-            RetainedPayload::String {
-                origins: Some(_),
-                ..
-            }
-        ));
         assert_eq!(read_group(&session, &mut c, &reference), [0xd800, 0, 65]);
         request.cancellation().cancel();
         let first = c.checkpoint().unwrap_err();
         assert_eq!(c.checkpoint(), Err(first));
-        drop(reference);
         session.release(&mut c).unwrap();
         assert_eq!(c.stop(), Some(first));
         super::super::tests::storage_zero(&c);
@@ -2762,7 +2756,7 @@ mod tests {
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Cause);
     }
     #[test]
-    fn an_occurrence_whose_attribute_group_is_missing_is_a_fault() {
+    fn an_occurrence_whose_attribute_value_is_missing_is_a_fault() {
         let mut report = styled_report();
         let with_attribute = |row: &Occurrence| {
             row.inputs
@@ -2771,9 +2765,9 @@ mod tests {
         };
         corrupt_style_occurrence(&mut report, with_attribute, |row| {
             let attributes = &mut row.inputs.as_mut().unwrap().attributes;
-            attributes.iter_mut().flatten().next().unwrap().index = usize::MAX;
+            attributes.iter_mut().flatten().next().unwrap().0 = usize::MAX;
         });
-        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Group);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
     fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
@@ -2799,12 +2793,12 @@ mod tests {
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
-    fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
+    fn a_text_value_that_is_missing_is_a_fault_of_the_text_reader() {
         let mut report = styled_report();
         let with_text = |row: &Occurrence| row.inputs.as_ref().is_some_and(|i| i.text.len() != 0);
         corrupt_style_occurrence(&mut report, with_text, |row| {
             let text = row.inputs.as_mut().unwrap().text.as_mut_slice_for_test();
-            text[0].index = usize::MAX;
+            text[0].0 = usize::MAX;
         });
         let mut cursor = report.pending_associations();
         let mut checked = false;
@@ -2816,7 +2810,7 @@ mod tests {
                     {
                         assert_eq!(
                             style.text(0).err(),
-                            Some(fault(read::HtmlParseUnresolvedKind::Group))
+                            Some(fault(read::HtmlParseUnresolvedKind::Fact))
                         );
                         assert!(matches!(style.text(style.text_len()), Ok(None)));
                         checked = true;

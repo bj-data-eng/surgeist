@@ -49,12 +49,18 @@ impl Text {
 pub(super) struct DraftText {
     pub(super) value: Utf16Buffer,
     pub(super) origins: OwnedVec<HtmlParseTextOrigin>,
+    /// Whether this parse records the origin of each unit it keeps.
+    record_origins: bool,
+    /// The end of the source range of the unit last pushed, recorded or not.
+    pub(super) last_end: Option<usize>,
 }
 impl DraftText {
     pub(super) fn new(c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         Ok(Self {
             value: Utf16Buffer::new(c)?,
             origins: OwnedVec::new(HtmlParseResource::SourceMapEntries)?,
+            record_origins: c.detail().records_graph(),
+            last_end: None,
         })
     }
     pub(super) fn push(
@@ -69,6 +75,10 @@ impl DraftText {
             c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState)
         })?;
         self.value.push_code_point(point, c)?;
+        self.last_end = Some(source.end());
+        if !self.record_origins {
+            return Ok(());
+        }
         c.charge(
             HtmlParseWorkCategory::CopyByte,
             std::mem::size_of::<HtmlSourceRange>() as u64,
@@ -84,17 +94,47 @@ impl DraftText {
             },
         )
     }
+    /// The end of the source range of the unit last pushed.
+    pub(super) fn last_end(&self) -> Option<usize> {
+        self.last_end
+    }
+    /// Pushes every unit of this draft onto `target`, each with the source and
+    /// kind it was pushed with. A parse that records no origins gives every
+    /// unit `unrecorded`, which the target does not keep either.
+    pub(super) fn replay_into(
+        &self,
+        target: &mut DraftText,
+        unrecorded: &HtmlSourceRange,
+        c: &mut ParseControl,
+    ) -> Result<(), HtmlParseStop> {
+        self.require_paired(c)?;
+        for (index, &unit) in self.value.units().iter().enumerate() {
+            c.charge_unit_inspection()?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let (source, kind) = match self.origins.as_slice().get(index) {
+                Some(origin) => (&origin.source, origin.kind),
+                None => (unrecorded, HtmlParseOriginKind::Literal),
+            };
+            target.push(u32::from(unit), source, kind, c)?;
+        }
+        Ok(())
+    }
     /// Refuses a draft whose units and origin rows are not one to one, which
     /// a caller replaying single-unit code points position by position needs.
     pub(super) fn require_paired(&self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        if self.value.len() == self.origins.len() {
+        if !self.record_origins || self.value.len() == self.origins.len() {
             Ok(())
         } else {
             Err(c.fail_invariant(super::super::control::HtmlParseInvariant::TokenizerState))
         }
     }
     pub(super) fn freeze(self, c: &mut ParseControl) -> Result<Text, HtmlParseStop> {
-        let Self { value, origins } = self;
+        let Self {
+            value,
+            origins,
+            record_origins: _,
+            last_end: _,
+        } = self;
         match value.freeze(c) {
             Ok(value) => Ok(Text { value, origins }),
             Err(stop) => {

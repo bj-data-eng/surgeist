@@ -13,16 +13,16 @@ use surgeist_html::{
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseAssociationRelation,
+    DetailSet, HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseAssociationRelation,
     HtmlParseCancellation, HtmlParseCause, HtmlParseConstructionOperation, HtmlParseDestination,
-    HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole,
-    HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity, HtmlParseDiagnostics, HtmlParseFailure,
-    HtmlParseFailureReason, HtmlParseField, HtmlParseLexicalDisposition, HtmlParseLexicalKind,
-    HtmlParseLexicalRole, HtmlParseLimits, HtmlParseOmissionKind, HtmlParseOriginKind,
-    HtmlParseRawField, HtmlParseReport, HtmlParseRequestError, HtmlParseResource, HtmlParseStop,
-    HtmlParseTokenFamily, HtmlParseUnsupportedState, HtmlParserRule, HtmlPrologueDiagnostic,
-    HtmlSource, HtmlSourceRange, HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase,
-    HtmlTokenizerState,
+    HtmlParseDetailUnavailable, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
+    HtmlParseDiagnosticLocationRole, HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity,
+    HtmlParseDiagnostics, HtmlParseFailure, HtmlParseFailureReason, HtmlParseField,
+    HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseLimits,
+    HtmlParseOmissionKind, HtmlParseOriginKind, HtmlParseRawField, HtmlParseReport,
+    HtmlParseRequestError, HtmlParseResource, HtmlParseStop, HtmlParseTokenFamily,
+    HtmlParseUnsupportedState, HtmlParserRule, HtmlPrologueDiagnostic, HtmlSource, HtmlSourceRange,
+    HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase, HtmlTokenizerState,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -445,10 +445,29 @@ fn field_units(n: HtmlNode<'_>, field: HtmlParseField) -> Option<usize> {
         _ => None,
     }
 }
+/// The refusal of a build whose parser does not provide detail.
+pub(crate) fn detail_error(error: HtmlParseDetailUnavailable) -> FuzzError {
+    FuzzError::with_source(
+        FuzzErrorKind::Harness,
+        "select parse detail",
+        "the detail feature of the parser",
+        error,
+    )
+}
+/// The diagnostics of a report whose request selected them.
+fn report_diagnostics(
+    report: &HtmlParseReport,
+) -> std::result::Result<HtmlParseDiagnostics<'_>, &'static str> {
+    report
+        .detail()
+        .and_then(|detail| detail.diagnostics())
+        .ok_or("diagnostics-not-selected")
+}
 pub(crate) fn associations(
     report: &HtmlParseReport,
 ) -> std::result::Result<Vec<Association>, &'static str> {
-    let rows = report.associations();
+    let detail = report.detail().ok_or("detail-not-selected")?;
+    let rows = detail.associations().ok_or("associations-not-selected")?;
     if rows.len() > MAX_ROWS {
         return Err("association-limit");
     }
@@ -510,7 +529,7 @@ pub(crate) fn associations(
             HtmlParseDestination::LexicalEnd => Destination::End,
             HtmlParseDestination::Cause(c) => Destination::Cause(cause(report.source(), c)?),
         };
-        let history = report.history_view();
+        let history = detail.history().ok_or("history-not-selected")?;
         let group_units = r
             .group()
             .map(|g| {
@@ -740,7 +759,9 @@ pub(crate) fn verify_report(
         Ok(n) => n,
         Err(key) => return props.failure(1, key, "native ownership/traversal").map(Err),
     };
-    let diagnostics = match diagnostics(report.source(), report.diagnostics()) {
+    let diagnostics = match report_diagnostics(report)
+        .and_then(|selected| diagnostics(report.source(), selected))
+    {
         Ok(d) => d,
         Err(key) => return props.failure(2, key, "typed diagnostic range").map(Err),
     };
@@ -774,7 +795,10 @@ pub(crate) fn verify_immutable(
     cancel.cancel();
     if report.usage() != &usage
         || native(report).as_ref() != Ok(&seen.nodes)
-        || diagnostics(report.source(), report.diagnostics()).as_ref() != Ok(&seen.diagnostics)
+        || report_diagnostics(report)
+            .and_then(|selected| diagnostics(report.source(), selected))
+            .as_ref()
+            != Ok(&seen.diagnostics)
         || associations(report).as_ref() != Ok(&seen.rows)
     {
         return props
@@ -991,7 +1015,9 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
     let mut capture = None;
     let (parsed, cancel) = match case.kind {
         ParseKind::Document => {
-            let request = HtmlDocumentParseRequest::offline(original.clone(), limits);
+            let request = HtmlDocumentParseRequest::offline(original.clone(), limits)
+                .with_detail(DetailSet::ALL)
+                .map_err(detail_error)?;
             let cancel = request.cancellation().clone();
             if case.lane == Lane::PreCancelled {
                 cancel.cancel();
@@ -1026,6 +1052,7 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
                     e,
                 )
             })?;
+            let request = request.with_detail(DetailSet::ALL).map_err(detail_error)?;
             let cancel = request.cancellation().clone();
             if case.lane == Lane::PreCancelled {
                 cancel.cancel();

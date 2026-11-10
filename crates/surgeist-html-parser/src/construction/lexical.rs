@@ -147,6 +147,11 @@ impl LexicalStorage {
     }
 }
 impl ParseEvidence {
+    /// Whether the lexical records are complete: the parse did not select
+    /// them, or the tokenizer reached the end of the input.
+    pub(crate) fn lexical_complete(&self) -> bool {
+        !self.records_lexical() || self.native.lexical.end.is_some()
+    }
     /// Only the tokenizer's actual sealed-and-exhausted EOF transition supplies
     /// this checked point. A partial frontier is never lexical completion.
     pub(crate) fn lexical_eof(
@@ -154,6 +159,9 @@ impl ParseEvidence {
         c: &mut ParseControl,
         point: &crate::HtmlSourceRange,
     ) -> Result<(), HtmlParseStop> {
+        if !self.records_lexical() {
+            return Ok(());
+        }
         self.native.lexical.occurrences.require_owner(c)?;
         c.require_source_range(point)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -193,6 +201,9 @@ impl ParseEvidence {
         kind: HtmlParseOmissionKind,
         rule: HtmlParserRule,
     ) -> Result<(), SessionError> {
+        if !self.records_lexical() {
+            return Ok(());
+        }
         let cause = self.field_cause(c)?;
         for origin in origins {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -221,7 +232,10 @@ impl ParseEvidence {
         source: &crate::HtmlSourceRange,
         kind: HtmlParseLexicalKind,
         parent: Option<&LexicalRef>,
-    ) -> Result<LexicalRef, HtmlParseStop> {
+    ) -> Result<Option<LexicalRef>, HtmlParseStop> {
+        if !self.records_lexical() {
+            return Ok(None);
+        }
         c.require_source_range(source)?;
         let parent = parent
             .map(|parent| self.require_lexical(c, parent))
@@ -256,11 +270,11 @@ impl ParseEvidence {
         )?;
         c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        Ok(LexicalRef {
+        Ok(Some(LexicalRef {
             index,
             issuer: Arc::downgrade(&self.identity),
             control: c.identity(),
-        })
+        }))
     }
     fn require_lexical(
         &self,
@@ -762,6 +776,7 @@ mod tests {
                     HtmlParseLexicalKind::Markup,
                     None,
                 )
+                .unwrap()
                 .unwrap();
             let expected = if reversed_range {
                 let reversed = std::ops::Range { start: 1, end: 0 };
@@ -809,6 +824,7 @@ mod tests {
                 HtmlParseLexicalKind::Markup,
                 None,
             )
+            .unwrap()
             .unwrap();
         let stop = second
             .lexical_part(
@@ -867,6 +883,7 @@ mod tests {
                     HtmlParseLexicalKind::Markup,
                     None,
                 )
+                .unwrap()
                 .unwrap();
             if cancelled {
                 cancellation.cancel();

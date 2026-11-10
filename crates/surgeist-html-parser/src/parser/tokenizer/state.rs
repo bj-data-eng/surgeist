@@ -71,8 +71,11 @@ impl Tokenizer<'_> {
         )?;
         self.start = self.current.start();
         self.less_than = self.current.clone();
-        let lexical =
-            evidence.lexical_begin(c, &self.current, HtmlParseLexicalKind::Markup, None)?;
+        let Some(lexical) =
+            evidence.lexical_begin(c, &self.current, HtmlParseLexicalKind::Markup, None)?
+        else {
+            return Ok(());
+        };
         admit_record_write(size_of::<Option<LexicalRef>>(), 1, c)?;
         let occurrence = self.lexical.insert(lexical);
         evidence.lexical_part(

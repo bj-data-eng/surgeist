@@ -1,4 +1,6 @@
 use crate::parser::support::limits;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_html::{
     construction::{HtmlDocumentMode, HtmlNodeKind},
     elements::dialog::HtmlDialogAction,
@@ -58,7 +60,7 @@ pub(super) fn fragment_context(
 // This is actual completed original-controller state, not native creation.
 #[test]
 fn ordinary_open_dialog_keeps_empty_return_value_and_closed_document_history() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><dialog open returnvalue=attribute-only></dialog><template><dialog open></dialog></template>"),
         limits(),
     ).parse().unwrap();
@@ -102,7 +104,7 @@ fn contextual_dialog_missing_activity_retains_the_first_actual_document_action()
         HtmlDocumentMode::NoQuirks,
         HtmlBrowsingContextPresence::Unavailable,
     );
-    let report = HtmlFragmentParseRequest::new(
+    let report = crate::parser::support::fragment_all(
         HtmlSource::utf8("<div><dialog open></dialog></div>"),
         context,
         limits(),
@@ -141,7 +143,7 @@ fn contextual_dialog_missing_activity_retains_the_first_actual_document_action()
 
 #[test]
 fn dialog_free_document_has_its_own_history_and_foreign_dialog_has_no_html_state() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><svg><dialog open/></svg><p>plain</p>"),
         limits(),
     )
@@ -181,7 +183,7 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
         } else {
             "<template><dialog open></dialog></template>"
         };
-        let report = HtmlFragmentParseRequest::new(
+        let report = crate::parser::support::fragment_all(
             HtmlSource::utf8(source),
             fragment_context(HtmlDocumentMode::NoQuirks, activity),
             limits(),
@@ -274,7 +276,7 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
 
 #[test]
 fn current_dialog_lenders_are_repeated_fixed_reads_without_mutating_usage() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><dialog open></dialog>"),
         limits(),
     )
@@ -328,7 +330,7 @@ fn current_dialog_lenders_are_repeated_fixed_reads_without_mutating_usage() {
 #[test]
 fn dialog_owned_records_obey_exact_capacity_work_and_cleanup_boundaries() {
     let make = |limits| {
-        HtmlDocumentParseRequest::offline(
+        crate::parser::support::offline_all(
             HtmlSource::utf8(
                 "<!doctype html><dialog open returnvalue=raw></dialog><template><dialog open></dialog></template>",
             ),

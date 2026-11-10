@@ -905,6 +905,7 @@ impl SessionStorage {
                         script_type: None,
                         result: HtmlScriptResult::Uninitialized,
                         steps_when_result_ready: None,
+                        start: None,
                     },
                 },
             )?);

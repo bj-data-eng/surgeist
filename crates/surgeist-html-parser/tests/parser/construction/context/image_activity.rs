@@ -1,4 +1,6 @@
 use crate::parser::support::limits;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_html::{
     construction::HtmlDocumentMode,
     elements::image::{HtmlImageUpdateFlags, HtmlImgFreshRequestState},
@@ -123,7 +125,7 @@ fn fragment_owned_inert_template_document_keeps_first_image_wait() {
     // cannot hold for it. #updating-the-image-data (22218–22227) waits BEFORE
     // inspecting disabled image support. Creation starts exactly one invocation
     // (22091–22093); this literal has no relevant image attribute mutation.
-    let report = HtmlFragmentParseRequest::new(
+    let report = crate::parser::support::fragment_all(
         HtmlSource::utf8("<template><img></template>"),
         context(HtmlBrowsingContextPresence::Present),
         limits(),
@@ -187,7 +189,7 @@ fn fragment_captured_document_without_browsing_context_keeps_latest_image_wait()
     ] {
         let context = context(browsing_context);
         let target = context.target_document().clone();
-        let report = HtmlFragmentParseRequest::new(
+        let report = crate::parser::support::fragment_all(
             HtmlSource::utf8("<img src=x srcset=y>"),
             context,
             limits(),

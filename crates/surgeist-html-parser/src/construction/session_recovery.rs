@@ -38,6 +38,15 @@ impl ParserArenaSession {
             check_text_source(control, &attribute.value)?;
             control.require_source_range(&attribute.source)?;
         }
+        if !control.detail().records_graph() {
+            // No origin names the replaced spelling, so the replacement has none.
+            let value = literal_string(control, b"img")?;
+            let origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
+            payload_write::<Text>(control, 1)?;
+            let original = mem::replace(&mut tag.name, Text { value, origins });
+            original.release(control)?;
+            return Ok(());
+        }
         let mut covered = 0;
         let mut start = None;
         let mut end = None;

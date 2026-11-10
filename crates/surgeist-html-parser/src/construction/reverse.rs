@@ -1060,7 +1060,7 @@ impl ParseEvidence {
     pub(in crate::construction) fn take_published(
         &mut self,
     ) -> Option<(crate::HtmlSource, OwnedVec<NativeAssociation>)> {
-        if !self.native.projection_complete || self.native.lexical.end.is_none() {
+        if !self.native.projection_complete || !self.lexical_complete() {
             return None;
         }
         let source = self.native.source.take()?;
@@ -1111,7 +1111,7 @@ impl ParseEvidence {
         }
     }
     pub(crate) fn associations(&self) -> Result<AssociationView<'_>, SessionError> {
-        if !self.native.projection_complete || self.native.lexical.end.is_none() {
+        if !self.native.projection_complete || !self.lexical_complete() {
             return Err(SessionError::WrongToken);
         }
         Ok(AssociationView {

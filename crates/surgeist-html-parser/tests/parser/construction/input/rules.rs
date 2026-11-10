@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use surgeist_html::{
     accounting::{HtmlLimits, HtmlResource, HtmlWork},
     attributes::HtmlInputType,
@@ -17,8 +19,8 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseAssociationRelation, HtmlParseHistoryFrame,
-    HtmlParseHistoryStep, HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,
+    HtmlParseAssociationRelation, HtmlParseHistoryFrame, HtmlParseHistoryStep,
+    HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,
     HtmlParseRangeOperandRole, HtmlSource,
 };
 use surgeist_ledger::{Operation, Scope};
@@ -731,7 +733,7 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     let limits = crate::parser::support::limits();
     let source = HtmlSource::utf8(literal);
     let identity = source.identity().clone();
-    let report = HtmlDocumentParseRequest::offline(source, limits)
+    let report = crate::parser::support::offline_all(source, limits)
         .parse()
         .unwrap();
     assert_eq!(report.source().identity(), &identity);

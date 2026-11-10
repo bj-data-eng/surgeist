@@ -2,6 +2,7 @@
 //! source admission, preprocessing and parsing remain execution operations.
 
 use crate::accounting::RequestAccounting;
+use crate::detail::{self, DetailSet, HtmlParseDetailUnavailable};
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
     HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation,
@@ -19,6 +20,17 @@ pub(crate) enum ValueSharingMode {
     BankOnly,
     #[default]
     Combined,
+}
+
+/// The detail a new request selects. Unit tests of the parser's recording
+/// machinery run with every kind selected; a test of selection names its
+/// selection.
+pub(crate) const fn default_detail() -> DetailSet {
+    if cfg!(test) {
+        DetailSet::ALL
+    } else {
+        DetailSet::NONE
+    }
 }
 
 /// Captured facts rejected during request selection, before parse execution.
@@ -195,6 +207,7 @@ pub struct HtmlDocumentParseRequest {
     initial_policy_base: bool,
     associated: InputBank,
     accounting: RequestAccounting,
+    detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -212,6 +225,19 @@ impl HtmlDocumentParseRequest {
     }
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
+    }
+    /// Selects the optional detail the parse records. The default is
+    /// [`DetailSet::NONE`]: a parse that selects none allocates no storage for
+    /// detail and does none of the work of producing it, and its report has no
+    /// detail. Without the `detail` feature of this crate, a non-empty
+    /// selection is refused.
+    pub fn with_detail(mut self, detail: DetailSet) -> Result<Self, HtmlParseDetailUnavailable> {
+        self.detail = detail::admit(detail)?;
+        Ok(self)
+    }
+    /// The selected detail.
+    pub fn detail(&self) -> DetailSet {
+        self.detail
     }
     pub(crate) fn initial_policy_base(&self) -> bool {
         self.initial_policy_base
@@ -262,6 +288,7 @@ impl HtmlDocumentParseRequest {
             base_facts: self.base_facts,
             associated: self.associated.into_shared(),
             accounting: self.accounting,
+            detail: self.detail,
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -278,6 +305,7 @@ impl HtmlDocumentParseRequest {
             initial_policy_base: false,
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
+            detail: default_detail(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         }
@@ -322,6 +350,7 @@ impl HtmlDocumentParseRequest {
             initial_policy_base: false,
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
+            detail: default_detail(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -446,12 +475,18 @@ pub(crate) struct DocumentRequestParts {
     base_facts: Option<crate::HtmlParseBaseFacts>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     accounting: RequestAccounting,
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
+    detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl DocumentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
+    }
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
+    pub(crate) fn detail(&self) -> DetailSet {
+        self.detail
     }
     #[cfg(test)]
     pub(crate) fn value_sharing(&self) -> ValueSharingMode {
@@ -512,6 +547,7 @@ pub struct HtmlFragmentParseRequest {
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: InputBank,
     accounting: RequestAccounting,
+    detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -525,6 +561,19 @@ impl HtmlFragmentParseRequest {
     }
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
+    }
+    /// Selects the optional detail the parse records. The default is
+    /// [`DetailSet::NONE`]: a parse that selects none allocates no storage for
+    /// detail and does none of the work of producing it, and its report has no
+    /// detail. Without the `detail` feature of this crate, a non-empty
+    /// selection is refused.
+    pub fn with_detail(mut self, detail: DetailSet) -> Result<Self, HtmlParseDetailUnavailable> {
+        self.detail = detail::admit(detail)?;
+        Ok(self)
+    }
+    /// The selected detail.
+    pub fn detail(&self) -> DetailSet {
+        self.detail
     }
     #[cfg(test)]
     pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
@@ -560,6 +609,7 @@ impl HtmlFragmentParseRequest {
             base_facts: self.base_facts,
             associated: self.associated.into_shared(),
             accounting: self.accounting,
+            detail: self.detail,
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -603,6 +653,7 @@ impl HtmlFragmentParseRequest {
             base_facts: None,
             associated: InputBank::default(),
             accounting: RequestAccounting::default(),
+            detail: default_detail(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -740,12 +791,18 @@ pub(crate) struct FragmentRequestParts {
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     accounting: RequestAccounting,
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
+    detail: DetailSet,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl FragmentRequestParts {
     pub(crate) fn accounting(&self) -> &RequestAccounting {
         &self.accounting
+    }
+    #[cfg_attr(not(feature = "detail"), allow(dead_code))]
+    pub(crate) fn detail(&self) -> DetailSet {
+        self.detail
     }
     #[cfg(test)]
     pub(crate) fn value_sharing(&self) -> ValueSharingMode {

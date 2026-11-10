@@ -1,4 +1,6 @@
 use crate::parser::support::limits;
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 
 use surgeist_html::{
     construction::{HtmlNodeId, HtmlNodeKind},
@@ -6,9 +8,8 @@ use surgeist_html::{
     values::DocumentString,
 };
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseConstructionOperation, HtmlParseDestination,
-    HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource,
-    HtmlParseStop, HtmlSource,
+    HtmlParseConstructionOperation, HtmlParseDestination, HtmlParseFailureReason,
+    HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource, HtmlParseStop, HtmlSource,
 };
 
 fn creations(
@@ -52,7 +53,7 @@ fn explicit_and_implied_roots_keep_original_is_before_later_html_merge() {
             None,
         ),
     ] {
-        let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+        let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
             .parse()
             .unwrap();
         let rows = creations(&report, "html");
@@ -68,7 +69,7 @@ fn explicit_and_implied_roots_keep_original_is_before_later_html_merge() {
 fn empty_saved_is_remains_present_and_reserved_names_are_not_custom_names() {
     // DOM3071 retains a present-empty is independently from absent is. Its
     // no-definition state uses the actual custom-name grammar, not a hyphen test.
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8(
             "<!doctype html><p is=''></p><x-card is=''></x-card><font-face></font-face>",
         ),
@@ -92,7 +93,7 @@ fn empty_saved_is_remains_present_and_reserved_names_are_not_custom_names() {
 fn formatting_reconstruction_keeps_each_original_creation_value_and_identity() {
     // HTML877d reconstructs the original i token after b closes. Both actual
     // elements keep the token's decoded saved is, including surrounding spaces.
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8("<!doctype html><p>1<b>2<i is=' A&amp;B '>3</b>4</i>5</p>"),
         limits(),
     )
@@ -127,7 +128,7 @@ fn formatting_reconstruction_keeps_each_original_creation_value_and_identity() {
 
 #[test]
 fn selectedcontent_clones_retain_saved_creation_state_on_distinct_result_subjects() {
-    let report = HtmlDocumentParseRequest::offline(
+    let report = crate::parser::support::offline_all(
         HtmlSource::utf8(
             "<!doctype html><select><button><selectedcontent></selectedcontent></button><option selected><i is='A&amp;B'>X</i></option></select>",
         ),
@@ -176,7 +177,7 @@ fn utf16_saved_is_survives_reconstruction_and_later_cancellation_of_its_request(
         .collect::<Vec<_>>();
     units.extend([0xd800, 0xd83d, 0xde00, 0xdc00]);
     units.extend("'>X</p>Y".encode_utf16());
-    let request = HtmlDocumentParseRequest::offline(
+    let request = crate::parser::support::offline_all(
         HtmlSource::utf16(DocumentString::from_utf16(units)),
         limits(),
     );
@@ -197,7 +198,7 @@ fn utf16_saved_is_survives_reconstruction_and_later_cancellation_of_its_request(
 #[test]
 fn creation_retention_has_exact_storage_and_work_limits_with_terminal_cleanup() {
     let source = "<!doctype html><p><i is='A&amp;B'>X</p>Y";
-    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits())
+    let report = crate::parser::support::offline_all(HtmlSource::utf8(source), limits())
         .parse()
         .unwrap();
     for resource in [
@@ -222,7 +223,8 @@ fn creation_retention_has_exact_storage_and_work_limits_with_terminal_cleanup() 
             }
             .finish()
             .unwrap();
-            let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), constrained);
+            let request =
+                crate::parser::support::offline_all(HtmlSource::utf8(source), constrained);
             let identity = request.source().identity().clone();
             let result = request.parse();
             if allowance == exact {

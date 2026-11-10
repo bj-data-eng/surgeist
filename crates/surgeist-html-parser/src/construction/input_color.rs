@@ -366,7 +366,7 @@ impl SessionStorage {
             }
         };
         let frozen = output.freeze(c)?;
-        let (native, next) = self.register_group_string_owned(c, frozen, Some(group))?;
+        let (native, next) = self.register_group_string_owned(c, frozen, group)?;
         drop(native);
         payload_write::<usize>(c, 1)?;
         payload_write::<RetainedPayload>(c, 2)?;

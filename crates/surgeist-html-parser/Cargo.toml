@@ -15,8 +15,22 @@ surgeist-css = { path = "../surgeist-css", version = "=0.1.0" }
 surgeist-color = { path = "../surgeist-color", version = "=0.1.0" }
 surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 
+[features]
+default = ["detail"]
+# The optional parse detail: the source map, lexical and omission records, the
+# construction history, the diagnostics and the reader of them. Without it a
+# request cannot select detail and the detail types do not exist.
+detail = []
+
 [dev-dependencies]
 surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
+
+[[test]]
+name = "parser"
+path = "tests/parser.rs"
+# The suite reads the optional detail, so it needs the feature; the `selection`
+# suite covers both builds.
+required-features = ["detail"]
 
 [[bench]]
 name = "parse"

@@ -4,7 +4,7 @@ use std::{
     error::Error,
     fmt,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use surgeist_html::values::DocumentString;
 
@@ -47,6 +47,40 @@ enum SourceText {
 pub struct HtmlSource {
     identity: HtmlSourceId,
     text: SourceText,
+    lines: Arc<LineIndex>,
+}
+
+/// The offsets at which the lines of a source start, built when a position is
+/// first read and shared by the clones of the source.
+#[derive(Default)]
+struct LineIndex(OnceLock<Vec<usize>>);
+
+impl fmt::Debug for LineIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LineIndex")
+    }
+}
+
+/// A line and column of a source, both counted from one.
+///
+/// The column counts UTF-16 code units of the decoded source from the start of
+/// the line, whichever coordinates the source uses. A line ends at LF, CRLF or a
+/// lone CR, as the input stream preprocessing treats them.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct HtmlSourcePosition {
+    line: usize,
+    column: usize,
+}
+
+impl HtmlSourcePosition {
+    /// The line, counted from one.
+    pub fn line(&self) -> usize {
+        self.line
+    }
+    /// The column in UTF-16 code units, counted from one.
+    pub fn column(&self) -> usize {
+        self.column
+    }
 }
 
 impl HtmlSource {
@@ -55,6 +89,7 @@ impl HtmlSource {
         Self {
             identity: HtmlSourceId(Arc::new(())),
             text: SourceText::Utf8(text.into()),
+            lines: Arc::default(),
         }
     }
 
@@ -63,6 +98,7 @@ impl HtmlSource {
         Self {
             identity: HtmlSourceId(Arc::new(())),
             text: SourceText::Utf16(text),
+            lines: Arc::default(),
         }
     }
 
@@ -135,6 +171,81 @@ impl HtmlSource {
             start,
             end,
         })
+    }
+
+    /// The line and column of `offset`, in this source's coordinates.
+    ///
+    /// The line index is built when the first position is read, and the parse
+    /// itself counts no line. The index holds 8 bytes for each line of the source
+    /// and is not charged to any parse limit. An offset that is past the end or splits a UTF-8
+    /// scalar has no position.
+    pub fn position(&self, offset: usize) -> Result<HtmlSourcePosition, HtmlSourceRangeError> {
+        // The same validation as an empty range at `offset`.
+        self.range(offset, offset)?;
+        let starts = self.lines.0.get_or_init(|| self.line_starts());
+        let line = starts.partition_point(|start| *start <= offset);
+        // The first start is zero, so at least one start is at or before it.
+        let start = line.checked_sub(1).and_then(|index| starts.get(index));
+        let (Some(line_start), true) = (start, line != 0) else {
+            return Err(HtmlSourceRangeError::OutOfBounds {
+                end: offset,
+                length: self.len(),
+            });
+        };
+        let column = match &self.text {
+            SourceText::Utf8(text) => text
+                .get(*line_start..offset)
+                .map(|line| line.chars().map(char::len_utf16).sum::<usize>()),
+            SourceText::Utf16(_) => offset.checked_sub(*line_start),
+        };
+        let Some(column) = column else {
+            return Err(HtmlSourceRangeError::Utf8Boundary { offset });
+        };
+        Ok(HtmlSourcePosition {
+            line,
+            column: column.saturating_add(1),
+        })
+    }
+
+    /// The offsets at which each line starts: zero, and the offset after each
+    /// LF, CRLF or lone CR.
+    fn line_starts(&self) -> Vec<usize> {
+        let mut starts = vec![0];
+        match &self.text {
+            SourceText::Utf8(text) => {
+                let mut previous = None;
+                for (index, byte) in text.bytes().enumerate() {
+                    match (byte, previous) {
+                        (0x0A, Some(0x0D)) => {
+                            // CRLF: the CR already started the next line at the
+                            // LF's offset, so move it past the LF.
+                            if let Some(last) = starts.last_mut() {
+                                *last = index.saturating_add(1);
+                            }
+                        }
+                        (0x0A | 0x0D, _) => starts.push(index.saturating_add(1)),
+                        _ => {}
+                    }
+                    previous = Some(byte);
+                }
+            }
+            SourceText::Utf16(text) => {
+                let mut previous = None;
+                for (index, &unit) in text.code_units().iter().enumerate() {
+                    match (unit, previous) {
+                        (0x0A, Some(0x0D)) => {
+                            if let Some(last) = starts.last_mut() {
+                                *last = index.saturating_add(1);
+                            }
+                        }
+                        (0x0A | 0x0D, _) => starts.push(index.saturating_add(1)),
+                        _ => {}
+                    }
+                    previous = Some(unit);
+                }
+            }
+        }
+        starts
     }
 
     /// Obtains exact text for a validated range of this source without normalization.

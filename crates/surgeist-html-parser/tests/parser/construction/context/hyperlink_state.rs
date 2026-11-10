@@ -1,3 +1,5 @@
+#[allow(unused_imports)]
+use crate::parser::support::{ReportDetail as _, SubjectCause as _};
 use crate::parser::support::{limits_builder, revision};
 use surgeist_html::{
     construction::HtmlDocumentMode,
@@ -215,7 +217,7 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
     let i = HtmlBaseEncoding::fresh();
     let t = HtmlBaseEncoding::fresh();
     let prepared = selected(&context, &target, environment(&target_base, &t));
-    let report = HtmlFragmentParseRequest::new(
+    let report = crate::parser::support::fragment_all(
         HtmlSource::utf8(
             "<a href=x></a><div><a href=x></a><template><area href=x></template></div>",
         ),
@@ -309,7 +311,7 @@ fn existing_captured_inert_owner_uses_its_own_revision_and_encoding() {
     let i = HtmlBaseEncoding::fresh();
     let target_context = selected(&context, &target, environment(&target_base, &t));
     let inert_context = selected(&context, &inert_doc, environment(&inert_base, &i));
-    let report = HtmlFragmentParseRequest::new(
+    let report = crate::parser::support::fragment_all(
         HtmlSource::utf8("<template><area href=x></template>"),
         context,
         limits(),
@@ -356,7 +358,7 @@ fn foreign_and_duplicate_selected_contexts_preserve_original_execution_inputs() 
             "http://[".into(),
             HtmlEncodingUrlParseOutcome::Failure,
         );
-        let failure = HtmlFragmentParseRequest::new(
+        let failure = crate::parser::support::fragment_all(
             HtmlSource::utf8("<div><a href='http://['>"),
             context.clone(),
             limits(),
@@ -438,7 +440,7 @@ fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_fai
         ),
     ];
     for (facts, expected) in cases {
-        let report = HtmlFragmentParseRequest::new(
+        let report = crate::parser::support::fragment_all(
             HtmlSource::utf8("<div><a href='http://['><area>"),
             context.clone(),
             limits(),
@@ -458,7 +460,7 @@ fn missing_stale_foreign_and_mismatched_observations_are_unavailable_not_url_fai
             HtmlParseHyperlinkState::AbsentHref
         ));
     }
-    let missing = HtmlFragmentParseRequest::new(
+    let missing = crate::parser::support::fragment_all(
         HtmlSource::utf8("<div><a href='http://['>"),
         context,
         limits(),
@@ -492,7 +494,7 @@ fn raw_isolated_surrogates_and_detached_base_preserve_exact_selected_input() {
         .collect::<Vec<_>>();
     source.extend_from_slice(raw.code_units());
     source.extend("'>".encode_utf16());
-    let report = HtmlFragmentParseRequest::new(
+    let report = crate::parser::support::fragment_all(
         HtmlSource::utf16(DocumentString::from_utf16(source)),
         context,
         limits(),
@@ -527,13 +529,13 @@ fn constructor_roles_reject_contradictory_facts_without_issuing_a_request() {
     let not_blank = record(&revision(), "https://example.test/", false, None);
     let facts = environment(&not_blank, &HtmlBaseEncoding::fresh());
     assert!(
-        HtmlFragmentParseRequest::new(HtmlSource::utf8(""), context.clone(), limits())
+        crate::parser::support::fragment_all(HtmlSource::utf8(""), context.clone(), limits())
             .unwrap()
             .with_parser_document_base_facts(facts.clone())
             .is_err()
     );
     assert!(
-        HtmlFragmentParseRequest::new(HtmlSource::utf8(""), context, limits())
+        crate::parser::support::fragment_all(HtmlSource::utf8(""), context, limits())
             .unwrap()
             .with_template_base_facts(facts)
             .is_err()
@@ -557,7 +559,7 @@ fn selected_execution_spare_capacity_is_released_and_failure_returns_originals()
         contexts.push(prepared.clone());
         let mut facts = Vec::with_capacity(capacity);
         facts.push(observation.clone());
-        HtmlFragmentParseRequest::new(
+        crate::parser::support::fragment_all(
             HtmlSource::utf8("<div><a href='http://['>"),
             context.clone(),
             limits,
@@ -770,7 +772,7 @@ fn historical_first_base_uses_current_independent_revision_after_detached_meta()
     // A Meta in detached fragment content never reaches the captured Document's
     // direct-head CSP operation. The immutable selection cannot bypass a live
     // policy transition; there is none in this closed fragment effect domain.
-    let report = HtmlFragmentParseRequest::new(HtmlSource::utf8("<div><meta http-equiv=Content-Security-Policy content=\"default-src 'none'\"><a href=x>"), context, limits()).unwrap().with_encoding_url_contexts(vec![prepared.clone()]).with_encoding_url_facts(vec![observation]).parse().unwrap();
+    let report = crate::parser::support::fragment_all(HtmlSource::utf8("<div><meta http-equiv=Content-Security-Policy content=\"default-src 'none'\"><a href=x>"), context, limits()).unwrap().with_encoding_url_contexts(vec![prepared.clone()]).with_encoding_url_facts(vec![observation]).parse().unwrap();
     let links = links(&report);
     let HtmlParseHyperlinkState::Observed(value) = links[0].state() else {
         panic!("historical Base/current URL revision")

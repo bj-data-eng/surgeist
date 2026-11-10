@@ -1,8 +1,8 @@
 use surgeist_html::{
     values::{Attribute, DocumentString, Namespace, QualifiedName},
     vocabulary::{
-        KnownHtmlAttribute, KnownHtmlElement, VOCABULARY_SOURCE, attribute_inventory,
-        element_inventory,
+        HtmlEventHandlerApplicability, KnownHtmlAttribute, KnownHtmlElement, KnownHtmlEventHandler,
+        VOCABULARY_SOURCE, attribute_inventory, element_inventory,
     },
 };
 
@@ -338,4 +338,81 @@ fn every_element_has_the_first_inventory_row_that_mentions_it() {
     ] {
         assert_eq!(heading.inventory_row().row(), headings.row());
     }
+}
+
+/// The event handler content attributes the retained capture of the pinned
+/// standard lists, read without the generator: each row of the table whose
+/// caption names them carries the attribute in its first `code` element and
+/// states its elements in the link of its second cell.
+fn retained_event_handlers() -> Vec<(String, HtmlEventHandlerApplicability)> {
+    let capture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md");
+    let text = std::fs::read_to_string(capture).expect("retained capture is readable");
+    let table = text
+        .lines()
+        .find(|line| line.contains("List of event handler content attributes</caption>"))
+        .expect("the capture holds the event handler table");
+    let mut rows = table.split("<tr>").skip(2);
+    let mut found = Vec::new();
+    for row in rows.by_ref() {
+        let name = row
+            .split("<code>")
+            .nth(1)
+            .and_then(|rest| rest.split("</code>").next())
+            .expect("a row names its attribute");
+        let scope = if row.contains(">HTML elements</a>") {
+            HtmlEventHandlerApplicability::AllHtmlElements
+        } else if row.contains(">body</a>") {
+            HtmlEventHandlerApplicability::BodyElement
+        } else {
+            panic!("row {name} states no known elements")
+        };
+        found.push((name.to_owned(), scope));
+    }
+    found
+}
+
+#[test]
+fn event_handler_vocabulary_equals_the_retained_pinned_list() {
+    let mut expected = retained_event_handlers();
+    expected.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut actual: Vec<_> = KnownHtmlEventHandler::ALL
+        .iter()
+        .map(|handler| (handler.local_name().to_owned(), handler.applicability()))
+        .collect();
+    actual.sort_by(|left, right| left.0.cmp(&right.0));
+    assert_eq!(expected.len(), 89);
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn event_handler_recognition_is_exact_and_applies_by_element() {
+    let name = |namespace, prefix: Option<&str>, local: &str| {
+        QualifiedName::new(namespace, prefix.map(Into::into), local)
+    };
+    for handler in KnownHtmlEventHandler::ALL {
+        let plain = name(Namespace::none(), None, handler.local_name());
+        assert_eq!(KnownHtmlEventHandler::from_name(&plain), Some(*handler));
+        let prefixed = name(Namespace::none(), Some("p"), handler.local_name());
+        assert_eq!(KnownHtmlEventHandler::from_name(&prefixed), Some(*handler));
+        let foreign = name(Namespace::svg(), None, handler.local_name());
+        assert_eq!(KnownHtmlEventHandler::from_name(&foreign), None);
+    }
+    // A name that only starts with `on` is not an event handler content attribute.
+    for local in [
+        "on", "one", "onfoo", "ONCLICK", "onClick", "onclic", "onclickk", "online",
+    ] {
+        let candidate = name(Namespace::none(), None, local);
+        assert_eq!(
+            KnownHtmlEventHandler::from_name(&candidate),
+            None,
+            "{local}"
+        );
+    }
+    let window = KnownHtmlEventHandler::Onafterprint;
+    assert!(window.applies_to(KnownHtmlElement::Body));
+    assert!(!window.applies_to(KnownHtmlElement::Div));
+    let global = KnownHtmlEventHandler::Onclick;
+    assert!(global.applies_to(KnownHtmlElement::Div));
+    assert!(global.applies_to(KnownHtmlElement::Body));
 }

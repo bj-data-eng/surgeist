@@ -322,7 +322,7 @@ struct DraftAttribute {
     end: usize,
     name_checked: bool,
     duplicate: bool,
-    lexical: LexicalRef,
+    lexical: Option<LexicalRef>,
 }
 struct DraftTag {
     kind: TagKind,
@@ -649,6 +649,12 @@ impl<'source> Tokenizer<'source> {
                     } else {
                         admit_record_write(size_of::<HtmlParseOriginKind>(), 1, c)?;
                         self.current_kind = HtmlParseOriginKind::Newline;
+                        // The record is retained only as evidence of the
+                        // preprocessing, which a parse without the graph or
+                        // the diagnostics does not keep.
+                        if !evidence.records_graph() {
+                            return Ok(Some(ch.code_point().value()));
+                        }
                         let mut retention = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
                         if let Err(stop) = retention.try_push(c, self.current.clone()) {
                             retention.release(c)?;
@@ -755,6 +761,9 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<(), HtmlParseStop> {
+        if !evidence.records_diagnostics() {
+            return Ok(());
+        }
         let source = self.current.clone();
         self.error_at_source(code, phase, &source, c, evidence)
     }
@@ -768,6 +777,9 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<(), HtmlParseStop> {
+        if !evidence.records_diagnostics() {
+            return Ok(());
+        }
         let admission = evidence.append(
             c,
             HtmlParseDiagnosticKind::Tokenizer(code),
@@ -789,7 +801,7 @@ impl<'source> Tokenizer<'source> {
         // validate and no event is queued.
         match admission {
             DiagnosticAdmission::Retained(id) => self.queue(Event::Diagnostic(id), c),
-            DiagnosticAdmission::Dropped => Ok(()),
+            DiagnosticAdmission::Dropped | DiagnosticAdmission::Unselected => Ok(()),
         }
     }
 
@@ -882,6 +894,7 @@ impl<'source> Tokenizer<'source> {
     }
     fn clear_temporary(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.temporary.value.clear(c)?;
+        self.temporary.last_end = None;
         self.temporary.origins.clear(c)
     }
     fn temp_matches(&self, expected: &[u8], c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
@@ -1079,44 +1092,46 @@ impl<'source> Tokenizer<'source> {
         // in its owner until that checked provider call and removal admission
         // have succeeded, so terminal release can still dispose both buffers.
         let source = self.range(a.start, a.end, c)?;
-        Self::retain_lexical_text(
-            evidence,
-            c,
-            &a.lexical,
-            HtmlParseLexicalRole::Name,
-            a.name.origins.as_slice(),
-        )?;
-        Self::retain_lexical_text(
-            evidence,
-            c,
-            &a.lexical,
-            HtmlParseLexicalRole::Value,
-            a.value.origins.as_slice(),
-        )?;
-        if a.value.value.len() == 0 {
-            let anchor = self.range(a.end, a.end, c)?;
-            evidence.lexical_part(
+        if let Some(occurrence) = &a.lexical {
+            Self::retain_lexical_text(
+                evidence,
                 c,
-                &a.lexical,
+                occurrence,
+                HtmlParseLexicalRole::Name,
+                a.name.origins.as_slice(),
+            )?;
+            Self::retain_lexical_text(
+                evidence,
+                c,
+                occurrence,
                 HtmlParseLexicalRole::Value,
-                &anchor,
-                0..0,
-                None,
+                a.value.origins.as_slice(),
+            )?;
+            if a.value.value.len() == 0 {
+                let anchor = self.range(a.end, a.end, c)?;
+                evidence.lexical_part(
+                    c,
+                    occurrence,
+                    HtmlParseLexicalRole::Value,
+                    &anchor,
+                    0..0,
+                    None,
+                )?;
+            }
+            evidence.lexical_finish(
+                c,
+                occurrence,
+                &source,
+                HtmlParseLexicalKind::Attribute,
+                if a.duplicate {
+                    HtmlParseLexicalDisposition::DuplicateAttribute
+                } else if t.kind == TagKind::End {
+                    HtmlParseLexicalDisposition::EndTagAttribute
+                } else {
+                    HtmlParseLexicalDisposition::StoredAttribute
+                },
             )?;
         }
-        evidence.lexical_finish(
-            c,
-            &a.lexical,
-            &source,
-            HtmlParseLexicalKind::Attribute,
-            if a.duplicate {
-                HtmlParseLexicalDisposition::DuplicateAttribute
-            } else if t.kind == TagKind::End {
-                HtmlParseLexicalDisposition::EndTagAttribute
-            } else {
-                HtmlParseLexicalDisposition::StoredAttribute
-            },
-        )?;
         if !a.duplicate {
             // Reserve while both draft buffers remain in their original owner.
             // A denied physical layout must not consume their cleanup tickets.
@@ -1140,7 +1155,7 @@ impl<'source> Tokenizer<'source> {
                 if let Err((stop, a)) = t.attributes.try_push_recover(
                     c,
                     Attribute {
-                        lexical: Some(a.lexical),
+                        lexical: a.lexical,
                         name,
                         value,
                         source,
@@ -1501,26 +1516,9 @@ impl<'source> Tokenizer<'source> {
         let text = DraftText::build(c, |text, c| {
             text.push(0x3C, &self.less_than, HtmlParseOriginKind::Literal, c)?;
             text.push(0x2F, &self.slash, HtmlParseOriginKind::Literal, c)?;
-            self.temporary.require_paired(c)?;
-            for (&unit, origin) in self
-                .temporary
-                .value
-                .units()
-                .iter()
-                .zip(self.temporary.origins.as_slice())
-            {
-                c.charge_unit_inspection()?;
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                text.push(u32::from(unit), &origin.source, origin.kind, c)?;
-            }
-            Ok(())
+            self.temporary.replay_into(text, &self.current, c)
         })?;
-        let end = self
-            .temporary
-            .origins
-            .as_slice()
-            .last()
-            .map_or(self.slash.end(), |o| o.source.end());
+        let end = self.temporary.last_end().unwrap_or(self.slash.end());
         if let Err(stop) = self.clear_temporary(c) {
             text.release(c)?;
             return Err(stop);
@@ -1552,21 +1550,11 @@ impl<'source> Tokenizer<'source> {
             .as_mut()
             .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .push(0x3F, &self.slash, HtmlParseOriginKind::Literal, c)?;
-        self.temporary.require_paired(c)?;
-        for (&unit, origin) in self
-            .temporary
-            .value
-            .units()
-            .iter()
-            .zip(self.temporary.origins.as_slice())
-        {
-            c.charge_unit_inspection()?;
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            self.comment
-                .as_mut()
-                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-                .push(u32::from(unit), &origin.source, origin.kind, c)?;
-        }
+        let comment = self
+            .comment
+            .as_mut()
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
+        self.temporary.replay_into(comment, &self.current, c)?;
         self.clear_temporary(c)
     }
     fn emit_pi(

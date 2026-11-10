@@ -1039,7 +1039,7 @@ impl SessionStorage {
         let stage = self.range_stage(c)?;
         let output = stage.output.take().ok_or_else(|| integrity(c))?;
         let value = output.freeze(c)?;
-        let (native, next) = self.register_group_string_owned(c, value, Some(group))?;
+        let (native, next) = self.register_group_string_owned(c, value, group)?;
         drop(native);
         payload_write::<usize>(c, 1)?;
         payload_write::<RetainedPayload>(c, 2)?;

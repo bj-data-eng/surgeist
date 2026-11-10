@@ -78,6 +78,8 @@ impl SessionStorage {
             failed_text_append,
             appended_units: _,
             style_order_floor: _,
+            token_end: _,
+            handler_starts: _,
             main_tree_styleless: _,
             style_subtree: _,
             detached_order: _,

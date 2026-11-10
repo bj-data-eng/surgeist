@@ -32,6 +32,7 @@ impl<'source> FragmentEntry<'source> {
                 *request.limits(),
                 request.cancellation().clone(),
                 request.accounting().lease(),
+                request.detail(),
             ),
             head: None,
             failed_evidence: None,

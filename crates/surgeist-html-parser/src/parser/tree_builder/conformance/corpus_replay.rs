@@ -713,3 +713,365 @@ fn script_on_cases_are_exactly_the_documents_the_disabled_only_profile_excludes(
         surgeist_html::parsing::HtmlParserScriptingMode::Disabled
     );
 }
+
+/// Asserts that two shapes are equal, naming the first line that differs.
+fn assert_same_shape(left: &Result<String, String>, right: &Result<String, String>, label: &str) {
+    if left == right {
+        return;
+    }
+    let (Ok(l), Ok(r)) = (left, right) else {
+        panic!("{label}: {left:?} != {right:?}")
+    };
+    for (index, (a, b)) in l.lines().zip(r.lines()).enumerate() {
+        assert_eq!(a, b, "{label}: line {index}");
+    }
+    panic!(
+        "{label}: {} lines against {}",
+        l.lines().count(),
+        r.lines().count()
+    );
+}
+
+/// Every public reader of one metadata record, in a form that does not name node
+/// identities.
+fn metadata_shape(out: &mut String, record: &crate::HtmlParseMetadata<'_>) {
+    use std::fmt::Write as _;
+    macro_rules! show {
+        ($name:literal, $value:expr) => {
+            if let Some(value) = $value {
+                writeln!(out, "  {}={:?}", $name, value).unwrap();
+            }
+        };
+    }
+    writeln!(out, "meta {:?}", record.node().kind()).unwrap();
+    show!("nonce", record.cryptographic_nonce());
+    show!("input_flags", record.input_flags());
+    show!("input_raw_value", record.input_raw_value());
+    show!("input_email_value_count", record.input_email_value_count());
+    show!("input_cursor", record.input_cursor());
+    show!(
+        "input_selected_files_empty",
+        record.input_selected_files_empty()
+    );
+    show!(
+        "input_creation_writeback",
+        record.input_creation_writeback()
+    );
+    show!("textarea_flags", record.textarea_flags());
+    show!("textarea_raw_value", record.textarea_raw_value());
+    show!("select_flags", record.select_flags());
+    show!("option_flags", record.option_flags());
+    show!(
+        "selectedcontent_disabled",
+        record.selectedcontent_disabled()
+    );
+    show!("form_parser_inserted", record.form_parser_inserted());
+    show!("pi_attribute_count", record.pi_attribute_count());
+    show!("shadow", record.shadow());
+    show!("link_flags", record.link_flags());
+    show!("link_history", record.link_history());
+    let label = |node: Option<HtmlNode<'_>>| node.map(|node| format!("{:?}", node.kind()));
+    show!("form_owner", record.form_owner().map(label));
+    show!(
+        "option_nearest_select",
+        record.option_nearest_select().map(label)
+    );
+    show!(
+        "document_first_base",
+        record.document_first_base().map(label)
+    );
+    show!(
+        "document_facts",
+        record
+            .document_facts()
+            .map(|(class, flag, inert)| (class, flag, label(inert)))
+    );
+    if let Some(dialog) = record.dialog() {
+        writeln!(out, "  dialog={:?}", dialog.return_value()).unwrap();
+    }
+    if let Some(image) = record.image() {
+        writeln!(
+            out,
+            "  image={:?} {}",
+            image.state(),
+            image.latest_started()
+        )
+        .unwrap();
+    }
+    if let Some(script) = record.script_state() {
+        writeln!(
+            out,
+            "  script={} {} {:?} {} {} {} {}",
+            script.force_async(),
+            script.already_started(),
+            script.script_type(),
+            script.external_file(),
+            script.ready_to_be_parser_executed(),
+            script.delaying_load(),
+            script.steps_when_result_ready().is_some()
+        )
+        .unwrap();
+    }
+    if let Some(style) = record.style() {
+        writeln!(
+            out,
+            "  style={:?} {}",
+            style.state(),
+            style.creating_parser_document().is_some()
+        )
+        .unwrap();
+    }
+    if record.hyperlink().is_some() {
+        writeln!(out, "  hyperlink").unwrap();
+    }
+    if let Some(attributes) = record.pi_attribute_count() {
+        for index in 0..attributes {
+            show!("pi_attribute", record.pi_attribute(index));
+        }
+    }
+}
+
+/// The tree, the metadata and the pending associations of a report, in a form
+/// that does not name node identities, so two parses of one input compare.
+fn shape(report: &crate::HtmlParseReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    if let Some(document) = report.document() {
+        out.push_str(&render(document));
+    }
+    if let Some(fragment) = report.fragment() {
+        out.push_str(&render_fragment(fragment));
+    }
+    let mut metadata = report.metadata();
+    loop {
+        match metadata.advance() {
+            crate::HtmlParseMetadataStep::Record(record) => metadata_shape(&mut out, &record),
+            crate::HtmlParseMetadataStep::Skipped => {}
+            crate::HtmlParseMetadataStep::Complete => break,
+            crate::HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    match report.effects() {
+        Ok(Some(effects)) => {
+            // The number of registry slots counts the rows a parse keeps, which
+            // detail changes; the effects themselves do not change.
+            writeln!(out, "effects {}", effects.len()).unwrap();
+            for index in 0..effects.len() {
+                match effects.effect(index) {
+                    Ok(Some(crate::HtmlParseEffect::TemplateCache { inert, .. })) => {
+                        writeln!(out, "  template-cache {:?}", inert.kind()).unwrap();
+                    }
+                    Ok(Some(crate::HtmlParseEffect::AttachShadow {
+                        template,
+                        contents,
+                        properties,
+                        keep_registry_null,
+                        declarative,
+                        available_to_internals,
+                        source,
+                        ..
+                    })) => {
+                        writeln!(
+                            out,
+                            "  attach-shadow {:?} {:?} {properties:?} {keep_registry_null} {declarative} {available_to_internals} {}..{}",
+                            template.kind(),
+                            contents.kind(),
+                            source.start(),
+                            source.end()
+                        )
+                        .unwrap();
+                    }
+                    other => panic!("effect {index}: {}", other.is_ok()),
+                }
+            }
+        }
+        Ok(None) => {}
+        Err(fault) => panic!("{fault}"),
+    }
+    let mut pending = report.pending_associations();
+    loop {
+        match pending.advance() {
+            crate::HtmlParsePendingAssociationStep::Occurrence(row) => {
+                let value = |value: Option<&DocumentString>| value.map(|v| text(v.code_units()));
+                writeln!(
+                    out,
+                    "occurrence {:?} {} {:?} {:?}",
+                    row.kind(),
+                    row.requires_processing(),
+                    value(row.preferred_name()),
+                    value(row.base_changed_input()),
+                )
+                .unwrap();
+                if let Some(style) = row.style() {
+                    for index in 0..style.text_len() {
+                        writeln!(out, "style text {:?}", value(style.text(index).unwrap()))
+                            .unwrap();
+                    }
+                }
+            }
+            crate::HtmlParsePendingAssociationStep::Document(row) => {
+                writeln!(
+                    out,
+                    "document {} {}",
+                    row.occurrence_count(),
+                    row.has_obligations()
+                )
+                .unwrap();
+            }
+            crate::HtmlParsePendingAssociationStep::Skipped => {}
+            crate::HtmlParsePendingAssociationStep::Complete => break,
+            crate::HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    out
+}
+
+/// The shape of one parse of a retained case with the detail selected, or the
+/// failure it ended in.
+fn shape_with(
+    fixture: &Fixture<'_>,
+    utf16: bool,
+    detail: crate::DetailSet,
+) -> Result<String, String> {
+    let parsed = match fixture.fragment {
+        None => document_request(fixture.input, utf16)
+            .with_detail(detail)
+            .map_err(|e| e.to_string())?
+            .parse(),
+        Some(context) => fragment_request(context, fixture.input, utf16)?
+            .with_detail(detail)
+            .map_err(|e| e.to_string())?
+            .parse(),
+    };
+    match parsed {
+        Ok(report) => Ok(shape(&report)),
+        Err(failure) => Err(format!("{:?} {:?}", failure.reason(), failure.first_stop())),
+    }
+}
+
+/// Parsing every retained case with no detail, with each kind alone and with
+/// all of it gives one tree, the same metadata and the same pending
+/// associations: detail records the parse, and does not change it.
+#[cfg(feature = "detail")]
+#[test]
+fn every_retained_case_gives_the_same_result_whatever_detail_the_parse_selects() {
+    use crate::DetailSet;
+    let mut compared = 0;
+    for (file, raw) in DATA {
+        for fixture in decode(raw).unwrap_or_else(|e| panic!("{file}: {e:?}")) {
+            if fixture.scripting == FixtureScripting::Enabled {
+                continue;
+            }
+            for utf16 in [false, true] {
+                let expected = shape_with(&fixture, utf16, DetailSet::ALL);
+                for detail in [
+                    DetailSet::NONE,
+                    DetailSet::SOURCE_MAP,
+                    DetailSet::LEXICAL,
+                    DetailSet::HISTORY,
+                    DetailSet::DIAGNOSTICS,
+                ] {
+                    assert_same_shape(
+                        &shape_with(&fixture, utf16, detail),
+                        &expected,
+                        &format!("{file}/{} utf16={utf16} detail={detail:?}", fixture.ordinal),
+                    );
+                }
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 3000, "{compared} comparisons");
+}
+
+/// Inputs that reach the code a parse without a graph takes its own way: the value
+/// sanitization and generated values of the input types, text areas, selects,
+/// details, the image name recovery and the splitting of body text.
+const DETAIL_INPUTS: &[&str] = &[
+    "<input type=color value=#FF0000>",
+    "<input type=color value=red alpha colorspace=display-p3>",
+    "<input type=color value=currentcolor colorspace=bogus>",
+    "<input type=color>",
+    "<input type=range min=1 max=10 step=3 value=50>",
+    "<input type=range min=a max=b step=any value=x>",
+    "<input type=range value=5 min=10 max=1>",
+    "<input type=number value=' 12 '>",
+    "<input type=number value=1e3 step=any>",
+    "<input type=email multiple value=' a@b.c ,\n d@e.f '>",
+    "<input type=email value='a@b.c\r\nd'>",
+    "<input type=text value='a\nb\r\nc\rd'>",
+    "<input type=url value='  http://x \n'>",
+    "<input type=search value='x\ty'>",
+    "<input type=password value='\n\n'>",
+    "<input type=tel value=' 1 2 '>",
+    "<input type=date value=2020-01-02>",
+    "<input type=month value=2020-13>",
+    "<input type=week value=2020-W53>",
+    "<input type=time value=25:00>",
+    "<input type=datetime-local value='2020-01-02 03:04'>",
+    "<input type=datetime-local value='2020-01-02T03:04:05.6'>",
+    "<input type=checkbox checked value=v><input type=radio name=r checked><input type=radio name=r>",
+    "<input type=file multiple><input type=image src=x alt=y><input type=hidden value=h>",
+    "<input type=submit><input type=reset value=r><input type=button>",
+    "<form><input name=a value=1><input name=b><textarea>t</textarea></form>",
+    "<textarea>\nline1\r\nline2</textarea>",
+    "<textarea rows=2 cols=3>a&amp;b</textarea><textarea></textarea>",
+    "<select><option>a<option selected>b<optgroup><option>c</select>",
+    "<select multiple size=2><option selected>a<option selected>b</select>",
+    "<details open><summary>s</summary>d</details><details name=n><details name=n open>",
+    "<image src=x><image><IMAGE>",
+    "<p><image alt=y></p>",
+    "</br><br></br>",
+    "<table>  \n x <tr><td>y</td></tr> z </table>",
+    "<table>\0 \n<td>q</table>",
+    "<body>\n\n  text\0 more <b> <i>  x</b>  </i>",
+    "<html>\n <head>\n</head>\r\n<body>\r\n<pre>\nx\r\n</pre>",
+    "  \n  <!-- c -->  <p>x",
+    "<style title=A media=screen>a{}</style><meta http-equiv=default-style content=A><base href=x>",
+    "<script>1</script><script src=a async></script><script type=module>2</script>",
+    "<template><input value=t><style>x</style></template><dialog open>d</dialog>",
+    "<a href=x>l</a><link rel=stylesheet href=y><img src=z width=1 height=2>",
+    "<svg><script>s</script><a href=x></svg><math><mi>x</mi></math>",
+    "<?pi a=b c='d'?><?xml-stylesheet href=x?>",
+];
+
+#[cfg(feature = "detail")]
+#[test]
+fn inputs_that_take_their_own_way_without_a_graph_give_the_same_result() {
+    use crate::DetailSet;
+    for text in DETAIL_INPUTS {
+        for utf16 in [false, true] {
+            let selections: [Result<String, String>; 2] =
+                [DetailSet::ALL, DetailSet::NONE].map(|detail| {
+                    let parsed = document_request(text, utf16)
+                        .with_detail(detail)
+                        .map_err(|e| e.to_string())?
+                        .parse();
+                    parsed
+                        .map(|report| shape(&report))
+                        .map_err(|f| format!("{:?} {:?}", f.reason(), f.first_stop()))
+                });
+            assert_eq!(
+                selections[0], selections[1],
+                "document {text:?} utf16={utf16}"
+            );
+            for context in ["div", "table", "select", "template"] {
+                let selections: [Result<String, String>; 2] = [DetailSet::ALL, DetailSet::NONE]
+                    .map(|detail| {
+                        let parsed = fragment_request(context, text, utf16)?
+                            .with_detail(detail)
+                            .map_err(|e| e.to_string())?
+                            .parse();
+                        parsed
+                            .map(|report| shape(&report))
+                            .map_err(|f| format!("{:?} {:?}", f.reason(), f.first_stop()))
+                    });
+                assert_same_shape(
+                    &selections[0],
+                    &selections[1],
+                    &format!("fragment {context} {text:?} utf16={utf16}"),
+                );
+            }
+        }
+    }
+}
