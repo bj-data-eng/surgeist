@@ -1004,8 +1004,10 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         }
         for value in [attributes(&old, element)[1].value(), text(&old, text_node)] {
             assert_eq!(value.len(), 8192);
-            for chunk in value.code_units().chunks_exact(4) {
-                assert_eq!(chunk, [76, 0xd800, 0, 0xdc00]);
+            let (chunks, remainder) = value.code_units().as_chunks::<4>();
+            assert!(remainder.is_empty());
+            for chunk in chunks {
+                assert_eq!(chunk, &[76, 0xd800, 0, 0xdc00]);
             }
             assert_eq!(value.shared_code_units().capacity(), capacity);
             assert!(Arc::ptr_eq(

@@ -1190,8 +1190,10 @@ fn distinct_rows_keep_parentage_and_ids_while_equal_child_values_share() {
 
 fn assert_large_pattern(value: &DocumentString) {
     assert_eq!(value.code_units().len(), 16_384);
-    for chunk in value.code_units().chunks_exact(4) {
-        assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+    let (chunks, remainder) = value.code_units().as_chunks::<4>();
+    assert!(remainder.is_empty());
+    for chunk in chunks {
+        assert_eq!(chunk, &[65, 0xd800, 0, 0xdc00]);
     }
 }
 
