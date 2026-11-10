@@ -1,12 +1,12 @@
-//! The accounting of a parse that runs in its own operation, kept in plain
-//! counters.
+//! The accounting of a parse with no host and no profiled operation, kept in
+//! plain counters.
 //!
-//! A parse that selected no profiling and no host operation charges two ledger
-//! scopes: a charging scope that records every work category and every resource
-//! without a cap, and its parent, the cap scope, which carries the parse limits
-//! and totals the credits (`accounting::private`). Nothing else observes that
-//! operation, so [`Meter`] holds the state of both scopes in tables and applies
-//! the ledger's admission rules to them directly:
+//! The ledger form of that accounting has two scopes: a charging scope that
+//! records every work category and every resource without a cap, and its parent,
+//! the cap scope, which carries the parse limits and totals the credits
+//! (`accounting::private`). Nothing else observes it, so [`Meter`] holds the
+//! state of both scopes in tables and applies the ledger's admission rules to
+//! them directly:
 //!
 //! - A batch is atomic and its items are checked in order, each against the
 //!   charging scope and then the cap scope. The first refusal names the scope,

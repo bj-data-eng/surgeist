@@ -387,7 +387,8 @@ fn retained_bytes_stay_within_the_bytes_per_node_bound() {
 }
 
 /// An owned parse charges plain counters and calls no ledger operation after its
-/// setup.
+/// setup. The counter records calls on a shared operation, so this test guards
+/// the owned parse's choice of the meter, not calls made inside the meter.
 #[test]
 fn an_owned_parse_makes_no_ledger_call() {
     let cost = cost(ordinary(8));

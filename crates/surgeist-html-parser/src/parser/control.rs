@@ -555,7 +555,7 @@ const UNIT_LITERAL_PAIR_BYTES: u64 = 3;
 const BYTE_PAIR_BYTES: u64 = 2;
 
 impl ParseControl {
-    /// A control with its own ledger operation.
+    /// A control that keeps its figures in counters of its own.
     #[cfg(test)]
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
         Self::with_accounting(limits, cancellation, None)

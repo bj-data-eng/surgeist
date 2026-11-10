@@ -54,12 +54,15 @@ pub(crate) enum Ledger {
 impl Ledger {
     fn apply(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
         match self {
+            // An owned parse charges only its charging scope; the meter
+            // derives the cap scope's figures from it.
             Self::Owned(meter) => meter.apply(changes),
             Self::Shared(operation) => operation.apply_batch(scope, changes),
         }
     }
     fn check(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
         match self {
+            // As in `apply`: the charging scope is the only one charged.
             Self::Owned(meter) => meter.check(changes),
             Self::Shared(operation) => operation.check_batch(scope, changes),
         }
@@ -104,8 +107,8 @@ pub(crate) struct Accounts {
 }
 
 impl Accounts {
-    /// The accounts of a parse that runs in its own operation, or in the
-    /// operation the lease names.
+    /// The accounts of a parse that keeps its figures in counters of its own,
+    /// or that charges the operation the lease names.
     pub(crate) fn new(
         limits: &HtmlParseLimits,
         lease: Option<&Arc<Lease>>,

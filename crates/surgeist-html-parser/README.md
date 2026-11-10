@@ -211,9 +211,10 @@ than 32 attributes, which compares names pair by pair, is not. One hash key serv
 whole process, so within it the same list charges the same work every time; across processes the
 probes it admits, and so its work, can differ by a small share.
 
-A parse charges its work and resources through a `surgeist-ledger` operation of the HTML
-accounting schema (`HtmlWork` and `HtmlResource` of `surgeist_html::accounting`). A request
-that sets nothing charges an operation of its own that nothing observes. `with_accounting`
+A parse charges its work and resources under the HTML accounting schema (`HtmlWork` and
+`HtmlResource` of `surgeist_html::accounting`) with the admission rules of `surgeist-ledger`.
+A request that sets nothing keeps its figures in counters of its own and calls no ledger
+operation after setup. `with_accounting`
 takes one `HtmlParseAccounting`: `host(scope)` charges the `HtmlHostScope` of an operation the
 host owns, so the parse is charged once in the host's totals, and `profiled(mode)` charges
 the parse's own operation under a ledger profile mode, read back from the report's or
