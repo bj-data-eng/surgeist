@@ -677,6 +677,21 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         if changes.is_empty() {
             return Ok(());
         }
+        if let [Change::Work(dimension, amount)] = *changes
+            && const { in_place::wide::<W, R>() }
+            && self.profile.is_empty()
+            && !self.checkpoints.configured()
+            && let Some(result) = in_place::admit_one_work(
+                &mut self.scopes,
+                &self.defect,
+                scope,
+                origin,
+                dimension,
+                amount,
+            )
+        {
+            return self.note(result);
+        }
         let result = self.admit_batch(scope, origin, changes);
         if !self.profile.is_empty() || self.checkpoints.configured() {
             self.observe_admission(scope, changes, result)?;
