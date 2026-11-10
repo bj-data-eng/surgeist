@@ -16,7 +16,7 @@ describe their use by this crate; a downstream executable's contents depend on
 its build. Transitive versions can change with dependency resolution. Upstream
 license alternatives are preserved without selecting one.
 
-This product depends on `cfg-if` 1.0.4 through the stylesheet byte decoding of
+This product depends on `cfg-if` 1.0.5 through the stylesheet byte decoding of
 `surgeist-css-parser`, distributed by Alex Crichton:
 
 * License: [MIT](licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](licenses/cfg-if/LICENSE-APACHE)

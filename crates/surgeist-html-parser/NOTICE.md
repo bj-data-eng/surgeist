@@ -149,7 +149,7 @@ The license texts below reuse the exact retained copies in the CSS and CSS parse
 The graph is not an inventory of every downstream binary; linker behavior and
 resolution determine a consumer’s contents. License alternatives remain intact.
 
-This product depends on `cfg-if` 1.0.4 through surgeist-css-parser stylesheet byte
+This product depends on `cfg-if` 1.0.5 through surgeist-css-parser stylesheet byte
 decoding, distributed by Alex Crichton:
 
 * License: [MIT](../surgeist-css/licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/cfg-if/LICENSE-APACHE)
