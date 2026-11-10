@@ -28,6 +28,8 @@ mod browser_controls;
 mod child_baseline;
 #[path = "grid_tests/lanes_subgrid_tests.rs"]
 mod lanes_subgrid;
+#[path = "grid_tests/minimum_over_maximum_tests.rs"]
+mod minimum_over_maximum;
 #[path = "grid_tests/oracle_comparison_tests.rs"]
 mod oracle_comparison;
 #[path = "grid_tests/scroll_composition_tests.rs"]
