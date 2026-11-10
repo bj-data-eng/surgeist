@@ -560,7 +560,7 @@ impl ParseControl {
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
         Self::with_accounting(limits, cancellation, None)
     }
-    /// A control that charges the operation of `lease`, or its own operation
+    /// A control that charges the operation of `lease`, or its own counters
     /// when there is none. A setup fault latches as the first stop.
     pub(crate) fn with_accounting(
         limits: HtmlParseLimits,

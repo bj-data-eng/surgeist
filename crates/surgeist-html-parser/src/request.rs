@@ -202,7 +202,7 @@ impl HtmlDocumentParseRequest {
     /// Charges the parse as `accounting` says: in a host's operation and scope,
     /// or in an operation of its own under a profile mode. The last call is the
     /// one that applies, and it is the only setting there is: a request that
-    /// never calls it charges an operation of its own that nothing observes. See
+    /// never calls it keeps its figures in counters of its own. See
     /// [`HtmlParseAccounting`](crate::HtmlParseAccounting) for the scopes the
     /// parse adds and the custody its report keeps.
     #[must_use]
