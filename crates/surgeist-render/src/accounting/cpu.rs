@@ -329,6 +329,19 @@ impl CpuAccount {
         let _phase = self.begin_maintenance_phase();
         run()
     }
+    /// Checked forward entry without moving a staged payload into a callback.
+    pub(super) fn begin_checked_phase(&self) -> Result<MaintenancePhase> {
+        self.core.healthy()?;
+        let observation = self
+            .core
+            .ledger
+            .begin_phase(self.core.scopes[self.scope.index()])
+            .map_err(|error| self.core.record(self.core.diagnostic(error)))?;
+        Ok(MaintenancePhase {
+            core: self.core.clone(),
+            observation: Some(observation),
+        })
+    }
     pub(super) fn begin_maintenance_phase(&self) -> MaintenancePhase {
         let observation = match self
             .core
@@ -672,15 +685,13 @@ impl fmt::Debug for CpuImport {
     }
 }
 impl CpuImport {
-    /// Destroys an owning value while this import's payload custody stays live.
-    /// The import's own registry release follows separately in `Drop`.
-    pub(crate) fn dispose_value<T>(&self, run: impl FnOnce() -> T) -> T {
-        let account = CpuAccount {
+    /// Core-only observation capability; the actual registry lease stays local.
+    pub(super) fn disposal_account(&self) -> CpuAccount {
+        CpuAccount {
             core: self.owner.core.clone(),
             owner: None,
             scope: RenderCpuScope::Cleanup,
-        };
-        account.maintenance_phase(run)
+        }
     }
 
     pub(crate) fn try_clone_with(&self, forward: Option<&Account>) -> Result<Self> {

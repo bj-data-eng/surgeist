@@ -354,7 +354,7 @@ impl BackdropFilterInput {
     ) -> Result<()> {
         validate_backdrop_filter_list(&self.filters)?;
         if let Some(clip) = &self.clip {
-            let _normalized = clip.normalize_in(capabilities, account)?;
+            clip.normalize_and_discard_in(capabilities, account)?;
         }
         Ok(())
     }

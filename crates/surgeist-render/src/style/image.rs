@@ -1068,14 +1068,16 @@ impl ImageRepeatPlan {
             RenderAttemptKind::ImageRepeat,
             RenderPhase::Repeat,
             |account| {
-                let (repeat, hold) = self.resolve_in(placement, account)?;
-                let guarded = crate::accounting::BackedValue::new(repeat, [Some(hold), None]);
-                guarded.require_preparation()?;
-                let (repeat, backing, _) = guarded.into_parts();
-                for hold in backing.into_iter().flatten() {
-                    hold.into_preparation()?.retain();
-                }
-                Ok(repeat)
+                let (tiles, clip_rect) = self.resolve_tiles_in(placement, account)?;
+                let (tile_rects, backing) = tiles.into_preparation()?.into_parts();
+                Ok(crate::accounting::PreparationValue::new(
+                    ResolvedImageRepeat {
+                        clip_rect,
+                        tile_rects,
+                    },
+                    [Some(backing), None],
+                )
+                .into_retained())
             },
         )
     }
@@ -1085,6 +1087,22 @@ impl ImageRepeatPlan {
         placement: ResolvedImagePlacement,
         account: &Account,
     ) -> Result<(ResolvedImageRepeat, Hold)> {
+        let (tiles, clip_rect) = self.resolve_tiles_in(placement, account)?;
+        let (tile_rects, hold) = tiles.into_parts()?;
+        Ok((
+            ResolvedImageRepeat {
+                clip_rect,
+                tile_rects,
+            },
+            hold,
+        ))
+    }
+
+    fn resolve_tiles_in(
+        self,
+        placement: ResolvedImagePlacement,
+        account: &Account,
+    ) -> Result<(crate::accounting::AccountedVec<Rect>, Rect)> {
         let account = account.at(RenderPhase::Repeat);
         account.phase(RenderPhase::Repeat, || {
             account.with_local_quota(
@@ -1139,14 +1157,7 @@ impl ImageRepeatPlan {
                             tile_rects.push(tile_rect)?;
                         }
                     }
-                    let (tile_rects, hold) = tile_rects.into_parts()?;
-                    Ok((
-                        ResolvedImageRepeat {
-                            clip_rect: placement.paint_rect(),
-                            tile_rects,
-                        },
-                        hold,
-                    ))
+                    Ok((tile_rects, placement.paint_rect()))
                 },
             )
         })

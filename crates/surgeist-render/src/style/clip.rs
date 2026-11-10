@@ -7,7 +7,8 @@ use super::super::{
 };
 use super::image::StyleResourceRef;
 use crate::accounting::{
-    Account, BackedValue, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
+    Account, DisposalCompletion, Hold, PreparationValue, RenderAccountingContext,
+    RenderAttemptKind, RenderPhase, preparation_backing,
 };
 use kurbo::Shape as KurboShape;
 
@@ -159,61 +160,76 @@ impl ClipInput {
         context: &mut RenderAccountingContext,
     ) -> Result<NormalizedClip> {
         context.run(RenderAttemptKind::Clip, RenderPhase::Clip, |account| {
-            let guarded = self.normalize_in(capabilities, account)?;
-            guarded.require_preparation()?;
-            let (clip, backing, import) = guarded.into_parts();
-            for hold in backing.into_iter().flatten() {
-                hold.into_preparation()?.retain();
-            }
-            drop(import);
-            Ok(clip)
-        })
-    }
-
-    pub(crate) fn normalize_in(
-        &self,
-        capabilities: Capabilities,
-        account: &Account,
-    ) -> Result<BackedValue<NormalizedClip>> {
-        let account = account.at(RenderPhase::Clip);
-        account.phase(RenderPhase::Clip, || {
-            self.ensure_supported(capabilities)?;
-            let (geometry, hold) = match &self.kind {
-                ClipInputKind::Shape(shape) => ClipGeometry::from_shape_in(shape, &account)?,
-                ClipInputKind::Path(path) => {
-                    crate::validation::validate_path_in(path.path(), &account)?;
-                    let (copied, hold) = path.path().try_clone_in(&account)?;
-                    (
-                        ClipGeometry {
-                            kind: ClipGeometryKind::Path(FilledPath::from_validated_parts(
-                                copied,
-                                path.fill_rule(),
-                            )),
-                        },
-                        Some(hold),
-                    )
-                }
-                ClipInputKind::Reference(reference) => {
-                    return Err(Error::unresolved_resource(UnresolvedResource::new(
-                        UnresolvedResourceKind::Clip,
-                        reference.identifier(),
-                    )));
-                }
-            };
-            let normalized = BackedValue::new(
+            let mut completion = DisposalCompletion::default();
+            let (copied_geometry, backing) = self.normalize_geometry_in(capabilities, account)?;
+            let mut backing = backing;
+            let geometry = copied_geometry;
+            let start = completion.start([backing.as_ref(), None], None);
+            let preparation = preparation_backing(&mut backing)?;
+            start.disarm();
+            Ok(PreparationValue::new(
                 NormalizedClip {
                     geometry,
                     coordinate_space: self.coordinate_space,
                 },
-                [hold, None],
-            );
-            validate_clip_transformed_bounds_in(
-                &normalized.geometry,
-                normalized.coordinate_space,
-                &account,
-            )?;
-            Ok(normalized)
+                [preparation, None],
+            )
+            .into_retained())
         })
+    }
+
+    pub(crate) fn normalize_geometry_in(
+        &self,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<(ClipGeometry, Option<Hold>)> {
+        let account = account.at(RenderPhase::Clip);
+        let entered_phase = account.begin_phase(RenderPhase::Clip)?;
+        self.ensure_supported(capabilities)?;
+        let mut completion = DisposalCompletion::default();
+        let (copied_geometry, hold) = match &self.kind {
+            ClipInputKind::Shape(shape) => ClipGeometry::from_shape_in(shape, &account)?,
+            ClipInputKind::Path(path) => {
+                crate::validation::validate_path_in(path.path(), &account)?;
+                let (copied, hold) = path.path().try_clone_in(&account)?;
+                (
+                    ClipGeometry {
+                        kind: ClipGeometryKind::Path(FilledPath::from_validated_parts(
+                            copied,
+                            path.fill_rule(),
+                        )),
+                    },
+                    Some(hold),
+                )
+            }
+            ClipInputKind::Reference(reference) => {
+                return Err(Error::unresolved_resource(UnresolvedResource::new(
+                    UnresolvedResourceKind::Clip,
+                    reference.identifier(),
+                )));
+            }
+        };
+        let hold = hold;
+        let geometry = copied_geometry;
+        let start = completion.start([hold.as_ref(), None], None);
+        validate_clip_transformed_bounds_in(&geometry, self.coordinate_space, &account)?;
+        drop(entered_phase);
+        start.disarm();
+        Ok((geometry, hold))
+    }
+    /// Planning performs the same normalization and drops the actual copied value.
+    pub(crate) fn normalize_and_discard_in(
+        &self,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<()> {
+        let mut completion = DisposalCompletion::default();
+        let (copied_geometry, backing) = self.normalize_geometry_in(capabilities, account)?;
+        let backing = backing;
+        let geometry = copied_geometry;
+        let _geometry = geometry;
+        let _start = completion.start([backing.as_ref(), None], None);
+        Ok(())
     }
 }
 
@@ -228,9 +244,6 @@ pub struct NormalizedClip {
 }
 
 impl NormalizedClip {
-    pub(crate) fn into_parts(self) -> (ClipGeometry, Option<CoordinateSpaceTag>) {
-        (self.geometry, self.coordinate_space)
-    }
     /// Validates normalized clip geometry in its optional coordinate space.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for invalid geometry or for
@@ -555,6 +568,76 @@ mod accounting_tests {
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
+    #[test]
+    fn filter_planning_discard_preserves_the_literal_path_work_and_releases_both_vectors() {
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
+        let mut path = Path::new();
+        path.move_to(Point::new(1.0, 2.0))
+            .line_to(Point::new(3.0, 4.0))
+            .close();
+        let clip = ClipInput::try_filled_path(
+            FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap(),
+        )
+        .unwrap();
+        let filter = BackdropFilterInput::try_new(
+            FilterList::try_ops(vec![FilterOp::blur(FilterBlur::try_new(1.0).unwrap())]).unwrap(),
+            BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 8.0, 8.0)).unwrap(),
+            Some(clip),
+        )
+        .unwrap();
+        for limit in [8, 9] {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::PathElementVisits, limit)
+                    .unwrap(),
+            );
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(crate::RenderResource::RetainedCpuBytes);
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let result =
+                filter.ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account());
+            if limit == 9 {
+                result.unwrap();
+            } else {
+                let error = result.unwrap_err();
+                let Some(crate::RenderAccountingError::Refused(refusal)) =
+                    error.accounting_diagnostic()
+                else {
+                    panic!("expected the ninth path visit to refuse")
+                };
+                assert_eq!(refusal.current(), 8);
+                assert_eq!(refusal.amount(), 1);
+            }
+            assert_eq!(
+                attempt
+                    .account()
+                    .work_count(RenderWork::PathElementVisits)
+                    .unwrap(),
+                limit
+            );
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(crate::RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(crate::RenderResource::ScratchCpuBytes),
+                0
+            );
+            assert_eq!(filter.clip().unwrap().filled_path().unwrap().path(), &path);
+        }
+    }
+
     mod normalization_custody_tests {
         use super::*;
         use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
@@ -591,7 +674,7 @@ mod accounting_tests {
                 .live(RenderResource::RetainedCpuBytes);
             let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
             let error = input
-                .normalize_in(Capabilities::CURRENT, attempt.account())
+                .normalize_and_discard_in(Capabilities::CURRENT, attempt.account())
                 .map(drop)
                 .unwrap_err();
             let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()

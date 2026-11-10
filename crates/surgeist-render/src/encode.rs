@@ -9,7 +9,7 @@ use super::{
     vello_engine::scene::{RoundedRectBlur, VelloScene},
     *,
 };
-use crate::accounting::{Account, AccountedVec, BackedValue, Hold, RenderPhase, RenderWork};
+use crate::accounting::{Account, AccountedVec, DisposalCompletion, Hold, RenderPhase, RenderWork};
 use crate::vello_engine::gradient_endpoints::{
     GradientProgram, GradientSampling, PadEndpoints, SceneBrush,
 };
@@ -760,23 +760,26 @@ fn encode_text_run(
         paint,
         glyphs,
     } = source;
-    let (font, font_name_hold) = font.try_to_owned_in(account)?;
-    let font = BackedValue::new(font, [font_name_hold, None]);
+    let mut run_completion = DisposalCompletion::default();
+    let mut font_completion = DisposalCompletion::default();
+    let (copied_font, font_name_hold) = font.try_to_owned_in(account)?;
+    let font_name_hold = font_name_hold;
+    let font = copied_font;
+    let font_start = font_completion.start([font_name_hold.as_ref(), None], None);
     let (paint, paint_hold) = paint.try_clone_in(account)?;
-    // Only infallible moves remain between disarming the font guard and arming
-    // the complete run guard; a failed paint copy still drops the guarded font.
-    let (font, [font_name_hold, _], _) = font.into_parts();
-    let run = BackedValue::new(
-        TextRun::from_validated_parts(
-            font,
-            size,
-            run_transform,
-            paint,
-            glyphs,
-            TextRunBounds::unspecified(),
-        ),
-        [font_name_hold, paint_hold],
+    let paint_hold = paint_hold;
+    // A failed paint copy disposes the still-armed font. The complete run then
+    // borrows both original backings through encoding and actual destruction.
+    font_start.disarm();
+    let run = TextRun::from_validated_parts(
+        font,
+        size,
+        run_transform,
+        paint,
+        glyphs,
+        TextRunBounds::unspecified(),
     );
+    let _run_start = run_completion.start([font_name_hold.as_ref(), paint_hold.as_ref()], None);
     scene.encode_text_run_with_transform(&run, transform, target_extent, account)
 }
 
@@ -1943,6 +1946,67 @@ mod paint_visit_tests {
             );
             assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
             drop(attempt);
+        }
+
+        #[test]
+        fn complete_text_staging_releases_both_independent_copies_after_success_or_font_error() {
+            for with_data in [false, true] {
+                let options = RenderAccountingOptions::new();
+                let cpu = RendererCpu::new(options).unwrap();
+                let opening = cpu
+                    .snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes);
+                let attempt =
+                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+                let name = "independently copied display name";
+                let mut font = FontRef::new(1).named(name);
+                if with_data {
+                    font = font.with_data(
+                        crate::FontData::try_from_bytes(
+                            include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                            0,
+                            surgeist_test::fixtures::FONT_LIMITS,
+                        )
+                        .unwrap(),
+                    );
+                }
+                let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
+                let mut encoded = VelloScene::default();
+                let result = encode_text_run(
+                    &mut encoded,
+                    kurbo::Affine::IDENTITY,
+                    TextRunSource {
+                        font: &font,
+                        size: 20.0,
+                        transform: Transform::identity(),
+                        paint: &paint,
+                        glyphs: &[],
+                    },
+                    PhysicalSize::new(2, 2),
+                    attempt.account(),
+                );
+                if with_data {
+                    result.unwrap();
+                } else {
+                    let error = result.unwrap_err();
+                    assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+                    assert!(error.message().contains("font data"));
+                }
+                let snapshot = cpu.snapshot().unwrap();
+                assert!(
+                    snapshot.usage().peak(RenderResource::RetainedCpuBytes)
+                        >= opening + name.len() as u64 + std::mem::size_of::<GradientStop>() as u64
+                );
+                assert_eq!(
+                    snapshot.usage().live(RenderResource::RetainedCpuBytes),
+                    opening
+                );
+                assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
+                assert_eq!(font.name.as_deref(), Some(name));
+                assert_eq!(paint, TextPaint::try_fill(paints()[1].clone()).unwrap());
+            }
         }
     }
 }

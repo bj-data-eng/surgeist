@@ -1,6 +1,6 @@
 use super::{GradientStop, Point, Result, validate_field_stops};
 #[cfg(feature = "render-paint")]
-use crate::accounting::{AccountedVec, BackedValue};
+use crate::accounting::{AccountedVec, PreparationValue};
 use crate::{
     accounting::{Account, Hold, RenderWork},
     validation::{
@@ -159,14 +159,15 @@ impl RepeatingGradient {
         source_indices: (usize, usize),
         positions: (f64, f64),
         account: &Account,
-    ) -> Result<BackedValue<Self>> {
+    ) -> Result<PreparationValue<Self>> {
         // Paint's immutable geometry and the consumer's qualified quotient or
         // physical identity prove the geometry/list domains. Only repetition's
         // span remains.
         account.work(RenderWork::PaintVisits, 1)?;
-        let (stops, backing) = stops.into_parts()?;
+        let fixed_owner = fixed_owner.into_preparation()?;
+        let (stops, backing) = stops.into_preparation()?.into_parts();
         let gradient =
-            BackedValue::new(Self { geometry, stops }, [Some(backing), Some(fixed_owner)]);
+            PreparationValue::new(Self { geometry, stops }, [Some(backing), Some(fixed_owner)]);
         account.work(RenderWork::CoordinateVisits, 1)?;
         let span = positions.1 - positions.0;
         account.work(RenderWork::CoordinateVisits, 1)?;
