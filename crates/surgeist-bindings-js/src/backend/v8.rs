@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use super::{ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
+use super::{CoercedString, ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
     ConstructorCompletion, Error, Exception, ExceptionPhase, FunctionMetadata, Intrinsic,
@@ -1026,21 +1026,35 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
+    fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error> {
         self.validate_root(value)?;
         self.attempt(
             ExceptionPhase::Coerce,
-            |scope, roots, _realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics| {
                 let value = roots.local(scope, value)?;
                 let string = value.to_string(scope).ok_or(Error::BackendUnavailable)?;
                 roots.available()?;
-                let mut units = Vec::new();
-                units
-                    .try_reserve_exact(string.length())
-                    .map_err(|_| Error::Allocation)?;
-                units.resize(string.length(), 0);
-                string.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
-                Ok(units)
+                Ok(CoercedString {
+                    length: string.length(),
+                    value: roots.retain(scope, realm, string.into())?,
+                })
+            },
+        )
+    }
+
+    fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error> {
+        self.validate_root(&string.value)?;
+        if units.len() != string.len() {
+            return Err(Error::BackendUnavailable);
+        }
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let string = roots.local(scope, &string.value)?;
+                let string = v8::Local::<v8::String>::try_from(string)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                string.write_v2(scope, 0, units, v8::WriteFlags::empty());
+                Ok(())
             },
         )
     }

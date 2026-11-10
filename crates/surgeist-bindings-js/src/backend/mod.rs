@@ -32,6 +32,19 @@ pub(crate) enum ObjectPrototype<'a> {
     Object(&'a Root),
 }
 
+/// One completed ToString, retained while its exact UTF-16 extent is admitted
+/// and copied. The immutable string cannot reenter guest coercion during copy.
+pub(crate) struct CoercedString {
+    value: Root,
+    length: usize,
+}
+
+impl CoercedString {
+    pub(crate) fn len(&self) -> usize {
+        self.length
+    }
+}
+
 // Embedding policy for the pinned backend, not the ECMAScript array limit.
 // fixed-array-base.h permits 16 Mi elements in its lower-limits SDK build and
 // 128 Mi otherwise. The minimum is safe for every supported pinned build mode.
@@ -97,7 +110,19 @@ pub(crate) trait Operations {
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
     fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
     -> Result<Root, Error>;
-    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error>;
+    fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
+    /// Copies the entire string into an exactly sized, caller-owned buffer.
+    fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;
+    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
+        let string = self.coerce_string(value)?;
+        let mut units = Vec::new();
+        units
+            .try_reserve_exact(string.len())
+            .map_err(|_| Error::Allocation)?;
+        units.resize(string.len(), 0);
+        self.copy_string(&string, &mut units)?;
+        Ok(units)
+    }
     fn to_boolean(&mut self, value: &Root) -> Result<bool, Error>;
     fn to_number(&mut self, value: &Root) -> Result<f64, Error>;
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error>;
