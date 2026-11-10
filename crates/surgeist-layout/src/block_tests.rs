@@ -27,6 +27,8 @@ mod clearance_cache;
 mod floated_child_margins;
 #[path = "block_tests/floats_bfcs_tests.rs"]
 mod floats_bfcs;
+#[path = "block_tests/flow_root_predicate.rs"]
+mod flow_root_predicate;
 #[path = "block_tests/in_flow_margins_tests.rs"]
 mod in_flow_margins;
 #[path = "block_tests/inline_runs_tests.rs"]

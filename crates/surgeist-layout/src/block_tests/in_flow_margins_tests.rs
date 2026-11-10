@@ -1818,7 +1818,7 @@ fn assert_ordinary_block_relationship_matrix<S: LayoutScalar>() {
     }
 }
 
-fn assert_ordinary_block_opposing_flow_collapse<S: LayoutScalar>(measured_leaf: bool) {
+fn assert_ordinary_block_opposing_flow_keeps_own_margins<S: LayoutScalar>(measured_leaf: bool) {
     let scalar = scalar_value::<S>;
     let mut tree = PublicBlockTree::default()
         .with_children(0, [1, 2])
@@ -1892,15 +1892,19 @@ fn assert_ordinary_block_opposing_flow_collapse<S: LayoutScalar>(measured_leaf: 
         public_final_output(&batch, 1).location,
         Point::new(scalar(30.0), S::ZERO)
     );
+    // Writing Modes 4 section 3.2 makes the vertical-rl child an independent
+    // formatting context in its vertical-lr parent, and CSS 2.1 section 8.3.1
+    // keeps such a box's own block-start and block-end margins apart even when
+    // it is empty: the next sibling starts at 30 + 0 + 60.
     assert_eq!(
         public_final_output(&batch, 2).location,
-        Point::new(scalar(60.0), S::ZERO)
+        Point::new(scalar(90.0), S::ZERO)
     );
 }
 
-fn assert_ordinary_block_opposing_flow_collapse_for_scalar<S: LayoutScalar>() {
+fn assert_ordinary_block_opposing_flow_keeps_own_margins_for_scalar<S: LayoutScalar>() {
     for measured_leaf in [false, true] {
-        assert_ordinary_block_opposing_flow_collapse::<S>(measured_leaf);
+        assert_ordinary_block_opposing_flow_keeps_own_margins::<S>(measured_leaf);
     }
 }
 
@@ -1989,13 +1993,13 @@ fn ordinary_block_orthogonal_preserves_parallel_opposing_and_measured_leaf_relat
 }
 
 #[test]
-fn ordinary_block_opposing_flow_collapse_preserves_real_and_measured_leaves_for_f32() {
-    assert_ordinary_block_opposing_flow_collapse_for_scalar::<f32>();
+fn ordinary_block_opposing_flow_keeps_own_margins_for_real_and_measured_leaves_for_f32() {
+    assert_ordinary_block_opposing_flow_keeps_own_margins_for_scalar::<f32>();
 }
 
 #[test]
-fn ordinary_block_opposing_flow_collapse_preserves_real_and_measured_leaves_for_f64() {
-    assert_ordinary_block_opposing_flow_collapse_for_scalar::<f64>();
+fn ordinary_block_opposing_flow_keeps_own_margins_for_real_and_measured_leaves_for_f64() {
+    assert_ordinary_block_opposing_flow_keeps_own_margins_for_scalar::<f64>();
 }
 
 #[test]

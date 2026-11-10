@@ -12,15 +12,8 @@ pub(crate) fn shares_parent_context<S: LayoutScalar>(
     parent: ParentFormattingContext,
 ) -> bool {
     parent == ParentFormattingContext::BlockFlow
-        && style.display.inner_display() == crate::Display::Block
         && !style.display.is_inline_level()
-        && style.float.is_none()
-        && style.position != crate::Position::Absolute
-        && !style.item_is_replaced
-        && !style.item_is_table
-        && style.block_flow_context == crate::BlockFlowContext::Normal
-        && !style.overflow.establishes_independent_formatting_context()
-        && style.writing_mode == containing.writing_mode()
+        && !super::flow_root::node_establishes_flow_root(style, containing.writing_mode())
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Role {
