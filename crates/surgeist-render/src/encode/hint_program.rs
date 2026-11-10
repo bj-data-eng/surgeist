@@ -384,17 +384,12 @@ pub(super) fn prepare_projected(
                         {
                             return Err(Refusal::UnrepresentableHint { stop_index: index }.into());
                         }
-                        if logs.is_none() {
-                            logs = Some(Logarithms::new(account)?);
-                        }
-                        let exponent = power(
-                            native_position,
-                            hint,
-                            next_native,
-                            index,
-                            logs.as_ref().expect("initialized logarithm bounds"),
-                            account,
-                        )?;
+                        let logs = match &mut logs {
+                            Some(logs) => logs,
+                            slot @ None => slot.insert(Logarithms::new(account)?),
+                        };
+                        let exponent =
+                            power(native_position, hint, next_native, index, logs, account)?;
                         ProgramSegment::Power { exponent }
                     }
                 } else {
@@ -516,6 +511,128 @@ mod tests {
                 peniko::ColorStop::from((stop.position() as f32, peniko::Color::from(stop.color())))
             })
             .collect()
+    }
+    fn mixed_hint_stops() -> [GradientStop; 6] {
+        [
+            (0.0, Some(0.0)),
+            (0.125, Some(0.1875)),
+            (0.375, Some(0.5)),
+            (0.625, Some(0.8125)),
+            (0.875, Some(1.0)),
+            (1.0, None),
+        ]
+        .map(|(position, hint)| {
+            let stop = GradientStop::try_new(position, Color::BLACK).unwrap();
+            hint.map_or(stop, |hint| {
+                stop.with_hint_after(GradientHint::try_new(hint).unwrap())
+            })
+        })
+    }
+    #[test]
+    fn multiple_interior_hints_preserve_analytic_powers_between_endpoint_tags() {
+        let stops = mixed_hint_stops();
+        let account = Account::for_test();
+        let program = prepare(
+            &stops,
+            &native(&stops),
+            |position, account| {
+                assert!(matches!(position, 0.1875 | 0.5 | 0.8125));
+                scalar(account, || position as f32)
+            },
+            PadEndpoints::new((0., Color::BLACK), (1., Color::BLACK), &account).unwrap(),
+            ProgramCoordinates::Pad,
+            &account,
+        )
+        .unwrap();
+        assert_eq!(program.records.len(), stops.len());
+        for (record, stop) in program.records.iter().zip(&stops) {
+            assert_eq!(f64::from(record.position), stop.position());
+            assert_eq!(record.premultiplied, [0., 0., 0., 1.]);
+        }
+        assert!(matches!(
+            program.records[0].outgoing,
+            ProgramSegment::HintAtStart
+        ));
+        // For normalized H = 1/4, 1/2 and 3/4, the independent
+        // exponent formula ln(1/2)/ln(H) gives these coefficients.
+        for (record, expected) in program.records[1..4].iter().zip([0.5, 1.0, 2.4094208]) {
+            let ProgramSegment::Power { exponent } = record.outgoing else {
+                panic!("interior hint must retain its analytic power");
+            };
+            assert!(exponent.is_normal() && exponent > 0.0);
+            assert!((f64::from(exponent) - expected).abs() <= expected * 1.0e-5);
+        }
+        assert!(matches!(
+            program.records[4].outgoing,
+            ProgramSegment::HintAtEnd
+        ));
+        assert!(matches!(
+            program.records[5].outgoing,
+            ProgramSegment::Linear
+        ));
+    }
+    #[test]
+    fn later_collapsed_hint_releases_partial_program_and_fresh_preparation_retries() {
+        let stops = mixed_hint_stops();
+        let native = native(&stops);
+        let mut context = RenderAccountingContext::default();
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    prepare(
+                        &stops,
+                        &native,
+                        |position, account| {
+                            scalar(account, || {
+                                if position == 0.5 {
+                                    0.375
+                                } else {
+                                    position as f32
+                                }
+                            })
+                        },
+                        PadEndpoints::new((0., Color::BLACK), (1., Color::BLACK), account)?,
+                        ProgramCoordinates::Pad,
+                        account,
+                    )
+                    .map(drop)
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::UnrepresentableHint { stop_index: 2 })
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    let program = prepare(
+                        &stops,
+                        &native,
+                        |position, account| scalar(account, || position as f32),
+                        PadEndpoints::new((0., Color::BLACK), (1., Color::BLACK), account)?,
+                        ProgramCoordinates::Pad,
+                        account,
+                    )?;
+                    assert_eq!(program.records.len(), stops.len());
+                    Ok(())
+                },
+            )
+            .unwrap();
     }
     #[test]
     fn limit_tags_and_zero_width_hints_do_not_require_power_arithmetic() {
