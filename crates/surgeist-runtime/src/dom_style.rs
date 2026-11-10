@@ -540,6 +540,7 @@ struct StyleState {
     work: std::cell::Cell<u64>,
     dom: DomOwnerId,
     events: Option<crate::dom_dialog::SourceEventRuntime>,
+    body_bytes: std::rc::Rc<std::cell::Cell<usize>>,
 }
 // The current storage observation already includes the old backing. A full
 // persistent bank additionally needs its entire requested replacement; spare
@@ -642,6 +643,9 @@ fn visit_context_clone(
     Ok(())
 }
 impl StyleState {
+    fn fixed_bytes() -> usize {
+        size_of::<std::cell::RefCell<Self>>() + size_of::<std::cell::Cell<usize>>()
+    }
     /// Construct an empty finite integration owner, without binding a fake root/list.
     pub fn new(dom: DomOwnerId, limits: DomStyleRuntimeLimits) -> Self {
         Self {
@@ -655,6 +659,9 @@ impl StyleState {
             work: std::cell::Cell::new(0),
             dom,
             events: None,
+            // Formation admits this shared target once. Its own tariff stays
+            // in the counter through the last body observer, independently of State.
+            body_bytes: std::rc::Rc::new(std::cell::Cell::new(size_of::<std::cell::Cell<usize>>())),
         }
     }
     fn step(&self, cancel: &AtomicBool) -> Result<(), DomStyleRuntimeError> {
@@ -742,7 +749,8 @@ impl StyleState {
             Ok(())
         }
         step()?;
-        let mut bytes = size_of::<std::cell::RefCell<StyleState>>();
+        let mut bytes = size_of::<std::cell::RefCell<Self>>();
+        add(&mut bytes, self.body_bytes.get())?;
         for (capacity, element) in [
             (self.roots.capacity(), size_of::<Root>()),
             (self.completions.capacity(), size_of::<Completion>()),
@@ -803,7 +811,12 @@ impl StyleState {
                     event
                         .retained_payload_bytes()
                         .ok_or(DomStyleRuntimeError::Admission)?
-                        .max(task.dispatch_reserved),
+                        .max(task.dispatch_reserved)
+                        .checked_sub(
+                            NativeDomEventOwner::initial_payload_bytes()
+                                .ok_or(DomStyleRuntimeError::Admission)?,
+                        )
+                        .ok_or(DomStyleRuntimeError::Admission)?,
                 )?,
                 Delivery::Delivered(receipt) => add(&mut bytes, receipt.retained_backing_bytes())?,
             }
@@ -1844,8 +1857,7 @@ impl DomSession {
             Some(DomStyleRuntimeError::PreboundSession)
         } else if let Some(status) = dom.pending_source_edit() {
             Some(DomStyleRuntimeError::SourcePending(status.operation()))
-        } else if std::mem::size_of::<std::cell::RefCell<StyleState>>() > limits.style.storage_bytes
-        {
+        } else if StyleState::fixed_bytes() > limits.style.storage_bytes {
             Some(DomStyleRuntimeError::Admission)
         } else {
             None
@@ -2526,11 +2538,13 @@ impl DomStyleRuntime {
                                     .ok_or(DomStyleRuntimeError::Admission)?,
                                 cancel,
                             )?;
+                            let backing =
+                                crate::dom_event::EventBodyCustody::style(&state.body_bytes);
                             let target = state.completions[index].task().token.target();
                             let event = if action == HtmlStyleNotificationAction::DispatchLoad {
-                                NativeDomEvent::style_load(target)
+                                NativeDomEvent::style_load(target, backing)
                             } else {
-                                NativeDomEvent::style_error(target)
+                                NativeDomEvent::style_error(target, backing)
                             };
                             state.completions[index].task_mut().delivery =
                                 Delivery::Dispatching(event);
@@ -3457,6 +3471,114 @@ mod tests {
         style
     }
     #[test]
+    fn completed_style_body_custody_covers_event_and_index_observers_once() {
+        struct ObservationContext {
+            styles: DomStyleRuntime,
+            observations: Vec<NativeDomEvent>,
+        }
+        impl DomStyleEventContext for ObservationContext {
+            fn styles(&mut self) -> &mut DomStyleRuntime {
+                &mut self.styles
+            }
+        }
+        for (index_first, owner_first) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
+            let (mut session, document) = bound_dispatch_session();
+            let target = append_style(&mut session, document, None);
+            let mut context = ObservationContext {
+                styles: session.style_execution(),
+                observations: Vec::new(),
+            };
+            let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+                registrations: 4,
+                pending_events: 1,
+                nested_dispatches: 1,
+            })
+            .unwrap();
+            dispatcher
+                .add_listener(
+                    &mut session.dom(),
+                    target,
+                    DomEventType::Load,
+                    DomEventCallback::new(|_, _, context: &mut ObservationContext, event| {
+                        context.observations.push(event.clone());
+                        Ok(())
+                    }),
+                    DomEventListenerOptions::default(),
+                )
+                .unwrap();
+            let DomStyleNetworkingProgress::Complete { receipt, .. } =
+                DomStyleRuntime::run_networking(
+                    &mut session.dom(),
+                    &mut dispatcher,
+                    &mut context,
+                    dispatch_limits(),
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+            else {
+                panic!("actual Style notification completes")
+            };
+            assert_eq!(receipt.callbacks(), 1);
+            assert_eq!(context.observations.len(), 1);
+            assert!(context.styles.pending_sheet(0).unwrap().is_none());
+            assert_eq!(
+                context
+                    .styles
+                    .snapshot(document)
+                    .unwrap()
+                    .unwrap()
+                    .sheets()
+                    .len(),
+                1
+            );
+            drop(receipt);
+            let event = context.observations.pop().unwrap();
+            assert_eq!(event.current_target(), None);
+            assert_eq!(event.phase(), crate::DomEventPhase::None);
+            let (live, event_body, continuation_body) = event.inspect_fixed_body_storage();
+            let counter_body = std::mem::size_of_val(live.as_ref());
+            assert_eq!(live.get(), counter_body + event_body + continuation_body);
+            assert!(session.dom().pending_source_edit().is_none());
+            let owner = if owner_first {
+                drop(session);
+                None
+            } else {
+                Some(session)
+            };
+            if owner_first {
+                assert!(matches!(
+                    context.styles.waiting_resources(),
+                    Err(DomStyleRuntimeError::SessionUnavailable)
+                ));
+            }
+            assert_eq!(live.get(), counter_body + event_body + continuation_body);
+            if index_first {
+                drop(dispatcher);
+                assert_eq!(live.get(), counter_body + event_body + continuation_body);
+                drop(event);
+            } else {
+                drop(event);
+                assert_eq!(live.get(), counter_body + continuation_body);
+                drop(dispatcher);
+            }
+            assert_eq!(
+                live.get(),
+                counter_body,
+                "the probe still retains the real accounting target"
+            );
+            assert_eq!(
+                std::rc::Rc::strong_count(&live),
+                if owner_first { 1 } else { 2 }
+            );
+            drop(owner);
+            assert_eq!(std::rc::Rc::strong_count(&live), 1);
+            assert_eq!(live.get(), counter_body);
+            drop(live); // The final Rc frees its still-funded counter target.
+        }
+    }
+    #[test]
     fn current_disabled_join_survives_other_sheet_revisions_and_external_flags_without_certifying_readiness()
      {
         let cancel = AtomicBool::new(false);
@@ -4161,6 +4283,7 @@ mod tests {
         let expected = {
             let state = original.borrow();
             let mut bytes = size_of::<std::cell::RefCell<StyleState>>()
+                + size_of_val(state.body_bytes.as_ref())
                 + state.roots.capacity() * size_of::<Root>()
                 + state.completions.capacity() * size_of::<Completion>()
                 + state.reports.capacity() * size_of::<Arc<DomStyleProcessedSheet>>()

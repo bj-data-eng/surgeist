@@ -30,6 +30,7 @@ fn show_event(target: NodeId) -> NativeDomEventOwner {
         HtmlDialogState::Closed,
         HtmlDialogState::Open,
         true,
+        test_event_backing(),
     )
 }
 #[derive(Debug, Eq, PartialEq)]
@@ -149,6 +150,7 @@ fn noncancelable_details_toggle_ignores_prevention_and_keeps_exact_payload() {
     let event = NativeDomEvent::details_toggle(
         details,
         HtmlDetailsToggleEvent::queued(HtmlDetailsState::Closed, HtmlDetailsState::Closed, None),
+        test_event_backing(),
     );
     let mut log = Vec::new();
     let receipt = complete(

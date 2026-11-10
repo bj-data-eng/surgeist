@@ -233,10 +233,61 @@ pub trait DomElementTaskEventContext {
     /// executing task; that task retains its original bank until cleanup.
     fn element_tasks(&mut self) -> &mut DomElementTaskRuntime;
 }
+/// One actual counter allocation, with its original DOM Source funding
+/// transferred out of the State header. No execution capability is retained.
+struct TaskPayloadCounterTarget {
+    bytes: Cell<usize>,
+    _retained: surgeist_dom::DomElementTaskRetention,
+}
+
+#[derive(Clone)]
+struct TaskPayloadCounter(Option<Rc<TaskPayloadCounterTarget>>);
+impl TaskPayloadCounter {
+    fn funded(retained: surgeist_dom::DomElementTaskRetention) -> Self {
+        Self(Some(Rc::new(TaskPayloadCounterTarget {
+            bytes: Cell::new(size_of::<TaskPayloadCounterTarget>()),
+            _retained: retained,
+        })))
+    }
+    fn get(&self) -> usize {
+        self.0.as_ref().map_or(0, |counter| counter.bytes.get())
+    }
+    fn add(&self, bytes: usize) -> Result<(), DomElementTaskRuntimeError> {
+        let counter = self.0.as_ref().ok_or(DomElementTaskRuntimeError::Binding)?;
+        counter.bytes.set(
+            counter
+                .bytes
+                .get()
+                .checked_add(bytes)
+                .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
+        );
+        Ok(())
+    }
+    fn release(&self, bytes: usize) {
+        if let Some(counter) = self.0.as_ref() {
+            counter.bytes.set(counter.bytes.get() - bytes);
+        }
+    }
+    fn same_owner(&self, other: &Self) -> bool {
+        matches!((&self.0, &other.0), (Some(a), Some(b)) if Rc::ptr_eq(a, b))
+    }
+    #[cfg(test)]
+    fn as_ref(&self) -> &TaskPayloadCounterTarget {
+        self.0.as_deref().expect("actual bound counter target")
+    }
+}
+impl Drop for TaskPayloadCounter {
+    fn drop(&mut self) {
+        // There are no weak counter observers. On the final strong release,
+        // moving out the target frees backing before its Source debit drops.
+        drop(self.0.take().and_then(Rc::into_inner));
+    }
+}
+
 /// Relative custody of actual shared task-event allocations. The original
 /// owner's existing storage policy reads this extent even after its row drops.
 pub(crate) struct TaskPayload {
-    live: Rc<Cell<usize>>,
+    live: TaskPayloadCounter,
     full: usize,
     source: usize,
     retained: surgeist_dom::DomElementTaskRetention,
@@ -251,16 +302,12 @@ impl fmt::Debug for TaskPayload {
 }
 impl TaskPayload {
     fn new(
-        live: Rc<Cell<usize>>,
+        live: TaskPayloadCounter,
         full: usize,
         source: usize,
         retained: surgeist_dom::DomElementTaskRetention,
     ) -> Result<Self, DomElementTaskRuntimeError> {
-        live.set(
-            live.get()
-                .checked_add(full)
-                .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
-        );
+        live.add(full)?;
         Ok(Self {
             live,
             full,
@@ -301,7 +348,7 @@ impl TaskPayload {
         })
     }
     pub(crate) fn absorb(&mut self, mut other: Self) -> Result<(), DomElementTaskRuntimeError> {
-        if !Rc::ptr_eq(&self.live, &other.live) {
+        if !self.live.same_owner(&other.live) {
             return Err(DomElementTaskRuntimeError::Binding);
         }
         let full = self
@@ -345,7 +392,7 @@ impl TaskPayload {
 }
 impl Drop for TaskPayload {
     fn drop(&mut self) {
-        self.live.set(self.live.get() - self.full);
+        self.live.release(self.full);
     }
 }
 struct Task {
@@ -439,7 +486,7 @@ impl ElementTaskOwner {
                 tasks_retained: None,
                 trackers_retained: None,
                 owner_retained: None,
-                payload_bytes: Rc::new(Cell::new(0)),
+                payload_bytes: TaskPayloadCounter(None),
                 events: None,
             })),
         })
@@ -455,16 +502,23 @@ impl ElementTaskOwner {
             dom.bind_element_task_source(&cancel)
                 .expect("exclusive preflighted task source binding"),
         );
-        let retained = source
+        let counter_bytes = size_of::<TaskPayloadCounterTarget>();
+        let (retained, counter_retained) = source
             .retain_payload(
                 dom,
                 size_of::<RefCell<ElementTaskState>>()
                     + size_of::<surgeist_dom::DomElementTaskSource>()
-                    + size_of::<Cell<usize>>(),
+                    + counter_bytes,
                 &cancel,
             )
+            .and_then(|mut owner| {
+                // The admitted total includes this exact target extent.
+                let counter = owner.split(counter_bytes)?;
+                Ok((owner, counter))
+            })
             .expect("preflighted fixed task owner");
         let mut state = self.state.borrow_mut();
+        state.payload_bytes = TaskPayloadCounter::funded(counter_retained);
         state.source = Some(source);
         state.owner_retained = Some(retained);
     }
@@ -503,7 +557,7 @@ struct ElementTaskState {
     tasks_retained: Option<surgeist_dom::DomElementTaskRetention>,
     trackers_retained: Option<surgeist_dom::DomElementTaskRetention>,
     owner_retained: Option<surgeist_dom::DomElementTaskRetention>,
-    payload_bytes: Rc<Cell<usize>>,
+    payload_bytes: TaskPayloadCounter,
     events: Option<crate::dom_dialog::SourceEventRuntime>,
 }
 impl DomElementTaskRuntime {
@@ -824,9 +878,13 @@ impl ElementTaskState {
         Ok(self.tasks.len() - 1)
     }
     fn fixed_bytes() -> Result<usize, DomElementTaskRuntimeError> {
+        Self::header_bytes()?
+            .checked_add(size_of::<TaskPayloadCounterTarget>())
+            .ok_or(DomElementTaskRuntimeError::IdentityExhausted)
+    }
+    fn header_bytes() -> Result<usize, DomElementTaskRuntimeError> {
         size_of::<RefCell<Self>>()
-            .checked_add(size_of::<Cell<usize>>())
-            .and_then(|bytes| bytes.checked_add(size_of::<surgeist_dom::DomElementTaskSource>()))
+            .checked_add(size_of::<surgeist_dom::DomElementTaskSource>())
             .and_then(|bytes| {
                 bytes.checked_add(surgeist_dom::DomElementTaskSource::binding_payload_bytes())
             })
@@ -892,7 +950,7 @@ impl ElementTaskState {
         let total = banks
             .into_iter()
             .try_fold(
-                Self::fixed_bytes()?
+                Self::header_bytes()?
                     .checked_add(self.payload_bytes.get())
                     .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
                 |sum, (count, size)| count.checked_mul(size).and_then(|n| sum.checked_add(n)),
@@ -1273,24 +1331,34 @@ impl ElementTaskState {
         let retained = source
             .retain_payload(dom.raw_mut(), source_maximum - previous.1, cancel)
             .map_err(DomElementTaskRuntimeError::Dom)?;
-        let retained = TaskPayload::new(
+        let mut retained = TaskPayload::new(
             self.payload_bytes.clone(),
             extra,
             source_maximum - previous.1,
             retained,
         )?;
         let task = &mut self.tasks[index];
-        let event = task.event.get_or_insert_with(|| match value {
-            DomElementTask::DetailsToggle(details) => {
-                NativeDomEvent::details_toggle(value.id().target(), details.event())
-            }
-            DomElementTask::DialogClose(_) => NativeDomEvent::dialog_close(value.id().target()),
-            DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
-                value.id().target(),
-                dialog.old_state(),
-                dialog.new_state(),
-            ),
-        });
+        if task.event.is_none() {
+            let backing = crate::dom_event::EventBodyCustody::element(&mut retained)?;
+            task.event = Some(match value {
+                DomElementTask::DetailsToggle(details) => {
+                    NativeDomEvent::details_toggle(value.id().target(), details.event(), backing)
+                }
+                DomElementTask::DialogClose(_) => {
+                    NativeDomEvent::dialog_close(value.id().target(), backing)
+                }
+                DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
+                    value.id().target(),
+                    dialog.old_state(),
+                    dialog.new_state(),
+                    backing,
+                ),
+            });
+        }
+        let event = task
+            .event
+            .as_ref()
+            .ok_or(DomElementTaskRuntimeError::Binding)?;
         event.retain_element_task(retained);
         let scope = if let Some(request) = &task.request {
             let Some(events) = self.events.as_ref() else {

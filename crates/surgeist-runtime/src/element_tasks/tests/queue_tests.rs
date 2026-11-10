@@ -102,7 +102,7 @@ fn candidate_peak(prior: bool) -> usize {
     let old = usize::from(prior);
     let new = old + 1;
     size_of::<RefCell<ElementTaskState>>()
-        + size_of::<Cell<usize>>()
+        + size_of::<TaskPayloadCounterTarget>()
         + size_of::<surgeist_dom::DomElementTaskSource>()
         + surgeist_dom::DomElementTaskSource::binding_payload_bytes()
         + size_of::<Intake>()
@@ -347,11 +347,17 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         context.path.as_ref().unwrap(),
     );
     assert!(event_bytes > 0 && path_bytes > 0);
-    assert_eq!(state.borrow().payload_bytes.get(), event_bytes + path_bytes);
+    let (continuation_bytes, _) = dispatcher.inspect_retired_continuation_storage();
+    assert!(continuation_bytes > 0);
+    let counter_body = std::mem::size_of_val(state.borrow().payload_bytes.as_ref());
+    assert_eq!(
+        state.borrow().payload_bytes.get(),
+        counter_body + event_bytes + path_bytes + continuation_bytes
+    );
     // Spare bank capacity is still physically owned. Failure backing already
     // belongs to this caller's real returned receipt and is absent here.
     let installed = candidate_peak(false) - size_of::<Intake>() - size_of::<Plan>();
-    let exact = installed + event_bytes + path_bytes;
+    let exact = installed + event_bytes + path_bytes + continuation_bytes;
     assert!(matches!(
         context.owner.set_limits(DomElementTaskRuntimeLimits {
             storage_bytes: exact - 1,
@@ -367,16 +373,24 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         })
         .unwrap();
     drop(context.event.take());
-    assert_eq!(state.borrow().payload_bytes.get(), path_bytes);
+    assert_eq!(
+        state.borrow().payload_bytes.get(),
+        counter_body + path_bytes + continuation_bytes
+    );
     context
         .owner
         .set_limits(DomElementTaskRuntimeLimits {
-            storage_bytes: installed + path_bytes,
+            storage_bytes: installed + path_bytes + continuation_bytes,
             ..limits()
         })
         .unwrap();
     drop(context.path.take());
-    assert_eq!(state.borrow().payload_bytes.get(), 0);
+    assert_eq!(
+        state.borrow().payload_bytes.get(),
+        counter_body + continuation_bytes
+    );
+    drop(dispatcher);
+    assert_eq!(state.borrow().payload_bytes.get(), counter_body);
     context
         .owner
         .set_limits(DomElementTaskRuntimeLimits {

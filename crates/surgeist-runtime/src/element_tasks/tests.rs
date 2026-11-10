@@ -337,7 +337,8 @@ fn completed_details_dispatch_retains_dead_index_backing_in_its_actual_storage_c
         .borrow()
         .payload_bytes
         .clone();
-    assert_eq!(payload.get(), 0);
+    let counter_body = std::mem::size_of_val(payload.as_ref());
+    assert_eq!(payload.get(), counter_body);
     open(&mut dom, target);
     ingest(&mut dom, &mut c);
     let (task, receipt) = complete(&mut dom, &mut dispatcher, &mut c);
@@ -353,13 +354,13 @@ fn completed_details_dispatch_retains_dead_index_backing_in_its_actual_storage_c
     let (raw_backing, registry_charge) = dispatcher.inspect_retired_continuation_storage();
     // A body can remain charged by its original task owner or transfer to the
     // canonical registry owner. Count it once across those actual owners.
-    let charged = payload.get() + registry_charge - fixed_registry;
+    let charged = payload.get() - counter_body + registry_charge - fixed_registry;
     assert_eq!(
         charged, raw_backing,
         "a completed task cannot release a continuation body retained by the dispatcher's weak index"
     );
     drop(dispatcher);
-    assert_eq!(payload.get(), 0);
+    assert_eq!(payload.get(), counter_body);
 }
 
 #[test]

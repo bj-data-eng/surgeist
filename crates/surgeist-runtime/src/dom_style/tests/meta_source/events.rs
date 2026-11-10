@@ -31,28 +31,6 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
     let made = session.dom().apply(batch, &cancel()).unwrap();
     let dialog = made.created(&dialog).unwrap().unwrap();
     let meta = detached_meta(&mut session, document, "B".into());
-    let progress = session
-        .source_execution()
-        .apply(
-            &mut session.dom(),
-            DomSourceEdit::show_dialog(dialog),
-            source_limits,
-            &mut DomSourceServices {
-                meta: Some(envelope()),
-                execution_scope: None,
-                style_policy: &mut |_| None,
-                url: None,
-            },
-            &cancel(),
-        )
-        .unwrap();
-    let DomSourceDriveProgress::Pending {
-        request: DomSourceRequest::Event(request),
-        ..
-    } = progress
-    else {
-        panic!("actual beforetoggle");
-    };
     struct Context {
         source: crate::DomSourceRuntime,
         meta: NodeId,
@@ -61,14 +39,6 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
         operation: surgeist_dom::DomSourceOperationId,
         outcome: Option<DomStyleMetaSourceOutcome>,
     }
-    let mut context = Context {
-        source: session.source_execution(),
-        meta,
-        parent,
-        limits: source_limits,
-        operation: request.operation(),
-        outcome: None,
-    };
     let mut listeners = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 1,
         pending_events: 1,
@@ -117,6 +87,36 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
             DomEventListenerOptions::default(),
         )
         .unwrap();
+    let progress = session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_dialog(dialog),
+            source_limits,
+            &mut DomSourceServices {
+                meta: Some(envelope()),
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(request),
+        ..
+    } = progress
+    else {
+        panic!("actual beforetoggle");
+    };
+    let mut context = Context {
+        source: session.source_execution(),
+        meta,
+        parent,
+        limits: source_limits,
+        operation: request.operation(),
+        outcome: None,
+    };
     let serviced = session
         .source_execution()
         .service_event(

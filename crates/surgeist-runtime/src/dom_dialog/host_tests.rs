@@ -105,6 +105,81 @@ fn dispatcher() -> DomEventDispatcher<Vec<u64>> {
 }
 
 #[test]
+fn completed_source_body_custody_covers_host_event_and_index_observers_once() {
+    for (index_first, owner_first) in [(false, false), (false, true), (true, false), (true, true)] {
+        let (mut session, _, dialog, _) = fixture();
+        let mut source = session.source_execution();
+        let mut dispatcher = dispatcher();
+        dispatcher
+            .add_listener(
+                &mut session.dom(),
+                dialog,
+                DomEventType::BeforeToggle,
+                DomEventCallback::host(17),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let request = show(&mut source, &mut session, dialog);
+        let mut calls = Vec::new();
+        let mut invocation = pending(service(
+            &source,
+            &mut session,
+            &request,
+            &mut dispatcher,
+            &mut calls,
+        ));
+        let event = invocation.event().clone();
+        let (live, event_body, continuation_body) = event.inspect_fixed_body_storage();
+        let counter_body = std::mem::size_of_val(live.as_ref());
+        assert_eq!(live.get(), counter_body + event_body + continuation_body);
+        event.prevent_default();
+        invocation.complete(&dispatcher, Ok(())).unwrap();
+        let DomSourceEventServiceProgress::Serviced { receipt } =
+            service(&source, &mut session, &request, &mut dispatcher, &mut calls)
+        else {
+            panic!("actual host completion is accepted once")
+        };
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.default_prevented());
+        assert!(calls.is_empty());
+        drop(receipt);
+        canceled_tail(&mut source, &mut session, &request);
+        assert_eq!(event.phase(), DomEventPhase::None);
+        assert_eq!(event.current_target(), None);
+        assert_eq!(live.get(), counter_body + event_body + continuation_body);
+        drop(invocation);
+        assert_eq!(live.get(), counter_body + event_body + continuation_body);
+        assert!(session.dom().pending_source_edit().is_none());
+        let owner = if owner_first {
+            drop(session);
+            None
+        } else {
+            Some(session)
+        };
+        assert_eq!(live.get(), counter_body + event_body + continuation_body);
+        if index_first {
+            drop(dispatcher);
+            assert_eq!(live.get(), counter_body + event_body + continuation_body);
+            drop(event);
+        } else {
+            drop(event);
+            assert_eq!(live.get(), counter_body + continuation_body);
+            drop(dispatcher);
+        }
+        assert_eq!(
+            live.get(),
+            counter_body,
+            "the probe still retains the real accounting target"
+        );
+        assert_eq!(Rc::strong_count(&live), if owner_first { 1 } else { 2 });
+        drop(owner);
+        assert_eq!(Rc::strong_count(&live), 1);
+        assert_eq!(live.get(), counter_body);
+        drop(live); // The final Rc frees its still-funded counter target.
+    }
+}
+
+#[test]
 fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() {
     let (mut session, document, dialog, _) = fixture();
     let mut source = session.source_execution();

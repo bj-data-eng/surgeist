@@ -212,15 +212,28 @@ accepted registration or dispatch claims the canonical DOM's one registry
 association; another dispatcher cannot select a parallel Node or Global list,
 even when it proposes no listeners. The association is irreversible for that
 dispatcher. A foreign owner is refused on registration, dispatch and resume.
-Failed first admission releases its provisional claim. The callback-free DOM
-lease admits its actual body and the dispatcher's bounded weak continuation
-index before allocation, under any enclosing Source allowance. The existing
+First admission prepares unpublished DOM custody and the bounded continuation
+index before allocation. Only successful recipient/dispatch preflight publishes
+the canonical weak association; refusal frees the index before its funding guard.
+Publication rechecks the current owner, Source entry and storage allowance.
+The callback-free DOM body has one shared debit, including its own accounting
+metadata, across strong and weak observations. The index's debit remains affine
+and separate. The existing
 fixed Runtime owner is caller-owned formation. Snapshots carry no registry
 authority. Dropping the dispatcher closes pending host reentry, clears active
 event observations and releases reservations without issuing a receipt or
 running the original Source tail. A fresh owner receives no old registrations
-or continuations. These ownership rules do not yet supply arbitrary Event
-construction or signal integration.
+or continuations. Fixed Event and continuation bodies likewise retain one
+accounting-only receipt through every strong or weak observer, including host
+tokens and the reverse Event observation. Queued element tasks, synchronous
+Source jobs and Style notifications transfer their own admitted body storage;
+these receipts hold no dispatch, callback, guard or reservation. Withdrawing
+authority therefore closes live work immediately while physically retained
+backing stays charged until its last observation drops. The original accounting
+counters include their own retained targets. The element task counter carries
+its separate DOM Source debit through its final shared reference, independent of
+task State. Arbitrary Event construction and signal integration remain separate
+capabilities.
 
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;

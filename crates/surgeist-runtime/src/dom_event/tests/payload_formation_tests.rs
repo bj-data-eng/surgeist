@@ -25,7 +25,7 @@ fn retained_failure() -> (
             )
             .unwrap();
     }
-    let event = NativeDomEvent::style_load(fixture.target);
+    let event = NativeDomEvent::style_load(fixture.target, test_event_backing());
     let mut calls = Vec::new();
     assert!(matches!(
         dispatcher
@@ -74,7 +74,9 @@ fn lowered_path_policy_keeps_actual_frozen_storage_and_admits_failure_bank_overl
         // old failure backing, and the prepared replacement owner/backing.
         // Vec fields already inline in Dispatch/EventPath are not added again.
         let old_live = size_of_val(event.event.0.as_ref())
+            + size_of_val(event.event.1.as_ref())
             + size_of_val(event._custody.as_ref())
+            + size_of_val(event._body.as_ref())
             + size_of_val(dispatch.path.as_ref())
             + dispatch.path.capacity() * size_of::<PathItem>()
             + dispatch.snapshot.as_ref().unwrap().capacity() * size_of::<DomEventRegistrationId>()

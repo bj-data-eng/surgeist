@@ -6,10 +6,20 @@ use crate::{DomError, DomHostedGlobalId, DomResource, NodeId};
 /// it permits a fresh owner; it transfers no registrations or dispatch progress.
 pub struct DomEventRegistryAssociation {
     pub(crate) binding: std::sync::Arc<RegistryBinding>,
+    pub(crate) body: crate::store::custody::SharedDebit,
+    pub(crate) payload: crate::store::custody::Debit,
 }
 pub(crate) struct RegistryBinding {
     pub(crate) owner: crate::DomOwnerId,
-    pub(crate) _storage: crate::store::custody::Debit,
+}
+/// Admitted, unpublished registry storage. Drop discards preparation without
+/// claiming the canonical listener list. Keep represented buffers alive with
+/// this funding capability until they are freed or publication succeeds.
+#[derive(Debug)]
+pub struct DomEventRegistryPreparation(pub(crate) DomEventRegistryAssociation);
+pub(crate) struct RegistryObservation {
+    pub(crate) binding: std::sync::Weak<RegistryBinding>,
+    pub(crate) _body: crate::store::custody::SharedDebit,
 }
 impl std::fmt::Debug for DomEventRegistryAssociation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,10 +36,11 @@ impl DomEventRegistryAssociation {
     /// Fixed producer-owned payload, excluding opaque allocator metadata.
     pub const fn binding_payload_bytes() -> usize {
         std::mem::size_of::<RegistryBinding>()
+            + crate::store::custody::SharedDebit::administration_usage().bytes()
     }
     /// Actual binding body and admitted registry control backing.
     pub fn retained_bytes(&self) -> usize {
-        self.binding._storage.usage().bytes()
+        self.body.usage().bytes() + self.payload.usage().bytes()
     }
 }
 

@@ -233,6 +233,31 @@ pub struct DomSourceEventRetention {
     pub(crate) units: usize,
 }
 impl DomSourceEventRetention {
+    /// Transfer a checked resource subextent from this same original request.
+    /// This grants no dispatch, publication or Source execution permission.
+    pub fn split(&mut self, bytes: usize, units: usize) -> Result<Self, DomError> {
+        let remaining_bytes = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let remaining_units = self
+            .units
+            .checked_sub(units)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let custody = self
+            .custody
+            .as_mut()
+            .map(|owned| owned.split(crate::store::custody::Usage::new(bytes, units)))
+            .transpose()?;
+        self.bytes = remaining_bytes;
+        self.units = remaining_units;
+        Ok(Self {
+            work: self.work.clone(),
+            custody,
+            bytes,
+            units,
+        })
+    }
     /// Merge already admitted custody for the same request without allocating.
     pub fn absorb(&mut self, mut other: Self) -> Result<(), DomError> {
         if !Arc::ptr_eq(&self.work, &other.work) {

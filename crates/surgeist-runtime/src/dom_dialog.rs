@@ -149,6 +149,7 @@ struct State {
     limits: DomSourceEventRuntimeLimits,
     jobs: Option<Rc<RefCell<Job>>>,
     work: u64,
+    body_bytes: Rc<std::cell::Cell<usize>>,
 }
 struct Lookup {
     job: Option<Rc<RefCell<Job>>>,
@@ -188,12 +189,21 @@ impl State {
         Ok(())
     }
     fn bytes(&mut self, cancel: &AtomicBool) -> Result<usize, DomSourceEventRuntimeError> {
-        let mut bytes = Self::fixed_bytes();
+        let mut bytes = Self::header_bytes()
+            .checked_add(self.body_bytes.get())
+            .ok_or(DomSourceEventRuntimeError::Admission(
+                DomSourceEventResource::StorageBytes,
+            ))?;
         let mut cursor = self.jobs.clone();
         while let Some(job) = cursor {
             self.step(1, cancel)?;
             let row = job.borrow();
-            let payload = row.payload_bytes()?;
+            let payload = row
+                .payload_bytes()?
+                .checked_sub(NativeDomEventOwner::initial_payload_bytes().ok_or(
+                    DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
+                )?)
+                .ok_or(DomSourceEventRuntimeError::Protocol)?;
             bytes = bytes
                 .checked_add(size_of::<RefCell<Job>>())
                 .and_then(|bytes| bytes.checked_add(payload))
@@ -205,6 +215,9 @@ impl State {
         Ok(bytes)
     }
     fn fixed_bytes() -> usize {
+        Self::header_bytes() + size_of::<std::cell::Cell<usize>>()
+    }
+    fn header_bytes() -> usize {
         size_of::<RefCell<Self>>() + DomSourceEventExecutor::binding_payload_bytes()
     }
     fn admit(
@@ -277,10 +290,11 @@ impl State {
             DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
         )?;
         self.admit(job_bytes, cancel)?;
-        let retained = dom.retain_source_event_payload(request, job_bytes, 0, cancel)?;
+        let mut retained = dom.retain_source_event_payload(request, job_bytes, 0, cancel)?;
         // One actual formation/link step admits the new original node before
         // allocation. All old nodes and their Source debits remain live.
         self.step(1, cancel)?;
+        let backing = crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes)?;
         let job = Rc::new(RefCell::new(Job {
             next: None,
             request: request.clone(),
@@ -294,6 +308,7 @@ impl State {
                         payload.old_state(),
                         payload.new_state(),
                         request.cancelable(),
+                        backing,
                     )
                 }
                 surgeist_dom::DomSourceEventKind::Toggle => {
@@ -304,13 +319,14 @@ impl State {
                         request.subject(),
                         payload.old_state(),
                         payload.new_state(),
+                        backing,
                     )
                 }
                 surgeist_dom::DomSourceEventKind::Cancel => {
-                    NativeDomEvent::dialog_cancel(request.subject(), request.cancelable())
+                    NativeDomEvent::dialog_cancel(request.subject(), request.cancelable(), backing)
                 }
                 surgeist_dom::DomSourceEventKind::Close => {
-                    NativeDomEvent::dialog_close(request.subject())
+                    NativeDomEvent::dialog_close(request.subject(), backing)
                 }
             },
             phase: Phase::Ready,
@@ -371,6 +387,9 @@ impl SourceEventOwner {
                 limits,
                 jobs: None,
                 work: 1,
+                // This shared accounting target keeps its own body charge
+                // even after the State owner drops before its observers.
+                body_bytes: Rc::new(std::cell::Cell::new(size_of::<std::cell::Cell<usize>>())),
             })),
         }
     }
