@@ -423,9 +423,12 @@ impl MappedReadback {
         })
     }
 }
-#[expect(
-    clippy::large_enum_variant,
-    reason = "the pending state retains mandatory staging inline without another allocation"
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::large_enum_variant,
+        reason = "the pending state retains mandatory staging inline without another allocation"
+    )
 )]
 enum MapFutureState {
     Pending(RegisteredReadback),
