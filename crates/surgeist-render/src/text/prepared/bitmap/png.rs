@@ -202,15 +202,35 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
     })
 }
 
+enum ScanlineFilter {
+    None,
+    Sub,
+    Up,
+    Average,
+    Paeth,
+}
+
+impl TryFrom<u8> for ScanlineFilter {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self> {
+        match value {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Sub),
+            2 => Ok(Self::Up),
+            3 => Ok(Self::Average),
+            4 => Ok(Self::Paeth),
+            _ => Err(invalid()),
+        }
+    }
+}
+
 fn unfilter(bytes: &mut [u8], row: usize, account: &Account) -> Result<()> {
     let stride = row.checked_add(1).ok_or_else(overflow)?;
     for y in 0..bytes.len() / stride {
         let from = y * stride;
         let to = y * row;
-        let filter = bytes[from];
-        if filter > 4 {
-            return Err(invalid());
-        }
+        let filter = ScanlineFilter::try_from(bytes[from])?;
         for x in 0..row {
             account
                 .at(RenderPhase::Png)
@@ -223,12 +243,11 @@ fn unfilter(bytes: &mut [u8], row: usize, account: &Account) -> Result<()> {
                 0
             };
             let predictor = match filter {
-                0 => 0,
-                1 => left,
-                2 => up,
-                3 => ((u16::from(left) + u16::from(up)) / 2) as u8,
-                4 => paeth(left, up, corner),
-                _ => unreachable!(),
+                ScanlineFilter::None => 0,
+                ScanlineFilter::Sub => left,
+                ScanlineFilter::Up => up,
+                ScanlineFilter::Average => ((u16::from(left) + u16::from(up)) / 2) as u8,
+                ScanlineFilter::Paeth => paeth(left, up, corner),
             };
             bytes[to + x] = bytes[from + 1 + x].wrapping_add(predictor);
         }
@@ -350,6 +369,14 @@ mod tests {
     }
     fn test_decode(data: &[u8], scratch: usize) -> Result<TestDecoded> {
         let mut context = RenderAccountingContext::default();
+        decode_in(data, scratch, &mut context)
+    }
+
+    fn decode_in(
+        data: &[u8],
+        scratch: usize,
+        context: &mut RenderAccountingContext,
+    ) -> Result<TestDecoded> {
         context.prepare(
             RenderAttemptKind::GlyphRun,
             GlyphRunLimits::new(1, 0, scratch, 1 << 20),
@@ -364,6 +391,187 @@ mod tests {
                 })
             },
         )
+    }
+
+    #[test]
+    fn unknown_scanline_tags_refuse_at_the_row_boundary_and_release_decode_storage() {
+        for tag in 5..=u8::MAX {
+            for (row_start, row_visits) in [(0, 0), (9, 8)] {
+                for split in [false, true] {
+                    let mut filtered = FILTERED[0];
+                    filtered[row_start] = tag;
+                    let bytes = image(&zlib(&filtered), split);
+                    let original = bytes.clone();
+                    let mut context = RenderAccountingContext::default();
+                    for _ in 0..2 {
+                        let error = decode_in(&bytes, 1 << 20, &mut context).err().unwrap();
+                        assert_eq!(
+                            error.glyph_preparation_diagnostic(),
+                            Some(&GlyphPreparationError::InvalidFont),
+                            "tag {tag}, row {row_start}, split {split}"
+                        );
+                        let terminal = context.last_attempt().unwrap();
+                        assert_eq!(terminal.cleanup_fault(), None);
+                        let report = terminal.attempt().unwrap();
+                        assert_eq!(
+                            report.status(),
+                            crate::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
+                        );
+                        // Two CRC passes each visit IHDR's 4+13 bytes, IDAT's
+                        // 4+29 bytes, and IEND's 4 bytes. Splitting IDAT into
+                        // three chunks adds two 4-byte names per pass.
+                        let chunk_visits = if split { 124 } else { 108 };
+                        assert_eq!(
+                            report.usage().work(RenderWork::PngByteVisits),
+                            chunk_visits + row_visits
+                        );
+                        assert!(report.usage().peak(RenderResource::ScratchCpuBytes) > 0);
+                        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+                        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+                        assert_eq!(bytes, original);
+                    }
+                    let valid = image(&zlib(&FILTERED[0]), split);
+                    assert_eq!(
+                        decode_in(&valid, 1 << 20, &mut context).unwrap().pixels,
+                        PIXELS
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn png_work_caps_admit_exact_decode_and_refuse_before_the_last_pixel_byte() {
+        use crate::{RenderAccountingOptions, RenderLimits};
+        for filtered in FILTERED {
+            for (split, exact) in [(false, 124), (true, 140)] {
+                let bytes = image(&zlib(&filtered), split);
+                for limit in [exact - 1, exact] {
+                    let mut context = RenderAccountingContext::new(
+                        RenderAccountingOptions::new().with_limits(
+                            RenderLimits::new()
+                                .with_work_limit(RenderWork::PngByteVisits, limit)
+                                .unwrap(),
+                        ),
+                    );
+                    let result = decode_in(&bytes, 1 << 20, &mut context);
+                    if limit == exact {
+                        assert_eq!(result.ok().unwrap().pixels, PIXELS);
+                    } else {
+                        assert!(result.err().unwrap().accounting_diagnostic().is_some());
+                    }
+                    let terminal = context.last_attempt().unwrap();
+                    assert_eq!(terminal.cleanup_fault(), None);
+                    assert_eq!(
+                        terminal
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::PngByteVisits),
+                        limit
+                    );
+                    assert_eq!(
+                        terminal
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .live(RenderResource::ScratchCpuBytes),
+                        0
+                    );
+                    assert_eq!(
+                        terminal
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::PreparedTransferredBytes),
+                        0
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn decoded_pixels_and_actual_scratch_admission_are_invariant_across_profiles() {
+        use crate::{RenderAccountingOptions, RenderClock, RenderPhaseFilter, RenderProfile};
+        fn no_clock() -> std::time::Duration {
+            panic!("untimed PNG decoding must not read the clock")
+        }
+        fn clock() -> std::time::Duration {
+            std::time::Duration::ZERO
+        }
+        for filtered in FILTERED {
+            let bytes = image(&zlib(&filtered), true);
+            let mut baseline = RenderAccountingContext::default();
+            assert_eq!(
+                decode_in(&bytes, 1 << 20, &mut baseline).unwrap().pixels,
+                PIXELS
+            );
+            let usage = baseline.last_attempt().unwrap().attempt().unwrap().usage();
+            let scratch = usize::try_from(usage.peak(RenderResource::ScratchCpuBytes)).unwrap();
+            for (profile, timed) in [
+                (RenderProfile::Off, false),
+                (RenderProfile::Summary { timing: false }, false),
+                (
+                    RenderProfile::Detailed {
+                        timing: false,
+                        event_limit: 0,
+                        filter: RenderPhaseFilter::All,
+                    },
+                    false,
+                ),
+                (RenderProfile::Summary { timing: true }, true),
+                (
+                    RenderProfile::Detailed {
+                        timing: true,
+                        event_limit: 64,
+                        filter: RenderPhaseFilter::All,
+                    },
+                    true,
+                ),
+            ] {
+                let mut context = RenderAccountingContext::new(
+                    RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_clock(RenderClock::Host(if timed { clock } else { no_clock })),
+                );
+                // Use the observed actual backing peak, rather than assuming
+                // allocator capacities equal the requested lengths.
+                let error = decode_in(&bytes, scratch - 1, &mut context).err().unwrap();
+                assert!(matches!(
+                    error.glyph_preparation_diagnostic(),
+                    Some(GlyphPreparationError::Limit {
+                        resource: GlyphResource::ScratchBytes,
+                        ..
+                    })
+                ));
+                assert_eq!(
+                    context
+                        .last_attempt()
+                        .unwrap()
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::ScratchCpuBytes),
+                    0
+                );
+                assert_eq!(
+                    decode_in(&bytes, scratch, &mut context).unwrap().pixels,
+                    PIXELS
+                );
+                let terminal = context.last_attempt().unwrap();
+                assert_eq!(terminal.cleanup_fault(), None);
+                let report = terminal.attempt().unwrap();
+                assert_eq!(report.elapsed().is_some(), timed);
+                assert_eq!(report.usage().work(RenderWork::PngByteVisits), 140);
+                assert_eq!(
+                    report.usage().peak(RenderResource::ScratchCpuBytes),
+                    usage.peak(RenderResource::ScratchCpuBytes)
+                );
+                assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+                assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+            }
+        }
     }
     #[test]
     fn all_png_filters_and_split_idat_reconstruct_literal_rgba() {
