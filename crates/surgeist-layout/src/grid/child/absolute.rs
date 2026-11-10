@@ -4,7 +4,7 @@ use crate::geometry::{
     LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide, project_from_start,
 };
 use crate::layout_math::{
-    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
+    AbsoluteInsetStartOf, OptionalSizeExt, PositionedSizeDeclarations, PositionedUsedSize,
     absolute_inset_alignment_offsets,
 };
 use crate::sizing::resolve::{
@@ -173,74 +173,66 @@ where
             resolve_length_or_zero(length, basis)
         })
         .transpose_with_node(tree, child)?;
-    let box_sizing_adjustment = if child_style.box_sizing == BoxSizing::ContentBox {
-        (padding + border).sum_axes()
-    } else {
-        Size::ZERO
-    };
-    let style_size = Size::new(
-        resolve_preferred_optional(
-            &child_style.size.width,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Horizontal,
-            area_parent.width,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-        resolve_preferred_optional(
-            &child_style.size.height,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Vertical,
-            area_parent.height,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-    )
-    .apply_aspect_ratio(child_style.aspect_ratio)
-    .add_optional(box_sizing_adjustment);
     let padding_border_size = (padding + border).sum_axes();
-    let min_size = Size::new(
-        resolve_minimum_optional(
-            &child_style.min_size.width,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Horizontal,
-            area_parent.width,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-        resolve_minimum_optional(
-            &child_style.min_size.height,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Vertical,
-            area_parent.height,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-    )
-    .add_optional(box_sizing_adjustment)
-    .or(padding_border_size.map(Some))
-    .max_optional(padding_border_size.map(Some))
-    .apply_aspect_ratio(child_style.aspect_ratio);
-    let max_size = Size::new(
-        resolve_maximum_optional(
-            &child_style.max_size.width,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Horizontal,
-            area_parent.width,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-        resolve_maximum_optional(
-            &child_style.max_size.height,
-            SizingAlgorithm::Positioned,
-            PhysicalAxis::Vertical,
-            area_parent.height,
-            true,
-        )
-        .map_err(|error| sizing_resolution_error(child, error))?,
-    )
-    .apply_aspect_ratio(child_style.aspect_ratio)
-    .add_optional(box_sizing_adjustment);
+    let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
+        preferred: Size::new(
+            resolve_preferred_optional(
+                &child_style.size.width,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Horizontal,
+                area_parent.width,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+            resolve_preferred_optional(
+                &child_style.size.height,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Vertical,
+                area_parent.height,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+        ),
+        min: Size::new(
+            resolve_minimum_optional(
+                &child_style.min_size.width,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Horizontal,
+                area_parent.width,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+            resolve_minimum_optional(
+                &child_style.min_size.height,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Vertical,
+                area_parent.height,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+        ),
+        max: Size::new(
+            resolve_maximum_optional(
+                &child_style.max_size.width,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Horizontal,
+                area_parent.width,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+            resolve_maximum_optional(
+                &child_style.max_size.height,
+                SizingAlgorithm::Positioned,
+                PhysicalAxis::Vertical,
+                area_parent.height,
+                true,
+            )
+            .map_err(|error| sizing_resolution_error(child, error))?,
+        ),
+        aspect_ratio: child_style.aspect_ratio,
+        box_sizing: child_style.box_sizing,
+        padding_border: padding_border_size,
+    });
     let resolved_inset = child_style
         .inset
         .zip_size(area_parent, |length, basis| {
@@ -263,19 +255,8 @@ where
         tree.node_input(child),
         padding_border_size,
     );
-    let mut known = style_size.or(stretch);
-    if let (Some(ratio), Some(width)) = (remaining_ratio, known.width)
-        && child_style.size.height.is_auto()
-    {
-        known.height = Some(width / ratio.get());
-    } else if let (Some(ratio), Some(height)) = (remaining_ratio, known.height)
-        && child_style.size.width.is_auto()
-    {
-        known.width = Some(height * ratio.get());
-    }
-    let known = known
-        .apply_aspect_ratio(remaining_ratio)
-        .clamp_max_before_min_optional(min_size, max_size);
+    let known = used_size
+        .clamp_optional(used_size.transfer_ratio(used_size.preferred.or(stretch), remaining_ratio));
     let fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
         constants.fallback_minimum_outer,
         constants.fallback_maximum_outer,
@@ -320,9 +301,7 @@ where
         )
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
     )?;
-    let final_size = known
-        .unwrap_or(output.size)
-        .clamp_max_before_min_optional(min_size, max_size);
+    let final_size = used_size.clamp(known.unwrap_or(output.size));
     let justify = child_style
         .justify_self
         .unwrap_or(container_style.justify_items.unwrap_or(AlignItems::Start));

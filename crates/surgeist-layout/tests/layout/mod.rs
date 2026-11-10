@@ -5,6 +5,7 @@ mod node_free_completion;
 
 mod named_box_baselines;
 mod numeric_box_metrics;
+mod positioned_used_size;
 mod source_edges;
 mod source_edges_atomic_parent;
 mod source_edges_continuation_order;

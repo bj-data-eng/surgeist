@@ -8,8 +8,7 @@ use super::{Constants, resolve_auto_optional, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error};
 use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
-    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
-    OptionalMinimumSizeFloorExt, OptionalSizeExt, OptionalSizeMaxExt,
+    AbsoluteInsetStartOf, OptionalSizeExt, PositionedSizeDeclarations, PositionedUsedSize,
     absolute_inset_alignment_offsets, absolute_inset_child_axes, absolute_inset_extents,
     absolute_stretch_fit_sizes, floor_absolute_definite_insets, resolve_absolute_margins,
 };
@@ -19,9 +18,9 @@ use crate::sizing::resolve::{
     resolve_preferred_optional,
 };
 use crate::{
-    AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
-    Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext,
-    Point, Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
+    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Edges,
+    FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point,
+    Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
 
 pub(super) fn layout_absolute_children<'input, Tree, M>(
@@ -82,68 +81,63 @@ where
                 )
                 .transpose_with_node(tree, child)?;
             let padding_border_size = (padding + border).sum_axes();
-            let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
-                padding_border_size
-            } else {
-                Size::<Tree::Scalar>::ZERO
-            };
-            let min_size = Size::new(
-                resolve_minimum_optional(
-                    &style.common.min_size.width,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Horizontal,
-                    inset_relative_size.width,
-                    true,
-                ),
-                resolve_minimum_optional(
-                    &style.common.min_size.height,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Vertical,
-                    inset_relative_size.height,
-                    true,
-                ),
-            )
-            .transpose_with_node(tree, child)?
-            .apply_aspect_ratio(*style.common.aspect_ratio)
-            .add_optional(box_sizing_adjustment);
-            let max_size = Size::new(
-                resolve_maximum_optional(
-                    &style.common.max_size.width,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Horizontal,
-                    inset_relative_size.width,
-                    true,
-                ),
-                resolve_maximum_optional(
-                    &style.common.max_size.height,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Vertical,
-                    inset_relative_size.height,
-                    true,
-                ),
-            )
-            .transpose_with_node(tree, child)?
-            .apply_aspect_ratio(*style.common.aspect_ratio)
-            .add_optional(box_sizing_adjustment);
-            let mut known_size = Size::new(
-                resolve_preferred_optional(
-                    &style.common.size.width,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Horizontal,
-                    inset_relative_size.width,
-                    true,
-                ),
-                resolve_preferred_optional(
-                    &style.common.size.height,
-                    SizingAlgorithm::Positioned,
-                    PhysicalAxis::Vertical,
-                    inset_relative_size.height,
-                    true,
-                ),
-            )
-            .transpose_with_node(tree, child)?
-            .apply_aspect_ratio(*style.common.aspect_ratio)
-            .add_optional(box_sizing_adjustment);
+            let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
+                preferred: Size::new(
+                    resolve_preferred_optional(
+                        &style.common.size.width,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Horizontal,
+                        inset_relative_size.width,
+                        true,
+                    ),
+                    resolve_preferred_optional(
+                        &style.common.size.height,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Vertical,
+                        inset_relative_size.height,
+                        true,
+                    ),
+                )
+                .transpose_with_node(tree, child)?,
+                min: Size::new(
+                    resolve_minimum_optional(
+                        &style.common.min_size.width,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Horizontal,
+                        inset_relative_size.width,
+                        true,
+                    ),
+                    resolve_minimum_optional(
+                        &style.common.min_size.height,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Vertical,
+                        inset_relative_size.height,
+                        true,
+                    ),
+                )
+                .transpose_with_node(tree, child)?,
+                max: Size::new(
+                    resolve_maximum_optional(
+                        &style.common.max_size.width,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Horizontal,
+                        inset_relative_size.width,
+                        true,
+                    ),
+                    resolve_maximum_optional(
+                        &style.common.max_size.height,
+                        SizingAlgorithm::Positioned,
+                        PhysicalAxis::Vertical,
+                        inset_relative_size.height,
+                        true,
+                    ),
+                )
+                .transpose_with_node(tree, child)?,
+                aspect_ratio: *style.common.aspect_ratio,
+                box_sizing: style.common.box_sizing,
+                padding_border: padding_border_size,
+            });
+            let mut known_size = used_size.preferred;
 
             let resolved_inset = style
                 .common
@@ -175,21 +169,17 @@ where
                 && let Some(stretch_width) = stretch.width
             {
                 known_size.width = Some(stretch_width);
-                known_size = known_size
-                    .apply_aspect_ratio(remaining_ratio)
-                    .clamp_max_before_min_optional(min_size, max_size);
+                known_size =
+                    used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
             }
             if known_size.height.is_none()
                 && let Some(stretch_height) = stretch.height
             {
                 known_size.height = Some(stretch_height);
-                known_size = known_size
-                    .apply_aspect_ratio(remaining_ratio)
-                    .clamp_max_before_min_optional(min_size, max_size);
+                known_size =
+                    used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
             }
-            known_size = known_size
-                .clamp_max_before_min_optional(min_size, max_size)
-                .max_optional(padding_border_size.map(Some));
+            known_size = used_size.clamp_optional(known_size);
             let available = crate::layout_math::transpose_axis_requests_at_node(
                 child,
                 absolute_inset_child_axes(
@@ -224,10 +214,7 @@ where
                 )
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?;
-            let final_size = known_size
-                .unwrap_or(output.size)
-                .clamp_max_before_min_optional(min_size, max_size)
-                .max_optional(padding_border_size.map(Some));
+            let final_size = used_size.clamp(known_size.unwrap_or(output.size));
             let inset_alignment = absolute_inset_alignment_offsets(
                 resolved_inset,
                 margin,

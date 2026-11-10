@@ -1,7 +1,7 @@
 use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression};
 use crate::scroll::ScrollOriginProgression;
 use crate::{
-    AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
+    AlignItems, AspectRatioOf, BoxSizing, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
     LengthResolutionStatus, Size,
 };
 
@@ -69,6 +69,152 @@ pub(crate) fn absolute_inset_child_axes<S: LayoutScalar>(
     available.zip_map(extents, |request, extent| {
         with_available_extent(request, extent?)
     })
+}
+
+/// Authored sizing declarations of an absolutely positioned box, resolved in
+/// the box selected by `box-sizing` and before any ratio work.
+pub(crate) struct PositionedSizeDeclarations<S: LayoutScalar> {
+    pub(crate) preferred: Size<Option<S>>,
+    pub(crate) min: Size<Option<S>>,
+    pub(crate) max: Size<Option<S>>,
+    pub(crate) aspect_ratio: Option<AspectRatioOf<S>>,
+    pub(crate) box_sizing: BoxSizing,
+    pub(crate) padding_border: Size<S>,
+}
+
+/// Preferred, minimum and maximum border-box sizes of an absolutely
+/// positioned box, shared by every parent formatting context.
+///
+/// The ratio works with the box selected by `box-sizing` (Sizing 4 §4.1).
+/// A definite preferred size transfers through the ratio to an automatic
+/// axis. A definite minimum transfers to an indefinite minimum, capped by the
+/// declared preferred and maximum sizes of that axis. A definite maximum
+/// transfers to an indefinite maximum, floored by the declared preferred and
+/// minimum sizes of that axis and by the transferred minimum (Sizing 4 §4.4).
+/// The border box never drops below padding plus border (Sizing 3 §3.1), and
+/// clamping applies the maximum before the minimum so the minimum wins
+/// (Sizing 3 §3.1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PositionedUsedSize<S: LayoutScalar> {
+    pub(crate) preferred: Size<Option<S>>,
+    min: Size<S>,
+    max: Size<Option<S>>,
+    box_adjustment: Size<S>,
+}
+
+impl<S: LayoutScalar> PositionedUsedSize<S> {
+    pub(crate) fn resolve(declarations: PositionedSizeDeclarations<S>) -> Self {
+        let PositionedSizeDeclarations {
+            preferred,
+            min,
+            max,
+            aspect_ratio,
+            box_sizing,
+            padding_border,
+        } = declarations;
+        let box_adjustment = if box_sizing == BoxSizing::ContentBox {
+            padding_border
+        } else {
+            Size::ZERO
+        };
+        let (min, max) = match aspect_ratio {
+            Some(ratio) => Self::transfer_limits(preferred, min, max, ratio.get()),
+            None => (min, max),
+        };
+        Self {
+            preferred: preferred
+                .apply_aspect_ratio(aspect_ratio)
+                .add_optional(box_adjustment),
+            min: min
+                .add_optional(box_adjustment)
+                .unwrap_or(padding_border)
+                .max_optional(padding_border.map(Some)),
+            max: max.add_optional(box_adjustment),
+            box_adjustment,
+        }
+    }
+
+    // Caps and floors come from the declared preferred sizes, not from a size
+    // derived through the ratio. The padding floor is applied later, in `clamp`.
+    fn transfer_limits(
+        preferred: Size<Option<S>>,
+        min: Size<Option<S>>,
+        max: Size<Option<S>>,
+        ratio: S,
+    ) -> (Size<Option<S>>, Size<Option<S>>) {
+        let cap = |value: S, first: Option<S>, second: Option<S>| {
+            let value = first.map_or(value, |first| value.min(first));
+            second.map_or(value, |second| value.min(second))
+        };
+        let floor = |value: S, floors: [Option<S>; 3]| {
+            floors
+                .into_iter()
+                .flatten()
+                .fold(value, |value, floor| value.max(floor))
+        };
+        let transferred_min = Size::new(
+            min.width.or_else(|| {
+                min.height
+                    .map(|height| cap(height * ratio, preferred.width, max.width))
+            }),
+            min.height.or_else(|| {
+                min.width
+                    .map(|width| cap(width / ratio, preferred.height, max.height))
+            }),
+        );
+        let transferred_max = Size::new(
+            max.width.or_else(|| {
+                max.height.map(|height| {
+                    floor(
+                        height * ratio,
+                        [preferred.width, min.width, transferred_min.width],
+                    )
+                })
+            }),
+            max.height.or_else(|| {
+                max.width.map(|width| {
+                    floor(
+                        width / ratio,
+                        [preferred.height, min.height, transferred_min.height],
+                    )
+                })
+            }),
+        );
+        (transferred_min, transferred_max)
+    }
+
+    pub(crate) fn clamp(self, size: Size<S>) -> Size<S> {
+        size.clamp_max_before_min_optional(self.min.map(Some), self.max)
+    }
+
+    pub(crate) fn clamp_optional(self, size: Size<Option<S>>) -> Size<Option<S>> {
+        size.clamp_max_before_min_optional(self.min.map(Some), self.max)
+    }
+
+    /// Fills the missing axis of a border-box size through `ratio` in the box
+    /// selected by `box-sizing`.
+    pub(crate) fn transfer_ratio(
+        self,
+        size: Size<Option<S>>,
+        ratio: Option<AspectRatioOf<S>>,
+    ) -> Size<Option<S>> {
+        let Some(ratio) = ratio else {
+            return size;
+        };
+        let ratio = ratio.get();
+        let adjustment = self.box_adjustment;
+        match (size.width, size.height) {
+            (Some(width), None) => Size::new(
+                Some(width),
+                Some((width - adjustment.width) / ratio + adjustment.height),
+            ),
+            (None, Some(height)) => Size::new(
+                Some((height - adjustment.height) * ratio + adjustment.width),
+                Some(height),
+            ),
+            _ => size,
+        }
+    }
 }
 
 pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(

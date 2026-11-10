@@ -9,17 +9,16 @@ use crate::geometry::{
 };
 use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
 use crate::layout_math::{
-    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
-    OptionalSizeExt, OptionalSizeMaxExt, absolute_inset_alignment_offsets,
-    absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
-    floor_absolute_definite_insets, resolve_absolute_margins,
+    AbsoluteInsetStartOf, OptionalSizeExt, PositionedSizeDeclarations, PositionedUsedSize,
+    absolute_inset_alignment_offsets, absolute_inset_child_axes, absolute_inset_extents,
+    absolute_stretch_fit_sizes, floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
-    AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
-    Direction, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point,
-    Position, RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
+    AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
+    LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
+    RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,53 +150,33 @@ where
             )
             .transpose_with_node(tree, child)?;
         let padding_border_size = (padding + border).sum_axes();
-        let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
-            padding_border_size
-        } else {
-            Size::ZERO
-        };
-        let min_size = minimum_size(
-            style.common.min_size,
-            area_size.map(Some),
-            SizingAlgorithm::Positioned,
-            true,
-        )
-        .transpose_with_node(tree, child)?
-        .apply_aspect_ratio(*style.common.aspect_ratio)
-        .add_optional(box_sizing_adjustment)
-        .or(padding_border_size.map(Some))
-        .max_optional(padding_border_size.map(Some));
-        let max_size = maximum_size(
-            style.common.max_size,
-            area_size.map(Some),
-            SizingAlgorithm::Positioned,
-            true,
-        )
-        .transpose_with_node(tree, child)?
-        .apply_aspect_ratio(*style.common.aspect_ratio)
-        .add_optional(box_sizing_adjustment);
-        let style_size = preferred_size(
-            style.common.size,
-            area_size.map(Some),
-            SizingAlgorithm::Positioned,
-            true,
-        )
-        .transpose_with_node(tree, child)?
-        .apply_aspect_ratio(*style.common.aspect_ratio)
-        .add_optional(box_sizing_adjustment);
-        let aspect_max_size = if style.common.aspect_ratio.is_some()
-            && style_size.width.is_none()
-            && style_size.height.is_none()
-            && max_size.width.is_some()
-            && max_size.height.is_some()
-        {
-            max_size
-        } else {
-            Size::NONE
-        };
-        let mut known_size = style_size
-            .or(aspect_max_size)
-            .clamp_max_before_min_optional(min_size, max_size);
+        let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
+            preferred: preferred_size(
+                style.common.size,
+                area_size.map(Some),
+                SizingAlgorithm::Positioned,
+                true,
+            )
+            .transpose_with_node(tree, child)?,
+            min: minimum_size(
+                style.common.min_size,
+                area_size.map(Some),
+                SizingAlgorithm::Positioned,
+                true,
+            )
+            .transpose_with_node(tree, child)?,
+            max: maximum_size(
+                style.common.max_size,
+                area_size.map(Some),
+                SizingAlgorithm::Positioned,
+                true,
+            )
+            .transpose_with_node(tree, child)?,
+            aspect_ratio: *style.common.aspect_ratio,
+            box_sizing: style.common.box_sizing,
+            padding_border: padding_border_size,
+        });
+        let mut known_size = used_size.clamp_optional(used_size.preferred);
         let resolved_inset = style
             .common
             .inset
@@ -250,17 +229,15 @@ where
             && let Some(stretch_width) = stretch.width
         {
             known_size.width = Some(stretch_width);
-            known_size = known_size
-                .apply_aspect_ratio(remaining_ratio)
-                .clamp_max_before_min_optional(min_size, max_size);
+            known_size =
+                used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
         }
         if known_size.height.is_none()
             && let Some(stretch_height) = stretch.height
         {
             known_size.height = Some(stretch_height);
-            known_size = known_size
-                .apply_aspect_ratio(remaining_ratio)
-                .clamp_max_before_min_optional(min_size, max_size);
+            known_size =
+                used_size.clamp_optional(used_size.transfer_ratio(known_size, remaining_ratio));
         }
 
         let available = crate::layout_math::transpose_axis_requests_at_node(
@@ -299,9 +276,7 @@ where
         if let Some(groups) = tree.group_computation() {
             groups.child(child);
         }
-        let final_size = known_size
-            .unwrap_or(output.size)
-            .clamp_max_before_min_optional(min_size, max_size);
+        let final_size = used_size.clamp(known_size.unwrap_or(output.size));
         let margin = resolve_absolute_margins(
             unresolved_margin,
             inset,
