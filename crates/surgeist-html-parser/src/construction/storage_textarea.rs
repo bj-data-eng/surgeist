@@ -1,7 +1,9 @@
 //! Textarea raw value state and its reset from child text.
 
 use super::*;
-use surgeist_html::{construction::HtmlNodeKind, elements::form::HtmlTextareaRawValueAction};
+use surgeist_html::{
+    construction::ConstructionNodeKind, elements::form::HtmlTextareaRawValueAction,
+};
 
 /// Why a textarea's raw value is refreshed from its children.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -100,7 +102,7 @@ impl SessionStorage {
                     .ok_or_else(|| latch_registry_row(control))?
                     .position();
                 if Some(child) != detached
-                    && let HtmlNodeKind::Text(value) = &self
+                    && let ConstructionNodeKind::Text(value) = &self
                         .construction
                         .node_at(child)
                         .ok_or_else(|| latch_registry_row(control))?
@@ -223,7 +225,7 @@ impl SessionStorage {
             .and_then(|last| parent.child_at(last))
             .and_then(|child| self.construction.node_at(child.position()))
             .map(|record| record.kind());
-        let Some(HtmlNodeKind::Text(text)) = last else {
+        let Some(ConstructionNodeKind::Text(text)) = last else {
             return Err(latch_registry_row(control));
         };
         let Some(delta) = text

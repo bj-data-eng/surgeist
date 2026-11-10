@@ -9,7 +9,7 @@ use super::report::ReportStorage;
 use super::*;
 use std::collections::HashMap;
 use surgeist_html::{
-    construction::{HtmlNodeId, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlNodeId},
     values::Namespace,
     vocabulary::KnownHtmlEventHandler,
 };
@@ -31,7 +31,7 @@ impl SessionStorage {
         let mut index = from;
         loop {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let HtmlNodeKind::Element(element) = self
+            let ConstructionNodeKind::Element(element) = self
                 .construction
                 .node_at(node)
                 .ok_or(SessionError::ForeignNode)?
@@ -42,7 +42,7 @@ impl SessionStorage {
             if element.name().namespace() != &Namespace::html() {
                 return Ok(());
             }
-            let Some(attribute) = element.attributes().as_slice().get(index) else {
+            let Some(attribute) = element.attributes().get(index) else {
                 return Ok(());
             };
             let handler = if attribute.name().namespace().uri().is_none() {
@@ -91,7 +91,7 @@ impl SessionStorage {
             .ok_or(SessionError::ForeignNode)?
             .kind()
         {
-            HtmlNodeKind::Element(element) => Ok(element.attributes().len()),
+            ConstructionNodeKind::Element(element) => Ok(element.attributes().len()),
             _ => Ok(0),
         }
     }

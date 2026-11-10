@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     values::DocumentString,
 };
 
@@ -124,16 +124,14 @@ fn aggregate_alias_is_refused_before_next_token_transfer_and_reclaims_after_drop
         .child_at(0)
         .expect("retained child ordinal")
         .position();
-    let HtmlNodeKind::Text(value) = &session
+    let value = session
         .active()
         .unwrap()
         .construction
         .node_at(index)
         .expect("retained construction position")
-        .kind()
-    else {
-        panic!("text");
-    };
+        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
+        .expect("text");
     let alias = value.clone();
     let units = c
         .usage()
@@ -565,7 +563,7 @@ fn invalidated_pi_map_keeps_exact_retired_decoded_values_for_completion() {
     let node = session
         .allocate_processing_instruction(&mut c, &mut Some((target, data)), None)
         .unwrap();
-    let HtmlNodeKind::ProcessingInstruction(pi) = &session
+    let ConstructionNodeKind::ProcessingInstruction(pi) = &session
         .active()
         .unwrap()
         .construction

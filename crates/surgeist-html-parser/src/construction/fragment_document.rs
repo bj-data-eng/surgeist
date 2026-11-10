@@ -1,7 +1,7 @@
 //! Completed §13.4 parser-Document qualification from the original constructor.
 use super::*;
 use history::FrozenHistory;
-use surgeist_html::construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind};
+use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlNode, HtmlNodeKind};
 
 /// The actual auxiliary Document created by HTML877d §13.4, issued only by a
 /// completed contextual report. This is a distinct source construction cause;
@@ -61,7 +61,7 @@ impl<'a> HtmlParseFragmentParserDocument<'a> {
             source,
             fragment,
             document,
-            mode: *mode,
+            mode,
             completion: *state,
         })
     }
@@ -108,7 +108,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     }
     let records = &storage.view;
     let document = records.node_at(0).ok_or(SessionError::ContextUnavailable)?;
-    if !matches!(document.kind(), HtmlNodeKind::Document(mode) if *mode == fragment.context.document_mode())
+    if !matches!(document.kind(), ConstructionNodeKind::Document(mode) if mode == fragment.context.document_mode())
         || document.children().len() != 1
     {
         return Err(SessionError::ContextUnavailable);
@@ -117,7 +117,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     let root = document
         .child_at(0)
         .ok_or(SessionError::ContextUnavailable)?;
-    let HtmlNodeKind::Element(element) = root.kind() else {
+    let ConstructionNodeKind::Element(element) = root.kind() else {
         return Err(SessionError::ContextUnavailable);
     };
     if !exact_ascii(

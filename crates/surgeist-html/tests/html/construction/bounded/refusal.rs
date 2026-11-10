@@ -86,7 +86,7 @@ fn a_refused_text_append_returns_its_operands() {
     let (owner, text) = create(
         storage(),
         HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Text("ab".into()),
+            leaf: HtmlConstructionLeaf::Text("ab".into()),
         },
     );
     let append = HtmlConstructionTextAppend::begin(owner, text, "cd".into());

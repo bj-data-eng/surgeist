@@ -1,7 +1,7 @@
 //! Actual per-slot parser composition: final generic checks precede source retirement.
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionAttributeEditMode, construction::HtmlNodeKind,
+    bounded::construction::HtmlConstructionAttributeEditMode, construction::ConstructionNodeKind,
     values::Attribute,
 };
 impl SessionStorage {
@@ -22,7 +22,7 @@ impl SessionStorage {
         // still an element when the container is restored below.
         if !matches!(
             group.storage_view().node_at(node).map(|node| node.kind()),
-            Some(HtmlNodeKind::Element(_))
+            Some(ConstructionNodeKind::Element(_))
         ) {
             return Err(self.refuse_attribute_edit(control, group));
         }
@@ -62,13 +62,13 @@ impl SessionStorage {
         // `node` named an element when the edit began and the edit only changes
         // its attributes, so the record is still an element; the container row
         // was checked above and the registry only grows.
-        let Some(HtmlNodeKind::Element(record)) =
+        let Some(ConstructionNodeKind::Element(record)) =
             group.storage_view().node_at(node).map(|node| node.kind())
         else {
             return Err(self.refuse_attribute_edit(control, group));
         };
-        control.restore_attribute_weak(record.attributes().shared_attributes(), &mut shared);
-        let values = record.attributes().clone();
+        let values = record.attributes().to_ordered();
+        control.restore_attribute_weak(values.shared_attributes(), &mut shared);
         let restored = AttributeStorage::Frozen {
             values,
             allocation,

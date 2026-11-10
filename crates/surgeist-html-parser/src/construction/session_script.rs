@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     elements::script::{HtmlScriptFlags, HtmlScriptResult},
 };
 
@@ -23,7 +23,7 @@ impl ParserArenaSession {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(control
                 .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
@@ -56,7 +56,7 @@ impl ParserArenaSession {
                     .node_at(0)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             )
         {
             return Err(c

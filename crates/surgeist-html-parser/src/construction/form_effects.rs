@@ -5,7 +5,7 @@ use surgeist_html::{
     bounded::form::{
         HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
     },
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     elements::form::HtmlNativeFormAssociationKind,
     values::DocumentString,
 };
@@ -213,10 +213,10 @@ impl SessionStorage {
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?;
-        let HtmlNodeKind::Element(element) = record.kind() else {
+        let ConstructionNodeKind::Element(element) = record.kind() else {
             return Ok(None);
         };
-        for attribute in element.attributes().as_slice() {
+        for attribute in element.attributes().iter() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(control, Some(attribute.name().local_name()), local)?

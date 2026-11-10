@@ -1,7 +1,7 @@
 //! HTML877d Details source-ordered hooks over the canonical ordinary tree.
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionAttributeEditMode, construction::HtmlNodeKind,
+    bounded::construction::HtmlConstructionAttributeEditMode, construction::ConstructionNodeKind,
     values::OrderedAttributes,
 };
 
@@ -65,7 +65,7 @@ impl SessionStorage {
         position: usize,
     ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -73,7 +73,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let Some(attr) = element.attributes().as_slice().get(position) else {
+        let Some(attr) = element.attributes().get(position) else {
             return Err(latch_registry_row(c));
         };
         if attr.name().namespace().uri().is_some() {
@@ -258,7 +258,7 @@ impl SessionStorage {
                 .storage(c)?
                 .node_at(node)
                 .map(|record| record.kind()),
-            Some(HtmlNodeKind::Element(_))
+            Some(ConstructionNodeKind::Element(_))
         ) {
             return Err(latch_registry_row(c));
         }
@@ -321,7 +321,7 @@ impl SessionStorage {
                 popped = true;
             }
         }
-        let Some(HtmlNodeKind::Element(element_record)) = self
+        let Some(ConstructionNodeKind::Element(element_record)) = self
             .construction
             .storage(c)?
             .node_at(node)
@@ -337,8 +337,8 @@ impl SessionStorage {
             let _ = self.construction.abort_attributes(c);
             return Err(invariant);
         };
-        c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
-        let values = element_record.attributes().clone();
+        let values = element_record.attributes().to_ordered();
+        c.restore_attribute_weak(values.shared_attributes(), &mut shared);
         *storage = Some(AttributeStorage::Removing {
             values,
             allocation,
@@ -395,7 +395,7 @@ impl ParserArenaSession {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
-    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+    use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
     fn request(source: &str) -> crate::HtmlDocumentParseRequest {
         crate::HtmlDocumentParseRequest::offline(
@@ -444,7 +444,7 @@ mod tests {
             .unwrap()
     }
     fn attributes(session: &ParserArenaSession, node: &ParserNode) -> Vec<(Vec<u16>, Vec<u16>)> {
-        let HtmlNodeKind::Element(element) = &session
+        let ConstructionNodeKind::Element(element) = &session
             .active()
             .unwrap()
             .construction

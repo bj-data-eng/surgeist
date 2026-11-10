@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     elements::form::HtmlNativeFormAssociationKind,
     values::DocumentString,
 };
@@ -1372,7 +1372,7 @@ fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags()
         assert_eq!(b.code_units(), [65, 13, 66, 10, 67]);
         // Author-prohibited checked/readonly remain actual native attributes;
         // parser construction does not discard them as author validation.
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(copy.index)
             .expect("retained construction position")

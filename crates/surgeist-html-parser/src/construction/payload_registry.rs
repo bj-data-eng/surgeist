@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{HtmlElement, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlElementView},
     elements::{
         form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
         script::{HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
@@ -398,9 +398,9 @@ pub(super) fn element_record<'a>(
     construction: &'a ConstructionOwner,
     control: &mut ParseControl,
     node: usize,
-) -> Result<&'a HtmlElement, SessionError> {
+) -> Result<HtmlElementView<'a>, SessionError> {
     match construction.node_at(node).map(|record| record.kind()) {
-        Some(HtmlNodeKind::Element(element)) => Ok(element),
+        Some(ConstructionNodeKind::Element(element)) => Ok(element),
         _ => Err(latch_registry_row(control)),
     }
 }
@@ -415,7 +415,6 @@ pub(super) fn element_attribute<'a>(
 ) -> Result<&'a Attribute, SessionError> {
     match element_record(construction, control, node)?
         .attributes()
-        .as_slice()
         .get(position)
     {
         Some(attribute) => Ok(attribute),

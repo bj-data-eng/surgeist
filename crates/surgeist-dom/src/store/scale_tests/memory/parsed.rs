@@ -275,7 +275,7 @@ fn check_report(report: &HtmlParseReport, source: &str) -> Vec<HtmlNodeId> {
             }
             assert_eq!(
                 document.node(&text[0]).unwrap().kind(),
-                &HtmlNodeKind::Text("cell".into())
+                HtmlNodeKind::Text("cell".into())
             );
         }
     }

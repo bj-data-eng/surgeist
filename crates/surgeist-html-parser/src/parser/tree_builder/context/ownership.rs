@@ -1148,13 +1148,13 @@ mod tests {
             let text_id = contents.children().next().unwrap();
             assert!(matches!(
                 fragment.node(&text_id).unwrap().kind(),
-                surgeist_html::construction::HtmlNodeKind::Text(text) if text == &surgeist_html::values::DocumentString::from("A")
+                surgeist_html::construction::HtmlNodeKind::Text(text) if text == surgeist_html::values::DocumentString::from("A")
             ));
             let paragraph = fragment.node(&children[1]).unwrap();
             let text_id = paragraph.children().next().unwrap();
             assert!(matches!(
                 fragment.node(&text_id).unwrap().kind(),
-                surgeist_html::construction::HtmlNodeKind::Text(text) if text == &surgeist_html::values::DocumentString::from("Z")
+                surgeist_html::construction::HtmlNodeKind::Text(text) if text == surgeist_html::values::DocumentString::from("Z")
             ));
             let effects = sealed.effects().unwrap();
             assert_eq!(effects.len(), 1);
@@ -1228,7 +1228,7 @@ mod tests {
             else {
                 panic!("real child text")
             };
-            assert_eq!(text, &surgeist_html::values::DocumentString::from(expected));
+            assert_eq!(text, surgeist_html::values::DocumentString::from(expected));
         }
         drop(children);
         assert!(sealed.evidence().is_ok());
@@ -2035,7 +2035,7 @@ mod tests {
             let text = p.children().next().unwrap();
             assert!(
                 matches!(native.node(&text).unwrap().kind(), surgeist_html::construction::HtmlNodeKind::Text(value)
-                if value == &surgeist_html::values::DocumentString::from("A"))
+                if value == surgeist_html::values::DocumentString::from("A"))
             );
             let Some(HtmlParseEffect::TemplateCache { document, inert }) = effects.get(1).unwrap()
             else {

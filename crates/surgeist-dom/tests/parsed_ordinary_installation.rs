@@ -4954,7 +4954,8 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
             surgeist_html::construction::HtmlNodeKind::Element(element)
                 if element.name().local_name() == &DocumentString::from("input") =>
             {
-                let bank = element.attributes().shared_attributes();
+                let owned = element.attributes().to_ordered();
+                let bank = owned.shared_attributes();
                 assert_eq!(bank.len(), 3);
                 let fields: Vec<_> = bank
                     .iter()
@@ -5143,7 +5144,8 @@ fn parsed_values_keep_the_reports_backing_beside_equal_native_values_without_rew
         else {
             panic!("same report Input");
         };
-        let bank = element.attributes().shared_attributes();
+        let owned = element.attributes().to_ordered();
+        let bank = owned.shared_attributes();
         assert_eq!(Arc::as_ptr(bank), pointer);
         assert_eq!(bank.capacity(), capacity);
         assert_eq!(bank.as_slice().as_ptr() as usize, buffer);

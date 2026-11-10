@@ -1,6 +1,6 @@
 use super::*;
 use surgeist_html::{
-    construction::{HtmlDocumentMode, HtmlElement, HtmlNodeKind},
+    construction::{ConstructionNodeKind, HtmlDocumentMode},
     elements::script::{HtmlScriptKind, HtmlScriptResult},
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -1073,7 +1073,7 @@ fn lexical_script_type_source(source: crate::HtmlSource) -> Option<HtmlScriptKin
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let node = session.allocate_html_tag(&mut c, &mut Some(tag)).unwrap();
-    let HtmlNodeKind::Element(element) = &session
+    let ConstructionNodeKind::Element(element) = session
         .active()
         .unwrap()
         .construction
@@ -1169,26 +1169,45 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
         (Some("unknown"), Some("javascript"), None, 86, 40),
         (Some("application/json"), None, None, 82, 19),
     ] {
-        let element = HtmlElement::new(
-            QualifiedName::new(Namespace::html(), None, "script"),
-            OrderedAttributes::new(
-                explicit
-                    .map(|v| {
-                        Attribute::new(
-                            surgeist_html::vocabulary::KnownHtmlAttribute::Type.qualified_name(),
-                            v,
-                        )
-                    })
-                    .into_iter()
-                    .chain(language.map(|v| {
-                        Attribute::new(QualifiedName::new(Namespace::none(), None, "language"), v)
-                    })),
+        let mut builder = surgeist_html::construction::HtmlFragment::builder(
+            surgeist_html::construction::HtmlConstructionLimits::new(8, 8, 8, 4096, 8),
+        )
+        .unwrap();
+        let root = builder.root();
+        builder
+            .append_element(
+                &root,
+                QualifiedName::new(Namespace::html(), None, "script"),
+                OrderedAttributes::new(
+                    explicit
+                        .map(|v| {
+                            Attribute::new(
+                                surgeist_html::vocabulary::KnownHtmlAttribute::Type
+                                    .qualified_name(),
+                                v,
+                            )
+                        })
+                        .into_iter()
+                        .chain(language.map(|v| {
+                            Attribute::new(
+                                QualifiedName::new(Namespace::none(), None, "language"),
+                                v,
+                            )
+                        })),
+                )
+                .unwrap(),
             )
-            .unwrap(),
-        );
+            .unwrap();
+        let fragment = builder.finish().unwrap();
+        let child = fragment.root().children().next().unwrap();
+        let surgeist_html::construction::HtmlNodeKind::Element(element) =
+            fragment.node(&child).unwrap().kind()
+        else {
+            panic!("script")
+        };
         let mut c = control();
         let before = c.usage().clone();
-        assert_eq!(classify_script(&mut c, &element).unwrap(), expected);
+        assert_eq!(classify_script(&mut c, element).unwrap(), expected);
         let visits = c.usage().work(HtmlParseWorkCategory::RecordVisit)
             - before.work(HtmlParseWorkCategory::RecordVisit);
         let inspections = c.usage().work(HtmlParseWorkCategory::InspectByte)
@@ -1206,7 +1225,7 @@ fn script_type_classification_preserves_preexisting_charge_totals() {
                     limits().work_credits() - available,
                 )
                 .unwrap();
-            assert!(classify_script(&mut short, &element).is_err());
+            assert!(classify_script(&mut short, element).is_err());
             assert!(short.stop().is_some());
         }
     }

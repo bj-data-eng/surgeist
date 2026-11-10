@@ -13,7 +13,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{HtmlElement, HtmlNodeKind},
+    construction::ConstructionNodeKind,
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -159,22 +159,22 @@ impl ParserArenaSession {
             svg,
         )
     }
-    pub(crate) fn element_attributes<'a>(
-        &'a self,
+    pub(crate) fn element_attributes(
+        &self,
         c: &mut ParseControl,
         node: &ParserNode,
-    ) -> Result<Option<&'a OrderedAttributes>, SessionError> {
+    ) -> Result<Option<OrderedAttributes>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(
-            match &storage
+            match storage
                 .construction
                 .node_at(index)
                 .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             {
-                HtmlNodeKind::Element(value) => Some(value.attributes()),
+                ConstructionNodeKind::Element(value) => Some(value.attributes().to_ordered()),
                 _ => None,
             },
         )
@@ -387,7 +387,7 @@ mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use surgeist_html::{
-        construction::{HtmlDocumentMode, HtmlNodeKind},
+        construction::{ConstructionNodeKind, HtmlDocumentMode},
         values::{DocumentString, Namespace},
     };
 
@@ -666,15 +666,15 @@ mod tests {
         let mut frozen = session.freeze(&mut c).unwrap();
         let element = frozen.document().unwrap().root().children().last().unwrap();
         let native = frozen.document().unwrap().node(&element).unwrap();
-        let HtmlNodeKind::Element(native) = native.kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Element(native) = native.kind() else {
             panic!("actual foreign element");
         };
         assert_eq!(
-            native.attributes().as_slice()[0].name().local_name(),
+            native.attributes().get(0).unwrap().name().local_name(),
             &DocumentString::from("viewBox")
         );
         assert_eq!(
-            native.attributes().as_slice()[1].name().prefix(),
+            native.attributes().get(1).unwrap().name().prefix(),
             Some(&DocumentString::from("xlink"))
         );
         frozen.release(&mut c).unwrap();
@@ -813,7 +813,7 @@ mod tests {
                     completed = true;
                     assert_ne!(index, original.index);
                     let storage = session.active().unwrap();
-                    let HtmlNodeKind::Element(cloned) = &storage
+                    let ConstructionNodeKind::Element(cloned) = &storage
                         .construction
                         .node_at(index)
                         .expect("retained construction position")
@@ -822,7 +822,7 @@ mod tests {
                         panic!("native clone");
                     };
                     assert_eq!(cloned.name().namespace(), &Namespace::svg());
-                    let attrs = cloned.attributes().as_slice();
+                    let attrs: Vec<_> = cloned.attributes().iter().collect();
                     assert_eq!(attrs.len(), 2);
                     assert_eq!(
                         attrs[0].name().namespace().uri(),
@@ -1277,10 +1277,10 @@ impl SessionStorage {
             }
             let node = self.allocate_prepared_owned(
                 control,
-                creation_command(HtmlNodeKind::Element(HtmlElement::new(
+                creation_command(NewRecord::Element(
                     QualifiedName::new(namespace, None, name),
                     attributes,
-                ))),
+                )),
                 template,
                 0,
                 0,

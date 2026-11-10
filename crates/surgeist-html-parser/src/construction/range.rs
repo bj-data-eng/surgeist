@@ -12,7 +12,7 @@ use surgeist_html::bounded::numeric::{
     HtmlRangeMidpointCursor, HtmlRangeNumericError, HtmlRangeNumericHeaders, HtmlRangeNumericReply,
     HtmlRangeNumericRequest, HtmlRangeScratchRole,
 };
-use surgeist_html::construction::HtmlNodeKind;
+use surgeist_html::construction::ConstructionNodeKind;
 
 const SCRATCH_COUNT: usize = 8;
 /// One scratch value per [`HtmlRangeScratchRole`]; a lookup cannot be out of range.
@@ -662,7 +662,7 @@ impl SessionStorage {
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -670,7 +670,7 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (position, attribute) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?

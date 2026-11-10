@@ -2,16 +2,14 @@
 
 use super::*;
 use surgeist_html::accounting::HtmlChargedError;
-#[cfg(test)]
-use surgeist_html::construction::HtmlElement;
 use surgeist_html::{
     bounded::values::{
         HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidationError,
         HtmlNameIndexSlot,
     },
-    construction::{HtmlDocumentMode, HtmlNodeKind},
+    construction::{HtmlDoctype, HtmlDocumentMode, HtmlProcessingInstruction},
     elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
-    values::{Attribute, OrderedAttributes},
+    values::{Attribute, DocumentString, OrderedAttributes, QualifiedName},
     vocabulary::KnownHtmlElement,
 };
 
@@ -63,19 +61,46 @@ pub(super) enum OrderedCreation {
     },
 }
 
+/// What one parser allocation creates. A leaf or an element carries its owned values; a root
+/// carries only its kind.
+pub(super) enum NewRecord {
+    Document(HtmlDocumentMode),
+    Fragment,
+    Text(DocumentString),
+    Comment(DocumentString),
+    ProcessingInstruction(HtmlProcessingInstruction),
+    Doctype(HtmlDoctype),
+    Element(QualifiedName, OrderedAttributes),
+}
+
 /// Admits the shared value owner's next real comparison through the original
 /// parser controller. Refusal returns the same allocation for existing cleanup.
 pub(super) fn creation_command(
-    kind: HtmlNodeKind,
+    record: NewRecord,
 ) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
-    match kind {
-        HtmlNodeKind::Document(mode) => {
-            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateDocument { mode }
-        }
-        HtmlNodeKind::Fragment => {
-            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateFragment
-        }
-        kind => surgeist_html::bounded::construction::HtmlConstructionCommand::Create { kind },
+    use surgeist_html::bounded::construction::{
+        HtmlConstructionCommand as Command, HtmlConstructionLeaf as Leaf,
+    };
+    match record {
+        NewRecord::Document(mode) => Command::CreateDocument { mode },
+        NewRecord::Fragment => Command::CreateFragment,
+        NewRecord::Text(value) => Command::Create {
+            leaf: Leaf::Text(value),
+        },
+        NewRecord::Comment(value) => Command::Create {
+            leaf: Leaf::Comment(value),
+        },
+        NewRecord::ProcessingInstruction(value) => Command::Create {
+            leaf: Leaf::ProcessingInstruction(value),
+        },
+        NewRecord::Doctype(value) => Command::Create {
+            leaf: Leaf::Doctype(value),
+        },
+        NewRecord::Element(name, attributes) => Command::CreateElement {
+            name,
+            attributes,
+            link_flags: None,
+        },
     }
 }
 
@@ -162,7 +187,7 @@ impl ParserArenaSession {
     pub(crate) fn allocate_element(
         &mut self,
         control: &mut ParseControl,
-        element: HtmlElement,
+        element: PreexistingElement,
     ) -> Result<ParserNode, SessionError> {
         self.active_mut()?.allocate_element(control, element)
     }

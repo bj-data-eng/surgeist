@@ -123,10 +123,10 @@ impl HeadState<'_> {
             .element_name(c, &current)?
             .ok_or_else(|| KernelError::NotElement.into())
     }
-    fn adjusted_current_attributes<'a>(
-        &'a self,
+    fn adjusted_current_attributes(
+        &self,
         c: &mut ParseControl,
-    ) -> Result<&'a surgeist_html::values::OrderedAttributes, HeadError> {
+    ) -> Result<surgeist_html::values::OrderedAttributes, HeadError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
@@ -139,7 +139,7 @@ impl HeadState<'_> {
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
                 return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
-            return Ok(element.attributes());
+            return Ok(element.attributes().clone());
         }
         let current = self.before.kernel.current(c)?;
         self.before
@@ -222,7 +222,7 @@ impl HeadState<'_> {
                     .session
                     .element_attributes(c, node)?
                     .ok_or(KernelError::EmptyStack)?;
-                integration_encoding(attrs, c)
+                integration_encoding(&attrs, c)
             }
         }
     }
@@ -266,7 +266,7 @@ impl HeadState<'_> {
             HtmlIntegrationPointRule::Never => Ok(false),
             HtmlIntegrationPointRule::Always => Ok(true),
             HtmlIntegrationPointRule::EncodingAttribute => {
-                integration_encoding(self.adjusted_current_attributes(c)?, c)
+                integration_encoding(&self.adjusted_current_attributes(c)?, c)
             }
         }
     }

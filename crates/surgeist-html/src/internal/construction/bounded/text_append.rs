@@ -360,13 +360,13 @@ impl HtmlConstructionTextAppendCompletion {
 /// The text record's value, if the record is a text node.
 fn text_of(storage: &HtmlConstructionStorage, index: usize) -> Option<&DocumentString> {
     match &storage.arena.records.get(index)?.kind {
-        HtmlNodeKind::Text(value) => Some(value),
+        NodeContent::Text(value) => Some(value),
         _ => None,
     }
 }
 fn text_of_mut(storage: &mut HtmlConstructionStorage, index: usize) -> Option<&mut DocumentString> {
     match &mut storage.arena.records.get_mut(index)?.kind {
-        HtmlNodeKind::Text(value) => Some(value),
+        NodeContent::Text(value) => Some(value),
         _ => None,
     }
 }
@@ -842,7 +842,7 @@ fn advance_progress(
     match std::mem::replace(progress, Progress::Inspect) {
         Progress::Inspect => {
             let target = storage.position(node)?;
-            let HtmlNodeKind::Text(value) = &storage.arena.records[target].kind else {
+            let NodeContent::Text(value) = &storage.arena.records[target].kind else {
                 return Err(HtmlConstructionCause::WrongNodeKind.into());
             };
             let old_len = value.len();
@@ -1149,7 +1149,7 @@ mod tests {
     use super::*;
     use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
 
-    fn make(kind: HtmlNodeKind) -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    fn make(kind: HtmlConstructionLeaf) -> (HtmlConstructionStorage, HtmlBuilderNode) {
         let mut initialization = Some(HtmlConstructionStorage::begin());
         initialization
             .as_mut()
@@ -1160,7 +1160,7 @@ mod tests {
             .perform()
             .accept();
         let storage = slots::initialization(&mut initialization).unwrap().commit();
-        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { kind }));
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { leaf: kind }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -1174,8 +1174,20 @@ mod tests {
         };
         (storage, node)
     }
+    /// The stored text string itself, whose block capacity the build view does not show.
+    fn stored<'a>(
+        storage: &'a HtmlConstructionStorage,
+        node: &HtmlBuilderNode,
+    ) -> &'a DocumentString {
+        let NodeContent::Text(value) =
+            &storage.arena.records[storage.index(node).unwrap().position()].kind
+        else {
+            panic!("text")
+        };
+        value
+    }
     fn text(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<u16> {
-        let HtmlNodeKind::Text(value) = storage.node(node).unwrap().kind() else {
+        let ConstructionNodeKind::Text(value) = storage.node(node).unwrap().kind() else {
             panic!("text")
         };
         value.code_units().to_vec()
@@ -1227,7 +1239,9 @@ mod tests {
             .max(size_of::<Option<HtmlConstructionError>>());
         let transition_atomic =
             size_of::<Progress>().max(size_of::<Option<HtmlConstructionError>>());
-        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(vec![1, 2])));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
+            vec![1, 2],
+        )));
         let mut owner = HtmlConstructionTextAppend::begin(
             storage,
             node,
@@ -1287,16 +1301,14 @@ mod tests {
         units.extend_from_slice(&[0, 0xd800, 0xdc00]);
         let original = DocumentString::from_utf16(units);
         let address = original.code_units().as_ptr() as usize;
-        let (storage, node) = make(HtmlNodeKind::Text(original));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(original));
         let (storage, node, _, discarded, prefix, tail) =
             append(storage, node, DocumentString::from_utf16(vec![0xffff, 0]));
         assert!(discarded.is_none());
         assert_eq!((prefix, tail), (0, 2));
         assert_eq!(text(&storage, &node), [0, 0xd800, 0xdc00, 0xffff, 0]);
         assert_eq!(storage.usage().utf16_units(), 5);
-        let HtmlNodeKind::Text(value) = storage.node(&node).unwrap().kind() else {
-            panic!("text")
-        };
+        let value = stored(&storage, &node);
         assert_eq!(value.code_units().as_ptr() as usize, address);
         assert_eq!(value.retained_units(), 512);
     }
@@ -1305,7 +1317,7 @@ mod tests {
     fn shared_history_is_copied_once_then_unique_aggregate_is_reused() {
         let original = DocumentString::from_utf16(vec![0xd800; 400]);
         let history = original.clone();
-        let (storage, node) = make(HtmlNodeKind::Text(original));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(original));
         let (storage, node, _, discarded, prefix, tail) =
             append(storage, node, DocumentString::from("a"));
         assert_eq!((prefix, tail), (400, 1));
@@ -1327,7 +1339,7 @@ mod tests {
     fn external_weak_requires_preservation_and_keeps_original_immutable() {
         let original = DocumentString::from("original");
         let weak = original.block().downgrade();
-        let (storage, node) = make(HtmlNodeKind::Text(original));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(original));
         let (storage, node, _, discarded, prefix, tail) =
             append(storage, node, DocumentString::from("+"));
         assert_eq!((prefix, tail), (8, 1));
@@ -1344,7 +1356,7 @@ mod tests {
 
     #[test]
     fn abort_after_tail_chunk_restores_text_and_retains_actual_growth() {
-        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from("x")));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from("x")));
         let mut owner = HtmlConstructionTextAppend::begin(
             storage,
             node,
@@ -1368,9 +1380,7 @@ mod tests {
         assert_eq!(incoming.len(), 300);
         assert_eq!(text(&storage, &node), [u16::from(b'x')]);
         assert_eq!(storage.usage().utf16_units(), 1);
-        let HtmlNodeKind::Text(value) = storage.node(&node).unwrap().kind() else {
-            panic!("text")
-        };
+        let value = stored(&storage, &node);
         assert_eq!(value.retained_units(), before.capacity());
         assert_eq!(value.code_units().as_ptr() as usize, before.data_address());
     }
@@ -1379,7 +1389,7 @@ mod tests {
     fn abort_during_prefix_returns_original_and_actual_partial_pending() {
         let original = DocumentString::from_utf16(vec![0xffff; 300]);
         let history = original.clone();
-        let (storage, node) = make(HtmlNodeKind::Text(original));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(original));
         let mut owner = HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("z"));
         drive_to(&mut owner, Phase::CopyPrefix);
         owner
@@ -1403,7 +1413,7 @@ mod tests {
         for complete_tail in [false, true] {
             let original = DocumentString::from_utf16(vec![0xffff; 300]);
             let history = original.clone();
-            let (storage, node) = make(HtmlNodeKind::Text(original));
+            let (storage, node) = make(HtmlConstructionLeaf::Text(original));
             let mut owner = HtmlConstructionTextAppend::begin(
                 storage,
                 node,
@@ -1451,7 +1461,7 @@ mod tests {
     fn pending_observation_can_issue_actual_weak_before_bounded_copy() {
         let original = DocumentString::from_utf16(vec![7; 300]);
         let _history = original.clone();
-        let (storage, node) = make(HtmlNodeKind::Text(original));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(original));
         let mut owner = HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("z"));
         drive_to(&mut owner, Phase::InitializeBacking);
         let observation = owner.next_action().unwrap().unwrap().perform(None).unwrap();
@@ -1488,7 +1498,9 @@ mod tests {
         for weak_only in [false, true] {
             let mut units = Vec::with_capacity(32);
             units.extend_from_slice(&[1, 2, 3]);
-            let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(units)));
+            let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
+                units,
+            )));
             let mut owner =
                 HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("z"));
             drive_to(&mut owner, Phase::Preflight);
@@ -1510,8 +1522,10 @@ mod tests {
 
     #[test]
     fn foreign_and_wrong_kind_refusals_return_unchanged_actual_storage() {
-        let (_, foreign) = make(HtmlNodeKind::Text(DocumentString::from("foreign")));
-        let (storage, node) = make(HtmlNodeKind::Comment(DocumentString::from("comment")));
+        let (_, foreign) = make(HtmlConstructionLeaf::Text(DocumentString::from("foreign")));
+        let (storage, node) = make(HtmlConstructionLeaf::Comment(DocumentString::from(
+            "comment",
+        )));
         let usage = storage.usage();
         let mut owner =
             HtmlConstructionTextAppend::begin(storage, foreign, DocumentString::from("x"));
@@ -1536,7 +1550,9 @@ mod tests {
         for invalid in [false, true] {
             let mut units = Vec::with_capacity(8);
             units.extend_from_slice(&[1; 8]);
-            let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(units)));
+            let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
+                units,
+            )));
             let mut owner =
                 HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("z"));
             drive_to(&mut owner, Phase::Reserve);
@@ -1574,7 +1590,7 @@ mod tests {
     #[test]
     fn unaccepted_final_observation_cannot_commit_and_ready_abort_restores_original() {
         for accept in [false, true] {
-            let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from("x")));
+            let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from("x")));
             let mut owner =
                 HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("y"));
             drive_to(&mut owner, Phase::Commit);
@@ -1615,7 +1631,9 @@ mod tests {
     fn abort_refuses_a_backing_another_holder_shares_and_succeeds_once_it_is_alone() {
         let mut units = Vec::with_capacity(8);
         units.push(u16::from(b'x'));
-        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(units)));
+        let (storage, node) = make(HtmlConstructionLeaf::Text(DocumentString::from_utf16(
+            units,
+        )));
         let mut owner =
             HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("yz"));
         drive_to(&mut owner, Phase::Commit);
@@ -1661,7 +1679,7 @@ mod tests {
         for aliased in [false, true] {
             let original = DocumentString::from("x");
             let history = aliased.then(|| original.clone());
-            let (storage, node) = make(HtmlNodeKind::Text(original));
+            let (storage, node) = make(HtmlConstructionLeaf::Text(original));
             let mut owner =
                 HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("y"));
             drive_to(&mut owner, Phase::Commit);
@@ -1675,7 +1693,7 @@ mod tests {
             let mut owner = Some(owner);
             let mut ready = slots::text_append(&mut owner).unwrap();
             let usage = ready.storage.usage();
-            ready.storage.arena.records[ready.index].kind = HtmlNodeKind::Comment("c".into());
+            ready.storage.arena.records[ready.index].kind = NodeContent::Comment("c".into());
             let Err(refusal) = ready.commit() else {
                 panic!("a target that is not text cannot commit");
             };

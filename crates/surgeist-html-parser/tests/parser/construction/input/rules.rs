@@ -758,7 +758,6 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     assert_eq!(
         element
             .attributes()
-            .as_slice()
             .iter()
             .find(|a| a.name().local_name() == &DocumentString::from("value"))
             .unwrap()
@@ -766,7 +765,7 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
         &DocumentString::from("50")
     );
     assert!(
-        matches!(document.node(&form_children[1]).unwrap().kind(), HtmlNodeKind::Text(text) if text==&DocumentString::from("Z"))
+        matches!(document.node(&form_children[1]).unwrap().kind(), HtmlNodeKind::Text(text) if text==DocumentString::from("Z"))
     );
     let mut metadata = report.metadata();
     let mut found_current = false;

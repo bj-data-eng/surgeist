@@ -1,7 +1,7 @@
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
-    construction::{HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind},
+    construction::HtmlConstructionResult,
+    construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlFragmentOwner},
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
@@ -257,7 +257,7 @@ fn foreign_template_and_namespaced_attributes_keep_preexisting_exact_slots() {
     let mut control = control();
     let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
     let root = session.root(&mut control).unwrap();
-    let payload = HtmlElement::new(
+    let payload = PreexistingElement::new(
         QualifiedName::new(
             Namespace::none(),
             Some(DocumentString::from("p")),
@@ -305,13 +305,15 @@ fn foreign_template_and_namespaced_attributes_keep_preexisting_exact_slots() {
     let mut output = frozen(session, &mut control);
     let fragment = output.fragment().unwrap();
     let id = fragment.root().children().next().unwrap();
-    let HtmlNodeKind::Element(element) = fragment.node(&id).unwrap().kind() else {
+    let surgeist_html::construction::HtmlNodeKind::Element(element) =
+        fragment.node(&id).unwrap().kind()
+    else {
         panic!("expected element")
     };
     assert_eq!(element.name().local_name().code_units(), [0xD800, 32]);
     assert_eq!(element.name().local_name().code_units().as_ptr(), backing);
     assert_eq!(
-        element.attributes().as_slice()[0].value().code_units(),
+        element.attributes().get(0).unwrap().value().code_units(),
         [0xDC00]
     );
     assert!(output.release(&mut control).is_ok());
@@ -677,24 +679,45 @@ fn edge_preflight_and_zero_physical_capacity_reject_before_actual_record_admissi
     assert_eq!(control.usage().actual_capacity_bytes, 0);
 }
 
+/// The address of the element name that the build view reports for record `position`. The name
+/// lives in the record, so the address changes when the records are copied to another allocation.
+fn build_name_address(session: &ParserArenaSession, position: usize) -> *const QualifiedName {
+    let ConstructionNodeKind::Element(element) = session
+        .active()
+        .unwrap()
+        .construction
+        .node_at(position)
+        .expect("retained construction position")
+        .kind()
+    else {
+        panic!("element record");
+    };
+    std::ptr::from_ref(element.name())
+}
+
 #[test]
 fn successful_transfers_consume_each_owner_once_without_failure_time_allocation() {
     let mut control = control();
     let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
-    let records_pointer = session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(0)
-        .unwrap()
-        .kind() as *const HtmlNodeKind;
+    let root = session.root(&mut control).unwrap();
+    let node = session.allocate_element(&mut control, html("x")).unwrap();
+    session
+        .insert(&mut control, &root, &node, None, None)
+        .unwrap();
+    let records_address = build_name_address(&session, node.index);
     let mut output = session
         .freeze(&mut control)
         .unwrap_or_else(|error| panic!("freeze failed: {error:?}"));
-    assert_eq!(
-        output.fragment().unwrap().root().kind() as *const HtmlNodeKind,
-        records_pointer
-    );
+    // Publication moves the records without copying them: the published view names the very
+    // element name the build view named.
+    let published = output.fragment().unwrap();
+    let child = published.root().children().next().unwrap();
+    let surgeist_html::construction::HtmlNodeKind::Element(element) =
+        published.node(&child).unwrap().kind()
+    else {
+        panic!("element record");
+    };
+    assert_eq!(std::ptr::from_ref(element.name()), records_address);
     let before = control.usage().clone();
     assert!(matches!(
         session.root(&mut control),
@@ -760,10 +783,17 @@ fn foreign_freeze_and_frozen_cleanup_preserve_the_borrowed_original_owner() {
 #[test]
 fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
     let mut selected = limits();
-    // A root owns one actual record slot and one actual child-vector ticket;
-    // its empty child vector and zero-sized identity add no known payload.
+    // A root and one element child own two actual record slots and their child-vector tickets.
     let mut probe_control = control();
-    let probe_session = ParserArenaSession::new(&mut probe_control, RootKind::Fragment).unwrap();
+    let mut probe_session =
+        ParserArenaSession::new(&mut probe_control, RootKind::Fragment).unwrap();
+    let probe_root = probe_session.root(&mut probe_control).unwrap();
+    let probe_node = probe_session
+        .allocate_element(&mut probe_control, html("x"))
+        .unwrap();
+    probe_session
+        .insert(&mut probe_control, &probe_root, &probe_node, None, None)
+        .unwrap();
     let root_capacity = probe_control.usage().actual_capacity_bytes as usize;
     let mut probe_output = frozen(probe_session, &mut probe_control);
     let wrapper_bytes = probe_output
@@ -784,13 +814,12 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         .unwrap();
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
     let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
-    let records_pointer = session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(0)
-        .unwrap()
-        .kind() as *const HtmlNodeKind;
+    let root = session.root(&mut control).unwrap();
+    let node = session.allocate_element(&mut control, html("x")).unwrap();
+    session
+        .insert(&mut control, &root, &node, None, None)
+        .unwrap();
+    let records_address = build_name_address(&session, node.index);
     assert!(
         matches!(session.freeze(&mut control), Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
         resource: HtmlParseResource::ManagedCapacityBytes,
@@ -799,19 +828,10 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         ..
     })) if current == root_capacity as u64 && requested_delta == wrapper_bytes as u64)
     );
-    assert_eq!(
-        session
-            .active()
-            .unwrap()
-            .construction
-            .node_at(0)
-            .unwrap()
-            .kind() as *const HtmlNodeKind,
-        records_pointer
-    );
+    assert_eq!(build_name_address(&session, node.index), records_address);
     assert_eq!(
         session.active().unwrap().construction.test_storage().len(),
-        1
+        2
     );
     assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
     session.release(&mut control).unwrap();
@@ -821,7 +841,7 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
             .usage()
             .resource(HtmlParseResource::ManagedNodes)
             .current,
-        1
+        2
     );
 }
 

@@ -19,7 +19,7 @@ use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
     CssColorStandardFailure, CssDeviceColorFact,
 };
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,
@@ -246,7 +246,7 @@ impl SessionStorage {
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
+        let ConstructionNodeKind::Element(element) = &self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
@@ -254,7 +254,7 @@ impl SessionStorage {
         else {
             return Err(integrity(c));
         };
-        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
+        for (position, attribute) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
@@ -385,7 +385,7 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+    use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
     #[test]
     fn a_colour_digit_fault_is_a_color_conversion_invariant() {
@@ -791,7 +791,7 @@ mod tests {
                     result.unwrap();
                     assert!(attr.is_none());
                     let storage = session.active().unwrap();
-                    let HtmlNodeKind::Element(element) = &storage
+                    let ConstructionNodeKind::Element(element) = &storage
                         .construction
                         .node_at(node.index)
                         .expect("retained construction position")
@@ -800,7 +800,7 @@ mod tests {
                         panic!("actual element");
                     };
                     assert_eq!(element.attributes().len(), 2);
-                    let value = &element.attributes().as_slice()[1];
+                    let value = &element.attributes().get(1).unwrap();
                     assert_eq!(value.name().namespace().uri(), None);
                     assert_eq!(value.name().local_name(), &DocumentString::from("value"));
                     assert_eq!(value.value(), &DocumentString::from(expected));
@@ -897,7 +897,7 @@ mod tests {
                         }))
                     ));
                     let first = c.stop();
-                    let HtmlNodeKind::Element(element) = &session
+                    let ConstructionNodeKind::Element(element) = &session
                         .active()
                         .unwrap()
                         .construction

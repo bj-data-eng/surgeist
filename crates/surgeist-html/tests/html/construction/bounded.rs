@@ -3,6 +3,7 @@ mod focus;
 mod order;
 mod refusal;
 mod replace;
+mod views;
 use crate::html::support::{Cause, cause, charged_by, has_cause, slots};
 use std::sync::Arc;
 use surgeist_html::{
@@ -11,14 +12,14 @@ use surgeist_html::{
         HtmlConstructionActionDescription, HtmlConstructionAllocationRole,
         HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode, HtmlConstructionCommand,
         HtmlConstructionCommit, HtmlConstructionContent, HtmlConstructionGrowth,
-        HtmlConstructionLease, HtmlConstructionNode, HtmlConstructionReadyOperation,
-        HtmlConstructionRefusal, HtmlConstructionResult, HtmlConstructionRetirementDescription,
-        HtmlConstructionStorage, HtmlConstructionTextAppend,
+        HtmlConstructionLeaf, HtmlConstructionLease, HtmlConstructionNode,
+        HtmlConstructionReadyOperation, HtmlConstructionRefusal,
+        HtmlConstructionRetirementDescription, HtmlConstructionStorage, HtmlConstructionTextAppend,
     },
     construction::{
-        ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause, HtmlDocumentMode, HtmlElement,
-        HtmlFragmentOwner, HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties,
-        HtmlSlotAssignment, HtmlTemplateContentsKind,
+        ConstructionNodeKind, ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause,
+        HtmlConstructionResult, HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeKind,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -65,11 +66,10 @@ fn create(
     (storage, created.unwrap())
 }
 fn element(local: &str) -> HtmlConstructionCommand {
-    HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Element(HtmlElement::new(
-            QualifiedName::new(Namespace::html(), None, local),
-            OrderedAttributes::default(),
-        )),
+    HtmlConstructionCommand::CreateElement {
+        name: QualifiedName::new(Namespace::html(), None, local),
+        attributes: OrderedAttributes::default(),
+        link_flags: None,
     }
 }
 fn fragment(storage: HtmlConstructionStorage) -> (HtmlConstructionStorage, HtmlBuilderNode) {
@@ -661,7 +661,7 @@ fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
     let text = DocumentString::from_utf16(vec![0xd800, 0, 0xdfff]);
     let alias = text.clone();
     let mut owner = Some(storage().prepare(HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Text(text),
+        leaf: HtmlConstructionLeaf::Text(text),
     }));
     let observed;
     loop {
@@ -692,7 +692,7 @@ fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
     let (storage, command, _) = owner.unwrap().abort().unwrap().into_parts();
     assert_eq!(storage.usage().nodes(), 0);
     let HtmlConstructionCommand::Create {
-        kind: HtmlNodeKind::Text(text),
+        leaf: HtmlConstructionLeaf::Text(text),
     } = command
     else {
         panic!()
@@ -1491,16 +1491,19 @@ fn element_creation_installs_supplied_link_history_only_in_atomic_ready_commit()
         else {
             panic!()
         };
-        let HtmlNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
+        let ConstructionNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
             panic!()
         };
         assert_eq!(element.link_flags(), supplied);
         assert!(Arc::ptr_eq(
-            element.attributes().shared_attributes(),
+            element.attributes().to_ordered().shared_attributes(),
             &backing
         ));
         assert_eq!(
-            element.attributes().as_slice()[0]
+            element
+                .attributes()
+                .get(0)
+                .unwrap()
                 .value()
                 .to_utf8()
                 .unwrap(),
@@ -1621,12 +1624,12 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
             link_flags: None,
         },
     );
-    let HtmlNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
+    let ConstructionNodeKind::Element(element) = owner.node(&link).unwrap().kind() else {
         panic!()
     };
     assert_eq!(element.link_flags(), None);
     assert!(Arc::ptr_eq(
-        element.attributes().shared_attributes(),
+        element.attributes().to_ordered().shared_attributes(),
         &backing
     ));
 }

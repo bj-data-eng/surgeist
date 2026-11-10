@@ -1,7 +1,6 @@
 use super::*;
-use surgeist_html::{
-    construction::HtmlElement,
-    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
 };
 
 fn radio_pair(
@@ -528,7 +527,7 @@ fn radio_matching_imported_peer_requires_actual_canonical_state_but_unrelated_na
             limits(),
         );
         let (mut c, mut session, parent, a, _) = radio_pair(&request);
-        let native = HtmlElement::new(
+        let native = PreexistingElement::new(
             QualifiedName::new(Namespace::html(), None, "input"),
             OrderedAttributes::new(vec![
                 Attribute::new(QualifiedName::new(Namespace::none(), None, "type"), "radio"),

@@ -1,12 +1,27 @@
 //! Allocation of nodes, payload rows and prepared slots in the active session storage.
 
 use super::*;
-#[cfg(test)]
-use surgeist_html::construction::HtmlElement;
 use surgeist_html::{
-    construction::HtmlNodeKind,
+    construction::ConstructionNodeKind,
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
+
+/// The name and attributes of an element that exists before the parse, as a test hands them to the
+/// allocator.
+#[cfg(test)]
+pub(crate) struct PreexistingElement {
+    name: QualifiedName,
+    attributes: OrderedAttributes,
+}
+#[cfg(test)]
+impl PreexistingElement {
+    pub(crate) fn new(name: QualifiedName, attributes: OrderedAttributes) -> Self {
+        Self { name, attributes }
+    }
+    pub(crate) fn name(&self) -> &QualifiedName {
+        &self.name
+    }
+}
 
 impl SessionStorage {
     /// Consumes preexisting immutable payloads, not tokenizer-created backing.
@@ -14,8 +29,9 @@ impl SessionStorage {
     pub(super) fn allocate_element(
         &mut self,
         control: &mut ParseControl,
-        element: HtmlElement,
+        element: PreexistingElement,
     ) -> Result<ParserNode, SessionError> {
+        let PreexistingElement { name, attributes } = element;
         self.require(control)?;
         // Actual preexisting input permanently leaves the closed producer
         // inventory. Admission precedes the monotone provenance transition.
@@ -24,17 +40,16 @@ impl SessionStorage {
             payload_write::<Option<HtmlParseUnsupportedState>>(control, 1)?;
             self.standalone_ineligibility = Some(HtmlParseUnsupportedState::Provenance);
         }
-        let name = element.name();
         let template = exact_ascii(
             control,
             name.namespace().uri(),
             "http://www.w3.org/1999/xhtml",
         )? && exact_ascii(control, Some(name.local_name()), "template")?;
-        let mut units = name_units(control, name)?;
-        let attributes = element.attributes().len();
-        for index in 0..attributes {
+        let mut units = name_units(control, &name)?;
+        let attributes_len = attributes.len();
+        for index in 0..attributes_len {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let attribute = &element.attributes().as_slice()[index];
+            let attribute = &attributes.as_slice()[index];
             let Some(next) = units
                 .checked_add(name_units(control, attribute.name())?)
                 .and_then(|sum| sum.checked_add(attribute.value().len()))
@@ -47,20 +62,20 @@ impl SessionStorage {
         }
         let node = self.allocate_native(
             control,
-            HtmlNodeKind::Element(element),
+            NewRecord::Element(name, attributes),
             template,
-            attributes,
+            attributes_len,
             units,
         )?;
         self.payloads.preexisting_units += units;
-        self.payloads.preexisting_attributes += attributes;
+        self.payloads.preexisting_attributes += attributes_len;
         Ok(node)
     }
 
     pub(super) fn allocate(
         &mut self,
         control: &mut ParseControl,
-        kind: HtmlNodeKind,
+        kind: NewRecord,
         template: bool,
         attributes: usize,
         units: usize,
@@ -71,7 +86,7 @@ impl SessionStorage {
     pub(super) fn allocate_owned(
         &mut self,
         control: &mut ParseControl,
-        kind: HtmlNodeKind,
+        kind: NewRecord,
         template: bool,
         attributes: usize,
         units: usize,
@@ -82,7 +97,7 @@ impl SessionStorage {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(control))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         )
         .then_some(DocumentRef::Owned(0));
         self.allocate_in_document_owned(control, kind, template, attributes, units, document)
@@ -90,7 +105,7 @@ impl SessionStorage {
     pub(super) fn allocate_native(
         &mut self,
         control: &mut ParseControl,
-        kind: HtmlNodeKind,
+        kind: NewRecord,
         template: bool,
         attributes: usize,
         units: usize,
@@ -123,9 +138,6 @@ impl SessionStorage {
         // any new nonce backing; successful elements still bind the slot
         // before their native record can be published.
         let element_name = match &command {
-            surgeist_html::bounded::construction::HtmlConstructionCommand::Create {
-                kind: HtmlNodeKind::Element(element),
-            } => Some(element.name()),
             surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
                 name,
                 ..
@@ -631,7 +643,7 @@ impl SessionStorage {
                     .node_at(0)
                     .ok_or_else(|| latch_registry_row(control))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             )
             .then_some(DocumentRef::Owned(0));
             let ordinary_document = self.fragment.is_none() && document.is_some();

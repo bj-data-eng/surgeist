@@ -330,7 +330,6 @@ fn render<T: Tree>(tree: &T) -> String {
                 let mut line = format!("<{}>", dump_name(element.name(), true));
                 let mut attributes: Vec<String> = element
                     .attributes()
-                    .as_slice()
                     .iter()
                     .map(|a| {
                         format!(

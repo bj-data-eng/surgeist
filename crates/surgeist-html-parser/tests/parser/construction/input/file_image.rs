@@ -158,7 +158,7 @@ fn image_initial_coordinates_and_source_are_exact_and_getter_uses_actual_content
                         };
                         // The external consumer explicitly observes native
                         // content; the metadata lender performs no search.
-                        let content = element.attributes().as_slice().iter().find(|a| {
+                        let content = element.attributes().iter().find(|a| {
                             a.name().namespace().uri().is_none()
                                 && a.name().local_name().code_units() == [118, 97, 108, 117, 101]
                         });
@@ -525,7 +525,6 @@ fn native_value_modes_use_explicit_content_and_fixed_qualified_metadata_lenders(
                     // separate from every fixed metadata lender and mode rule.
                     let content = element
                         .attributes()
-                        .as_slice()
                         .iter()
                         .find(|a| {
                             a.name().namespace().uri().is_none()

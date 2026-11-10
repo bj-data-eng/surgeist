@@ -2,16 +2,16 @@
 
 use super::*;
 use surgeist_html::{
-    construction::HtmlElement, elements::script::HtmlScriptKind, values::DocumentString,
+    construction::HtmlElementView, elements::script::HtmlScriptKind, values::DocumentString,
 };
 
 pub(super) fn script_attribute<'a>(
     control: &mut ParseControl,
-    element: &'a HtmlElement,
+    element: HtmlElementView<'a>,
     local: &str,
 ) -> Result<Option<&'a DocumentString>, SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    for attribute in element.attributes().as_slice() {
+    for attribute in element.attributes().iter() {
         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), local)?
@@ -24,7 +24,7 @@ pub(super) fn script_attribute<'a>(
 
 pub(super) fn classify_script(
     control: &mut ParseControl,
-    element: &HtmlElement,
+    element: HtmlElementView<'_>,
 ) -> Result<Option<HtmlScriptKind>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;

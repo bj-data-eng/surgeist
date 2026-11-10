@@ -5,9 +5,11 @@ use super::*;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    bounded::construction::HtmlConstructionNode,
+    construction::HtmlConstructionResult,
     construction::{
-        HtmlDocumentMode, HtmlFragmentOwner, HtmlNode, HtmlNodeKind, HtmlShadowRootProperties,
+        ConstructionNodeKind, HtmlDocumentMode, HtmlFragmentOwner, HtmlNode,
+        HtmlShadowRootProperties,
     },
     elements::{
         native::custom_element_state_without_definition,
@@ -319,7 +321,7 @@ impl SessionStorage {
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
             c,
-            HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks),
+            NewRecord::Document(HtmlDocumentMode::NoQuirks),
             false,
             0,
             0,
@@ -407,7 +409,7 @@ impl ParserArenaSession {
                     .node_at(0)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::Document(_)
+                ConstructionNodeKind::Document(_)
             )
         {
             return Err(SessionError::ContextUnavailable);
@@ -491,7 +493,7 @@ impl ParserArenaSession {
         let target = DocumentRef::Captured(request.context().target_document().clone());
         let output = storage.allocate_in_document_owned(
             c,
-            HtmlNodeKind::Fragment,
+            NewRecord::Fragment,
             false,
             0,
             0,
@@ -585,7 +587,7 @@ impl ParserArenaSession {
                     .node_at(output)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::Fragment
+                ConstructionNodeKind::Fragment
             )
         {
             return Err(SessionError::ContextUnavailable);
@@ -820,7 +822,7 @@ impl SessionStorage {
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
-            HtmlNodeKind::Fragment
+            ConstructionNodeKind::Fragment
         ) {
             return Ok(RegistryRef::Null);
         }
@@ -999,7 +1001,7 @@ impl SessionStorage {
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
-            HtmlNodeKind::Fragment
+            ConstructionNodeKind::Fragment
         ) && matches!(
             self.construction
                 .node_at(node)
@@ -1017,7 +1019,7 @@ impl SessionStorage {
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::Element(_)
+                ConstructionNodeKind::Element(_)
             )
         {
             return Ok(());
@@ -1066,7 +1068,7 @@ impl SessionStorage {
                             .node_at(parent)
                             .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
-                        HtmlNodeKind::Fragment
+                        ConstructionNodeKind::Fragment
                     ) =>
             {
                 self.lookup_registry_ref(c, parent)?
@@ -1232,7 +1234,7 @@ impl ParserArenaSession {
         storage.require(c)?;
         let template = storage.index(c, template)?;
         let (template_slot, _) = storage.template_slot(c, template)?;
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
             .ok_or_else(|| latch_registry_row(c))?
@@ -1289,7 +1291,7 @@ impl ParserArenaSession {
             DeclarativeShadowHost::Owned(host) => {
                 let host = storage.index(c, host)?;
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                let HtmlNodeKind::Element(element) = &storage
+                let ConstructionNodeKind::Element(element) = &storage
                     .construction
                     .node_at(host)
                     .ok_or_else(|| latch_registry_row(c))?
@@ -2218,7 +2220,7 @@ impl FrozenArena {
                 .node_at(index)
                 .ok_or(SessionError::ForeignNode)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(SessionError::NotDocument);
         }
@@ -2263,7 +2265,7 @@ impl FrozenArena {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         if !matches!(
                             arena.node_at(*index).map(|r| r.kind()),
-                            Some(HtmlNodeKind::Document(_))
+                            Some(ConstructionNodeKind::Document(_))
                         ) {
                             return Err(SessionError::NotDocument);
                         }
@@ -2564,10 +2566,10 @@ impl FrozenArena {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 c.charge(
                     HtmlParseWorkCategory::InspectByte,
-                    mem::size_of::<HtmlNodeKind>() as u64,
+                    HtmlConstructionNode::CONTENT_BYTES as u64,
                 )?;
                 let record = view.arena.node_at(index).ok_or(SessionError::ForeignNode)?;
-                if fragment && !matches!(record.kind(), HtmlNodeKind::Fragment) {
+                if fragment && !matches!(record.kind(), ConstructionNodeKind::Fragment) {
                     return Err(SessionError::ContextUnavailable);
                 }
                 Ok(())
@@ -2589,7 +2591,7 @@ impl FrozenArena {
                             .node_at(*inert)
                             .ok_or(SessionError::ForeignNode)?
                             .kind(),
-                        HtmlNodeKind::Document(_)
+                        ConstructionNodeKind::Document(_)
                     ) {
                         return Err(SessionError::ContextUnavailable);
                     }
@@ -2687,7 +2689,7 @@ mod tests {
     };
     use crate::*;
     use surgeist_html::{
-        construction::{HtmlDocumentMode, HtmlNodeKind},
+        construction::{ConstructionNodeKind, HtmlDocumentMode},
         values::{Namespace, OrderedAttributes, QualifiedName},
     };
 
@@ -2762,7 +2764,10 @@ mod tests {
                 .as_node()
                 .id()
         );
-        assert!(matches!(fragment.root().kind(), HtmlNodeKind::Fragment));
+        assert!(matches!(
+            fragment.root().kind(),
+            surgeist_html::construction::HtmlNodeKind::Fragment
+        ));
         assert_eq!(fragment.root().children().count(), 0);
         let root = fragment.root().id();
         let ParserDocumentReference::Captured(actual) =
@@ -3249,7 +3254,7 @@ mod tests {
                         .node_at(bootstrap.output.index)
                         .expect("retained construction position")
                         .kind(),
-                    HtmlNodeKind::Fragment
+                    ConstructionNodeKind::Fragment
                 ));
             } else {
                 assert!(matches!(

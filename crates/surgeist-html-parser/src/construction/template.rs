@@ -6,7 +6,7 @@ use super::*;
 use surgeist_html::construction::HtmlNodeId;
 use surgeist_html::{
     construction::{
-        HtmlDocumentMode, HtmlNodeKind, HtmlShadowRootProperties, HtmlTemplateContentsKind,
+        ConstructionNodeKind, HtmlDocumentMode, HtmlShadowRootProperties, HtmlTemplateContentsKind,
     },
     elements::template::{
         HtmlTemplateContentsOwnerDocument, HtmlTemplateFreshInsertionState,
@@ -95,7 +95,7 @@ impl SessionStorage {
                             .node_at(node)
                             .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
-                        HtmlNodeKind::Document(_)
+                        ConstructionNodeKind::Document(_)
                     ) && DocumentRef::Owned(node) != *document
                     {
                         return Err(SessionError::NodeDocumentUnavailable);
@@ -127,7 +127,7 @@ impl SessionStorage {
                     if !ready
                         || !matches!(
                             self.construction.node_at(node).map(|node| node.kind()),
-                            Some(HtmlNodeKind::ProcessingInstruction(_))
+                            Some(ConstructionNodeKind::ProcessingInstruction(_))
                         )
                     {
                         return Err(SessionError::ProcessingInstructionMapUnavailable);
@@ -155,11 +155,11 @@ impl SessionStorage {
             .ok_or_else(|| latch_registry_row(c))?
             .kind()
         {
-            HtmlNodeKind::Document(_) => {
+            ConstructionNodeKind::Document(_) => {
                 self.document_slot(c, 0)?;
                 Ok(Some(DocumentRef::Owned(0)))
             }
-            HtmlNodeKind::Fragment => Ok(None),
+            ConstructionNodeKind::Fragment => Ok(None),
             _ => Err(SessionError::NotDocument),
         }
     }
@@ -170,13 +170,15 @@ impl SessionStorage {
         target: &str,
     ) -> Result<bool, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        match &self
+        match self
             .construction
             .node_at(node)
             .ok_or_else(|| latch_registry_row(c))?
             .kind()
         {
-            HtmlNodeKind::ProcessingInstruction(pi) => exact_ascii(c, Some(pi.target()), target),
+            ConstructionNodeKind::ProcessingInstruction(pi) => {
+                exact_ascii_units(c, Some(pi.target().code_units()), target)
+            }
             _ => Ok(false),
         }
     }
@@ -260,7 +262,7 @@ impl SessionStorage {
                     .node_at(node)
                     .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
-                HtmlNodeKind::ProcessingInstruction(_)
+                ConstructionNodeKind::ProcessingInstruction(_)
             ) && let Some(value) = self.pi_attribute(c, node, "name")?
                 && exact_string_equal(c, value, name)?
             {
@@ -313,7 +315,7 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if !matches!(
             self.construction.node_at(document).map(|node| node.kind()),
-            Some(HtmlNodeKind::Document(_))
+            Some(ConstructionNodeKind::Document(_))
         ) {
             return Err(SessionError::NotDocument);
         }
@@ -481,7 +483,7 @@ impl SessionStorage {
                 payload_write::<DocumentState>(c, 1)?;
                 let node = self.allocate_native(
                     c,
-                    HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks),
+                    NewRecord::Document(HtmlDocumentMode::NoQuirks),
                     false,
                     0,
                     0,
@@ -523,7 +525,7 @@ impl SessionStorage {
     pub(super) fn allocate_in_document_owned(
         &mut self,
         c: &mut ParseControl,
-        kind: HtmlNodeKind,
+        kind: NewRecord,
         template: bool,
         attributes: usize,
         units: usize,
@@ -816,7 +818,7 @@ impl FrozenArena {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if !matches!(
                     arena.node_at(document.owned()?).map(|node| node.kind()),
-                    Some(HtmlNodeKind::Document(_))
+                    Some(ConstructionNodeKind::Document(_))
                 ) {
                     return Err(SessionError::NotDocument);
                 }

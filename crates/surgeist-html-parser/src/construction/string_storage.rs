@@ -2,7 +2,8 @@
 
 use super::*;
 use surgeist_html::{
-    construction::HtmlNodeKind,
+    bounded::construction::HtmlStoredString,
+    construction::ConstructionNodeKind,
     values::{Attribute, DocumentString, OrderedAttributes},
 };
 
@@ -99,45 +100,43 @@ impl StringLocation {
                 }
             }
             Self::Detached => None,
-            Self::Text(index) => {
+            Self::Text(index) | Self::Comment(index) => {
                 cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                match records.node_at(index).map(|record| record.kind()) {
-                    Some(HtmlNodeKind::Text(value)) => Some(value),
-                    _ => None,
-                }
-            }
-            Self::Comment(index) => {
-                cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                match records.node_at(index).map(|record| record.kind()) {
-                    Some(HtmlNodeKind::Comment(value)) => Some(value),
-                    _ => None,
-                }
+                let field = if matches!(self, Self::Text(_)) {
+                    HtmlStoredString::Text
+                } else {
+                    HtmlStoredString::Comment
+                };
+                records
+                    .node_at(index)
+                    .and_then(|record| record.stored_string(field))
             }
             Self::ProcessingInstructionTarget(index) | Self::ProcessingInstructionData(index) => {
                 cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                match records.node_at(index).map(|record| record.kind()) {
-                    Some(HtmlNodeKind::ProcessingInstruction(value)) => Some(match self {
-                        Self::ProcessingInstructionTarget(_) => value.target(),
-                        _ => value.data(),
-                    }),
-                    _ => None,
-                }
+                let field = if matches!(self, Self::ProcessingInstructionTarget(_)) {
+                    HtmlStoredString::ProcessingInstructionTarget
+                } else {
+                    HtmlStoredString::ProcessingInstructionData
+                };
+                records
+                    .node_at(index)
+                    .and_then(|record| record.stored_string(field))
             }
             Self::DoctypeName(index) | Self::DoctypePublic(index) | Self::DoctypeSystem(index) => {
                 cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
-                match records.node_at(index).map(|record| record.kind()) {
-                    Some(HtmlNodeKind::Doctype(value)) => match self {
-                        Self::DoctypeName(_) => Some(value.name()),
-                        Self::DoctypePublic(_) => value.public_id(),
-                        _ => value.system_id(),
-                    },
-                    _ => None,
-                }
+                let field = match self {
+                    Self::DoctypeName(_) => HtmlStoredString::DoctypeName,
+                    Self::DoctypePublic(_) => HtmlStoredString::DoctypePublicId,
+                    _ => HtmlStoredString::DoctypeSystemId,
+                };
+                records
+                    .node_at(index)
+                    .and_then(|record| record.stored_string(field))
             }
             Self::ElementName(index) | Self::Namespace(index) => {
                 cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
                 match records.node_at(index).map(|record| record.kind()) {
-                    Some(HtmlNodeKind::Element(value)) => match self {
+                    Some(ConstructionNodeKind::Element(value)) => match self {
                         Self::ElementName(..) => Some(value.name().local_name()),
                         _ => value.name().namespace().uri(),
                     },

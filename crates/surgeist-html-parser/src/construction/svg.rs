@@ -5,7 +5,7 @@
 use super::*;
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
-use surgeist_html::{construction::HtmlNodeKind, elements::script::SvgScriptFlags};
+use surgeist_html::{construction::ConstructionNodeKind, elements::script::SvgScriptFlags};
 
 const SVG: &str = "http://www.w3.org/2000/svg";
 
@@ -42,7 +42,7 @@ fn local(
     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let record = records.node_at(node).ok_or(SessionError::ForeignNode)?;
     match record.kind() {
-        HtmlNodeKind::Element(element) => {
+        ConstructionNodeKind::Element(element) => {
             Ok(exact_ascii(c, element.name().namespace().uri(), SVG)?
                 && exact_ascii(c, Some(element.name().local_name()), "script")?)
         }
@@ -134,7 +134,7 @@ impl SessionStorage {
                 .node_at(0)
                 .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         ) {
             return Err(c
                 .stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance)
@@ -283,7 +283,7 @@ mod tests {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::parser::tree_builder::ConstructionCapability;
     use surgeist_html::{
-        construction::{HtmlDocumentMode, HtmlElement, HtmlNodeId, HtmlNodeKind},
+        construction::{HtmlDocumentMode, HtmlNodeId},
         elements::script::SvgScriptFlags,
         values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
     };
@@ -335,7 +335,7 @@ mod tests {
             .children()
             .find(|id| {
                 matches!(document.node(id).unwrap().kind(),
-            HtmlNodeKind::Element(e) if e.name().namespace() == &Namespace::svg()
+            surgeist_html::construction::HtmlNodeKind::Element(e) if e.name().namespace() == &Namespace::svg()
                 && e.name().local_name() == &DocumentString::from("script"))
             })
             .unwrap()
@@ -903,7 +903,7 @@ mod tests {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);
         let root = session.root(&mut c).unwrap();
-        let imported = HtmlElement::new(
+        let imported = PreexistingElement::new(
             QualifiedName::new(Namespace::svg(), None, DocumentString::from("script")),
             OrderedAttributes::default(),
         );

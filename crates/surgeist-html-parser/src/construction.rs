@@ -215,8 +215,11 @@ use frozen_arena::FrozenStorage;
 pub(crate) use session::ParserArenaSession;
 pub(crate) use session_creation::RootKind;
 use session_creation::{
-    CreationProfile, ImpliedHtmlName, OrderedCreation, creation_command, validate_parser_attributes,
+    CreationProfile, ImpliedHtmlName, NewRecord, OrderedCreation, creation_command,
+    validate_parser_attributes,
 };
+#[cfg(test)]
+pub(crate) use storage_allocation::PreexistingElement;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ParserNode {
     handle: HtmlBuilderNode,
@@ -242,12 +245,20 @@ fn exact_ascii(
     value: Option<&DocumentString>,
     expected: &str,
 ) -> Result<bool, SessionError> {
+    exact_ascii_units(control, value.map(DocumentString::code_units), expected)
+}
+/// [`exact_ascii`] over code units, for text that is not held as a `DocumentString`.
+fn exact_ascii_units(
+    control: &mut ParseControl,
+    value: Option<&[u16]>,
+    expected: &str,
+) -> Result<bool, SessionError> {
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let Some(value) = value else { return Ok(false) };
     if value.len() != expected.len() {
         return Ok(false);
     }
-    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
+    for (&unit, byte) in value.iter().zip(expected.bytes()) {
         control.charge_unit_literal_comparison()?;
         if unit != u16::from(byte) {
             return Ok(false);

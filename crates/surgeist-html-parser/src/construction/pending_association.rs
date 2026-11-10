@@ -1,7 +1,7 @@
 //! Bounded original occurrences and immutable inputs; no CSSOM execution.
 use super::*;
 use history::FrozenHistory;
-use surgeist_html::construction::{HtmlDocumentMode, HtmlNode, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::construction::{ConstructionNodeKind, HtmlDocumentMode, HtmlNode, HtmlNodeId};
 
 /// An original occurrence, qualified by its immutable construction result.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -255,7 +255,7 @@ impl SessionStorage {
         local: &str,
     ) -> Result<Option<ValueRow>, SessionError> {
         let mut position = None;
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
@@ -263,7 +263,7 @@ impl SessionStorage {
         else {
             return Ok(None);
         };
-        for (index, attr) in element.attributes().as_slice().iter().enumerate() {
+        for (index, attr) in element.attributes().iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
@@ -357,7 +357,7 @@ impl SessionStorage {
                 .node_at(root)
                 .ok_or(SessionError::WrongToken)?
                 .kind(),
-            HtmlNodeKind::Document(_)
+            ConstructionNodeKind::Document(_)
         );
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
@@ -389,7 +389,7 @@ impl SessionStorage {
                 if detached == Some(child) {
                     continue;
                 }
-                if matches!(record.kind(), HtmlNodeKind::Text(_)) {
+                if matches!(record.kind(), ConstructionNodeKind::Text(_)) {
                     let slot = self.field_slot(c, StringLocation::Text(child))?;
                     let group = self.association_string(c, slot)?;
                     text.try_push_geometric(c, group)?;
@@ -599,7 +599,7 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             elements |= record
                 .child_at(position)
-                .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
+                .is_some_and(|child| matches!(child.kind(), ConstructionNodeKind::Element(_)));
         }
         if elements {
             self.drop_style_order(tree);
@@ -767,7 +767,7 @@ impl SessionStorage {
                 context.captured = self.association_captured_context(c, document)?;
             }
             DocumentRef::Owned(document) => {
-                let HtmlNodeKind::Document(mode) = self
+                let ConstructionNodeKind::Document(mode) = self
                     .construction
                     .node_at(*document)
                     .ok_or(SessionError::WrongToken)?
@@ -775,7 +775,7 @@ impl SessionStorage {
                 else {
                     return Err(SessionError::WrongToken);
                 };
-                context.mode = *mode;
+                context.mode = mode;
                 let slot = self.document_slot(c, *document)?;
                 let Some(RetainedPayload::Document { class, .. }) = self.payloads.values.get(slot)
                 else {
@@ -799,7 +799,7 @@ impl SessionStorage {
                     if detached == Some(index) {
                         continue;
                     }
-                    if let HtmlNodeKind::Element(element) = node.kind() {
+                    if let ConstructionNodeKind::Element(element) = node.kind() {
                         if surgeist_html::elements::style::document_body_role_with(
                             element.name(),
                             |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
@@ -816,7 +816,7 @@ impl SessionStorage {
                                 if detached == Some(index) {
                                     continue;
                                 }
-                                if let HtmlNodeKind::Element(element) = node.kind()
+                                if let ConstructionNodeKind::Element(element) = node.kind()
                                     && surgeist_html::elements::style::document_body_role_with(
                                         element.name(),
                                         |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
@@ -1162,7 +1162,7 @@ impl SessionStorage {
         if self.evidence.is_none() {
             return Ok(());
         }
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::WrongToken)?
@@ -1172,7 +1172,6 @@ impl SessionStorage {
         };
         let attr = element
             .attributes()
-            .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
         let effect =
@@ -1204,7 +1203,7 @@ impl SessionStorage {
         if self.evidence.is_none() || !self.html_local(c, node, "style")? {
             return Ok(());
         }
-        let HtmlNodeKind::Element(element) = self
+        let ConstructionNodeKind::Element(element) = self
             .construction
             .node_at(node)
             .ok_or(SessionError::WrongToken)?
@@ -2170,7 +2169,7 @@ impl FrozenStorage {
             DocumentRef::Owned(node)
                 if matches!(
                     self.view.node_at(*node).map(|n| n.kind()),
-                    Some(HtmlNodeKind::Document(_))
+                    Some(ConstructionNodeKind::Document(_))
                 ) =>
             {
                 Ok(())
@@ -2261,7 +2260,7 @@ mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     use surgeist_html::{
-        construction::{HtmlDocumentMode, HtmlElement},
+        construction::HtmlDocumentMode,
         values::{Namespace, OrderedAttributes, QualifiedName},
     };
 
@@ -2435,7 +2434,7 @@ mod tests {
         let style = storage
             .allocate_element(
                 &mut c,
-                HtmlElement::new(
+                PreexistingElement::new(
                     QualifiedName::new(Namespace::html(), None, "style"),
                     OrderedAttributes::default(),
                 ),

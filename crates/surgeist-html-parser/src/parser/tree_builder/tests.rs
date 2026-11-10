@@ -137,7 +137,15 @@ fn preexisting(
     let HtmlNodeKind::Element(element) = node.kind() else {
         panic!("native element")
     };
-    session.allocate_element(control, element.clone()).unwrap()
+    session
+        .allocate_element(
+            control,
+            crate::construction::PreexistingElement::new(
+                element.name().clone(),
+                element.attributes().to_ordered(),
+            ),
+        )
+        .unwrap()
 }
 fn same(
     kernel: &LocationKernel,
@@ -2325,6 +2333,7 @@ fn fresh_document_prologue_preserves_initial_noquirks_and_exact_doctype_fields()
             value.system_id().unwrap().code_units(),
             DocumentString::from(id.unwrap_or("")).code_units()
         );
+        drop(value);
         frozen.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -2386,7 +2395,7 @@ fn prologue_quirks_reconciles_silmaril_and_html4_empty_or_present_system() {
         );
         let mut frozen = observe_prologue(output, &mut c);
         assert!(
-            matches!(frozen.document().unwrap().root().kind(), HtmlNodeKind::Document(actual) if *actual==expected),
+            matches!(frozen.document().unwrap().root().kind(), HtmlNodeKind::Document(actual) if actual==expected),
             "{input}"
         );
         frozen.release(&mut c).unwrap();
@@ -2835,7 +2844,7 @@ fn prologue_doctype_matching_preserves_nonascii_units_and_exact_system_error_cas
             HtmlDocumentMode::NoQuirks
         };
         assert!(
-            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if *mode==expected)
+            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if mode==expected)
         );
         frozen.release(&mut c).unwrap();
         assert_released(&c);
@@ -3029,7 +3038,7 @@ fn prologue_quirky_public_equality_and_prefix_cases_remain_distinct() {
         let output = prologue(&source, &mut c);
         let mut frozen = observe_prologue(output, &mut c);
         assert!(
-            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if *mode==expected),
+            matches!(frozen.document().unwrap().root().kind(),HtmlNodeKind::Document(mode) if mode==expected),
             "{id}"
         );
         frozen.release(&mut c).unwrap();
@@ -3177,10 +3186,10 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
         .map(|id| document.node(&id).unwrap().kind())
         .collect();
     assert!(
-        matches!(kinds[0], HtmlNodeKind::Comment(value) if value.code_units()==DocumentString::from("outside").code_units())
+        matches!(&kinds[0], HtmlNodeKind::Comment(value) if value.code_units()==DocumentString::from("outside").code_units())
     );
     assert!(
-        matches!(kinds[1], HtmlNodeKind::ProcessingInstruction(value) if value.target().code_units()==[120] && value.data().code_units()==[97,63])
+        matches!(&kinds[1], HtmlNodeKind::ProcessingInstruction(value) if value.target().code_units()==[120] && value.data().code_units()==[97,63])
     );
     let head = html.children().map(|id| document.node(&id).unwrap()).find(|node| matches!(node.kind(), HtmlNodeKind::Element(element) if element.name().local_name() == &DocumentString::from("head"))).unwrap();
     assert!(
@@ -3190,6 +3199,7 @@ fn owning_head_places_prehead_comment_pi_and_head_void_children_in_source_order(
         document.root().kind(),
         HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
     ));
+    drop(kinds);
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 }
@@ -4289,14 +4299,17 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
     );
     assert_eq!(element.attributes().len(), 1);
     assert_eq!(
-        element.attributes().as_slice()[0]
+        element
+            .attributes()
+            .get(0)
+            .unwrap()
             .name()
             .local_name()
             .code_units(),
         [100, 97, 116, 97, 45, 120]
     );
     assert_eq!(
-        element.attributes().as_slice()[0].value().code_units(),
+        element.attributes().get(0).unwrap().value().code_units(),
         [113]
     );
     assert!(node.children().next().is_none());
@@ -7474,6 +7487,7 @@ fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
         panic!("reconstructed descendant text")
     };
     assert_eq!(text.code_units(), &[b'2' as u16]);
+    drop(text);
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 }
@@ -8125,11 +8139,11 @@ fn ordinary_form_and_image_creation_preserve_literal_utf16_values_and_qualified_
             panic!("actual image element")
         };
         assert_eq!(
-            form.attributes().as_slice()[0].value().code_units(),
+            form.attributes().get(0).unwrap().value().code_units(),
             &form_id
         );
         assert_eq!(
-            img.attributes().as_slice()[0].value().code_units(),
+            img.attributes().get(0).unwrap().value().code_units(),
             &alternative
         );
         let HtmlNodeKind::Text(character) = document.node(&character).unwrap().kind() else {
@@ -10199,6 +10213,7 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
         panic!("textarea child must be the actual RCDATA text node");
     };
     let actual_text_units = text.code_units().to_vec();
+    drop(text);
     let HtmlNodeKind::Text(text) = document.node(&following_text).unwrap().kind() else {
         panic!("the character following textarea must be an actual form text sibling");
     };
@@ -10228,6 +10243,7 @@ fn ordinary_textarea_rcdata_first_lf_and_form_sibling_order_preserve_exact_nativ
         .collect();
 
     // Only plain copied units and result-qualified identities survive disposal.
+    drop(text);
     frozen.release(&mut c).unwrap();
     assert_released(&c);
     assert_eq!(actual_mode, HtmlDocumentMode::NoQuirks);
@@ -11120,6 +11136,7 @@ fn ordinary_hidden_inputs_preserve_ordered_value_rewrite_and_form_sibling_order(
             )
         })
         .collect();
+    drop(following_text);
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 
@@ -12109,6 +12126,7 @@ fn foreign_cdata_null_pi_comment_doctype_and_surrogates_keep_real_native_payload
         panic!("real PI");
     };
     let data = pi.data().code_units().to_vec();
+    drop(pi);
     frozen.release(&mut c).unwrap();
     assert_released(&c);
     assert_eq!(actual, expected);
@@ -12301,11 +12319,11 @@ fn foreign_svg_script_fresh_start_and_self_closing_preserve_native_attributes_an
                 };
                 assert_eq!(e.attributes().len(), 1);
                 assert_eq!(
-                    e.attributes().as_slice()[0].name().local_name(),
+                    e.attributes().get(0).unwrap().name().local_name(),
                     &DocumentString::from("data-x")
                 );
                 assert_eq!(
-                    e.attributes().as_slice()[0].value(),
+                    e.attributes().get(0).unwrap().value(),
                     &DocumentString::from("kept")
                 );
                 found = Some(id);
@@ -12633,7 +12651,7 @@ fn foreign_attributes_keep_literal_non_scalar_utf16_and_unknown_name_units() {
     let HtmlNodeKind::Element(element) = document.node(&svg).unwrap().kind() else {
         panic!("svg");
     };
-    let attr = &element.attributes().as_slice()[0];
+    let attr = &element.attributes().get(0).unwrap();
     let observed = (
         attr.name().namespace().uri().is_none(),
         attr.name().prefix().is_none(),
@@ -13125,7 +13143,7 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
     assert_ne!(templates[0].1, templates[1].1);
     assert_eq!(
         document.node(&templates[0].3).unwrap().kind(),
-        &surgeist_html::construction::HtmlNodeKind::Document(
+        surgeist_html::construction::HtmlNodeKind::Document(
             surgeist_html::construction::HtmlDocumentMode::NoQuirks
         )
     );
@@ -13481,7 +13499,7 @@ fn template_valid_shadow_mode_returns_to_plain_contents_before_for_patching() {
         let text = document.node(&p).unwrap().children().next().unwrap();
         assert_eq!(
             document.node(&text).unwrap().kind(),
-            &HtmlNodeKind::Text(DocumentString::from("N"))
+            HtmlNodeKind::Text(DocumentString::from("N"))
         );
         drop((html, body, children, contents, p, text));
         frozen.release(&mut c).unwrap();
@@ -14557,6 +14575,7 @@ fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof()
     let owner_is_form = owner.as_ref() == Some(&form);
     let child_count = children.len();
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.stop(), None);
@@ -15648,6 +15667,7 @@ fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
     };
     let following_text = text.code_units().to_vec();
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -15824,6 +15844,7 @@ fn ordinary_input_sanitizer_observes_completed_value(
         )
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17127,6 +17148,7 @@ fn ordinary_default_button_input_observes_ordered_values(
                 .all(|part| part.source.source() == request.source().identity())
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17356,6 +17378,7 @@ fn ordinary_temporal_input_observes_completed_value(
         )
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17595,6 +17618,7 @@ fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_value
         };
         let following_text = text.code_units().to_vec();
         drop(children);
+        drop(text);
         frozen.release(&mut c).unwrap();
         assert_released(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -17740,6 +17764,7 @@ fn ordinary_number_input_observes_complete(
         (references, source_qualified)
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -18065,6 +18090,7 @@ fn ordinary_file_image_input_observes_completed_state(
                 .all(|part| part.source.source() == request.source().identity())
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -18462,6 +18488,7 @@ fn ordinary_range_input_observes_complete(
         (references, source_qualified)
     };
     drop(children);
+    drop(text);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);

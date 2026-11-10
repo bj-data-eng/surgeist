@@ -263,9 +263,9 @@ pub mod slots {
     use surgeist_html::bounded::construction::{
         HtmlConstructionInitialization, HtmlConstructionLease, HtmlConstructionOperation,
         HtmlConstructionReadyInitialization, HtmlConstructionReadyOperation,
-        HtmlConstructionRecovery, HtmlConstructionRefusal, HtmlConstructionResult,
+        HtmlConstructionRecovery, HtmlConstructionRefusal,
     };
-    use surgeist_html::construction::HtmlConstructionError;
+    use surgeist_html::construction::{HtmlConstructionError, HtmlConstructionResult};
 
     fn step<T, R>(
         slot: &mut Option<T>,

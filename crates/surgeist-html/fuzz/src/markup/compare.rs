@@ -1,9 +1,9 @@
 //! Structural comparison of a parsed tree with a recipe's expected tree.
 use super::tree::{Exp, ExpKind};
-use crate::observe::NativeNode;
+use crate::observe::{NativeKind, NativeNode};
 use std::collections::HashMap;
 use surgeist_html::{
-    construction::{HtmlNodeId, HtmlNodeKind},
+    construction::HtmlNodeId,
     values::{DocumentString, QualifiedName},
 };
 
@@ -38,14 +38,14 @@ impl Tree<'_> {
     }
     fn check(&self, node: &NativeNode, exp: &Exp) -> Result<(), &'static str> {
         match (&node.kind, &exp.kind) {
-            (HtmlNodeKind::Document(actual), ExpKind::Document(mode)) => {
+            (NativeKind::Document(actual), ExpKind::Document(mode)) => {
                 if actual != mode {
                     return Err("tree-mode");
                 }
             }
-            (HtmlNodeKind::Fragment, ExpKind::Fragment) => {}
+            (NativeKind::Fragment, ExpKind::Fragment) => {}
             (
-                HtmlNodeKind::Doctype(d),
+                NativeKind::Doctype(d),
                 ExpKind::Doctype {
                     name,
                     public,
@@ -62,7 +62,7 @@ impl Tree<'_> {
                     return Err("tree-doctype");
                 }
             }
-            (HtmlNodeKind::Element(e), ExpKind::Element { uri, local, attrs }) => {
+            (NativeKind::Element(e), ExpKind::Element { uri, local, attrs }) => {
                 if !name_is(e.name(), uri, None, local) {
                     return Err("tree-name");
                 }
@@ -75,8 +75,8 @@ impl Tree<'_> {
                     return Err("tree-attributes");
                 }
             }
-            (HtmlNodeKind::Text(t), ExpKind::Text(units))
-            | (HtmlNodeKind::Comment(t), ExpKind::Comment(units)) => {
+            (NativeKind::Text(t), ExpKind::Text(units))
+            | (NativeKind::Comment(t), ExpKind::Comment(units)) => {
                 if !text_is(t, units) {
                     return Err("tree-text");
                 }
@@ -88,7 +88,7 @@ impl Tree<'_> {
             (None, None) => {}
             (Some(id), Some(items)) => {
                 let contents = self.node(id)?;
-                if !matches!(contents.kind, HtmlNodeKind::Fragment) {
+                if !matches!(contents.kind, NativeKind::Fragment) {
                     return Err("tree-template");
                 }
                 self.children(&contents.children, items)?;
@@ -102,7 +102,7 @@ impl Tree<'_> {
                     return Err("tree-shadow");
                 }
                 let contents = self.node(id)?;
-                if !matches!(contents.kind, HtmlNodeKind::Fragment) {
+                if !matches!(contents.kind, NativeKind::Fragment) {
                     return Err("tree-shadow");
                 }
                 self.children(&contents.children, items)?;
@@ -147,8 +147,8 @@ pub(crate) fn general(nodes: &[NativeNode]) -> Result<(), &'static str> {
         .collect::<Vec<_>>();
     for n in nodes {
         match &n.kind {
-            HtmlNodeKind::Text(t) if t.code_units().is_empty() => return Err("empty-text-node"),
-            HtmlNodeKind::Element(e) => {
+            NativeKind::Text(t) if t.code_units().is_empty() => return Err("empty-text-node"),
+            NativeKind::Element(e) => {
                 let in_html = e
                     .name()
                     .namespace()

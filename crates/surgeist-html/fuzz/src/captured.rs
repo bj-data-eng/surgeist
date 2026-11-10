@@ -10,13 +10,14 @@
 //!
 //! One fault at most is injected per plan. The refusal each fault must produce
 //! follows from that contract, not from running the adapter.
+use crate::observe::NativeKind;
 use std::collections::HashMap;
 use surgeist_fuzz::{FuzzError, FuzzErrorKind, Result};
-use surgeist_html::bounded::construction::HtmlConstructionResult;
+use surgeist_html::construction::HtmlConstructionResult;
 use surgeist_html::{
     construction::{
         HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlFragmentOwner, HtmlNodeId,
-        HtmlNodeKind, HtmlShadowRootProperties,
+        HtmlShadowRootProperties,
     },
     values::DocumentString,
 };
@@ -124,7 +125,7 @@ fn harness(
 /// Independent view of the source, taken only from its public node views.
 struct Info {
     id: HtmlNodeId,
-    kind: HtmlNodeKind,
+    kind: NativeKind,
     parent: Option<usize>,
     children: Vec<usize>,
     template: Option<usize>,
@@ -170,7 +171,7 @@ fn closure(result: &HtmlConstructionResult) -> Result<Vec<Info>> {
                 .map_err(|e| harness("capture closure", "foreign source node", e))?;
             Ok(Info {
                 id: *id,
-                kind: node.kind().clone(),
+                kind: node.kind().into(),
                 parent: node.parent().as_ref().and_then(lookup),
                 children: node.children().filter_map(|c| lookup(&c)).collect(),
                 template: node.template_contents().as_ref().and_then(lookup),
@@ -230,13 +231,13 @@ impl Inputs<'_> {
                 HtmlConstructionCaptureNodeFacts::new(
                     info.id,
                     document,
-                    matches!(info.kind, HtmlNodeKind::Document(_)).then(|| {
+                    matches!(info.kind, NativeKind::Document(_)).then(|| {
                         HtmlConstructionCaptureDocumentFacts::new(
                             scripting(self.plan.scripting),
                             self.registry(),
                         )
                     }),
-                    matches!(info.kind, HtmlNodeKind::Element(_)).then(|| {
+                    matches!(info.kind, NativeKind::Element(_)).then(|| {
                         HtmlConstructionCaptureElementFacts::new(
                             is_value(self.plan.is_value),
                             self.registry(),
@@ -421,13 +422,13 @@ fn mirror(
             .map_err(|e| (0, "subject-lending", format!("{e:?}")))?;
         let mut local_registry = HtmlCapturedRegistry::Null;
         match (&info.kind, node.kind()) {
-            (HtmlNodeKind::Document(mode), HtmlCapturedNodeKind::Document(d)) => {
+            (NativeKind::Document(mode), HtmlCapturedNodeKind::Document(d)) => {
                 if d.mode() != *mode || d.scripting() != scripting(plan.scripting) {
                     return Err((1, "document-fact", format!("{d:?}")));
                 }
                 local_registry = expected_registry.clone();
             }
-            (HtmlNodeKind::Element(e), HtmlCapturedNodeKind::Element(c)) => {
+            (NativeKind::Element(e), HtmlCapturedNodeKind::Element(c)) => {
                 if c.name() != e.name() || c.attributes() != e.attributes() {
                     return Err((0, "element-payload", format!("{i}")));
                 }
@@ -436,7 +437,7 @@ fn mirror(
                 }
                 local_registry = expected_registry.clone();
             }
-            (HtmlNodeKind::Fragment, HtmlCapturedNodeKind::Fragment(f)) => {
+            (NativeKind::Fragment, HtmlCapturedNodeKind::Fragment(f)) => {
                 match (matches!(info.owner, Some((_, true))), f.kind()) {
                     (false, HtmlCapturedFragmentKind::Plain) => {}
                     (true, HtmlCapturedFragmentKind::ShadowRoot(p)) => {
@@ -455,21 +456,21 @@ fn mirror(
                     _ => return Err((0, "fragment-kind", format!("{i}"))),
                 }
             }
-            (HtmlNodeKind::Text(a), HtmlCapturedNodeKind::Text(b))
-            | (HtmlNodeKind::Comment(a), HtmlCapturedNodeKind::Comment(b)) => {
+            (NativeKind::Text(a), HtmlCapturedNodeKind::Text(b))
+            | (NativeKind::Comment(a), HtmlCapturedNodeKind::Comment(b)) => {
                 if a != b {
                     return Err((0, "text-payload", format!("{i}")));
                 }
             }
             (
-                HtmlNodeKind::ProcessingInstruction(a),
+                NativeKind::ProcessingInstruction(a),
                 HtmlCapturedNodeKind::ProcessingInstruction(b),
             ) => {
                 if a.target() != b.target() || a.data() != b.data() {
                     return Err((0, "instruction-payload", format!("{i}")));
                 }
             }
-            (HtmlNodeKind::Doctype(a), HtmlCapturedNodeKind::Doctype(b)) => {
+            (NativeKind::Doctype(a), HtmlCapturedNodeKind::Doctype(b)) => {
                 if a != b {
                     return Err((0, "doctype-payload", format!("{i}")));
                 }
@@ -498,7 +499,7 @@ fn mirror(
         };
         let container = matches!(
             info.kind,
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+            NativeKind::Document(_) | NativeKind::Fragment | NativeKind::Element(_)
         );
         if node.parent() != expected_parent {
             return Err((0, "parent", format!("{i}: {:?}", node.parent())));
@@ -514,7 +515,7 @@ fn mirror(
                 _ => return Err((0, "children", format!("{i}"))),
             }
         }
-        if let HtmlNodeKind::Element(_) = info.kind {
+        if let NativeKind::Element(_) = info.kind {
             match (info.template, node.template_contents()) {
                 (Some(t), Some(HtmlCapturedTemplateContents::Present(f)))
                     if f.subject() == &subject(t)? => {}
@@ -531,7 +532,7 @@ fn mirror(
                 (None, _) => {}
             }
         }
-        if let HtmlNodeKind::Fragment = info.kind {
+        if let NativeKind::Fragment = info.kind {
             // A shadow root's host and a template contents' host are the owning
             // element; a root fragment has none.
             match (info.owner, node.host()) {
@@ -600,7 +601,7 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
             let mut rows = facts.nodes().to_vec();
             let target = (0..n)
                 .map(|k| (k + pick) % n)
-                .find(|k| !matches!(infos[*k].kind, HtmlNodeKind::Document(_)));
+                .find(|k| !matches!(infos[*k].kind, NativeKind::Document(_)));
             if let Some(k) = target {
                 let old = &rows[k];
                 rows[k] = HtmlConstructionCaptureNodeFacts::new(

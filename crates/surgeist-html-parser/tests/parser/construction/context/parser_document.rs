@@ -92,7 +92,7 @@ fn fragment_descriptor_keeps_actual_constructor_environment_and_completion() {
         );
         assert!(descriptor.completion().ready_for_post_load_tasks());
         let document = descriptor.document();
-        assert!(matches!(document.kind(), HtmlNodeKind::Document(m) if *m == mode));
+        assert!(matches!(document.kind(), HtmlNodeKind::Document(m) if m == mode));
         let children: Vec<_> = document.children().collect();
         assert_eq!(children.len(), 1);
         let html = report.fragment().unwrap().node(&children[0]).unwrap();

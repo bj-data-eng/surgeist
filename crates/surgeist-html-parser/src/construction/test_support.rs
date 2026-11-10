@@ -2,8 +2,8 @@
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
-    construction::{HtmlFragmentOwner, HtmlNodeKind},
+    construction::HtmlConstructionResult,
+    construction::{ConstructionNodeKind, HtmlFragmentOwner},
     values::{DocumentString, QualifiedName},
 };
 
@@ -88,7 +88,7 @@ impl SessionStorage {
         let Some(record) = self.construction.node_at(node) else {
             return false;
         };
-        let HtmlNodeKind::Element(element) = record.kind() else {
+        let ConstructionNodeKind::Element(element) = record.kind() else {
             return false;
         };
         element
@@ -99,12 +99,12 @@ impl SessionStorage {
             && element.name().local_name().to_utf8().as_deref() == Ok(local)
     }
     pub(super) fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
-        let Some(HtmlNodeKind::Element(element)) =
+        let Some(ConstructionNodeKind::Element(element)) =
             self.construction.node_at(node).map(|record| record.kind())
         else {
             return false;
         };
-        element.attributes().as_slice().iter().any(|attribute| {
+        element.attributes().iter().any(|attribute| {
             attribute.name().namespace().uri().is_none()
                 && attribute.name().local_name().to_utf8().as_deref() == Ok(local)
         })
@@ -211,10 +211,9 @@ impl SessionStorage {
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
             let record = self.construction.node_at(node).expect("a retained node");
-            if let HtmlNodeKind::Element(element) = record.kind()
+            if let ConstructionNodeKind::Element(element) = record.kind()
                 && element
                     .attributes()
-                    .as_slice()
                     .iter()
                     .find(|attribute| {
                         attribute.name().namespace().uri().is_none()

@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
 #[test]
 fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_empty_attrs() {
@@ -52,7 +52,9 @@ fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_
     assert_eq!(locals(arena.fragment().unwrap()), ["br"]);
     let fragment = arena.fragment().unwrap();
     let id = fragment.root().children().next().unwrap();
-    let HtmlNodeKind::Element(element) = fragment.node(&id).unwrap().kind() else {
+    let surgeist_html::construction::HtmlNodeKind::Element(element) =
+        fragment.node(&id).unwrap().kind()
+    else {
         panic!("br")
     };
     assert!(element.attributes().is_empty());
@@ -320,7 +322,7 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
         };
         let mut input = Some(second);
         let result = session.add_body_attributes_if_missing(&mut c, &body, &mut input);
-        let HtmlNodeKind::Element(element) = &session
+        let ConstructionNodeKind::Element(element) = &session
             .active()
             .unwrap()
             .construction
@@ -331,14 +333,17 @@ fn body_merge_actual_attribute_cap_preserves_old_order_and_reclaims_staged_paylo
             panic!("body")
         };
         assert_eq!(
-            element.attributes().as_slice()[0]
+            element
+                .attributes()
+                .get(0)
+                .unwrap()
                 .name()
                 .local_name()
                 .code_units(),
             [105, 100]
         );
         assert_eq!(
-            element.attributes().as_slice()[0].value().code_units(),
+            element.attributes().get(0).unwrap().value().code_units(),
             [111, 108, 100]
         );
         if cap == 3 {
@@ -1219,7 +1224,7 @@ fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
             .unwrap();
         let storage = session.active().unwrap();
         assert!(storage.standalone_ineligibility.is_none());
-        let HtmlNodeKind::Element(element) = &storage
+        let ConstructionNodeKind::Element(element) = &storage
             .construction
             .node_at(body.index)
             .expect("retained construction position")
@@ -1227,7 +1232,7 @@ fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
         else {
             panic!("body")
         };
-        let attributes = element.attributes().as_slice();
+        let attributes: Vec<_> = element.attributes().iter().collect();
         assert_eq!(
             attributes
                 .iter()
@@ -1250,7 +1255,9 @@ fn body_and_p_literals_and_both_body_merge_paths_freeze_same_native_arena() {
         assert_eq!(locals(fragment), ["body"]);
         let body_id = fragment.root().children().next().unwrap();
         let p_id = fragment.node(&body_id).unwrap().children().next().unwrap();
-        let HtmlNodeKind::Element(p) = fragment.node(&p_id).unwrap().kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Element(p) =
+            fragment.node(&p_id).unwrap().kind()
+        else {
             panic!("p")
         };
         assert_eq!(p.name().local_name().code_units(), [112]);

@@ -581,11 +581,10 @@ mod tests {
     }
 
     fn element(local: &str) -> HtmlConstructionCommand {
-        HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::html(), None, local),
-                OrderedAttributes::default(),
-            )),
+        HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::html(), None, local),
+            attributes: OrderedAttributes::default(),
+            link_flags: None,
         }
     }
 

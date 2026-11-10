@@ -2,7 +2,7 @@ use super::*;
 use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
 use surgeist_html::{
     bounded::construction::{HtmlConstructionAttributeEditMode, HtmlConstructionCommand},
-    construction::{HtmlElement, HtmlNodeKind},
+    construction::ConstructionNodeKind,
     values::{Attribute, Namespace, QualifiedName},
 };
 fn control() -> ParseControl {
@@ -34,11 +34,10 @@ impl Fixture {
         owner
             .apply(
                 c,
-                HtmlConstructionCommand::Create {
-                    kind: HtmlNodeKind::Element(HtmlElement::new(
-                        QualifiedName::new(Namespace::none(), None, "root"),
-                        attributes,
-                    )),
+                HtmlConstructionCommand::CreateElement {
+                    name: QualifiedName::new(Namespace::none(), None, "root"),
+                    attributes,
+                    link_flags: None,
                 },
                 &[(HtmlParseResource::ManagedNodes, 1)],
             )
@@ -49,11 +48,11 @@ impl Fixture {
             vector,
         }
     }
-    fn backing(&self) -> &Arc<Vec<Attribute>> {
-        let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
+    fn backing(&self) -> Arc<Vec<Attribute>> {
+        let ConstructionNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        v.attributes().shared_attributes()
+        v.attributes().to_ordered().into_shared_attributes()
     }
     fn slot(
         &mut self,
@@ -75,10 +74,13 @@ impl Fixture {
                 .commit()
                 .map_err(|refusal| construction_error(c, refusal.into_parts().1))
         })();
-        let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
+        let ConstructionNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        c.restore_attribute_weak(v.attributes().shared_attributes(), &mut self.shared);
+        c.restore_attribute_weak(
+            v.attributes().to_ordered().shared_attributes(),
+            &mut self.shared,
+        );
         if result.is_ok() {
             self.owner.finish_attributes(c)?;
         } else {
@@ -107,10 +109,13 @@ impl Fixture {
                 .map_err(|refusal| construction_error(c, refusal.into_parts().1))?;
             Ok(())
         })();
-        let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
+        let ConstructionNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
         };
-        c.restore_attribute_weak(v.attributes().shared_attributes(), &mut self.shared);
+        c.restore_attribute_weak(
+            v.attributes().to_ordered().shared_attributes(),
+            &mut self.shared,
+        );
         if result.is_ok() {
             self.owner.finish_attributes(c)?;
         } else {
@@ -143,7 +148,7 @@ fn reserve_refusal_retains_contents_actual_capacity_and_original_weak_ticket() {
         fixture.backing()[0].name().local_name().to_utf8().unwrap(),
         "a"
     );
-    assert_eq!(Arc::weak_count(fixture.backing()), 1);
+    assert_eq!(Arc::weak_count(&fixture.backing()), 1);
     assert_eq!(c.usage().actual_capacity_bytes, before);
     let first = c.stop();
     fixture.release(&mut c);
@@ -155,7 +160,7 @@ fn external_strong_or_weak_alias_refuses_before_reserve_and_preserves_tickets() 
         let mut c = control();
         let mut fixture = Fixture::new(&mut c, &[], 0);
         let strong = (!weak).then(|| fixture.backing().clone());
-        let alias = weak.then(|| Arc::downgrade(fixture.backing()));
+        let alias = weak.then(|| Arc::downgrade(&fixture.backing()));
         assert!(matches!(
             fixture.slot(&mut c, 0, &mut None),
             Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
@@ -164,7 +169,7 @@ fn external_strong_or_weak_alias_refuses_before_reserve_and_preserves_tickets() 
         ));
         drop(strong);
         drop(alias);
-        assert_eq!(Arc::weak_count(fixture.backing()), 1);
+        assert_eq!(Arc::weak_count(&fixture.backing()), 1);
         fixture.release(&mut c);
     }
 }
@@ -218,7 +223,7 @@ fn checked_replacement_moves_real_slot_without_reserve_and_counts_new_comparison
             - before.work(HtmlParseWorkCategory::ReserveByte),
         0
     );
-    assert_eq!(Arc::weak_count(fixture.backing()), 1);
+    assert_eq!(Arc::weak_count(&fixture.backing()), 1);
     drop(old);
     fixture.release(&mut c);
 }
@@ -250,7 +255,7 @@ fn one_short_actual_replacement_layout_preserves_input_and_installed_backing() {
             drop(result.unwrap());
             assert!(incoming.is_none());
         }
-        assert_eq!(Arc::weak_count(fixture.backing()), 1);
+        assert_eq!(Arc::weak_count(&fixture.backing()), 1);
         fixture.release(&mut c);
     }
 }
@@ -306,7 +311,7 @@ fn foreign_stage_and_one_short_work_refuse_before_actual_slot_move() {
         assert!(fixture.append(&mut c, &mut incoming, &ticket).is_err());
         assert_eq!(incoming.len(), 1);
         assert_eq!(fixture.backing().len(), 1);
-        assert_eq!(Arc::weak_count(fixture.backing()), 1);
+        assert_eq!(Arc::weak_count(&fixture.backing()), 1);
         if foreign {
             other.release_vector(incoming, ticket).unwrap();
         } else {

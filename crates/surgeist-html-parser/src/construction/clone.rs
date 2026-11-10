@@ -3,7 +3,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{HtmlNodeKind, HtmlProcessingInstruction, HtmlShadowRootProperties},
+    construction::{ConstructionNodeKind, HtmlProcessingInstruction, HtmlShadowRootProperties},
     elements::{
         form::HtmlTextareaFlags,
         script::{HtmlScriptFlags, HtmlScriptResult},
@@ -103,7 +103,7 @@ impl SessionStorage {
                     }
                 }
                 match record.kind() {
-                    HtmlNodeKind::Element(element) => {
+                    ConstructionNodeKind::Element(element) => {
                         let namespace = element.name().namespace().uri();
                         let supported = self.fragment.is_some()
                             || exact_ascii(c, namespace, "http://www.w3.org/1999/xhtml")?
@@ -120,7 +120,7 @@ impl SessionStorage {
                             control_field_owner(&self.payloads, c, namespace)?;
                         }
                         let container = self.element_attribute_container(c, node)?;
-                        for (position, attr) in element.attributes().as_slice().iter().enumerate() {
+                        for (position, attr) in element.attributes().iter().enumerate() {
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                             for location in [
@@ -171,13 +171,13 @@ impl SessionStorage {
                             self.output_clone_slot(c, node)?;
                         }
                     }
-                    HtmlNodeKind::Text(_) => {
+                    ConstructionNodeKind::Text(_) => {
                         self.field_slot(c, StringLocation::Text(node))?;
                     }
-                    HtmlNodeKind::Comment(_) => {
+                    ConstructionNodeKind::Comment(_) => {
                         self.field_slot(c, StringLocation::Comment(node))?;
                     }
-                    HtmlNodeKind::ProcessingInstruction(_) => {
+                    ConstructionNodeKind::ProcessingInstruction(_) => {
                         self.field_slot(c, StringLocation::ProcessingInstructionTarget(node))?;
                         self.field_slot(c, StringLocation::ProcessingInstructionData(node))?;
                         self.pi_attribute(c, node, "name")?;
@@ -292,14 +292,14 @@ impl SessionStorage {
             .ok_or_else(|| latch_registry_row(c))?
             .kind()
         {
-            HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
-            HtmlNodeKind::Text(_) | HtmlNodeKind::Comment(_) => {
+            ConstructionNodeKind::Element(_) => self.clone_element(c, source, document),
+            ConstructionNodeKind::Text(_) | ConstructionNodeKind::Comment(_) => {
                 let text = matches!(
                     self.construction
                         .node_at(source)
                         .ok_or_else(|| latch_registry_row(c))?
                         .kind(),
-                    HtmlNodeKind::Text(_)
+                    ConstructionNodeKind::Text(_)
                 );
                 let location = if text {
                     StringLocation::Text(source)
@@ -318,9 +318,9 @@ impl SessionStorage {
                 let node = self.allocate_in_document_owned(
                     c,
                     if text {
-                        HtmlNodeKind::Text(value)
+                        NewRecord::Text(value)
                     } else {
-                        HtmlNodeKind::Comment(value)
+                        NewRecord::Comment(value)
                     },
                     false,
                     0,
@@ -340,7 +340,7 @@ impl SessionStorage {
 
                 Ok(node.index)
             }
-            HtmlNodeKind::ProcessingInstruction(_) => {
+            ConstructionNodeKind::ProcessingInstruction(_) => {
                 let map = self.prepare_pi_map(c)?;
                 payload_write::<Option<usize>>(c, 1)?;
                 let slot =
@@ -352,9 +352,7 @@ impl SessionStorage {
                 payload_write::<[StringLocation; 2]>(c, 2)?;
                 let node = self.allocate_in_document_owned(
                     c,
-                    HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction::new(
-                        target, data,
-                    )),
+                    NewRecord::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
                     false,
                     0,
                     0,
@@ -721,7 +719,7 @@ impl SessionStorage {
             let registry = self.lookup_registry_ref(c, source)?;
             let original = self.element_creation_state(c, source)?;
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let HtmlNodeKind::Element(element) = &self
+            let ConstructionNodeKind::Element(element) = &self
                 .construction
                 .node_at(source)
                 .ok_or_else(|| latch_registry_row(c))?

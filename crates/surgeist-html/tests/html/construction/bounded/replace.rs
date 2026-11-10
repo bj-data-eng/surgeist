@@ -8,7 +8,9 @@
 use super::*;
 use crate::html::support::cause;
 use surgeist_html::{
-    construction::{HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlProcessingInstruction},
+    construction::{
+        BuildStr, HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlProcessingInstruction,
+    },
     elements::link::HtmlLinkFlags,
     values::Attribute,
 };
@@ -39,18 +41,120 @@ fn attributes(values: impl IntoIterator<Item = Attribute>) -> OrderedAttributes 
 fn name(namespace: Namespace, prefix: Option<&str>, local: &str) -> QualifiedName {
     QualifiedName::new(namespace, prefix.map(text), local)
 }
+/// A record to create, and the payload the record must hold afterwards. Every expectation is
+/// derived from the authored values, never read back from the owner.
+#[derive(Clone, Debug)]
+enum Payload {
+    Element(QualifiedName, OrderedAttributes),
+    Text(DocumentString),
+    Comment(DocumentString),
+    ProcessingInstruction(HtmlProcessingInstruction),
+    Doctype(HtmlDoctype),
+}
+impl Payload {
+    fn create(&self) -> HtmlConstructionCommand {
+        match self.clone() {
+            Self::Element(name, attributes) => HtmlConstructionCommand::CreateElement {
+                name,
+                attributes,
+                link_flags: None,
+            },
+            Self::Text(value) => HtmlConstructionCommand::Create {
+                leaf: HtmlConstructionLeaf::Text(value),
+            },
+            Self::Comment(value) => HtmlConstructionCommand::Create {
+                leaf: HtmlConstructionLeaf::Comment(value),
+            },
+            Self::ProcessingInstruction(value) => HtmlConstructionCommand::Create {
+                leaf: HtmlConstructionLeaf::ProcessingInstruction(value),
+            },
+            Self::Doctype(value) => HtmlConstructionCommand::Create {
+                leaf: HtmlConstructionLeaf::Doctype(value),
+            },
+        }
+    }
+    /// The expected content, from the authored values.
+    fn snapshot(&self) -> Snapshot {
+        let units = |value: &DocumentString| value.code_units().to_vec();
+        match self {
+            Self::Element(name, attributes) => Snapshot::Element(name.clone(), attributes.clone()),
+            Self::Text(value) => Snapshot::Text(units(value)),
+            Self::Comment(value) => Snapshot::Comment(units(value)),
+            Self::ProcessingInstruction(value) => {
+                Snapshot::ProcessingInstruction(units(value.target()), units(value.data()))
+            }
+            Self::Doctype(value) => Snapshot::Doctype(
+                units(value.name()),
+                value.public_id().map(units),
+                value.system_id().map(units),
+            ),
+        }
+    }
+    /// Asserts that the stored record holds exactly this payload.
+    fn assert_stored(&self, actual: ConstructionNodeKind<'_>, label: &str) {
+        let build = |value: BuildStr<'_>| value.code_units().to_vec();
+        let found = match actual {
+            ConstructionNodeKind::Element(element) => {
+                Snapshot::Element(element.name().clone(), element.attributes().to_ordered())
+            }
+            ConstructionNodeKind::Text(value) => Snapshot::Text(build(value)),
+            ConstructionNodeKind::Comment(value) => Snapshot::Comment(build(value)),
+            ConstructionNodeKind::ProcessingInstruction(value) => {
+                Snapshot::ProcessingInstruction(build(value.target()), build(value.data()))
+            }
+            ConstructionNodeKind::Doctype(value) => Snapshot::Doctype(
+                build(value.name()),
+                value.public_id().map(build),
+                value.system_id().map(build),
+            ),
+            other => Snapshot::Other(format!("{other:?}")),
+        };
+        assert_eq!(found, self.snapshot(), "{label}");
+    }
+    /// Asserts that the published node holds exactly this payload.
+    fn assert_published(&self, actual: HtmlNodeKind<'_>, label: &str) {
+        let units = |value: &DocumentString| value.code_units().to_vec();
+        let found = match actual {
+            HtmlNodeKind::Element(element) => {
+                Snapshot::Element(element.name().clone(), element.attributes().to_ordered())
+            }
+            HtmlNodeKind::Text(value) => Snapshot::Text(units(&value)),
+            HtmlNodeKind::Comment(value) => Snapshot::Comment(units(&value)),
+            HtmlNodeKind::ProcessingInstruction(value) => {
+                Snapshot::ProcessingInstruction(units(value.target()), units(value.data()))
+            }
+            HtmlNodeKind::Doctype(value) => Snapshot::Doctype(
+                units(value.name()),
+                value.public_id().map(units),
+                value.system_id().map(units),
+            ),
+            other => Snapshot::Other(format!("{other:?}")),
+        };
+        assert_eq!(found, self.snapshot(), "{label}");
+    }
+}
+/// A comparable copy of a record's content, so that a failed comparison shows the difference.
+#[derive(Debug, PartialEq)]
+enum Snapshot {
+    Element(QualifiedName, OrderedAttributes),
+    Text(Vec<u16>),
+    Comment(Vec<u16>),
+    ProcessingInstruction(Vec<u16>, Vec<u16>),
+    Doctype(Vec<u16>, Option<Vec<u16>>, Option<Vec<u16>>),
+    Other(String),
+}
 fn create_kind(
     owner: HtmlConstructionStorage,
-    kind: HtmlNodeKind,
+    kind: Payload,
 ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-    create(owner, HtmlConstructionCommand::Create { kind })
+    create(owner, kind.create())
 }
 fn element_with(
     owner: HtmlConstructionStorage,
     name: QualifiedName,
     values: OrderedAttributes,
 ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-    create_kind(owner, HtmlNodeKind::Element(HtmlElement::new(name, values)))
+    create_kind(owner, Payload::Element(name, values))
 }
 fn insert(
     owner: HtmlConstructionStorage,
@@ -78,9 +182,30 @@ fn counters(owner: &HtmlConstructionStorage) -> [usize; 5] {
         usage.depth(),
     ]
 }
-fn element_of(owner: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> HtmlElement {
+/// An element record's name, attributes and link history, copied out of the owner.
+struct ElementSnapshot {
+    link_flags: Option<HtmlLinkFlags>,
+    name: QualifiedName,
+    attributes: OrderedAttributes,
+}
+impl ElementSnapshot {
+    fn link_flags(&self) -> Option<HtmlLinkFlags> {
+        self.link_flags
+    }
+    fn name(&self) -> &QualifiedName {
+        &self.name
+    }
+    fn attributes(&self) -> &OrderedAttributes {
+        &self.attributes
+    }
+}
+fn element_of(owner: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> ElementSnapshot {
     match owner.node(node).unwrap().kind() {
-        HtmlNodeKind::Element(element) => element.clone(),
+        ConstructionNodeKind::Element(element) => ElementSnapshot {
+            link_flags: element.link_flags(),
+            name: element.name().clone(),
+            attributes: element.attributes().to_ordered(),
+        },
         other => panic!("expected an element, found {other:?}"),
     }
 }
@@ -108,11 +233,11 @@ struct Row {
     root: HtmlBuilderNode,
     siblings: [HtmlBuilderNode; 3],
 }
-fn row(kind: HtmlNodeKind) -> Row {
+fn row(kind: Payload) -> Row {
     let (owner, root) = fragment(storage());
-    let (owner, before) = create_kind(owner, HtmlNodeKind::Text(text("before")));
+    let (owner, before) = create_kind(owner, Payload::Text(text("before")));
     let (owner, target) = create_kind(owner, kind);
-    let (owner, after) = create_kind(owner, HtmlNodeKind::Text(text("after")));
+    let (owner, after) = create_kind(owner, Payload::Text(text("after")));
     let owner = insert(owner, &before, &root);
     let owner = insert(owner, &target, &root);
     let owner = insert(owner, &after, &root);
@@ -179,16 +304,16 @@ fn assert_rollback_at_every_action<P>(
 
 // ---------------------------------------------------------------- content
 
-type KindFactory = fn() -> HtmlNodeKind;
+type KindFactory = fn() -> Payload;
 type ContentFactory = fn() -> HtmlConstructionContent;
 
 /// One content replacement: the initial payload, the replacement, the payload
 /// the record must hold afterwards and the UTF-16 units each charges.
 struct ContentCase {
     label: &'static str,
-    initial: HtmlNodeKind,
+    initial: Payload,
     content: ContentFactory,
-    expected: HtmlNodeKind,
+    expected: Payload,
     old_units: usize,
     new_units: usize,
 }
@@ -197,31 +322,31 @@ fn content_cases() -> Vec<ContentCase> {
         // "a😀" is three UTF-16 units: the supplementary scalar is a pair.
         ContentCase {
             label: "text",
-            initial: HtmlNodeKind::Text(text("a\u{1F600}")),
+            initial: Payload::Text(text("a\u{1F600}")),
             content: || HtmlConstructionContent::Text(text("hello \u{1F600}\u{1F600} world")),
-            expected: HtmlNodeKind::Text(text("hello \u{1F600}\u{1F600} world")),
+            expected: Payload::Text(text("hello \u{1F600}\u{1F600} world")),
             old_units: 3,
             new_units: 6 + 2 + 2 + 6,
         },
         ContentCase {
             label: "comment to the empty string",
-            initial: HtmlNodeKind::Comment(text("remark")),
+            initial: Payload::Comment(text("remark")),
             content: || HtmlConstructionContent::Comment(text("")),
-            expected: HtmlNodeKind::Comment(text("")),
+            expected: Payload::Comment(text("")),
             old_units: 6,
             new_units: 0,
         },
         ContentCase {
             label: "processing instruction",
-            initial: HtmlNodeKind::ProcessingInstruction(pi("tool", "href=\"a\"")),
+            initial: Payload::ProcessingInstruction(pi("tool", "href=\"a\"")),
             content: || HtmlConstructionContent::ProcessingInstruction(pi("target", "d\u{1F600}")),
-            expected: HtmlNodeKind::ProcessingInstruction(pi("target", "d\u{1F600}")),
+            expected: Payload::ProcessingInstruction(pi("target", "d\u{1F600}")),
             old_units: 4 + 8,
             new_units: 6 + 3,
         },
         ContentCase {
             label: "doctype",
-            initial: HtmlNodeKind::Doctype(HtmlDoctype::new("html", None, None)),
+            initial: Payload::Doctype(HtmlDoctype::new("html", None, None)),
             content: || {
                 HtmlConstructionContent::Doctype(HtmlDoctype::new(
                     "svg",
@@ -229,7 +354,7 @@ fn content_cases() -> Vec<ContentCase> {
                     Some(text("http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd")),
                 ))
             },
-            expected: HtmlNodeKind::Doctype(HtmlDoctype::new(
+            expected: Payload::Doctype(HtmlDoctype::new(
                 "svg",
                 Some(text("-//W3C//DTD SVG 1.1//EN")),
                 Some(text("http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd")),
@@ -262,12 +387,8 @@ fn replacing_content_commits_the_payload_and_its_utf16_usage_without_touching_to
             "{}: replacement creates no node",
             case.label
         );
-        assert_eq!(
-            owner.node(&target).unwrap().kind(),
-            &case.expected,
-            "{}",
-            case.label
-        );
+        case.expected
+            .assert_stored(owner.node(&target).unwrap().kind(), case.label);
         // Nodes, edges, attributes and depth are untouched; only the units move.
         assert_eq!(
             counters(&owner),
@@ -292,12 +413,8 @@ fn replacing_content_commits_the_payload_and_its_utf16_usage_without_touching_to
         // The published tree carries the replacement.
         let target_id = owner.result_id(&target).unwrap();
         let (result, _) = publish(owner, root);
-        assert_eq!(
-            result.node(&target_id).unwrap().kind(),
-            &case.expected,
-            "{}",
-            case.label
-        );
+        case.expected
+            .assert_published(result.node(&target_id).unwrap().kind(), case.label);
     }
 }
 
@@ -307,7 +424,7 @@ fn replacing_content_with_the_current_payload_changes_nothing_observable() {
         owner,
         root,
         siblings,
-    } = row(HtmlNodeKind::Text(text("same")));
+    } = row(Payload::Text(text("same")));
     let before = counters(&owner);
     let target = siblings[1];
     let (owner, _) = change(
@@ -318,10 +435,7 @@ fn replacing_content_with_the_current_payload_changes_nothing_observable() {
         },
     );
     assert_eq!(counters(&owner), before);
-    assert_eq!(
-        owner.node(&target).unwrap().kind(),
-        &HtmlNodeKind::Text(text("same"))
-    );
+    Payload::Text(text("same")).assert_stored(owner.node(&target).unwrap().kind(), "same");
     assert_eq!(child_handles(&owner, &root), siblings);
 }
 
@@ -334,7 +448,7 @@ fn replacing_an_element_name_keeps_attributes_children_and_position_and_charges_
     let backing = values.shared_attributes().clone();
     let (owner, root) = fragment(storage());
     let (owner, target) = element_with(owner, name(Namespace::html(), None, "div"), values);
-    let (owner, child) = create_kind(owner, HtmlNodeKind::Text(text("inside")));
+    let (owner, child) = create_kind(owner, Payload::Text(text("inside")));
     let owner = insert(owner, &child, &target);
     let owner = insert(owner, &target, &root);
     let before = counters(&owner);
@@ -518,19 +632,19 @@ fn renaming_a_non_template_to_a_template_is_refused_because_it_has_no_contents()
 fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchanged() {
     // Every payload kind refuses every other kind of replacement.
     let initial: Vec<(&str, KindFactory)> = vec![
-        ("text", || HtmlNodeKind::Text(text("t"))),
-        ("comment", || HtmlNodeKind::Comment(text("c"))),
+        ("text", || Payload::Text(text("t"))),
+        ("comment", || Payload::Comment(text("c"))),
         ("processing instruction", || {
-            HtmlNodeKind::ProcessingInstruction(pi("target", "data"))
+            Payload::ProcessingInstruction(pi("target", "data"))
         }),
         ("doctype", || {
-            HtmlNodeKind::Doctype(HtmlDoctype::new("html", None, None))
+            Payload::Doctype(HtmlDoctype::new("html", None, None))
         }),
         ("element", || {
-            HtmlNodeKind::Element(HtmlElement::new(
+            Payload::Element(
                 name(Namespace::html(), None, "span"),
                 OrderedAttributes::default(),
-            ))
+            )
         }),
     ];
     let replacements: Vec<(&str, ContentFactory)> = vec![
@@ -567,10 +681,9 @@ fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchange
                 cause::WRONG_NODE_KIND,
             );
             assert_eq!(counters(&owner), before, "{held} refused {offered}");
-            assert_eq!(
+            kind().assert_stored(
                 owner.node(&target).unwrap().kind(),
-                &kind(),
-                "{held} refused {offered}"
+                &format!("{held} refused {offered}"),
             );
             assert_eq!(child_handles(&owner, &root), siblings);
         }
@@ -603,14 +716,14 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
     assert_eq!(counters(&owner), before);
     assert!(matches!(
         owner.node(&root).unwrap().kind(),
-        HtmlNodeKind::Fragment
+        ConstructionNodeKind::Fragment
     ));
     assert!(matches!(
         owner.node(&document).unwrap().kind(),
-        HtmlNodeKind::Document(HtmlDocumentMode::NoQuirks)
+        ConstructionNodeKind::Document(HtmlDocumentMode::NoQuirks)
     ));
     // A handle of another storage is not an operand of this one.
-    let (other, foreign) = create_kind(storage(), HtmlNodeKind::Text(text("foreign")));
+    let (other, foreign) = create_kind(storage(), Payload::Text(text("foreign")));
     let owner = refuse(
         owner,
         HtmlConstructionCommand::ReplaceContent {
@@ -620,10 +733,7 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
         cause::FOREIGN_BUILDER,
     );
     assert_eq!(counters(&owner), before);
-    assert_eq!(
-        other.node(&foreign).unwrap().kind(),
-        &HtmlNodeKind::Text(text("foreign"))
-    );
+    Payload::Text(text("foreign")).assert_stored(other.node(&foreign).unwrap().kind(), "foreign");
 }
 
 #[test]
@@ -651,14 +761,13 @@ fn aborting_a_content_replacement_after_any_action_changes_nothing_and_returns_t
             },
             |owner, (target, before), when| {
                 assert_eq!(counters(owner), *before, "{label} {when}");
-                assert_eq!(
+                initial.assert_stored(
                     owner.node(target).unwrap().kind(),
-                    &initial,
-                    "{label} {when}"
+                    &format!("{label} {when}"),
                 );
             },
             |owner, (target, before)| {
-                assert_eq!(owner.node(target).unwrap().kind(), &expected, "{label}");
+                expected.assert_stored(owner.node(target).unwrap().kind(), label);
                 assert_eq!(
                     owner.usage().utf16_units(),
                     before[3] - case.old_units + case.new_units,
@@ -723,7 +832,7 @@ struct Host {
 fn host(name: QualifiedName, old: OrderedAttributes) -> Host {
     let (owner, root) = fragment(storage());
     let (owner, element) = element_with(owner, name, old);
-    let (owner, child) = create_kind(owner, HtmlNodeKind::Text(text("inside")));
+    let (owner, child) = create_kind(owner, Payload::Text(text("inside")));
     let owner = insert(owner, &child, &element);
     let owner = insert(owner, &element, &root);
     Host {
@@ -904,10 +1013,10 @@ fn replacing_attributes_keeps_link_history_and_template_contents() {
 #[test]
 fn replacing_attributes_of_a_record_that_is_not_an_element_is_refused() {
     for kind in [
-        HtmlNodeKind::Text(text("t")),
-        HtmlNodeKind::Comment(text("c")),
-        HtmlNodeKind::ProcessingInstruction(pi("target", "data")),
-        HtmlNodeKind::Doctype(HtmlDoctype::new("html", None, None)),
+        Payload::Text(text("t")),
+        Payload::Comment(text("c")),
+        Payload::ProcessingInstruction(pi("target", "data")),
+        Payload::Doctype(HtmlDoctype::new("html", None, None)),
     ] {
         let Row {
             owner, siblings, ..
@@ -920,7 +1029,7 @@ fn replacing_attributes_of_a_record_that_is_not_an_element_is_refused() {
             cause::WRONG_NODE_KIND,
         );
         assert_eq!(counters(&owner), before, "{kind:?}");
-        assert_eq!(owner.node(&target).unwrap().kind(), &kind);
+        kind.assert_stored(owner.node(&target).unwrap().kind(), &format!("{kind:?}"));
     }
     let (owner, root) = fragment(storage());
     let before = counters(&owner);

@@ -26,6 +26,26 @@ impl fmt::Display for HtmlConstructionChargeFault {
 }
 impl std::error::Error for HtmlConstructionChargeFault {}
 
+/// A string that a non-element record stores.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlStoredString {
+    /// The data of a text record.
+    Text,
+    /// The data of a comment record.
+    Comment,
+    /// The target of a processing-instruction record.
+    ProcessingInstructionTarget,
+    /// The data of a processing-instruction record.
+    ProcessingInstructionData,
+    /// The name of a doctype record.
+    DoctypeName,
+    /// The public identifier of a doctype record, when it has one.
+    DoctypePublicId,
+    /// The system identifier of a doctype record, when it has one.
+    DoctypeSystemId,
+}
+
 pub(crate) mod attribute_edit;
 
 pub(crate) mod operations;
@@ -415,8 +435,8 @@ impl<'a> HtmlConstructionNode<'a> {
             return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
         if !matches!(
-            self.kind(),
-            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
+            self.content(),
+            NodeContent::Document(_) | NodeContent::Fragment | NodeContent::Element(_)
         ) {
             return Err(HtmlConstructionCause::ParentCannotHaveChildren.into());
         }
@@ -424,13 +444,13 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     /// Checks the fixed movable-node invariant, without scanning ancestry or order.
     pub fn check_detachment(self) -> Result<(), HtmlConstructionError> {
-        if matches!(self.kind(), HtmlNodeKind::Document(_)) {
+        if matches!(self.content(), NodeContent::Document(_)) {
             return Err(HtmlConstructionCause::RootMove.into());
         }
         if self.fragment_owner().is_some() {
             return Err(HtmlConstructionCause::AssociationMove.into());
         }
-        if matches!(self.kind(), HtmlNodeKind::Fragment) {
+        if matches!(self.content(), NodeContent::Fragment) {
             return Err(HtmlConstructionCause::RootMove.into());
         }
         Ok(())
@@ -453,9 +473,35 @@ impl<'a> HtmlConstructionNode<'a> {
             index: self.index,
         }
     }
-    /// The record's node kind.
-    pub fn kind(self) -> &'a HtmlNodeKind {
+    /// The size in bytes of the content a record stores, which a consumer charges when it
+    /// inspects a record's kind.
+    pub const CONTENT_BYTES: usize = size_of::<NodeContent>();
+    /// The record's content, by value, with its text as borrowed code units.
+    pub fn kind(self) -> ConstructionNodeKind<'a> {
+        self.content().building()
+    }
+    fn content(self) -> &'a NodeContent {
         &self.arena.records[self.index.position()].kind
+    }
+    /// The shared string that `field` names in this record, or `None` when the record is not of
+    /// the kind the field belongs to or the field is absent.
+    pub fn stored_string(self, field: HtmlStoredString) -> Option<&'a DocumentString> {
+        match (field, self.content()) {
+            (HtmlStoredString::Text, NodeContent::Text(value))
+            | (HtmlStoredString::Comment, NodeContent::Comment(value)) => Some(value),
+            (
+                HtmlStoredString::ProcessingInstructionTarget,
+                NodeContent::ProcessingInstruction(value),
+            ) => Some(value.target()),
+            (
+                HtmlStoredString::ProcessingInstructionData,
+                NodeContent::ProcessingInstruction(value),
+            ) => Some(value.data()),
+            (HtmlStoredString::DoctypeName, NodeContent::Doctype(value)) => Some(value.name()),
+            (HtmlStoredString::DoctypePublicId, NodeContent::Doctype(value)) => value.public_id(),
+            (HtmlStoredString::DoctypeSystemId, NodeContent::Doctype(value)) => value.system_id(),
+            _ => None,
+        }
     }
     /// The number of ordinary children, excluding template contents and shadow contents.
     pub fn child_count(self) -> usize {

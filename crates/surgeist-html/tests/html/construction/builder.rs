@@ -35,22 +35,22 @@ fn mixed_siblings_retain_order_and_exact_utf16_without_reparsing() {
     assert_eq!(children.len(), 4);
     assert_eq!(
         fragment.node(&children[0]).unwrap().kind(),
-        &HtmlNodeKind::Text("before".into())
+        HtmlNodeKind::Text("before".into())
     );
     assert_eq!(
         fragment.node(&children[1]).unwrap().kind(),
-        &HtmlNodeKind::Comment("<!-- raw -->".into())
+        HtmlNodeKind::Comment("<!-- raw -->".into())
     );
     assert_eq!(
         fragment.node(&children[3]).unwrap().kind(),
-        &HtmlNodeKind::Text("after".into())
+        HtmlNodeKind::Text("after".into())
     );
     let element_view = fragment.node(&children[2]).unwrap();
     assert_eq!(element_view.parent(), Some(fragment.root().id()));
     let text = element_view.children().next().unwrap();
     assert_eq!(
         fragment.node(&text).unwrap().kind(),
-        &HtmlNodeKind::Text(exact)
+        HtmlNodeKind::Text(exact)
     );
 }
 
@@ -93,13 +93,13 @@ fn same_local_name_in_foreign_namespaces_and_raw_attributes_stays_distinct() {
             element.name().local_name().code_units(),
             &[84, 105, 116, 108, 101]
         );
-        assert_eq!(element.attributes(), &attributes);
+        assert_eq!(element.attributes().to_ordered(), attributes);
         assert_eq!(
-            element.attributes().as_slice()[0].value().code_units(),
+            element.attributes().get(0).unwrap().value().code_units(),
             " invalid &amp; ".encode_utf16().collect::<Vec<_>>()
         );
         assert_eq!(
-            element.attributes().as_slice()[1].value().code_units(),
+            element.attributes().get(1).unwrap().value().code_units(),
             &[0xDFFF]
         );
     }
@@ -120,7 +120,7 @@ fn document_mode_and_doctype_identifiers_are_explicit_and_exact() {
     let child = document.root().children().next().unwrap();
     assert_eq!(
         document.node(&child).unwrap().kind(),
-        &HtmlNodeKind::Doctype(doctype)
+        HtmlNodeKind::Doctype(doctype)
     );
     let HtmlNodeKind::Doctype(doctype) = document.node(&child).unwrap().kind() else {
         panic!("doctype")
@@ -168,7 +168,7 @@ fn strict_pi_authoring_follows_html_target_and_data_rules() {
     let id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&id).unwrap().kind(),
-        &HtmlNodeKind::ProcessingInstruction(pi.into())
+        HtmlNodeKind::ProcessingInstruction(pi.into())
     );
 }
 
@@ -196,7 +196,7 @@ fn authored_pi_roundtrip_and_native_append_preserve_one_exact_record() {
     let id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&id).unwrap().kind(),
-        &HtmlNodeKind::ProcessingInstruction(stored)
+        HtmlNodeKind::ProcessingInstruction(stored)
     );
 }
 
@@ -233,7 +233,7 @@ fn template_contents_are_a_separate_fragment_with_a_reverse_association() {
     let text_id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&text_id).unwrap().kind(),
-        &HtmlNodeKind::Text("inside".into())
+        HtmlNodeKind::Text("inside".into())
     );
     assert_eq!(fragment.usage().nodes(), 4);
     assert_eq!(fragment.usage().edges(), 3);
@@ -310,7 +310,7 @@ fn shadow_host_and_contents_keep_properties_and_separate_ordinary_children() {
     let text_id = shadow.root().children().next().unwrap();
     assert_eq!(
         shadow.node(&text_id).unwrap().kind(),
-        &HtmlNodeKind::Text("shadow".into())
+        HtmlNodeKind::Text("shadow".into())
     );
 }
 
@@ -337,7 +337,7 @@ fn foreign_builder_handles_and_result_ids_are_rejected_without_changes() {
     assert_eq!(clone.root().id(), first.root().id());
     assert_eq!(
         clone.node(&id).unwrap().kind(),
-        &HtmlNodeKind::Text("first".into())
+        HtmlNodeKind::Text("first".into())
     );
 }
 
@@ -367,7 +367,7 @@ fn old_immutable_artifact_survives_later_builds_and_associated_view_owns_arena()
     drop(old);
     assert_eq!(
         retained.node(&text_id).unwrap().kind(),
-        &HtmlNodeKind::Text("historical".into())
+        HtmlNodeKind::Text("historical".into())
     );
 }
 

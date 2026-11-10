@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_html::{
-    bounded::construction::HtmlConstructionResult,
+    construction::HtmlConstructionResult,
     construction::{HtmlDocument, HtmlFragment},
 };
 
@@ -103,10 +103,10 @@ impl FrozenArena {
         };
         let result = match view {
             HtmlConstructionResult::Document(value) => {
-                surgeist_html::bounded::construction::HtmlConstructionResult::Document(value)
+                surgeist_html::construction::HtmlConstructionResult::Document(value)
             }
             HtmlConstructionResult::Fragment(value) => {
-                surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(value)
+                surgeist_html::construction::HtmlConstructionResult::Fragment(value)
             }
         };
         let recovery =
@@ -118,12 +118,12 @@ impl FrozenArena {
                     // A refused recovery hands the result and the lease back.
                     let ((result, held_lease), error) = refusal.into_parts();
                     let view = match result {
-                        surgeist_html::bounded::construction::HtmlConstructionResult::Document(
-                            value,
-                        ) => HtmlConstructionResult::Document(value),
-                        surgeist_html::bounded::construction::HtmlConstructionResult::Fragment(
-                            value,
-                        ) => HtmlConstructionResult::Fragment(value),
+                        surgeist_html::construction::HtmlConstructionResult::Document(value) => {
+                            HtmlConstructionResult::Document(value)
+                        }
+                        surgeist_html::construction::HtmlConstructionResult::Fragment(value) => {
+                            HtmlConstructionResult::Fragment(value)
+                        }
                     };
                     self.storage = Some(FrozenStorage {
                         view,

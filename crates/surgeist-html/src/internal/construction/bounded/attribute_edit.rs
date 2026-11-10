@@ -295,7 +295,7 @@ fn element_attributes(
     target: usize,
 ) -> Result<&[Attribute], HtmlConstructionError> {
     match storage.arena.records.get(target).map(|record| &record.kind) {
-        Some(HtmlNodeKind::Element(v)) => Ok(v.attributes.shared_attributes().as_slice()),
+        Some(NodeContent::Element(v)) => Ok(v.attributes.shared_attributes().as_slice()),
         _ => Err(HtmlConstructionCause::OperationNotReady.into()),
     }
 }
@@ -450,7 +450,7 @@ impl HtmlConstructionAttributeEdit {
             .get(target)
             .map(|record| &record.kind)
         {
-            Some(HtmlNodeKind::Element(v)) => Ok(v.attributes.shared_attributes()),
+            Some(NodeContent::Element(v)) => Ok(v.attributes.shared_attributes()),
             _ => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
@@ -469,7 +469,7 @@ impl HtmlConstructionAttributeEdit {
             .ok_or(HtmlConstructionCause::OperationNotReady)?;
         let arena = &mut self.storage.arena;
         match arena.records.get_mut(target).map(|record| &mut record.kind) {
-            Some(HtmlNodeKind::Element(v)) => Ok(v
+            Some(NodeContent::Element(v)) => Ok(v
                 .attributes
                 .construction_backing_mut(&mut arena.attribute_revision)),
             _ => Err(HtmlConstructionCause::OperationNotReady.into()),
@@ -491,7 +491,7 @@ impl HtmlConstructionAttributeEdit {
             .get_mut(target)
             .map(|record| &mut record.kind)
         {
-            Some(HtmlNodeKind::Element(v)) => {
+            Some(NodeContent::Element(v)) => {
                 Ok(v.attributes.reserve_exact_in_construction(additional))
             }
             _ => Err(HtmlConstructionCause::OperationNotReady.into()),
@@ -768,7 +768,7 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
             Ok(match &edit.stage {
                 EditStage::Target => {
                     let target = edit.storage.position(&edit.element)?;
-                    let HtmlNodeKind::Element(v) = &edit.storage.arena.records[target].kind else {
+                    let NodeContent::Element(v) = &edit.storage.arena.records[target].kind else {
                         return Err(HtmlConstructionCause::WrongNodeKind.into());
                     };
                     edit.capacity = HtmlConstructionAttributeCapacity {
@@ -2566,11 +2566,10 @@ mod tests {
             action.perform().accept();
         }
         let storage = slots::initialization(&mut initialization).unwrap().commit();
-        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::none(), None, "root"),
-                OrderedAttributes::new(attributes).unwrap(),
-            )),
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::none(), None, "root"),
+            attributes: OrderedAttributes::new(attributes).unwrap(),
+            link_flags: None,
         }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
@@ -2748,12 +2747,16 @@ mod tests {
                 .sum::<usize>();
             assert_eq!(edit.storage_view().usage().utf16_units(), expected_units);
             assert_eq!(edit.storage_view().len(), self.records);
-            let HtmlNodeKind::Element(element) = edit.storage_view().node(target).unwrap().kind()
+            let ConstructionNodeKind::Element(element) =
+                edit.storage_view().node(target).unwrap().kind()
             else {
                 panic!("the original element remains addressable");
             };
             assert_eq!(element.name().local_name().to_utf8().unwrap(), "root");
-            assert_eq!(element.attributes().as_slice(), attributes.as_slice());
+            assert_eq!(
+                element.attributes().to_ordered().as_slice(),
+                attributes.as_slice()
+            );
             assert_eq!(attributes.len(), expected.len());
             for ((attribute, &(name, value)), &(name_backing, value_backing)) in
                 attributes.iter().zip(expected).zip(&self.fields)
@@ -2944,10 +2947,12 @@ mod tests {
     #[test]
     fn named_merge_keeps_first_source_value_and_checks_priors_after_installed_match() {
         let (storage, target) = make_storage(vec![attribute("a", "old")]);
-        let original_backing = Arc::as_ptr(match storage.node(&target).unwrap().kind() {
-            HtmlNodeKind::Element(v) => v.attributes().shared_attributes(),
+        let original_backing = match storage.node(&target).unwrap().kind() {
+            ConstructionNodeKind::Element(v) => {
+                Arc::as_ptr(v.attributes().to_ordered().shared_attributes())
+            }
             _ => unreachable!(),
-        });
+        };
         let names = ["a", "b", "b", "a", "c"].map(DocumentString::from);
         let mut edit = make_edit(
             storage,
@@ -3752,10 +3757,12 @@ mod tests {
     fn grown_plan_abort_and_recreation_issue_distinct_generations_on_same_target() {
         let (storage, target) = make_storage(vec![attribute("old", "retained")]);
         let mut storage = storage;
-        let original_backing = Arc::as_ptr(match storage.node(&target).unwrap().kind() {
-            HtmlNodeKind::Element(v) => v.attributes().shared_attributes(),
+        let original_backing = match storage.node(&target).unwrap().kind() {
+            ConstructionNodeKind::Element(v) => {
+                Arc::as_ptr(v.attributes().to_ordered().shared_attributes())
+            }
             _ => unreachable!(),
-        });
+        };
         let mut previous = None;
         for _ in 0..2 {
             let names = ["a", "b", "c"].map(DocumentString::from);
@@ -4164,9 +4171,8 @@ mod tests {
                     (owner, result) => panic!("round {round} step {step}: {owner:?} {result:?}"),
                 }
                 let stored: Vec<(String, String)> = match storage.node_at(0).unwrap().kind() {
-                    HtmlNodeKind::Element(element) => element
+                    ConstructionNodeKind::Element(element) => element
                         .attributes()
-                        .as_slice()
                         .iter()
                         .map(|held| {
                             (
@@ -4431,9 +4437,8 @@ mod tests {
         assert_eq!(plain.1, 0, "no name is read without a collision");
         assert!(collided.1 > 0, "the colliding entry's name was read");
         let names: Vec<String> = match control.node_at(0).unwrap().kind() {
-            HtmlNodeKind::Element(element) => element
+            ConstructionNodeKind::Element(element) => element
                 .attributes()
-                .as_slice()
                 .iter()
                 .map(|held| held.name().local_name().to_utf8().unwrap())
                 .collect(),
@@ -4447,11 +4452,10 @@ mod tests {
         storage: HtmlConstructionStorage,
         attributes: Vec<Attribute>,
     ) -> HtmlConstructionStorage {
-        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create {
-            kind: HtmlNodeKind::Element(HtmlElement::new(
-                QualifiedName::new(Namespace::none(), None, "other"),
-                OrderedAttributes::new(attributes).unwrap(),
-            )),
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::CreateElement {
+            name: QualifiedName::new(Namespace::none(), None, "other"),
+            attributes: OrderedAttributes::new(attributes).unwrap(),
+            link_flags: None,
         }));
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
@@ -4556,10 +4560,9 @@ mod tests {
         (0..)
             .map_while(|position| storage.node_at(position))
             .filter_map(|node| match node.kind() {
-                HtmlNodeKind::Element(element) => Some(
+                ConstructionNodeKind::Element(element) => Some(
                     element
                         .attributes()
-                        .as_slice()
                         .iter()
                         .map(|held| {
                             (
