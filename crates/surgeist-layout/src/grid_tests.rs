@@ -30,6 +30,8 @@ mod child_baseline;
 mod lanes_subgrid;
 #[path = "grid_tests/minimum_over_maximum_tests.rs"]
 mod minimum_over_maximum;
+#[path = "grid_tests/named_line_errors_tests.rs"]
+mod named_line_errors;
 #[path = "grid_tests/oracle_comparison_tests.rs"]
 mod oracle_comparison;
 #[path = "grid_tests/scroll_composition_tests.rs"]
