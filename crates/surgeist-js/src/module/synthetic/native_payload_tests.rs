@@ -241,6 +241,6 @@ fn initializer_host_refusal_precedes_later_promise_allocation() {
     assert_eq!(
         drops.get(),
         1,
-        "the canary was genuinely collectible and not an allocation proxy"
+        "collection drops the canary without a later allocation"
     );
 }
