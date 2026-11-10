@@ -1,9 +1,0 @@
-error[E0599]: the method `into_js_function` exists for fn pointer `for<'a> fn(&'a mut surgeist_js::Context) -> Result<JsValue, JsError>`, but its trait bounds were not satisfied
- --> tests/protected_access/raw_context_tail.rs:9:21
-  |
-9 |     let _ = pointer.into_js_function();
-  |                     ^^^^^^^^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
-  |
-  = note: the following trait bounds were not satisfied:
-          `&mut surgeist_js::Context: TryFromJsArgument<'a>`
-          which is required by `for<'a> fn(&'a mut surgeist_js::Context) -> Result<JsValue, JsError>: IntoJsFunction<(&mut surgeist_js::Context,), Result<JsValue, JsError>>`

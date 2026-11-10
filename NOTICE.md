@@ -24,9 +24,6 @@ project's own license remains separate.
 The owned [`surgeist-shaper`](crates/surgeist-shaper/README.md) crate carries the
 maintained Harfrust implementation and its upstream legal material.
 
-The [JavaScript engine notice](crates/surgeist-js/NOTICE.md) records
-Boa source, the retained workloads, and bundled ICU4X data.
-
 The former surgeist-retained package is retired. Its
 [last preserved source and notice](https://github.com/bj-data-eng/surgeist/tree/6b6c60b8eda9aac70dce8aca8021d77d238c377e/crates/surgeist-retained)
 and [original project homepage](https://github.com/bj-data-eng/surgeist-retained)
