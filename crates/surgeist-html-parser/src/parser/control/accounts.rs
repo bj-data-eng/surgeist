@@ -1,17 +1,23 @@
-//! The parse controller's ledger operation and its scopes.
+//! The parse controller's accounts and their scopes.
 //!
-//! A parse owns its operation outright unless it selected profiling or runs in a
-//! host's operation, in which case it charges a shared operation. The owned form
-//! takes no lock on the admission path. Both forms charge the same scopes, so the
-//! same batches reach the same admission rules.
+//! A parse that selected neither profiling nor a host operation charges a
+//! [`Meter`], which keeps the state of the two parse scopes in plain counters and
+//! applies the ledger's admission rules to them. A parse that selected profiling
+//! or runs in a host's operation charges a shared ledger operation. Both forms
+//! charge the same two scopes, so the same batches reach the same admission
+//! rules and the same refusals.
 
-use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, SetupFault, private};
+use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, SetupFault};
 use crate::{HtmlParseLimits, HtmlParseResource};
 use std::sync::Arc;
 use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork};
-use surgeist_ledger::{Change, Operation, PhaseObservation, Scope, SharedOperation, Usage};
+use surgeist_ledger::{Change, PhaseObservation, Scope, SharedOperation};
 
-pub(crate) type LedgerUsage = Usage<HtmlWork, HtmlResource>;
+mod meter;
+#[cfg(test)]
+mod meter_tests;
+pub(crate) use meter::Readings;
+use meter::{Meter, Reading};
 
 /// What a parse asked of its accounts, for tests of how much accounting a
 /// document costs.
@@ -39,37 +45,39 @@ pub(crate) fn last_parse_counts() -> AdmissionCounts {
 }
 
 pub(crate) enum Ledger {
-    Owned(Operation<HtmlWork, HtmlResource>),
+    /// The parse's own operation, which nothing else observes: plain counters.
+    Owned(Box<Meter>),
+    /// An operation shared with a host or a profile.
     Shared(SharedOperation<HtmlWork, HtmlResource>),
 }
 
 impl Ledger {
     fn apply(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
         match self {
-            Self::Owned(operation) => operation.apply_batch(scope, changes),
+            Self::Owned(meter) => meter.apply(changes),
             Self::Shared(operation) => operation.apply_batch(scope, changes),
         }
     }
     fn check(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
         match self {
-            Self::Owned(operation) => operation.check_batch(scope, changes),
+            Self::Owned(meter) => meter.check(changes),
             Self::Shared(operation) => operation.check_batch(scope, changes),
         }
     }
-    /// Reads a scope's usage without copying it for an owned operation.
+    /// Reads a scope's usage without copying it for an owned parse.
     fn read<T>(
         &self,
         scope: Scope,
-        read: impl FnOnce(&LedgerUsage) -> T,
+        read: impl FnOnce(&dyn Reading) -> T,
     ) -> Result<T, LedgerError> {
         match self {
-            Self::Owned(operation) => operation.usage(scope).map(read),
+            Self::Owned(meter) => meter.view(scope).map(|view| read(&view)),
             Self::Shared(operation) => operation.usage(scope).map(|usage| read(&usage)),
         }
     }
     fn limits(&self, scope: Scope) -> Result<HtmlLimits, LedgerError> {
         match self {
-            Self::Owned(operation) => operation.limits(scope).copied(),
+            Self::Owned(meter) => meter.limits(scope),
             Self::Shared(operation) => operation.limits(scope),
         }
     }
@@ -103,9 +111,10 @@ impl Accounts {
         lease: Option<&Arc<Lease>>,
     ) -> Result<Self, SetupFault> {
         let Some(lease) = lease else {
-            let (operation, cap, charging) = private(limits).map_err(SetupFault::from)?;
+            let meter = Meter::new(limits).map_err(SetupFault::from)?;
+            let (cap, charging) = (meter.cap(), meter.charging());
             return Ok(Self {
-                ledger: Ledger::Owned(operation),
+                ledger: Ledger::Owned(Box::new(meter)),
                 cap,
                 charging,
                 work: charging,
@@ -140,11 +149,14 @@ impl Accounts {
         self.batches.set(self.batches.get().saturating_add(1));
         self.count_call();
     }
-    /// Counts a call into the ledger operation.
+    /// Counts a call into the ledger operation, which an owned parse does not
+    /// make.
     #[cfg(test)]
     fn count_call(&self) {
-        self.ledger_calls
-            .set(self.ledger_calls.get().saturating_add(1));
+        if matches!(self.ledger, Ledger::Shared(_)) {
+            self.ledger_calls
+                .set(self.ledger_calls.get().saturating_add(1));
+        }
     }
 
     pub(crate) fn work(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
@@ -186,10 +198,10 @@ impl Accounts {
         })
     }
     /// The usage of the charging scope with the credit total of the cap scope.
-    pub(crate) fn usage(&self) -> Result<(LedgerUsage, u64), LedgerError> {
+    pub(crate) fn usage(&self) -> Result<(Readings, u64), LedgerError> {
         #[cfg(test)]
         self.count_call();
-        let usage = self.ledger.read(self.charging, |usage| *usage)?;
+        let usage = self.ledger.read(self.charging, Readings::capture)?;
         Ok((usage, self.credits()?))
     }
     /// The value a change counts in `scope`: its work total or its live value.

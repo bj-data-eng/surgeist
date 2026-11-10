@@ -394,3 +394,23 @@ fn an_owned_parse_makes_no_ledger_call() {
     assert!(cost.batches > 0, "the parse admitted batches");
     assert_eq!(cost.ledger_calls, 0);
 }
+
+/// A parse in a host's operation charges that operation, one call per batch at
+/// least.
+#[test]
+fn a_hosted_parse_charges_the_host_operation() {
+    use surgeist_html::accounting::{HtmlHostScope, HtmlLimits};
+    let ledger = surgeist_ledger::Operation::new("host", HtmlLimits::unlimited(), 8)
+        .unwrap()
+        .share();
+    let root = ledger.root();
+    let accounting = crate::HtmlParseAccounting::host(HtmlHostScope::new(ledger, root));
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(ordinary(2)), limits())
+        .with_accounting(accounting)
+        .parse()
+        .unwrap_or_else(|failure| panic!("the document parses: {failure:?}"));
+    drop(report);
+    let counts = last_parse_counts();
+    assert!(counts.batches > 0, "the parse admitted batches");
+    assert!(counts.ledger_calls >= counts.batches);
+}

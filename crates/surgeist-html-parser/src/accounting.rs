@@ -235,13 +235,14 @@ fn child(
         .map_err(fault_of)
 }
 
-/// The private operation of a parse that selected no profiling: the cap scope is
-/// the root, and the charging scope its only child.
+/// The private operation of a parse that selected no profiling, under the caps
+/// `limits`: the cap scope is the root, and the charging scope its only child. A
+/// parse charges its scopes through a `Meter`, which takes their identities from
+/// here.
 pub(crate) fn private(
-    limits: &HtmlParseLimits,
+    limits: HtmlLimits,
 ) -> Result<(Operation<HtmlWork, HtmlResource>, Scope, Scope), HtmlAccountingFault> {
-    let mut operation =
-        Operation::new(HtmlCapScope::Parse.name(), limits.ledger_limits(), 2).map_err(fault_of)?;
+    let mut operation = Operation::new(HtmlCapScope::Parse.name(), limits, 2).map_err(fault_of)?;
     let cap = operation.root();
     let charging = operation
         .child(
