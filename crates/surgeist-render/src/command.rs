@@ -598,13 +598,13 @@ fn normalize_commands_in_context(
                 stroke,
                 paint,
             } => RenderCommand::Stroke {
-                shape: RenderStrokeShape::from_authored_in(shape, *stroke, capabilities, account)?,
+                shape: RenderStrokeShape::from_authored_in(shape, *stroke, account)?,
                 stroke: RenderStroke::try_from(*stroke)?,
                 paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
             },
             Command::Shadow { shape, shadow } => RenderCommand::Shadow {
-                shape: ShadowShape::from_authored(shape, capabilities, account)?,
-                shadow: RenderShadow::from_authored(shadow, capabilities, account)?,
+                shape: ShadowShape::from_authored(shape, account)?,
+                shadow: RenderShadow::from_authored(shadow, account)?,
             },
             Command::Image { image, rect, fit } => {
                 validate_rect(*rect, "image target rectangle")?;
@@ -966,12 +966,7 @@ impl RenderClip {
 }
 
 impl RenderStrokeShape {
-    fn from_authored_in(
-        shape: &Shape,
-        stroke: Stroke,
-        capabilities: Capabilities,
-        account: &Account,
-    ) -> Result<Self> {
+    fn from_authored_in(shape: &Shape, stroke: Stroke, account: &Account) -> Result<Self> {
         validate_shape_in(shape, account)?;
         validate_stroke(stroke)?;
 
@@ -1010,11 +1005,12 @@ impl RenderStrokeShape {
                 Self::Path(shared(path, Some(hold), None, account)?)
             }
             ShapeKind::Path(_) => {
-                capabilities.ensure_supported(UnsupportedPrimitive::new(
-                    PrimitiveFamily::GeometryTargets,
-                    PrimitiveOperation::InsideOutsidePathStrokeAlignment,
-                ))?;
-                unreachable!("path stroke alignment support requires path offset lowering");
+                return Err(Error::unsupported_render_primitive(
+                    UnsupportedPrimitive::new(
+                        PrimitiveFamily::GeometryTargets,
+                        PrimitiveOperation::InsideOutsidePathStrokeAlignment,
+                    ),
+                ));
             }
         })
     }
@@ -1069,7 +1065,7 @@ impl RenderPaint {
 }
 
 impl ShadowShape {
-    fn from_authored(shape: &Shape, capabilities: Capabilities, account: &Account) -> Result<Self> {
+    fn from_authored(shape: &Shape, account: &Account) -> Result<Self> {
         validate_shape_in(shape, account)?;
         Ok(match shape.kind() {
             ShapeKind::Rect(rect) => Self::Rect(*rect),
@@ -1082,35 +1078,33 @@ impl ShadowShape {
                 radius: *radius,
             },
             ShapeKind::Ellipse { .. } | ShapeKind::Path(_) => {
-                capabilities.ensure_supported(UnsupportedPrimitive::new(
-                    PrimitiveFamily::Shadows,
-                    PrimitiveOperation::EllipsePathShadowShape,
-                ))?;
-                unreachable!("ellipse/path shadow support requires shadow geometry lowering");
+                return Err(Error::unsupported_render_primitive(
+                    UnsupportedPrimitive::new(
+                        PrimitiveFamily::Shadows,
+                        PrimitiveOperation::EllipsePathShadowShape,
+                    ),
+                ));
             }
         })
     }
 }
 
 impl RenderShadow {
-    fn from_authored(
-        shadow: &Shadow,
-        capabilities: Capabilities,
-        account: &Account,
-    ) -> Result<Self> {
+    fn from_authored(shadow: &Shadow, account: &Account) -> Result<Self> {
         validate_shadow_in(shadow, account)?;
         if shadow.kind() == ShadowKind::Inset {
-            capabilities.ensure_supported(UnsupportedPrimitive::new(
-                PrimitiveFamily::Shadows,
-                PrimitiveOperation::InsetBoxShadow,
-            ))?;
-            unreachable!("inset shadow support requires clipped inner shadow lowering");
+            return Err(Error::unsupported_render_primitive(
+                UnsupportedPrimitive::new(
+                    PrimitiveFamily::Shadows,
+                    PrimitiveOperation::InsetBoxShadow,
+                ),
+            ));
         }
         Ok(Self {
             offset: shadow.offset(),
             blur: shadow.blur(),
             spread: shadow.spread(),
-            color: solid_shadow_color(shadow.paint(), capabilities)?,
+            color: solid_shadow_color(shadow.paint())?,
         })
     }
 }
@@ -1418,16 +1412,15 @@ fn ensure_paint_supported(paint: &Paint, capabilities: Capabilities) -> Result<(
     Ok(())
 }
 
-fn solid_shadow_color(paint: &Paint, capabilities: Capabilities) -> Result<Color> {
+fn solid_shadow_color(paint: &Paint) -> Result<Color> {
     match paint.kind() {
         PaintKind::Color(color) => Ok(*color),
-        PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) | PaintKind::Image(_) => {
-            capabilities.ensure_supported(UnsupportedPrimitive::new(
+        PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) | PaintKind::Image(_) => Err(
+            Error::unsupported_render_primitive(UnsupportedPrimitive::new(
                 PrimitiveFamily::PaintSources,
                 PrimitiveOperation::NonSolidShadowPaint,
-            ))?;
-            unreachable!("non-solid shadow paint support requires shadow paint lowering");
-        }
+            )),
+        ),
     }
 }
 
@@ -1444,6 +1437,360 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
 }
 
 #[cfg(test)]
+mod unsupported_input_tests {
+    use super::*;
+    use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+
+    fn path() -> Shape {
+        let mut path = Path::new();
+        path.move_to(Point::new(1.0, 2.0))
+            .line_to(Point::new(4.0, 6.0));
+        Shape::path(path)
+    }
+
+    fn shadow(paint: impl Into<Paint>) -> Shadow {
+        Shadow::try_new(Point::new(3.0, -2.0), 2.0, 1.0, paint).unwrap()
+    }
+
+    fn cases() -> Vec<(
+        Command,
+        PrimitiveFamily,
+        PrimitiveOperation,
+        &'static str,
+        u64,
+        u64,
+    )> {
+        let rect = Shape::rect(Rect::new(1.0, 2.0, 3.0, 4.0));
+        let mut cases = Vec::new();
+        for align in [StrokeAlign::Inside, StrokeAlign::Outside] {
+            cases.push((Command::Stroke {
+                shape: path(),
+                stroke: Stroke::try_new(2.0).unwrap().align(align),
+                paint: Color::BLACK.into(),
+            }, PrimitiveFamily::GeometryTargets, PrimitiveOperation::InsideOutsidePathStrokeAlignment,
+                "render primitive is unsupported: geometry targets / inside/outside path stroke alignment", 2, 0));
+        }
+        for (shape, visits) in [
+            (
+                Shape::try_ellipse(Point::new(2.0, 3.0), Size::new(4.0, 5.0)).unwrap(),
+                0,
+            ),
+            (path(), 2),
+        ] {
+            cases.push((
+                Command::Shadow {
+                    shape,
+                    shadow: shadow(Color::BLACK),
+                },
+                PrimitiveFamily::Shadows,
+                PrimitiveOperation::EllipsePathShadowShape,
+                "render primitive is unsupported: shadows / ellipse/path shadow shape",
+                visits,
+                0,
+            ));
+        }
+        cases.push((
+            Command::Shadow {
+                shape: rect.clone(),
+                shadow: Shadow::try_inset(Point::new(0.0, 0.0), 2.0, 1.0, Color::BLACK).unwrap(),
+            },
+            PrimitiveFamily::Shadows,
+            PrimitiveOperation::InsetBoxShadow,
+            "render primitive is unsupported: shadows / inset box shadow",
+            0,
+            1,
+        ));
+        let stops = vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()];
+        let gradient =
+            Gradient::try_linear(Point::new(0.0, 0.0), Point::new(1.0, 0.0), stops.clone())
+                .unwrap();
+        let repeating =
+            RepeatingGradient::try_linear(Point::new(0.0, 0.0), Point::new(1.0, 0.0), stops)
+                .unwrap();
+        let image = Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 0, 255]).unwrap();
+        for paint in [
+            Paint::from(gradient),
+            Paint::from(repeating),
+            Paint::from(image),
+        ] {
+            cases.push((
+                Command::Shadow {
+                    shape: rect.clone(),
+                    shadow: shadow(paint),
+                },
+                PrimitiveFamily::PaintSources,
+                PrimitiveOperation::NonSolidShadowPaint,
+                "render primitive is unsupported: paint sources / non-solid shadow paint",
+                0,
+                1,
+            ));
+        }
+        cases
+    }
+
+    fn assert_unsupported(
+        error: &Error,
+        family: PrimitiveFamily,
+        operation: PrimitiveOperation,
+        message: &str,
+    ) {
+        assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+        assert_eq!(
+            error.unsupported_primitive(),
+            Some(UnsupportedPrimitive::new(family, operation))
+        );
+        assert_eq!(error.message(), message);
+        assert!(std::error::Error::source(error).is_none());
+        assert!(error.invalid_value_diagnostic().is_none());
+        assert!(error.accounting_diagnostic().is_none());
+    }
+
+    #[test]
+    fn unsupported_authored_forms_preserve_diagnostic_and_exact_work_prefix() {
+        for (command, family, operation, message, paths, paints) in cases() {
+            let mut context = RenderAccountingContext::default();
+            let error = context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::Normalize,
+                    |account| {
+                        normalize_commands(
+                            std::slice::from_ref(&command),
+                            Capabilities::CURRENT,
+                            account,
+                        )
+                    },
+                )
+                .unwrap_err();
+            assert_unsupported(&error, family, operation, message);
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            let usage = report.usage();
+            assert_eq!(usage.work(RenderWork::CommandVisits), 1);
+            assert_eq!(usage.work(RenderWork::PathElementVisits), paths);
+            assert_eq!(usage.work(RenderWork::PaintVisits), paints);
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
+            assert_eq!(usage.work(RenderWork::ImageIdentityCopies), 0);
+        }
+    }
+
+    #[test]
+    fn reached_work_limits_win_before_unsupported_diagnostics() {
+        for (command, _, _, _, paths, paints) in cases() {
+            let mut limits = vec![(RenderWork::CommandVisits, 0)];
+            if paths > 0 {
+                limits.push((RenderWork::PathElementVisits, paths - 1));
+            }
+            if paints > 0 {
+                limits.push((RenderWork::PaintVisits, 0));
+            }
+            for (work, limit) in limits {
+                let options = RenderAccountingOptions::new()
+                    .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
+                let mut context = RenderAccountingContext::new(options);
+                let error = context
+                    .run(
+                        RenderAttemptKind::Frame,
+                        RenderPhase::Normalize,
+                        |account| {
+                            normalize_commands(
+                                std::slice::from_ref(&command),
+                                Capabilities::CURRENT,
+                                account,
+                            )
+                        },
+                    )
+                    .unwrap_err();
+                let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+                else {
+                    panic!("expected work refusal: {error:?}");
+                };
+                assert_eq!(error.code(), ErrorCode::Accounting);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+                assert_eq!(refusal.current(), limit);
+                assert_eq!(refusal.amount(), 1);
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+                assert_eq!(
+                    context
+                        .last_attempt()
+                        .unwrap()
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(work),
+                    limit
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validation_and_shape_refusal_keep_first_error_precedence() {
+        // Private unchecked numeric constructors let this owning harness exercise
+        // validation; public try constructors refuse these values before normalization.
+        let mut invalid_path = Path::new();
+        invalid_path.move_to(Point::new(f64::NAN, 0.0));
+        let error = RenderStrokeShape::from_authored_in(
+            &Shape::path(invalid_path),
+            Stroke::try_new(2.0).unwrap().align(StrokeAlign::Inside),
+            &Account::for_test(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert_eq!(
+            error.invalid_value_diagnostic().unwrap().field(),
+            "path point x"
+        );
+        assert!(Point::try_new(f64::NAN, 0.0).is_err());
+        assert!(Stroke::try_new(0.0).is_err());
+        assert!(Shadow::try_new(Point::new(0.0, 0.0), -1.0, 0.0, Color::BLACK).is_err());
+        let gradient = Gradient::try_linear(
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+        )
+        .unwrap();
+        let inset_gradient = Shadow::try_inset(Point::new(0.0, 0.0), 0.0, 0.0, gradient).unwrap();
+        let error = RenderShadow::from_authored(&inset_gradient, &Account::for_test()).unwrap_err();
+        assert_unsupported(
+            &error,
+            PrimitiveFamily::Shadows,
+            PrimitiveOperation::InsetBoxShadow,
+            "render primitive is unsupported: shadows / inset box shadow",
+        );
+        let inset = Shadow::try_inset(Point::new(0.0, 0.0), 0.0, 0.0, Color::BLACK).unwrap();
+        let commands = [Command::Shadow {
+            shape: path(),
+            shadow: inset,
+        }];
+        let error =
+            normalize_commands(&commands, Capabilities::CURRENT, &Account::for_test()).unwrap_err();
+        assert_unsupported(
+            &error,
+            PrimitiveFamily::Shadows,
+            PrimitiveOperation::EllipsePathShadowShape,
+            "render primitive is unsupported: shadows / ellipse/path shadow shape",
+        );
+    }
+
+    #[test]
+    fn unsupported_suffix_releases_normalized_prefix_and_retries_unchanged_input() {
+        let options =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let cpu = RendererCpu::new(options).unwrap();
+        let opening = cpu
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        for (command, family, operation, message, _, _) in cases() {
+            let mut scene = Scene::new();
+            scene.stroke(path(), Stroke::try_new(2.0).unwrap(), Color::BLACK);
+            scene.commands.push(command);
+            let authored = scene.commands.clone();
+            for _ in 0..2 {
+                let attempt =
+                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+                let error = scene
+                    .normalize(Capabilities::CURRENT, attempt.account())
+                    .unwrap_err();
+                assert_unsupported(&error, family, operation, message);
+                let (report, fault) = attempt.finish(
+                    RenderAttemptStatus::Failed(error.code()),
+                    error.accounting_diagnostic(),
+                );
+                assert_eq!(fault, None);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::CommandsEmitted),
+                    1
+                );
+                let interval = report.renderer_cpu().unwrap();
+                assert_eq!(
+                    interval.usage().live(RenderResource::RetainedCpuBytes),
+                    opening
+                );
+                assert_eq!(
+                    interval
+                        .scope_usage(RenderCpuScope::FrameBacking)
+                        .live(RenderResource::RetainedCpuBytes),
+                    0
+                );
+                assert!(
+                    interval
+                        .scope_usage(RenderCpuScope::FrameBacking)
+                        .peak(RenderResource::RetainedCpuBytes)
+                        > 0
+                );
+                assert_eq!(scene.len(), 2);
+                assert_eq!(scene.commands, authored);
+            }
+        }
+    }
+
+    #[test]
+    fn centered_path_and_solid_outer_shadow_preserve_payload_geometry_and_work() {
+        let mut scene = Scene::new();
+        scene.stroke(path(), Stroke::try_new(2.0).unwrap(), Color::BLACK);
+        scene.shadow(Rect::new(1.0, 2.0, 3.0, 4.0), shadow(Color::BLACK));
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::Normalize,
+                |account| {
+                    let normalized = scene.normalize(Capabilities::CURRENT, account)?;
+                    let [
+                        RenderCommand::Stroke {
+                            shape: RenderStrokeShape::Path(path),
+                            stroke,
+                            paint: RenderPaint::Color(color),
+                        },
+                        RenderCommand::Shadow {
+                            shape: ShadowShape::Rect(rect),
+                            shadow,
+                        },
+                    ] = normalized.commands.as_slice()
+                    else {
+                        panic!("supported commands changed");
+                    };
+                    assert_eq!(
+                        path.elements(),
+                        &[
+                            kurbo::PathEl::MoveTo((1.0, 2.0).into()),
+                            kurbo::PathEl::LineTo((4.0, 6.0).into())
+                        ]
+                    );
+                    assert_eq!(stroke.width, 2.0);
+                    assert_eq!(*color, Color::BLACK);
+                    assert_eq!(*rect, Rect::new(1.0, 2.0, 3.0, 4.0));
+                    assert_eq!(shadow.offset, Point::new(3.0, -2.0));
+                    assert_eq!(shadow.blur, 2.0);
+                    assert_eq!(shadow.spread, 1.0);
+                    assert_eq!(shadow.color, Color::BLACK);
+                    // blur/2 * 2.5 plus spread gives 3.5 units of support,
+                    // around the rectangle translated by (3,-2).
+                    assert_eq!(
+                        shadow_bounds(&ShadowShape::Rect(*rect), shadow)?.rect(),
+                        Rect::new(0.5, -3.5, 10.0, 11.0)
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CommandVisits), 2);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 4);
+        // Stroke validation, lowering and emission each inspect paint;
+        // the solid shadow adds its validation visit.
+        assert_eq!(usage.work(RenderWork::PaintVisits), 4);
+    }
+}
+
+#[cfg(test)]
 mod stroke_bounds_tests {
     use super::*;
 
@@ -1452,13 +1799,8 @@ mod stroke_bounds_tests {
         path.move_to(Point::try_new(0.0, 0.0).unwrap())
             .line_to(Point::try_new(0.0, 1.0).unwrap());
         let account = Account::for_test();
-        let shape = RenderStrokeShape::from_authored_in(
-            &Shape::path(path),
-            stroke,
-            Capabilities::CURRENT,
-            &account,
-        )
-        .unwrap();
+        let shape =
+            RenderStrokeShape::from_authored_in(&Shape::path(path), stroke, &account).unwrap();
         stroke_shape_bounds(&shape, &RenderStroke::try_from(stroke).unwrap())
             .map(OffscreenBounds::rect)
     }
