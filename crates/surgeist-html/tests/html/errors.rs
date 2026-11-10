@@ -69,8 +69,8 @@ use surgeist_html::bounded::{
 };
 use surgeist_html::{
     construction::{
-        HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode,
-        HtmlFragment,
+        HtmlConstructionCause, HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument,
+        HtmlDocumentMode, HtmlFragment,
     },
     security::csp::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority},
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
@@ -1035,7 +1035,7 @@ fn input_refusals_state_what_was_refused() {
 }
 
 #[test]
-fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
+fn construction_refusals_state_their_cause() {
     let mut builder = HtmlDocument::builder(construction_limits(), HtmlDocumentMode::NoQuirks)
         .expect("limits admit the document");
     let root = builder.root();
@@ -1053,11 +1053,10 @@ fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
         message(&contents_required),
         "template children must be appended to its separate contents"
     );
-    assert!(contents_required.is_template_contents_required());
-    assert!(!contents_required.is_foreign_builder());
-    assert!(!contents_required.is_limit_exceeded());
-    assert_eq!(contents_required.exceeded_resource(), None);
-    assert_eq!(contents_required.duplicate_attribute_indices(), None);
+    assert_eq!(
+        contents_required.cause(),
+        HtmlConstructionCause::TemplateContentsRequired
+    );
 
     let other = HtmlFragment::builder(construction_limits()).expect("fragment builder");
     let foreign_root = other.root();
@@ -1068,7 +1067,7 @@ fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
         message(&foreign),
         "node handle belongs to a different builder"
     );
-    assert!(foreign.is_foreign_builder());
+    assert_eq!(foreign.cause(), HtmlConstructionCause::ForeignBuilder);
 }
 
 #[test]
@@ -1079,13 +1078,14 @@ fn construction_limit_refusals_report_the_resource_limit_and_attempted_total() {
     let refused = builder
         .append_text(&root, "too long")
         .expect_err("eight UTF-16 units exceed the limit of two");
-    assert!(refused.is_limit_exceeded());
     assert_eq!(
-        refused.exceeded_resource(),
-        Some(HtmlConstructionResource::Utf16Units)
+        refused.cause(),
+        HtmlConstructionCause::LimitExceeded {
+            resource: HtmlConstructionResource::Utf16Units,
+            limit: 2,
+            attempted: 8
+        }
     );
-    assert_eq!(refused.limit(), Some(2));
-    assert_eq!(refused.attempted(), Some(8));
     assert_eq!(
         message(&refused),
         "UTF-16 unit limit of 2 cannot admit a total of 8"

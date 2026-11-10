@@ -384,7 +384,7 @@ fn truncate_tail(
         return Ok(());
     };
     let backing = Arc::get_mut(value.construction_backing_mut())
-        .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+        .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
     backing.truncate(old_len);
     Ok(())
 }
@@ -505,7 +505,7 @@ impl HtmlConstructionTextAppend {
             return Err(error.clone());
         }
         if self.observing {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+            return Err(HtmlConstructionCause::OperationNotReady.into());
         }
         Ok(self
             .pending()
@@ -537,7 +537,7 @@ impl HtmlConstructionTextAppend {
             _ => {
                 return Err(HtmlConstructionRefusal::new(
                     self,
-                    HtmlConstructionErrorKind::OperationNotReady,
+                    HtmlConstructionCause::OperationNotReady,
                 ));
             }
         };
@@ -565,7 +565,7 @@ impl HtmlConstructionTextAppend {
                         observing,
                         failure,
                     },
-                    HtmlConstructionErrorKind::OperationNotReady,
+                    HtmlConstructionCause::OperationNotReady,
                 ));
             }
         };
@@ -792,7 +792,7 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
                     ..
                 }
             ) {
-            Err(HtmlConstructionErrorKind::CapacityMismatch.into())
+            Err(HtmlConstructionCause::CapacityMismatch.into())
         } else {
             advance_progress(storage, node, incoming, progress, minimum_capacity)
         };
@@ -842,20 +842,20 @@ fn advance_progress(
         Progress::Inspect => {
             let target = storage.position(node)?;
             let HtmlNodeKind::Text(value) = &storage.arena.records[target].kind else {
-                return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                return Err(HtmlConstructionCause::WrongNodeKind.into());
             };
             let old_len = value.len();
             let required = old_len
                 .checked_add(incoming.len())
-                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+                .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
             if required > isize::MAX as usize / size_of::<u16>() {
-                return Err(HtmlConstructionErrorKind::RepresentationExhausted.into());
+                return Err(HtmlConstructionCause::RepresentationExhausted.into());
             }
             let mut usage = storage.usage();
             usage.utf16_units = usage
                 .utf16_units
                 .checked_add(incoming.len())
-                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+                .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
             *progress = Progress::Select(Target {
                 index: target,
                 old_len,
@@ -865,8 +865,8 @@ fn advance_progress(
         }
         Progress::Select(target) => {
             *progress = Progress::Select(target);
-            let original = text_of_mut(storage, target.index)
-                .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?;
+            let original =
+                text_of_mut(storage, target.index).ok_or(HtmlConstructionCause::WrongNodeKind)?;
             let preserve = Arc::get_mut(original.construction_backing_mut()).is_none();
             *progress = if preserve {
                 Progress::Initialize(target)
@@ -952,10 +952,10 @@ fn advance_progress(
         } => {
             let result = (|| -> Result<usize, HtmlConstructionError> {
                 let end = prefix + (target.old_len - prefix).min(CHUNK_UNITS);
-                let original = text_of(storage, target.index)
-                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?;
+                let original =
+                    text_of(storage, target.index).ok_or(HtmlConstructionCause::WrongNodeKind)?;
                 let backing = Arc::get_mut(copy.construction_backing_mut())
-                    .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+                    .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
                 backing.extend_from_slice(&original.code_units()[prefix..end]);
                 Ok(end)
             })();
@@ -987,7 +987,7 @@ fn advance_progress(
         // A ready append issues no action, so no step performs on it.
         ready @ (Progress::ReadyInPlace(_) | Progress::ReadyPreserved { .. }) => {
             *progress = ready;
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+            return Err(HtmlConstructionCause::OperationNotReady.into());
         }
     }
     Ok(())
@@ -1011,18 +1011,18 @@ fn run(
                 .min(isize::MAX as usize / size_of::<u16>());
             let minimum = minimum_capacity.unwrap_or(preferred);
             if minimum < target.required || minimum > preferred {
-                return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                return Err(HtmlConstructionCause::CapacityMismatch.into());
             }
             let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
-                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+                    .ok_or(HtmlConstructionCause::WrongNodeKind)?,
             };
             let backing = Arc::get_mut(candidate.construction_backing_mut())
-                .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+                .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
             backing
                 .try_reserve_exact(minimum - backing.len())
-                .map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
+                .map_err(|_| HtmlConstructionCause::AllocationFailed)?;
             Ok(Next::Reserved)
         }
         Step::Preflight => Ok(Next::Step(Step::QualifyTail)),
@@ -1030,10 +1030,10 @@ fn run(
             let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
-                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+                    .ok_or(HtmlConstructionCause::WrongNodeKind)?,
             };
             if Arc::get_mut(candidate.construction_backing_mut()).is_none() {
-                return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+                return Err(HtmlConstructionCause::SharedAllocationAliased.into());
             }
             Ok(Next::Step(if incoming.is_empty() {
                 Step::Commit
@@ -1046,12 +1046,12 @@ fn run(
             let candidate = match copy {
                 Some(copy) => copy,
                 None => text_of_mut(storage, target.index)
-                    .ok_or(HtmlConstructionErrorKind::WrongNodeKind)?,
+                    .ok_or(HtmlConstructionCause::WrongNodeKind)?,
             };
             // The tail qualification proved the backing uniquely owned, and nothing runs
             // between it and these writes that could share it again.
             let backing = Arc::get_mut(candidate.construction_backing_mut())
-                .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+                .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
             backing.extend_from_slice(&incoming.code_units()[start..end]);
             Ok(Next::Step(if end == incoming.len() {
                 Step::Commit
@@ -1123,7 +1123,7 @@ impl HtmlConstructionTextAppendReady {
         let Some(original) = text_of_mut(&mut self.storage, self.index) else {
             return Err(HtmlConstructionRefusal::new(
                 self,
-                HtmlConstructionErrorKind::OperationNotReady,
+                HtmlConstructionCause::OperationNotReady,
             ));
         };
         let discarded = match self.backing {
@@ -1360,7 +1360,7 @@ mod tests {
         }
         assert!(matches!(
             owner.next_action(),
-            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let (storage, node, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert!(discarded.is_none());
@@ -1504,7 +1504,7 @@ mod tests {
             action.perform(None).unwrap().accept();
             assert!(matches!(
                 owner.next_action().unwrap().unwrap().perform(None),
-                Err(ref error) if error.kind == HtmlConstructionErrorKind::SharedAllocationAliased
+                Err(ref error) if error.cause == HtmlConstructionCause::SharedAllocationAliased
             ));
             let (storage, node, _, discarded) = owner.abort().unwrap().into_parts();
             assert_eq!(text(&storage, &node), [1, 2, 3]);
@@ -1523,7 +1523,7 @@ mod tests {
             HtmlConstructionTextAppend::begin(storage, foreign, DocumentString::from("x"));
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(ref error) if error.kind == HtmlConstructionErrorKind::ForeignBuilder
+            Err(ref error) if error.cause == HtmlConstructionCause::ForeignBuilder
         ));
         let (storage, _, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert_eq!(storage.usage(), usage);
@@ -1532,7 +1532,7 @@ mod tests {
         let mut owner = HtmlConstructionTextAppend::begin(storage, node, incoming);
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(ref error) if error.kind == HtmlConstructionErrorKind::WrongNodeKind
+            Err(ref error) if error.cause == HtmlConstructionCause::WrongNodeKind
         ));
         assert_eq!(owner.abort().unwrap().into_parts().0.usage(), usage);
     }
@@ -1563,7 +1563,7 @@ mod tests {
             if invalid {
                 assert!(matches!(
                     action.perform(Some(8)),
-                    Err(ref error) if error.kind == HtmlConstructionErrorKind::CapacityMismatch
+                    Err(ref error) if error.cause == HtmlConstructionCause::CapacityMismatch
                 ));
                 assert_eq!(owner.capacity().unwrap().capacity(), 8);
             } else {
@@ -1601,7 +1601,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     slots::text_append(&mut owner),
-                    Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
+                    Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
                 ));
                 owner.take().unwrap().abort().unwrap()
             };
@@ -1640,7 +1640,10 @@ mod tests {
         let Err(refusal) = ready.abort() else {
             panic!("a shared backing cannot be truncated without a copy");
         };
-        assert!(refusal.reason().is_shared_allocation_aliased());
+        assert!(matches!(
+            refusal.reason().cause(),
+            HtmlConstructionCause::SharedAllocationAliased
+        ));
         let (ready, _) = refusal.into_parts();
         assert_eq!(
             text_of(&ready.storage, ready.index)
@@ -1684,7 +1687,10 @@ mod tests {
             let Err(refusal) = ready.commit() else {
                 panic!("a target that is not text cannot commit");
             };
-            assert!(refusal.reason().is_operation_not_ready());
+            assert!(matches!(
+                refusal.reason().cause(),
+                HtmlConstructionCause::OperationNotReady
+            ));
             let (_, discarded) = {
                 let (ready, _) = refusal.into_parts();
                 assert_eq!(ready.storage.usage(), usage, "no usage was written");

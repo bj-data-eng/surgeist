@@ -9,8 +9,8 @@ use surgeist_html::{
         HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationLimits,
     },
     construction::{
-        HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode,
-        HtmlFragment,
+        HtmlConstructionCause, HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument,
+        HtmlDocumentMode, HtmlFragment,
     },
     values::{Attribute, HtmlValueInterpreter, OrderedAttributes},
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
@@ -101,10 +101,13 @@ fn a_cap_of_the_host_scope_refuses_an_append_with_the_hosts_limit_and_releases_t
         .append_element(&root, html_element("span"), OrderedAttributes::default())
         .unwrap_err();
     assert_eq!(
-        error.exceeded_resource(),
-        Some(HtmlConstructionResource::Nodes)
+        error.cause(),
+        HtmlConstructionCause::LimitExceeded {
+            resource: HtmlConstructionResource::Nodes,
+            limit: 2,
+            attempted: 3
+        }
     );
-    assert_eq!((error.limit(), error.attempted()), (Some(2), Some(3)));
     assert_eq!(usage(&ledger, host.scope()), before);
     assert_eq!(builder.usage().nodes(), 2);
 }
@@ -121,7 +124,14 @@ fn the_tighter_of_the_builders_limit_and_the_host_cap_refuses() {
     let error = builder
         .append_element(&root, html_element("span"), OrderedAttributes::default())
         .unwrap_err();
-    assert_eq!((error.limit(), error.attempted()), (Some(2), Some(3)));
+    assert!(matches!(
+        error.cause(),
+        HtmlConstructionCause::LimitExceeded {
+            limit: 2,
+            attempted: 3,
+            ..
+        }
+    ));
 }
 
 #[test]

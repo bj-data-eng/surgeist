@@ -52,16 +52,16 @@ impl HtmlConstructionOperation {
         };
         let Some(index) = index else {
             return Err(if old {
-                HtmlConstructionErrorKind::ParentChildConflict.error()
+                HtmlConstructionCause::ParentChildConflict.error()
             } else {
-                HtmlConstructionErrorKind::WrongSibling.error()
+                HtmlConstructionCause::WrongSibling.error()
             });
         };
         let found = self
             .arena()
             .records
             .get(parent)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+            .ok_or(HtmlConstructionCause::UnknownNode)?
             .children
             .get(index)
             == Some(&wanted);
@@ -101,7 +101,7 @@ impl HtmlConstructionOperation {
                 .arena()
                 .records
                 .get(parent)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                .ok_or(HtmlConstructionCause::UnknownNode)?
                 .children
                 .len();
             return Ok(Phase::order(parent, remaining, false));
@@ -138,18 +138,19 @@ impl HtmlConstructionOperation {
         let parent = self.plan.positions[1];
         let capacity = self.plan.children_capacity.unwrap_or(self.push_required());
         checked_layout(capacity, size_of::<usize>()).map_err(|error| (error, None))?;
-        let generation = self.arena().temporary_generation.checked_add(1).ok_or((
-            HtmlConstructionErrorKind::RepresentationExhausted.error(),
-            None,
-        ))?;
+        let generation = self
+            .arena()
+            .temporary_generation
+            .checked_add(1)
+            .ok_or((HtmlConstructionCause::RepresentationExhausted.error(), None))?;
         let arena = &mut self.owner.mutable().map_err(|error| (error, None))?.arena;
         let record = arena
             .records
             .get_mut(parent)
-            .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
+            .ok_or((HtmlConstructionCause::UnknownNode.error(), None))?;
         let additional = capacity
             .checked_sub(record.children.len())
-            .ok_or((HtmlConstructionErrorKind::CapacityMismatch.error(), None))?;
+            .ok_or((HtmlConstructionCause::CapacityMismatch.error(), None))?;
         let result = record.children.try_reserve_exact(additional);
         if result.is_ok() {
             record.children_generation = generation;
@@ -158,7 +159,7 @@ impl HtmlConstructionOperation {
         let record = arena
             .records
             .get(parent)
-            .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
+            .ok_or((HtmlConstructionCause::UnknownNode.error(), None))?;
         let snapshot = HtmlConstructionAllocationSnapshot::deque(
             &arena.identity,
             AllocationRole::Children(parent),
@@ -169,7 +170,7 @@ impl HtmlConstructionOperation {
         match result {
             Ok(()) => Ok((Phase::Commit, Some(snapshot))),
             Err(_) => Err((
-                HtmlConstructionErrorKind::AllocationFailed.error(),
+                HtmlConstructionCause::AllocationFailed.error(),
                 Some(snapshot),
             )),
         }
@@ -188,7 +189,7 @@ impl Plan {
                 .records
                 .get(parent)
                 .map(|record| record.children.len())
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)
+                .ok_or(HtmlConstructionCause::UnknownNode)
         };
         let parent = self.positions[1];
         let mut writes = 1usize;
@@ -214,17 +215,17 @@ impl Plan {
     pub(super) fn check_order_edits(&self, arena: &Arena) -> Result<(), HtmlConstructionError> {
         let [node, parent, before] = self.positions;
         if arena.records.get(node).is_none() {
-            return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+            return Err(HtmlConstructionCause::CapacityMismatch.into());
         }
         let mut removed_before = None;
         if let Some(old) = self.old_parent {
             let children = &arena
                 .records
                 .get(old)
-                .ok_or(HtmlConstructionErrorKind::ParentChildConflict)?
+                .ok_or(HtmlConstructionCause::ParentChildConflict)?
                 .children;
             if children.get(self.old_position) != Some(&node) {
-                return Err(HtmlConstructionErrorKind::ParentChildConflict.into());
+                return Err(HtmlConstructionCause::ParentChildConflict.into());
             }
             removed_before = (old == parent).then_some(self.old_position);
         }
@@ -234,13 +235,13 @@ impl Plan {
         let record = arena
             .records
             .get(parent)
-            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
+            .ok_or(HtmlConstructionCause::CapacityMismatch)?;
         let length = record
             .children
             .len()
             .saturating_sub(usize::from(removed_before.is_some()));
         if length >= record.children.capacity() {
-            return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+            return Err(HtmlConstructionCause::CapacityMismatch.into());
         }
         let reference = self.has_before.then(|| {
             // The entry's place before the node leaves its own.
@@ -254,7 +255,7 @@ impl Plan {
         match reference {
             Some(place) if record.children.get(place) == Some(&before) => Ok(()),
             None if self.insertion_position == length => Ok(()),
-            _ => Err(HtmlConstructionErrorKind::ParentChildConflict.into()),
+            _ => Err(HtmlConstructionCause::ParentChildConflict.into()),
         }
     }
     /// Applies the edits `check_order_edits` accepted. Each guard repeats what

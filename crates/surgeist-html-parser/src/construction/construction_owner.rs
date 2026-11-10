@@ -1,6 +1,7 @@
 //! Drives HTML's sole record owner through this session's original controller.
 use super::*;
 use crate::parser::control::ConstructionAllocation;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::bounded::construction::{
     HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
     HtmlConstructionAllocationRole, HtmlConstructionAttributeEdit, HtmlConstructionCommand,
@@ -9,8 +10,12 @@ use surgeist_html::bounded::construction::{
     HtmlConstructionResult, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
 };
 use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
-use surgeist_html::construction::{HtmlBuilderNode, HtmlConstructionError, HtmlConstructionUsage};
+use surgeist_html::construction::{
+    HtmlBuilderNode, HtmlConstructionCause, HtmlConstructionError, HtmlConstructionUsage,
+};
 mod attributes;
+#[cfg(test)]
+mod dispositions;
 #[cfg(test)]
 mod tests;
 pub(super) use attributes::{
@@ -47,169 +52,7 @@ enum Bank {
     Wrapper,
 }
 
-/// What the construction owner's error violates, one fault per cause it can
-/// report today, plus the cause this parser does not yet name.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OwnerFault {
-    ForeignBuilder,
-    ParentCannotHaveChildren,
-    TemplateContentsRequired,
-    ShadowHostMustBeElement,
-    ShadowAlreadyAttached,
-    UnknownNode,
-    WrongNodeKind,
-    RootMove,
-    AssociationMove,
-    WrongSibling,
-    Cycle,
-    AssociationAlreadyOwned,
-    InvalidTemplateAssociation,
-    DuplicateAttribute,
-    AttributeNameMismatch,
-    AttributeOrderMismatch,
-    InvalidShadowAssociation,
-    InvalidContentsReference,
-    ParentChildConflict,
-    InvalidOutputRoot,
-    OperationNotReady,
-    ForeignAllocation,
-    CapacityMismatch,
-    IndexUnavailable,
-    SharedAllocationAliased,
-    ReleaseUnderflow,
-    LimitExceeded,
-    RepresentationExhausted,
-    AllocationFailed,
-    /// A cause that the owner added after this parser classified its causes.
-    Unlisted,
-}
-
-/// A predicate of the owner's error cause.
-type CausePredicate = fn(&HtmlConstructionError) -> bool;
-
-/// The owner's cause predicates, each with the fault it names.
-const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
-    (
-        HtmlConstructionError::is_foreign_builder,
-        OwnerFault::ForeignBuilder,
-    ),
-    (
-        HtmlConstructionError::is_parent_cannot_have_children,
-        OwnerFault::ParentCannotHaveChildren,
-    ),
-    (
-        HtmlConstructionError::is_template_contents_required,
-        OwnerFault::TemplateContentsRequired,
-    ),
-    (
-        HtmlConstructionError::is_shadow_host_must_be_element,
-        OwnerFault::ShadowHostMustBeElement,
-    ),
-    (
-        HtmlConstructionError::is_shadow_already_attached,
-        OwnerFault::ShadowAlreadyAttached,
-    ),
-    (
-        HtmlConstructionError::is_unknown_node,
-        OwnerFault::UnknownNode,
-    ),
-    (
-        HtmlConstructionError::is_wrong_node_kind,
-        OwnerFault::WrongNodeKind,
-    ),
-    (HtmlConstructionError::is_root_move, OwnerFault::RootMove),
-    (
-        HtmlConstructionError::is_association_move,
-        OwnerFault::AssociationMove,
-    ),
-    (
-        HtmlConstructionError::is_wrong_sibling,
-        OwnerFault::WrongSibling,
-    ),
-    (HtmlConstructionError::is_cycle, OwnerFault::Cycle),
-    (
-        HtmlConstructionError::is_association_already_owned,
-        OwnerFault::AssociationAlreadyOwned,
-    ),
-    (
-        HtmlConstructionError::is_invalid_template_association,
-        OwnerFault::InvalidTemplateAssociation,
-    ),
-    (
-        HtmlConstructionError::is_duplicate_attribute,
-        OwnerFault::DuplicateAttribute,
-    ),
-    (
-        HtmlConstructionError::is_attribute_name_mismatch,
-        OwnerFault::AttributeNameMismatch,
-    ),
-    (
-        HtmlConstructionError::is_attribute_order_mismatch,
-        OwnerFault::AttributeOrderMismatch,
-    ),
-    (
-        HtmlConstructionError::is_invalid_shadow_association,
-        OwnerFault::InvalidShadowAssociation,
-    ),
-    (
-        HtmlConstructionError::is_invalid_contents_reference,
-        OwnerFault::InvalidContentsReference,
-    ),
-    (
-        HtmlConstructionError::is_parent_child_conflict,
-        OwnerFault::ParentChildConflict,
-    ),
-    (
-        HtmlConstructionError::is_invalid_output_root,
-        OwnerFault::InvalidOutputRoot,
-    ),
-    (
-        HtmlConstructionError::is_operation_not_ready,
-        OwnerFault::OperationNotReady,
-    ),
-    (
-        HtmlConstructionError::is_foreign_allocation,
-        OwnerFault::ForeignAllocation,
-    ),
-    (
-        HtmlConstructionError::is_capacity_mismatch,
-        OwnerFault::CapacityMismatch,
-    ),
-    (
-        HtmlConstructionError::is_index_unavailable,
-        OwnerFault::IndexUnavailable,
-    ),
-    (
-        HtmlConstructionError::is_shared_allocation_aliased,
-        OwnerFault::SharedAllocationAliased,
-    ),
-    (
-        HtmlConstructionError::is_release_underflow,
-        OwnerFault::ReleaseUnderflow,
-    ),
-    (
-        HtmlConstructionError::is_limit_exceeded,
-        OwnerFault::LimitExceeded,
-    ),
-    (
-        HtmlConstructionError::is_representation_exhausted,
-        OwnerFault::RepresentationExhausted,
-    ),
-    (
-        HtmlConstructionError::is_allocation_failed,
-        OwnerFault::AllocationFailed,
-    ),
-];
-
-/// Names the fault of an owner error through the owner's predicates.
-fn classify(error: &HtmlConstructionError) -> OwnerFault {
-    OWNER_CAUSES
-        .iter()
-        .find(|(recognizes, _)| recognizes(error))
-        .map_or(OwnerFault::Unlisted, |&(_, fault)| fault)
-}
-
-/// How a fault is reported to the session.
+/// How a cause of the owner's error is reported to the session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Disposition {
     /// A document-shaped error that `session_class` classifies; nothing is
@@ -219,36 +62,36 @@ enum Disposition {
     Class(SessionClass),
     /// A count that cannot be represented.
     Representation,
+    /// A failure of the ledger scope that is not a refused limit, latched as the parse's
+    /// accounting stop.
+    Accounting(HtmlAccountingFault),
     /// An allocation whose layout is unknown here.
     AllocationFailed,
 }
 
-/// Maps every fault to its report. A new fault needs a row here to compile.
-fn disposition(fault: OwnerFault) -> Disposition {
+/// Maps every cause of the owner's error to its report. The cause enum is exhaustive, so a cause
+/// that the owner adds needs a row here to compile.
+fn disposition(cause: HtmlConstructionCause) -> Disposition {
     use crate::parser::control::HtmlParseInvariant;
     use Disposition::{AllocationFailed, Class, Representation, Session};
-    match fault {
-        OwnerFault::ForeignBuilder | OwnerFault::UnknownNode => Session(SessionError::ForeignNode),
-        OwnerFault::RootMove => Session(SessionError::RootMove),
-        OwnerFault::AssociationMove => Session(SessionError::AssociationMove),
-        OwnerFault::ParentCannotHaveChildren => Session(SessionError::NotContainer),
-        OwnerFault::TemplateContentsRequired => Session(SessionError::TemplateContentsRequired),
-        OwnerFault::WrongSibling | OwnerFault::ParentChildConflict => {
-            Session(SessionError::WrongSibling)
-        }
-        OwnerFault::Cycle => Session(SessionError::Cycle),
-        OwnerFault::SharedAllocationAliased => Class(SessionClass::Fault(
+    use HtmlConstructionCause as Cause;
+    match cause {
+        Cause::ForeignBuilder | Cause::UnknownNode => Session(SessionError::ForeignNode),
+        Cause::RootMove => Session(SessionError::RootMove),
+        Cause::AssociationMove => Session(SessionError::AssociationMove),
+        Cause::ParentCannotHaveChildren => Session(SessionError::NotContainer),
+        Cause::TemplateContentsRequired => Session(SessionError::TemplateContentsRequired),
+        Cause::WrongSibling | Cause::ParentChildConflict => Session(SessionError::WrongSibling),
+        Cause::Cycle => Session(SessionError::Cycle),
+        Cause::SharedAllocationAliased => Class(SessionClass::Fault(
             HtmlParseInvariant::SharedAllocationAliased,
         )),
-        OwnerFault::RepresentationExhausted => Representation,
-        OwnerFault::CapacityMismatch
-        | OwnerFault::ForeignAllocation
-        | OwnerFault::LimitExceeded => {
+        Cause::RepresentationExhausted => Representation,
+        Cause::CapacityMismatch | Cause::ForeignAllocation | Cause::LimitExceeded { .. } => {
             Class(SessionClass::Fault(HtmlParseInvariant::CapacityMismatch))
         }
-        OwnerFault::ReleaseUnderflow => {
-            Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow))
-        }
+        Cause::ReleaseUnderflow => Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow)),
+        Cause::Accounting(fault) => Disposition::Accounting(fault),
         // `layout_bytes: 0` means the layout is unknown here, not that none was
         // requested. Every bounded producer of this error reports it with its
         // real layout before it gets this far: the record and child reserves
@@ -256,41 +99,40 @@ fn disposition(fault: OwnerFault) -> Disposition {
         // and attribute-slot reserves in `attributes.rs`, and the candidate
         // backing reserve in `text_append.rs`. This is only a failure a
         // caller without a layout still has to report.
-        OwnerFault::AllocationFailed => AllocationFailed,
-        OwnerFault::ShadowHostMustBeElement
-        | OwnerFault::ShadowAlreadyAttached
-        | OwnerFault::WrongNodeKind
-        | OwnerFault::AssociationAlreadyOwned
-        | OwnerFault::InvalidTemplateAssociation
-        | OwnerFault::DuplicateAttribute
-        | OwnerFault::AttributeNameMismatch
-        | OwnerFault::AttributeOrderMismatch
-        | OwnerFault::InvalidShadowAssociation
-        | OwnerFault::InvalidContentsReference
-        | OwnerFault::InvalidOutputRoot
-        | OwnerFault::OperationNotReady
-        | OwnerFault::IndexUnavailable
-        | OwnerFault::Unlisted => Class(SessionClass::Fault(
+        Cause::AllocationFailed => AllocationFailed,
+        Cause::ShadowHostMustBeElement
+        | Cause::ShadowAlreadyAttached
+        | Cause::WrongNodeKind
+        | Cause::AssociationAlreadyOwned
+        | Cause::InvalidTemplateAssociation
+        | Cause::DuplicateAttribute { .. }
+        | Cause::AttributeNameMismatch
+        | Cause::AttributeOrderMismatch
+        | Cause::InvalidShadowAssociation
+        | Cause::InvalidContentsReference
+        | Cause::InvalidOutputRoot
+        | Cause::OperationNotReady
+        | Cause::IndexUnavailable => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,
         )),
     }
 }
 
 /// The session error for a refusal from HTML's construction owner, with every
-/// cause of its error classified by what it violates.
+/// cause of its error reported by what it violates.
 ///
 /// There are two tables, and the second is built on the first.
-/// [`session_class`] classifies every session error; `OWNER_CAUSES` and
-/// [`disposition`] classify the construction owner's causes, which are not
-/// session errors until this function converts them. A document-shaped
-/// refusal converts to the [`SessionError`] that `session_class` already
-/// classifies, and nothing is latched here. Every other cause converts to the
-/// [`SessionClass`] that a stage error would carry and is latched through
-/// [`SessionClass::latch`], so the stop and the failure's reason derive from
-/// the same class (`StopCause`). Two environment stops, a count that cannot be
-/// represented and an allocation that failed, are latched directly, as their
-/// controller owners latch them. A test checks that no document-shaped
-/// disposition disagrees with `session_class`.
+/// [`session_class`] classifies every session error; [`disposition`] maps the
+/// construction owner's causes, which are not session errors until this
+/// function converts them. A document-shaped refusal converts to the
+/// [`SessionError`] that `session_class` already classifies, and nothing is
+/// latched here. Every other cause converts to the [`SessionClass`] that a
+/// stage error would carry and is latched through [`SessionClass::latch`], so
+/// the stop and the failure's reason derive from the same class (`StopCause`).
+/// Three stops are latched directly, as their controller owners latch them: a
+/// count that cannot be represented, an allocation that failed and a failure of
+/// the ledger scope. A test checks that no document-shaped disposition
+/// disagrees with `session_class`.
 ///
 /// - Handle, placement and cycle refusals are errors about the document's own
 ///   shape; their callers classify them and nothing is latched here.
@@ -300,30 +142,24 @@ fn disposition(fault: OwnerFault) -> Disposition {
 ///   charged, and a release beyond what was held, are accounting faults. The
 ///   parse controller admits every resource before the owner is asked, so a
 ///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - A failure of the ledger scope that is not a refused limit stops the parse
+///   with the same accounting fault as every other ledger fault of the parser.
 /// - An allocation that failed is the environment refusing, a reached stop
 ///   that never names an invariant. The sites that know the layout classify
 ///   it themselves first, so none is known here.
 /// - Every other refusal is the owner declining a request that the parser's
 ///   sequencing guarantees valid.
 ///
-/// The owner keeps its error's cause private and open to later causes, so the
-/// compiler cannot make this crate classify a new one. [`classify`] names each
-/// current cause through the owner's predicates and [`disposition`] maps every
-/// named fault exhaustively. A cause neither names is a fault of the parser,
-/// never an outcome of the document: every cause that parsed input can reach
-/// (a limit, an allocation, a count) is named, so `Unlisted` reports the
-/// construction-owner invariant and cannot end a parse as a document outcome.
-/// The tests cover what they can reach: every fault's disposition, the table
-/// naming each fault once, and the errors a builder provokes classifying
-/// through exactly one predicate. That the table lists all 29 causes of the
-/// owner's error rests on the owner's own cause tests, which pin one predicate
-/// per cause, and on this table's fixed length; the parser cannot build every
-/// cause through the public API.
+/// The owner's cause enum is exhaustive, so [`disposition`] has no fallback: a
+/// cause that the owner adds does not compile here until it has a row, and
+/// cannot become a parser fault or a document outcome by default. The tests
+/// cover the report of every cause, and the errors the owner produces for the
+/// document-shaped, refusal and limit causes.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
-    report(control, disposition(classify(&error)))
+    report(control, disposition(error.cause()))
 }
 
 /// Reports a disposition to the session, latching a stop where it names one.
@@ -331,6 +167,7 @@ fn report(control: &mut ParseControl, disposition: Disposition) -> SessionError 
     match disposition {
         Disposition::Session(error) => error,
         Disposition::Class(class) => SessionError::Stop(class.latch(control)),
+        Disposition::Accounting(fault) => SessionError::Stop(control.stop_accounting(fault)),
         Disposition::Representation => {
             SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
         }
@@ -769,11 +606,13 @@ impl ConstructionOwner {
                     control.record_construction_allocation(snapshot, slot, expected)?;
                 }
                 let error = failure.into_parts().0;
-                Err(if error.is_allocation_failed() {
-                    SessionError::Stop(control.construction_allocation_failed(expected))
-                } else {
-                    construction_error(control, error)
-                })
+                Err(
+                    if error.cause() == HtmlConstructionCause::AllocationFailed {
+                        SessionError::Stop(control.construction_allocation_failed(expected))
+                    } else {
+                        construction_error(control, error)
+                    },
+                )
             }
         }
     }

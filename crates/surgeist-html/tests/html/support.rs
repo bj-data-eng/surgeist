@@ -18,7 +18,10 @@ use surgeist_html::{
             HtmlNumericAttributeValueOrigin,
         },
     },
-    construction::{HtmlConstructionError, HtmlConstructionLimits, HtmlConstructionResource},
+    construction::{
+        HtmlConstructionCause, HtmlConstructionError, HtmlConstructionLimits,
+        HtmlConstructionResource,
+    },
     elements::{
         input::{HtmlInputSanitization, HtmlInputValueSanitization},
         native::HtmlNativeInitialization,
@@ -149,19 +152,18 @@ pub fn assert_span_unapplied(report: &SpanReport) {
     assert!(report.origin().is_none());
 }
 
-/// A construction refusal named by the predicate that recognizes its cause.
+/// A construction refusal named by the cause that recognizes it.
 ///
-/// `HtmlConstructionError` keeps its cause private, so a test states the
-/// expected cause by the public `is_*` predicate and compares it with
-/// `assert_eq!(error, cause::CYCLE)`.
+/// A test states the expected cause by its `HtmlConstructionCause` variant and
+/// compares it with `assert_eq!(error, cause::CYCLE)`.
 #[derive(Clone, Copy)]
 pub struct Cause {
     name: &'static str,
-    recognizes: fn(&HtmlConstructionError) -> bool,
+    recognizes: fn(HtmlConstructionCause) -> bool,
 }
 
 impl Cause {
-    pub const fn new(name: &'static str, recognizes: fn(&HtmlConstructionError) -> bool) -> Self {
+    pub const fn new(name: &'static str, recognizes: fn(HtmlConstructionCause) -> bool) -> Self {
         Self { name, recognizes }
     }
 }
@@ -174,7 +176,7 @@ impl std::fmt::Debug for Cause {
 
 impl PartialEq<Cause> for HtmlConstructionError {
     fn eq(&self, cause: &Cause) -> bool {
-        (cause.recognizes)(self)
+        (cause.recognizes)(self.cause())
     }
 }
 
@@ -192,68 +194,67 @@ pub fn is_limit(
     limit: usize,
 ) -> bool {
     error.is_some_and(|error| {
-        error.exceeded_resource() == Some(resource)
-            && error.attempted() == Some(attempted)
-            && error.limit() == Some(limit)
+        error.cause()
+            == HtmlConstructionCause::LimitExceeded {
+                resource,
+                limit,
+                attempted,
+            }
     })
 }
 
 /// The refusal causes tests expect.
 pub mod cause {
     use super::Cause;
-    use surgeist_html::construction::HtmlConstructionError;
+    use surgeist_html::construction::HtmlConstructionCause;
 
-    pub const FOREIGN_BUILDER: Cause =
-        Cause::new("ForeignBuilder", HtmlConstructionError::is_foreign_builder);
-    pub const PARENT_CANNOT_HAVE_CHILDREN: Cause = Cause::new(
-        "ParentCannotHaveChildren",
-        HtmlConstructionError::is_parent_cannot_have_children,
-    );
-    pub const TEMPLATE_CONTENTS_REQUIRED: Cause = Cause::new(
-        "TemplateContentsRequired",
-        HtmlConstructionError::is_template_contents_required,
-    );
-    pub const SHADOW_HOST_MUST_BE_ELEMENT: Cause = Cause::new(
-        "ShadowHostMustBeElement",
-        HtmlConstructionError::is_shadow_host_must_be_element,
-    );
-    pub const SHADOW_ALREADY_ATTACHED: Cause = Cause::new(
-        "ShadowAlreadyAttached",
-        HtmlConstructionError::is_shadow_already_attached,
-    );
-    pub const WRONG_NODE_KIND: Cause =
-        Cause::new("WrongNodeKind", HtmlConstructionError::is_wrong_node_kind);
-    pub const WRONG_SIBLING: Cause =
-        Cause::new("WrongSibling", HtmlConstructionError::is_wrong_sibling);
-    pub const CYCLE: Cause = Cause::new("Cycle", HtmlConstructionError::is_cycle);
-    pub const INVALID_TEMPLATE_ASSOCIATION: Cause = Cause::new(
-        "InvalidTemplateAssociation",
-        HtmlConstructionError::is_invalid_template_association,
-    );
-    pub const OPERATION_NOT_READY: Cause = Cause::new(
-        "OperationNotReady",
-        HtmlConstructionError::is_operation_not_ready,
-    );
-    pub const FOREIGN_ALLOCATION: Cause = Cause::new(
-        "ForeignAllocation",
-        HtmlConstructionError::is_foreign_allocation,
-    );
-    pub const CAPACITY_MISMATCH: Cause = Cause::new(
-        "CapacityMismatch",
-        HtmlConstructionError::is_capacity_mismatch,
-    );
-    pub const SHARED_ALLOCATION_ALIASED: Cause = Cause::new(
-        "SharedAllocationAliased",
-        HtmlConstructionError::is_shared_allocation_aliased,
-    );
-    pub const REPRESENTATION_EXHAUSTED: Cause = Cause::new(
-        "RepresentationExhausted",
-        HtmlConstructionError::is_representation_exhausted,
-    );
-    pub const ALLOCATION_FAILED: Cause = Cause::new(
-        "AllocationFailed",
-        HtmlConstructionError::is_allocation_failed,
-    );
+    pub const FOREIGN_BUILDER: Cause = Cause::new("ForeignBuilder", |cause| {
+        matches!(cause, HtmlConstructionCause::ForeignBuilder)
+    });
+    pub const PARENT_CANNOT_HAVE_CHILDREN: Cause =
+        Cause::new("ParentCannotHaveChildren", |cause| {
+            matches!(cause, HtmlConstructionCause::ParentCannotHaveChildren)
+        });
+    pub const TEMPLATE_CONTENTS_REQUIRED: Cause = Cause::new("TemplateContentsRequired", |cause| {
+        matches!(cause, HtmlConstructionCause::TemplateContentsRequired)
+    });
+    pub const SHADOW_HOST_MUST_BE_ELEMENT: Cause = Cause::new("ShadowHostMustBeElement", |cause| {
+        matches!(cause, HtmlConstructionCause::ShadowHostMustBeElement)
+    });
+    pub const SHADOW_ALREADY_ATTACHED: Cause = Cause::new("ShadowAlreadyAttached", |cause| {
+        matches!(cause, HtmlConstructionCause::ShadowAlreadyAttached)
+    });
+    pub const WRONG_NODE_KIND: Cause = Cause::new("WrongNodeKind", |cause| {
+        matches!(cause, HtmlConstructionCause::WrongNodeKind)
+    });
+    pub const WRONG_SIBLING: Cause = Cause::new("WrongSibling", |cause| {
+        matches!(cause, HtmlConstructionCause::WrongSibling)
+    });
+    pub const CYCLE: Cause = Cause::new("Cycle", |cause| {
+        matches!(cause, HtmlConstructionCause::Cycle)
+    });
+    pub const INVALID_TEMPLATE_ASSOCIATION: Cause =
+        Cause::new("InvalidTemplateAssociation", |cause| {
+            matches!(cause, HtmlConstructionCause::InvalidTemplateAssociation)
+        });
+    pub const OPERATION_NOT_READY: Cause = Cause::new("OperationNotReady", |cause| {
+        matches!(cause, HtmlConstructionCause::OperationNotReady)
+    });
+    pub const FOREIGN_ALLOCATION: Cause = Cause::new("ForeignAllocation", |cause| {
+        matches!(cause, HtmlConstructionCause::ForeignAllocation)
+    });
+    pub const CAPACITY_MISMATCH: Cause = Cause::new("CapacityMismatch", |cause| {
+        matches!(cause, HtmlConstructionCause::CapacityMismatch)
+    });
+    pub const SHARED_ALLOCATION_ALIASED: Cause = Cause::new("SharedAllocationAliased", |cause| {
+        matches!(cause, HtmlConstructionCause::SharedAllocationAliased)
+    });
+    pub const REPRESENTATION_EXHAUSTED: Cause = Cause::new("RepresentationExhausted", |cause| {
+        matches!(cause, HtmlConstructionCause::RepresentationExhausted)
+    });
+    pub const ALLOCATION_FAILED: Cause = Cause::new("AllocationFailed", |cause| {
+        matches!(cause, HtmlConstructionCause::AllocationFailed)
+    });
 }
 
 /// Adapters that keep a construction protocol owner in an `Option` slot, as a driver that stores

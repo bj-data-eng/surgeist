@@ -3,7 +3,7 @@ use super::*;
 use std::error::Error;
 
 fn expect_not_ready<T>(refusal: &HtmlConstructionRefusal<T>) {
-    assert!(refusal.reason().is_operation_not_ready());
+    assert!(refusal.reason().cause() == HtmlConstructionCause::OperationNotReady);
 }
 
 #[test]
@@ -17,7 +17,7 @@ fn the_carrier_exposes_the_cause_the_owner_and_its_parts_and_describes_itself_on
     let as_error: &dyn Error = &refusal;
     assert!(as_error.source().is_none());
     let (mut initialization, reason) = refusal.into_parts();
-    assert!(reason.is_operation_not_ready());
+    assert_eq!(reason.cause(), HtmlConstructionCause::OperationNotReady);
     assert!(initialization.next_action().unwrap().is_some());
 }
 
@@ -158,7 +158,7 @@ fn a_refused_recovery_hands_back_the_result_and_the_lease() {
     let (other, other_root) = fragment(storage());
     let (other_result, other_lease) = publish(other, other_root);
     let refusal = HtmlConstructionLease::try_recover(result, other_lease).unwrap_err();
-    assert!(refusal.reason().is_foreign_allocation());
+    assert!(refusal.reason().cause() == HtmlConstructionCause::ForeignAllocation);
     let ((result, other_lease), _) = refusal.into_parts();
     assert_eq!(result.len(), 1);
     drop((other_result, other_lease));

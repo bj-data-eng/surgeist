@@ -374,7 +374,7 @@ commit of `ReplaceAttributes` describes its extra write. Without enough capacity
 the same and the work quadratic. Verdicts equal the pairwise ones, including the first reached
 failure: a repeat is reported against the single earlier attribute that owns the name, at the
 attribute that repeats it. A table that cannot serve a step (storage, probe or vacancy that does not
-fit) refuses with the `IndexUnavailable` cause: `HtmlConstructionError::is_index_unavailable` for
+fit) refuses with the `IndexUnavailable` cause: `HtmlConstructionCause::IndexUnavailable` for
 an edit and `HtmlAttributeValidationError::IndexUnavailable` for a validation.
 
 Three steps use the index:
@@ -716,23 +716,22 @@ native authoring still requires its existing separately checked
 `HtmlAuthoredProcessingInstruction`. Those are different phase contracts, not
 permission for native syntax checks to reject recovered parser data.
 
-`HtmlConstructionError` is a struct whose cause is private, so new refusal
-causes never break a caller. A caller asks `is_foreign_builder`,
-`is_unknown_node`, `is_wrong_node_kind`, `is_root_move`, `is_association_move`,
-`is_wrong_sibling`, `is_cycle`, `is_association_already_owned`,
-`is_invalid_template_association`, `is_invalid_shadow_association`,
-`is_invalid_contents_reference`, `is_parent_child_conflict`,
-`is_invalid_output_root`, `is_operation_not_ready`,
-`is_foreign_allocation`, `is_capacity_mismatch`, `is_attribute_name_mismatch`,
-`is_attribute_order_mismatch`, `is_shared_allocation_aliased`,
-`is_release_underflow`, `is_parent_cannot_have_children`,
-`is_template_contents_required`, `is_shadow_host_must_be_element`,
-`is_shadow_already_attached`, `is_representation_exhausted`,
-`is_allocation_failed`, `is_duplicate_attribute` and `is_limit_exceeded`.
-`duplicate_attribute_indices` returns the first and the duplicate position, and
-`exceeded_resource`, `limit` and `attempted` describe a limit refusal. Parser
-maps
-structural refusal to its corresponding `SessionError`; admission/cancellation
+`HtmlConstructionError::cause` returns the exhaustive enum
+`HtmlConstructionCause`, so a consumer that classifies every cause fails to
+compile when a cause is added. Its variants are `ForeignBuilder`,
+`ParentCannotHaveChildren`, `TemplateContentsRequired`,
+`ShadowHostMustBeElement`, `ShadowAlreadyAttached`, `UnknownNode`,
+`WrongNodeKind`, `RootMove`, `AssociationMove`, `WrongSibling`, `Cycle`,
+`AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
+`DuplicateAttribute { first, duplicate }`, `AttributeNameMismatch`,
+`AttributeOrderMismatch`, `InvalidShadowAssociation`,
+`InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
+`OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
+`IndexUnavailable`, `SharedAllocationAliased`, `ReleaseUnderflow`,
+`LimitExceeded { resource, limit, attempted }`, `RepresentationExhausted`,
+`AllocationFailed` and `Accounting(fault)`. `accounting_fault` returns the
+payload of the `Accounting` cause. The parser
+maps each structural refusal to its corresponding `SessionError`; admission/cancellation
 continues to originate in `ParseControl` and is never disguised as a structural
 error. `ReplaceContent` cannot silently change a parent-capable node into a leaf.
 
@@ -1789,7 +1788,8 @@ and otherwise that it names a rule or vocabulary.
 | Family | Shape | Evolution |
 | --- | --- | --- |
 | `HtmlConstructionRefusal`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
-| `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
+| the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
+| `HtmlConstructionError` with its cause enum `HtmlConstructionCause`, which the parser maps variant by variant | Struct whose `cause()` returns an exhaustive enum with the payload of the cause, and `accounting_fault` | Exhaustive: a new cause fails to compile in the parser |
 | Resource accounting that a consumer matches exhaustively: `HtmlIntegerUnitStepError` and `HtmlNumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `HtmlFloatingPointAllocationError` (semantics `range.rs`), `HtmlIntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `HtmlAutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
 | Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
 | Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `HtmlRangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |

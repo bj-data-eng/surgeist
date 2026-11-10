@@ -165,32 +165,28 @@ enum Rejected {
     Duplicate,
     Consumer,
 }
-/// The oracle key of a construction refusal, by the owner's cause predicates.
+/// The oracle key of a construction refusal, by the owner's cause. Every cause the fuzz
+/// recipes do not provoke shares one key.
 fn construction_key(error: &HtmlConstructionError) -> &'static str {
-    if error.is_foreign_builder() {
-        "foreign-builder"
-    } else if error.is_parent_cannot_have_children() {
-        "leaf-parent"
-    } else if error.is_template_contents_required() {
-        "template-parent"
-    } else if error.is_shadow_host_must_be_element() {
-        "shadow-host"
-    } else if error.is_shadow_already_attached() {
-        "shadow-duplicate"
-    } else if error.is_limit_exceeded() {
-        "construction-limit"
-    } else if error.is_representation_exhausted() {
-        "construction-representation"
-    } else if error.is_allocation_failed() {
-        "construction-allocation"
-    } else {
-        "other-construction"
+    match error.cause() {
+        HtmlConstructionCause::ForeignBuilder => "foreign-builder",
+        HtmlConstructionCause::ParentCannotHaveChildren => "leaf-parent",
+        HtmlConstructionCause::TemplateContentsRequired => "template-parent",
+        HtmlConstructionCause::ShadowHostMustBeElement => "shadow-host",
+        HtmlConstructionCause::ShadowAlreadyAttached => "shadow-duplicate",
+        HtmlConstructionCause::LimitExceeded { .. } => "construction-limit",
+        HtmlConstructionCause::RepresentationExhausted => "construction-representation",
+        HtmlConstructionCause::AllocationFailed => "construction-allocation",
+        _ => "other-construction",
     }
 }
 /// Whether a refusal is a resource refusal of the environment rather than of
 /// a limit: an allocation that failed or a count that cannot be represented.
 fn is_environment_refusal(error: &HtmlConstructionError) -> bool {
-    error.is_allocation_failed() || error.is_representation_exhausted()
+    matches!(
+        error.cause(),
+        HtmlConstructionCause::AllocationFailed | HtmlConstructionCause::RepresentationExhausted
+    )
 }
 /// Whether a refusal is exactly the limit failure of this resource, configured
 /// limit and attempted total.
@@ -200,9 +196,12 @@ fn is_limit(
     limit: usize,
     attempted: usize,
 ) -> bool {
-    error.exceeded_resource() == Some(resource)
-        && error.limit() == Some(limit)
-        && error.attempted() == Some(attempted)
+    error.cause()
+        == HtmlConstructionCause::LimitExceeded {
+            resource,
+            limit,
+            attempted,
+        }
 }
 impl Rejected {
     fn key(&self) -> &'static str {

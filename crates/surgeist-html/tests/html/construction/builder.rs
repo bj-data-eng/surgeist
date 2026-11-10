@@ -1,10 +1,11 @@
 use crate::html::support::{cause, construction_limits as limits, is_limit};
 use surgeist_html::{
     construction::{
-        ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
-        HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-        HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction, HtmlProcessingInstructionError,
-        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+        ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlConstructionCause,
+        HtmlConstructionLimits, HtmlConstructionResource, HtmlDoctype, HtmlDocument,
+        HtmlDocumentMode, HtmlFragment, HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction,
+        HtmlProcessingInstructionError, HtmlShadowRootMode, HtmlShadowRootProperties,
+        HtmlSlotAssignment,
     },
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -403,7 +404,10 @@ fn each_finite_budget_rejects_atomically_and_later_smaller_append_succeeds() {
         let failure = builder
             .append_element(&root, name(Namespace::none(), "x"), attrs)
             .unwrap_err();
-        assert_eq!(failure.exceeded_resource(), Some(expected));
+        assert!(matches!(
+            failure.cause(),
+            HtmlConstructionCause::LimitExceeded { resource, .. } if resource == expected
+        ));
         assert_eq!(builder.usage(), before);
         assert_eq!(builder.finish().unwrap().root().children().len(), 0);
     }

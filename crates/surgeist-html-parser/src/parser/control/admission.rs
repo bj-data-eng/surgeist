@@ -137,15 +137,20 @@ impl ParseControl {
         self.stop_representation(HtmlParseResource::WorkCredits)
     }
 
-    /// A change the parser does not charge reached its ledger: the parse stops with the
-    /// accounting fault, after the cancellation check every invariant stop takes.
-    pub(crate) fn unexpected_change(&mut self) -> HtmlParseStop {
+    /// A failure of the ledger scope that is not a refused limit reached the parser through
+    /// HTML's construction owner: the parse stops with that accounting fault, after the
+    /// cancellation check every invariant stop takes.
+    pub(crate) fn stop_accounting(&mut self, fault: HtmlAccountingFault) -> HtmlParseStop {
         if let Err(reason) = self.checkpoint() {
             return reason;
         }
-        self.latch_stop(HtmlParseStop::Accounting(
-            HtmlAccountingFault::UnexpectedChange,
-        ))
+        self.latch_stop(HtmlParseStop::Accounting(fault))
+    }
+
+    /// A change the parser does not charge reached its ledger: the parse stops with the
+    /// accounting fault, after the cancellation check every invariant stop takes.
+    pub(crate) fn unexpected_change(&mut self) -> HtmlParseStop {
+        self.stop_accounting(HtmlAccountingFault::UnexpectedChange)
     }
 
     /// The stop for a ledger error that refused a batch of resource changes.

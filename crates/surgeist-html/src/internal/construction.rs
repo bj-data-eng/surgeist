@@ -142,16 +142,20 @@ pub enum HtmlConstructionResource {
 /// A rejected append or construction step; existing nodes and admitted usage
 /// remain unchanged.
 ///
-/// The cause is private so that new refusal causes can be added without
-/// breaking callers. Query it through the `is_*` predicates and the payload
-/// accessors; every message states the cause in prose.
+/// [`Self::cause`] names what the step violated. The cause enum is exhaustive, so a caller that
+/// maps every cause fails to compile when a new one is added. The payload accessor
+/// [`Self::accounting_fault`] and every message state the cause in prose.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionError {
-    kind: HtmlConstructionErrorKind,
+    cause: HtmlConstructionCause,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum HtmlConstructionErrorKind {
+/// What a rejected construction step violated.
+///
+/// Every cause is named, and the enum is exhaustive: a consumer that classifies the causes
+/// matches every variant, so a cause added later is a compile error at that consumer.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlConstructionCause {
     /// The supplied handle belongs to another builder.
     ForeignBuilder,
     /// A text, comment, PI, or doctype cannot receive children.
@@ -162,242 +166,98 @@ pub(crate) enum HtmlConstructionErrorKind {
     ShadowHostMustBeElement,
     /// An element already has a shadow fragment.
     ShadowAlreadyAttached,
+    /// The node does not exist in this builder.
     UnknownNode,
+    /// The node kind cannot take part in this command.
     WrongNodeKind,
+    /// Documents and fragments cannot be moved or detached.
     RootMove,
+    /// Template contents and shadow fragments cannot be moved as ordinary children.
     AssociationMove,
+    /// The reference node is not a child of the target parent.
     WrongSibling,
+    /// The move would make a node its own ancestor.
     Cycle,
+    /// The fragment is already associated with another owner.
     AssociationAlreadyOwned,
+    /// The template contents association does not satisfy the template rules.
     InvalidTemplateAssociation,
+    /// Two attributes share a namespace and local name.
     DuplicateAttribute {
+        /// The index of the first of the two attributes.
         first: usize,
+        /// The index of the second of the two attributes.
         duplicate: usize,
     },
+    /// An attribute candidate name does not match the planned name.
     AttributeNameMismatch,
+    /// Attribute candidates were not presented in order.
     AttributeOrderMismatch,
+    /// The shadow association does not satisfy the shadow host rules.
     InvalidShadowAssociation,
+    /// The replacement template contents are the existing contents.
     InvalidContentsReference,
+    /// Parent and child records disagree about their relationship.
     ParentChildConflict,
+    /// The published output root is not a detached document or fragment.
     InvalidOutputRoot,
+    /// The construction operation still has pending actions.
     OperationNotReady,
+    /// The retired storage does not belong to this result.
     ForeignAllocation,
+    /// The observed capacity does not match the pending reservation.
     CapacityMismatch,
     /// A name index lent to an attribute edit could not serve a step.
     IndexUnavailable,
+    /// The result storage is shared and cannot be recovered.
     SharedAllocationAliased,
+    /// The builder's own arithmetic released more than it admitted. A release that the ledger
+    /// refuses is [`Self::Accounting`].
     ReleaseUnderflow,
     /// A finite resource limit would be exceeded.
     LimitExceeded {
+        /// The resource that would exceed its limit.
         resource: HtmlConstructionResource,
+        /// The configured limit.
         limit: usize,
+        /// The total the step would have reached.
         attempted: usize,
     },
     /// A storage count cannot be represented by this platform.
     RepresentationExhausted,
-    /// Reserving arena or edge storage failed.
+    /// Reserving arena or edge storage failed. A ledger that cannot allocate is
+    /// [`Self::Accounting`].
     AllocationFailed,
-    /// The ledger scope that enforces the limits failed in a way that is not a refused limit.
+    /// The ledger scope that enforces the limits failed in a way that is not a refused limit: a
+    /// release it refused, an allocation it could not make or a state its own sequencing rules
+    /// out.
     Accounting(HtmlAccountingFault),
 }
-impl HtmlConstructionErrorKind {
+impl HtmlConstructionCause {
     /// Wraps this cause as the public error where inference cannot convert it.
     pub(crate) const fn error(self) -> HtmlConstructionError {
-        HtmlConstructionError { kind: self }
+        HtmlConstructionError { cause: self }
     }
 }
 
-impl From<HtmlConstructionErrorKind> for HtmlConstructionError {
-    fn from(kind: HtmlConstructionErrorKind) -> Self {
-        Self { kind }
+impl From<HtmlConstructionCause> for HtmlConstructionError {
+    fn from(cause: HtmlConstructionCause) -> Self {
+        Self { cause }
     }
 }
 
 impl HtmlConstructionError {
-    /// Whether the cause is: node handle belongs to a different builder.
-    pub fn is_foreign_builder(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::ForeignBuilder)
+    /// What the step violated, with the payload of a cause that has one.
+    pub fn cause(&self) -> HtmlConstructionCause {
+        self.cause
     }
-    /// Whether the cause is: text, comment, processing-instruction and doctype nodes cannot have children.
-    pub fn is_parent_cannot_have_children(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::ParentCannotHaveChildren
-        )
-    }
-    /// Whether the cause is: template children must be appended to its separate contents.
-    pub fn is_template_contents_required(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::TemplateContentsRequired
-        )
-    }
-    /// Whether the cause is: a shadow root requires an element host.
-    pub fn is_shadow_host_must_be_element(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::ShadowHostMustBeElement
-        )
-    }
-    /// Whether the cause is: element already has a shadow root.
-    pub fn is_shadow_already_attached(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::ShadowAlreadyAttached)
-    }
-    /// Whether the cause is: node does not exist in this builder.
-    pub fn is_unknown_node(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::UnknownNode)
-    }
-    /// Whether the cause is: node kind cannot take part in this command.
-    pub fn is_wrong_node_kind(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::WrongNodeKind)
-    }
-    /// Whether the cause is: documents and fragments cannot be moved or detached.
-    pub fn is_root_move(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::RootMove)
-    }
-    /// Whether the cause is: template contents and shadow fragments cannot be moved as ordinary children.
-    pub fn is_association_move(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::AssociationMove)
-    }
-    /// Whether the cause is: reference node is not a child of the target parent.
-    pub fn is_wrong_sibling(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::WrongSibling)
-    }
-    /// Whether the cause is: move would make a node its own ancestor.
-    pub fn is_cycle(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::Cycle)
-    }
-    /// Whether the cause is: fragment is already associated with another owner.
-    pub fn is_association_already_owned(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::AssociationAlreadyOwned
-        )
-    }
-    /// Whether the cause is: template contents association does not satisfy the template rules.
-    pub fn is_invalid_template_association(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::InvalidTemplateAssociation
-        )
-    }
-    /// Whether the cause is: attribute candidate name does not match the planned name.
-    pub fn is_attribute_name_mismatch(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::AttributeNameMismatch)
-    }
-    /// Whether the cause is: attribute candidates were not presented in order.
-    pub fn is_attribute_order_mismatch(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::AttributeOrderMismatch)
-    }
-    /// Whether the cause is: shadow association does not satisfy the shadow host rules.
-    pub fn is_invalid_shadow_association(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::InvalidShadowAssociation
-        )
-    }
-    /// Whether the cause is: replacement template contents are the existing contents.
-    pub fn is_invalid_contents_reference(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::InvalidContentsReference
-        )
-    }
-    /// Whether the cause is: parent and child records disagree about their relationship.
-    pub fn is_parent_child_conflict(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::ParentChildConflict)
-    }
-    /// Whether the cause is: published output root is not a detached document or fragment.
-    pub fn is_invalid_output_root(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::InvalidOutputRoot)
-    }
-    /// Whether the cause is: construction operation still has pending actions.
-    pub fn is_operation_not_ready(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::OperationNotReady)
-    }
-    /// Whether the cause is: retired storage does not belong to this result.
-    pub fn is_foreign_allocation(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::ForeignAllocation)
-    }
-    /// Whether the cause is: observed capacity does not match the pending reservation.
-    pub fn is_capacity_mismatch(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::CapacityMismatch)
-    }
-    /// Whether the cause is: the name index lent to an attribute edit could not serve a step.
-    pub fn is_index_unavailable(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::IndexUnavailable)
-    }
-    /// Whether the cause is: result storage is shared and cannot be recovered.
-    pub fn is_shared_allocation_aliased(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::SharedAllocationAliased
-        )
-    }
-    /// Whether the cause is: the builder's own arithmetic released more than it admitted. A
-    /// release that the ledger refuses is reported by [`Self::accounting_fault`].
-    pub fn is_release_underflow(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::ReleaseUnderflow)
-    }
-    /// Whether the cause is: storage count cannot be represented on this platform.
-    pub fn is_representation_exhausted(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::RepresentationExhausted
-        )
-    }
-    /// Whether the cause is: reserving arena or edge storage failed. A ledger that cannot allocate
-    /// is reported by [`Self::accounting_fault`].
-    pub fn is_allocation_failed(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::AllocationFailed)
-    }
-    /// The accounting fault, when the cause is a failure of the ledger scope that enforces the
-    /// limits that is not a refused limit: a release it refused, an allocation it could not make or
-    /// a state its own sequencing rules out.
+    /// The accounting fault, when the cause is [`HtmlConstructionCause::Accounting`]: a failure of
+    /// the ledger scope that enforces the limits that is not a refused limit. It equals that
+    /// cause's payload and is the method every HTML error that can carry an accounting fault
+    /// exposes.
     pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
-        match self.kind {
-            HtmlConstructionErrorKind::Accounting(fault) => Some(fault),
-            _ => None,
-        }
-    }
-    /// Whether two attributes share a namespace and local name.
-    pub fn is_duplicate_attribute(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlConstructionErrorKind::DuplicateAttribute { .. }
-        )
-    }
-    /// The indices of the first and the duplicate attribute, when the cause is a duplicate.
-    pub fn duplicate_attribute_indices(&self) -> Option<(usize, usize)> {
-        match self.kind {
-            HtmlConstructionErrorKind::DuplicateAttribute { first, duplicate } => {
-                Some((first, duplicate))
-            }
-            _ => None,
-        }
-    }
-    /// Whether a finite resource limit would be exceeded.
-    pub fn is_limit_exceeded(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::LimitExceeded { .. })
-    }
-    /// The resource that would exceed its limit, when the cause is a limit.
-    pub fn exceeded_resource(&self) -> Option<HtmlConstructionResource> {
-        match self.kind {
-            HtmlConstructionErrorKind::LimitExceeded { resource, .. } => Some(resource),
-            _ => None,
-        }
-    }
-    /// The configured limit, when the cause is a limit.
-    pub fn limit(&self) -> Option<usize> {
-        match self.kind {
-            HtmlConstructionErrorKind::LimitExceeded { limit, .. } => Some(limit),
-            _ => None,
-        }
-    }
-    /// The attempted total, when the cause is a limit.
-    pub fn attempted(&self) -> Option<usize> {
-        match self.kind {
-            HtmlConstructionErrorKind::LimitExceeded { attempted, .. } => Some(attempted),
+        match self.cause {
+            HtmlConstructionCause::Accounting(fault) => Some(fault),
             _ => None,
         }
     }
@@ -405,78 +265,80 @@ impl HtmlConstructionError {
 
 impl fmt::Display for HtmlConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use HtmlConstructionErrorKind as Kind;
-        match &self.kind {
-            Kind::ForeignBuilder => f.write_str("node handle belongs to a different builder"),
-            Kind::ParentCannotHaveChildren => f.write_str(
+        use HtmlConstructionCause as Cause;
+        match &self.cause {
+            Cause::ForeignBuilder => f.write_str("node handle belongs to a different builder"),
+            Cause::ParentCannotHaveChildren => f.write_str(
                 "text, comment, processing-instruction and doctype nodes cannot have children",
             ),
-            Kind::TemplateContentsRequired => {
+            Cause::TemplateContentsRequired => {
                 f.write_str("template children must be appended to its separate contents")
             }
-            Kind::ShadowHostMustBeElement => f.write_str("a shadow root requires an element host"),
-            Kind::ShadowAlreadyAttached => f.write_str("element already has a shadow root"),
-            Kind::UnknownNode => f.write_str("node does not exist in this builder"),
-            Kind::WrongNodeKind => f.write_str("node kind cannot take part in this command"),
-            Kind::RootMove => f.write_str("documents and fragments cannot be moved or detached"),
-            Kind::AssociationMove => f.write_str(
+            Cause::ShadowHostMustBeElement => f.write_str("a shadow root requires an element host"),
+            Cause::ShadowAlreadyAttached => f.write_str("element already has a shadow root"),
+            Cause::UnknownNode => f.write_str("node does not exist in this builder"),
+            Cause::WrongNodeKind => f.write_str("node kind cannot take part in this command"),
+            Cause::RootMove => f.write_str("documents and fragments cannot be moved or detached"),
+            Cause::AssociationMove => f.write_str(
                 "template contents and shadow fragments cannot be moved as ordinary children",
             ),
-            Kind::WrongSibling => f.write_str("reference node is not a child of the target parent"),
-            Kind::Cycle => f.write_str("move would make a node its own ancestor"),
-            Kind::AssociationAlreadyOwned => {
+            Cause::WrongSibling => {
+                f.write_str("reference node is not a child of the target parent")
+            }
+            Cause::Cycle => f.write_str("move would make a node its own ancestor"),
+            Cause::AssociationAlreadyOwned => {
                 f.write_str("fragment is already associated with another owner")
             }
-            Kind::InvalidTemplateAssociation => {
+            Cause::InvalidTemplateAssociation => {
                 f.write_str("template contents association does not satisfy the template rules")
             }
-            Kind::AttributeNameMismatch => {
+            Cause::AttributeNameMismatch => {
                 f.write_str("attribute candidate name does not match the planned name")
             }
-            Kind::AttributeOrderMismatch => {
+            Cause::AttributeOrderMismatch => {
                 f.write_str("attribute candidates were not presented in order")
             }
-            Kind::InvalidShadowAssociation => {
+            Cause::InvalidShadowAssociation => {
                 f.write_str("shadow association does not satisfy the shadow host rules")
             }
-            Kind::InvalidContentsReference => {
+            Cause::InvalidContentsReference => {
                 f.write_str("replacement template contents are the existing contents")
             }
-            Kind::ParentChildConflict => {
+            Cause::ParentChildConflict => {
                 f.write_str("parent and child records disagree about their relationship")
             }
-            Kind::InvalidOutputRoot => {
+            Cause::InvalidOutputRoot => {
                 f.write_str("published output root is not a detached document or fragment")
             }
-            Kind::Accounting(fault) => write!(
+            Cause::Accounting(fault) => write!(
                 f,
                 "the ledger scope that enforces the limits failed: {fault}"
             ),
-            Kind::OperationNotReady => {
+            Cause::OperationNotReady => {
                 f.write_str("construction operation still has pending actions")
             }
-            Kind::ForeignAllocation => {
+            Cause::ForeignAllocation => {
                 f.write_str("retired storage does not belong to this result")
             }
-            Kind::CapacityMismatch => {
+            Cause::CapacityMismatch => {
                 f.write_str("observed capacity does not match the pending reservation")
             }
-            Kind::IndexUnavailable => {
+            Cause::IndexUnavailable => {
                 f.write_str("the attribute name index lent to the edit could not serve a step")
             }
-            Kind::SharedAllocationAliased => {
+            Cause::SharedAllocationAliased => {
                 f.write_str("result storage is shared and cannot be recovered")
             }
-            Kind::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
-            Kind::RepresentationExhausted => {
+            Cause::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
+            Cause::RepresentationExhausted => {
                 f.write_str("storage count cannot be represented on this platform")
             }
-            Kind::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
-            Kind::DuplicateAttribute { first, duplicate } => write!(
+            Cause::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
+            Cause::DuplicateAttribute { first, duplicate } => write!(
                 f,
                 "attribute at index {duplicate} duplicates the namespace and local name of the attribute at index {first}"
             ),
-            Kind::LimitExceeded {
+            Cause::LimitExceeded {
                 resource,
                 limit,
                 attempted,
@@ -1315,7 +1177,7 @@ fn drive_native(
                 Some(capacity) => {
                     #[cfg(test)]
                     if crate::internal::amortized::fault::refuses_next_reservation() {
-                        return Err(HtmlConstructionErrorKind::AllocationFailed.into());
+                        return Err(HtmlConstructionCause::AllocationFailed.into());
                     }
                     action.perform_with_capacity(capacity)
                 }
@@ -1345,7 +1207,7 @@ fn drive_native(
                 bounded::HtmlConstructionLease::try_recover(result, lease)
                     .ok()
                     .map(|recovery| recovery.into_parts().0),
-                Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+                Err(HtmlConstructionCause::OperationNotReady.into()),
             ),
             Err(refusal) => {
                 let (ready, error) = refusal.into_parts();
@@ -1519,10 +1381,9 @@ impl Accounting {
             Change::Acquire(HtmlResource::TreeDepth, wide(depth)),
         ];
         let Some(batch) = batch.get(..if raises { 6 } else { 4 }) else {
-            return Err(HtmlConstructionErrorKind::Accounting(
-                HtmlAccountingFault::UnexpectedChange,
-            )
-            .into());
+            return Err(
+                HtmlConstructionCause::Accounting(HtmlAccountingFault::UnexpectedChange).into(),
+            );
         };
         self.operation
             .apply_batch(self.scope, batch)
@@ -1560,7 +1421,7 @@ impl Accounting {
     fn read(&mut self) -> Result<(), HtmlConstructionError> {
         let usage = self.operation.usage(self.scope).map_err(ledger_error)?;
         let read = |value: u64| {
-            usize::try_from(value).map_err(|_| HtmlConstructionErrorKind::RepresentationExhausted)
+            usize::try_from(value).map_err(|_| HtmlConstructionCause::RepresentationExhausted)
         };
         self.usage = HtmlConstructionUsage {
             nodes: read(usage.live(HtmlResource::ManagedNodes))?,
@@ -1576,8 +1437,8 @@ impl Accounting {
 /// total the charge would have reached.
 fn ledger_error(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlConstructionError {
     let kind = match classify(error) {
-        HtmlLedgerOutcome::Fault(fault) => HtmlConstructionErrorKind::Accounting(fault),
-        HtmlLedgerOutcome::Exhausted(_) => HtmlConstructionErrorKind::RepresentationExhausted,
+        HtmlLedgerOutcome::Fault(fault) => HtmlConstructionCause::Accounting(fault),
+        HtmlLedgerOutcome::Exhausted(_) => HtmlConstructionCause::RepresentationExhausted,
         HtmlLedgerOutcome::Cap(refusal) => {
             let resource = match refusal.change() {
                 Change::Acquire(HtmlResource::ManagedNodes, _) => {
@@ -1598,15 +1459,15 @@ fn ledger_error(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlConstructionE
                 _ => None,
             };
             match (resource, refusal.figures()) {
-                (Some(resource), Ok(figures)) => HtmlConstructionErrorKind::LimitExceeded {
+                (Some(resource), Ok(figures)) => HtmlConstructionCause::LimitExceeded {
                     resource,
                     limit: figures.limit,
                     attempted: figures.required,
                 },
                 (None, _) => {
-                    HtmlConstructionErrorKind::Accounting(HtmlAccountingFault::UnexpectedChange)
+                    HtmlConstructionCause::Accounting(HtmlAccountingFault::UnexpectedChange)
                 }
-                (Some(_), Err(_)) => HtmlConstructionErrorKind::RepresentationExhausted,
+                (Some(_), Err(_)) => HtmlConstructionCause::RepresentationExhausted,
             }
         }
     };
@@ -1624,7 +1485,7 @@ impl Builder {
     fn storage(&self) -> Result<&bounded::HtmlConstructionStorage, HtmlConstructionError> {
         match &self.storage {
             BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost => Err(HtmlConstructionErrorKind::SharedAllocationAliased.into()),
+            BuilderStorage::Lost => Err(HtmlConstructionCause::SharedAllocationAliased.into()),
         }
     }
     /// The usage the builder's accounting admitted.
@@ -1636,7 +1497,7 @@ impl Builder {
     fn take_storage(&mut self) -> Result<bounded::HtmlConstructionStorage, HtmlConstructionError> {
         match std::mem::replace(&mut self.storage, BuilderStorage::Lost) {
             BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost => Err(HtmlConstructionErrorKind::SharedAllocationAliased.into()),
+            BuilderStorage::Lost => Err(HtmlConstructionCause::SharedAllocationAliased.into()),
         }
     }
     fn new(
@@ -1669,10 +1530,10 @@ impl Builder {
             NativeRoot::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
         };
         let (storage, outcome) = drive_native(storage, command, None);
-        let root = outcome?.ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        let root = outcome?.ok_or(HtmlConstructionCause::OperationNotReady)?;
         Ok(Self {
             storage: BuilderStorage::Held(
-                storage.ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?,
+                storage.ok_or(HtmlConstructionCause::SharedAllocationAliased)?,
             ),
             root,
             accounting,
@@ -1719,7 +1580,9 @@ impl Builder {
             before: None,
         };
         match self.apply(insert()) {
-            Err(error) if error.is_allocation_failed() => self.run(insert(), None),
+            Err(error) if error.cause() == HtmlConstructionCause::AllocationFailed => {
+                self.run(insert(), None)
+            }
             outcome => outcome,
         }
         .map(|_| ())
@@ -1733,7 +1596,7 @@ impl Builder {
         let (len, capacity) = (storage.len(), storage.records_capacity());
         let required = len
             .checked_add(additional)
-            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         if required <= capacity {
             return Ok(());
         }
@@ -1750,12 +1613,15 @@ impl Builder {
         #[cfg(not(test))]
         let refused = false;
         let outcome = if refused {
-            Err(HtmlConstructionErrorKind::AllocationFailed.into())
+            Err(HtmlConstructionCause::AllocationFailed.into())
         } else {
             self.run(reserve(target), None)
         };
         match outcome {
-            Err(error) if error.is_allocation_failed() && target > required => {
+            Err(error)
+                if error.cause() == HtmlConstructionCause::AllocationFailed
+                    && target > required =>
+            {
                 self.run(reserve(required), None)
             }
             outcome => outcome,
@@ -1768,7 +1634,7 @@ impl Builder {
         command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         self.apply(command)?
-            .ok_or_else(|| HtmlConstructionErrorKind::OperationNotReady.into())
+            .ok_or_else(|| HtmlConstructionCause::OperationNotReady.into())
     }
     fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
         Ok(self.storage()?.native_depth(index))
@@ -1784,16 +1650,16 @@ impl Builder {
             parent_view.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) {
-            return Err(HtmlConstructionErrorKind::ParentCannotHaveChildren.into());
+            return Err(HtmlConstructionCause::ParentCannotHaveChildren.into());
         }
         if parent_view.template_contents().is_some() {
-            return Err(HtmlConstructionErrorKind::TemplateContentsRequired.into());
+            return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
         let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::vocabulary::KnownHtmlElement::from_name(element.name()) == Some(crate::vocabulary::KnownHtmlElement::Template));
         let depth = self
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
-            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         let (attributes, units) = bounded::operations::created_usage(&kind)?;
         let charged = self.accounting.admit(
             1 + usize::from(template),
@@ -1848,15 +1714,15 @@ impl Builder {
         let host_position = self.index(host)?;
         let view = self.storage()?.node(host)?;
         if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
-            return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
+            return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
         }
         if view.shadow_root().is_some() {
-            return Err(HtmlConstructionErrorKind::ShadowAlreadyAttached.into());
+            return Err(HtmlConstructionCause::ShadowAlreadyAttached.into());
         }
         let depth = self
             .depth(host_position)?
             .checked_add(1)
-            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         let charged = self.accounting.admit(1, 1, 0, 0, depth)?;
         let previous_usage = self.storage()?.usage();
         let previous_len = self.storage()?.len();
@@ -1888,11 +1754,11 @@ impl Builder {
     /// no half-published builder is worth keeping.
     fn finish(self) -> Result<bounded::HtmlConstructionResult, HtmlConstructionError> {
         let BuilderStorage::Held(storage) = self.storage else {
-            return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+            return Err(HtmlConstructionCause::SharedAllocationAliased.into());
         };
         let root = storage
             .node_at(0)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+            .ok_or(HtmlConstructionCause::UnknownNode)?
             .handle();
         let mut operation = storage.prepare_finish(root);
         while let Some(action) = operation.next_action()? {
@@ -1912,7 +1778,7 @@ impl Builder {
                 Ok(result)
             }
             bounded::operations::HtmlConstructionCommit::Changed { .. } => {
-                Err(HtmlConstructionErrorKind::OperationNotReady.into())
+                Err(HtmlConstructionCause::OperationNotReady.into())
             }
         }
     }
@@ -2022,7 +1888,7 @@ impl HtmlDocumentBuilder {
         match self.builder.finish()? {
             bounded::HtmlConstructionResult::Document(document) => Ok(document),
             bounded::HtmlConstructionResult::Fragment(_) => {
-                Err(HtmlConstructionErrorKind::InvalidOutputRoot.into())
+                Err(HtmlConstructionCause::InvalidOutputRoot.into())
             }
         }
     }
@@ -2037,7 +1903,7 @@ impl HtmlFragmentBuilder {
         match self.builder.finish()? {
             bounded::HtmlConstructionResult::Fragment(fragment) => Ok(fragment),
             bounded::HtmlConstructionResult::Document(_) => {
-                Err(HtmlConstructionErrorKind::InvalidOutputRoot.into())
+                Err(HtmlConstructionCause::InvalidOutputRoot.into())
             }
         }
     }
@@ -2179,12 +2045,24 @@ mod tests {
             builder.template_contents(&root).map(|_| ()),
         ] {
             let error = outcome.expect_err("a builder without storage refuses every operation");
-            assert!(error.is_shared_allocation_aliased(), "{error}");
+            assert!(
+                matches!(
+                    error.cause(),
+                    HtmlConstructionCause::SharedAllocationAliased
+                ),
+                "{error}"
+            );
         }
         let error = builder
             .finish()
             .expect_err("a builder without storage cannot finish");
-        assert!(error.is_shared_allocation_aliased(), "{error}");
+        assert!(
+            matches!(
+                error.cause(),
+                HtmlConstructionCause::SharedAllocationAliased
+            ),
+            "{error}"
+        );
     }
 
     /// An operation refused at its ready transition returns the storage it was prepared on, with
@@ -2205,7 +2083,10 @@ mod tests {
         let Err((Some(storage), error)) = ready_or_recover(operation) else {
             panic!("an undriven operation is not ready");
         };
-        assert!(error.is_operation_not_ready());
+        assert!(matches!(
+            error.cause(),
+            HtmlConstructionCause::OperationNotReady
+        ));
         assert_eq!((storage.usage(), storage.len()), (usage, records));
         builder.storage = BuilderStorage::Held(storage);
         // The builder keeps working with the recovered storage.
@@ -2370,7 +2251,7 @@ mod tests {
             let (result, unchanged) = append(tight_units);
             assert_eq!(
                 result,
-                Err(HtmlConstructionErrorKind::LimitExceeded {
+                Err(HtmlConstructionCause::LimitExceeded {
                     resource: HtmlConstructionResource::Utf16Units,
                     limit: units - 1,
                     attempted: units,
@@ -2388,7 +2269,7 @@ mod tests {
                 let (result, unchanged) = append(tight);
                 assert_eq!(
                     result,
-                    Err(HtmlConstructionErrorKind::LimitExceeded {
+                    Err(HtmlConstructionCause::LimitExceeded {
                         resource: HtmlConstructionResource::Attributes,
                         limit: attributes - 1,
                         attempted: attributes,
@@ -2458,8 +2339,8 @@ mod accounting_tests {
     }
 
     fn refused(error: HtmlConstructionError) -> (HtmlConstructionResource, usize, usize) {
-        match error.kind {
-            HtmlConstructionErrorKind::LimitExceeded {
+        match error.cause {
+            HtmlConstructionCause::LimitExceeded {
                 resource,
                 limit,
                 attempted,
@@ -2536,7 +2417,10 @@ mod accounting_tests {
             error.accounting_fault(),
             Some(HtmlAccountingFault::ReleaseUnderflow)
         );
-        assert!(!error.is_release_underflow());
+        assert!(!matches!(
+            error.cause(),
+            HtmlConstructionCause::ReleaseUnderflow
+        ));
         assert_eq!(accounting.usage, before);
     }
 
@@ -2554,8 +2438,11 @@ mod accounting_tests {
         ] {
             let error = ledger_error(error);
             assert_eq!(error.accounting_fault(), Some(fault));
-            assert!(!error.is_allocation_failed());
-            assert!(!error.is_representation_exhausted());
+            assert!(!matches!(
+                error.cause(),
+                HtmlConstructionCause::AllocationFailed
+                    | HtmlConstructionCause::RepresentationExhausted
+            ));
         }
     }
 
@@ -2609,7 +2496,7 @@ mod cause_tests {
     /// A depth is not a total: its limit refuses a depth, not a count.
     #[test]
     fn a_depth_limit_cannot_admit_a_depth() {
-        let error = HtmlConstructionErrorKind::LimitExceeded {
+        let error = HtmlConstructionCause::LimitExceeded {
             resource: HtmlConstructionResource::Depth,
             limit: 3,
             attempted: 4,
@@ -2621,171 +2508,144 @@ mod cause_tests {
         );
     }
 
-    /// Every cause states its documented meaning, and exactly one of the
-    /// cause predicates, its own, recognizes it.
+    /// Every cause states its documented meaning, and the error built from it
+    /// reports exactly that cause.
     #[test]
-    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
-        type Predicate = fn(&HtmlConstructionError) -> bool;
-        let cases: Vec<(HtmlConstructionError, &str, Predicate)> = vec![
+    fn every_cause_has_its_message_and_is_reported_as_itself() {
+        let cases: Vec<(HtmlConstructionCause, &str)> = vec![
             (
-                HtmlConstructionErrorKind::ForeignBuilder.error(),
+                HtmlConstructionCause::ForeignBuilder,
                 "node handle belongs to a different builder",
-                HtmlConstructionError::is_foreign_builder,
             ),
             (
-                HtmlConstructionErrorKind::ParentCannotHaveChildren.error(),
+                HtmlConstructionCause::ParentCannotHaveChildren,
                 "text, comment, processing-instruction and doctype nodes cannot have children",
-                HtmlConstructionError::is_parent_cannot_have_children,
             ),
             (
-                HtmlConstructionErrorKind::TemplateContentsRequired.error(),
+                HtmlConstructionCause::TemplateContentsRequired,
                 "template children must be appended to its separate contents",
-                HtmlConstructionError::is_template_contents_required,
             ),
             (
-                HtmlConstructionErrorKind::ShadowHostMustBeElement.error(),
+                HtmlConstructionCause::ShadowHostMustBeElement,
                 "a shadow root requires an element host",
-                HtmlConstructionError::is_shadow_host_must_be_element,
             ),
             (
-                HtmlConstructionErrorKind::ShadowAlreadyAttached.error(),
+                HtmlConstructionCause::ShadowAlreadyAttached,
                 "element already has a shadow root",
-                HtmlConstructionError::is_shadow_already_attached,
             ),
             (
-                HtmlConstructionErrorKind::UnknownNode.error(),
+                HtmlConstructionCause::UnknownNode,
                 "node does not exist in this builder",
-                HtmlConstructionError::is_unknown_node,
             ),
             (
-                HtmlConstructionErrorKind::WrongNodeKind.error(),
+                HtmlConstructionCause::WrongNodeKind,
                 "node kind cannot take part in this command",
-                HtmlConstructionError::is_wrong_node_kind,
             ),
             (
-                HtmlConstructionErrorKind::RootMove.error(),
+                HtmlConstructionCause::RootMove,
                 "documents and fragments cannot be moved or detached",
-                HtmlConstructionError::is_root_move,
             ),
             (
-                HtmlConstructionErrorKind::AssociationMove.error(),
+                HtmlConstructionCause::AssociationMove,
                 "template contents and shadow fragments cannot be moved as ordinary children",
-                HtmlConstructionError::is_association_move,
             ),
             (
-                HtmlConstructionErrorKind::WrongSibling.error(),
+                HtmlConstructionCause::WrongSibling,
                 "reference node is not a child of the target parent",
-                HtmlConstructionError::is_wrong_sibling,
             ),
             (
-                HtmlConstructionErrorKind::Cycle.error(),
+                HtmlConstructionCause::Cycle,
                 "move would make a node its own ancestor",
-                HtmlConstructionError::is_cycle,
             ),
             (
-                HtmlConstructionErrorKind::AssociationAlreadyOwned.error(),
+                HtmlConstructionCause::AssociationAlreadyOwned,
                 "fragment is already associated with another owner",
-                HtmlConstructionError::is_association_already_owned,
             ),
             (
-                HtmlConstructionErrorKind::InvalidTemplateAssociation.error(),
+                HtmlConstructionCause::InvalidTemplateAssociation,
                 "template contents association does not satisfy the template rules",
-                HtmlConstructionError::is_invalid_template_association,
             ),
             (
-                HtmlConstructionErrorKind::AttributeNameMismatch.error(),
+                HtmlConstructionCause::AttributeNameMismatch,
                 "attribute candidate name does not match the planned name",
-                HtmlConstructionError::is_attribute_name_mismatch,
             ),
             (
-                HtmlConstructionErrorKind::AttributeOrderMismatch.error(),
+                HtmlConstructionCause::AttributeOrderMismatch,
                 "attribute candidates were not presented in order",
-                HtmlConstructionError::is_attribute_order_mismatch,
             ),
             (
-                HtmlConstructionErrorKind::InvalidShadowAssociation.error(),
+                HtmlConstructionCause::InvalidShadowAssociation,
                 "shadow association does not satisfy the shadow host rules",
-                HtmlConstructionError::is_invalid_shadow_association,
             ),
             (
-                HtmlConstructionErrorKind::InvalidContentsReference.error(),
+                HtmlConstructionCause::InvalidContentsReference,
                 "replacement template contents are the existing contents",
-                HtmlConstructionError::is_invalid_contents_reference,
             ),
             (
-                HtmlConstructionErrorKind::ParentChildConflict.error(),
+                HtmlConstructionCause::ParentChildConflict,
                 "parent and child records disagree about their relationship",
-                HtmlConstructionError::is_parent_child_conflict,
             ),
             (
-                HtmlConstructionErrorKind::InvalidOutputRoot.error(),
+                HtmlConstructionCause::InvalidOutputRoot,
                 "published output root is not a detached document or fragment",
-                HtmlConstructionError::is_invalid_output_root,
             ),
             (
-                HtmlConstructionErrorKind::OperationNotReady.error(),
+                HtmlConstructionCause::OperationNotReady,
                 "construction operation still has pending actions",
-                HtmlConstructionError::is_operation_not_ready,
             ),
             (
-                HtmlConstructionErrorKind::ForeignAllocation.error(),
+                HtmlConstructionCause::ForeignAllocation,
                 "retired storage does not belong to this result",
-                HtmlConstructionError::is_foreign_allocation,
             ),
             (
-                HtmlConstructionErrorKind::CapacityMismatch.error(),
+                HtmlConstructionCause::CapacityMismatch,
                 "observed capacity does not match the pending reservation",
-                HtmlConstructionError::is_capacity_mismatch,
             ),
             (
-                HtmlConstructionErrorKind::IndexUnavailable.error(),
+                HtmlConstructionCause::IndexUnavailable,
                 "the attribute name index lent to the edit could not serve a step",
-                HtmlConstructionError::is_index_unavailable,
             ),
             (
-                HtmlConstructionErrorKind::SharedAllocationAliased.error(),
+                HtmlConstructionCause::SharedAllocationAliased,
                 "result storage is shared and cannot be recovered",
-                HtmlConstructionError::is_shared_allocation_aliased,
             ),
             (
-                HtmlConstructionErrorKind::ReleaseUnderflow.error(),
+                HtmlConstructionCause::ReleaseUnderflow,
                 "released usage exceeds the admitted usage",
-                HtmlConstructionError::is_release_underflow,
             ),
             (
-                HtmlConstructionErrorKind::RepresentationExhausted.error(),
+                HtmlConstructionCause::RepresentationExhausted,
                 "storage count cannot be represented on this platform",
-                HtmlConstructionError::is_representation_exhausted,
             ),
             (
-                HtmlConstructionErrorKind::AllocationFailed.error(),
+                HtmlConstructionCause::AllocationFailed,
                 "reserving arena or edge storage failed",
-                HtmlConstructionError::is_allocation_failed,
             ),
             (
-                HtmlConstructionErrorKind::DuplicateAttribute {
+                HtmlConstructionCause::DuplicateAttribute {
                     first: 0,
                     duplicate: 1,
-                }
-                .error(),
+                },
                 "attribute at index 1 duplicates the namespace and local name of the attribute at index 0",
-                HtmlConstructionError::is_duplicate_attribute,
             ),
             (
-                HtmlConstructionErrorKind::LimitExceeded {
+                HtmlConstructionCause::LimitExceeded {
                     resource: HtmlConstructionResource::Nodes,
                     limit: 1,
                     attempted: 2,
-                }
-                .error(),
+                },
                 "node limit of 1 cannot admit a total of 2",
-                HtmlConstructionError::is_limit_exceeded,
+            ),
+            (
+                HtmlConstructionCause::Accounting(HtmlAccountingFault::ForeignScope),
+                "the ledger scope that enforces the limits failed: the supplied scope belongs to another operation",
             ),
         ];
-        for (error, message, predicate) in &cases {
+        for (cause, message) in &cases {
+            let error = cause.error();
             assert_eq!(error.to_string(), *message);
-            assert!(predicate(error), "{message}");
-            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(error.cause(), *cause, "{message}");
+            let matching = cases.iter().filter(|(other, _)| other == cause).count();
             assert_eq!(matching, 1, "{message}");
         }
     }

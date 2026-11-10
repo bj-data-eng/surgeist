@@ -40,7 +40,7 @@
 //!    stale, wrong-reply or already-complete state), or does one type merge the
 //!    refusals of many operations? Then it is a struct with a private cause,
 //!    queried through `is_*` predicates and fact accessors, such as
-//!    [`construction::HtmlConstructionError`], [`security::csp::HtmlCspProtocolError`], the interpretation
+//!    [`security::csp::HtmlCspProtocolError`], the interpretation
 //!    protocol errors and the cursor errors like [`focus::HtmlFocusingError`]. New
 //!    causes never break a caller.
 //! 3. Does a driver charge or branch on every variant, and does a consumer
@@ -48,7 +48,9 @@
 //!    accounting enums such as [`bounded::numeric::HtmlIntegerUnitStepError`] and
 //!    [`bounded::numeric::HtmlFloatingPointAllocationError`], and the two-source wrappers
 //!    [`security::csp::HtmlCspError`] and [`bounded::rel::HtmlRelActionError`], which separate the
-//!    caller's own refusal from this crate's.
+//!    caller's own refusal from this crate's. [`construction::HtmlConstructionError`] is a
+//!    struct whose [`cause`](construction::HtmlConstructionError::cause) is the exhaustive enum
+//!    [`construction::HtmlConstructionCause`], because the parser maps every cause.
 //! 4. Otherwise it names a rule of the pinned standard, a syntax class, an
 //!    unavailability reason or a vocabulary that a driver constructs. Then it is
 //!    a `#[non_exhaustive]` enum, such as [`microsyntax::tokens::HtmlTokenError`],
@@ -86,16 +88,24 @@
 //! migration shim is kept for a changed enum.
 //!
 //! ```
-//! use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
+//! use surgeist_html::construction::{
+//!     HtmlConstructionCause, HtmlConstructionLimits, HtmlConstructionResource, HtmlFragment,
+//! };
 //!
 //! // One UTF-16 unit of text fits; eight do not.
 //! let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2))?;
 //! let root = builder.root();
 //! let refusal = builder.append_text(&root, "too long").unwrap_err();
 //!
-//! // The cause is private; a caller asks about it and reads its facts.
-//! assert!(refusal.is_limit_exceeded());
-//! assert_eq!(refusal.attempted(), Some(8));
+//! // The cause names the violated rule and carries its facts.
+//! assert_eq!(
+//!     refusal.cause(),
+//!     HtmlConstructionCause::LimitExceeded {
+//!         resource: HtmlConstructionResource::Utf16Units,
+//!         limit: 2,
+//!         attempted: 8,
+//!     }
+//! );
 //! assert_eq!(
 //!     refusal.to_string(),
 //!     "UTF-16 unit limit of 2 cannot admit a total of 8"

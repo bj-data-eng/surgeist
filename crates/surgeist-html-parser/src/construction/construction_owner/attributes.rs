@@ -367,13 +367,15 @@ impl ConstructionOwner {
                                 expected,
                             )?;
                         }
-                        return Err(if error.is_allocation_failed() {
-                            control
-                                .construction_allocation_failed(expected.unwrap_or(0))
-                                .into()
-                        } else {
-                            construction_error(control, error)
-                        });
+                        return Err(
+                            if error.cause() == HtmlConstructionCause::AllocationFailed {
+                                control
+                                    .construction_allocation_failed(expected.unwrap_or(0))
+                                    .into()
+                            } else {
+                                construction_error(control, error)
+                            },
+                        );
                     }
                 }
             }
@@ -463,13 +465,15 @@ pub(in crate::construction) fn prepare_attribute_slot<'a>(
                         expected,
                     )?;
                 }
-                return Err(if error.is_allocation_failed() {
-                    control
-                        .construction_allocation_failed(expected.unwrap_or(0))
-                        .into()
-                } else {
-                    construction_error(control, error)
-                });
+                return Err(
+                    if error.cause() == HtmlConstructionCause::AllocationFailed {
+                        control
+                            .construction_allocation_failed(expected.unwrap_or(0))
+                            .into()
+                    } else {
+                        construction_error(control, error)
+                    },
+                );
             }
         }
     }
