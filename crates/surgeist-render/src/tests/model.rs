@@ -12,10 +12,10 @@ use crate::{
     BlendMode, Capabilities, Color, CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag,
     Dash, DegradedQuality, DegradedQualityKind, DeviceLossReason, EffectPrecision,
     EffectQualityPolicy, Error, ErrorCode, Extend, FillRule, FilledPath, Filter, FontData, FontId,
-    FontRef, Format, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer,
-    ImageFit, ImageQuality, InvalidValue, Layer, LineCap, LineJoin, NormalizedPaintLayer, Paint,
-    PaintColor, Path, PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii,
-    Rect, RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
+    FontRef, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer, ImageFit,
+    ImageQuality, InvalidValue, Layer, LineCap, LineJoin, NormalizedPaintLayer, Paint, PaintColor,
+    Path, PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
+    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
     RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
     Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign, SurfaceIdentityMismatchKind,
     SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint,
@@ -2141,15 +2141,11 @@ fn runtime_errors_distinguish_semantic_unsupported_from_device_unavailable() {
         PrimitiveFamily::Filters,
         PrimitiveOperation::LayerFilter,
     ));
-    let unavailable = Error::runtime_capability_unavailable(
-        RuntimeCapabilityUnavailable::try_new(
+    let unavailable =
+        Error::runtime_capability_unavailable(RuntimeCapabilityUnavailable::device_lost(
             RuntimeOperation::SurfaceRendering,
-            RuntimeCapabilityUnavailableReason::DeviceLost {
-                reason: DeviceLossReason::Destroyed,
-            },
-        )
-        .unwrap(),
-    );
+            DeviceLossReason::Destroyed,
+        ));
 
     assert_eq!(unsupported.code(), ErrorCode::UnsupportedPrimitive);
     assert!(unsupported.unsupported_primitive().is_some());
@@ -2168,8 +2164,156 @@ fn runtime_errors_distinguish_semantic_unsupported_from_device_unavailable() {
 }
 
 #[test]
-fn runtime_diagnostic_constructor_rejects_every_unlisted_operation_reason_pair() {
-    let operations = [
+fn runtime_diagnostic_issuers_preserve_literal_pairs_and_error_context() {
+    use crate::error::{SurfaceDiagnosticOperation, SurfaceIoOperation};
+
+    fn check(
+        diagnostic: RuntimeCapabilityUnavailable,
+        operation: RuntimeOperation,
+        reason: RuntimeCapabilityUnavailableReason,
+    ) {
+        assert!(runtime_pair_is_listed(operation, reason));
+        assert_eq!(diagnostic.operation(), operation);
+        assert_eq!(diagnostic.reason(), reason);
+        let error = Error::runtime_capability_unavailable(diagnostic);
+        assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+        assert_eq!(error.message(), "runtime capability is unavailable");
+        let error = Error::runtime_unavailable(diagnostic, "literal issuer context")
+            .with_source(ErrorSourceFixture);
+        assert_eq!(error.message(), "literal issuer context");
+        assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+        assert_eq!(
+            error.runtime_capability_unavailable_diagnostic(),
+            Some(&diagnostic)
+        );
+        assert_eq!(
+            std::error::Error::source(&error).unwrap().to_string(),
+            "error source fixture"
+        );
+        assert!(error.invalid_value_diagnostic().is_none());
+    }
+
+    for (diagnostic, operation) in [
+        (
+            RuntimeCapabilityUnavailable::adapter_selection_unavailable(),
+            RuntimeOperation::AdapterSelection,
+        ),
+        (
+            RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
+            RuntimeOperation::SurfaceRendering,
+        ),
+        (
+            RuntimeCapabilityUnavailable::readback_adapter_unavailable(),
+            RuntimeOperation::SurfaceReadback,
+        ),
+    ] {
+        check(
+            diagnostic,
+            operation,
+            RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+        );
+    }
+
+    for (operation, expected) in [
+        (
+            SurfaceIoOperation::Rendering,
+            RuntimeOperation::SurfaceRendering,
+        ),
+        (
+            SurfaceIoOperation::Readback,
+            RuntimeOperation::SurfaceReadback,
+        ),
+    ] {
+        assert_eq!(operation.runtime_operation(), expected);
+        check(
+            RuntimeCapabilityUnavailable::surface_suspended(operation),
+            expected,
+            RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Suspended,
+            },
+        );
+    }
+    check(
+        RuntimeCapabilityUnavailable::rendering_nonrenderable(),
+        RuntimeOperation::SurfaceRendering,
+        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+            state: RenderSurfaceAvailability::NonRenderable,
+        },
+    );
+    check(
+        RuntimeCapabilityUnavailable::readback_uninitialized(),
+        RuntimeOperation::SurfaceReadback,
+        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+            state: RenderSurfaceAvailability::Uninitialized,
+        },
+    );
+    #[cfg(any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    {
+        check(
+            RuntimeCapabilityUnavailable::rendering_occluded(),
+            RuntimeOperation::SurfaceRendering,
+            RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Occluded,
+            },
+        );
+        check(
+            RuntimeCapabilityUnavailable::rendering_lost(),
+            RuntimeOperation::SurfaceRendering,
+            RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Lost,
+            },
+        );
+    }
+    for (operation, expected) in [
+        (
+            SurfaceDiagnosticOperation::Rendering,
+            RuntimeOperation::SurfaceRendering,
+        ),
+        (
+            SurfaceDiagnosticOperation::Readback,
+            RuntimeOperation::SurfaceReadback,
+        ),
+        (
+            SurfaceDiagnosticOperation::Resume,
+            RuntimeOperation::SurfaceResume,
+        ),
+    ] {
+        assert_eq!(operation.runtime_operation(), expected);
+        for kind in [
+            SurfaceIdentityMismatchKind::ForeignRenderer,
+            SurfaceIdentityMismatchKind::StaleDeviceGeneration,
+        ] {
+            check(
+                RuntimeCapabilityUnavailable::surface_identity_mismatch(operation, kind),
+                expected,
+                RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { kind },
+            );
+        }
+    }
+    for policy in [
+        EffectQualityPolicy::RequireHighPrecision,
+        EffectQualityPolicy::AllowReducedPrecision,
+    ] {
+        check(
+            RuntimeCapabilityUnavailable::effect_format_unavailable(policy),
+            RuntimeOperation::EffectRendering,
+            RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy },
+        );
+    }
+    let requested = PhysicalSize::new(17, 19);
+    check(
+        RuntimeCapabilityUnavailable::texture_dimension_exceeded(requested, 16),
+        RuntimeOperation::EffectTextureAllocation,
+        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded {
+            requested,
+            maximum: 16,
+        },
+    );
+
+    for operation in [
         RuntimeOperation::AdapterSelection,
         RuntimeOperation::SurfaceRendering,
         RuntimeOperation::SurfaceReadback,
@@ -2177,68 +2321,31 @@ fn runtime_diagnostic_constructor_rejects_every_unlisted_operation_reason_pair()
         RuntimeOperation::EffectRendering,
         RuntimeOperation::EffectTextureAllocation,
         RuntimeOperation::EffectPresentation,
-    ];
-    let reasons = [
-        RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-            state: RenderSurfaceAvailability::Suspended,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-            state: RenderSurfaceAvailability::NonRenderable,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-            state: RenderSurfaceAvailability::Uninitialized,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-            state: RenderSurfaceAvailability::Occluded,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-            state: RenderSurfaceAvailability::Lost,
-        },
-        RuntimeCapabilityUnavailableReason::DeviceLost {
-            reason: DeviceLossReason::Unknown,
-        },
-        RuntimeCapabilityUnavailableReason::DeviceFaulted {
-            kind: GpuFaultKind::Validation,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch {
-            kind: SurfaceIdentityMismatchKind::ForeignRenderer,
-        },
-        RuntimeCapabilityUnavailableReason::EffectFormatUnavailable {
-            policy: EffectQualityPolicy::RequireHighPrecision,
-        },
-        RuntimeCapabilityUnavailableReason::TextureDimensionExceeded {
-            requested: PhysicalSize::new(17, 19),
-            maximum: 16,
-        },
-        RuntimeCapabilityUnavailableReason::SurfaceFormatUnavailable {
-            format: Format::Bgra8,
-        },
-    ];
-
-    for operation in operations {
-        for reason in reasons {
-            let result = RuntimeCapabilityUnavailable::try_new(operation, reason);
-            if runtime_pair_is_listed(operation, reason) {
-                let diagnostic = result.unwrap();
-                assert_eq!(diagnostic.operation(), operation);
-                assert_eq!(diagnostic.reason(), reason);
-            } else {
-                let error = result.unwrap_err();
-                assert_eq!(error.code(), ErrorCode::InvalidInput);
-                assert!(error.invalid_value_diagnostic().is_some());
-            }
+    ] {
+        for reason in [DeviceLossReason::Unknown, DeviceLossReason::Destroyed] {
+            check(
+                RuntimeCapabilityUnavailable::device_lost(operation, reason),
+                operation,
+                RuntimeCapabilityUnavailableReason::DeviceLost { reason },
+            );
+        }
+        for kind in [
+            GpuFaultKind::Validation,
+            GpuFaultKind::OutOfMemory,
+            GpuFaultKind::Internal,
+        ] {
+            check(
+                RuntimeCapabilityUnavailable::device_faulted(operation, kind),
+                operation,
+                RuntimeCapabilityUnavailableReason::DeviceFaulted { kind },
+            );
         }
     }
 }
 
 #[test]
 fn typed_error_codes_cannot_exist_without_their_matching_payload() {
-    let runtime = RuntimeCapabilityUnavailable::try_new(
-        RuntimeOperation::SurfaceRendering,
-        RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-    )
-    .unwrap();
+    let runtime = RuntimeCapabilityUnavailable::rendering_adapter_unavailable();
     let errors = [
         Error::invalid_value("field", "value", "must be valid"),
         Error::unsupported_render_primitive(UnsupportedPrimitive::new(

@@ -1,8 +1,7 @@
 use super::backend::DeviceSlotIdentity;
 use super::{
-    BackendErrorCode, Color, Error, PhysicalSize, RenderSurfaceAvailability, Result,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Size, geometry::physical_size,
-    validation::*,
+    BackendErrorCode, Color, Error, PhysicalSize, Result, RuntimeCapabilityUnavailable, Size,
+    geometry::physical_size, validation::*,
 };
 use crate::accounting::OwnedGpu;
 #[cfg(any(
@@ -177,13 +176,13 @@ impl Surface {
         self.state
     }
 
-    pub(crate) fn ensure_available(&self, operation: RuntimeOperation) -> Result<()> {
+    pub(crate) fn ensure_available(
+        &self,
+        operation: crate::error::SurfaceIoOperation,
+    ) -> Result<()> {
         if self.state == SurfaceState::Suspended {
             return Err(Error::runtime_unavailable(
-                operation,
-                RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                    state: RenderSurfaceAvailability::Suspended,
-                },
+                RuntimeCapabilityUnavailable::surface_suspended(operation),
                 "surface is suspended",
             ));
         }
@@ -196,7 +195,7 @@ impl Surface {
             | SurfaceBackend::Headless { physical_size, .. }
                 if physical_size.width() == 0 || physical_size.height() == 0 =>
             {
-                Some(RenderSurfaceAvailability::NonRenderable)
+                Some(RuntimeCapabilityUnavailable::rendering_nonrenderable())
             }
             #[cfg(any(
                 feature = "render-window",
@@ -204,18 +203,19 @@ impl Surface {
             ))]
             SurfaceBackend::Presented { state, .. } => match state.lifecycle() {
                 PresentedLifecycle::NonRenderable { .. } => {
-                    Some(RenderSurfaceAvailability::NonRenderable)
+                    Some(RuntimeCapabilityUnavailable::rendering_nonrenderable())
                 }
-                PresentedLifecycle::Occluded { .. } => Some(RenderSurfaceAvailability::Occluded),
-                PresentedLifecycle::Lost => Some(RenderSurfaceAvailability::Lost),
+                PresentedLifecycle::Occluded { .. } => {
+                    Some(RuntimeCapabilityUnavailable::rendering_occluded())
+                }
+                PresentedLifecycle::Lost => Some(RuntimeCapabilityUnavailable::rendering_lost()),
                 PresentedLifecycle::Ready { .. } | PresentedLifecycle::ResizePending { .. } => None,
             },
             SurfaceBackend::ContractOnly { .. } | SurfaceBackend::Headless { .. } => None,
         };
         match unavailable {
-            Some(state) => Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::SurfaceUnavailable { state },
+            Some(diagnostic) => Err(Error::runtime_unavailable(
+                diagnostic,
                 "surface is not renderable",
             )),
             None => Ok(()),

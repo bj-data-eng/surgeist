@@ -22,7 +22,7 @@ use crate::vello_engine::{
 };
 use crate::{
     Antialiasing, BackendErrorCode, Color, Error, Format, Parameters, PhysicalSize, Result,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Surface,
+    RuntimeCapabilityUnavailable, RuntimeOperation, Surface,
     gpu_transaction::{
         GpuOperationStage, GpuOperationTransaction, GraphOutputCommit, GraphSubmissionPayload,
         InternalVelloPayload,
@@ -641,8 +641,7 @@ fn exact_headless_graph_target(
         } => (*device_identity, *physical_size),
         SurfaceBackend::ContractOnly { .. } => {
             return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "the exact graph executor requires a device-backed headless surface",
             ));
         }

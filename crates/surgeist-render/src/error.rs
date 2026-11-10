@@ -271,12 +271,9 @@ impl Error {
     }
 
     pub(crate) fn runtime_unavailable(
-        operation: RuntimeOperation,
-        reason: RuntimeCapabilityUnavailableReason,
+        diagnostic: RuntimeCapabilityUnavailable,
         message: impl Into<String>,
     ) -> Self {
-        let diagnostic = RuntimeCapabilityUnavailable::try_new(operation, reason)
-            .expect("runtime unavailability constructors use validated operation/reason pairs");
         Self::runtime_capability_unavailable(diagnostic).replace_message(message)
     }
 
@@ -804,20 +801,119 @@ pub struct RuntimeCapabilityUnavailable {
 }
 
 impl RuntimeCapabilityUnavailable {
-    /// Creates a diagnostic only when the operation and reason form are a valid runtime pair.
-    pub(crate) fn try_new(
-        operation: RuntimeOperation,
-        reason: RuntimeCapabilityUnavailableReason,
-    ) -> Result<Self> {
-        if runtime_capability_pair_is_valid(operation, reason) {
-            return Ok(Self { operation, reason });
+    pub(crate) const fn device_lost(operation: RuntimeOperation, reason: DeviceLossReason) -> Self {
+        Self {
+            operation,
+            reason: RuntimeCapabilityUnavailableReason::DeviceLost { reason },
         }
+    }
 
-        Err(Error::invalid_value(
-            "runtime capability unavailable pair",
-            format!("{operation:?} / {reason:?}"),
-            "operation and reason must be a permitted runtime capability unavailable pair",
-        ))
+    pub(crate) const fn device_faulted(operation: RuntimeOperation, kind: GpuFaultKind) -> Self {
+        Self {
+            operation,
+            reason: RuntimeCapabilityUnavailableReason::DeviceFaulted { kind },
+        }
+    }
+
+    pub(crate) const fn adapter_selection_unavailable() -> Self {
+        Self {
+            operation: RuntimeOperation::AdapterSelection,
+            reason: RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+        }
+    }
+
+    pub(crate) const fn rendering_adapter_unavailable() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceRendering,
+            reason: RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+        }
+    }
+
+    pub(crate) const fn readback_adapter_unavailable() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceReadback,
+            reason: RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+        }
+    }
+
+    pub(crate) const fn effect_format_unavailable(policy: EffectQualityPolicy) -> Self {
+        Self {
+            operation: RuntimeOperation::EffectRendering,
+            reason: RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { policy },
+        }
+    }
+
+    pub(crate) const fn texture_dimension_exceeded(requested: PhysicalSize, maximum: u32) -> Self {
+        Self {
+            operation: RuntimeOperation::EffectTextureAllocation,
+            reason: RuntimeCapabilityUnavailableReason::TextureDimensionExceeded {
+                requested,
+                maximum,
+            },
+        }
+    }
+
+    pub(crate) const fn surface_suspended(operation: SurfaceIoOperation) -> Self {
+        Self {
+            operation: operation.runtime_operation(),
+            reason: RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Suspended,
+            },
+        }
+    }
+
+    pub(crate) const fn rendering_nonrenderable() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceRendering,
+            reason: RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::NonRenderable,
+            },
+        }
+    }
+
+    #[cfg(any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    pub(crate) const fn rendering_occluded() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceRendering,
+            reason: RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Occluded,
+            },
+        }
+    }
+
+    #[cfg(any(
+        feature = "render-window",
+        all(feature = "render-web", target_arch = "wasm32")
+    ))]
+    pub(crate) const fn rendering_lost() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceRendering,
+            reason: RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Lost,
+            },
+        }
+    }
+
+    pub(crate) const fn readback_uninitialized() -> Self {
+        Self {
+            operation: RuntimeOperation::SurfaceReadback,
+            reason: RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
+                state: RenderSurfaceAvailability::Uninitialized,
+            },
+        }
+    }
+
+    pub(crate) const fn surface_identity_mismatch(
+        operation: SurfaceDiagnosticOperation,
+        kind: SurfaceIdentityMismatchKind,
+    ) -> Self {
+        Self {
+            operation: operation.runtime_operation(),
+            reason: RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { kind },
+        }
     }
 
     /// Returns the operation that could not use the selected runtime capability.
@@ -833,67 +929,37 @@ impl RuntimeCapabilityUnavailable {
     }
 }
 
-fn runtime_capability_pair_is_valid(
-    operation: RuntimeOperation,
-    reason: RuntimeCapabilityUnavailableReason,
-) -> bool {
-    match operation {
-        RuntimeOperation::AdapterSelection => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::AdapterUnavailable
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::SurfaceRendering => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::AdapterUnavailable
-                | RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                    state: RenderSurfaceAvailability::Suspended
-                        | RenderSurfaceAvailability::NonRenderable
-                        | RenderSurfaceAvailability::Occluded
-                        | RenderSurfaceAvailability::Lost,
-                }
-                | RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::SurfaceReadback => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::AdapterUnavailable
-                | RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                    state: RenderSurfaceAvailability::Suspended
-                        | RenderSurfaceAvailability::NonRenderable
-                        | RenderSurfaceAvailability::Uninitialized
-                        | RenderSurfaceAvailability::Lost,
-                }
-                | RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::SurfaceResume => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::EffectRendering => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::EffectFormatUnavailable { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::EffectTextureAllocation => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::TextureDimensionExceeded { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
-        RuntimeOperation::EffectPresentation => matches!(
-            reason,
-            RuntimeCapabilityUnavailableReason::SurfaceFormatUnavailable { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceLost { .. }
-                | RuntimeCapabilityUnavailableReason::DeviceFaulted { .. }
-        ),
+/// Operations whose surface identity is validated before backend work.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SurfaceDiagnosticOperation {
+    Rendering,
+    Readback,
+    Resume,
+}
+
+impl SurfaceDiagnosticOperation {
+    pub(crate) const fn runtime_operation(self) -> RuntimeOperation {
+        match self {
+            Self::Rendering => RuntimeOperation::SurfaceRendering,
+            Self::Readback => RuntimeOperation::SurfaceReadback,
+            Self::Resume => RuntimeOperation::SurfaceResume,
+        }
+    }
+}
+
+/// Surface IO that can be refused while suspended.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SurfaceIoOperation {
+    Rendering,
+    Readback,
+}
+
+impl SurfaceIoOperation {
+    pub(crate) const fn runtime_operation(self) -> RuntimeOperation {
+        match self {
+            Self::Rendering => RuntimeOperation::SurfaceRendering,
+            Self::Readback => RuntimeOperation::SurfaceReadback,
+        }
     }
 }
 

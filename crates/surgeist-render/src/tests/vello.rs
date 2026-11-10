@@ -35,11 +35,11 @@ use crate::{
     NormalizedBackgroundStack, NormalizedBoxDecoration, NormalizedBoxDecorationCommandKind,
     Options, Outline, OutlineStyle, Paint, Parameters, Path, PhysicalSize, Point, PrimitiveFamily,
     PrimitiveOperation, Radii, Rect, RenderRoute, RenderSurfaceAvailability, Renderer,
-    ResourceCacheBudget, RuntimeCapabilities, RuntimeCapabilityUnavailable,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shadow, ShadowList, Shape, Size,
-    SizeComponent, Stroke, StrokeAlign, StyleImageLayer, StyleImageSource, Surface,
-    SurfaceIdentityMismatchKind, SurfaceResourceState, TextDecorationLine, TextGlyph, TextPaint,
-    TextRun, TextRunBounds, TextShadowRun, Transform, UnitFilterAmount, UnsupportedPrimitive,
+    ResourceCacheBudget, RuntimeCapabilities, RuntimeCapabilityUnavailableReason, RuntimeOperation,
+    Scene, Shadow, ShadowList, Shape, Size, SizeComponent, Stroke, StrokeAlign, StyleImageLayer,
+    StyleImageSource, Surface, SurfaceIdentityMismatchKind, SurfaceResourceState,
+    TextDecorationLine, TextGlyph, TextPaint, TextRun, TextRunBounds, TextShadowRun, Transform,
+    UnitFilterAmount, UnsupportedPrimitive,
     backend::{
         DeviceSlotIdentity, OffscreenLocalSceneRenderRequest,
         render_internal_vello_local_scene_to_offscreen_texture,
@@ -77,15 +77,11 @@ fn assert_surface_identity_mismatch(
     kind: SurfaceIdentityMismatchKind,
 ) {
     assert_eq!(error.code(), ErrorCode::RuntimeCapabilityUnavailable);
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), operation);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                operation,
-                RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { kind },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::SurfaceIdentityMismatch { kind }
     );
 }
 
@@ -2409,17 +2405,13 @@ fn uncaptured_gpu_error_faults_only_its_device_generation() {
             .expect_err(
                 "the next default-device operation must report the terminal uncaptured fault",
             );
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::DeviceFaulted {
-                    kind: GpuFaultKind::Validation,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::DeviceFaulted {
+            kind: GpuFaultKind::Validation
+        }
     );
 
     pollster::block_on(renderer.render(&mut healthy, &Scene::new(), Parameters::default()))
@@ -2452,17 +2444,13 @@ fn assert_idle_uncaptured_fault_is_isolated(
     );
     let error = pollster::block_on(renderer.render(idle, &Scene::new(), Parameters::default()))
         .expect_err("the next operation naming the idle faulted slot must reject it");
+    let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+    assert_eq!(diagnostic.operation(), RuntimeOperation::SurfaceRendering);
     assert_eq!(
-        error.runtime_capability_unavailable_diagnostic(),
-        Some(
-            &RuntimeCapabilityUnavailable::try_new(
-                RuntimeOperation::SurfaceRendering,
-                RuntimeCapabilityUnavailableReason::DeviceFaulted {
-                    kind: GpuFaultKind::Internal,
-                },
-            )
-            .unwrap()
-        )
+        diagnostic.reason(),
+        RuntimeCapabilityUnavailableReason::DeviceFaulted {
+            kind: GpuFaultKind::Internal
+        }
     );
     assert_eq!(
         signal.active_generation_for_test(),
@@ -2733,16 +2721,13 @@ fn direct_vello_succeeds_when_effect_working_format_is_unavailable() {
     let result =
         pollster::block_on(renderer.render(&mut surface, &replacement, Parameters::default()));
     if let Err(error) = &result {
-        let expected = RuntimeCapabilityUnavailable::try_new(
-            RuntimeOperation::EffectRendering,
+        let diagnostic = error.runtime_capability_unavailable_diagnostic().unwrap();
+        assert_eq!(diagnostic.operation(), RuntimeOperation::EffectRendering);
+        assert_eq!(
+            diagnostic.reason(),
             RuntimeCapabilityUnavailableReason::EffectFormatUnavailable {
                 policy: EffectQualityPolicy::RequireHighPrecision,
             },
-        )
-        .unwrap();
-        assert_eq!(
-            error.runtime_capability_unavailable_diagnostic(),
-            Some(&expected),
             "the direct regression must fail only at the premature effect-format gate"
         );
     }

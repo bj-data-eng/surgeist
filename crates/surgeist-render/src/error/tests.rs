@@ -208,11 +208,7 @@ fn enrichment_preserves_constructor_qualified_semantic_and_preparation_contexts(
             assert_eq!(error.degraded_quality_diagnostic(), Some(&quality));
         },
     );
-    let runtime = RuntimeCapabilityUnavailable::try_new(
-        RuntimeOperation::SurfaceRendering,
-        RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-    )
-    .unwrap();
+    let runtime = RuntimeCapabilityUnavailable::rendering_adapter_unavailable();
     assert_context_enrichment(
         Error::runtime_capability_unavailable(runtime),
         "runtime capability is unavailable",
