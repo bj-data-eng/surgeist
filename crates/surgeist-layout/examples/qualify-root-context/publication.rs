@@ -1087,20 +1087,17 @@ fn matching_cases(
                 .find(|record| record.source.as_str() == artifact.source)
                 .ok_or("undeclared matching source")?;
             let xml = fs::read_to_string(root.join(&artifact.output))?;
-            let predecessor = artifact.output.replacen("xml/", "historical/", 1);
+            let provenance = record.matching_provenance(&artifact.variant)?;
+            let historical = provenance
+                .historical()
+                .map(|entry| fs::read_to_string(root.join(&entry.path)))
+                .transpose()?;
             record.verify_matching_capture(
                 &xml,
-                &fs::read_to_string(root.join(&predecessor))?,
+                historical.as_deref(),
                 &artifact.name,
                 &artifact.variant,
             )?;
-            let historical = authority::PathDigest {
-                path: predecessor.clone(),
-                sha256: retained
-                    .get(&predecessor)
-                    .ok_or("missing matching history")?
-                    .clone(),
-            };
             let case = authority::CaseDescriptor {
                 name: artifact.name.clone(),
                 source: artifact.source.clone(),
@@ -1119,18 +1116,18 @@ fn matching_cases(
                     full_inputs: &retained,
                     excluded_specs: &BTreeSet::new(),
                     actual_xml_sha256: &authority::sha256(xml.as_bytes()),
-                    historical_sha256: Some(&historical.sha256),
+                    historical_sha256: provenance.historical().map(|entry| entry.sha256.as_str()),
                     browser_settings: &settings,
                     observation_request: "geometry",
                     observation_input_sha256: None,
                 })?;
             Ok(authority::QualifiedCase::Matching(
-                authority::MatchingCase {
+                authority::MatchingCase::new(
                     case,
-                    historical,
-                    matching: authority::MatchingCategory::Geometry,
+                    provenance,
+                    authority::MatchingCategory::Geometry,
                     identity,
-                },
+                )?,
             ))
         })
         .collect()
@@ -1300,7 +1297,8 @@ fn terminal_authority(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let current_owner_inputs = current_owner_inputs(owner, inventory, &cases, origin)?;
+    let current_owner_inputs =
+        current_owner_inputs(owner, inventory, &input.declaration.records, &cases, origin)?;
     let report_bytes = report.to_bytes()?;
     if fs::read(root.join("xml/generation-reports/all.json"))? != report_bytes {
         return Err("terminal report bytes changed".into());
@@ -1340,6 +1338,7 @@ fn terminal_authority(
 fn current_owner_inputs(
     owner: &Path,
     inventory: &Inventory,
+    records: &[Record],
     cases: &[authority::QualifiedCase],
     origin: &Origin,
 ) -> Result<BTreeMap<String, String>> {
@@ -1359,6 +1358,10 @@ fn current_owner_inputs(
         .ok_or("source receipt owner is outside its corpus")?;
     let current = authority::current_owner_bindings(
         &string_inputs(&inventory.expected_inputs),
+        &records
+            .iter()
+            .map(|record| (record.source.as_str(), record.source_kind))
+            .collect(),
         &semantic,
         receipt_sidecar,
     )?;

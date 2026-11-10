@@ -819,8 +819,20 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         })
         .map(|binding| binding.path.as_str())
         .collect();
-    if authority::current_owner_bindings(&terminal.retained_inputs, &semantic_paths, sidecar)?
-        != terminal.current_owner_inputs
+    let source_kinds = terminal
+        .records
+        .iter()
+        .map(|record| Ok((record.source.as_str(), record.source_kind()?)))
+        .collect::<Result<_>>()?;
+    if matches!(edition, Edition::Matching(_)) {
+        verify_matching_original_selection(&root, &terminal, &source_kinds, &provenance)?;
+    }
+    if authority::current_owner_bindings(
+        &terminal.retained_inputs,
+        &source_kinds,
+        &semantic_paths,
+        sidecar,
+    )? != terminal.current_owner_inputs
     {
         return Err(changed("complete current-owner input census"));
     }
@@ -1078,6 +1090,60 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     Ok(AdmittedEdition { freshness, cases })
 }
 
+fn verify_matching_original_selection(
+    root: &Path,
+    terminal: &Qualification,
+    source_kinds: &BTreeMap<&str, authority::SourceKind>,
+    provenance: &Value,
+) -> Result<()> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SelectedOriginal {
+        source: String,
+        ownership: String,
+        sha256: String,
+    }
+
+    let receipt = terminal
+        .retained_inputs
+        .get("origin/source-receipt.json")
+        .ok_or_else(|| changed("missing original source receipt"))?;
+    if provenance["receipt_sha256"].as_str() != Some(receipt.as_str()) {
+        return Err(changed("original source receipt/provenance association"));
+    }
+    let path = "origin/selected-originals.json";
+    let sha256 = terminal
+        .retained_inputs
+        .get(path)
+        .ok_or_else(|| changed("missing selected original source inventory"))?;
+    let selected: Vec<SelectedOriginal> = parse_json(&read_pinned(
+        root,
+        &PathDigest {
+            path: path.into(),
+            sha256: sha256.clone(),
+        },
+    )?)?;
+    let expected: BTreeSet<_> = source_kinds
+        .iter()
+        .filter_map(|(source, kind)| (*kind == authority::SourceKind::Original).then_some(*source))
+        .collect();
+    let mut actual = BTreeSet::new();
+    for entry in &selected {
+        let source = entry.source.as_str();
+        if !actual.insert(source)
+            || !expected.contains(source)
+            || terminal.retained_inputs.get(source) != Some(&entry.sha256)
+            || !matches!(entry.ownership.as_str(), "imported" | "repository-authored")
+        {
+            return Err(changed("selected original source ownership or digest"));
+        }
+    }
+    if actual != expected {
+        return Err(changed("complete selected original source census"));
+    }
+    Ok(())
+}
+
 fn admit_matching(
     root: &Path,
     terminal: &Qualification,
@@ -1115,9 +1181,23 @@ fn admit_matching(
             .ok_or_else(|| changed("missing matching source record"))?;
         let bytes = read_pinned(root, &descriptor.output)?;
         let xml = std::str::from_utf8(&bytes).map_err(|error| malformed(error.to_string()))?;
-        let historical = read_pinned(root, &case.historical)?;
-        let historical =
-            std::str::from_utf8(&historical).map_err(|error| malformed(error.to_string()))?;
+        if &record
+            .matching_provenance(&descriptor.variant)
+            .map_err(|error| changed(error.to_string()))?
+            != case.provenance()
+        {
+            return Err(changed("matching declared source provenance"));
+        }
+        let historical = case
+            .provenance()
+            .historical()
+            .map(|entry| read_pinned(root, entry))
+            .transpose()?;
+        let historical = historical
+            .as_deref()
+            .map(std::str::from_utf8)
+            .transpose()
+            .map_err(|error| malformed(error.to_string()))?;
         record
             .verify_matching_capture(xml, historical, &descriptor.name, &descriptor.variant)
             .map_err(|error| changed(error.to_string()))?;
@@ -1129,12 +1209,15 @@ fn admit_matching(
                 full_inputs: &terminal.retained_inputs,
                 excluded_specs: &BTreeSet::new(),
                 actual_xml_sha256: &sha256(&bytes),
-                historical_sha256: Some(&case.historical.sha256),
+                historical_sha256: case
+                    .provenance()
+                    .historical()
+                    .map(|entry| entry.sha256.as_str()),
                 browser_settings: &terminal.browser_settings,
                 observation_request: "geometry",
                 observation_input_sha256: None,
             })?;
-        if identity != case.identity {
+        if &identity != case.identity() {
             return Err(changed("matching capture binding projection"));
         }
         let golden = support::Golden::parse(xml).map_err(|error| changed(error.to_string()))?;

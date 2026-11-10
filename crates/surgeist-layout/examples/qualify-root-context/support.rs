@@ -1781,13 +1781,9 @@ fn inventory_with_retained_helper(
         | None => {}
     }
     let original = owner.join("tests/layout/browser_parity");
-    let authored = owner.join("examples/qualify-root-context");
     for record in records {
-        let source_owner = match record.source_kind {
-            SourceKind::Original => &original,
-            SourceKind::Authored => &authored,
-        };
-        publication::require_regular_input(source_owner, &record.source)?;
+        let source_owner = owner.join(record.source_kind.owner_directory());
+        publication::require_regular_input(&source_owner, &record.source)?;
         let source = fs::read(source_owner.join(record.source.as_str()))?;
         if Sha256Digest::from_bytes(&source) != record.source_sha256 {
             return Err(format!("declared source changed: {}", record.source.as_str()).into());

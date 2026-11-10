@@ -6,7 +6,8 @@ use std::error::Error;
 use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
-pub(crate) use super::capture_authority::SpecializedProfile;
+use super::capture_authority::{MatchingProvenance, PathDigest};
+pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
 use crate::fixture_variants::fixture_cases;
 
 pub(crate) struct Declaration {
@@ -69,12 +70,6 @@ pub(crate) struct Record {
 pub(crate) struct SemanticReference {
     pub(crate) path: RelativePath,
     pub(crate) sha256: Sha256Digest,
-}
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum SourceKind {
-    Original,
-    Authored,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
@@ -270,22 +265,20 @@ impl Declaration {
                     .iter_mut()
                     .find(|record| record.source == source)
                     .ok_or("matching publication requires a declared source")?;
-                if !matches!(record.source_kind, SourceKind::Original)
-                    || !matches!(
-                        record.expected,
-                        ExpectedDisposition::Generated {
-                            metadata: ExpectedMetadata::AbsoluteLocal {
-                                root_size: None,
-                                ..
-                            }
+                if !matches!(
+                    record.expected,
+                    ExpectedDisposition::Generated {
+                        metadata: ExpectedMetadata::AbsoluteLocal {
+                            root_size: None,
+                            ..
                         }
-                    )
-                    || record.relation.is_some()
+                    }
+                ) || record.relation.is_some()
                     || record.semantic_specifications.is_some()
                     || record.specialized_publication.is_some()
                     || record.matching_publication.is_some()
                 {
-                    return Err("matching publication requires unique unpaired original box sources without other authority".into());
+                    return Err("matching publication requires unique unpaired box sources without other authority".into());
                 }
                 record.matching_publication = Some(publication.edition.clone());
             }
@@ -538,17 +531,54 @@ pub(crate) fn verify_absolute_metadata(
 }
 
 impl Record {
+    pub(crate) fn matching_provenance(
+        &self,
+        variant: &str,
+    ) -> Result<MatchingProvenance, Box<dyn Error + Send + Sync>> {
+        if !fixture_cases().iter().any(|(known, _)| *known == variant) {
+            return Err("unknown matching variant".into());
+        }
+        match self.source_kind {
+            SourceKind::Original => {
+                let (family, _) = self.source_names()?;
+                let sha256 = self
+                    .historical_sha256
+                    .get(variant)
+                    .ok_or("missing matching historical variant")?;
+                Ok(MatchingProvenance::Original {
+                    historical: PathDigest {
+                        path: format!("historical/{family}__{variant}.xml"),
+                        sha256: sha256.as_str().to_owned(),
+                    },
+                })
+            }
+            SourceKind::Authored if self.historical_sha256.is_empty() => {
+                Ok(MatchingProvenance::Authored)
+            }
+            SourceKind::Authored => Err("authored matching source has historical pins".into()),
+        }
+    }
+
     pub(crate) fn verify_matching_capture(
         &self,
         current: &str,
-        historical: &str,
+        historical: Option<&str>,
         name: &str,
         variant: &str,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let ExpectedDisposition::Generated { metadata } = &self.expected else {
             return Err("matching output must be Generated".into());
         };
-        verify_historical_geometry(current, historical, name)?;
+        match (self.matching_provenance(variant)?, historical) {
+            (MatchingProvenance::Original { historical }, Some(bytes)) => {
+                if super::capture_authority::sha256(bytes.as_bytes()) != historical.sha256 {
+                    return Err("matching historical bytes changed".into());
+                }
+                verify_historical_geometry(current, bytes, name)?;
+            }
+            (MatchingProvenance::Authored, None) => {}
+            _ => return Err("matching capture history disagrees with its source".into()),
+        }
         verify_absolute_metadata(current, metadata, name, variant)
     }
 }
@@ -934,7 +964,7 @@ sources = [
         let historical =
             include_str!("xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml");
         record
-            .verify_matching_capture(current, historical, NAME, "border_box_ltr")
+            .verify_matching_capture(current, Some(historical), NAME, "border_box_ltr")
             .unwrap();
         let changed_context = current.replace(
             "hypothetical-display=\"flex\"",
@@ -943,30 +973,39 @@ sources = [
         assert_ne!(changed_context, current);
         assert!(
             record
-                .verify_matching_capture(&changed_context, historical, NAME, "border_box_ltr")
+                .verify_matching_capture(&changed_context, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
-        let (prefix, observations) = historical.split_once("<expectations>").unwrap();
+        let changed_history = format!("{historical}\n");
+        assert!(
+            record
+                .verify_matching_capture(current, Some(&changed_history), NAME, "border_box_ltr")
+                .is_err()
+        );
+        let (prefix, observations) = current.split_once("<expectations>").unwrap();
         let changed = format!(
             "{prefix}<expectations>{}",
             observations.replacen("<node ", "<node extra-observation=\"changed\" ", 1)
         );
-        assert_ne!(changed, historical);
+        assert_ne!(changed, current);
         assert!(
             record
-                .verify_matching_capture(current, &changed, NAME, "border_box_ltr")
+                .verify_matching_capture(&changed, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
-        let dropped = historical.replacen(" x=\"0\"", "", 1);
-        assert_ne!(dropped, historical);
+        let dropped = format!(
+            "{prefix}<expectations>{}",
+            observations.replacen(" x=\"0\"", "", 1)
+        );
+        assert_ne!(dropped, current);
         assert!(
             record
-                .verify_matching_capture(current, &dropped, NAME, "border_box_ltr")
+                .verify_matching_capture(&dropped, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
         assert!(
             record
-                .verify_matching_capture(current, historical, NAME, "border_box_rtl")
+                .verify_matching_capture(current, Some(historical), NAME, "border_box_rtl")
                 .is_err()
         );
     }

@@ -143,11 +143,15 @@ pub(crate) fn semantic_record_digest(record: &Value) -> Result<String> {
 /// are retained values; the verified source receipt itself has one live owner.
 pub(crate) fn current_owner_bindings(
     retained: &BTreeMap<String, String>,
+    sources: &BTreeMap<&str, SourceKind>,
     semantic_paths: &BTreeSet<&str>,
     receipt_sidecar: &str,
 ) -> Result<BTreeMap<String, String>> {
     const ORIGINAL: &str = "tests/layout/browser_parity";
     path(receipt_sidecar)?;
+    if sources.keys().any(|source| !retained.contains_key(*source)) {
+        return Err(malformed("declared source is missing from retained inputs"));
+    }
     let mut bindings = BTreeMap::new();
     for (name, hash) in retained {
         let mut owner_hash = hash.clone();
@@ -209,10 +213,12 @@ pub(crate) fn current_owner_bindings(
             } else {
                 format!("{ORIGINAL}/xml/{tail}")
             }
-        } else if name.starts_with("scripts/")
-            || name.starts_with("fonts/")
-            || name.starts_with("html/")
-        {
+        } else if name.starts_with("html/") {
+            let kind = sources
+                .get(name.as_str())
+                .ok_or_else(|| malformed("retained HTML has no declared source owner"))?;
+            kind.owner_path(name)
+        } else if name.starts_with("scripts/") || name.starts_with("fonts/") {
             format!("{ORIGINAL}/{name}")
         } else if name == prepared_range_qualification::RETAINED_POLICY {
             if hash != prepared_range_qualification::POLICY_SHA256 {
@@ -1041,6 +1047,33 @@ pub(crate) struct RecordProjection {
     pub(crate) sha256: String,
     pub(crate) value: Value,
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SourceKind {
+    Original,
+    Authored,
+}
+
+impl SourceKind {
+    pub(crate) const fn owner_directory(self) -> &'static str {
+        match self {
+            Self::Original => "tests/layout/browser_parity",
+            Self::Authored => "examples/qualify-root-context",
+        }
+    }
+
+    fn owner_path(self, source: &str) -> String {
+        format!("{}/{source}", self.owner_directory())
+    }
+}
+
+impl RecordProjection {
+    pub(crate) fn source_kind(&self) -> Result<SourceKind> {
+        serde_json::from_value(self.value["source_kind"].clone())
+            .map_err(|_| malformed("invalid retained source kind"))
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExactCase {
@@ -1268,16 +1301,111 @@ pub(crate) enum MatchingCategory {
     Geometry,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MatchingCase {
-    pub(crate) case: CaseDescriptor,
-    pub(crate) historical: PathDigest,
-    pub(crate) matching: MatchingCategory,
-    pub(crate) identity: IdentityProjection,
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MatchingProvenance {
+    Original { historical: PathDigest },
+    Authored,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+impl MatchingProvenance {
+    fn bind(kind: SourceKind, historical: Option<PathDigest>) -> Result<Self> {
+        match (kind, historical) {
+            (SourceKind::Original, Some(historical)) => Ok(Self::Original { historical }),
+            (SourceKind::Authored, None) => Ok(Self::Authored),
+            _ => Err(malformed(
+                "matching history disagrees with the declared source kind",
+            )),
+        }
+    }
+
+    pub(crate) const fn historical(&self) -> Option<&PathDigest> {
+        match self {
+            Self::Original { historical } => Some(historical),
+            Self::Authored => None,
+        }
+    }
+
+    fn serialize_history<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        self.historical().serialize(serializer)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub(crate) struct MatchingCase {
+    pub(crate) case: CaseDescriptor,
+    #[serde(
+        rename = "historical",
+        serialize_with = "MatchingProvenance::serialize_history"
+    )]
+    provenance: MatchingProvenance,
+    matching: MatchingCategory,
+    identity: IdentityProjection,
+}
+
+impl MatchingCase {
+    pub(crate) fn new(
+        case: CaseDescriptor,
+        provenance: MatchingProvenance,
+        matching: MatchingCategory,
+        identity: IdentityProjection,
+    ) -> Result<Self> {
+        if identity.historical_sha256.as_deref()
+            != provenance.historical().map(|entry| entry.sha256.as_str())
+        {
+            return Err(malformed(
+                "matching predecessor identity disagrees with source provenance",
+            ));
+        }
+        Ok(Self {
+            case,
+            provenance,
+            matching,
+            identity,
+        })
+    }
+
+    pub(crate) const fn provenance(&self) -> &MatchingProvenance {
+        &self.provenance
+    }
+
+    pub(crate) const fn identity(&self) -> &IdentityProjection {
+        &self.identity
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchingCaseWire {
+    case: CaseDescriptor,
+    #[serde(deserialize_with = "super::exact_differences::explicit_nullable")]
+    historical: Option<PathDigest>,
+    matching: MatchingCategory,
+    identity: IdentityProjection,
+}
+
+impl MatchingCaseWire {
+    fn bind(self, kind: SourceKind) -> Result<MatchingCase> {
+        MatchingCase::new(
+            self.case,
+            MatchingProvenance::bind(kind, self.historical)?,
+            self.matching,
+            self.identity,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum QualifiedCaseWire {
+    Exact(ExactCase),
+    Specialized(SpecializedCase),
+    Matching(MatchingCaseWire),
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(untagged)]
 pub(crate) enum QualifiedCase {
     Exact(ExactCase),
@@ -1298,14 +1426,14 @@ impl QualifiedCase {
         match self {
             Self::Exact(case) => &case.identity,
             Self::Specialized(case) => &case.identity,
-            Self::Matching(case) => &case.identity,
+            Self::Matching(case) => case.identity(),
         }
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Qualification {
+pub(crate) struct QualificationData<Case> {
     pub(crate) schema_version: u8,
     pub(crate) edition: String,
     pub(crate) declaration: PathDigest,
@@ -1313,11 +1441,50 @@ pub(crate) struct Qualification {
     pub(crate) browser_settings: BrowserSettingsWitness,
     pub(crate) report: PathDigest,
     pub(crate) ownership: PathDigest,
-    pub(crate) cases: Vec<QualifiedCase>,
+    pub(crate) cases: Vec<Case>,
     pub(crate) retained_inputs: BTreeMap<String, String>,
     pub(crate) current_owner_inputs: BTreeMap<String, String>,
     pub(crate) capture_validation: CaptureValidation,
 }
+pub(crate) type Qualification = QualificationData<QualifiedCase>;
+
+impl QualificationData<QualifiedCaseWire> {
+    fn bind_source_provenance(self) -> Result<Qualification> {
+        let sources: BTreeMap<_, _> = self
+            .records
+            .iter()
+            .map(|record| Ok((record.source.as_str(), record.source_kind()?)))
+            .collect::<Result<_>>()?;
+        let cases = self
+            .cases
+            .into_iter()
+            .map(|case| match case {
+                QualifiedCaseWire::Exact(case) => Ok(QualifiedCase::Exact(case)),
+                QualifiedCaseWire::Specialized(case) => Ok(QualifiedCase::Specialized(case)),
+                QualifiedCaseWire::Matching(wire) => {
+                    let kind = sources
+                        .get(wire.case.source.as_str())
+                        .ok_or_else(|| malformed("matching source is missing"))?;
+                    Ok(QualifiedCase::Matching(wire.bind(*kind)?))
+                }
+            })
+            .collect::<Result<_>>()?;
+        Ok(Qualification {
+            schema_version: self.schema_version,
+            edition: self.edition,
+            declaration: self.declaration,
+            records: self.records,
+            browser_settings: self.browser_settings,
+            report: self.report,
+            ownership: self.ownership,
+            cases,
+            retained_inputs: self.retained_inputs,
+            current_owner_inputs: self.current_owner_inputs,
+            capture_validation: self.capture_validation,
+        })
+    }
+}
+
 impl Qualification {
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>> {
         self.validate()?;
@@ -1343,7 +1510,9 @@ impl Qualification {
                 "matching capture binding cannot contain policy identity",
             ));
         }
-        let value: Self = serde_json::from_str(raw).map_err(|e| malformed(e.to_string()))?;
+        let wire: QualificationData<QualifiedCaseWire> =
+            serde_json::from_str(raw).map_err(|e| malformed(e.to_string()))?;
+        let value = wire.bind_source_provenance()?;
         value.validate()?;
         Ok(value)
     }
@@ -1412,6 +1581,7 @@ impl Qualification {
         let mut names = BTreeSet::new();
         let mut outputs = BTreeSet::new();
         let mut variants = BTreeSet::new();
+        let mut matching_history = BTreeSet::new();
         for case in &self.cases {
             let descriptor = case.descriptor();
             path(&descriptor.output.path)?;
@@ -1465,32 +1635,51 @@ impl Qualification {
                         .next()
                         .ok_or_else(|| malformed("matching source stem"))?;
                     let variant = descriptor.variant.as_str();
+                    let kind = record.source_kind()?;
+                    if self
+                        .current_owner_inputs
+                        .get(&kind.owner_path(&descriptor.source))
+                        != Some(&case.identity.source_sha256)
+                    {
+                        return Err(changed("matching current source owner"));
+                    }
                     if record.value["matching_publication"] != self.edition
-                        || record.value["source_kind"] != "original"
                         || !record.value["semantic_specifications"].is_null()
                         || !record.value["specialized_publication"].is_null()
                         || !record.value["relation"].is_null()
                         || record.value["expected"]["kind"] != "generated"
-                        || record.value["historical_sha256"]
-                            .as_object()
-                            .map(|m| m.len())
-                            != Some(fixture_cases().len())
+                        || record.value["expected"]["metadata"]["context"] != "absolute-local"
+                        || !record.value["expected"]["metadata"]["root_size"].is_null()
                         || !fixture_cases().iter().any(|(v, _)| *v == variant)
                         || descriptor.name != format!("{stem}__{variant}")
                         || descriptor.output.path != format!("xml/{family}__{variant}.xml")
-                        || case.historical.path != format!("historical/{family}__{variant}.xml")
-                        || record.value["historical_sha256"][variant] != case.historical.sha256
-                        || case.identity.historical_sha256.as_ref() != Some(&case.historical.sha256)
                         || record.value["source_sha256"] != case.identity.source_sha256
                         || self.retained_inputs.get(&descriptor.source)
                             != Some(&case.identity.source_sha256)
                         || case.identity.policy_source_sha256.is_some()
                     {
-                        return Err(malformed(
-                            "matching terminal source, category or predecessor changed",
-                        ));
+                        return Err(malformed("matching terminal source or category changed"));
                     }
-                    self.require_retained(&case.historical)?;
+                    let history = record.value["historical_sha256"]
+                        .as_object()
+                        .ok_or_else(|| malformed("missing matching record historical pins"))?;
+                    match (kind, case.provenance()) {
+                        (SourceKind::Original, MatchingProvenance::Original { historical })
+                            if history.len() == fixture_cases().len()
+                                && historical.path
+                                    == format!("historical/{family}__{variant}.xml")
+                                && history.get(variant).and_then(Value::as_str)
+                                    == Some(historical.sha256.as_str())
+                                && case.identity.historical_sha256.as_ref()
+                                    == Some(&historical.sha256) =>
+                        {
+                            self.require_retained(historical)?;
+                            matching_history.insert(historical.path.as_str());
+                        }
+                        (SourceKind::Authored, MatchingProvenance::Authored)
+                            if history.is_empty() && case.identity.historical_sha256.is_none() => {}
+                        _ => return Err(malformed("matching terminal predecessor changed")),
+                    }
                 }
                 _ => return Err(malformed("terminal edition or variant association changed")),
             }
@@ -1502,6 +1691,17 @@ impl Qualification {
             {
                 return Err(malformed("stored projection/case association changed"));
             }
+        }
+        if matching
+            && self
+                .retained_inputs
+                .keys()
+                .filter(|path| path.starts_with("historical/"))
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>()
+                != matching_history
+        {
+            return Err(malformed("matching historical input census changed"));
         }
         if matching
             && (self.cases.len() != self.records.len() * fixture_cases().len()

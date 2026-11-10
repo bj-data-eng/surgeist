@@ -620,15 +620,20 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
         sha256(b"origin/source-receipt.json"),
     );
     let semantic = BTreeSet::from(["semantic/one.json", "policy.md"]);
+    let sources = BTreeMap::from([("html/fixed.html", SourceKind::Original)]);
     assert_eq!(
-        current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").unwrap(),
+        current_owner_bindings(&retained, &sources, &semantic, "html/.surgeist-source.json")
+            .unwrap(),
         expected
     );
     for sidecar in ["../foreign.json", "html/fixed.html", "/absolute.json"] {
-        assert!(current_owner_bindings(&retained, &semantic, sidecar).is_err());
+        assert!(current_owner_bindings(&retained, &sources, &semantic, sidecar).is_err());
     }
     retained.insert("unknown.bin".into(), "a".repeat(64));
-    assert!(current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").is_err());
+    assert!(
+        current_owner_bindings(&retained, &sources, &semantic, "html/.surgeist-source.json")
+            .is_err()
+    );
 }
 
 #[test]
@@ -652,9 +657,13 @@ fn live_owner_bindings_require_the_exact_specialized_request() {
     for (file, bytes) in REQUESTS {
         let digest = sha256(bytes);
         retained.insert(OBSERVATION_REQUEST.into(), digest.clone());
-        let owners =
-            current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json")
-                .unwrap();
+        let owners = current_owner_bindings(
+            &retained,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            "html/.surgeist-source.json",
+        )
+        .unwrap();
         assert_eq!(
             owners.get(&format!(
                 "tests/bin/surgeist-layout-generate/measurement/{file}"
@@ -664,8 +673,79 @@ fn live_owner_bindings_require_the_exact_specialized_request() {
     }
     retained.insert(OBSERVATION_REQUEST.into(), sha256(b"unknown request"));
     assert!(
-        current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json").is_err()
+        current_owner_bindings(
+            &retained,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            "html/.surgeist-source.json"
+        )
+        .is_err()
     );
+}
+
+#[test]
+fn live_owner_bindings_require_the_declared_owner_of_retained_html() {
+    const AUTHORED: &str = "html/qualification/physical-border-descendant.html";
+    const ORIGINAL: &str = "html/block/block_basic.html";
+    let authored_hash = sha256(include_bytes!(
+        "../../../examples/qualify-root-context/html/qualification/physical-border-descendant.html"
+    ));
+    let original_hash = sha256(include_bytes!("html/block/block_basic.html"));
+    let receipt = sha256(include_bytes!("html/.surgeist-source.json"));
+    let retained = BTreeMap::from([
+        (AUTHORED.to_owned(), authored_hash.clone()),
+        (ORIGINAL.to_owned(), original_hash.clone()),
+        ("origin/source-receipt.json".to_owned(), receipt),
+    ]);
+    let mut sources = BTreeMap::from([
+        (AUTHORED, SourceKind::Authored),
+        (ORIGINAL, SourceKind::Original),
+    ]);
+    let bind = |sources: &BTreeMap<_, _>| {
+        current_owner_bindings(
+            &retained,
+            sources,
+            &BTreeSet::new(),
+            "html/.surgeist-source.json",
+        )
+    };
+    let owners = bind(&sources).unwrap();
+    assert_eq!(
+        owners.get(&format!("examples/qualify-root-context/{AUTHORED}")),
+        Some(&authored_hash)
+    );
+    assert!(!owners.contains_key(&format!("tests/layout/browser_parity/{AUTHORED}")));
+    assert_eq!(
+        owners.get(&format!("tests/layout/browser_parity/{ORIGINAL}")),
+        Some(&original_hash)
+    );
+    sources.remove(AUTHORED);
+    assert!(bind(&sources).is_err());
+    sources.insert("html/unretained.html", SourceKind::Authored);
+    assert!(bind(&sources).is_err());
+}
+
+#[test]
+fn matching_wire_binds_explicit_history_to_source_kind() {
+    // Use a real matching wire case to exercise decoding in isolation.
+    // These variations never enter receipt admission.
+    let terminal: Value =
+        serde_json::from_str(include_str!("captured/box-controls/qualification.json")).unwrap();
+    let mut wire = terminal["cases"][0].clone();
+    let parse = |wire: &Value| serde_json::from_value::<MatchingCaseWire>(wire.clone());
+    let original = parse(&wire).unwrap().bind(SourceKind::Original).unwrap();
+    assert_eq!(serde_json::to_value(original).unwrap(), wire);
+    assert!(parse(&wire).unwrap().bind(SourceKind::Authored).is_err());
+
+    wire["historical"] = Value::Null;
+    assert!(parse(&wire).unwrap().bind(SourceKind::Original).is_err());
+    assert!(parse(&wire).unwrap().bind(SourceKind::Authored).is_err());
+    wire["identity"]["historical_sha256"] = Value::Null;
+    let authored = parse(&wire).unwrap().bind(SourceKind::Authored).unwrap();
+    assert_eq!(authored.provenance, MatchingProvenance::Authored);
+    assert!(serde_json::to_value(authored).unwrap()["historical"].is_null());
+    wire.as_object_mut().unwrap().remove("historical");
+    assert!(parse(&wire).is_err());
 }
 
 #[test]
@@ -748,6 +828,17 @@ fn matching_terminal_wire_requires_policy_free_complete_original_bindings() {
     let mut duplicate = terminal.clone();
     duplicate["cases"][1] = duplicate["cases"][0].clone();
     assert!(Qualification::parse(&duplicate.to_string()).is_err());
+    let mut wrong_owner = terminal.clone();
+    let source = terminal["cases"][0]["case"]["source"].as_str().unwrap();
+    let owners = wrong_owner["current_owner_inputs"].as_object_mut().unwrap();
+    let hash = owners
+        .remove(&format!("tests/layout/browser_parity/{source}"))
+        .unwrap();
+    owners.insert(format!("examples/qualify-root-context/{source}"), hash);
+    assert!(Qualification::parse(&wrong_owner.to_string()).is_err());
+    let mut unknown_kind = terminal.clone();
+    unknown_kind["records"][0]["value"]["source_kind"] = json!("unknown");
+    assert!(Qualification::parse(&unknown_kind.to_string()).is_err());
     let mut missing_history = terminal.clone();
     missing_history["records"][0]["value"]["historical_sha256"]
         .as_object_mut()
@@ -858,9 +949,13 @@ fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_cur
                 "validator_profile":"root-context-fixed-orthogonal-v1","validator_helper_sha256":QUALIFIED,
             })
         );
-        let owners =
-            current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json")
-                .unwrap();
+        let owners = current_owner_bindings(
+            &retained,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            "html/.surgeist-source.json",
+        )
+        .unwrap();
         assert_eq!(owners[ROOT_HELPER_OWNER], QUALIFIED);
         assert_eq!(retained, before);
     }
@@ -900,8 +995,11 @@ fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_ide
             .join(edition)
             .join(TERMINAL);
         let stored = std::fs::read(&path).unwrap();
-        // Deserialize only as fixture data; it is not current admission authority.
-        let mut candidate: Qualification = serde_json::from_slice(&stored).unwrap();
+        // Read fixture data before testing current-validator admission.
+        let mut candidate = serde_json::from_slice::<QualificationData<QualifiedCaseWire>>(&stored)
+            .unwrap()
+            .bind_source_provenance()
+            .unwrap();
         candidate.capture_validation.validator_profile =
             RootCaptureProfile::RootContextFlexCompositionV1;
         candidate.capture_validation.validator_helper_sha256 = PRIOR.to_owned();
