@@ -98,12 +98,37 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
     return actualPristine(ctx);
   }
 
+  function scriptlessSourceCustody(ctx) {
+    const source = new DOMParser().parseFromString(ctx.args[0], 'text/html');
+    if (source.querySelectorAll('script').length !== 0) return;
+    require(document.scripts.length === 0, 'scriptless source retains no live script elements');
+    repeat(ctx);
+    actualPristine(ctx);
+
+    // Even the expected helper URL cannot authorize a DOM script when the
+    // original source has none. This data block never executes or loads code.
+    const extra = document.createElement('script');
+    extra.type = 'application/json';
+    extra.src = new URL(ctx.args[2], document.baseURI).href;
+    document.head.appendChild(extra);
+    try {
+      require(document.scripts.length === 1 && document.scripts[0] === extra,
+        'actual script census mutation executed');
+      refused('Root context: ScriptChanged');
+    } finally {
+      extra.remove();
+    }
+    actualPristine(ctx);
+    pristineAgain(ctx);
+  }
+
   if (mode === 'stylesheet') {
     getTestData = function () {
       const ctx = context();
       const { owner, originalText, pristine } = ctx;
       repeat(ctx);
       require(measure() === pristine, 'successful repeated setup preserves complete envelope');
+      scriptlessSourceCustody(ctx);
 
       const sheet = owner.sheet;
       const ruleIndex = sheet.cssRules.length;

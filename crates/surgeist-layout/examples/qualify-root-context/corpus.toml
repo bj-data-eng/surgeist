@@ -2368,3 +2368,23 @@ sources = [
   "html/flex/flex_calc_basis_margin_gap.html",
   "html/grid/grid_calc_track_and_item_margin.html",
 ]
+
+[[records]]
+source = "html/flex/fri03_order_modified_flex.html"
+source_sha256 = "3dbb62e2f509a17548e6e2dbe23e105190b9f8e591ac0b07712b06060583a7c1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "0bdc26f966b59ce9bf230436911b381a3782155dcf0eb270dc42f1aa6b647056"
+content_box_ltr = "5fc11067b73cd2f03fdd5e23ff3cd94de88179d9596d65c7e34d896f1dd83bf9"
+border_box_rtl = "f4ab494fc7f8a015d96606da0a1792ebbfef4f9902847061b76f6b9c770001e5"
+content_box_rtl = "32d00ebb0f4702e1cdf7786ed99e0a33fac427dc21cc583e200b071f600f8d90"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
