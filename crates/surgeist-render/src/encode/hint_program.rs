@@ -384,17 +384,12 @@ pub(super) fn prepare_projected(
                         {
                             return Err(Refusal::UnrepresentableHint { stop_index: index }.into());
                         }
-                        if logs.is_none() {
-                            logs = Some(Logarithms::new(account)?);
-                        }
-                        let exponent = power(
-                            native_position,
-                            hint,
-                            next_native,
-                            index,
-                            logs.as_ref().expect("initialized logarithm bounds"),
-                            account,
-                        )?;
+                        let logs = match &mut logs {
+                            Some(logs) => logs,
+                            slot @ None => slot.insert(Logarithms::new(account)?),
+                        };
+                        let exponent =
+                            power(native_position, hint, next_native, index, logs, account)?;
                         ProgramSegment::Power { exponent }
                     }
                 } else {
