@@ -1147,16 +1147,30 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         self.retire_registered_string(c, slot)
     }
-    /// Copy a registered field without aliasing its native backing or ticket.
-    /// As [`Self::copy_registered_field`] for a namespace URI, or for an attribute prefix when
-    /// `prefix`: a value that is one of the parse's literals registers a row that shares the
-    /// literal's string and keeps the copy of the field's origin group.
+    /// Copies a registered namespace URI, or an attribute prefix when `prefix`, without aliasing
+    /// its ticket. A value that is one of the parse's literals registers a row that shares the
+    /// literal's string and keeps the copy of the field's origin group; any other value is copied
+    /// as [`Self::copy_registered_field`] copies it, with the charges of that copy alone. Whether
+    /// the value is a literal is read before anything is charged: it compares at most the units
+    /// of the longest literal, and only when the lengths are equal.
     pub(super) fn copy_registered_literal_field(
         &mut self,
         c: &mut ParseControl,
         source: usize,
         prefix: bool,
     ) -> Result<(DocumentString, usize), SessionError> {
+        let literal = match self.payloads.values.get(source) {
+            Some(RetainedPayload::String { value, .. }) if prefix => {
+                Literal::of_prefix_units(value.code_units())
+            }
+            Some(RetainedPayload::String { value, .. }) => {
+                Literal::of_uri_units(value.code_units())
+            }
+            _ => None,
+        };
+        let Some(literal) = literal else {
+            return self.copy_registered_field(c, source);
+        };
         control_field_owner(&self.payloads, c, source)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(source)
@@ -1167,14 +1181,6 @@ impl SessionStorage {
             HtmlParseWorkCategory::InspectByte,
             std::mem::size_of_val(value.code_units()) as u64,
         )?;
-        let literal = if prefix {
-            Literal::of_prefix_units(value.code_units())
-        } else {
-            Literal::of_uri_units(value.code_units())
-        };
-        let Some(literal) = literal else {
-            return self.copy_registered_field(c, source);
-        };
         let origins = origins
             .as_ref()
             .map(|origins| {
@@ -1186,6 +1192,7 @@ impl SessionStorage {
             .transpose()?;
         self.register_literal_copy(c, literal, origins)
     }
+    /// Copies a registered field without aliasing its native backing or ticket.
     pub(super) fn copy_registered_field(
         &mut self,
         c: &mut ParseControl,

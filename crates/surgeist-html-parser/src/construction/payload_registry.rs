@@ -706,9 +706,9 @@ impl PayloadStorage {
                 if value.shares_storage_with(stored))
         })
     }
+    #[cfg(test)]
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
-    #[cfg(test)]
     ///
     /// A latched registry-row stop does not name its row. When one is latched, an attribute join
     /// that names a row a lost edit emptied is accepted, at most one such join; every other join
