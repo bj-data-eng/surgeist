@@ -123,6 +123,33 @@ covers 15 source families/60 artifacts and 43 distinct comparisons in ten XML
 callers under grid::tests::browser_controls; that prefix also selects additional
 Native/support tests. No automatic lookup alias is installed by these commands.
 
+## Matching geometry editions
+
+The catalogue's `matching_publications` tables name cohorts of original,
+Generated box sources. The [box-controls edition](../../tests/layout/browser_parity/captured/box-controls/qualification.json)
+contains four originals across both box modes and directions, for sixteen cases.
+Each case requires its unchanged
+complete historical observations, declared root context, finite coordinates and
+sizes for every box, and a complete Native comparison with zero raw differences.
+Raw fields and qualification remain separate outputs. Matching cohorts require
+no difference policy or authored Native oracle.
+
+Publication requires an absent `tests/layout/browser_parity/captured/box-controls`
+directory, the verified original source import, and the cached pinned browser.
+Check an existing edition with the second command.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-matching-geometry box-controls
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry box-controls
+~~~
+
+Publication uses the same Generator lifecycle and retains failed candidates without a
+qualification terminal. Checking uses retained inputs and requires no browser.
+Both commands authenticate source, resource, history, report, ledger and current
+owner identities. Registration separately pins the complete terminal digest;
+an existing capture directory alone establishes no authority. Each named cohort
+retains its published membership and bytes.
+
 ## Grid static-position edition
 
 The [Grid static-position policy](../../semantic/grid-static-position-policy.md)
