@@ -13,6 +13,9 @@ use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
 use surgeist_runtime::{document_scripting::*, *};
 
+#[path = "document_scripting/source_events.rs"]
+mod source_events;
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
@@ -63,7 +66,10 @@ fn session(policy: DomSessionLimits) -> DomSession {
             4_000_000,
             surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
-        .unwrap(),
+        .unwrap()
+        .with_dispatch_custody(
+            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+        ),
     )
     .unwrap();
     DomSession::new(dom, policy).unwrap()
@@ -82,6 +88,14 @@ const ALLOW: HtmlScriptingPolicy = HtmlScriptingPolicy {
     automation_allows: true,
 };
 const STORAGE: usize = 1_000_000;
+
+fn hooks(child_count: &[u16]) -> DocumentScriptHooks<'_> {
+    const DETACH: [u16; 8] = [100, 101, 116, 97, 99, 104, 73, 102];
+    DocumentScriptHooks {
+        child_count,
+        detach_source_node_if: &DETACH,
+    }
+}
 
 fn hook() -> Vec<u16> {
     "readChildCount".encode_utf16().collect()
@@ -136,7 +150,9 @@ fn failed_enable_preserves_original_owner() {
     ));
     assert_eq!(refused.session.snapshot().stamp(), stamp);
     let mut prepared = prepare(refused.session, cancellation);
-    let refused = prepared.enable(other_target, ALLOW, &hook()).unwrap_err();
+    let refused = prepared
+        .enable(other_target, ALLOW, hooks(&hook()))
+        .unwrap_err();
     assert!(matches!(
         refused.error,
         DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
@@ -147,7 +163,7 @@ fn failed_enable_preserves_original_owner() {
     drop(foreign);
 
     let occupied = Process::bootstrap(EngineKind::V8).unwrap();
-    let refused = prepared.enable(target, ALLOW, &hook()).unwrap_err();
+    let refused = prepared.enable(target, ALLOW, hooks(&hook())).unwrap_err();
     assert!(matches!(
         refused.error,
         DocumentScriptError::Script(Error::OwnerAlreadyActive)
@@ -164,7 +180,7 @@ fn failed_enable_preserves_original_owner() {
             ..ALLOW
         },
     ] {
-        let refused = prepared.enable(target, policy, &hook()).unwrap_err();
+        let refused = prepared.enable(target, policy, hooks(&hook())).unwrap_err();
         assert!(matches!(
             refused.error,
             DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
@@ -174,7 +190,9 @@ fn failed_enable_preserves_original_owner() {
         prepared = refused.owner;
     }
     let fixed_global = "Infinity".encode_utf16().collect::<Vec<_>>();
-    let refused = prepared.enable(target, ALLOW, &fixed_global).unwrap_err();
+    let refused = prepared
+        .enable(target, ALLOW, hooks(&fixed_global))
+        .unwrap_err();
     assert!(matches!(
         refused.error,
         DocumentScriptError::Script(Error::PropertyRejected)
@@ -231,7 +249,7 @@ fn native_read_snapshot_and_explicit_queue() -> DocumentScriptPermit {
         HtmlScriptingStatus::Disabled
     );
     let mut host = prepare(session, Arc::new(cancel()))
-        .enable(top, ALLOW, &hook())
+        .enable(top, ALLOW, hooks(&hook()))
         .unwrap();
     let permit = host.permit().unwrap();
     assert_eq!(permit.document(), top.document());
@@ -300,7 +318,7 @@ fn native_read_snapshot_and_explicit_queue() -> DocumentScriptPermit {
         "globalThis.job = 0; Promise.resolve().then(() => { job = readChildCount(); }); job",
         0.0,
     );
-    host.with_native(|dom, _| {
+    host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
         let comment = batch.create_comment(top.document().node(), "new native child");
         batch.insert_before(&comment, top.document().node(), None);
@@ -379,7 +397,7 @@ fn queue_observable_job(
 fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
-        .enable(top, ALLOW, &hook())
+        .enable(top, ALLOW, hooks(&hook()))
         .unwrap();
     assert!(matches!(
         host.in_document(foreign, |_| panic!("foreign permit entered guest")),
@@ -390,7 +408,7 @@ fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     let permit = host.permit().unwrap();
     let queued_calls = Arc::new(AtomicUsize::new(0));
     queue_observable_job(&mut host, &permit, queued_calls.clone());
-    host.with_native(|dom, mut hosted| {
+    host.with_native(|dom, mut hosted, _| {
         let cancellation = cancel();
         let queued = hosted
             .destroy_top_level(dom, top.navigable(), &cancellation)
@@ -440,7 +458,7 @@ fn native_refusal_stays_typed_and_sticky() {
     let (session, top) = setup();
     let cancellation = Arc::new(cancel());
     let mut host = prepare(session, cancellation.clone())
-        .enable(top, ALLOW, &hook())
+        .enable(top, ALLOW, hooks(&hook()))
         .unwrap();
     let permit = host.permit().unwrap();
     let caught = host.in_document(&permit, |scope| {
@@ -482,4 +500,5 @@ fn main() {
     let expired_permit = native_read_snapshot_and_explicit_queue();
     real_retirement_revokes_and_abandons(&expired_permit);
     native_refusal_stays_typed_and_sticky();
+    source_events::run();
 }

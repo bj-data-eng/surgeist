@@ -787,13 +787,52 @@ impl HostedRuntime {
         cancel: &AtomicBool,
         use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
     ) -> Result<R, DomHostedRuntimeError> {
+        self.with_script_settings(dom, target, None, cancel, |source, dom| {
+            let canonical = dom
+                .raw()
+                .hosted_navigable(target.navigable)
+                .map_err(DomHostedRuntimeError::Dom)?;
+            if canonical.parent().is_some()
+                || canonical.is_retiring()
+                || canonical.host() != target.host
+                || canonical.browsing_context() != target.context
+                || canonical.global() != target.global
+                || canonical.active_entry() != target.entry
+                || canonical.current_entry() != target.entry
+                || canonical.active_document() != Some(target.document)
+            {
+                return Err(DomHostedRuntimeError::Inactive);
+            }
+            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
+        })
+    }
+
+    pub(crate) fn with_script_settings<R>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        event: Option<&surgeist_dom::DomSourceEventRequest>,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(
+            &DomHostedSource,
+            &mut DomEventDom<'_>,
+        ) -> Result<R, DomHostedRuntimeError>,
+    ) -> Result<R, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        let (h, t, c, g) = state.find_global(target.global, cancel, || Ok(()))?;
+        let charge_source = || match event {
+            Some(event) => dom
+                .raw()
+                .source_event_step(event, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into())),
+            None => Ok(()),
+        };
+        let (h, t, c, g) = state.find_global(target.global, cancel, charge_source)?;
         state.step(cancel)?;
+        charge_source()?;
         let host = &state.hosts[h];
         let top = &host.top_levels[t];
         let group = top.group.as_ref().ok_or(DomHostedRuntimeError::Protocol)?;
@@ -809,22 +848,7 @@ impl HostedRuntime {
         {
             return Err(DomHostedRuntimeError::Inactive);
         }
-        let canonical = dom
-            .raw()
-            .hosted_navigable(target.navigable)
-            .map_err(DomHostedRuntimeError::Dom)?;
-        if canonical.parent().is_some()
-            || canonical.is_retiring()
-            || canonical.host() != target.host
-            || canonical.browsing_context() != target.context
-            || canonical.global() != target.global
-            || canonical.active_entry() != target.entry
-            || canonical.current_entry() != target.entry
-            || canonical.active_document() != Some(target.document)
-        {
-            return Err(DomHostedRuntimeError::Inactive);
-        }
-        use_target(&state.source, dom).map_err(DomHostedRuntimeError::Dom)
+        use_target(&state.source, dom)
     }
 
     pub(crate) fn retain_script_payload(

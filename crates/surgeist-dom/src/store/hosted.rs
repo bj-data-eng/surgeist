@@ -7,8 +7,8 @@ pub(in crate::store) mod operations;
 pub(in crate::store) mod queue;
 pub(super) mod style_root_withdrawal;
 use super::*;
-use crate::DomOpaqueOrigin;
 use crate::hosted::*;
+use crate::{DomOpaqueOrigin, DomSourceEventRequest};
 use operations::OperationResult;
 
 // Backing fields precede their debit, including on every failed formation.
@@ -1970,6 +1970,15 @@ impl DomHostedSource {
         if dom.global_document(global)? != document {
             return Err(DomHostedError::StaleIdentity);
         }
+        self.script_document_metadata(dom, host, document)
+    }
+
+    fn script_document_metadata<'dom>(
+        &self,
+        dom: &'dom Dom,
+        host: DomHostedHostId,
+        document: DocumentId,
+    ) -> Result<&'dom DomDocumentMetadata, DomHostedError> {
         let node = dom.state.node(dom.owner, document.node())?;
         let DomNodeKind::Document(metadata) = node.kind() else {
             return Err(DomError::WrongDocument.into());
@@ -2038,6 +2047,39 @@ impl DomHostedSource {
             basis: dom.snapshot().document(binding.document)?.stamp(),
             status,
         })
+    }
+
+    /// Qualify the current settings of this attached Document while a native
+    /// dispatcher holds its actual Source scope. The result is for immediate
+    /// use and does not attest a complete historical capture.
+    pub fn document_scripting_during_dispatch(
+        &self,
+        dom: &Dom,
+        binding: &DomDocumentScriptBinding,
+        request: &DomSourceEventRequest,
+        facts: DomDocumentScriptingFacts,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_html_semantics::HtmlScriptingStatus, DomHostedError> {
+        if binding.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        dom.validate_hosted_source(self)?;
+        if dom.pending_source_edit().map(|status| status.operation()) != Some(request.operation()) {
+            return Err(DomError::InvalidSourceEvent.into());
+        }
+        let work = dom
+            .dispatch_hosted_read_work(cancel)?
+            .filter(|work| Arc::ptr_eq(work, &request.work))
+            .ok_or(DomError::InvalidSourceEvent)?;
+        if dom.dispatch_global_document_current_with(binding.global, &mut || {
+            work.step(cancel).map_err(DomHostedError::from)
+        })? != binding.document
+            || !dom.dispatch_document_fully_active(binding.document, cancel)?
+        {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let metadata = self.script_document_metadata(dom, binding.host, binding.document)?;
+        document_script_status(metadata, Some(facts))
     }
 }
 

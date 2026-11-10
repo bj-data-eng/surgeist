@@ -1,6 +1,6 @@
 //! Optional script ownership for one actual native-created hosted Document.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::fmt;
 use std::mem::{size_of, size_of_val};
 use std::rc::{Rc, Weak};
@@ -19,7 +19,16 @@ use surgeist_dom::{
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
-use crate::{DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, HostedRuntime};
+use crate::{
+    DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, DomSourceRuntime,
+    HostedRuntime,
+};
+
+mod source;
+pub use source::{
+    DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
+    DocumentScriptGuestResult, SelectedDocumentScriptListener,
+};
 
 /// Native adapter errors. These values can be retained as the original typed
 /// cause of a bindings host refusal.
@@ -40,6 +49,8 @@ pub enum DocumentScriptNativeError {
     Revoked,
     /// The selected native Source has an unfinished synchronous obligation.
     SourcePending,
+    /// This hook lacks the selected native event's exact Source authority.
+    SourceAccess,
     /// The result cannot be represented in the supported service profile.
     RepresentationExhausted,
 }
@@ -57,6 +68,12 @@ impl std::error::Error for DocumentScriptNativeError {
             Self::Dom(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+impl From<DomError> for DocumentScriptNativeError {
+    fn from(error: DomError) -> Self {
+        Self::Dom(error)
     }
 }
 
@@ -108,6 +125,7 @@ impl From<DocumentScriptNativeError> for DocumentScriptError {
 }
 
 type FailureSlot = HostFailureSlot<DocumentScriptNativeError, DomHostedRuntimeRetention>;
+type SourceFailureSlot = HostFailureSlot<crate::DomSourceDriveError, DomHostedRuntimeRetention>;
 
 struct Attachment {
     target: DomHostedTopLevel,
@@ -115,11 +133,13 @@ struct Attachment {
     realm: RealmAuthority,
     policy: HtmlScriptingPolicy,
     failures: FailureSlot,
+    source_failures: SourceFailureSlot,
 }
 
 struct NativeOwner {
     attachment: OnceCell<Attachment>,
     session: RefCell<DomSession>,
+    active_source: Cell<Option<source::ActiveSource>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
     _backing: DomHostedRuntimeRetention,
@@ -162,6 +182,15 @@ impl NativeOwner {
             })?,
         )
     }
+}
+
+/// Names of the explicitly delegated host services installed in the realm.
+pub struct DocumentScriptHooks<'a> {
+    /// Reads the attached Document's current direct child count.
+    pub child_count: &'a [u16],
+    /// During a selected Source event, converts its argument to Number and
+    /// detaches the delegated direct Document comment for a nonzero, non-NaN result.
+    pub detach_source_node_if: &'a [u16],
 }
 
 /// Owned native preparation. No script process or attachment exists yet.
@@ -236,6 +265,7 @@ impl PreparedDocumentScriptHost {
             native: Rc::new(NativeOwner {
                 attachment: OnceCell::new(),
                 session: RefCell::new(session),
+                active_source: Cell::new(None),
                 cancellation,
                 storage_limit,
                 _backing: backing,
@@ -249,15 +279,14 @@ impl PreparedDocumentScriptHost {
     }
 
     /// Attach an actual engine to the selected native top-level Document.
-    /// Installs a named host-defined callable that reads the current number
-    /// of the Document's direct children.
+    /// Installs the explicitly named host services in its realm.
     pub fn enable(
         self,
         target: DomHostedTopLevel,
         policy: HtmlScriptingPolicy,
-        child_count_hook: &[u16],
+        hooks: DocumentScriptHooks<'_>,
     ) -> Result<DocumentScriptHost, EnableDocumentScriptFailure> {
-        match self.enable_inner(target, policy, child_count_hook) {
+        match self.enable_inner(target, policy, hooks) {
             Ok(engine) => Ok(DocumentScriptHost {
                 engine: Some(engine),
                 native: self.native,
@@ -270,7 +299,7 @@ impl PreparedDocumentScriptHost {
         &self,
         target: DomHostedTopLevel,
         policy: HtmlScriptingPolicy,
-        child_count_hook: &[u16],
+        hooks: DocumentScriptHooks<'_>,
     ) -> Result<ScriptEngine, DocumentScriptError> {
         let owner = &self.native;
         let cancel = &owner.cancellation;
@@ -295,17 +324,22 @@ impl PreparedDocumentScriptHost {
             realm: authority.identity(),
             document: target.document(),
         };
-        let read = child_count_callback(Rc::downgrade(owner), permit);
-        let hook_bytes = size_of_val(&read);
+        let read = child_count_callback(Rc::downgrade(owner), permit.clone());
+        let detach = source::detach_callback(Rc::downgrade(owner), permit);
+        let hook_bytes = size_of_val(&read)
+            .checked_add(size_of_val(&detach))
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let failure_bytes = FailureSlot::storage_bytes();
+        let source_failure_bytes = SourceFailureSlot::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
+            .and_then(|bytes| bytes.checked_add(source_failure_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let (hook_backing, failure_backing) = {
+        let (hook_backing, failure_backing, source_failure_backing) = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -317,26 +351,35 @@ impl PreparedDocumentScriptHost {
             let failure = hosted
                 .retain_script_payload(&mut dom, failure_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
-            (hook, failure)
+            let source_failure = hosted
+                .retain_script_payload(&mut dom, source_failure_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            (hook, failure, source_failure)
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
+        let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
         process.execution().in_realm(&realm, |scope| {
-            let callback = Callback::new(read);
-            let hook = scope.function(&callback)?;
             let global = scope.global()?;
-            scope.define_property(
-                &global,
-                PropertyKey::String(child_count_hook),
-                PropertyDescriptor::Data {
-                    value: &hook,
-                    writable: false,
-                    enumerable: false,
-                    configurable: false,
-                },
-            )
+            for (name, callback) in [
+                (hooks.child_count, Callback::new(read)),
+                (hooks.detach_source_node_if, Callback::new(detach)),
+            ] {
+                let hook = scope.function(&callback)?;
+                scope.define_property(
+                    &global,
+                    PropertyKey::String(name),
+                    PropertyDescriptor::Data {
+                        value: &hook,
+                        writable: false,
+                        enumerable: false,
+                        configurable: false,
+                    },
+                )?;
+            }
+            Ok(())
         })?;
 
         let mut session = owner
@@ -366,10 +409,12 @@ impl PreparedDocumentScriptHost {
             realm: authority,
             policy,
             failures,
+            source_failures,
         });
         Ok(ScriptEngine {
             process,
             realm,
+            retained_bytes: bytes,
             _hook_backing: hook_backing,
         })
     }
@@ -393,6 +438,7 @@ impl DocumentScriptPermit {
 struct ScriptEngine {
     process: Process,
     realm: Realm,
+    retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
 }
 
@@ -519,11 +565,11 @@ impl DocumentScriptHost {
         Ok(session.snapshot())
     }
 
-    /// Lend the original canonical native view and its matching lifecycle
-    /// permission to the Rust host. The script process is not lent.
+    /// Lend the original canonical view and its matching lifecycle and Source
+    /// permissions to the Rust host. The script process stays with this owner.
     pub fn with_native<T>(
         &mut self,
-        action: impl FnOnce(&mut DomEventDom<'_>, HostedRuntime) -> T,
+        action: impl FnOnce(&mut DomEventDom<'_>, HostedRuntime, DomSourceRuntime) -> T,
     ) -> Result<T, DocumentScriptNativeError> {
         let mut session = self
             .native
@@ -531,7 +577,8 @@ impl DocumentScriptHost {
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let hosted = session.hosted_execution();
-        Ok(action(&mut session.dom(), hosted))
+        let source = session.source_execution();
+        Ok(action(&mut session.dom(), hosted, source))
     }
 
     /// Revoke the attachment and dispose of its queue without a checkpoint.
@@ -619,8 +666,11 @@ fn read_child_count<'scope>(
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let observation = native.observe(attachment, &mut session)?;
-        if observation.status() != HtmlScriptingStatus::Enabled {
+        let status = match native.active_source() {
+            Some(active) => native.qualify_event(attachment, &mut session, &active)?,
+            None => native.observe(attachment, &mut session)?.status(),
+        };
+        if status != HtmlScriptingStatus::Enabled {
             return Err(DocumentScriptNativeError::Hosted(
                 DomHostedRuntimeError::Dom(DomHostedError::ScriptingDisabled),
             ));
@@ -644,10 +694,10 @@ fn read_child_count<'scope>(
     }
 }
 
-fn refuse<T>(
+fn refuse<T, E: std::error::Error + 'static>(
     scope: &mut Scope<'_>,
-    slot: &FailureSlot,
-    error: DocumentScriptNativeError,
+    slot: &HostFailureSlot<E, DomHostedRuntimeRetention>,
+    error: E,
 ) -> Result<T, Error> {
     match slot.record(error) {
         Ok(failure) | Err(RecordFailure::Occupied { first: failure, .. }) => {

@@ -239,9 +239,13 @@ before running guest code and leaves queued jobs for an explicit checked
 checkpoint. Stop disposes of the queue and returns custody of the native Session.
 The default Runtime uses the native no-script profile. A live owner can sample
 scripting for the current DOM revision; historical captures preserve the sampled
-fact with their exact snapshot. This slice covers the hosted entry and read path.
-Guest-backed Source event servicing is pending. Standard DOM wrappers and parser
-execution belong to their own contributions.
+fact with their exact snapshot. A Source event can select an external guest
+listener through the original dispatcher and transfer the actual invocation to
+the script owner. Guest execution releases native loans, can detach an explicitly
+delegated Document comment through nested Source work, and retains any exact guest
+exception for the native report. The original dispatcher then continues delivery
+and the caller resumes the same Source operation. Standard DOM wrappers and
+parser execution belong to their own contributions.
 
 ## Start
 
