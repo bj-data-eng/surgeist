@@ -2576,6 +2576,8 @@ pub(crate) struct OwnedVec<T> {
     admitted: u64,
     resource: HtmlParseResource,
     owner: Option<Arc<()>>,
+    /// Prototype: logical slots the ledger holds, at least `len`.
+    slots: usize,
 }
 impl<T> OwnedVec<T> {
     pub(crate) fn new(resource: HtmlParseResource) -> Result<Self, HtmlParseStop> {
@@ -2594,6 +2596,7 @@ impl<T> OwnedVec<T> {
             admitted: 0,
             resource,
             owner: None,
+            slots: 0,
         })
     }
     pub(crate) fn as_slice(&self) -> &[T] {
@@ -2686,6 +2689,7 @@ impl<T> OwnedVec<T> {
             control.record_layout(bytes)?;
         }
         control.release(self.resource, 1)?;
+        self.slots = self.slots.saturating_sub(1);
         Ok(self.vector.pop())
     }
     /// Failure cleanup only: a first stop must already be latched. The returned
@@ -2713,6 +2717,7 @@ impl<T> OwnedVec<T> {
             return Ok(None);
         }
         control.cleanup_storage(self.resource, 1, 0)?;
+        self.slots = self.slots.saturating_sub(1);
         Ok(self.vector.pop())
     }
     pub(crate) fn require_owner(
@@ -2888,13 +2893,52 @@ impl<T> OwnedVec<T> {
     ) -> Result<(), HtmlParseStop> {
         control.checkpoint()?;
         let bytes = size_of::<T>() as u64;
-        self.prepare(control, 1, bytes, 1, growth)?;
+        let blockable = size_of::<T>() != 2;
+        let mut block = 0_usize;
+        if blockable {
+            if self.vector.len() >= self.slots {
+                block = self.vector.len().max(1);
+                control.check_acquire_many(&[(self.resource, block as u64)])?;
+            }
+            self.prepare_unchecked(control, 1, bytes, 1, growth)?;
+        } else {
+            self.prepare(control, 1, bytes, 1, growth)?;
+        }
         if size_of::<T>() >= WORK_QUANTUM {
             control.record_layout(bytes)?;
         }
-        control.acquire(self.resource, 1)?;
+        if blockable {
+            if block != 0 {
+                control.acquire(self.resource, block as u64)?;
+                self.slots += block;
+            }
+        } else {
+            control.acquire(self.resource, 1)?;
+            self.slots += 1;
+        }
         self.vector.push(value);
         Ok(())
+    }
+    fn prepare_unchecked(
+        &mut self,
+        control: &mut ParseControl,
+        additional: usize,
+        copy_bytes: u64,
+        writes: u64,
+        growth: Growth,
+    ) -> Result<(), HtmlParseStop> {
+        self.require_owner(control)?;
+        let plan = match growth {
+            Growth::Exact => ReservationPlan::for_vec(&self.vector, additional),
+            Growth::Geometric(final_len) => {
+                control.geometric_plan_toward(&self.vector, additional, final_len)
+            }
+        };
+        let plan = match plan {
+            Ok(plan) => plan,
+            Err(reason) => return control.fail(reason),
+        };
+        self.prepare_plan(control, additional, copy_bytes, writes, plan, false)
     }
     /// One consumed evidence commit. Both capacities, logical slots and fixed
     /// writes are admitted before either vector's committed length changes.
@@ -2938,6 +2982,8 @@ impl<T> OwnedVec<T> {
         } else {
             control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
         }
+        self.slots += 1;
+        other.slots += 1;
         // No fallible operation follows admission. Record is published last.
         other.vector.push(other_value);
         self.vector.push(value);
@@ -2965,6 +3011,7 @@ impl<T> OwnedVec<T> {
                 control.record_layout(bytes)?;
             }
             control.release(self.resource, 1)?;
+            self.slots = self.slots.saturating_sub(1);
             drop(self.vector.pop());
         }
         Ok(())
@@ -3001,7 +3048,9 @@ impl<T> OwnedVec<T> {
             if size_of::<T>() >= WORK_QUANTUM {
                 control.record_layout(bytes)?;
             }
-            control.acquire(self.resource, 1)
+            control.acquire(self.resource, 1)?;
+            self.slots += 1;
+            Ok(())
         })();
         match admission {
             Ok(()) => {
@@ -3021,7 +3070,7 @@ impl<T> OwnedVec<T> {
                 HtmlParseInvariant::ForeignControl,
             ));
         }
-        control.cleanup_storage(self.resource, self.vector.len() as u64, self.admitted)?;
+        control.cleanup_storage(self.resource, self.slots as u64, self.admitted)?;
         drop(self);
         Ok(())
     }
@@ -3070,6 +3119,7 @@ impl<T: Copy> OwnedVec<T> {
                 control.record_layout(bytes)?;
             }
             control.acquire(self.resource, chunk.len() as u64)?;
+            self.slots += chunk.len();
             self.vector.extend_from_slice(chunk);
         }
         Ok(())
