@@ -259,7 +259,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
     }
     impl HtmlCspPolicyArtifact for InheritedNative {
         fn retained_layout(&self) -> HtmlCspArtifactLayout {
-            let units = self.text.shared_code_units().capacity();
+            let units = self.text.retained_units();
             HtmlCspArtifactLayout::try_new(
                 HtmlCspStorage::try_new(
                     size_of::<Self>() + size_of::<Vec<u16>>() + units * 2,

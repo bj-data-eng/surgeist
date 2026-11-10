@@ -816,7 +816,7 @@ mod tests {
         assert_eq!(actual.value.code_units(), [97, 32, 98, 160, 99]);
         assert_eq!(
             draft.source_temporary_units.load(Ordering::Relaxed),
-            actual.value.shared_code_units().capacity()
+            actual.value.retained_units()
         );
         assert_eq!(draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
         drop(actual);

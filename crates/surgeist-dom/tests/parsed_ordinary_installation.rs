@@ -2846,16 +2846,14 @@ fn full_original_and_environment_backing_admit_exact_budget_and_refuse_one_byte_
         ordinary.input_platform(),
     );
     let original = report.source().as_utf16().unwrap();
-    assert!(original.shared_code_units().capacity() > original.len());
+    assert!(original.retained_units() > original.len());
     // Public owner-issued footprints plus public supplied Vec backing. No URL
     // payload layout or parser-private source inventory is reimplemented here.
     let bytes = report.retained_construction_bytes()
         + size_of::<HtmlParseReport>() as u64
-        + (size_of::<Vec<u16>>() + original.shared_code_units().capacity() * size_of::<u16>())
-            as u64
+        + (size_of::<Vec<u16>>() + original.retained_units() * size_of::<u16>()) as u64
         + environment.url().retained_storage_usage().retained_bytes() as u64
-        + (size_of::<Vec<u16>>()
-            + environment.encoding_label().shared_code_units().capacity() * size_of::<u16>())
+        + (size_of::<Vec<u16>>() + environment.encoding_label().retained_units() * size_of::<u16>())
             as u64;
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -3524,8 +3522,8 @@ fn template_hyperlink_uses_its_actual_inert_document_facts_and_cannot_inherit_ou
         + inert.retained_storage_usage().retained_bytes() as u64
         + environment.url().retained_storage_usage().retained_bytes() as u64
         + (std::mem::size_of::<Vec<u16>>()
-            + environment.encoding_label().shared_code_units().capacity()
-                * std::mem::size_of::<u16>()) as u64;
+            + environment.encoding_label().retained_units() * std::mem::size_of::<u16>())
+            as u64;
     assert!(matches!(
         dom.install_parsed_html_document(
             before.stamp(),
@@ -4922,7 +4920,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
     assert_eq!(native_bank.len(), 3);
     let native_data = native.node(native_text).unwrap().data().unwrap();
     assert_eq!(native_data.code_units(), [114, 101, 112, 101, 97, 116]);
-    assert_eq!(native_data.shared_code_units().capacity(), 64);
+    assert_eq!(native_data.retained_units(), 64);
     assert!(
         !native
             .node(native_input)
@@ -4943,13 +4941,8 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
     source.extend(markup.encode_utf16());
     let report = parse(HtmlSource::utf16(DocumentString::from_utf16(source)));
     let source_identity = report.source().identity().clone();
-    let source_backing = Arc::as_ptr(report.source().as_utf16().unwrap().shared_code_units());
-    let source_capacity = report
-        .source()
-        .as_utf16()
-        .unwrap()
-        .shared_code_units()
-        .capacity();
+    let source_backing = report.source().as_utf16().unwrap().block().address();
+    let source_capacity = report.source().as_utf16().unwrap().retained_units();
     assert_eq!(source_capacity, 8192);
     let receipt = report.retained_construction_bytes();
     assert!(receipt > 0);
@@ -4967,8 +4960,8 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
                     .iter()
                     .map(|attribute| {
                         (
-                            Arc::as_ptr(attribute.value().shared_code_units()),
-                            attribute.value().shared_code_units().capacity(),
+                            attribute.value().block().address(),
+                            attribute.value().retained_units(),
                         )
                     })
                     .collect();
@@ -4982,11 +4975,7 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
             }
             surgeist_html::construction::HtmlNodeKind::Text(text) => {
                 assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
-                source_texts.push((
-                    node.id(),
-                    Arc::as_ptr(text.shared_code_units()),
-                    text.shared_code_units().capacity(),
-                ));
+                source_texts.push((node.id(), text.block().address(), text.retained_units()));
             }
             _ => {}
         }
@@ -5056,12 +5045,9 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
     }
     for text in &texts {
         let data = result.snapshot().node(*text).unwrap().data().unwrap();
-        assert!(Arc::ptr_eq(
-            data.shared_code_units(),
-            native_data.shared_code_units()
-        ));
+        assert!(data.shares_storage_with(native_data));
         assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
-        assert_eq!(data.shared_code_units().capacity(), 64);
+        assert_eq!(data.retained_units(), 64);
     }
     let mut edit = DomBatch::new();
     edit.set_attribute(inputs[0], "class", "edited");
@@ -5126,26 +5112,18 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
             "initial".encode_utf16().collect::<Vec<_>>()
         );
         let data = snapshot.node(text).unwrap().data().unwrap();
-        assert!(Arc::ptr_eq(
-            data.shared_code_units(),
-            native_data.shared_code_units()
-        ));
+        assert!(data.shares_storage_with(native_data));
         assert_eq!(data.code_units(), [114, 101, 112, 101, 97, 116]);
     }
     assert!(std::ptr::eq(result.report(), Arc::as_ref(&report)));
     assert_eq!(report.source().identity(), &source_identity);
     assert_eq!(report.retained_construction_bytes(), receipt);
     assert_eq!(
-        Arc::as_ptr(report.source().as_utf16().unwrap().shared_code_units()),
+        report.source().as_utf16().unwrap().block().address(),
         source_backing
     );
     assert_eq!(
-        report
-            .source()
-            .as_utf16()
-            .unwrap()
-            .shared_code_units()
-            .capacity(),
+        report.source().as_utf16().unwrap().retained_units(),
         source_capacity
     );
     assert!(
@@ -5169,8 +5147,8 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
         assert_eq!(bank.capacity(), capacity);
         assert_eq!(bank.as_slice().as_ptr() as usize, buffer);
         for (attribute, (pointer, capacity)) in bank.iter().zip(fields) {
-            assert_eq!(Arc::as_ptr(attribute.value().shared_code_units()), pointer);
-            assert_eq!(attribute.value().shared_code_units().capacity(), capacity);
+            assert_eq!(attribute.value().block().address(), pointer);
+            assert_eq!(attribute.value().retained_units(), capacity);
         }
     }
     for (id, pointer, capacity) in source_texts {
@@ -5180,8 +5158,8 @@ fn parsed_values_reuse_native_backing_without_rewriting_report_or_parser_state()
             panic!("same report Text");
         };
         assert_eq!(text.code_units(), [114, 101, 112, 101, 97, 116]);
-        assert_eq!(Arc::as_ptr(text.shared_code_units()), pointer);
-        assert_eq!(text.shared_code_units().capacity(), capacity);
+        assert_eq!(text.block().address(), pointer);
+        assert_eq!(text.retained_units(), capacity);
     }
 }
 

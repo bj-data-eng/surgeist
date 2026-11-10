@@ -59,7 +59,7 @@ pub(in crate::store) fn begin_style(
 }
 
 fn raw_string(value: &DocumentString) -> (usize, usize) {
-    let capacity = value.shared_code_units().capacity();
+    let capacity = value.retained_units();
     (
         size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
         capacity,

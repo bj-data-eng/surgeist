@@ -135,7 +135,7 @@ impl Fixture {
             .document_url()
             .unwrap()
             .retained_storage_usage();
-        let referrer = self.parent.url().shared_code_units().capacity();
+        let referrer = self.parent.url().retained_units();
         (
             size_of::<HostedDocumentInputData>()
                 + new.retained_bytes()

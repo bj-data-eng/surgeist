@@ -481,23 +481,21 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             (HtmlNodeKind::Text(a), HtmlNodeKind::Text(b))
             | (HtmlNodeKind::Comment(a), HtmlNodeKind::Comment(b)) => {
                 assert_eq!(a, b);
-                assert!(!Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()));
+                assert!(!a.shares_storage_with(b));
             }
             (HtmlNodeKind::ProcessingInstruction(a), HtmlNodeKind::ProcessingInstruction(b)) => {
                 assert_eq!(a.target(), b.target());
                 assert_eq!(a.data(), b.data());
-                assert!(!Arc::ptr_eq(
-                    a.data().shared_code_units(),
-                    b.data().shared_code_units()
-                ));
+                assert!(!a.data().shares_storage_with(b.data()));
             }
             (HtmlNodeKind::Element(a), HtmlNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
                 assert_eq!(a.attributes(), b.attributes());
-                assert!(!Arc::ptr_eq(
-                    a.name().local_name().shared_code_units(),
-                    b.name().local_name().shared_code_units()
-                ));
+                assert!(
+                    !a.name()
+                        .local_name()
+                        .shares_storage_with(b.name().local_name())
+                );
             }
             _ => panic!("literal shallow clone kind"),
         }
@@ -1296,15 +1294,12 @@ fn non_element_clone_binding_boundary(kind: usize) {
             .all(|payload| match payload {
                 RetainedPayload::String {
                     location, value, ..
-                } => {
-                    !matches!(location, StringLocation::Detached)
-                        || Arc::strong_count(value.shared_code_units()) == 1
-                }
+                } => !matches!(location, StringLocation::Detached) || value.block().holders() == 1,
                 _ => true,
             });
         let installed_bound=(nodes..nodes+installed).all(|node| {
             let storage=session.active().unwrap();
-            let bound=|location: StringLocation,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && Arc::ptr_eq(value.shared_code_units(),stored.shared_code_units())));
+            let bound=|location: StringLocation,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && value.shares_storage_with(stored)));
             match storage.construction.node_at(node).unwrap().kind() {
                 HtmlNodeKind::Text(value)=>bound(StringLocation::Text(node),value),
                 HtmlNodeKind::Comment(value)=>bound(StringLocation::Comment(node),value),
@@ -1380,7 +1375,7 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
         .name
         .value
         .text()
-        .shared_code_units()
+        .code_units()
         .as_ptr();
     let slots = session.active().unwrap().payloads.values.len();
     let result = session.allocate_select_family_for_creation(
@@ -1409,7 +1404,7 @@ fn select_same_source_foreign_lexical_owner_cannot_transfer_or_consume_nested_ti
             .name
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr(),
         original
     );
@@ -2201,7 +2196,7 @@ fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
                     .iter()
                     .position(|row| {
                         matches!(row, RetainedPayload::String { value, .. }
-                            if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units()))
+                            if value.shares_storage_with(attribute.value()))
                     })
                     .unwrap()
             })

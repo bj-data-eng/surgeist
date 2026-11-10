@@ -59,7 +59,7 @@ impl HtmlCaptureRetainedStorageUsage {
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<(), HtmlCaptureStorageError<E>> {
         step().map_err(HtmlCaptureStorageError::Interrupted)?;
-        let capacity = value.shared_code_units().capacity();
+        let capacity = value.retained_units();
         self.add_units(capacity)?;
         self.add_bytes(size_of::<Vec<u16>>())?;
         self.bank::<u16, E>(capacity)

@@ -41,15 +41,9 @@ fn exact_current_ticket(session: &ParserArenaSession, c: &mut ParseControl, node
     else {
         panic!("native text")
     };
-    assert!(Arc::ptr_eq(
-        value.shared_code_units(),
-        native.shared_code_units()
-    ));
+    assert!(value.shares_storage_with(native));
     assert_eq!(allocation.units(), value.len() as u64);
-    assert_eq!(
-        allocation.vector_capacity(),
-        value.shared_code_units().capacity()
-    );
+    assert_eq!(allocation.vector_capacity(), value.retained_units());
     if c.stop().is_some() {
         c.require_document_string_for_disposal(allocation, value)
             .unwrap();
@@ -214,7 +208,7 @@ fn cancellation_after_real_tail_chunk_keeps_old_text_and_actual_growth_and_first
         panic!("text")
     };
     assert!(
-        native.shared_code_units().capacity() >= 302,
+        native.retained_units() >= 302,
         "actual growth survives rollback"
     );
     exact_current_ticket(&session, &mut c, &node);
@@ -233,7 +227,7 @@ fn external_weak_preservation_and_detached_append_keep_current_ticket_and_histor
         else {
             panic!("text")
         };
-        Arc::downgrade(value.shared_code_units())
+        value.block().downgrade()
     };
     let mut input = Some(owned_text(&mut c, &[0, 0xd800]));
     session
@@ -356,7 +350,7 @@ fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work
                                     else {
                                         panic!("text")
                                     };
-                                    let capacity = value.shared_code_units().capacity();
+                                    let capacity = value.retained_units();
                                     let address = value.code_units().as_ptr() as usize;
                                     if old_capacity != 0
                                         && (capacity != old_capacity || address != old_address)

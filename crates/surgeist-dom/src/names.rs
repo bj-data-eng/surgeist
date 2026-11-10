@@ -446,7 +446,7 @@ mod materialization_tests {
     #[test]
     fn unchanged_no_split_and_ascii_casing_preserve_identity_or_materialize_once() {
         let raw = DocumentString::from_utf16([0xd800, 0x61, 0xdc00]);
-        let original = raw.shared_code_units().clone();
+        let original = raw.to_shared_utf16();
         let mut count = 0;
         let name = attribute_name(
             &(Namespace::none()),
@@ -459,10 +459,7 @@ mod materialization_tests {
             &mut |value| Ok(value.clone()),
         )
         .unwrap();
-        assert!(Arc::ptr_eq(
-            &original,
-            name.local_name().shared_code_units()
-        ));
+        assert!(Arc::ptr_eq(&original, &name.local_name().to_shared_utf16()));
         let same = ascii_lowercase(
             &(name.local_name().clone()),
             &mut || Ok(()),
@@ -473,7 +470,7 @@ mod materialization_tests {
             &mut |value| Ok(value.clone()),
         )
         .unwrap();
-        assert!(Arc::ptr_eq(&original, same.shared_code_units()));
+        assert!(Arc::ptr_eq(&original, &same.to_shared_utf16()));
         assert_eq!(count, 0);
         let mixed = DocumentString::from_utf16([0x41, 0xd800, 0x3a, 0x5a, 0xdc00]);
         let mut calls = Vec::new();

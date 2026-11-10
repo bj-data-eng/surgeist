@@ -30,7 +30,7 @@ pub(super) fn check_formatting_text(
     control.require_document_string(text.value.allocation(), text.value.text())?;
     text.origins.require_disposal_owner(control)?;
     control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-    if Arc::strong_count(text.value.text().shared_code_units()) != 1 {
+    if text.value.text().block().holders() != 1 {
         return Err(SessionError::AliasedPayload);
     }
     control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

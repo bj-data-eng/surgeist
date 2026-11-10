@@ -1,5 +1,5 @@
 //! Exact language observations from an independently stored borrowed input.
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc};
 use surgeist_html::bounded::native::{HtmlElementNameRead, element_classification_with};
 use surgeist_html::{
     elements::native::HtmlElementClass,
@@ -170,18 +170,20 @@ fn retained_individual_evidence_preserves_raw_units_prefix_and_backing() {
     let evidence = report.raw_attribute().unwrap();
     assert_eq!(evidence.value().code_units(), &[0xd800, 0, 0xdc00]);
     assert_eq!(evidence.name().prefix().unwrap().code_units(), &[]);
-    assert!(Arc::ptr_eq(
-        evidence.value().shared_code_units(),
-        raw.value.shared_code_units()
-    ));
-    assert!(Arc::ptr_eq(
-        report.element().local_name().shared_code_units(),
-        element.local.shared_code_units()
-    ));
-    assert!(Arc::ptr_eq(
-        report.element().prefix().unwrap().shared_code_units(),
-        element.prefix.as_ref().unwrap().shared_code_units()
-    ));
+    assert!(evidence.value().shares_storage_with(&raw.value));
+    assert!(
+        report
+            .element()
+            .local_name()
+            .shares_storage_with(&element.local)
+    );
+    assert!(
+        report
+            .element()
+            .prefix()
+            .unwrap()
+            .shares_storage_with(element.prefix.as_ref().unwrap())
+    );
 }
 
 struct Bank {
@@ -245,14 +247,13 @@ fn script_type_admits_original_language_even_when_type_would_override_it() {
         admitted.language_attribute().unwrap().value().code_units(),
         &"too-long".encode_utf16().collect::<Vec<_>>()
     );
-    assert!(Arc::ptr_eq(
+    assert!(
         admitted
             .language_attribute()
             .unwrap()
             .value()
-            .shared_code_units(),
-        rows[1].value.shared_code_units()
-    ));
+            .shares_storage_with(&rows[1].value)
+    );
 }
 
 #[test]

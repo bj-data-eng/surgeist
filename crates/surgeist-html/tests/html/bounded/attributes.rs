@@ -59,12 +59,12 @@ fn shared_utf16_adoption_and_cloning_preserve_exact_units_and_actual_capacity() 
     let mut units = Vec::with_capacity(23);
     units.extend([0xd800, 0, 32, 0xdfff, 0xd83d, 0xde00]);
     let backing = Arc::new(units);
-    let value = DocumentString::from_shared_code_units(backing.clone());
+    let value = DocumentString::from_shared_utf16(backing.clone());
     let alias = value.clone();
-    assert!(Arc::ptr_eq(value.shared_code_units(), &backing));
-    assert!(Arc::ptr_eq(alias.shared_code_units(), &backing));
+    assert!(Arc::ptr_eq(&value.to_shared_utf16(), &backing));
+    assert!(Arc::ptr_eq(&alias.to_shared_utf16(), &backing));
     assert_eq!(value.code_units(), [0xd800, 0, 32, 0xdfff, 0xd83d, 0xde00]);
-    assert_eq!(value.shared_code_units().capacity(), backing.capacity());
+    assert_eq!(value.retained_units(), backing.capacity());
     assert_eq!(value.to_utf8().unwrap_err().code_unit_offset(), 0);
     assert_eq!(
         alias.code_points().collect::<Vec<_>>(),

@@ -16,7 +16,7 @@ struct OriginalPolicy {
 }
 impl HtmlCspPolicyArtifact for OriginalPolicy {
     fn retained_layout(&self) -> HtmlCspArtifactLayout {
-        let extent = self.content.shared_code_units().capacity();
+        let extent = self.content.retained_units();
         HtmlCspArtifactLayout::try_new(
             HtmlCspStorage::try_new(
                 size_of::<Self>() + size_of::<Vec<u16>>() + extent * 2,

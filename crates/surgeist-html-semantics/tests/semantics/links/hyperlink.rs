@@ -181,7 +181,7 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
     let mut raw = Vec::with_capacity(40);
     raw.push(65);
     let raw = DocumentString::from_utf16(raw);
-    let raw_extent = raw.shared_code_units().capacity();
+    let raw_extent = raw.retained_units();
     let mut observations = Vec::with_capacity(8);
     observations.push(HtmlEncodingUrlParseObservation::new(
         raw.clone(),
@@ -215,7 +215,7 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
     assert_eq!(formed.formation_usage().record_capacity(), capacity);
     assert_eq!(
         formed.formation_usage().utf16_extent(),
-        base.serialization().shared_code_units().capacity() + raw_extent
+        base.serialization().retained_units() + raw_extent
     );
     // The base string 1, the chains of one observation 2 and the hash of its one
     // unit 1, then the observation 1, its retained string 1 and its duplicate
@@ -252,7 +252,7 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
     assert!(
         make(HtmlBaseFactsLimits::new(
             8,
-            base.serialization().shared_code_units().capacity() + raw_extent,
+            base.serialization().retained_units() + raw_extent,
             6
         ))
         .is_ok()
@@ -591,7 +591,7 @@ fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
         None,
     )
     .unwrap();
-    let result_extent = result.serialization().shared_code_units().capacity();
+    let result_extent = result.serialization().retained_units();
     let mut observations = Vec::with_capacity(32);
     observations.push(HtmlEncodingUrlParseObservation::new(
         "".into(),
@@ -613,7 +613,7 @@ fn chosen_snapshot_retains_only_its_row_and_accepts_present_empty_success() {
     assert_eq!(snapshot.url(), Some(&result));
     assert_eq!(
         snapshot.retained_utf16_extent(),
-        base.serialization().shared_code_units().capacity() + result_extent
+        base.serialization().retained_units() + result_extent
     );
     assert!(snapshot.retained_utf16_extent() < facts.formation_usage().utf16_extent());
     assert_eq!(facts.formation_usage().record_capacity(), 32);
@@ -654,7 +654,7 @@ fn padded_snapshot_input(value: &str, capacity: usize) -> DocumentString {
 
 #[test]
 fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
-    use std::{cell::Cell, sync::Arc};
+    use std::cell::Cell;
     let producer = HtmlBaseProducerId::fresh();
     let historical = rev(&producer, 1);
     let current = rev(&producer, 3);
@@ -679,24 +679,21 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
         let literal = if success { "x" } else { "http://[" };
         let selected_raw = padded_snapshot_input(literal, 251);
         let href: DocumentString = literal.into();
-        assert_ne!(
-            selected_raw.shared_code_units().capacity(),
-            href.shared_code_units().capacity()
-        );
+        assert_ne!(selected_raw.retained_units(), href.retained_units());
         let outcome = if success {
             HtmlEncodingUrlParseOutcome::Parsed(parsed.clone())
         } else {
             HtmlEncodingUrlParseOutcome::Failure
         };
         let result_usage = success.then(|| parsed.retained_storage_usage());
-        let expected_units = selected_raw.shared_code_units().capacity()
+        let expected_units = selected_raw.retained_units()
             + base.retained_storage_usage().utf16_extent()
             + result_usage.map_or(0, |usage| usage.utf16_extent());
         // The receipt documents Self plus the selected raw Vec header/backing
         // and the two opaque URL owners' independently issued payload receipts.
         let expected_bytes = size_of::<HtmlHyperlinkUrlSnapshot>()
             + size_of::<Vec<u16>>()
-            + selected_raw.shared_code_units().capacity() * size_of::<u16>()
+            + selected_raw.retained_units() * size_of::<u16>()
             + base.retained_storage_usage().retained_bytes()
             + result_usage.map_or(0, |usage| usage.retained_bytes());
         for unrelated in [false, true] {
@@ -726,7 +723,7 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
                 (expected_bytes - 1, expected_units, Some("bytes")),
                 (expected_bytes, expected_units - 1, Some("utf16")),
             ] {
-                let before = Arc::strong_count(selected_raw.shared_code_units());
+                let before = selected_raw.block().holders();
                 let calls = Cell::new(0);
                 let result = bank.resolve_hyperlink_with(
                     &href,
@@ -736,7 +733,7 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
                     || Ok::<_, &'static str>(()),
                     |usage| {
                         calls.set(calls.get() + 1);
-                        assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+                        assert_eq!(selected_raw.block().holders(), before);
                         assert_eq!(usage.retained_bytes(), expected_bytes);
                         assert_eq!(usage.utf16_extent(), expected_units);
                         if usage.retained_bytes() > bytes {
@@ -751,22 +748,13 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
                 assert_eq!(calls.get(), 1);
                 if let Some(error) = expected_error {
                     assert_eq!(result, Err(HtmlEncodingUrlLookupError::Interrupted(error)));
-                    assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+                    assert_eq!(selected_raw.block().holders(), before);
                     continue;
                 }
                 let snapshot = result.unwrap();
-                assert_eq!(
-                    Arc::strong_count(selected_raw.shared_code_units()),
-                    before + 1
-                );
-                assert!(Arc::ptr_eq(
-                    snapshot.raw().shared_code_units(),
-                    selected_raw.shared_code_units()
-                ));
-                assert!(!Arc::ptr_eq(
-                    snapshot.raw().shared_code_units(),
-                    href.shared_code_units()
-                ));
+                assert_eq!(selected_raw.block().holders(), before + 1);
+                assert!(snapshot.raw().shares_storage_with(&selected_raw));
+                assert!(!snapshot.raw().shares_storage_with(&href));
                 assert_eq!(snapshot.base(), &base);
                 assert_eq!(snapshot.base().revision(), &historical);
                 assert_eq!(snapshot.encoding(), &encoding);
@@ -781,7 +769,7 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
                     expected_units
                 );
                 drop(snapshot);
-                assert_eq!(Arc::strong_count(selected_raw.shared_code_units()), before);
+                assert_eq!(selected_raw.block().holders(), before);
             }
         }
     }
@@ -791,15 +779,12 @@ fn selected_snapshot_admission_counts_actual_selected_backing_before_sharing() {
 fn snapshot_final_admission_cancellation_preserves_original_tariff_and_no_retained_raw() {
     use std::{
         cell::Cell,
-        sync::{
-            Arc,
-            atomic::{AtomicBool, Ordering},
-        },
+        sync::atomic::{AtomicBool, Ordering},
     };
     let raw = padded_snapshot_input("abcd", 257);
     let bank = facts(raw.clone(), HtmlEncodingUrlParseOutcome::Failure);
     let href: DocumentString = "abcd".into();
-    let before = Arc::strong_count(raw.shared_code_units());
+    let before = raw.block().holders();
     let cancelled = AtomicBool::new(false);
     let steps = Cell::new(0);
     let retained = Cell::new(0);
@@ -818,7 +803,7 @@ fn snapshot_final_admission_cancellation_preserves_original_tariff_and_no_retain
         },
         |_| {
             retained.set(retained.get() + 1);
-            assert_eq!(Arc::strong_count(raw.shared_code_units()), before);
+            assert_eq!(raw.block().holders(), before);
             if cancelled.load(Ordering::Relaxed) {
                 Err("cancelled")
             } else {
@@ -832,7 +817,7 @@ fn snapshot_final_admission_cancellation_preserves_original_tariff_and_no_retain
     );
     assert_eq!(steps.get(), 7);
     assert_eq!(retained.get(), 1);
-    assert_eq!(Arc::strong_count(raw.shared_code_units()), before);
+    assert_eq!(raw.block().holders(), before);
 }
 
 #[test]

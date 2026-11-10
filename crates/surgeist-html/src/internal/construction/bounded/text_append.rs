@@ -46,7 +46,7 @@ impl HtmlConstructionTextAppendCapacity {
     fn of(value: &DocumentString) -> Self {
         Self {
             initialized_len: value.len(),
-            capacity: value.shared_code_units().capacity(),
+            capacity: value.retained_units(),
             data_address: value.code_units().as_ptr() as usize,
         }
     }
@@ -383,7 +383,8 @@ fn truncate_tail(
     let Some(value) = text_of_mut(storage, index) else {
         return Ok(());
     };
-    let backing = Arc::get_mut(value.construction_backing_mut())
+    let backing = value
+        .unique_units_mut()
         .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
     backing.truncate(old_len);
     Ok(())
@@ -867,7 +868,7 @@ fn advance_progress(
             *progress = Progress::Select(target);
             let original =
                 text_of_mut(storage, target.index).ok_or(HtmlConstructionCause::WrongNodeKind)?;
-            let preserve = Arc::get_mut(original.construction_backing_mut()).is_none();
+            let preserve = original.unique_units_mut().is_none();
             *progress = if preserve {
                 Progress::Initialize(target)
             } else {
@@ -954,7 +955,8 @@ fn advance_progress(
                 let end = prefix + (target.old_len - prefix).min(CHUNK_UNITS);
                 let original =
                     text_of(storage, target.index).ok_or(HtmlConstructionCause::WrongNodeKind)?;
-                let backing = Arc::get_mut(copy.construction_backing_mut())
+                let backing = copy
+                    .unique_units_mut()
                     .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
                 backing.extend_from_slice(&original.code_units()[prefix..end]);
                 Ok(end)
@@ -1018,7 +1020,8 @@ fn run(
                 None => text_of_mut(storage, target.index)
                     .ok_or(HtmlConstructionCause::WrongNodeKind)?,
             };
-            let backing = Arc::get_mut(candidate.construction_backing_mut())
+            let backing = candidate
+                .unique_units_mut()
                 .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
             backing
                 .try_reserve_exact(minimum - backing.len())
@@ -1032,7 +1035,7 @@ fn run(
                 None => text_of_mut(storage, target.index)
                     .ok_or(HtmlConstructionCause::WrongNodeKind)?,
             };
-            if Arc::get_mut(candidate.construction_backing_mut()).is_none() {
+            if candidate.unique_units_mut().is_none() {
                 return Err(HtmlConstructionCause::SharedAllocationAliased.into());
             }
             Ok(Next::Step(if incoming.is_empty() {
@@ -1050,7 +1053,8 @@ fn run(
             };
             // The tail qualification proved the backing uniquely owned, and nothing runs
             // between it and these writes that could share it again.
-            let backing = Arc::get_mut(candidate.construction_backing_mut())
+            let backing = candidate
+                .unique_units_mut()
                 .ok_or(HtmlConstructionCause::SharedAllocationAliased)?;
             backing.extend_from_slice(&incoming.code_units()[start..end]);
             Ok(Next::Step(if end == incoming.len() {
@@ -1294,7 +1298,7 @@ mod tests {
             panic!("text")
         };
         assert_eq!(value.code_units().as_ptr() as usize, address);
-        assert_eq!(value.shared_code_units().capacity(), 512);
+        assert_eq!(value.retained_units(), 512);
     }
 
     #[test]
@@ -1306,10 +1310,7 @@ mod tests {
             append(storage, node, DocumentString::from("a"));
         assert_eq!((prefix, tail), (400, 1));
         let discarded = discarded.expect("preserved original backing");
-        assert!(Arc::ptr_eq(
-            discarded.shared_code_units(),
-            history.shared_code_units()
-        ));
+        assert!(discarded.shares_storage_with(&history));
         assert_eq!(history.code_units(), vec![0xd800; 400]);
         drop(discarded);
         let (storage, node, _, discarded, prefix, tail) =
@@ -1325,13 +1326,13 @@ mod tests {
     #[test]
     fn external_weak_requires_preservation_and_keeps_original_immutable() {
         let original = DocumentString::from("original");
-        let weak = Arc::downgrade(original.shared_code_units());
+        let weak = original.block().downgrade();
         let (storage, node) = make(HtmlNodeKind::Text(original));
         let (storage, node, _, discarded, prefix, tail) =
             append(storage, node, DocumentString::from("+"));
         assert_eq!((prefix, tail), (8, 1));
         assert_eq!(
-            weak.upgrade().unwrap().as_slice(),
+            weak.upgrade().unwrap().units(),
             "original".encode_utf16().collect::<Vec<_>>()
         );
         assert!(discarded.is_some());
@@ -1370,7 +1371,7 @@ mod tests {
         let HtmlNodeKind::Text(value) = storage.node(&node).unwrap().kind() else {
             panic!("text")
         };
-        assert_eq!(value.shared_code_units().capacity(), before.capacity());
+        assert_eq!(value.retained_units(), before.capacity());
         assert_eq!(value.code_units().as_ptr() as usize, before.data_address());
     }
 
@@ -1393,11 +1394,8 @@ mod tests {
         assert_eq!(text(&storage, &node), history.code_units());
         let pending = pending.expect("actual pending allocation");
         assert_eq!(pending.code_units(), vec![0xffff; 128]);
-        assert!(pending.shared_code_units().capacity() >= 301);
-        assert!(!Arc::ptr_eq(
-            pending.shared_code_units(),
-            history.shared_code_units()
-        ));
+        assert!(pending.retained_units() >= 301);
+        assert!(!pending.shares_storage_with(&history));
     }
 
     #[test]
@@ -1440,15 +1438,12 @@ mod tests {
             expected.extend(std::iter::repeat_n(0xd800, tail_len));
             assert_eq!(pending.code_units(), expected);
             assert_eq!(pending.len(), actual.initialized_len());
-            assert_eq!(pending.shared_code_units().capacity(), actual.capacity());
+            assert_eq!(pending.retained_units(), actual.capacity());
             assert_eq!(
                 pending.code_units().as_ptr() as usize,
                 actual.data_address()
             );
-            assert!(!Arc::ptr_eq(
-                pending.shared_code_units(),
-                history.shared_code_units()
-            ));
+            assert!(!pending.shares_storage_with(&history));
         }
     }
 
@@ -1462,7 +1457,7 @@ mod tests {
         let observation = owner.next_action().unwrap().unwrap().perform(None).unwrap();
         let actual = observation.backing().expect("real empty pending backing");
         assert!(actual.is_empty());
-        let weak = Arc::downgrade(actual.shared_code_units());
+        let weak = actual.block().downgrade();
         assert_eq!(
             observation.capacity().unwrap().wrapper_payload_bytes(),
             size_of::<Vec<u16>>()
@@ -1476,7 +1471,7 @@ mod tests {
             vec![7; 300]
         );
         assert_eq!(action.backing().unwrap().code_units(), vec![7; 300]);
-        let weak = Arc::downgrade(action.backing().unwrap().shared_code_units());
+        let weak = action.backing().unwrap().block().downgrade();
         drop(weak);
         action.perform(None).unwrap().accept();
         drive_to(&mut owner, Phase::Ready);
@@ -1499,8 +1494,7 @@ mod tests {
             drive_to(&mut owner, Phase::Preflight);
             let action = owner.next_action().unwrap().unwrap();
             let alias = (!weak_only).then(|| action.backing().unwrap().clone());
-            let weak =
-                weak_only.then(|| Arc::downgrade(action.backing().unwrap().shared_code_units()));
+            let weak = weak_only.then(|| action.backing().unwrap().block().downgrade());
             action.perform(None).unwrap().accept();
             assert!(matches!(
                 owner.next_action().unwrap().unwrap().perform(None),
@@ -1621,9 +1615,7 @@ mod tests {
     fn abort_refuses_a_backing_another_holder_shares_and_succeeds_once_it_is_alone() {
         let mut units = Vec::with_capacity(8);
         units.push(u16::from(b'x'));
-        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_shared_code_units(
-            Arc::new(units),
-        )));
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_utf16(units)));
         let mut owner =
             HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("yz"));
         drive_to(&mut owner, Phase::Commit);

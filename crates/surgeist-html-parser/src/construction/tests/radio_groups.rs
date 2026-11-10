@@ -410,7 +410,7 @@ fn radio_managed_alias_refusal_preserves_original_then_retry_reclaims_all_owners
         .value
         .value
         .text()
-        .shared_code_units()
+        .code_units()
         .as_ptr();
     let HtmlNodeKind::Element(e) = &session
         .active()
@@ -434,7 +434,7 @@ fn radio_managed_alias_refusal_preserves_original_then_retry_reclaims_all_owners
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr(),
         pointer
     );
@@ -670,7 +670,7 @@ fn radio_name_setter_work_boundaries_keep_original_or_committed_registry_owner_a
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let remaining = request.limits().work_credits()
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -690,10 +690,7 @@ fn radio_name_setter_work_boundaries_keep_original_or_committed_registry_owner_a
                 Some(SessionError::Stop(first))
             );
             if let Some(attr) = &attr {
-                assert_eq!(
-                    attr.value.value.text().shared_code_units().as_ptr(),
-                    pointer
-                );
+                assert_eq!(attr.value.value.text().code_units().as_ptr(), pointer);
             }
         }
         if let Some(attr) = attr.take() {

@@ -96,13 +96,7 @@ fn textarea_raw_is_independent_exact_child_text_and_retired_backing_is_disposed(
     else {
         panic!("text")
     };
-    assert!(!Arc::ptr_eq(
-        native.shared_code_units(),
-        session
-            .textarea_raw_value(&mut c, &node)
-            .unwrap()
-            .shared_code_units()
-    ));
+    assert!(!native.shares_storage_with(session.textarea_raw_value(&mut c, &node).unwrap()));
     let mut b = next_text(&mut tokenizer, &mut c);
     session
         .insert_text(&mut c, &node, None, &mut b, None)
@@ -312,12 +306,11 @@ fn textarea_raw_extension_has_exact_42_unit_admission_and_retained_terminal_pref
 
 /// The address of the raw value's shared backing, which an in-place extension keeps.
 fn raw_backing(session: &mut ParserArenaSession, c: &mut ParseControl, node: &ParserNode) -> usize {
-    Arc::as_ptr(
-        session
-            .textarea_raw_value(c, node)
-            .unwrap()
-            .shared_code_units(),
-    ) as usize
+    session
+        .textarea_raw_value(c, node)
+        .unwrap()
+        .block()
+        .address()
 }
 
 #[test]
@@ -528,12 +521,11 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
             .current,
         staged
     );
-    let old = Arc::downgrade(
-        session
-            .textarea_raw_value(&mut c, &node)
-            .unwrap()
-            .shared_code_units(),
-    );
+    let old = session
+        .textarea_raw_value(&mut c, &node)
+        .unwrap()
+        .block()
+        .downgrade();
     for _ in 0..5 {
         session.parser_stack_removed(&mut c, &node, None).unwrap();
     }
@@ -553,12 +545,11 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
             .current,
         38
     );
-    let current = Arc::downgrade(
-        session
-            .textarea_raw_value(&mut c, &node)
-            .unwrap()
-            .shared_code_units(),
-    );
+    let current = session
+        .textarea_raw_value(&mut c, &node)
+        .unwrap()
+        .block()
+        .downgrade();
     let current_slot = session.textarea_state(&mut c, &node).unwrap().raw;
     let result = session.parser_stack_removed(&mut c, &node, None);
     let first = c.stop().unwrap();
@@ -618,7 +609,7 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
             &mut c,
             &[116, 101, 120, 116, 97, 114, 101, 97],
         );
-        let backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
+        let backing = tag.name.value.text().block().address();
         let mut input = Some(tag);
         session.allocate_implicit_body(&mut c, None).unwrap();
         let held = c
@@ -635,15 +626,7 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         let taken = input.is_none();
         if !taken {
             assert_eq!(
-                Arc::as_ptr(
-                    input
-                        .as_ref()
-                        .unwrap()
-                        .name
-                        .value
-                        .text()
-                        .shared_code_units()
-                ),
+                input.as_ref().unwrap().name.value.text().block().address(),
                 backing,
                 "a tag refused before the take keeps its own name backing"
             );

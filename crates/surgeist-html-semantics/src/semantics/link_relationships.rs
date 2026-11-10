@@ -501,8 +501,7 @@ impl FactsAdmission {
     fn raw(&mut self, raw: &DocumentString) -> Result<(), HtmlRelFactsError> {
         self.work(1)?;
         let bytes = raw
-            .shared_code_units()
-            .capacity()
+            .retained_units()
             .checked_mul(2)
             .and_then(|n| {
                 n.checked_add(std::mem::size_of::<Vec<u16>>() + 2 * std::mem::size_of::<usize>())

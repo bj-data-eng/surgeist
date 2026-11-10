@@ -561,7 +561,7 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
         inputs.owner = Some(supplied.owner);
         inputs.disabled = supplied.disabled;
         if let Some(title) = &self.request.title {
-            inputs.title = title.shared_code_units().clone();
+            inputs.title = title.to_shared_utf16();
         }
         let mut batch = self.batch.take().expect("one unattempted construction");
         let construction = batch

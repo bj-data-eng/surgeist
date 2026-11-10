@@ -32,7 +32,7 @@ fn fixture() -> (custody::Ledger, bank::CustodyRegistry, Registry) {
 fn own_bytes(text: &DocumentString) -> usize {
     size_of::<NameRecord>()
         + size_of::<Vec<u16>>()
-        + text.shared_code_units().capacity() * size_of::<u16>()
+        + text.retained_units() * size_of::<u16>()
         + size_of::<custody::Debit>()
 }
 fn assert_raw_local(registry: &Registry) {
@@ -42,10 +42,7 @@ fn assert_raw_local(registry: &Registry) {
     let mut records = custody::Usage::ZERO;
     for row in state.index.inspect_rows() {
         let record = row.record.upgrade().expect("live raw record witness");
-        let raw = custody::Usage::new(
-            own_bytes(record.text()),
-            record.text().shared_code_units().capacity(),
-        );
+        let raw = custody::Usage::new(own_bytes(record.text()), record.text().retained_units());
         assert_eq!(row.own, raw);
         assert_eq!(row._custody.identity(), record.identity());
         assert_eq!(
@@ -79,10 +76,11 @@ fn exact_text_has_one_owner_identity_and_tokens_do_not_retain_the_owner() {
     .publish();
     assert_eq!(left, right);
     assert_eq!(left.identity(), right.identity());
-    assert!(!Arc::ptr_eq(
-        left.text().shared_code_units(),
-        DocumentString::from_utf16(vec![0xd800, 0, 0x61]).shared_code_units()
-    ));
+    assert!(
+        !left
+            .text()
+            .shares_storage_with(&DocumentString::from_utf16(vec![0xd800, 0, 0x61]))
+    );
     let different = admitted(|admission| {
         operation.reserve(DocumentString::from_utf16(vec![0xd801, 0, 0x61]), admission)
     })
@@ -427,7 +425,7 @@ fn dead_weak_retains_record_receipt_until_incremental_cleanup_but_not_string_bac
     let (ledger, control, registry) = fixture();
     let operation = admitted(|admission| registry.begin(None, admission)).unwrap();
     let text = DocumentString::from_utf16(vec![1, 2, 3]);
-    let backing = Arc::downgrade(text.shared_code_units());
+    let backing = text.block().downgrade();
     let atom = admitted(|admission| operation.reserve(text, admission))
         .unwrap()
         .publish();
@@ -995,11 +993,7 @@ fn normalized_name_conversion_admits_actual_scratch_and_charges_each_completed_u
         .units(&[65, 66, 0xd800, 0], true, None, &AtomicBool::new(false))
         .unwrap();
     assert_eq!(value.code_units(), &[97, 98, 0xd800, 0]);
-    assert_eq!(
-        value.shared_code_units().capacity(),
-        4,
-        "actual exact-capacity premise"
-    );
+    assert_eq!(value.retained_units(), 4, "actual exact-capacity premise");
     assert_eq!(
         *operation.scope.work.lock().unwrap(),
         4,

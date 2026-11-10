@@ -169,7 +169,7 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
             .attribute(&"data-retained".into())
             .unwrap();
         assert_eq!(retained.code_units(), &[u16::from(b'x')]);
-        let actual_capacity = retained.shared_code_units().capacity();
+        let actual_capacity = retained.retained_units();
         let byte_limit = if spare == PADDED {
             let limit = actual_capacity
                 .checked_mul(std::mem::size_of::<u16>())
@@ -214,7 +214,7 @@ fn source_retained_bytes_cover_actual_spare_attribute_backing() {
                 .attribute(&"data-retained".into())
                 .unwrap();
             assert_eq!(retained.code_units(), &[u16::from(b'x')]);
-            assert_eq!(retained.shared_code_units().capacity(), actual_capacity);
+            assert_eq!(retained.retained_units(), actual_capacity);
         }
         assert_eq!(before.node(style).unwrap().parent(), None);
     }
@@ -2008,7 +2008,7 @@ fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
             create
                 .source()
                 .media()
-                .map_or_else(Arc::default, |value| value.shared_code_units().clone()),
+                .map_or_else(Arc::default, |value| value.to_shared_utf16()),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
@@ -2818,7 +2818,7 @@ fn admitted_inert_parser_style_continues_after_creation_to_render_context() {
         .unwrap();
     let media = CssMediaQueryList::parse_utf16(
         &CssParser::new(parser, Default::default()),
-        create.source().media().unwrap().shared_code_units().clone(),
+        create.source().media().unwrap().to_shared_utf16(),
         CssUtf16InputLimits::default(),
         || Ok::<_, ()>(()),
     )

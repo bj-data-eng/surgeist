@@ -21,7 +21,7 @@ impl ParseControl {
             (
                 HtmlParseWorkCategory::CopyByte,
                 const {
-                    (size_of::<u64>() + size_of::<usize>() + size_of::<Option<Weak<Vec<u16>>>>())
+                    (size_of::<u64>() + size_of::<usize>() + size_of::<Option<WeakTextBlock>>())
                         as u64
                 },
             ),
@@ -36,7 +36,7 @@ impl ParseControl {
             (HtmlParseWorkCategory::ProviderCall, 1),
             (
                 HtmlParseWorkCategory::CopyByte,
-                size_of::<Option<Weak<Vec<u16>>>>() as u64,
+                size_of::<Option<WeakTextBlock>>() as u64,
             ),
             (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
@@ -81,7 +81,7 @@ impl ParseControl {
         self.charge_many(&[
             (
                 HtmlParseWorkCategory::CopyByte,
-                size_of::<Option<Weak<Vec<u16>>>>() as u64,
+                size_of::<Option<WeakTextBlock>>() as u64,
             ),
             (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
@@ -304,7 +304,7 @@ impl ParseControl {
                 HtmlParseInvariant::ReleaseUnderflow,
             ));
         };
-        if allocation.vector_capacity != value.shared_code_units().capacity() {
+        if allocation.vector_capacity != value.retained_units() {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::CapacityMismatch,
             ));
@@ -312,7 +312,7 @@ impl ParseControl {
         self.cleanup_storage(allocation.resource, discarded, 0)?;
         allocation.units = kept;
         allocation.data_pointer = value.code_units().as_ptr() as usize;
-        allocation.backing = Some(Arc::downgrade(value.shared_code_units()));
+        allocation.backing = Some(value.block().downgrade());
         Ok(())
     }
 }

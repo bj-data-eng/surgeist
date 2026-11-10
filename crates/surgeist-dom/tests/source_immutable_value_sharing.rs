@@ -182,10 +182,7 @@ fn source_attribute_banks_share_and_text_survives_preflight_restore_and_replay()
     assert_eq!(text(&after_text, child).code_units(), [98, 123, 125]);
     assert_eq!(text(&before, child).code_units(), [97, 123, 125]);
     assert_eq!(text(&after_attribute, child).code_units(), [97, 123, 125]);
-    assert!(Arc::ptr_eq(
-        text(&after_text, child).shared_code_units(),
-        text(&after_text, seed_text).shared_code_units()
-    ));
+    assert!(text(&after_text, child).shares_storage_with(text(&after_text, seed_text)));
     assert!(std::ptr::eq(
         bank(&after_attribute, style),
         bank(&after_text, style)
@@ -422,10 +419,7 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
     assert_eq!(dom.pending_source_edit().unwrap().operation(), parent);
     assert!(dom.pending_source_edit().unwrap().spent_work() > work_before);
     assert!(std::ptr::eq(bank(&child, target), bank(&child, seed)));
-    assert!(Arc::ptr_eq(
-        text(&child, target_text).shared_code_units(),
-        text(&child, seed_text).shared_code_units()
-    ));
+    assert!(text(&child, target_text).shares_storage_with(text(&child, seed_text)));
     drop(scope);
     assert_eq!(dom.source_dispatch_blocker(), Some(parent));
     let mut permit = Some(permit);
@@ -471,10 +465,7 @@ fn reentrant_child_values_survive_parent_observation_discard_and_canceled_resume
         bank(&after, target),
         bank(&after, later_element)
     ));
-    assert!(Arc::ptr_eq(
-        text(&child, target_text).shared_code_units(),
-        text(&after, later_text).shared_code_units()
-    ));
+    assert!(text(&child, target_text).shares_storage_with(text(&after, later_text)));
 }
 
 #[test]
@@ -490,7 +481,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         let node = done.created(&node).unwrap().unwrap();
         let before = dom.snapshot();
         let value = raw("discarded-candidate");
-        let weak = Arc::downgrade(value.shared_code_units());
+        let weak = value.block().downgrade();
         let edit = if attribute {
             DomSourceEdit::set_attribute(element, "data-shared", value)
         } else {
@@ -527,10 +518,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
             bank(&before, element),
             bank(&after_refusal, element)
         ));
-        assert!(Arc::ptr_eq(
-            text(&before, node).shared_code_units(),
-            text(&after_refusal, node).shared_code_units()
-        ));
+        assert!(text(&before, node).shares_storage_with(text(&after_refusal, node)));
         let edit = if attribute {
             DomSourceEdit::set_attribute(element, "data-shared", raw("kept"))
         } else {
@@ -551,10 +539,7 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
         } else {
             text(&published, node)
         };
-        assert!(
-            equal_with_spare.shared_code_units().capacity()
-                > current.shared_code_units().capacity()
-        );
+        assert!(equal_with_spare.retained_units() > current.retained_units());
         let unchanged = if attribute {
             DomSourceEdit::set_attribute(element, "data-shared", equal_with_spare)
         } else {
@@ -573,9 +558,6 @@ fn refused_source_candidates_cancel_cleanly_and_semantic_noops_preserve_backing(
             bank(&published, element),
             bank(&after_noop, element)
         ));
-        assert!(Arc::ptr_eq(
-            text(&published, node).shared_code_units(),
-            text(&after_noop, node).shared_code_units()
-        ));
+        assert!(text(&published, node).shares_storage_with(text(&after_noop, node)));
     }
 }

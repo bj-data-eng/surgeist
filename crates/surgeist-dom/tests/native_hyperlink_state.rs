@@ -444,9 +444,9 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
     let units = dom.usage().string_code_units();
     let additional = 4
         + 7
-        + raw.shared_code_units().capacity()
-        + fallback.serialization().shared_code_units().capacity()
-        + url.serialization().shared_code_units().capacity(); // logical href storage plus actual retained cache backing capacities.
+        + raw.retained_units()
+        + fallback.serialization().retained_units()
+        + url.serialization().retained_units(); // logical href storage plus actual retained cache backing capacities.
     dom.set_limits(policy(records, 1_000_000, units + additional - 1))
         .unwrap();
     let old = dom.snapshot();

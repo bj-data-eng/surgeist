@@ -391,7 +391,7 @@ fn ascii(value: &DocumentString, expected: &str, p: &Processing<'_>) -> Result<b
     Ok(true)
 }
 fn same_text(a: &DocumentString, b: &DocumentString, p: &Processing<'_>) -> Result<bool, DomError> {
-    if Arc::ptr_eq(a.shared_code_units(), b.shared_code_units()) {
+    if a.shares_storage_with(b) {
         return Ok(true);
     }
     if a.len() != b.len() {
@@ -853,9 +853,7 @@ impl Dom {
                 owner: packet.value().owner().clone(),
                 local_name: "style".into(),
                 namespace: None,
-                value: Some(CssomStyleAttributeInput::Utf16(
-                    value.shared_code_units().clone(),
-                )),
+                value: Some(CssomStyleAttributeInput::Utf16(value.to_shared_utf16())),
                 echo: None,
             };
             if let Some(prepared) = batch.prepare_created_style_attribute_change(

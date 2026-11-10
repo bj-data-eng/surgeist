@@ -1187,7 +1187,7 @@ impl Dom {
                     namespace: None,
                     value: value
                         .as_ref()
-                        .map(|v| CssomStyleAttributeInput::Utf16(v.shared_code_units().clone())),
+                        .map(|v| CssomStyleAttributeInput::Utf16(v.to_shared_utf16())),
                     echo: None,
                 };
                 if let Some(prepared) = batch.prepare_style_attribute_change(

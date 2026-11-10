@@ -590,7 +590,7 @@ impl<'caps> DomParsedHtmlMetaPreparation<'_, '_, 'caps> {
         let mut name_units = 0usize;
         for occurrence in &self.occurrences {
             meter.step(cancel)?;
-            let capacity = occurrence.content.shared_code_units().capacity();
+            let capacity = occurrence.content.retained_units();
             name_units = name_units
                 .checked_add(capacity)
                 .ok_or(DomError::RepresentationExhausted)?;

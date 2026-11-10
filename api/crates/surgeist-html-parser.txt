@@ -11,7 +11,7 @@ impl core::fmt::Display for surgeist_html_parser::HtmlColorProcessingError
 pub fn surgeist_html_parser::HtmlColorProcessingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlInputImageSource<'a>
 pub surgeist_html_parser::HtmlInputImageSource::Absent
-pub surgeist_html_parser::HtmlInputImageSource::Present(&'a surgeist_html::internal::values::DocumentString)
+pub surgeist_html_parser::HtmlInputImageSource::Present(&'a surgeist_html::internal::values::document_string::DocumentString)
 pub enum surgeist_html_parser::HtmlInsertionMode
 pub surgeist_html_parser::HtmlInsertionMode::AfterAfterBody
 pub surgeist_html_parser::HtmlInsertionMode::AfterAfterFrameset
@@ -761,7 +761,7 @@ pub fn surgeist_html_parser::HtmlParseAssociationCapturedObservation<'_>::role(&
 pub struct surgeist_html_parser::HtmlParseAssociationContext<'a>
 impl<'a> surgeist_html_parser::HtmlParseAssociationContext<'a>
 pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::base_facts(&self) -> core::option::Option<&'a surgeist_html_semantics::base::HtmlParseBaseFacts>
-pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::base_input(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::base_input(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::base_observation(&self) -> core::option::Option<usize>
 pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::body_present(&self) -> core::option::Option<bool>
 pub fn surgeist_html_parser::HtmlParseAssociationContext<'a>::captured_context(&self) -> core::option::Option<&'a surgeist_html_semantics::semantics::base::HtmlDocumentEncodingUrlContext>
@@ -790,13 +790,13 @@ pub fn surgeist_html_parser::HtmlParseAssociationDocument<'a>::last_occurrence(&
 pub fn surgeist_html_parser::HtmlParseAssociationDocument<'a>::occurrence_count(&self) -> usize
 pub struct surgeist_html_parser::HtmlParseAssociationOccurrence<'a>
 impl<'a> surgeist_html_parser::HtmlParseAssociationOccurrence<'a>
-pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::base_changed_input(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::base_changed_input(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::context(&self) -> surgeist_html_parser::HtmlParseAssociationContext<'a>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::document(&self) -> surgeist_html_parser::HtmlParseMetadataDocument<'a>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::id(&self) -> surgeist_html_parser::HtmlParseAssociationOccurrenceId
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::kind(&self) -> surgeist_html_parser::HtmlParseAssociationOccurrenceKind
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::next_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
-pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::preferred_name(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::preferred_name(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::previous_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::prior_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseAssociationOccurrenceId>
 pub fn surgeist_html_parser::HtmlParseAssociationOccurrence<'a>::prior_style(&self) -> core::option::Option<surgeist_html_parser::HtmlParseAssociationOccurrenceId>
@@ -808,14 +808,14 @@ impl<'a> surgeist_html_parser::HtmlParseCaused<'a> for surgeist_html_parser::Htm
 pub struct surgeist_html_parser::HtmlParseAssociationOccurrenceId
 pub struct surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>
 impl<'a> surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>
-pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::attribute(&self, attribute: surgeist_html::vocabulary::KnownHtmlAttribute) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::attribute(&self, attribute: surgeist_html::vocabulary::KnownHtmlAttribute) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::connected(&self) -> bool
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::creating_parser_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::in_document_tree(&self) -> bool
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::sheet_order(&self, index: usize) -> core::result::Result<core::option::Option<surgeist_html::internal::construction::HtmlNode<'a>>, surgeist_html_parser::HtmlParseUnresolvedReference>
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::sheet_order_len(&self) -> usize
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::state(&self) -> surgeist_html::internal::elements::style::HtmlStyleState
-pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::text(&self, index: usize) -> core::result::Result<core::option::Option<&'a surgeist_html::internal::values::DocumentString>, surgeist_html_parser::HtmlParseUnresolvedReference>
+pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::text(&self, index: usize) -> core::result::Result<core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>, surgeist_html_parser::HtmlParseUnresolvedReference>
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::text_len(&self) -> usize
 pub fn surgeist_html_parser::HtmlParseAssociationStyleInputs<'a>::type_eligible(&self) -> bool
 pub struct surgeist_html_parser::HtmlParseAssociations<'a>
@@ -931,7 +931,7 @@ pub fn surgeist_html_parser::HtmlParseDiagnostics<'_>::retained_record(&self, in
 pub struct surgeist_html_parser::HtmlParseDialog<'a>
 impl<'a> surgeist_html_parser::HtmlParseDialog<'a>
 pub fn surgeist_html_parser::HtmlParseDialog<'a>::disposition(&self) -> surgeist_html_parser::HtmlParseDialogDisposition<'a>
-pub fn surgeist_html_parser::HtmlParseDialog<'a>::return_value(&self) -> &'a surgeist_html::internal::values::DocumentString
+pub fn surgeist_html_parser::HtmlParseDialog<'a>::return_value(&self) -> &'a surgeist_html::internal::values::document_string::DocumentString
 pub struct surgeist_html_parser::HtmlParseDialogMissing<'a>
 impl<'a> surgeist_html_parser::HtmlParseDialogMissing<'a>
 pub fn surgeist_html_parser::HtmlParseDialogMissing<'a>::action(&self) -> surgeist_html::internal::elements::dialog::HtmlDialogAction
@@ -950,7 +950,7 @@ pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::csp_association(&self) -
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::disposition(&self, domain: surgeist_html_parser::HtmlParseMetaDomain) -> surgeist_html_parser::HtmlParseMetaDisposition<'a>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::document(&self) -> surgeist_html::internal::construction::HtmlNode<'a>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::first_missing(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetaMissing<'a>>
-pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::pragma_language(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::pragma_language(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::profile(&self) -> surgeist_html_parser::HtmlParseMetaProfile
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::referrer_policy(&self) -> surgeist_html::internal::attributes::HtmlReferrerPolicy
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::refresh(&self) -> surgeist_html_parser::HtmlParseMetaRefresh<'a>
@@ -1036,7 +1036,7 @@ pub fn surgeist_html_parser::HtmlParseHistoryOrigin<'_>::start(&self) -> usize
 pub struct surgeist_html_parser::HtmlParseHyperlink<'a>
 impl<'a> surgeist_html_parser::HtmlParseHyperlink<'a>
 pub fn surgeist_html_parser::HtmlParseHyperlink<'a>::document(&self) -> &surgeist_html_parser::HtmlParseMetadataDocument<'a>
-pub fn surgeist_html_parser::HtmlParseHyperlink<'a>::raw(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseHyperlink<'a>::raw(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseHyperlink<'a>::state(&self) -> &surgeist_html_parser::HtmlParseHyperlinkState<'a>
 impl<'a> surgeist_html_parser::HtmlParseCaused<'a> for surgeist_html_parser::HtmlParseHyperlink<'a>
 pub struct surgeist_html_parser::HtmlParseImage<'a>
@@ -1127,7 +1127,7 @@ pub struct surgeist_html_parser::HtmlParseMetadata<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetadata<'a>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::base_state(&self) -> core::option::Option<surgeist_html_parser::HtmlParseBaseState<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::common_state(&self) -> core::option::Option<surgeist_html::internal::elements::native_initialization::HtmlCommonState<core::convert::Infallible>>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::creation(&self) -> core::option::Option<(surgeist_html::internal::elements::custom_element_state::HtmlCustomElementState, core::option::Option<&'a surgeist_html::internal::values::DocumentString>)>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::creation(&self) -> core::option::Option<(surgeist_html::internal::elements::custom_element_state::HtmlCustomElementState, core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::dialog(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDialog<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_base_facts(&self) -> core::option::Option<&'a surgeist_html_semantics::base::HtmlParseBaseFacts>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::document_facts(&self) -> core::option::Option<(surgeist_html_semantics::capture::HtmlDocumentClass, bool, core::option::Option<surgeist_html::internal::construction::HtmlNode<'a>>)>
@@ -1143,14 +1143,14 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::link_parser_document(&self) 
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::node(&self) -> surgeist_html::internal::construction::HtmlNode<'a>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::node_document(&self) -> core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::option_nearest_select(&self) -> core::option::Option<core::option::Option<surgeist_html::internal::construction::HtmlNode<'a>>>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::pi_attribute(&self, index: usize) -> core::option::Option<(&'a surgeist_html::internal::values::DocumentString, &'a surgeist_html::internal::values::DocumentString)>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::pi_attribute(&self, index: usize) -> core::option::Option<(&'a surgeist_html::internal::values::document_string::DocumentString, &'a surgeist_html::internal::values::document_string::DocumentString)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::pi_attribute_count(&self) -> core::option::Option<usize>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::script_documents(&self) -> core::option::Option<(core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>, core::option::Option<surgeist_html_parser::HtmlParseMetadataDocument<'a>>)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::shadow(&self) -> core::option::Option<(bool, bool, bool)>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::style(&self) -> core::option::Option<surgeist_html_parser::HtmlParseStyle<'a>>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::template(&self) -> core::option::Option<surgeist_html_parser::HtmlParseTemplate<'a>>
 impl<'a> surgeist_html_parser::HtmlParseMetadata<'a>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::cryptographic_nonce(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::cryptographic_nonce(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::form_evidence(&self) -> core::option::Option<surgeist_html_parser::HtmlParseFormEvidence>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::form_kind(&self) -> core::option::Option<surgeist_html::internal::elements::form_association::HtmlNativeFormAssociationKind>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::form_owner(&self) -> core::option::Option<core::option::Option<surgeist_html::internal::construction::HtmlNode<'a>>>
@@ -1162,7 +1162,7 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_file_selection(&self) 
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_flags(&self) -> core::option::Option<&'a surgeist_html::internal::elements::input::HtmlInputFlags>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_image_coordinate(&self) -> core::option::Option<surgeist_html::internal::elements::input::HtmlInputImageCoordinate>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_image_source(&self) -> core::option::Option<surgeist_html_parser::HtmlInputImageSource<'a>>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_raw_value(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_raw_value(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::input_selected_files_empty(&self) -> core::option::Option<bool>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::option_flags(&self) -> core::option::Option<&'a surgeist_html::internal::elements::control_values::HtmlOptionFlags>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::output_default_override(&self) -> core::option::Option<surgeist_html_parser::HtmlParseOutputOverride>
@@ -1172,7 +1172,7 @@ pub fn surgeist_html_parser::HtmlParseMetadata<'a>::selectedcontent_disabled(&se
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::svg_script_origin(&self) -> core::option::Option<surgeist_html_parser::HtmlParseSvgScriptOrigin>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::svg_script_processed(&self) -> core::option::Option<bool>
 pub fn surgeist_html_parser::HtmlParseMetadata<'a>::textarea_flags(&self) -> core::option::Option<&'a surgeist_html::internal::elements::control_values::HtmlTextareaFlags>
-pub fn surgeist_html_parser::HtmlParseMetadata<'a>::textarea_raw_value(&self) -> core::option::Option<&'a surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlParseMetadata<'a>::textarea_raw_value(&self) -> core::option::Option<&'a surgeist_html::internal::values::document_string::DocumentString>
 pub struct surgeist_html_parser::HtmlParseMetadataCursor<'a>
 impl<'a> surgeist_html_parser::HtmlParseMetadataCursor<'a>
 pub fn surgeist_html_parser::HtmlParseMetadataCursor<'a>::advance(&mut self) -> surgeist_html_parser::HtmlParseMetadataStep<'a>
@@ -1299,7 +1299,7 @@ pub fn surgeist_html_parser::HtmlParseUsage::resource(&self, resource: surgeist_
 pub fn surgeist_html_parser::HtmlParseUsage::work(&self, category: surgeist_html_parser::HtmlParseWorkCategory) -> u64
 pub struct surgeist_html_parser::HtmlSource
 impl surgeist_html_parser::HtmlSource
-pub fn surgeist_html_parser::HtmlSource::as_utf16(&self) -> core::option::Option<&surgeist_html::internal::values::DocumentString>
+pub fn surgeist_html_parser::HtmlSource::as_utf16(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
 pub fn surgeist_html_parser::HtmlSource::as_utf8(&self) -> core::option::Option<&str>
 pub fn surgeist_html_parser::HtmlSource::coordinates(&self) -> surgeist_html_parser::HtmlSourceCoordinates
 pub fn surgeist_html_parser::HtmlSource::identity(&self) -> &surgeist_html_parser::HtmlSourceId
@@ -1307,8 +1307,8 @@ pub fn surgeist_html_parser::HtmlSource::is_empty(&self) -> bool
 pub fn surgeist_html_parser::HtmlSource::len(&self) -> usize
 pub fn surgeist_html_parser::HtmlSource::position(&self, offset: usize) -> core::result::Result<surgeist_html_parser::HtmlSourcePosition, surgeist_html_parser::HtmlSourceRangeError>
 pub fn surgeist_html_parser::HtmlSource::range(&self, start: usize, end: usize) -> core::result::Result<surgeist_html_parser::HtmlSourceRange, surgeist_html_parser::HtmlSourceRangeError>
-pub fn surgeist_html_parser::HtmlSource::text(&self, range: &surgeist_html_parser::HtmlSourceRange) -> core::result::Result<surgeist_html::internal::values::DocumentString, surgeist_html_parser::HtmlSourceRangeError>
-pub fn surgeist_html_parser::HtmlSource::utf16(text: surgeist_html::internal::values::DocumentString) -> Self
+pub fn surgeist_html_parser::HtmlSource::text(&self, range: &surgeist_html_parser::HtmlSourceRange) -> core::result::Result<surgeist_html::internal::values::document_string::DocumentString, surgeist_html_parser::HtmlSourceRangeError>
+pub fn surgeist_html_parser::HtmlSource::utf16(text: surgeist_html::internal::values::document_string::DocumentString) -> Self
 pub fn surgeist_html_parser::HtmlSource::utf8(text: impl core::convert::Into<alloc::sync::Arc<str>>) -> Self
 pub struct surgeist_html_parser::HtmlSourceId(_)
 impl core::cmp::Eq for surgeist_html_parser::HtmlSourceId

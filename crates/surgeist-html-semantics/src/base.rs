@@ -505,7 +505,7 @@ impl Validation {
         text: &DocumentString,
     ) -> Result<(), HtmlBaseFactsError> {
         self.step()?;
-        self.units(text.shared_code_units().capacity())
+        self.units(text.retained_units())
     }
     fn units(&mut self, units: usize) -> Result<(), HtmlBaseFactsError> {
         self.meter
@@ -584,7 +584,7 @@ impl HtmlBaseRetainedStorageUsage {
         Ok(())
     }
     pub(crate) fn string(&mut self, value: &DocumentString) -> Result<(), HtmlBaseFactsError> {
-        let units = value.shared_code_units().capacity();
+        let units = value.retained_units();
         self.units = self
             .units
             .checked_add(units)

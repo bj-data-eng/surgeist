@@ -48,7 +48,7 @@ impl AllocationGraph {
         self.buffer(values, buffer);
     }
     pub(crate) fn string(&mut self, value: &DocumentString) {
-        self.vector(value.shared_code_units(), "string.target", "string.buffer");
+        self.vector(&value.to_shared_utf16(), "string.target", "string.buffer");
     }
     pub(in crate::store) fn merge(&mut self, other: &Self) {
         for ((address, _), (kind, bytes)) in &other.0 {

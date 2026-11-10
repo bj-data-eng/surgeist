@@ -61,7 +61,7 @@ impl SessionStorage {
         let old = textarea_raw(&self.payloads, control, state.raw)?;
         let old_units = old.len();
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if Arc::strong_count(old.shared_code_units()) != 1 {
+        if old.block().holders() != 1 {
             return Err(SessionError::AliasedPayload);
         }
         if reset {

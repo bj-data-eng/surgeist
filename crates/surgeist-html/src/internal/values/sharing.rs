@@ -425,7 +425,7 @@ struct Read {
     payload: HtmlValuePoolUsage,
 }
 fn string_payload(value: &DocumentString) -> Result<HtmlValuePoolUsage, HtmlValuePoolError> {
-    let capacity = value.shared_code_units().capacity();
+    let capacity = value.retained_units();
     Ok(HtmlValuePoolUsage {
         bytes: capacity
             .checked_mul(size_of::<u16>())
@@ -469,13 +469,17 @@ fn read_string(
 impl Value for DocumentString {
     type Item = u16;
     fn shared(&self) -> &Arc<Vec<u16>> {
-        self.shared_code_units()
+        self.whole_block_vec()
     }
     fn from_shared(value: Arc<Vec<u16>>) -> Self {
-        Self::from_shared_code_units(value)
+        Self::from_shared_utf16(value)
     }
+    /// The pool holds the blocks of strings that own their allocation, so a range of a larger
+    /// block is never pooled.
     fn eligible(&self) -> bool {
-        self.len() <= policy::MAX_UNITS && self.shared_code_units().capacity() <= policy::MAX_UNITS
+        self.is_whole_block()
+            && self.len() <= policy::MAX_UNITS
+            && self.retained_units() <= policy::MAX_UNITS
     }
     fn candidate_cleanup_work() -> HtmlValuePoolWork {
         // A last strong alias destroys the Vec target and can free its buffer

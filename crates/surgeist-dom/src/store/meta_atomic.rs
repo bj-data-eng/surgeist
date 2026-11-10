@@ -476,21 +476,17 @@ impl Draft {
         recording.envelope.step(cancel)?;
         for prior in &recording.entries {
             recording.envelope.step(cancel)?;
-            if Arc::ptr_eq(
-                prior.content.shared_code_units(),
-                content.shared_code_units(),
-            ) {
+            if prior.content.shares_storage_with(content) {
                 return Ok(());
             }
         }
         let payload = source::storage::Payload {
             bytes: content
-                .shared_code_units()
-                .capacity()
+                .retained_units()
                 .checked_mul(2)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
                 .ok_or(DomError::RepresentationExhausted)?,
-            units: content.shared_code_units().capacity(),
+            units: content.retained_units(),
         };
         if recording.envelope.source.is_some() {
             let mut payloads = recording.payloads.borrow_mut();

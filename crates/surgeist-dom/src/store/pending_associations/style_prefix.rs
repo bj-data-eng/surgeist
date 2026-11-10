@@ -909,7 +909,7 @@ fn text_usage(
     let mut bytes = 0usize;
     let mut units = 0usize;
     for text in [Some(text), nonce].into_iter().flatten() {
-        let n = text.shared_code_units().capacity();
+        let n = text.retained_units();
         bytes = bytes
             .checked_add(size_of::<Vec<u16>>())
             .and_then(|v| v.checked_add(n.checked_mul(2)?))

@@ -607,7 +607,7 @@ mod tests {
             {
                 if value == &DocumentString::from("viewbox") {
                     original = Some((
-                        value.shared_code_units().as_ptr(),
+                        value.code_units().as_ptr(),
                         storage.observed_origins(maps, &mut c).unwrap()[0]
                             .source
                             .clone(),
@@ -616,7 +616,7 @@ mod tests {
                 }
                 if matches!(location, StringLocation::AttributeName(_, 0)) {
                     adjusted = Some((
-                        value.shared_code_units().as_ptr(),
+                        value.code_units().as_ptr(),
                         storage.observed_origins(maps, &mut c).unwrap()[0]
                             .source
                             .clone(),

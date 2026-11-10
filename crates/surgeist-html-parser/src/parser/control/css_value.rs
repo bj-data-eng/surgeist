@@ -251,7 +251,7 @@ impl ParseControl {
         let frozen = buffer.freeze(self)?;
         let prepared = (|| {
             self.require_document_string(frozen.allocation(), frozen.text())?;
-            let units = frozen.text().shared_code_units().capacity() as u64;
+            let units = frozen.text().retained_units() as u64;
             let bytes = units
                 .checked_mul(size_of::<u16>() as u64)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>() as u64))
@@ -272,7 +272,7 @@ impl ParseControl {
             }
         };
         let (text, allocation) = frozen.into_parts();
-        let input = text.shared_code_units().clone();
+        let input = text.to_shared_utf16();
         drop(text);
         if let Err(stop) = self.commit_prepared_release(&[(allocation.resource, allocation.units)])
         {

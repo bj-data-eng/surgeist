@@ -577,7 +577,7 @@ mod source_observation {
         LAST.take()
     }
     fn string(value: &DocumentString) -> usize {
-        size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+        size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>()
     }
     fn name(value: &(impl surgeist_html::values::HtmlNameInput + ?Sized)) -> usize {
         value.namespace_uri().map_or(0, string)
@@ -1062,14 +1062,12 @@ mod tests {
                     .into_iter()
                     .flatten()
                 {
-                    bytes += size_of::<Vec<u16>>()
-                        + value.shared_code_units().capacity() * size_of::<u16>();
-                    units += value.shared_code_units().capacity();
+                    bytes += size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>();
+                    units += value.retained_units();
                 }
             }
-            bytes += size_of::<Vec<u16>>()
-                + raw.value().shared_code_units().capacity() * size_of::<u16>();
-            units += raw.value().shared_code_units().capacity();
+            bytes += size_of::<Vec<u16>>() + raw.value().retained_units() * size_of::<u16>();
+            units += raw.value().retained_units();
             (bytes, units)
         };
         let (bytes, units) = graph();

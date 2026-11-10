@@ -26,7 +26,7 @@ fn padded(units: &[u16], spare: usize) -> DocumentString {
     DocumentString::from_utf16(backing)
 }
 fn payload(value: &DocumentString) -> (usize, usize) {
-    let capacity = value.shared_code_units().capacity();
+    let capacity = value.retained_units();
     (
         size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
         capacity,

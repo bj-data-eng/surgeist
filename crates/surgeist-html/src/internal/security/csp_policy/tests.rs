@@ -286,13 +286,13 @@ fn exact_utf16_and_fixed_meta_contract_retain_original_backing() {
     let (mut owner, association) = pair();
     let p = Processor::new();
     let content = DocumentString::from_utf16([0xd800, 0, 13, 10, 0xdfff]);
-    let backing = content.shared_code_units().clone();
+    let backing = content.to_shared_utf16();
     let request = owner
         .request_meta_insertion_with(&association, p.profile(), content, &mut allow)
         .unwrap();
     assert!(Arc::ptr_eq(
         &backing,
-        request.qualification().content().shared_code_units()
+        &request.qualification().content().to_shared_utf16()
     ));
     assert_eq!(
         request.qualification().content().code_units(),

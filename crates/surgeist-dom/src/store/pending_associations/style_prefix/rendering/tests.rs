@@ -69,14 +69,14 @@ pub(in crate::store::pending_associations::style_prefix) fn ready_source(
         let parser = CssParserContext::default();
         let sheet = CssParser::new(parser, Default::default())
             .parse_sheet_utf16(
-                prep.request().text().shared_code_units().clone(),
+                prep.request().text().to_shared_utf16(),
                 CssUtf16InputLimits::default(),
                 || prep.step(&flag()),
             )
             .unwrap();
         let media = CssMediaQueryList::parse_utf16(
             &CssParser::new(parser, Default::default()),
-            prep.request().media().unwrap().shared_code_units().clone(),
+            prep.request().media().unwrap().to_shared_utf16(),
             CssUtf16InputLimits::default(),
             || prep.step(&flag()),
         )

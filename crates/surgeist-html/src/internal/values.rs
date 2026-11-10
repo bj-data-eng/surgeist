@@ -2,6 +2,10 @@
 
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
+pub use document_string::{
+    DocumentString, TextBlock, TextRangeError, Utf8ConversionError, WeakTextBlock,
+};
+
 pub(crate) const HTML_NAMESPACE_URI: &str = "http://www.w3.org/1999/xhtml";
 pub(crate) const SVG_NAMESPACE_URI: &str = "http://www.w3.org/2000/svg";
 pub(crate) const MATHML_NAMESPACE_URI: &str = "http://www.w3.org/1998/Math/MathML";
@@ -20,129 +24,6 @@ pub(crate) fn is_html_namespace_uri(uri: Option<&DocumentString>) -> bool {
                 .eq(HTML_NAMESPACE_URI.encode_utf16())
     })
 }
-
-/// An immutable sequence of exact UTF-16 code units.
-///
-/// Isolated surrogates, whitespace, and null code units are preserved. Lengths
-/// and conversion-error offsets use code units, not Unicode scalar values.
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct DocumentString {
-    code_units: Arc<Vec<u16>>,
-}
-
-impl DocumentString {
-    /// Constructs a string without validating, replacing, or normalizing units.
-    pub fn from_utf16(code_units: impl Into<Vec<u16>>) -> Self {
-        Self {
-            code_units: Arc::new(code_units.into()),
-        }
-    }
-
-    /// Adopts immutable UTF-16 backing without copying or normalizing its units.
-    pub fn from_shared_code_units(code_units: Arc<Vec<u16>>) -> Self {
-        Self { code_units }
-    }
-
-    /// Borrows the actual immutable allocation, including its retained capacity.
-    pub fn shared_code_units(&self) -> &Arc<Vec<u16>> {
-        &self.code_units
-    }
-
-    /// The construction owner alone mutates uniquely held pending backing.
-    pub(crate) fn construction_backing_mut(&mut self) -> &mut Arc<Vec<u16>> {
-        &mut self.code_units
-    }
-
-    /// Returns the exact stored UTF-16 sequence.
-    pub fn code_units(&self) -> &[u16] {
-        &self.code_units
-    }
-
-    /// Returns the number of UTF-16 code units.
-    pub fn len(&self) -> usize {
-        self.code_units.len()
-    }
-
-    /// Reports whether there are no code units.
-    pub fn is_empty(&self) -> bool {
-        self.code_units.is_empty()
-    }
-
-    /// Iterates code points, combining surrogate pairs and retaining isolated
-    /// surrogates as their numeric code points.
-    ///
-    /// Unlike an iterator of Rust `char`, this can represent every input unit.
-    pub fn code_points(&self) -> impl Iterator<Item = u32> + Clone + '_ {
-        char::decode_utf16(self.code_units.iter().copied()).map(|decoded| match decoded {
-            Ok(scalar) => u32::from(scalar),
-            Err(error) => u32::from(error.unpaired_surrogate()),
-        })
-    }
-
-    /// Converts to UTF-8, rejecting the first isolated surrogate without loss.
-    pub fn to_utf8(&self) -> Result<String, Utf8ConversionError> {
-        let mut result = String::new();
-        let mut code_unit_offset = 0;
-        for decoded in char::decode_utf16(self.code_units.iter().copied()) {
-            match decoded {
-                Ok(scalar) => {
-                    result.push(scalar);
-                    code_unit_offset += scalar.len_utf16();
-                }
-                Err(error) => {
-                    return Err(Utf8ConversionError {
-                        code_unit_offset,
-                        surrogate: error.unpaired_surrogate(),
-                    });
-                }
-            }
-        }
-        Ok(result)
-    }
-}
-
-impl From<&str> for DocumentString {
-    fn from(value: &str) -> Self {
-        Self::from_utf16(value.encode_utf16().collect::<Vec<_>>())
-    }
-}
-
-impl From<String> for DocumentString {
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-/// The first isolated surrogate preventing an exact UTF-8 conversion.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Utf8ConversionError {
-    code_unit_offset: usize,
-    surrogate: u16,
-}
-
-impl Utf8ConversionError {
-    /// Returns the zero-based UTF-16 code-unit offset.
-    pub fn code_unit_offset(&self) -> usize {
-        self.code_unit_offset
-    }
-
-    /// Returns the isolated surrogate code unit.
-    pub fn surrogate(&self) -> u16 {
-        self.surrogate
-    }
-}
-
-impl fmt::Display for Utf8ConversionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "isolated surrogate U+{:04X} at UTF-16 code-unit offset {}",
-            self.surrogate, self.code_unit_offset
-        )
-    }
-}
-
-impl Error for Utf8ConversionError {}
 
 /// Namespace identity by exact URI, with an empty URI representing no namespace.
 ///
@@ -421,6 +302,7 @@ impl Error for DuplicateAttributeError {}
 pub(crate) mod attribute_name_index;
 pub(crate) mod bounded;
 pub(crate) mod custom_names;
+mod document_string;
 pub(crate) mod finish;
 pub(crate) mod interpretation;
 pub(crate) mod name_index;

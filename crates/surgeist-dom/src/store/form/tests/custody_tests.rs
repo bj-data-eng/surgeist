@@ -13,7 +13,7 @@ fn raw_history_extent<K>(entries: &Vec<FormPastName<K>>) -> custody::Usage {
         + entries.capacity() * size_of::<FormPastName<K>>();
     let mut units = 0;
     for entry in entries {
-        let capacity = entry.name.shared_code_units().capacity();
+        let capacity = entry.name.retained_units();
         bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
         units += capacity;
     }
@@ -492,7 +492,7 @@ fn fresh_form_dependency_refusal_in_finish_preserves_source_draft_for_exact_publ
     assert_ne!(failed_identity, staged_identity);
     assert_eq!(reached_capacity, capacity);
     assert!(capacity > 1);
-    let text_capacity = keep.name.shared_code_units().capacity();
+    let text_capacity = keep.name.retained_units();
     let raw = custody::Usage::new(
         size_of::<payload::Payload<History<NodeId>>>()
             + capacity * size_of::<FormPastName<NodeId>>()

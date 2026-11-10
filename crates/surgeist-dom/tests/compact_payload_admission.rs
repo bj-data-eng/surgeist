@@ -1,6 +1,6 @@
 //! Source edits retain unchanged payloads under a fixed finite UTF-16 policy.
 //! Expectations use authored literals and actual immutable backing, not receipts.
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomChange, DomCommit, DomLimits, DomNameLimits,
     DomSnapshot, DomSourceCompletion, DomSourceEdit, DomSourceLimits, DomSourceProgress, Namespace,
@@ -39,7 +39,7 @@ fn document(dom: &mut Dom) -> DocumentId {
 }
 fn value(extent: usize) -> DocumentString {
     let value = DocumentString::from_utf16((0..extent).map(|i| PATTERN[i % 4]).collect::<Vec<_>>());
-    assert_eq!(value.shared_code_units().capacity(), extent);
+    assert_eq!(value.retained_units(), extent);
     value
 }
 fn assert_value(value: &DocumentString, extent: usize) {
@@ -133,10 +133,7 @@ fn move_unchanged_payload(element: bool) {
         assert_eq!(old.node(target).unwrap().owner_document(), Some(document));
         let retained = topology_value(&old, target, element);
         assert_value(retained, extent);
-        assert!(Arc::ptr_eq(
-            caller.shared_code_units(),
-            retained.shared_code_units()
-        ));
+        assert!(caller.shares_storage_with(retained));
 
         let done = complete(
             &mut dom,
@@ -164,10 +161,7 @@ fn move_unchanged_payload(element: bool) {
         for snapshot in [&old, &now] {
             let value = topology_value(snapshot, target, element);
             assert_value(value, extent);
-            assert!(Arc::ptr_eq(
-                caller.shared_code_units(),
-                value.shared_code_units()
-            ));
+            assert!(caller.shares_storage_with(value));
         }
         assert!(dom.pending_source_edit().is_none());
         eprintln!(
@@ -219,7 +213,7 @@ fn source_attribute_edit_shares_large_unchanged_native_value_and_children_under_
         // The real Input setter sanitizes its operand. Retain the resulting
         // native backing, rather than requiring it to alias the caller input.
         let native_backing = native.state().current_value().clone();
-        let native_capacity = native_backing.shared_code_units().capacity();
+        let native_capacity = native_backing.retained_units();
         assert!(native_capacity < SOURCE_UNITS);
         assert!(node.as_element().unwrap().attributes().is_empty());
         eprintln!("native Input premise extent={extent} actual_capacity={native_capacity}");
@@ -259,17 +253,10 @@ fn source_attribute_edit_shares_large_unchanged_native_value_and_children_under_
             assert_eq!(native.value(), caller.code_units());
             assert_value(native.state().current_value(), extent);
             assert_eq!(
-                native
-                    .state()
-                    .current_value()
-                    .shared_code_units()
-                    .capacity(),
+                native.state().current_value().retained_units(),
                 native_capacity
             );
-            assert!(Arc::ptr_eq(
-                native_backing.shared_code_units(),
-                native.state().current_value().shared_code_units()
-            ));
+            assert!(native_backing.shares_storage_with(native.state().current_value()));
             for child in &children {
                 let child = snapshot.node(*child).unwrap();
                 assert_eq!(child.parent(), Some(input));

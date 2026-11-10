@@ -497,12 +497,10 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation()
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let textarea = named(&nodes, "textarea", 0).clone();
     // A second owner of the raw value makes it impossible to replace in place.
-    let held = std::sync::Arc::clone(
-        session
-            .textarea_raw_value(&mut c, &textarea)
-            .unwrap()
-            .shared_code_units(),
-    );
+    let held = session
+        .textarea_raw_value(&mut c, &textarea)
+        .unwrap()
+        .clone();
     let result = session.parser_stack_removed(&mut c, &textarea, None);
     let aliased = HtmlParseStop::InternalInvariant(HtmlParseInvariant::SharedAllocationAliased);
     assert_eq!(result.err(), Some(SessionError::Stop(aliased)));

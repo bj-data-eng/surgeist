@@ -325,7 +325,7 @@ impl DomStyleRuntime {
             &steps,
         )?;
         steps.joined(&prep)?;
-        let text = prep.request().text().shared_code_units().clone();
+        let text = prep.request().text().to_shared_utf16();
         let report = CssParser::new(context, Default::default())
             .parse_sheet_utf16(text, state.limits.css_input, || steps.joined(&prep))
             .map_err(DomStyleParsedSheetError::Css)?;
@@ -339,7 +339,7 @@ impl DomStyleRuntime {
         let media = prep
             .request()
             .media()
-            .map(|s| s.shared_code_units().clone())
+            .map(|s| s.to_shared_utf16())
             .unwrap_or_default();
         let media = CssMediaQueryList::parse_utf16(
             &CssParser::new(context, Default::default()),
@@ -349,10 +349,7 @@ impl DomStyleRuntime {
         )
         .map_err(DomStyleParsedSheetError::Css)?;
         steps.joined(&prep)?;
-        let title = prep
-            .request()
-            .title()
-            .map(|s| s.shared_code_units().clone());
+        let title = prep.request().title().map(|s| s.to_shared_utf16());
         let current = state.roots[index].sheet_sets.state().ok_or(
             DomStyleRuntimeError::SheetSetDocumentRequired {
                 root: document.node(),

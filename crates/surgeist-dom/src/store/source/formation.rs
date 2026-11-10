@@ -875,8 +875,7 @@ pub(crate) fn string(
         #[cfg(test)]
         {
             let bytes = value
-                .shared_code_units()
-                .capacity()
+                .retained_units()
                 .checked_mul(size_of::<u16>())
                 .expect("actual UTF16 allocation extent");
             if bytes != 0 {

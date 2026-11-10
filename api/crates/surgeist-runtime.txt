@@ -1127,7 +1127,7 @@ pub fn surgeist_runtime::DomHostedSettings::creation_url(&self) -> &surgeist_htm
 pub const fn surgeist_runtime::DomHostedSettings::cross_origin_isolated(&self) -> bool
 pub const fn surgeist_runtime::DomHostedSettings::cross_site(&self) -> bool
 pub fn surgeist_runtime::DomHostedSettings::document(&self) -> surgeist_dom::snapshot::DomDocument<'_>
-pub fn surgeist_runtime::DomHostedSettings::document_base_url(&self) -> core::result::Result<&surgeist_html::internal::values::DocumentString, surgeist_dom::store::DomError>
+pub fn surgeist_runtime::DomHostedSettings::document_base_url(&self) -> core::result::Result<&surgeist_html::internal::values::document_string::DocumentString, surgeist_dom::store::DomError>
 pub fn surgeist_runtime::DomHostedSettings::environment_ready(&self) -> bool
 pub fn surgeist_runtime::DomHostedSettings::global(&self) -> surgeist_dom::hosted::DomHostedGlobalId
 pub fn surgeist_runtime::DomHostedSettings::origin(&self) -> &surgeist_dom::document::DomOpaqueOrigin
@@ -1301,9 +1301,9 @@ pub fn surgeist_runtime::DomStyleRuntime::set_limits(&mut self, dom: &surgeist_r
 pub fn surgeist_runtime::DomStyleRuntime::snapshot(&self, root: surgeist_dom::identity::NodeId) -> core::result::Result<core::option::Option<surgeist_cssom::model::CssomSnapshot>, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::waiting_resources(&self) -> core::result::Result<usize, surgeist_runtime::DomStyleRuntimeError>
 impl surgeist_runtime::DomStyleRuntime
-pub fn surgeist_runtime::DomStyleRuntime::change_preferred_sheet_set_name(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
-pub fn surgeist_runtime::DomStyleRuntime::enable_sheet_set(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
-pub fn surgeist_runtime::DomStyleRuntime::select_sheet_set(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
+pub fn surgeist_runtime::DomStyleRuntime::change_preferred_sheet_set_name(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::document_string::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
+pub fn surgeist_runtime::DomStyleRuntime::enable_sheet_set(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::document_string::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
+pub fn surgeist_runtime::DomStyleRuntime::select_sheet_set(&mut self, dom: &surgeist_runtime::DomEventDom<'_>, basis: &surgeist_runtime::DomStyleSheetSetObservation, name: &surgeist_html::internal::values::document_string::DocumentString, max_output: usize, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetCommit, surgeist_runtime::DomStyleRuntimeError>
 pub fn surgeist_runtime::DomStyleRuntime::sheet_sets(&self, dom: &surgeist_runtime::DomEventDom<'_>, document: surgeist_dom::identity::NodeId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::DomStyleSheetSetObservation, surgeist_runtime::DomStyleRuntimeError>
 impl surgeist_runtime::DomStyleRuntime
 pub fn surgeist_runtime::DomStyleRuntime::complete_parsed_html_contribution(&self, dom: &mut surgeist_runtime::DomEventDom<'_>, contribution: surgeist_dom::parsed_installation::DomParsedHtmlAssociationId, limits: surgeist_dom::parsed_association::DomParsedHtmlAssociationLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::store::pending_associations::style_prefix::terminal::DomParsedHtmlContributionCompletion, surgeist_runtime::DomStyleParsedTerminalError>
@@ -1337,14 +1337,14 @@ pub struct surgeist_runtime::DomStyleSheetSetObservation
 impl surgeist_runtime::DomStyleSheetSetObservation
 pub fn surgeist_runtime::DomStyleSheetSetObservation::cssom_revision(&self) -> &surgeist_cssom::identity::CssomRevision
 pub fn surgeist_runtime::DomStyleSheetSetObservation::document(&self) -> surgeist_dom::identity::NodeId
-pub fn surgeist_runtime::DomStyleSheetSetObservation::last_selected_name(&self) -> core::option::Option<&surgeist_html::internal::values::DocumentString>
-pub fn surgeist_runtime::DomStyleSheetSetObservation::preferred_name(&self) -> &surgeist_html::internal::values::DocumentString
+pub fn surgeist_runtime::DomStyleSheetSetObservation::last_selected_name(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
+pub fn surgeist_runtime::DomStyleSheetSetObservation::preferred_name(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub fn surgeist_runtime::DomStyleSheetSetObservation::revision(&self) -> u64
 pub fn surgeist_runtime::DomStyleSheetSetObservation::stamp(&self) -> surgeist_dom::identity::DomStamp
 pub struct surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'a>
 impl surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>
-pub fn surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>::last_selected(&self) -> core::option::Option<&surgeist_html::internal::values::DocumentString>
-pub fn surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>::preferred(&self) -> &surgeist_html::internal::values::DocumentString
+pub fn surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>::last_selected(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
+pub fn surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>::preferred(&self) -> &surgeist_html::internal::values::document_string::DocumentString
 pub fn surgeist_runtime::DomStyleWithdrawnSheetSetHistory<'_>::revision(&self) -> u64
 pub struct surgeist_runtime::DomToggleEvent
 impl surgeist_runtime::DomToggleEvent

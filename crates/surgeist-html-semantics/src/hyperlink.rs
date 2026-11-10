@@ -278,15 +278,12 @@ impl HtmlEncodingUrlParseFacts {
         let observation = self.find_with(raw.code_units(), base, encoding, expected, &mut step)?;
         let result_units = match &observation.outcome {
             HtmlEncodingUrlParseOutcome::Failure => 0,
-            HtmlEncodingUrlParseOutcome::Parsed(record) => {
-                record.serialization().shared_code_units().capacity()
-            }
+            HtmlEncodingUrlParseOutcome::Parsed(record) => record.serialization().retained_units(),
         };
         let units = observation
             .raw
-            .shared_code_units()
-            .capacity()
-            .checked_add(base.serialization().shared_code_units().capacity())
+            .retained_units()
+            .checked_add(base.serialization().retained_units())
             .and_then(|n| n.checked_add(result_units))
             .ok_or_else(|| {
                 HtmlEncodingUrlLookupError::Facts(
@@ -409,11 +406,9 @@ impl HtmlHyperlinkUrlSnapshot {
         // every inline captured Element merely for derived usage readback.
         // Each backing is a `u16` allocation of at most `isize::MAX` bytes, so each capacity is at
         // most `isize::MAX / 2` and the sum of three is below `usize::MAX`: it cannot overflow.
-        self.raw.shared_code_units().capacity()
-            + self.base.serialization().shared_code_units().capacity()
-            + self
-                .url()
-                .map_or(0, |r| r.serialization().shared_code_units().capacity())
+        self.raw.retained_units()
+            + self.base.serialization().retained_units()
+            + self.url().map_or(0, |r| r.serialization().retained_units())
     }
 }
 

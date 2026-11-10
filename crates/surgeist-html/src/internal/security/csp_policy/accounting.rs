@@ -70,7 +70,7 @@ impl HtmlCspStorage {
         }
     }
     pub(super) fn text(text: &DocumentString) -> Result<Self, HtmlCspProtocolError> {
-        let units = text.shared_code_units().capacity();
+        let units = text.retained_units();
         Self::try_new(
             units
                 .checked_mul(2)

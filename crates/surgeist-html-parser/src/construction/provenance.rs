@@ -1089,7 +1089,7 @@ impl ParseEvidence {
     ) -> Result<(), SessionError> {
         let value = slot.as_ref().ok_or(SessionError::Consumed)?;
         c.require_materialized_string_disposal(value.allocation(), value.text())?;
-        if Arc::strong_count(value.text().shared_code_units()) != 1 {
+        if value.text().block().holders() != 1 {
             return Err(SessionError::AliasedPayload);
         }
         // All possible refusal precedes take. Actual deallocation/refund does
@@ -3208,7 +3208,7 @@ impl ParserArenaSession {
                 continue;
             };
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-            if !Arc::ptr_eq(native.shared_code_units(), value.shared_code_units()) {
+            if !native.shares_storage_with(value) {
                 return Err(SessionError::AliasedPayload);
             }
             if let Some(group) = origins {

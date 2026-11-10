@@ -67,7 +67,7 @@ fn email_multiple_current_origins_and_clone_keep_actual_count_and_source() {
                 unreachable!()
             };
             assert_eq!(b.code_units(), expected);
-            !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
+            !a.shares_storage_with(b)
         };
         let mut buffer = Utf16Buffer::new(&mut c).unwrap();
         session
@@ -609,7 +609,7 @@ fn temporal_input_ordered_type_reset_and_clone_keep_normalization_cause_and_exac
             else {
                 unreachable!()
             };
-            !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
+            !a.shares_storage_with(b)
         };
         let storage = session.active_mut().unwrap();
         let copy_slot = storage.payloads.values.iter().position(
@@ -873,7 +873,7 @@ fn number_input_clone_reset_and_original_source_keep_exact_independent_strings()
             else {
                 unreachable!()
             };
-            !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
+            !a.shares_storage_with(b)
         };
         let slot = session
             .active()
@@ -1840,7 +1840,7 @@ fn range_input_clone_and_reset_preserve_generated_value_original_default_and_dis
         let RetainedPayload::String { value: b, .. } = &storage.payloads.values[copy_raw] else {
             unreachable!()
         };
-        !Arc::ptr_eq(a.shared_code_units(), b.shared_code_units())
+        !a.shares_storage_with(b)
     };
     let slot = session
         .active()

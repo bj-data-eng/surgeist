@@ -107,19 +107,16 @@ impl State {
     ) -> Result<usize, DomStyleRuntimeError> {
         let mut bytes = 0usize;
         for (index, name) in self.names().enumerate() {
-            let allocation = name.shared_code_units();
-            if old.is_some_and(|old| {
-                old.names()
-                    .any(|n| Arc::ptr_eq(n.shared_code_units(), allocation))
-            }) || self
-                .names()
-                .take(index)
-                .any(|n| Arc::ptr_eq(n.shared_code_units(), allocation))
+            if old.is_some_and(|old| old.names().any(|n| n.shares_storage_with(name)))
+                || self
+                    .names()
+                    .take(index)
+                    .any(|n| n.shares_storage_with(name))
             {
                 continue;
             }
-            bytes = allocation
-                .capacity()
+            bytes = name
+                .retained_units()
                 .checked_mul(size_of::<u16>())
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
                 .and_then(|n| n.checked_add(bytes))
@@ -265,7 +262,7 @@ pub(super) fn prepare_added_sheet_sets_with<E: From<DomStyleRuntimeError>>(
     if !title.is_empty() && !inputs.alternate && current.preferred.is_empty() {
         let mut next = current.clone();
         next.preferred =
-            DocumentString::from_shared_code_units(inputs.title.expect("nonempty title").clone());
+            DocumentString::from_shared_utf16(inputs.title.expect("nonempty title").clone());
         next.revision = next
             .revision
             .checked_add(1)

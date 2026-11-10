@@ -292,10 +292,7 @@ fn completed_invalid_syntax_is_a_report_without_processing_failure_or_allocation
         report.recovery(),
         HtmlValueRecoveryState::Failed(_)
     ));
-    assert!(std::sync::Arc::ptr_eq(
-        report.raw().unwrap().shared_code_units(),
-        raw.shared_code_units()
-    ));
+    assert!(report.raw().unwrap().shares_storage_with(&raw));
 }
 
 /// Total work charged to interpret `text` through both phases.

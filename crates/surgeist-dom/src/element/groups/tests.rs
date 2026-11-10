@@ -33,7 +33,7 @@ fn fresh_nonce_admits_the_actual_target_and_empty_string_before_allocation() {
         } else {
             let value = result.unwrap();
             assert!(value.value.value.is_empty());
-            assert_eq!(value.value.value.shared_code_units().capacity(), 0);
+            assert_eq!(value.value.value.retained_units(), 0);
             assert_eq!(value.own_usage, Usage::new(required, 0));
             drop(value);
             drop(formation);
@@ -52,17 +52,14 @@ fn reserved_nonce_preserves_its_actual_backing_and_releases_after_semantics() {
     let cancel = AtomicBool::new(false);
     let raw = Vec::<u16>::with_capacity(37);
     let text = DocumentString::from_utf16(raw);
-    let weak = Arc::downgrade(text.shared_code_units());
-    let raw_capacity = text.shared_code_units().capacity();
+    let weak = text.block().downgrade();
+    let raw_capacity = text.retained_units();
     let mut admit = |_| Ok(());
     let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
     let value = formation
         .nonce(text.clone(), storage::Payload::default())
         .unwrap();
-    assert!(Arc::ptr_eq(
-        value.value.value.shared_code_units(),
-        text.shared_code_units()
-    ));
+    assert!(value.value.value.shares_storage_with(&text));
     assert_eq!(
         value.own_usage,
         Usage::new(
@@ -95,7 +92,7 @@ fn cancelled_group_construction_keeps_original_semantics_and_controls() {
     let baseline = ledger.total();
     let cancel = AtomicBool::new(true);
     let text = DocumentString::from("actual-original");
-    let weak = Arc::downgrade(text.shared_code_units());
+    let weak = text.block().downgrade();
     let mut admit = |_| panic!("cancellation precedes allocation admission");
     let mut formation = ElementFormation::new(&registry, None, &cancel, &mut admit);
     assert!(matches!(

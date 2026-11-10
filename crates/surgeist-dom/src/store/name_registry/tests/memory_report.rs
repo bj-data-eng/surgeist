@@ -145,7 +145,7 @@ impl KnownNames {
         };
         self.string_vector_targets += 1;
         self.string_vector_bytes += size_of::<Vec<u16>>();
-        let capacity = record.text().shared_code_units().capacity();
+        let capacity = record.text().retained_units();
         if capacity != 0 {
             self.string_buffers += 1;
             self.string_buffer_bytes += capacity.checked_mul(size_of::<u16>()).unwrap();
@@ -336,7 +336,7 @@ pub(in crate::store) fn run_lifecycle(
             selected.insert(key);
         } else {
             record_observers.push(Arc::downgrade(key.record()));
-            string_observers.push(Arc::downgrade(key.text().shared_code_units()));
+            string_observers.push(key.text().block().downgrade());
             retired.push(key);
         }
     }
@@ -450,7 +450,7 @@ pub(in crate::store) fn run_lifecycle(
         .collect();
     let string_observers: Vec<_> = selected
         .iter()
-        .map(|key| Arc::downgrade(key.text().shared_code_units()))
+        .map(|key| key.text().block().downgrade())
         .collect();
     drop(selected);
     assert!(record_observers.iter().all(|weak| weak.upgrade().is_none()));

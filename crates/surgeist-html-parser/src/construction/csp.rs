@@ -208,7 +208,7 @@ impl SessionStorage {
         }
         let mut live = base.add(rows).ok_or(SessionError::WrongToken)?;
         if let Some(p) = &state.pending {
-            let units = p.content.shared_code_units().capacity();
+            let units = p.content.retained_units();
             live = live
                 .add(Storage {
                     bytes: units

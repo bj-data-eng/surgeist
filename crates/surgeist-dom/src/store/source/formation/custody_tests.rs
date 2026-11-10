@@ -49,7 +49,7 @@ fn formed_utf16_factories_report_completed_prefix_before_original_work_refusal()
                     } else {
                         &[0x0061, 0xd800, 0x007a, 0]
                     };
-                    assert_eq!(value.shared_code_units().as_slice(), expected);
+                    assert_eq!(value.code_units(), expected);
                     assert_eq!(counters.sequence_materialized_bytes, 4 * size_of::<u16>());
                     assert_eq!(counters.sequence_materializations, 1);
                     completed = true;
@@ -225,7 +225,7 @@ fn pi_factory_same_owner_cursor_peak_is_exact_and_one_short_preserves_inputs() {
     let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
     let target = DocumentString::from("pi");
     let data = DocumentString::from(format!("a='{}' b='literal'", "x".repeat(4096)));
-    let original = data.shared_code_units().clone();
+    let original = data.to_shared_utf16();
     let mut peak = None;
     for short in [None, Some(false), Some(true)] {
         let byte_limit = short.map_or(16_000_000, |short| peak.unwrap() - usize::from(short));
@@ -273,7 +273,7 @@ fn pi_factory_same_owner_cursor_peak_is_exact_and_one_short_preserves_inputs() {
         }
         drop(source);
         assert_eq!(draft.custody_ledger().total(), baseline);
-        assert!(Arc::ptr_eq(&original, data.shared_code_units()));
+        assert!(Arc::ptr_eq(&original, &data.to_shared_utf16()));
     }
 }
 
@@ -369,7 +369,7 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
         old.value.current_value(),
         old.value.custom_validity_message(),
     ] {
-        let capacity = text.shared_code_units().capacity();
+        let capacity = text.retained_units();
         extra.bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
         extra.units += capacity;
     }
@@ -408,10 +408,11 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     assert!(!Arc::ptr_eq(&next, old));
     assert!(!input.value.input_state().unwrap().flags().dirty_value());
     assert!(next.value.flags().dirty_value());
-    assert!(Arc::ptr_eq(
-        next.value.current_value().shared_code_units(),
-        old.value.current_value().shared_code_units()
-    ));
+    assert!(
+        next.value
+            .current_value()
+            .shares_storage_with(old.value.current_value())
+    );
     let weak = Arc::downgrade(&next);
     let controls = context.into_children();
     let mut edited = input.value.clone();
@@ -434,7 +435,7 @@ fn actual_typed_family_targets_preserve_snapshot_identity_and_release_after_last
     let style_old = style.value.style_payload().unwrap();
     let mut extra = storage::Payload::default();
     let text = dialog_old.value.return_value();
-    let capacity = text.shared_code_units().capacity();
+    let capacity = text.retained_units();
     extra.bytes = size_of::<Vec<u16>>() + capacity * size_of::<u16>();
     extra.units = capacity;
     let mut admission = |next| draft.admit_custody_usage(next, &cancel);

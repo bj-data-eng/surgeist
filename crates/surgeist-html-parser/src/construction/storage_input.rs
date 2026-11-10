@@ -132,7 +132,7 @@ impl SessionStorage {
                 self.payloads.values.get(candidate)
             {
                 control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if Arc::ptr_eq(value.shared_code_units(), stored.shared_code_units()) {
+                if value.shares_storage_with(stored) {
                     #[cfg(test)]
                     assert_eq!(
                         self.payloads.first_string_sharing(value),
@@ -150,7 +150,7 @@ impl SessionStorage {
             } = payload
             {
                 control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                if Arc::ptr_eq(value.shared_code_units(), candidate.shared_code_units()) {
+                if value.shares_storage_with(candidate) {
                     return Ok(slot);
                 }
             }

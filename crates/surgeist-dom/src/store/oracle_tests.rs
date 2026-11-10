@@ -35,7 +35,7 @@ fn full_document_units(metadata: &crate::DomDocumentMetadata) -> usize {
         .meta_state()
         .and_then(|state| state.pragma_language())
     {
-        add(&mut units, language.shared_code_units().capacity());
+        add(&mut units, language.retained_units());
     }
     if let Some(Some(selected)) = &metadata.meta_color_scheme {
         add(&mut units, selected.report.retained_storage().utf16_units());
@@ -1875,8 +1875,8 @@ fn assert_name_attribute_custody(dom: &Dom) {
                     custody::Usage::new(
                         size_of::<crate::name::NameRecord>()
                             + size_of::<Vec<u16>>()
-                            + value.shared_code_units().capacity() * size_of::<u16>(),
-                        value.shared_code_units().capacity(),
+                            + value.retained_units() * size_of::<u16>(),
+                        value.retained_units(),
                     ),
                 ));
             }

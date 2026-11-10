@@ -276,7 +276,7 @@ mod tests {
         .into_iter()
         .flatten()
         {
-            let capacity = text.shared_code_units().capacity();
+            let capacity = text.retained_units();
             bytes += size_of::<Vec<u16>>() + capacity * size_of::<u16>();
             units += capacity;
         }
@@ -336,10 +336,11 @@ mod tests {
                     Ok(guard) => {
                         assert!(!short);
                         assert_eq!(guard.return_value().code_units(), [0x41, 0xd800, 0x5a]);
-                        assert!(Arc::ptr_eq(
-                            guard.return_value().shared_code_units(),
-                            old.value.return_value().shared_code_units()
-                        ));
+                        assert!(
+                            guard
+                                .return_value()
+                                .shares_storage_with(old.value.return_value())
+                        );
                         assert_eq!(
                             guard.draft.custody_ledger().total(),
                             baseline.checked_add(expected).unwrap()
@@ -398,10 +399,11 @@ mod tests {
         );
         assert_eq!(next.own_usage, expected);
         assert_eq!(next.value.return_value().code_units(), [0x41, 0xd800, 0x5a]);
-        assert!(Arc::ptr_eq(
-            old.value.return_value().shared_code_units(),
-            next.value.return_value().shared_code_units()
-        ));
+        assert!(
+            old.value
+                .return_value()
+                .shares_storage_with(next.value.return_value())
+        );
         let weak = Arc::downgrade(&next);
         drop(draft);
         assert!(weak.upgrade().is_some());

@@ -169,7 +169,7 @@ impl Draft {
                     .meta_state()
                     .ok_or(DomError::Meta(Failure::HistoryUnavailable))?
                     .pragma_language()
-                    .map_or(0, |value| value.shared_code_units().capacity());
+                    .map_or(0, |value| value.retained_units());
                 let required = self
                     .units
                     .checked_sub(old)
@@ -540,7 +540,7 @@ mod source_observation {
             return Ok(());
         };
         let extra = if owned {
-            size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+            size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>()
         } else {
             0
         };

@@ -1,6 +1,6 @@
 //! Small native XML layered-sharing fixtures. Backing observations describe only
 //! the required immutable reuse, never allocation totals or physical memory.
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use crate::store::value_sharing::fixture::{Layers, control};
@@ -542,14 +542,8 @@ fn same_bank(snapshot: &DomSnapshot, first: NodeId, second: NodeId) -> bool {
 fn check_inputs(inputs: &[[DocumentString; 3]], geometry: Geometry, mode: Mode) {
     assert_eq!(inputs.len(), geometry.cells());
     if !mode.caller_shared() {
-        assert!(!Arc::ptr_eq(
-            inputs[0][0].shared_code_units(),
-            inputs[1][0].shared_code_units()
-        ));
-        assert!(!Arc::ptr_eq(
-            inputs[0][0].shared_code_units(),
-            inputs[0][2].shared_code_units()
-        ));
+        assert!(!inputs[0][0].shares_storage_with(&inputs[1][0]));
+        assert!(!inputs[0][0].shares_storage_with(&inputs[0][2]));
     }
 }
 fn check_reuse(
@@ -578,10 +572,8 @@ fn check_reuse(
         }
         if exact_optional_hits || !strings || mode.caller_shared() {
             assert_eq!(
-                Arc::ptr_eq(
-                    text(snapshot, grid.texts[0]).shared_code_units(),
-                    text(snapshot, grid.texts[index]).shared_code_units()
-                ),
+                text(snapshot, grid.texts[0])
+                    .shares_storage_with(text(snapshot, grid.texts[index])),
                 strings,
                 "{mode:?} {unique:?}"
             );
@@ -590,18 +582,14 @@ fn check_reuse(
     let first = attributes(snapshot, grid.cells[0]);
     if exact_optional_hits || !strings || mode.caller_shared() {
         assert_eq!(
-            Arc::ptr_eq(
-                first[0].value().shared_code_units(),
-                first[1].value().shared_code_units()
-            ),
+            first[0].value().shares_storage_with(first[1].value()),
             strings,
             "{mode:?}"
         );
         assert_eq!(
-            Arc::ptr_eq(
-                first[0].value().shared_code_units(),
-                text(snapshot, grid.texts[0]).shared_code_units()
-            ),
+            first[0]
+                .value()
+                .shares_storage_with(text(snapshot, grid.texts[0])),
             strings,
             "{mode:?}"
         );
@@ -609,17 +597,13 @@ fn check_reuse(
     if mode.layers() == Layers::CallerOnly {
         for (index, input) in inputs.iter().enumerate() {
             for (offset, value) in input[..2].iter().enumerate() {
-                assert!(Arc::ptr_eq(
+                assert!(
                     attributes(snapshot, grid.cells[index])[offset]
                         .value()
-                        .shared_code_units(),
-                    value.shared_code_units()
-                ));
+                        .shares_storage_with(value)
+                );
             }
-            assert!(Arc::ptr_eq(
-                text(snapshot, grid.texts[index]).shared_code_units(),
-                input[2].shared_code_units()
-            ));
+            assert!(text(snapshot, grid.texts[index]).shares_storage_with(&input[2]));
         }
     }
 }
@@ -796,19 +780,15 @@ fn run_sample(
             attributes(&current, grid.cells[index]).as_ptr(),
             attributes(&old, grid.cells[index]).as_ptr()
         ));
-        assert!(Arc::ptr_eq(
-            text(&current, grid.texts[index]).shared_code_units(),
-            text(&old, grid.texts[index]).shared_code_units()
-        ));
+        assert!(
+            text(&current, grid.texts[index]).shares_storage_with(text(&old, grid.texts[index]))
+        );
     }
     assert!(!std::ptr::eq(
         attributes(&current, grid.cells[0]).as_ptr(),
         attributes(&old, grid.cells[0]).as_ptr()
     ));
-    assert!(!Arc::ptr_eq(
-        text(&current, grid.texts[0]).shared_code_units(),
-        text(&old, grid.texts[0]).shared_code_units()
-    ));
+    assert!(!text(&current, grid.texts[0]).shares_storage_with(text(&old, grid.texts[0])));
     oracle_checks += elapsed(started);
     observe(&mut observer, HolderStage::Edited);
 
@@ -951,7 +931,7 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         let reserved = DocumentString::from_utf16(reserved_units);
         let long = DocumentString::from_utf16([76, 0xd800, 0, 0xdc00].repeat(2048));
         assert_eq!(long.len(), 8192);
-        let capacity = long.shared_code_units().capacity();
+        let capacity = long.retained_units();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
         let element = batch.create_element(&document, "plain");
@@ -994,24 +974,20 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
         assert_eq!(text(&old, empty).code_units(), []);
         if layers == Layers::CallerOnly {
             assert_eq!(
-                text(&old, empty).shared_code_units().capacity(),
-                reserved.shared_code_units().capacity()
+                text(&old, empty).retained_units(),
+                reserved.retained_units()
             );
-            assert!(Arc::ptr_eq(
-                text(&old, empty).shared_code_units(),
-                reserved.shared_code_units()
-            ));
+            assert!(text(&old, empty).shares_storage_with(&reserved));
         }
         for value in [attributes(&old, element)[1].value(), text(&old, text_node)] {
             assert_eq!(value.len(), 8192);
-            for chunk in value.code_units().chunks_exact(4) {
-                assert_eq!(chunk, [76, 0xd800, 0, 0xdc00]);
+            let (chunks, remainder) = value.code_units().as_chunks::<4>();
+            assert!(remainder.is_empty());
+            for chunk in chunks {
+                assert_eq!(chunk, &[76, 0xd800, 0, 0xdc00]);
             }
-            assert_eq!(value.shared_code_units().capacity(), capacity);
-            assert!(Arc::ptr_eq(
-                value.shared_code_units(),
-                long.shared_code_units()
-            ));
+            assert_eq!(value.retained_units(), capacity);
+            assert!(value.shares_storage_with(&long));
         }
         let mut batch = DomBatch::new();
         batch.set_attribute(
@@ -1030,14 +1006,8 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
             attributes(&current, element).as_ptr(),
             attributes(&old, element).as_ptr()
         ));
-        assert!(Arc::ptr_eq(
-            text(&current, empty).shared_code_units(),
-            text(&old, empty).shared_code_units()
-        ));
-        assert!(Arc::ptr_eq(
-            text(&current, text_node).shared_code_units(),
-            long.shared_code_units()
-        ));
+        assert!(text(&current, empty).shares_storage_with(text(&old, empty)));
+        assert!(text(&current, text_node).shares_storage_with(&long));
         let mut batch = DomBatch::new();
         batch.replace_data(text_node, 0, usize::MAX, "cut");
         let edit = apply(&mut dom, batch);
@@ -1051,10 +1021,11 @@ fn caller_held_long_and_empty_values_keep_literals_and_noop_backings() {
             attributes(&changed, element).as_ptr(),
             attributes(&old, element).as_ptr()
         ));
-        assert!(Arc::ptr_eq(
-            attributes(&changed, element)[1].value().shared_code_units(),
-            long.shared_code_units()
-        ));
+        assert!(
+            attributes(&changed, element)[1]
+                .value()
+                .shares_storage_with(&long)
+        );
         drop(guard);
         drop(edit);
         drop(noop);

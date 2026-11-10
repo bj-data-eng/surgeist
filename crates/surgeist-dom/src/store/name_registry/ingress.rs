@@ -72,7 +72,7 @@ impl<'a> Normalized<'a> {
             extent: NormalizedExtent,
         }
         let mut formed = Formed { value, extent };
-        let capacity = formed.value.shared_code_units().capacity();
+        let capacity = formed.value.retained_units();
         let actual = capacity
             .checked_mul(size_of::<u16>())
             .and_then(|bytes| bytes.checked_add(size_of::<Vec<u16>>()))
@@ -471,10 +471,7 @@ impl Draft {
                     session.share_string(prefix, admission)
                 })?;
                 if let Some(selected) = selected
-                    && !Arc::ptr_eq(
-                        prefix.shared_code_units(),
-                        selected.value().shared_code_units(),
-                    )
+                    && !prefix.shares_storage_with(selected.value())
                 {
                     let mut original = source::storage::Payload::default();
                     original.string(prefix)?;
@@ -488,10 +485,7 @@ impl Draft {
                 session.share_string(value, admission)
             })?;
             if let Some(selected) = selected
-                && !Arc::ptr_eq(
-                    value.shared_code_units(),
-                    selected.value().shared_code_units(),
-                )
+                && !value.shares_storage_with(selected.value())
             {
                 let mut original = source::storage::Payload::default();
                 original.string(value)?;

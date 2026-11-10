@@ -13,7 +13,7 @@ fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_
     };
     assert_eq!(tag.kind, TagKind::End);
     assert!(tag.had_duplicate_attributes);
-    let name = tag.name.value.text().shared_code_units().as_ptr();
+    let name = tag.name.value.text().code_units().as_ptr();
     let origins = tag
         .name
         .origins
@@ -26,7 +26,7 @@ fn recovered_end_br_discards_actual_attributes_and_keeps_name_origin_and_native_
     session.recover_br_end_tag(&mut c, &mut input).unwrap();
     let tag = input.as_ref().unwrap();
     assert_eq!(tag.kind, TagKind::Start);
-    assert_eq!(tag.name.value.text().shared_code_units().as_ptr(), name);
+    assert_eq!(tag.name.value.text().code_units().as_ptr(), name);
     assert_eq!(
         tag.name
             .origins
@@ -128,7 +128,7 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
         let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
             panic!("tag")
         };
-        let name = tag.name.value.text().shared_code_units().as_ptr();
+        let name = tag.name.value.text().code_units().as_ptr();
         let mut input = Some(tag);
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let remaining = remaining.map(|value| {
@@ -155,7 +155,7 @@ fn end_br_work_stops_retain_preflight_input_or_finish_all_disposal_without_start
                 .name
                 .value
                 .text()
-                .shared_code_units()
+                .code_units()
                 .as_ptr(),
             name
         );
@@ -235,7 +235,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
         .name
         .value
         .text()
-        .shared_code_units()
+        .code_units()
         .as_ptr();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let html = session.allocate_implicit_html(&mut c).unwrap();
@@ -255,7 +255,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
             .name
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr(),
         original
     );
@@ -277,7 +277,7 @@ fn body_merge_qualifies_both_actual_local_names_and_preserves_import_refusal() {
             .name
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr(),
         original
     );
@@ -554,13 +554,7 @@ fn first_lf_work_and_unit_stops_keep_original_input_and_release_every_staged_own
     for remaining in [0, 1, required / 2, required - 1, required] {
         let mut c = control();
         let mut input = Some(body_lexical_value(&source, &mut c));
-        let original = input
-            .as_ref()
-            .unwrap()
-            .value
-            .text()
-            .shared_code_units()
-            .as_ptr();
+        let original = input.as_ref().unwrap().value.text().code_units().as_ptr();
         let capacity = c.usage().actual_capacity_bytes;
         let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(
@@ -575,13 +569,7 @@ fn first_lf_work_and_unit_stops_keep_original_input_and_release_every_staged_own
             input.take().unwrap().release(&mut c).unwrap();
         } else {
             assert_eq!(
-                input
-                    .as_ref()
-                    .unwrap()
-                    .value
-                    .text()
-                    .shared_code_units()
-                    .as_ptr(),
+                input.as_ref().unwrap().value.text().code_units().as_ptr(),
                 original
             );
             assert_eq!(c.usage().actual_capacity_bytes, capacity);
@@ -629,7 +617,7 @@ fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
         .value
         .value
         .text()
-        .shared_code_units()
+        .code_units()
         .as_ptr();
     let self_closing = input.as_ref().unwrap().self_closing;
     let duplicate = input.as_ref().unwrap().had_duplicate_attributes;
@@ -653,7 +641,7 @@ fn recovered_image_keeps_actual_attributes_and_exact_original_name_span() {
             .value
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr(),
         value
     );
@@ -707,7 +695,7 @@ fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit()
             .name
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let bytes = c.usage().actual_capacity_bytes;
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
@@ -740,7 +728,7 @@ fn recovered_image_literal_coexistence_cap_preserves_old_backing_before_commit()
                     .name
                     .value
                     .text()
-                    .shared_code_units()
+                    .code_units()
                     .as_ptr(),
                 original
             );
@@ -834,7 +822,7 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
             .name
             .value
             .text()
-            .shared_code_units()
+            .code_units()
             .as_ptr();
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let bytes = c.usage().actual_capacity_bytes;
@@ -879,7 +867,7 @@ fn image_work_exact_and_partial_stops_preserve_or_commit_one_actual_name_owner()
                     .name
                     .value
                     .text()
-                    .shared_code_units()
+                    .code_units()
                     .as_ptr(),
                 original
             );
@@ -1190,16 +1178,10 @@ fn first_lf_retains_crlf_and_character_reference_sources_and_exact_suffix() {
     let source = crate::HtmlSource::utf8("<a v='\n'>");
     let mut c = control();
     let mut input = Some(body_lexical_value(&source, &mut c));
-    let original = input
-        .as_ref()
-        .unwrap()
-        .value
-        .text()
-        .shared_code_units()
-        .as_ptr();
+    let original = input.as_ref().unwrap().value.text().code_units().as_ptr();
     let prefix = split_first_lf(&mut c, &mut input).unwrap().unwrap();
     assert!(input.is_none());
-    assert_eq!(prefix.value.text().shared_code_units().as_ptr(), original);
+    assert_eq!(prefix.value.text().code_units().as_ptr(), original);
     prefix.release(&mut c).unwrap();
     storage_zero(&c);
 }

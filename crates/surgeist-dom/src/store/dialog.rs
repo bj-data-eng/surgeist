@@ -1082,11 +1082,8 @@ mod tests {
                 result.unwrap();
                 let actual = draft.dialog_state(key).unwrap().return_value();
                 assert_eq!(actual.code_units(), [0xd800]);
-                assert_eq!(actual.shared_code_units().capacity(), capacity);
-                assert!(Arc::ptr_eq(
-                    actual.shared_code_units(),
-                    value.shared_code_units()
-                ));
+                assert_eq!(actual.retained_units(), capacity);
+                assert!(actual.shares_storage_with(&value));
                 assert_eq!(draft.units, original_units + 1);
             }
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
@@ -1292,10 +1289,7 @@ mod tests {
             assert_eq!(draft.source_work.load(Ordering::Relaxed), work);
             let retained = draft.dialog_state(key).unwrap().return_value();
             assert_eq!(retained.code_units(), [0xd800, 0, 13, 10, 0xdc00]);
-            assert!(Arc::ptr_eq(
-                retained.shared_code_units(),
-                original.shared_code_units()
-            ));
+            assert!(retained.shares_storage_with(&original));
             assert_eq!(draft.units, original_units);
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), 0);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), 0);

@@ -6719,6 +6719,19 @@ impl core::error::Error for surgeist_html::values::HtmlValueSyntaxError
 pub fn surgeist_html::values::HtmlValueSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::values::HtmlValueSyntaxError
 pub fn surgeist_html::values::HtmlValueSyntaxError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::values::TextRangeError
+pub surgeist_html::values::TextRangeError::OutOfBounds
+pub surgeist_html::values::TextRangeError::OutOfBounds::block_len: usize
+pub surgeist_html::values::TextRangeError::OutOfBounds::end: usize
+pub surgeist_html::values::TextRangeError::Reversed
+pub surgeist_html::values::TextRangeError::Reversed::end: usize
+pub surgeist_html::values::TextRangeError::Reversed::start: usize
+pub surgeist_html::values::TextRangeError::Unrepresentable
+pub surgeist_html::values::TextRangeError::Unrepresentable::len: usize
+pub surgeist_html::values::TextRangeError::Unrepresentable::start: usize
+impl core::error::Error for surgeist_html::values::TextRangeError
+impl core::fmt::Display for surgeist_html::values::TextRangeError
+pub fn surgeist_html::values::TextRangeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::values::Attribute
 impl surgeist_html::values::Attribute
 pub fn surgeist_html::values::Attribute::name(&self) -> &surgeist_html::values::QualifiedName
@@ -6730,18 +6743,33 @@ pub fn surgeist_html::values::Attribute::name(&self) -> &Self::Name
 pub fn surgeist_html::values::Attribute::value(&self) -> &surgeist_html::values::DocumentString
 pub struct surgeist_html::values::DocumentString
 impl surgeist_html::values::DocumentString
+pub fn surgeist_html::values::DocumentString::block(&self) -> &surgeist_html::values::TextBlock
 pub fn surgeist_html::values::DocumentString::code_points(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + core::clone::Clone + '_
 pub fn surgeist_html::values::DocumentString::code_units(&self) -> &[u16]
-pub fn surgeist_html::values::DocumentString::from_shared_code_units(code_units: alloc::sync::Arc<alloc::vec::Vec<u16>>) -> Self
+pub fn surgeist_html::values::DocumentString::from_shared_utf16(units: alloc::sync::Arc<alloc::vec::Vec<u16>>) -> Self
 pub fn surgeist_html::values::DocumentString::from_utf16(code_units: impl core::convert::Into<alloc::vec::Vec<u16>>) -> Self
 pub fn surgeist_html::values::DocumentString::is_empty(&self) -> bool
+pub fn surgeist_html::values::DocumentString::is_whole_block(&self) -> bool
 pub fn surgeist_html::values::DocumentString::len(&self) -> usize
-pub fn surgeist_html::values::DocumentString::shared_code_units(&self) -> &alloc::sync::Arc<alloc::vec::Vec<u16>>
+pub fn surgeist_html::values::DocumentString::range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_html::values::DocumentString::retained_units(&self) -> usize
+pub fn surgeist_html::values::DocumentString::shares_storage_with(&self, other: &Self) -> bool
+pub fn surgeist_html::values::DocumentString::to_shared_utf16(&self) -> alloc::sync::Arc<alloc::vec::Vec<u16>>
 pub fn surgeist_html::values::DocumentString::to_utf8(&self) -> core::result::Result<alloc::string::String, surgeist_html::values::Utf8ConversionError>
+pub fn surgeist_html::values::DocumentString::unique_units_mut(&mut self) -> core::option::Option<&mut alloc::vec::Vec<u16>>
+impl core::cmp::Eq for surgeist_html::values::DocumentString
+impl core::cmp::PartialEq for surgeist_html::values::DocumentString
+pub fn surgeist_html::values::DocumentString::eq(&self, other: &Self) -> bool
 impl core::convert::From<&str> for surgeist_html::values::DocumentString
 pub fn surgeist_html::values::DocumentString::from(value: &str) -> Self
 impl core::convert::From<alloc::string::String> for surgeist_html::values::DocumentString
 pub fn surgeist_html::values::DocumentString::from(value: alloc::string::String) -> Self
+impl core::default::Default for surgeist_html::values::DocumentString
+pub fn surgeist_html::values::DocumentString::default() -> Self
+impl core::fmt::Debug for surgeist_html::values::DocumentString
+pub fn surgeist_html::values::DocumentString::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_html::values::DocumentString
+pub fn surgeist_html::values::DocumentString::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_html::values::DuplicateAttributeError
 impl surgeist_html::values::DuplicateAttributeError
 pub fn surgeist_html::values::DuplicateAttributeError::duplicate_index(&self) -> usize
@@ -7045,6 +7073,22 @@ impl surgeist_html::values::HtmlNameInput for surgeist_html::values::QualifiedNa
 pub fn surgeist_html::values::QualifiedName::local_name(&self) -> &surgeist_html::values::DocumentString
 pub fn surgeist_html::values::QualifiedName::namespace_uri(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::values::QualifiedName::prefix(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
+pub struct surgeist_html::values::TextBlock
+impl surgeist_html::values::TextBlock
+pub const surgeist_html::values::TextBlock::MAX_RANGE_UNITS: usize
+pub fn surgeist_html::values::TextBlock::address(&self) -> usize
+pub fn surgeist_html::values::TextBlock::capacity(&self) -> usize
+pub fn surgeist_html::values::TextBlock::downgrade(&self) -> surgeist_html::values::WeakTextBlock
+pub fn surgeist_html::values::TextBlock::from_utf16(units: impl core::convert::Into<alloc::vec::Vec<u16>>) -> Self
+pub fn surgeist_html::values::TextBlock::get(&self, range: core::ops::range::Range<usize>) -> core::option::Option<&[u16]>
+pub fn surgeist_html::values::TextBlock::holders(&self) -> usize
+pub fn surgeist_html::values::TextBlock::is_empty(&self) -> bool
+pub fn surgeist_html::values::TextBlock::len(&self) -> usize
+pub fn surgeist_html::values::TextBlock::shares_allocation_with(&self, other: &Self) -> bool
+pub fn surgeist_html::values::TextBlock::string(&self, range: core::ops::range::Range<usize>) -> core::result::Result<surgeist_html::values::DocumentString, surgeist_html::values::TextRangeError>
+pub fn surgeist_html::values::TextBlock::units(&self) -> &[u16]
+pub fn surgeist_html::values::TextBlock::weak_holders(&self) -> usize
+pub fn surgeist_html::values::TextBlock::whole(&self) -> surgeist_html::values::DocumentString
 pub struct surgeist_html::values::Utf8ConversionError
 impl surgeist_html::values::Utf8ConversionError
 pub fn surgeist_html::values::Utf8ConversionError::code_unit_offset(&self) -> usize
@@ -7052,6 +7096,11 @@ pub fn surgeist_html::values::Utf8ConversionError::surrogate(&self) -> u16
 impl core::error::Error for surgeist_html::values::Utf8ConversionError
 impl core::fmt::Display for surgeist_html::values::Utf8ConversionError
 pub fn surgeist_html::values::Utf8ConversionError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::values::WeakTextBlock
+impl surgeist_html::values::WeakTextBlock
+pub fn surgeist_html::values::WeakTextBlock::address(&self) -> usize
+pub fn surgeist_html::values::WeakTextBlock::holders(&self) -> usize
+pub fn surgeist_html::values::WeakTextBlock::upgrade(&self) -> core::option::Option<surgeist_html::values::TextBlock>
 pub trait surgeist_html::values::HtmlAttributeInput
 pub type surgeist_html::values::HtmlAttributeInput::Name: surgeist_html::values::HtmlNameInput + ?core::marker::Sized
 pub fn surgeist_html::values::HtmlAttributeInput::name(&self) -> &Self::Name

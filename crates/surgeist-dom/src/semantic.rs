@@ -987,7 +987,7 @@ impl DomSnapshot {
 mod tests {
     use super::*;
     use crate::{Dom, DomBatch, DomLimits, DomNameLimits};
-    use std::{mem::size_of, sync::Arc};
+    use std::mem::size_of;
     use surgeist_html::values::{Attribute, QualifiedName};
     use surgeist_html::values::{DocumentString, Namespace};
 
@@ -1024,7 +1024,7 @@ mod tests {
         DomHtmlCaptureLimits::new(16, 1_000_000)
     }
     fn string_bytes(value: &DocumentString) -> usize {
-        size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
+        size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>()
     }
     fn name_bytes(name: &crate::DomQualifiedName) -> usize {
         name.namespace_uri()
@@ -1052,10 +1052,7 @@ mod tests {
                     .chain([output.local_name()]),
             )
         {
-            assert!(Arc::ptr_eq(
-                left.shared_code_units(),
-                right.shared_code_units()
-            ));
+            assert!(left.shares_storage_with(right));
         }
     }
 
@@ -1105,10 +1102,7 @@ mod tests {
         for (input, output) in source.attributes().iter().zip(output.attributes().iter()) {
             assert_name(input.name(), output.name());
             assert_eq!(input.value(), output.value());
-            assert!(Arc::ptr_eq(
-                input.value().shared_code_units(),
-                output.value().shared_code_units()
-            ));
+            assert!(input.value().shares_storage_with(output.value()));
         }
         let first = &output.attributes().as_slice()[0];
         assert_eq!(
@@ -1181,8 +1175,8 @@ mod tests {
                 work: 0,
                 cancellation: &cancellation,
             };
-            let backing = source.attributes()[0].value().shared_code_units();
-            let strong = Arc::strong_count(backing);
+            let backing = source.attributes()[0].value().block();
+            let strong = backing.holders();
             let result = builder
                 .add_element_from_inputs(
                     &document,
@@ -1206,7 +1200,7 @@ mod tests {
             }
             assert_eq!(control.work, 0);
             assert_eq!(builder.usage(), before);
-            assert_eq!(Arc::strong_count(backing), strong);
+            assert_eq!(backing.holders(), strong);
         }
     }
 

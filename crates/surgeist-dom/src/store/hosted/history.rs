@@ -697,7 +697,7 @@ impl Graph {
                 + row.nested.values.capacity() * size_of::<DomHostedNavigableId>();
             let mut units = 72;
             if let Some(name) = &row.target_name {
-                let cap = name.shared_code_units().capacity();
+                let cap = name.retained_units();
                 bytes += size_of::<Vec<u16>>() + cap * size_of::<u16>();
                 units += cap;
             }
@@ -2249,10 +2249,13 @@ pub(in crate::store) mod tests {
             entry.target_name.as_ref().unwrap().code_units(),
             &[0xd800, 0, 78]
         );
-        assert!(Arc::ptr_eq(
-            entry.target_name.as_ref().unwrap().shared_code_units(),
-            sampled_name.shared_code_units()
-        ));
+        assert!(
+            entry
+                .target_name
+                .as_ref()
+                .unwrap()
+                .shares_storage_with(&sampled_name)
+        );
         assert_eq!(entry.about_base_url, sampled_about);
         assert_eq!(entry.initiator_origin.as_ref(), Some(&entry.origin));
         // Later embedder attributes/base inputs cannot replace the sampled
@@ -2299,10 +2302,9 @@ pub(in crate::store) mod tests {
             unreachable!()
         };
         let about_usage = record.retained_storage_usage();
-        let fields_bytes = size_of::<Vec<u16>>()
-            + 2 * name.shared_code_units().capacity()
-            + about_usage.retained_bytes();
-        let fields_units = name.shared_code_units().capacity() + about_usage.utf16_extent();
+        let fields_bytes =
+            size_of::<Vec<u16>>() + 2 * name.retained_units() + about_usage.retained_bytes();
+        let fields_units = name.retained_units() + about_usage.utf16_extent();
         assert!(fields_units > name.code_units().len() + record.serialization().code_units().len());
         let retained_copy_bytes = size_of::<Row<Entry>>() + fields_bytes;
         let used = f.used();

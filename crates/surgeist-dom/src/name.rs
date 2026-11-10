@@ -47,7 +47,7 @@ impl NameRecord {
         self.row
     }
     pub(crate) fn usage(text: &DocumentString) -> Result<MaterializationUsage, DomError> {
-        let capacity = text.shared_code_units().capacity();
+        let capacity = text.retained_units();
         let bytes = capacity
             .checked_mul(size_of::<u16>())
             .and_then(|bytes| bytes.checked_add(size_of::<Vec<u16>>()))

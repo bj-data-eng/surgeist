@@ -140,7 +140,7 @@ fn per_occurrence_receipts_include_actual_text_capacity_without_record_bodies() 
     let mut backing = Vec::with_capacity(19);
     backing.extend([0x61, 0xd800]);
     let text = DocumentString::from_utf16(backing);
-    let capacity = text.shared_code_units().capacity();
+    let capacity = text.retained_units();
     let local = atom(owner, text.clone());
     let name =
         DomQualifiedName::from_atoms(Some(local.clone()), Some(text.clone()), local).unwrap();
@@ -193,7 +193,7 @@ fn canonical_attribute_array_aliases_keep_one_target_and_exact_cached_occurrence
         .iter()
         .flat_map(|attribute| [attribute.name().local_name(), attribute.value()])
         .fold((0usize, 0usize), |(bytes, units), text| {
-            let capacity = text.shared_code_units().capacity();
+            let capacity = text.retained_units();
             (
                 bytes + size_of::<Vec<u16>>() + capacity * size_of::<u16>(),
                 units + capacity,

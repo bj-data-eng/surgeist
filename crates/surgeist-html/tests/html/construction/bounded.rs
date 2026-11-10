@@ -658,7 +658,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
 
 #[test]
 fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
-    let text = DocumentString::from_shared_code_units(Arc::new(vec![0xd800, 0, 0xdfff]));
+    let text = DocumentString::from_utf16(vec![0xd800, 0, 0xdfff]);
     let alias = text.clone();
     let mut owner = Some(storage().prepare(HtmlConstructionCommand::Create {
         kind: HtmlNodeKind::Text(text),
@@ -697,10 +697,7 @@ fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
     else {
         panic!()
     };
-    assert!(Arc::ptr_eq(
-        text.shared_code_units(),
-        alias.shared_code_units()
-    ));
+    assert!(text.shares_storage_with(&alias));
     let mut retirement = storage.retire();
     let action = retirement.next_action().unwrap().unwrap();
     assert!(
@@ -1456,7 +1453,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
     ] {
         let owner = storage();
         let name = QualifiedName::new(namespace, None, local);
-        let name_alias = name.local_name().shared_code_units().clone();
+        let name_alias = name.local_name().to_shared_utf16();
         let attributes = OrderedAttributes::new([surgeist_html::values::Attribute::new(
             QualifiedName::new(Namespace::none(), None, "x"),
             "v",
@@ -1499,7 +1496,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
             panic!()
         };
         assert!(Arc::ptr_eq(
-            name.local_name().shared_code_units(),
+            &name.local_name().to_shared_utf16(),
             &name_alias
         ));
         assert!(Arc::ptr_eq(

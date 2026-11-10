@@ -256,14 +256,9 @@ fn check_distinct_banks_text(
         values[1].attributes().shared_attributes()
     ));
     assert_eq!(
-        Arc::ptr_eq(
-            values[0].attributes().as_slice()[1]
-                .value()
-                .shared_code_units(),
-            values[1].attributes().as_slice()[1]
-                .value()
-                .shared_code_units()
-        ),
+        values[0].attributes().as_slice()[1]
+            .value()
+            .shares_storage_with(values[1].attributes().as_slice()[1].value()),
         mode == ValueSharingMode::Combined
     );
     let first = text(report, &paragraphs[0]);
@@ -291,7 +286,7 @@ fn check_distinct_banks_text(
         HtmlParseOriginKind::CharacterReference,
     );
     assert_eq!(
-        Arc::ptr_eq(first.1.shared_code_units(), second.1.shared_code_units()),
+        first.1.shares_storage_with(second.1),
         mode == ValueSharingMode::Combined
     );
     values[0].attributes().shared_attributes().clone()

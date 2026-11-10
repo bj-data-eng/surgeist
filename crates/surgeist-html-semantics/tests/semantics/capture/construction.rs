@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use surgeist_html::{
     bounded::construction::HtmlConstructionResult,
     construction::{
@@ -206,10 +205,7 @@ fn exact_utf16_native_document_shares_backing_and_preserves_order_and_identity()
         panic!("text")
     };
     assert_eq!(value.code_units(), [0xd800, 0, 13, 10, 0xdc00]);
-    assert!(Arc::ptr_eq(
-        value.shared_code_units(),
-        raw.shared_code_units()
-    ));
+    assert!(value.shares_storage_with(&raw));
     assert_eq!(result.source().node(&root).unwrap().id(), root);
     assert_eq!(
         node(&result, &ids[0]).shadow_root(),
