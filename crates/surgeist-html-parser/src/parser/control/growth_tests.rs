@@ -178,6 +178,16 @@ fn attributes_of_one_element(attributes: usize) -> String {
     html
 }
 
+/// `merges` repeated `html` start tags, each carrying one attribute the root does not have yet.
+fn attributes_merged_into_the_root(merges: usize) -> String {
+    let mut html = String::from("<!DOCTYPE html><html a=\"v\">");
+    for merge in 0..merges {
+        let _ = write!(html, "<html m{merge}=\"v\">");
+    }
+    html.push_str("<body>content</body></html>");
+    html
+}
+
 fn table_row(html: &mut String, row: usize) {
     html.push_str("<tr>");
     for column in 0..16_usize {
@@ -347,6 +357,16 @@ fn an_element_with_many_attributes_grows_linearly() {
     assert_family(
         "attributes of one element",
         &costs([100, 200, 400, 800], attributes_of_one_element),
+    );
+}
+
+/// Each repeated `html` start tag appends one attribute to the same element. The copy that grows
+/// the list must not depend on how many attributes the element already has.
+#[test]
+fn attributes_merged_into_the_root_one_at_a_time_grow_linearly() {
+    assert_family(
+        "attributes merged into the root",
+        &costs([100, 200, 400, 800], attributes_merged_into_the_root),
     );
 }
 
