@@ -30,20 +30,20 @@ pub(crate) type NativeWeakSet = WeakObjectMap<()>;
 pub(crate) struct WeakSet;
 
 impl IntrinsicObject for WeakSet {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::delete, js_string!("delete"), 1)
-            .method(Self::has, js_string!("has"), 1)
+            )?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::delete, js_string!("delete"), 1)?
+            .method(Self::has, js_string!("has"), 1)?
             .build()?;
 
         Ok(())
@@ -91,7 +91,7 @@ impl BuiltInConstructor for WeakSet {
             context.root_shape(),
             prototype,
             NativeWeakSet::new(),
-        )
+        )?
         .upcast();
 
         // 4. If iterable is either undefined or null, return set.

@@ -21,6 +21,7 @@ fn context() -> Context {
     let mut context = builder.build().unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("moduleEffects"), 0, true, context.access())
         .unwrap();
     context
@@ -46,6 +47,7 @@ fn linked_module(source: &str, path: &str, context: &mut Context) -> Module {
 fn effects(context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(js_string!("moduleEffects"), context.access())
         .unwrap()
 }
@@ -147,9 +149,10 @@ fn initial_async_module_body_returns_its_original_typed_host_stop() {
 #[test]
 fn ordinary_guest_throw_keeps_the_same_cached_rejected_promise_and_reason() {
     let mut context = context();
-    let reason = JsValue::from(JsObject::with_null_proto(context.runtime()));
+    let reason = JsValue::from(JsObject::with_null_proto(context.runtime()).unwrap());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("moduleGuestError"),
             reason.clone(),
@@ -424,11 +427,13 @@ mod continuation {
             let mut context = builder.build().unwrap();
             context
                 .global_object()
+                .unwrap()
                 .set(js_string!("moduleEffects"), 0, true, context.access())
                 .unwrap();
-            let (gate, resolvers) = JsPromise::new_pending(context.access());
+            let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
             context
                 .global_object()
+                .unwrap()
                 .set(
                     js_string!("moduleGate"),
                     gate.clone(),
@@ -566,6 +571,7 @@ mod continuation {
             ] {
                 context
                     .global_object()
+                    .unwrap()
                     .set(js_string!(name), 0, true, context.access())
                     .unwrap();
             }
@@ -619,14 +625,16 @@ mod continuation {
         fn count(&mut self, name: &str) -> JsValue {
             self.context
                 .global_object()
+                .unwrap()
                 .get(js_string!(name), self.context.access())
                 .unwrap()
         }
 
         fn pending_gate(&mut self, name: &str) -> (JsPromise, ResolvingFunctions) {
-            let (gate, resolvers) = JsPromise::new_pending(self.context.access());
+            let (gate, resolvers) = JsPromise::new_pending(self.context.access()).unwrap();
             self.context
                 .global_object()
+                .unwrap()
                 .set(js_string!(name), gate.clone(), true, self.context.access())
                 .unwrap();
             (gate, resolvers)

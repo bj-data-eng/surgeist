@@ -8,10 +8,10 @@ use surgeist_js_macros::js_str;
 
 #[test]
 fn collecting_a_weak_key_releases_its_primitive_value() {
-    let context = &mut Context::default();
-    let map = JsWeakMap::new(context.access());
-    let dead_key = JsObject::with_null_proto(context.runtime());
-    let live_key = JsObject::with_null_proto(context.runtime());
+    let context = &mut Context::builder().build().unwrap();
+    let map = JsWeakMap::new(context.access()).unwrap();
+    let dead_key = JsObject::with_null_proto(context.runtime()).unwrap();
+    let live_key = JsObject::with_null_proto(context.runtime()).unwrap();
     let value = js_string!("weak map value".to_owned());
     map.set(&dead_key, value.clone().into(), context.access())
         .unwrap();
@@ -33,10 +33,10 @@ fn collecting_a_weak_key_releases_its_primitive_value() {
 
 #[test]
 fn object_value_lives_only_while_its_weak_key_is_reachable() {
-    let context = &mut Context::default();
-    let map = JsWeakMap::new(context.access());
-    let key = JsObject::with_null_proto(context.runtime());
-    let value = JsObject::with_null_proto(context.runtime());
+    let context = &mut Context::builder().build().unwrap();
+    let map = JsWeakMap::new(context.access()).unwrap();
+    let key = JsObject::with_null_proto(context.runtime()).unwrap();
+    let value = JsObject::with_null_proto(context.runtime()).unwrap();
     let value_edge = value.edge();
     map.set(&key, value.into(), context.access()).unwrap();
 
@@ -57,13 +57,13 @@ fn object_value_lives_only_while_its_weak_key_is_reachable() {
 
 #[test]
 fn collection_reentered_during_key_retirement_keeps_live_ephemerons() {
-    let context = &mut Context::default();
-    let map = JsWeakMap::new(context.access());
-    let dead_key = JsObject::with_null_proto(context.runtime());
-    let dead_value = JsObject::with_null_proto(context.runtime());
+    let context = &mut Context::builder().build().unwrap();
+    let map = JsWeakMap::new(context.access()).unwrap();
+    let dead_key = JsObject::with_null_proto(context.runtime()).unwrap();
+    let dead_value = JsObject::with_null_proto(context.runtime()).unwrap();
     let dead_value_edge = dead_value.edge();
-    let live_key = JsObject::with_null_proto(context.runtime());
-    let live_value = JsObject::with_null_proto(context.runtime());
+    let live_key = JsObject::with_null_proto(context.runtime()).unwrap();
+    let live_value = JsObject::with_null_proto(context.runtime()).unwrap();
     let live_value_id = live_value.identity();
 
     let reentered = Rc::new(Cell::new(false));

@@ -1,6 +1,6 @@
 use super::RegisterOperand;
 use crate::{
-    Context, JsExpect, JsResult,
+    Context, JsResult,
     builtins::array::Array,
     js_string,
     object::IntegrityLevel,
@@ -49,63 +49,51 @@ impl TemplateCreate {
         context: &mut Context,
     ) -> JsResult<()> {
         let count = values.len() / 2;
-        let template =
-            Array::array_create(count as u64, None, context).js_expect("cannot fail per spec")?;
-        let raw_obj =
-            Array::array_create(count as u64, None, context).js_expect("cannot fail per spec")?;
+        let template = Array::array_create(count as u64, None, context)?;
+        let raw_obj = Array::array_create(count as u64, None, context)?;
 
         let mut index = 0;
         let mut cooked = true;
         for value in values {
             if cooked {
                 let cooked_value = context.vm.get_register(value as usize);
-                template
-                    .define_property_or_throw(
-                        index,
-                        PropertyDescriptor::builder()
-                            .value(cooked_value.clone())
-                            .writable(false)
-                            .enumerable(true)
-                            .configurable(false),
-                        context.access(),
-                    )
-                    .js_expect("should not fail on new array")?;
+                template.define_property_or_throw(
+                    index,
+                    PropertyDescriptor::builder()
+                        .value(cooked_value.clone())
+                        .writable(false)
+                        .enumerable(true)
+                        .configurable(false),
+                    context.access(),
+                )?;
             } else {
                 let raw_value = context.vm.get_register(value as usize);
-                raw_obj
-                    .define_property_or_throw(
-                        index,
-                        PropertyDescriptor::builder()
-                            .value(raw_value.clone())
-                            .writable(false)
-                            .enumerable(true)
-                            .configurable(false),
-                        context.access(),
-                    )
-                    .js_expect("should not fail on new array")?;
+                raw_obj.define_property_or_throw(
+                    index,
+                    PropertyDescriptor::builder()
+                        .value(raw_value.clone())
+                        .writable(false)
+                        .enumerable(true)
+                        .configurable(false),
+                    context.access(),
+                )?;
                 index += 1;
             }
 
             cooked = !cooked;
         }
 
-        raw_obj
-            .set_integrity_level(IntegrityLevel::Frozen, context.access())
-            .js_expect("should never fail per spec")?;
-        template
-            .define_property_or_throw(
-                js_string!("raw"),
-                PropertyDescriptor::builder()
-                    .value(raw_obj)
-                    .writable(false)
-                    .enumerable(false)
-                    .configurable(false),
-                context.access(),
-            )
-            .js_expect("should never fail per spec")?;
-        template
-            .set_integrity_level(IntegrityLevel::Frozen, context.access())
-            .js_expect("should never fail per spec")?;
+        raw_obj.set_integrity_level(IntegrityLevel::Frozen, context.access())?;
+        template.define_property_or_throw(
+            js_string!("raw"),
+            PropertyDescriptor::builder()
+                .value(raw_obj)
+                .writable(false)
+                .enumerable(false)
+                .configurable(false),
+            context.access(),
+        )?;
+        template.set_integrity_level(IntegrityLevel::Frozen, context.access())?;
 
         context.realm().push_template(site, template.clone());
 

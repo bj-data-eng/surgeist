@@ -160,33 +160,33 @@ impl IntrinsicObject for NumberFormat {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_format = BuiltInBuilder::callable(realm, Self::get_format)
             .name(js_string!("get format"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.NumberFormat"),
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("format"),
                 Some(get_format),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
+            )?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -217,13 +217,18 @@ impl BuiltInConstructor for NumberFormat {
         let new_target_inner = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| {
-                    context
-                        .intrinsics()
-                        .constructors()
-                        .number_format()
-                        .constructor()
-                })
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context
+                                .intrinsics()
+                                .constructors()
+                                .number_format()
+                                .constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -242,7 +247,7 @@ impl BuiltInConstructor for NumberFormat {
             context.root_shape(),
             prototype,
             number_format,
-        );
+        )?;
 
         // 31. Return unused.
 
@@ -261,7 +266,7 @@ impl BuiltInConstructor for NumberFormat {
             .intrinsics()
             .constructors()
             .number_format()
-            .constructor();
+            .constructor()?;
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.NumberFormat%, this) is true, then
         if new_target.is_undefined()
@@ -270,7 +275,7 @@ impl BuiltInConstructor for NumberFormat {
             let fallback_symbol = context
                 .intrinsics()
                 .objects()
-                .intl()
+                .intl()?
                 .borrow()?
                 .data()
                 .fallback_symbol();
@@ -596,7 +601,7 @@ impl NumberFormat {
         let nf = unwrap_number_format(this, context)?;
         let cached = nf.borrow()?.data().bound_format.clone();
         let bound_format = if let Some(f) = cached {
-            JsFunction::from_record(f)
+            JsFunction::from_record(f)?
         } else {
             // 4. If nf.[[BoundFormat]] is undefined, then
             //     a. Let F be a new built-in function object as defined in Number Format Functions (15.5.2).
@@ -849,12 +854,12 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
         .intrinsics()
         .constructors()
         .number_format()
-        .constructor();
+        .constructor()?;
     if JsValue::ordinary_has_instance(&constructor.into(), nf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()
-            .intl()
+            .intl()?
             .borrow()?
             .data()
             .fallback_symbol();

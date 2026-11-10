@@ -307,6 +307,7 @@ fn pure_metadata_refusal_preserves_an_effect_already_started_by_the_outer_operat
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("outerMetadataEffect"), context.access())
             .unwrap(),
         1.into()

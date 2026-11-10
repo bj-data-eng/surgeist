@@ -76,11 +76,8 @@ impl IteratorPush {
             .js_expect("iterator should be an object")?;
         let next = context.vm.get_register(next.into()).clone();
 
-        context
-            .vm
-            .frame_mut()
-            .iterators
-            .push(IteratorRecord::new(iterator, next));
+        let record = IteratorRecord::new(iterator, next)?;
+        context.vm.frame_mut().iterators.push(record);
 
         Ok(())
     }
@@ -385,7 +382,7 @@ impl IteratorToArray {
         }
 
         context.vm.frame_mut().iterators.push(iterator);
-        let result = Array::create_array_from_list(values, context);
+        let result = Array::create_array_from_list(values, context)?;
         context.vm.set_register(array.into(), result.into());
         Ok(())
     }
@@ -427,11 +424,15 @@ pub(crate) struct CreateIteratorResult;
 
 impl CreateIteratorResult {
     #[inline(always)]
-    pub(crate) fn operation((value, done): (RegisterOperand, IndexOperand), context: &mut Context) {
+    pub(crate) fn operation(
+        (value, done): (RegisterOperand, IndexOperand),
+        context: &mut Context,
+    ) -> JsResult<()> {
         let done = u32::from(done) != 0;
-        let val = context.vm.take_register(value.into());
-        let result = create_iter_result_object_trusted(val, done, context);
+        let val = context.vm.get_register(value.into()).clone();
+        let result = create_iter_result_object_trusted(val, done, context)?;
         context.vm.set_register(value.into(), result);
+        Ok(())
     }
 }
 

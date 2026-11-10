@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn rooting_failures_preserve_exact_payload_through_all_error_views() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         for failure in [
             RootingError::Access(AccessError::ForeignHeap),
             RootingError::Access(AccessError::StaleHandle),

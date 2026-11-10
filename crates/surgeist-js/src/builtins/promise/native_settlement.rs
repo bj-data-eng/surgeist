@@ -2057,7 +2057,7 @@ mod tests {
 
     #[test]
     fn abandoned_successor_preparation_keeps_the_predecessor_authoritative() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let association = Association::new(&context).unwrap();
         let first = JobObserver::new();
         let successor = JobObserver::new();
@@ -2078,7 +2078,7 @@ mod tests {
 
     #[test]
     fn committed_successor_retires_existing_waiters_and_ignores_the_old_epoch() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let association = Association::new(&context).unwrap();
         let first = JobObserver::new();
         let successor = JobObserver::new();
@@ -2112,7 +2112,7 @@ mod tests {
 
     #[test]
     fn completing_one_required_child_does_not_release_another_child() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let association = Association::new(&context).unwrap();
         let first = JobObserver::new();
         let second = JobObserver::new();
@@ -2146,7 +2146,7 @@ mod tests {
     }
     #[test]
     fn retirement_marks_the_complete_dependency_chain_before_waking() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let chain: Vec<_> = (0..1024)
             .map(|_| Association::new(&context).unwrap())
             .collect();
@@ -2175,7 +2175,7 @@ mod tests {
 
     #[test]
     fn local_dependency_cycles_are_collectable_even_with_native_signals_alive() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         let left = Association::new(&context).unwrap();
         let right = Association::new(&context).unwrap();
         let left_edge = Association::edge(&left);

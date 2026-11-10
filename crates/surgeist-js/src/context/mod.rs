@@ -116,7 +116,7 @@ impl Drop for ThreadBlocking {
 ///     }
 /// "#;
 ///
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 ///
 /// // Populate the script definition to the context.
 /// context.eval(Source::from_bytes(script)).unwrap();
@@ -210,14 +210,6 @@ impl std::fmt::Debug for Context {
     }
 }
 
-impl Default for Context {
-    fn default() -> Self {
-        ContextBuilder::default()
-            .build()
-            .expect("Building the default context should not fail")
-    }
-}
-
 // ==== Public API ====
 impl Context {
     /// Creates a builder for a context and its host services.
@@ -232,7 +224,7 @@ impl Context {
     /// # Examples
     /// ```
     /// # use surgeist_js::{Context, Source};
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     ///
     /// let source = Source::from_bytes("1 + 3");
     /// let value = context.eval(source).unwrap();
@@ -477,7 +469,7 @@ impl Context {
     ///     property::{Attribute, PropertyDescriptor},
     /// };
     ///
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     ///
     /// context
     ///     .register_global_property(
@@ -509,7 +501,7 @@ impl Context {
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
-        self.global_object().define_property_or_throw(
+        self.global_object()?.define_property_or_throw(
             key,
             PropertyDescriptor::builder()
                 .value(value)
@@ -545,7 +537,7 @@ impl Context {
             .constructor(true)
             .build()?;
 
-        self.global_object().define_property_or_throw(
+        self.global_object()?.define_property_or_throw(
             name,
             PropertyDescriptor::builder()
                 .value(function)
@@ -578,7 +570,7 @@ impl Context {
             .constructor(false)
             .build()?;
 
-        self.global_object().define_property_or_throw(
+        self.global_object()?.define_property_or_throw(
             name,
             PropertyDescriptor::builder()
                 .value(function)
@@ -606,7 +598,7 @@ impl Context {
     /// context.register_global_class::<MyClass>()?;
     /// ```
     pub fn register_global_class<C: Class>(&mut self) -> JsResult<()> {
-        if self.realm().has_class::<C>() {
+        if self.realm().has_class::<C>()? {
             return Err(JsNativeError::typ()
                 .with_message("cannot register a class twice")
                 .into());
@@ -622,7 +614,7 @@ impl Context {
             .enumerable(C::ATTRIBUTES.enumerable())
             .configurable(C::ATTRIBUTES.configurable());
 
-        self.global_object().define_property_or_throw(
+        self.global_object()?.define_property_or_throw(
             js_string!(C::NAME),
             property,
             self.access(),
@@ -656,28 +648,27 @@ impl Context {
     /// context.unregister_global_class::<MyClass>()?;
     /// ```
     pub fn unregister_global_class<C: Class>(&mut self) -> JsResult<Option<ClassConstructor>> {
-        self.global_object()
+        self.global_object()?
             .delete_property_or_throw(js_string!(C::NAME), self.access())?;
-        Ok(self.realm().unregister_class::<C>())
+        Ok(self.realm().unregister_class::<C>()?)
     }
 
     /// Checks if the currently active realm has the global class `C` registered.
-    #[must_use]
-    pub fn has_global_class<C: Class>(&self) -> bool {
+    pub fn has_global_class<C: Class>(&self) -> Result<bool, crate::error::RootingError> {
         self.realm().has_class::<C>()
     }
 
     /// Gets the constructor and prototype of the global class `C` if the currently active realm has
     /// that class registered.
-    #[must_use]
-    pub fn get_global_class<C: Class>(&self) -> Option<ClassConstructor> {
+    pub fn get_global_class<C: Class>(
+        &self,
+    ) -> Result<Option<ClassConstructor>, crate::error::RootingError> {
         self.realm().get_class::<C>()
     }
 
     /// Returns the global object.
     #[inline]
-    #[must_use]
-    pub fn global_object(&self) -> JsObject {
+    pub fn global_object(&self) -> Result<JsObject, crate::error::RootingError> {
         self.vm.frame().realm.global_object()
     }
 
@@ -991,7 +982,7 @@ impl Context {
     pub(crate) fn can_declare_global_function(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object();
+        let global_object = self.realm().global_object()?;
 
         // 3. Let existingProp be ? globalObject.[[GetOwnProperty]](N).
         let name = name.clone().into();
@@ -1028,7 +1019,7 @@ impl Context {
     pub(crate) fn can_declare_global_var(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object();
+        let global_object = self.realm().global_object()?;
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
         let has_property = global_object.has_own_property(name.clone(), self.access())?;
@@ -1055,7 +1046,7 @@ impl Context {
     ) -> JsResult<()> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object();
+        let global_object = self.realm().global_object()?;
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
         let has_property = global_object.has_own_property(name.clone(), self.access())?;
@@ -1094,7 +1085,7 @@ impl Context {
         configurable: bool,
         materialize: impl FnOnce(&mut Context) -> JsResult<JsObject>,
     ) -> JsResult<()> {
-        let global_object = self.realm().global_object();
+        let global_object = self.realm().global_object()?;
         let key = name.clone().into();
         let existing_prop = global_object.__get_own_property__(&key, &mut self.into())?;
         let descriptor = if existing_prop.is_none()
@@ -1132,7 +1123,7 @@ impl Context {
     pub(crate) fn has_restricted_global_property(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object();
+        let global_object = self.realm().global_object()?;
 
         // 3. Let existingProp be ? globalObject.[[GetOwnProperty]](N).
         let name = name.clone().into();
@@ -1472,7 +1463,7 @@ impl ContextBuilder {
     // require having a `Context` in the first place.
     pub fn build(self) -> JsResult<Context> {
         let thread_blocking = ThreadBlocking::acquire(self.can_block)?;
-        let root_shape = RootShape::new(self.runtime.unwrap_or_default());
+        let root_shape = RootShape::new(self.runtime.unwrap_or_default())?;
 
         let host_hooks = self.host_hooks.unwrap_or(Rc::new(DefaultHooks));
         let clock = self.clock.unwrap_or_else(|| Rc::new(StdClock::new()));
@@ -1624,8 +1615,9 @@ mod runtime_tests {
 
     #[test]
     fn materialization_foreign_host_hook_errors_are_local_type_errors() {
-        let foreign = Context::default();
-        let foreign_error = crate::JsError::from_opaque(foreign.global_object().into()).unwrap();
+        let foreign = Context::builder().build().unwrap();
+        let foreign_error =
+            crate::JsError::from_opaque(foreign.global_object().unwrap().into()).unwrap();
         let nested = JsNativeError::error()
             .with_cause(foreign_error.clone())
             .into();
@@ -1649,8 +1641,8 @@ mod runtime_tests {
     struct ReentrantGlobal;
 
     impl HostHooks for ReentrantGlobal {
-        fn create_global_object(&self, intrinsics: &intrinsics::Intrinsics) -> JsObject {
-            let runtime = intrinsics.runtime();
+        fn create_global_object(&self, intrinsics: &intrinsics::Intrinsics) -> JsResult<JsObject> {
+            let runtime = intrinsics.runtime()?;
             let nested = Context::builder()
                 .runtime(runtime.clone())
                 .build()
@@ -1660,11 +1652,11 @@ mod runtime_tests {
                 intrinsics
                     .constructors()
                     .object()
-                    .prototype()
+                    .prototype()?
                     .runtime()
                     .same_heap(&runtime)
             );
-            nested.global_object()
+            Ok(nested.global_object()?)
         }
     }
 
@@ -1682,13 +1674,13 @@ mod runtime_tests {
             .host_hooks(Rc::new(ReentrantGlobal))
             .build()
             .expect("outer realm accepts a same-runtime global");
-        assert!(outer.global_object().runtime().same_heap(&runtime));
+        assert!(outer.global_object().unwrap().runtime().same_heap(&runtime));
     }
 
     #[test]
     fn entering_a_foreign_realm_leaves_the_active_realm_unchanged() {
-        let mut local = Context::default();
-        let foreign = Context::default();
+        let mut local = Context::builder().build().unwrap();
+        let foreign = Context::builder().build().unwrap();
         let previous = local.realm().clone();
         let error = local.enter_realm(foreign.realm().clone()).unwrap_err();
         assert!(
@@ -1702,7 +1694,7 @@ mod runtime_tests {
     struct ForeignGlobal;
 
     impl HostHooks for ForeignGlobal {
-        fn create_global_object(&self, _: &intrinsics::Intrinsics) -> JsObject {
+        fn create_global_object(&self, _: &intrinsics::Intrinsics) -> JsResult<JsObject> {
             JsObject::with_null_proto(&crate::Runtime::default())
         }
     }

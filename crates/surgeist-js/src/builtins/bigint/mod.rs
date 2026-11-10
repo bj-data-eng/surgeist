@@ -38,24 +38,24 @@ pub struct BigInt;
 
 impl IntrinsicObject for BigInt {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .static_method(Self::as_int_n, js_string!("asIntN"), 2)
-            .static_method(Self::as_uint_n, js_string!("asUintN"), 2)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
+            .static_method(Self::as_int_n, js_string!("asIntN"), 2)?
+            .static_method(Self::as_uint_n, js_string!("asUintN"), 2)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 

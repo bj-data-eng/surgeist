@@ -81,13 +81,17 @@ impl IntrinsicObject for Array {
 
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let values_function = BuiltInBuilder::callable_with_object(
             realm,
-            realm.intrinsics().objects().array_prototype_values().into(),
+            realm
+                .intrinsics()
+                .objects()
+                .array_prototype_values()?
+                .into(),
             Self::values,
-        )
+        )?
         .name(js_string!("values"))
         .build()?;
 
@@ -96,98 +100,98 @@ impl IntrinsicObject for Array {
             realm
                 .intrinsics()
                 .objects()
-                .array_prototype_to_string()
+                .array_prototype_to_string()?
                 .into(),
             Self::to_string,
-        )
+        )?
         .name(js_string!("toString"))
         .build()?;
 
-        let unscopables_object = Self::unscopables_object(&realm.intrinsics().runtime())?;
+        let unscopables_object = Self::unscopables_object(&realm.runtime())?;
 
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             // Static Methods
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::is_array, js_string!("isArray"), 1)
-            .static_method(Self::of, js_string!("of"), 0)
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::is_array, js_string!("isArray"), 1)?
+            .static_method(Self::of, js_string!("of"), 0)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 StaticJsStrings::LENGTH,
                 0,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::PERMANENT,
-            )
-            .method(Self::at, js_string!("at"), 1)
-            .method(Self::concat, js_string!("concat"), 1)
-            .method(Self::copy_within, js_string!("copyWithin"), 2)
-            .method(Self::entries, js_string!("entries"), 0)
-            .method(Self::every, js_string!("every"), 1)
-            .method(Self::fill, js_string!("fill"), 1)
-            .method(Self::filter, js_string!("filter"), 1)
-            .method(Self::find, js_string!("find"), 1)
-            .method(Self::find_index, js_string!("findIndex"), 1)
-            .method(Self::find_last, js_string!("findLast"), 1)
-            .method(Self::find_last_index, js_string!("findLastIndex"), 1)
-            .method(Self::flat, js_string!("flat"), 0)
-            .method(Self::flat_map, js_string!("flatMap"), 1)
-            .method(Self::for_each, js_string!("forEach"), 1)
-            .method(Self::includes_value, js_string!("includes"), 1)
-            .method(Self::index_of, js_string!("indexOf"), 1)
-            .method(Self::join, js_string!("join"), 1)
-            .method(Self::keys, js_string!("keys"), 0)
-            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)
-            .method(Self::map, js_string!("map"), 1)
-            .method(Self::pop, js_string!("pop"), 0)
-            .method(Self::push, js_string!("push"), 1)
-            .method(Self::reduce, js_string!("reduce"), 1)
-            .method(Self::reduce_right, js_string!("reduceRight"), 1)
-            .method(Self::reverse, js_string!("reverse"), 0)
-            .method(Self::shift, js_string!("shift"), 0)
-            .method(Self::slice, js_string!("slice"), 2)
-            .method(Self::some, js_string!("some"), 1)
-            .method(Self::sort, js_string!("sort"), 1)
-            .method(Self::splice, js_string!("splice"), 2)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_reversed, js_string!("toReversed"), 0)
-            .method(Self::to_sorted, js_string!("toSorted"), 1)
-            .method(Self::to_spliced, js_string!("toSpliced"), 2)
-            .method(Self::unshift, js_string!("unshift"), 1)
-            .method(Self::with, js_string!("with"), 2)
+            )?
+            .method(Self::at, js_string!("at"), 1)?
+            .method(Self::concat, js_string!("concat"), 1)?
+            .method(Self::copy_within, js_string!("copyWithin"), 2)?
+            .method(Self::entries, js_string!("entries"), 0)?
+            .method(Self::every, js_string!("every"), 1)?
+            .method(Self::fill, js_string!("fill"), 1)?
+            .method(Self::filter, js_string!("filter"), 1)?
+            .method(Self::find, js_string!("find"), 1)?
+            .method(Self::find_index, js_string!("findIndex"), 1)?
+            .method(Self::find_last, js_string!("findLast"), 1)?
+            .method(Self::find_last_index, js_string!("findLastIndex"), 1)?
+            .method(Self::flat, js_string!("flat"), 0)?
+            .method(Self::flat_map, js_string!("flatMap"), 1)?
+            .method(Self::for_each, js_string!("forEach"), 1)?
+            .method(Self::includes_value, js_string!("includes"), 1)?
+            .method(Self::index_of, js_string!("indexOf"), 1)?
+            .method(Self::join, js_string!("join"), 1)?
+            .method(Self::keys, js_string!("keys"), 0)?
+            .method(Self::last_index_of, js_string!("lastIndexOf"), 1)?
+            .method(Self::map, js_string!("map"), 1)?
+            .method(Self::pop, js_string!("pop"), 0)?
+            .method(Self::push, js_string!("push"), 1)?
+            .method(Self::reduce, js_string!("reduce"), 1)?
+            .method(Self::reduce_right, js_string!("reduceRight"), 1)?
+            .method(Self::reverse, js_string!("reverse"), 0)?
+            .method(Self::shift, js_string!("shift"), 0)?
+            .method(Self::slice, js_string!("slice"), 2)?
+            .method(Self::some, js_string!("some"), 1)?
+            .method(Self::sort, js_string!("sort"), 1)?
+            .method(Self::splice, js_string!("splice"), 2)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_reversed, js_string!("toReversed"), 0)?
+            .method(Self::to_sorted, js_string!("toSorted"), 1)?
+            .method(Self::to_spliced, js_string!("toSpliced"), 2)?
+            .method(Self::unshift, js_string!("unshift"), 1)?
+            .method(Self::with, js_string!("with"), 2)?
             .property(
                 js_string!("toString"),
                 to_string_function,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("values"),
                 values_function.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 symbol_iterator,
                 values_function,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 symbol_unscopables,
                 unscopables_object,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "experimental")]
-        let builder = builder.static_method(Self::from_async, js_string!("fromAsync"), 1);
+        let builder = builder.static_method(Self::from_async, js_string!("fromAsync"), 1)?;
 
         builder.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -213,7 +217,14 @@ impl BuiltInConstructor for Array {
         let new_target = &if new_target.is_undefined() {
             context
                 .active_function_object()
-                .unwrap_or_else(|| context.intrinsics().constructors().array().constructor())
+                .map_or_else(
+                    || {
+                        Ok::<_, crate::JsError>(
+                            context.intrinsics().constructors().array().constructor()?,
+                        )
+                    },
+                    Ok,
+                )?
                 .into()
         } else {
             new_target.clone()
@@ -240,9 +251,7 @@ impl BuiltInConstructor for Array {
             #[allow(clippy::if_not_else)]
             let int_len = if !len.is_number() {
                 // i. Perform ! CreateDataPropertyOrThrow(array, "0", len).
-                array
-                    .create_data_property_or_throw(0, len.clone(), context.access())
-                    .js_expect("this CreateDataPropertyOrThrow call must not fail")?;
+                array.create_data_property_or_throw(0, len.clone(), context.access())?;
                 // ii. Let intLen be 1𝔽.
                 1
             // d. Else,
@@ -260,9 +269,7 @@ impl BuiltInConstructor for Array {
                 int_len
             };
             // e. Perform ! Set(array, "length", intLen, true).
-            array
-                .set(StaticJsStrings::LENGTH, int_len, true, context.access())
-                .js_expect("this Set call must not fail")?;
+            array.set(StaticJsStrings::LENGTH, int_len, true, context.access())?;
             // f. Return array.
             Ok(array.into())
         // 6. Else,
@@ -296,13 +303,13 @@ impl Array {
     fn set_length(o: &JsObject, len: u64, context: &mut Context) -> JsResult<()> {
         if o.is_array() && len < (2u64.pow(32) - 1) {
             let mut borrowed_object = o.borrow_mut()?;
-            if borrowed_object.properties().shape().identity()
-                == context.intrinsics().templates().array().shape().identity()
+            if borrowed_object.properties().shape()?.identity()
+                == context.intrinsics().templates().array().shape()?.identity()
             {
                 // NOTE: The "length" property is the first element.
                 borrowed_object
                     .properties_mut()
-                    .write_named_slot(0, JsValue::new(len));
+                    .write_named_slot(0, JsValue::new(len))?;
                 return Ok(());
             }
         }
@@ -331,11 +338,11 @@ impl Array {
 
         // Fast path:
         if prototype.is_none() {
-            return Ok(context
-                .intrinsics()
-                .templates()
-                .array()
-                .create(Array, [JsValue::new(length)]));
+            return context.intrinsics().templates().array().create(
+                Array,
+                [JsValue::new(length)],
+                crate::object::AllocationOrigin::TrustedConstruction,
+            );
         }
 
         // 7. Return A.
@@ -343,26 +350,31 @@ impl Array {
         // 3. Let A be ! MakeBasicObject(« [[Prototype]], [[Extensible]] »).
         // 4. Set A.[[Prototype]] to proto.
         // 5. Set A.[[DefineOwnProperty]] as specified in 10.4.2.1.
-        let prototype =
-            prototype.unwrap_or_else(|| context.intrinsics().constructors().array().prototype());
+        let prototype = prototype.map_or_else(
+            || Ok::<_, crate::JsError>(context.intrinsics().constructors().array().prototype()?),
+            Ok,
+        )?;
 
         // Fast path:
         if context
             .intrinsics()
             .templates()
             .array()
-            .has_prototype(&prototype)
+            .has_prototype(&prototype)?
         {
-            return Ok(context
-                .intrinsics()
-                .templates()
-                .array()
-                .create(Array, [JsValue::new(length)]));
+            return context.intrinsics().templates().array().create(
+                Array,
+                [JsValue::new(length)],
+                crate::object::AllocationOrigin::TrustedConstruction,
+            );
         }
 
-        let array =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, Array)
-                .upcast();
+        let array = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            prototype,
+            Array,
+        )?
+        .upcast();
 
         // 6. Perform ! OrdinaryDefineOwnProperty(A, "length", PropertyDescriptor { [[Value]]: 𝔽(length), [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: false }).
         ordinary_define_own_property(
@@ -386,7 +398,7 @@ impl Array {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-createarrayfromlist
-    pub(crate) fn create_array_from_list<I>(elements: I, context: &Context) -> JsObject
+    pub(crate) fn create_array_from_list<I>(elements: I, context: &Context) -> JsResult<JsObject>
     where
         I: IntoIterator<Item = JsValue>,
     {
@@ -404,9 +416,8 @@ impl Array {
     pub(crate) fn create_array_with_dense_elements(
         elements: ThinVec<JsValue>,
         context: &Context,
-    ) -> JsObject {
+    ) -> JsResult<JsObject> {
         let length = elements.len();
-
         context
             .intrinsics()
             .templates()
@@ -415,6 +426,7 @@ impl Array {
                 Array,
                 [JsValue::new(length)],
                 IndexedProperties::from_dense_js_value(elements),
+                crate::object::AllocationOrigin::TrustedConstruction,
             )
     }
 
@@ -483,7 +495,7 @@ impl Array {
 
             // c. If thisRealm and realmC are not the same Realm Record, then
             if this_realm != realm_c
-                && c == realm_c.intrinsics().constructors().array().constructor()
+                && c == realm_c.intrinsics().constructors().array().constructor()?
             {
                 // i. If SameValue(C, realmC.[[Intrinsics]].[[%Array%]]) is true, set C to undefined.
                 // Note: fast path to step 6.
@@ -561,9 +573,7 @@ impl Array {
         let Some(using_iterator) = using_iterator else {
             // 6. NOTE: items is not an Iterable so assume it is an array-like object.
             // 7. Let arrayLike be ! ToObject(items).
-            let array_like = items
-                .to_object(context.access())
-                .js_expect("should not fail according to spec")?;
+            let array_like = items.to_object(context.access())?;
 
             // 8. Let len be ? LengthOfArrayLike(arrayLike).
             let len = array_like.length_of_array_like(context)?;
@@ -1175,8 +1185,7 @@ impl Array {
             let from_value = o.get(from, context.access())?;
 
             // d. Perform ! CreateDataPropertyOrThrow(A, Pk, fromValue).
-            a.create_data_property_or_throw(i, from_value, context.access())
-                .js_expect("cannot fail per the spec")?;
+            a.create_data_property_or_throw(i, from_value, context.access())?;
 
             // e. Set k to k + 1.
         }
@@ -2499,8 +2508,7 @@ impl Array {
             let value = o.get(i, context.access())?;
 
             //     c. Perform ! CreateDataPropertyOrThrow(A, Pi, iValue).
-            arr.create_data_property_or_throw(i, value, context.access())
-                .js_expect("cannot fail for a newly created array")?;
+            arr.create_data_property_or_throw(i, value, context.access())?;
 
             //     d. Set i to i + 1.
             i += 1;
@@ -2510,8 +2518,7 @@ impl Array {
         for item in items.iter().cloned() {
             //     a. Let Pi be ! ToString(𝔽(i)).
             //     b. Perform ! CreateDataPropertyOrThrow(A, Pi, E).
-            arr.create_data_property_or_throw(i, item, context.access())
-                .js_expect("cannot fail for a newly created array")?;
+            arr.create_data_property_or_throw(i, item, context.access())?;
 
             //     c. Set i to i + 1.
             i += 1;
@@ -2528,8 +2535,7 @@ impl Array {
             let from_value = o.get(r, context.access())?;
 
             //     d. Perform ! CreateDataPropertyOrThrow(A, Pi, fromValue).
-            arr.create_data_property_or_throw(i, from_value, context.access())
-                .js_expect("cannot fail for a newly created array")?;
+            arr.create_data_property_or_throw(i, from_value, context.access())?;
 
             //     e. Set i to i + 1.
             i += 1;
@@ -2833,8 +2839,7 @@ impl Array {
         // 8. Repeat, while j < len,
         for (i, item) in sorted.into_iter().enumerate() {
             //     a. Perform ! CreateDataPropertyOrThrow(A, ! ToString(𝔽(j)), sortedList[j]).
-            arr.create_data_property_or_throw(i, item, context.access())
-                .js_expect("cannot fail for a newly created array")?;
+            arr.create_data_property_or_throw(i, item, context.access())?;
 
             //     b. Set j to j + 1.
         }
@@ -3236,9 +3241,7 @@ impl Array {
             };
 
             // d. Perform ! CreateDataPropertyOrThrow(A, Pk, fromValue).
-            new_array
-                .create_data_property_or_throw(k, from_value, context.access())
-                .js_expect("cannot fail for a newly created array")?;
+            new_array.create_data_property_or_throw(k, from_value, context.access())?;
 
             // e. Set k to k + 1.
         }
@@ -3308,50 +3311,52 @@ impl Array {
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype-@@unscopables
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/@@unscopables
     pub(crate) fn unscopables_object(runtime: &crate::Runtime) -> JsResult<JsObject> {
-        // 1. Let unscopableList be OrdinaryObjectCreate(null).
-        let unscopable_list = JsObject::with_null_proto(runtime);
-        let true_prop = PropertyDescriptor::builder()
-            .value(true)
-            .writable(true)
-            .enumerable(true)
-            .configurable(true);
-        {
-            let mut obj = unscopable_list.borrow_mut()?;
-            // 2. Perform ! CreateDataPropertyOrThrow(unscopableList, "at", true).
-            obj.insert(js_string!("at"), true_prop.clone());
-            // 3. Perform ! CreateDataPropertyOrThrow(unscopableList, "copyWithin", true).
-            obj.insert(js_string!("copyWithin"), true_prop.clone());
-            // 4. Perform ! CreateDataPropertyOrThrow(unscopableList, "entries", true).
-            obj.insert(js_string!("entries"), true_prop.clone());
-            // 5. Perform ! CreateDataPropertyOrThrow(unscopableList, "fill", true).
-            obj.insert(js_string!("fill"), true_prop.clone());
-            // 6. Perform ! CreateDataPropertyOrThrow(unscopableList, "find", true).
-            obj.insert(js_string!("find"), true_prop.clone());
-            // 7. Perform ! CreateDataPropertyOrThrow(unscopableList, "findIndex", true).
-            obj.insert(js_string!("findIndex"), true_prop.clone());
-            // 8. Perform ! CreateDataPropertyOrThrow(unscopableList, "findLast", true).
-            obj.insert(js_string!("findLast"), true_prop.clone());
-            // 9. Perform ! CreateDataPropertyOrThrow(unscopableList, "findLastIndex", true).
-            obj.insert(js_string!("findLastIndex"), true_prop.clone());
-            // 10. Perform ! CreateDataPropertyOrThrow(unscopableList, "flat", true).
-            obj.insert(js_string!("flat"), true_prop.clone());
-            // 11. Perform ! CreateDataPropertyOrThrow(unscopableList, "flatMap", true).
-            obj.insert(js_string!("flatMap"), true_prop.clone());
-            // 12. Perform ! CreateDataPropertyOrThrow(unscopableList, "includes", true).
-            obj.insert(js_string!("includes"), true_prop.clone());
-            // 13. Perform ! CreateDataPropertyOrThrow(unscopableList, "keys", true).
-            obj.insert(js_string!("keys"), true_prop.clone());
-            // 14. Perform ! CreateDataPropertyOrThrow(unscopableList, "toReversed", true).
-            obj.insert(js_string!("toReversed"), true_prop.clone());
-            // 15. Perform ! CreateDataPropertyOrThrow(unscopableList, "toSorted", true).
-            obj.insert(js_string!("toSorted"), true_prop.clone());
-            // 16. Perform ! CreateDataPropertyOrThrow(unscopableList, "toSpliced", true).
-            obj.insert(js_string!("toSpliced"), true_prop.clone());
-            // 17. Perform ! CreateDataPropertyOrThrow(unscopableList, "values", true).
-            obj.insert(js_string!("values"), true_prop);
+        use crate::object::{
+            BuiltinPrototype, BuiltinTargetMode, NamedLayout, PreparedBuiltinTarget,
+            commit_builtin_targets, shape::slot::SlotAttributes,
+        };
+        let unscopable_list = JsObject::with_null_proto(runtime)?;
+        let keys = [
+            js_string!("at"),
+            js_string!("copyWithin"),
+            js_string!("entries"),
+            js_string!("fill"),
+            js_string!("find"),
+            js_string!("findIndex"),
+            js_string!("findLast"),
+            js_string!("findLastIndex"),
+            js_string!("flat"),
+            js_string!("flatMap"),
+            js_string!("includes"),
+            js_string!("keys"),
+            js_string!("toReversed"),
+            js_string!("toSorted"),
+            js_string!("toSpliced"),
+            js_string!("values"),
+        ];
+        let mut layout = NamedLayout::new(keys.len())?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(keys.len())
+            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+        for key in keys {
+            layout.push(
+                key.into(),
+                SlotAttributes::WRITABLE
+                    | SlotAttributes::ENUMERABLE
+                    | SlotAttributes::CONFIGURABLE,
+            )?;
+            values.push(JsValue::new(true));
         }
-
-        // 13. Return unscopableList.
+        commit_builtin_targets(
+            PreparedBuiltinTarget::ordinary(
+                unscopable_list.clone(),
+                BuiltinTargetMode::Fresh,
+                layout.prepare(values)?,
+                BuiltinPrototype::Keep,
+            ),
+            None,
+        )?;
         Ok(unscopable_list)
     }
 }
@@ -3489,10 +3494,10 @@ fn array_exotic_define_own_property(
             // we know the position of the "length" property.
             if u64::from(new_len) < (2u64.pow(32) - 1) {
                 let borrowed_object = obj.borrow()?;
-                if borrowed_object.properties().shape().identity()
-                    == context.intrinsics().templates().array().shape().identity()
+                if borrowed_object.properties().shape()?.identity()
+                    == context.intrinsics().templates().array().shape()?.identity()
                 {
-                    let old_len = borrowed_object.properties().named_slot(0);
+                    let old_len = borrowed_object.properties().named_slot(0)?;
                     drop(borrowed_object);
                     let old_len = old_len.to_u32(context.access())?;
                     if new_len >= old_len {
@@ -3500,7 +3505,7 @@ fn array_exotic_define_own_property(
                             let mut borrowed_object = obj.borrow_mut()?;
                             borrowed_object
                                 .properties_mut()
-                                .write_named_slot(0, JsValue::new(new_len));
+                                .write_named_slot(0, JsValue::new(new_len))?;
                             return Ok(true);
                         }
                         return Ok(false);
@@ -3657,9 +3662,7 @@ fn array_set_length(
         &StaticJsStrings::LENGTH.into(),
         new_len_desc.clone().build(),
         context,
-    )
-    .js_expect("this OrdinaryDefineOwnProperty call must not fail")?
-    {
+    )? {
         return Ok(false);
     }
 
@@ -3694,8 +3697,7 @@ fn array_set_length(
                 &StaticJsStrings::LENGTH.into(),
                 new_len_desc.build(),
                 context,
-            )
-            .js_expect("this OrdinaryDefineOwnProperty call must not fail")?;
+            )?;
 
             // iv. Return false.
             return Ok(false);
@@ -3711,8 +3713,7 @@ fn array_set_length(
             &StaticJsStrings::LENGTH.into(),
             PropertyDescriptor::builder().writable(false).build(),
             context,
-        )
-        .js_expect("this OrdinaryDefineOwnProperty call must not fail")?;
+        )?;
 
         // b. Assert: succeeded is true.
         debug_assert!(succeeded);

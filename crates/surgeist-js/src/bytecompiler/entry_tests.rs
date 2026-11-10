@@ -127,7 +127,7 @@ impl RealmSnapshot {
 }
 
 fn seeded() -> Context {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .eval(Source::from_bytes("let existing = 5;"))
         .unwrap();
@@ -506,7 +506,7 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
     if let Some(dependency) = &harness.dependency {
         let committed = matches!(harness.case, ModuleCase::SourceWithCommittedDependency);
         assert_eq!(dependency.environment().is_some(), committed);
-        let global = harness.context.global_object().clone();
+        let global = harness.context.global_object().unwrap().clone();
         assert_eq!(
             global
                 .get(js_string!("dependencyRuns"), harness.context.access())
@@ -591,7 +591,7 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
                 harness.snapshot.bindings
             );
             if harness.dependency.is_some() {
-                let global = harness.context.global_object().clone();
+                let global = harness.context.global_object().unwrap().clone();
                 assert_eq!(
                     global
                         .get(js_string!("dependencyRuns"), harness.context.access())

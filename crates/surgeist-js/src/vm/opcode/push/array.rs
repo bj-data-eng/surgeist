@@ -1,6 +1,7 @@
 use crate::{
     Context, JsExpect, JsResult, JsValue,
     builtins::Array,
+    object::AllocationOrigin,
     string::StaticJsStrings,
     vm::opcode::{Operation, RegisterOperand},
 };
@@ -14,13 +15,14 @@ pub(crate) struct StoreNewArray;
 
 impl StoreNewArray {
     #[inline(always)]
-    pub(crate) fn operation(array: RegisterOperand, context: &mut Context) {
-        let value = context
-            .intrinsics()
-            .templates()
-            .array()
-            .create(Array, Vec::from([JsValue::new(0)]));
+    pub(crate) fn operation(array: RegisterOperand, context: &mut Context) -> JsResult<()> {
+        let value = context.intrinsics().templates().array().create(
+            Array,
+            Vec::from([JsValue::new(0)]),
+            AllocationOrigin::TrustedConstruction,
+        )?;
         context.vm.set_register(array.into(), value.into());
+        Ok(())
     }
 }
 
@@ -53,23 +55,20 @@ impl PushValueToArray {
         // Fast path: push directly to dense indexed storage.
         {
             let mut o_mut = o.borrow_mut()?;
-            let len = o_mut.properties().named_slot(0).as_i32();
+            let len = o_mut.properties().named_slot(0)?.as_i32();
             if let Some(len) = len
                 && o_mut.properties_mut().indexed_properties.push_dense(&value)
             {
                 o_mut
                     .properties_mut()
-                    .write_named_slot(0, JsValue::new(len + 1));
+                    .write_named_slot(0, JsValue::new(len + 1))?;
                 return Ok(());
             }
         }
 
         // Slow path: fall through to the generic property machinery.
-        let len = o
-            .length_of_array_like(context)
-            .js_expect("should have 'length' property")?;
-        o.create_data_property_or_throw(len, value, context.access())
-            .js_expect("should be able to create new data property")?;
+        let len = o.length_of_array_like(context)?;
+        o.create_data_property_or_throw(len, value, context.access())?;
         Ok(())
     }
 }
@@ -92,9 +91,7 @@ impl PushElisionToArray {
     pub(crate) fn operation(array: RegisterOperand, context: &mut Context) -> JsResult<()> {
         let array = context.vm.get_register(array.into()).clone();
         let o = array.as_object().js_expect("should always be an object")?;
-        let len = o
-            .length_of_array_like(context)
-            .js_expect("arrays should always have a 'length' property")?;
+        let len = o.length_of_array_like(context)?;
         o.set(StaticJsStrings::LENGTH, len + 1, true, context.access())?;
         o.borrow_mut()?
             .properties_mut()

@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn hidden_in_enumeration() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let symbol1 = JsSymbol::new(None).unwrap();
         let symbol2 = JsSymbol::new(None).unwrap();
         let test_obj = JsObject::from_proto_and_data(context.runtime(), None, ()).unwrap();
@@ -361,9 +361,9 @@ mod tests {
 
     #[test]
     fn hidden_in_stringify() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let symbol = JsSymbol::new(None).unwrap();
-        let test_obj = JsObject::with_object_proto(context.intrinsics());
+        let test_obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
         test_obj
             .set(
                 symbol,

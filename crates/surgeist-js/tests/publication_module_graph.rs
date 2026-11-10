@@ -185,7 +185,7 @@ impl Graph {
                 }),
             )
             .unwrap();
-        let opaque: JsValue = JsObject::with_null_proto(context.runtime()).into();
+        let opaque: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
         let original: JsError = PanicError::new("authored graph post-storage failure")
             .with_source(
                 JsNativeError::range()
@@ -260,6 +260,7 @@ impl Graph {
     fn count(&mut self, name: &str) -> JsValue {
         self.context
             .global_object()
+            .unwrap()
             .get(surgeist_js::JsString::from(name), self.context.access())
             .unwrap()
     }

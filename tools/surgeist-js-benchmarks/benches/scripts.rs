@@ -39,7 +39,7 @@ fn bench_scripts(c: &mut Criterion) {
             group.measurement_time(Duration::from_secs(5));
         }
 
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         // Disable optimizations
         context.set_optimizer_options(OptimizerOptions::empty());
@@ -62,6 +62,7 @@ fn bench_scripts(c: &mut Criterion) {
         // Get the main function
         let function = context
             .global_object()
+            .unwrap()
             .get(js_string!("main"), context.access())
             .unwrap_or_else(|_| panic!("No main function defined in script: {}", path.display()))
             .as_callable()
@@ -88,6 +89,7 @@ fn bench_scripts(c: &mut Criterion) {
         if is_v8_suite {
             let failures = context
                 .global_object()
+                .unwrap()
                 .get(js_string!("harnessErrorCount"), context.access())
                 .expect("read the V8 harness error count");
             assert_eq!(

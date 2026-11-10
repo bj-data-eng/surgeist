@@ -88,6 +88,7 @@ fn linked(context: &mut Context) -> Module {
 fn effects(context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(js_string!("postStoreEffects"), context.access())
         .unwrap()
 }
@@ -191,7 +192,7 @@ fn a_scoped_initial_await_retains_its_stored_reaction_and_exact_post_store_panic
     let mut context = context(executor.clone());
     let module = linked(&mut context);
     assert!(executor.jobs.borrow().is_empty());
-    let opaque: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let opaque: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     let authored: JsError = PanicError::new("authored post-storage hook")
         .with_source(
             JsNativeError::range()
@@ -558,7 +559,7 @@ fn an_actually_unaccepted_initial_await_returns_its_original_job_and_interrupts_
 fn a_resumed_module_retains_its_new_stored_await_after_an_independent_post_store_error() {
     let executor = Rc::new(PostStoreExecutor::default());
     let mut context = context(executor.clone());
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("postStoreFirstGate"), gate, Attribute::all())
         .unwrap();

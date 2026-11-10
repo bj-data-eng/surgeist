@@ -3,11 +3,12 @@
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    JsSymbol, Runtime,
-    builtins::{Array, iterable::IteratorPrototypes, uri::UriFunctions},
+    JsResult, JsSymbol, Runtime,
+    builtins::{Array, iterable::IteratorPrototypes, object::OrdinaryObject, uri::UriFunctions},
+    error::RootingError,
     js_string,
     object::{
-        CONSTRUCTOR, JsFunction, JsObject, ObjectEdge, PROTOTYPE,
+        AllocationOrigin, CONSTRUCTOR, JsFunction, JsObject, NativeObject, ObjectEdge, PROTOTYPE,
         internal_methods::immutable_prototype::IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
         shape::{
             RootShape,
@@ -40,11 +41,11 @@ impl Intrinsics {
     /// To initialize all the intrinsics with their spec properties, see [`Realm::initialize`].
     ///
     /// [`Realm::initialize`]: crate::realm::Realm::initialize
-    pub(crate) fn uninit(root_shape: &RootShape, roots: &mut BootstrapRoots) -> Option<Self> {
-        let constructors = StandardConstructors::uninit(root_shape.runtime(), roots);
-        let templates = ObjectTemplates::new(root_shape, &constructors, roots);
+    pub(crate) fn uninit(root_shape: &RootShape, roots: &mut BootstrapRoots) -> JsResult<Self> {
+        let constructors = StandardConstructors::uninit(root_shape.runtime(), roots)?;
+        let templates = ObjectTemplates::new(root_shape, &constructors, roots)?;
 
-        Some(Self {
+        Ok(Self {
             constructors,
             objects: IntrinsicObjects::uninit(root_shape.runtime(), roots)?,
             templates,
@@ -52,9 +53,12 @@ impl Intrinsics {
     }
 
     /// Returns the runtime owning these intrinsics.
-    #[must_use]
-    pub fn runtime(&self) -> Runtime {
-        self.constructors.object().prototype().runtime()
+    pub fn runtime(&self) -> Result<Runtime, RootingError> {
+        self.constructors
+            .object
+            .prototype
+            .owning_runtime()
+            .ok_or(RootingError::Expired)
     }
 
     /// Return the cached intrinsic objects.
@@ -84,11 +88,11 @@ pub struct StandardConstructor {
 }
 
 impl StandardConstructor {
-    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Self {
+    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> JsResult<Self> {
         Self::retain(
             roots,
-            JsFunction::empty_intrinsic_function(runtime, true),
-            JsObject::with_null_proto(runtime),
+            JsFunction::empty_intrinsic_function(runtime, true)?,
+            intrinsic_prototype(runtime, OrdinaryObject)?,
         )
     }
 }
@@ -103,37 +107,43 @@ impl StandardConstructor {
     }
 
     /// Build a constructor with a defined prototype.
-    fn with_prototype(runtime: &Runtime, roots: &mut BootstrapRoots, prototype: JsObject) -> Self {
+    fn with_prototype(
+        runtime: &Runtime,
+        roots: &mut BootstrapRoots,
+        prototype: JsObject,
+    ) -> JsResult<Self> {
         Self::retain(
             roots,
-            JsFunction::empty_intrinsic_function(runtime, true),
+            JsFunction::empty_intrinsic_function(runtime, true)?,
             prototype,
         )
     }
 
-    fn retain(roots: &mut BootstrapRoots, constructor: JsFunction, prototype: JsObject) -> Self {
-        Self {
-            constructor: roots.retain(constructor.into()),
-            prototype: roots.retain(prototype),
-        }
+    fn retain(
+        roots: &mut BootstrapRoots,
+        constructor: JsFunction,
+        prototype: JsObject,
+    ) -> JsResult<Self> {
+        Ok(Self {
+            constructor: roots.retain(constructor.into())?,
+            prototype: roots.retain(prototype)?,
+        })
     }
 
     /// Return the prototype of the constructor object.
     ///
     /// This is the same as `Object.prototype`, `Array.prototype`, etc.
     #[inline]
-    #[must_use]
-    pub fn prototype(&self) -> JsObject {
-        JsObject::from_inner(self.prototype.clone())
+    pub fn prototype(&self) -> Result<JsObject, RootingError> {
+        self.prototype.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Return the constructor object.
     ///
     /// This is the same as `Object`, `Array`, etc.
     #[inline]
-    #[must_use]
-    pub fn constructor(&self) -> JsObject {
-        JsObject::from_inner(self.constructor.clone())
+    pub fn constructor(&self) -> Result<JsObject, RootingError> {
+        self.constructor.upgrade()?.ok_or(RootingError::Expired)
     }
 }
 
@@ -222,118 +232,129 @@ pub struct StandardConstructors {
     calendar: StandardConstructor,
 }
 
+// Only this module's closed intrinsic shell recipes call this construction front.
+fn intrinsic_prototype<T: NativeObject>(runtime: &Runtime, data: T) -> JsResult<JsObject> {
+    JsObject::new_unique_with_vtable(
+        runtime,
+        None,
+        data,
+        |data| data.internal_methods(),
+        AllocationOrigin::TrustedConstruction,
+    )
+    .map(JsObject::upcast)
+}
+
 impl StandardConstructors {
-    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Self {
-        Self {
+    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> JsResult<Self> {
+        Ok(Self {
             object: StandardConstructor::with_prototype(
                 runtime,
                 roots,
-                JsObject::ordinary_prototype(runtime, &IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS),
-            ),
-            async_generator_function: StandardConstructor::uninit(runtime, roots),
-            proxy: StandardConstructor::uninit(runtime, roots),
-            date: StandardConstructor::uninit(runtime, roots),
+                JsObject::ordinary_prototype(
+                    runtime,
+                    &IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
+                )?,
+            )?,
+            async_generator_function: StandardConstructor::uninit(runtime, roots)?,
+            proxy: StandardConstructor::uninit(runtime, roots)?,
+            date: StandardConstructor::uninit(runtime, roots)?,
             function: StandardConstructor::retain(
                 roots,
-                JsFunction::empty_intrinsic_function(runtime, true),
-                JsFunction::empty_intrinsic_function(runtime, false).into(),
-            ),
-            async_function: StandardConstructor::uninit(runtime, roots),
-            generator_function: StandardConstructor::uninit(runtime, roots),
+                JsFunction::empty_intrinsic_function(runtime, true)?,
+                JsFunction::empty_intrinsic_function(runtime, false)?.into(),
+            )?,
+            async_function: StandardConstructor::uninit(runtime, roots)?,
+            generator_function: StandardConstructor::uninit(runtime, roots)?,
             array: StandardConstructor::with_prototype(
                 runtime,
                 roots,
-                JsObject::from_proto_and_data(runtime, None, Array)
-                    .expect("intrinsic prototype has no external heap edges"),
-            ),
-            bigint: StandardConstructor::uninit(runtime, roots),
+                intrinsic_prototype(runtime, Array)?,
+            )?,
+            bigint: StandardConstructor::uninit(runtime, roots)?,
             number: StandardConstructor::with_prototype(
                 runtime,
                 roots,
-                JsObject::from_proto_and_data(runtime, None, 0.0)
-                    .expect("intrinsic prototype has no external heap edges"),
-            ),
+                intrinsic_prototype(runtime, 0.0)?,
+            )?,
             boolean: StandardConstructor::with_prototype(
                 runtime,
                 roots,
-                JsObject::from_proto_and_data(runtime, None, false)
-                    .expect("intrinsic prototype has no external heap edges"),
-            ),
+                intrinsic_prototype(runtime, false)?,
+            )?,
             string: StandardConstructor::with_prototype(
                 runtime,
                 roots,
-                JsObject::from_proto_and_data(runtime, None, js_string!())
-                    .expect("intrinsic prototype has no external heap edges"),
-            ),
-            regexp: StandardConstructor::uninit(runtime, roots),
-            symbol: StandardConstructor::uninit(runtime, roots),
-            error: StandardConstructor::uninit(runtime, roots),
-            type_error: StandardConstructor::uninit(runtime, roots),
-            reference_error: StandardConstructor::uninit(runtime, roots),
-            range_error: StandardConstructor::uninit(runtime, roots),
-            syntax_error: StandardConstructor::uninit(runtime, roots),
-            eval_error: StandardConstructor::uninit(runtime, roots),
-            uri_error: StandardConstructor::uninit(runtime, roots),
-            aggregate_error: StandardConstructor::uninit(runtime, roots),
-            map: StandardConstructor::uninit(runtime, roots),
-            set: StandardConstructor::uninit(runtime, roots),
-            typed_array: StandardConstructor::uninit(runtime, roots),
-            typed_int8_array: StandardConstructor::uninit(runtime, roots),
-            typed_uint8_array: StandardConstructor::uninit(runtime, roots),
-            typed_uint8clamped_array: StandardConstructor::uninit(runtime, roots),
-            typed_int16_array: StandardConstructor::uninit(runtime, roots),
-            typed_uint16_array: StandardConstructor::uninit(runtime, roots),
-            typed_int32_array: StandardConstructor::uninit(runtime, roots),
-            typed_uint32_array: StandardConstructor::uninit(runtime, roots),
-            typed_bigint64_array: StandardConstructor::uninit(runtime, roots),
-            typed_biguint64_array: StandardConstructor::uninit(runtime, roots),
+                intrinsic_prototype(runtime, js_string!())?,
+            )?,
+            regexp: StandardConstructor::uninit(runtime, roots)?,
+            symbol: StandardConstructor::uninit(runtime, roots)?,
+            error: StandardConstructor::uninit(runtime, roots)?,
+            type_error: StandardConstructor::uninit(runtime, roots)?,
+            reference_error: StandardConstructor::uninit(runtime, roots)?,
+            range_error: StandardConstructor::uninit(runtime, roots)?,
+            syntax_error: StandardConstructor::uninit(runtime, roots)?,
+            eval_error: StandardConstructor::uninit(runtime, roots)?,
+            uri_error: StandardConstructor::uninit(runtime, roots)?,
+            aggregate_error: StandardConstructor::uninit(runtime, roots)?,
+            map: StandardConstructor::uninit(runtime, roots)?,
+            set: StandardConstructor::uninit(runtime, roots)?,
+            typed_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_int8_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_uint8_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_uint8clamped_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_int16_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_uint16_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_int32_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_uint32_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_bigint64_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_biguint64_array: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "float16")]
-            typed_float16_array: StandardConstructor::uninit(runtime, roots),
-            typed_float32_array: StandardConstructor::uninit(runtime, roots),
-            typed_float64_array: StandardConstructor::uninit(runtime, roots),
-            array_buffer: StandardConstructor::uninit(runtime, roots),
-            shared_array_buffer: StandardConstructor::uninit(runtime, roots),
-            data_view: StandardConstructor::uninit(runtime, roots),
-            date_time_format: StandardConstructor::uninit(runtime, roots),
-            promise: StandardConstructor::uninit(runtime, roots),
-            weak_ref: StandardConstructor::uninit(runtime, roots),
-            weak_map: StandardConstructor::uninit(runtime, roots),
-            weak_set: StandardConstructor::uninit(runtime, roots),
-            iterator: StandardConstructor::uninit(runtime, roots),
-            finalization_registry: StandardConstructor::uninit(runtime, roots),
+            typed_float16_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_float32_array: StandardConstructor::uninit(runtime, roots)?,
+            typed_float64_array: StandardConstructor::uninit(runtime, roots)?,
+            array_buffer: StandardConstructor::uninit(runtime, roots)?,
+            shared_array_buffer: StandardConstructor::uninit(runtime, roots)?,
+            data_view: StandardConstructor::uninit(runtime, roots)?,
+            date_time_format: StandardConstructor::uninit(runtime, roots)?,
+            promise: StandardConstructor::uninit(runtime, roots)?,
+            weak_ref: StandardConstructor::uninit(runtime, roots)?,
+            weak_map: StandardConstructor::uninit(runtime, roots)?,
+            weak_set: StandardConstructor::uninit(runtime, roots)?,
+            iterator: StandardConstructor::uninit(runtime, roots)?,
+            finalization_registry: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            collator: StandardConstructor::uninit(runtime, roots),
+            collator: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            list_format: StandardConstructor::uninit(runtime, roots),
+            list_format: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            locale: StandardConstructor::uninit(runtime, roots),
+            locale: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            segmenter: StandardConstructor::uninit(runtime, roots),
+            segmenter: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            plural_rules: StandardConstructor::uninit(runtime, roots),
+            plural_rules: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "intl")]
-            number_format: StandardConstructor::uninit(runtime, roots),
+            number_format: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            instant: StandardConstructor::uninit(runtime, roots),
+            instant: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            plain_date_time: StandardConstructor::uninit(runtime, roots),
+            plain_date_time: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            plain_date: StandardConstructor::uninit(runtime, roots),
+            plain_date: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            plain_time: StandardConstructor::uninit(runtime, roots),
+            plain_time: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            plain_year_month: StandardConstructor::uninit(runtime, roots),
+            plain_year_month: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            plain_month_day: StandardConstructor::uninit(runtime, roots),
+            plain_month_day: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            time_zone: StandardConstructor::uninit(runtime, roots),
+            time_zone: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            duration: StandardConstructor::uninit(runtime, roots),
+            duration: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            zoned_date_time: StandardConstructor::uninit(runtime, roots),
+            zoned_date_time: StandardConstructor::uninit(runtime, roots)?,
             #[cfg(feature = "temporal")]
-            calendar: StandardConstructor::uninit(runtime, roots),
-        }
+            calendar: StandardConstructor::uninit(runtime, roots)?,
+        })
     }
 }
 
@@ -1196,44 +1217,48 @@ impl IntrinsicObjects {
     /// To initialize all the intrinsic objects with their spec properties, see [`Realm::initialize`].
     ///
     /// [`Realm::initialize`]: crate::realm::Realm::initialize
-    #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Option<Self> {
-        Some(Self {
-            reflect: roots.retain(JsObject::with_null_proto(runtime)),
-            math: roots.retain(JsObject::with_null_proto(runtime)),
-            json: roots.retain(JsObject::with_null_proto(runtime)),
+    pub(crate) fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> JsResult<Self> {
+        Ok(Self {
+            reflect: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
+            math: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
+            json: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
             throw_type_error: roots
-                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             array_prototype_values: roots
-                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             array_prototype_to_string: roots
-                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            iterator_prototypes: IteratorPrototypes::uninit(runtime, roots),
-            generator: roots.retain(JsObject::with_null_proto(runtime)),
-            async_generator: roots.retain(JsObject::with_null_proto(runtime)),
-            atomics: roots.retain(JsObject::with_null_proto(runtime)),
-            eval: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            uri_functions: UriFunctions::uninit(runtime, roots),
-            is_finite: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            is_nan: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            parse_float: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
-            parse_int: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            iterator_prototypes: IteratorPrototypes::uninit(runtime, roots)?,
+            generator: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
+            async_generator: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
+            atomics: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
+            eval: roots.retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            uri_functions: UriFunctions::uninit(runtime, roots)?,
+            is_finite: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            is_nan: roots.retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            parse_float: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
+            parse_int: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             #[cfg(feature = "annex-b")]
-            escape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            escape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             #[cfg(feature = "annex-b")]
-            unescape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            unescape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false)?.into())?,
             #[cfg(feature = "intl")]
-            intl: roots.retain(
-                JsObject::new_unique(runtime, None, Intl::new()?)
-                    .expect("Intl has no JavaScript heap edges")
-                    .upcast(),
-            ),
+            intl: roots.retain(intrinsic_prototype(
+                runtime,
+                Intl::new().ok_or_else(|| {
+                    crate::JsNativeError::typ()
+                        .with_message("failed to create the realm intrinsics")
+                })?,
+            )?)?,
             #[cfg(feature = "intl")]
-            segments_prototype: roots.retain(JsObject::with_null_proto(runtime)),
+            segments_prototype: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
             #[cfg(feature = "temporal")]
-            temporal: roots.retain(JsObject::with_null_proto(runtime)),
+            temporal: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
             #[cfg(feature = "temporal")]
-            now: roots.retain(JsObject::with_null_proto(runtime)),
+            now: roots.retain(intrinsic_prototype(runtime, OrdinaryObject)?)?,
         })
     }
 
@@ -1241,8 +1266,7 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-%throwtypeerror%
     #[inline]
-    #[must_use]
-    pub fn throw_type_error(&self) -> JsFunction {
+    pub fn throw_type_error(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.throw_type_error.clone())
     }
 
@@ -1250,8 +1274,7 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype.values
     #[inline]
-    #[must_use]
-    pub fn array_prototype_values(&self) -> JsFunction {
+    pub fn array_prototype_values(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.array_prototype_values.clone())
     }
 
@@ -1259,8 +1282,7 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype.tostring
     #[inline]
-    #[must_use]
-    pub fn array_prototype_to_string(&self) -> JsFunction {
+    pub fn array_prototype_to_string(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.array_prototype_to_string.clone())
     }
 
@@ -1275,35 +1297,31 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-generator-objects
     #[inline]
-    #[must_use]
-    pub fn generator(&self) -> JsObject {
-        JsObject::from_inner(self.generator.clone())
+    pub fn generator(&self) -> Result<JsObject, RootingError> {
+        self.generator.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%AsyncGeneratorFunction.prototype.prototype%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-asyncgenerator-objects
     #[inline]
-    #[must_use]
-    pub fn async_generator(&self) -> JsObject {
-        JsObject::from_inner(self.async_generator.clone())
+    pub fn async_generator(&self) -> Result<JsObject, RootingError> {
+        self.async_generator.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%Atomics%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-atomics
     #[inline]
-    #[must_use]
-    pub fn atomics(&self) -> JsObject {
-        JsObject::from_inner(self.atomics.clone())
+    pub fn atomics(&self) -> Result<JsObject, RootingError> {
+        self.atomics.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%eval%`][spec] intrinsic function.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-eval-x
     #[inline]
-    #[must_use]
-    pub fn eval(&self) -> JsFunction {
+    pub fn eval(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.eval.clone())
     }
 
@@ -1318,35 +1336,31 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-reflect
     #[inline]
-    #[must_use]
-    pub fn reflect(&self) -> JsObject {
-        JsObject::from_inner(self.reflect.clone())
+    pub fn reflect(&self) -> Result<JsObject, RootingError> {
+        self.reflect.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%Math%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-math
     #[inline]
-    #[must_use]
-    pub fn math(&self) -> JsObject {
-        JsObject::from_inner(self.math.clone())
+    pub fn math(&self) -> Result<JsObject, RootingError> {
+        self.math.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%JSON%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-json
     #[inline]
-    #[must_use]
-    pub fn json(&self) -> JsObject {
-        JsObject::from_inner(self.json.clone())
+    pub fn json(&self) -> Result<JsObject, RootingError> {
+        self.json.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%isFinite%`][spec] intrinsic function.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-isfinite-number
     #[inline]
-    #[must_use]
-    pub fn is_finite(&self) -> JsFunction {
+    pub fn is_finite(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.is_finite.clone())
     }
 
@@ -1354,8 +1368,7 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-isnan-number
     #[inline]
-    #[must_use]
-    pub fn is_nan(&self) -> JsFunction {
+    pub fn is_nan(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.is_nan.clone())
     }
 
@@ -1363,8 +1376,7 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-parsefloat-string
     #[inline]
-    #[must_use]
-    pub fn parse_float(&self) -> JsFunction {
+    pub fn parse_float(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.parse_float.clone())
     }
 
@@ -1372,70 +1384,73 @@ impl IntrinsicObjects {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-parseint-string-radix
     #[inline]
-    #[must_use]
-    pub fn parse_int(&self) -> JsFunction {
+    pub fn parse_int(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.parse_int.clone())
     }
 
     /// Gets the [`%escape%`][spec] intrinsic function.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-escape-string
-    #[must_use]
     #[cfg(feature = "annex-b")]
     #[inline]
-    pub fn escape(&self) -> JsFunction {
+    pub fn escape(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.escape.clone())
     }
 
     /// Gets the [`%unescape%`][spec] intrinsic function.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-unescape-string
-    #[must_use]
     #[cfg(feature = "annex-b")]
     #[inline]
-    pub fn unescape(&self) -> JsFunction {
+    pub fn unescape(&self) -> Result<JsFunction, RootingError> {
         JsFunction::from_record(self.unescape.clone())
     }
 
     /// Gets the [`%Intl%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma402/#intl-object
-    #[must_use]
     #[cfg(feature = "intl")]
     #[inline]
-    pub fn intl(&self) -> JsObject<Intl> {
-        JsObject::from_inner(self.intl.clone())
+    pub fn intl(&self) -> JsResult<JsObject<Intl>> {
+        let object = self
+            .intl
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)?
             .downcast::<Intl>()
-            .expect("Intl intrinsic has its native brand")
+            .map_err(|_| crate::error::ObjectAccessError::WrongNativeBrand)?;
+        {
+            let _native = object.borrow()?;
+        }
+        Ok(object)
     }
 
     /// Gets the [`%SegmentsPrototype%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/ecma402/#sec-%segmentsprototype%-object
-    #[must_use]
     #[cfg(feature = "intl")]
-    pub fn segments_prototype(&self) -> JsObject {
-        JsObject::from_inner(self.segments_prototype.clone())
+    pub fn segments_prototype(&self) -> Result<JsObject, RootingError> {
+        self.segments_prototype
+            .upgrade()?
+            .ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%Temporal%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-objects
     #[cfg(feature = "temporal")]
-    #[must_use]
     #[inline]
-    pub fn temporal(&self) -> JsObject {
-        JsObject::from_inner(self.temporal.clone())
+    pub fn temporal(&self) -> Result<JsObject, RootingError> {
+        self.temporal.upgrade()?.ok_or(RootingError::Expired)
     }
 
     /// Gets the [`%Temporal.Now%`][spec] intrinsic object.
     ///
     /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-now-object
     #[cfg(feature = "temporal")]
-    #[must_use]
     #[inline]
-    pub fn now(&self) -> JsObject {
-        JsObject::from_inner(self.now.clone())
+    pub fn now(&self) -> Result<JsObject, RootingError> {
+        self.now.upgrade()?.ok_or(RootingError::Expired)
     }
 }
 
@@ -1480,49 +1495,49 @@ impl ObjectTemplates {
         root_shape: &RootShape,
         constructors: &StandardConstructors,
         roots: &mut BootstrapRoots,
-    ) -> Self {
+    ) -> JsResult<Self> {
         // pre-initialize used shapes.
         let ordinary_object =
-            ObjectTemplateBuilder::with_prototype(root_shape, constructors.object().prototype());
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.object().prototype()?)?;
         let mut array = ObjectTemplateBuilder::new(root_shape);
         let length_property_key: PropertyKey = js_string!("length").into();
         array.property(
             length_property_key.clone(),
             Attribute::WRITABLE | Attribute::PERMANENT | Attribute::NON_ENUMERABLE,
-        );
-        array.set_prototype(constructors.array().prototype());
+        )?;
+        array.set_prototype(constructors.array().prototype()?)?;
 
         let number =
-            ObjectTemplateBuilder::with_prototype(root_shape, constructors.number().prototype());
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.number().prototype()?)?;
         let symbol =
-            ObjectTemplateBuilder::with_prototype(root_shape, constructors.symbol().prototype());
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.symbol().prototype()?)?;
         let bigint =
-            ObjectTemplateBuilder::with_prototype(root_shape, constructors.bigint().prototype());
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.bigint().prototype()?)?;
         let boolean =
-            ObjectTemplateBuilder::with_prototype(root_shape, constructors.boolean().prototype());
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.boolean().prototype()?)?;
         let mut string = ObjectTemplateBuilder::new(root_shape);
         string.property(
             length_property_key.clone(),
             Attribute::READONLY | Attribute::PERMANENT | Attribute::NON_ENUMERABLE,
-        );
-        string.set_prototype(constructors.string().prototype());
+        )?;
+        string.set_prototype(constructors.string().prototype()?)?;
 
         let mut regexp_without_proto = ObjectTemplateBuilder::new(root_shape);
-        regexp_without_proto.property(js_string!("lastIndex").into(), Attribute::WRITABLE);
+        regexp_without_proto.property(js_string!("lastIndex").into(), Attribute::WRITABLE)?;
 
         let mut regexp = regexp_without_proto.clone();
-        regexp.set_prototype(constructors.regexp().prototype());
+        regexp.set_prototype(constructors.regexp().prototype()?)?;
 
         let name_property_key: PropertyKey = js_string!("name").into();
         let mut function = ObjectTemplateBuilder::new(root_shape);
         function.property(
             length_property_key.clone(),
             Attribute::READONLY | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-        );
+        )?;
         function.property(
             name_property_key,
             Attribute::READONLY | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-        );
+        )?;
 
         let function_without_proto = function.clone();
         let mut async_function = function.clone();
@@ -1531,23 +1546,24 @@ impl ObjectTemplates {
         function_with_prototype.property(
             PROTOTYPE.into(),
             Attribute::WRITABLE | Attribute::PERMANENT | Attribute::NON_ENUMERABLE,
-        );
+        )?;
         let mut generator_function = function_with_prototype.clone();
         let mut async_generator_function = function_with_prototype.clone();
 
         let function_with_prototype_without_proto = function_with_prototype.clone();
 
-        function.set_prototype(constructors.function().prototype());
-        function_with_prototype.set_prototype(constructors.function().prototype());
-        async_function.set_prototype(constructors.async_function().prototype());
-        generator_function.set_prototype(constructors.generator_function().prototype());
-        async_generator_function.set_prototype(constructors.async_generator_function().prototype());
+        function.set_prototype(constructors.function().prototype()?)?;
+        function_with_prototype.set_prototype(constructors.function().prototype()?)?;
+        async_function.set_prototype(constructors.async_function().prototype()?)?;
+        generator_function.set_prototype(constructors.generator_function().prototype()?)?;
+        async_generator_function
+            .set_prototype(constructors.async_generator_function().prototype()?)?;
 
         let mut function_prototype = ordinary_object.clone();
         function_prototype.property(
             CONSTRUCTOR.into(),
             Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-        );
+        )?;
 
         let mut unmapped_arguments = ordinary_object.clone();
 
@@ -1556,7 +1572,7 @@ impl ObjectTemplates {
         unmapped_arguments.property(
             length_property_key,
             Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-        );
+        )?;
 
         // 7. Perform ! DefinePropertyOrThrow(obj, @@iterator, PropertyDescriptor {
         // [[Value]]: %Array.prototype.values%, [[Writable]]: true, [[Enumerable]]: false,
@@ -1564,7 +1580,7 @@ impl ObjectTemplates {
         unmapped_arguments.property(
             JsSymbol::iterator().into(),
             Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-        );
+        )?;
 
         let mut mapped_arguments = unmapped_arguments.clone();
 
@@ -1576,38 +1592,38 @@ impl ObjectTemplates {
             true,
             true,
             Attribute::NON_ENUMERABLE | Attribute::PERMANENT,
-        );
+        )?;
 
         // 21. Perform ! DefinePropertyOrThrow(obj, "callee", PropertyDescriptor {
         // [[Value]]: func, [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: true }).
         mapped_arguments.property(
             js_string!("callee").into(),
             Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-        );
+        )?;
 
         let mut iterator_result = ordinary_object.clone();
         iterator_result.property(
             js_string!("value").into(),
             Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::ENUMERABLE,
-        );
+        )?;
         iterator_result.property(
             js_string!("done").into(),
             Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::ENUMERABLE,
-        );
+        )?;
 
         let mut namespace = ObjectTemplateBuilder::new(root_shape);
-        namespace.property(JsSymbol::to_string_tag().into(), Attribute::empty());
+        namespace.property(JsSymbol::to_string_tag().into(), Attribute::empty())?;
 
         let with_resolvers = {
             let mut with_resolvers = ordinary_object.clone();
 
             with_resolvers
                 // 4. Perform ! CreateDataPropertyOrThrow(obj, "promise", promiseCapability.[[Promise]]).
-                .property(js_string!("promise").into(), Attribute::all())
+                .property(js_string!("promise").into(), Attribute::all())?
                 // 5. Perform ! CreateDataPropertyOrThrow(obj, "resolve", promiseCapability.[[Resolve]]).
-                .property(js_string!("resolve").into(), Attribute::all())
+                .property(js_string!("resolve").into(), Attribute::all())?
                 // 6. Perform ! CreateDataPropertyOrThrow(obj, "reject", promiseCapability.[[Reject]]).
-                .property(js_string!("reject").into(), Attribute::all());
+                .property(js_string!("reject").into(), Attribute::all())?;
 
             with_resolvers
         };
@@ -1615,38 +1631,38 @@ impl ObjectTemplates {
         let wait_async = {
             let mut obj = ordinary_object.clone();
 
-            obj.property(js_string!("async").into(), Attribute::all())
-                .property(js_string!("value").into(), Attribute::all());
+            obj.property(js_string!("async").into(), Attribute::all())?
+                .property(js_string!("value").into(), Attribute::all())?;
 
             obj
         };
 
-        Self {
-            iterator_result: iterator_result.build(roots),
-            ordinary_object: ordinary_object.build(roots),
-            array: array.build(roots),
-            number: number.build(roots),
-            string: string.build(roots),
-            symbol: symbol.build(roots),
-            bigint: bigint.build(roots),
-            boolean: boolean.build(roots),
-            regexp: regexp.build(roots),
-            regexp_without_proto: regexp_without_proto.build(roots),
-            unmapped_arguments: unmapped_arguments.build(roots),
-            mapped_arguments: mapped_arguments.build(roots),
-            function_with_prototype: function_with_prototype.build(roots),
-            function_prototype: function_prototype.build(roots),
-            function: function.build(roots),
-            async_function: async_function.build(roots),
-            generator_function: generator_function.build(roots),
-            async_generator_function: async_generator_function.build(roots),
-            function_without_proto: function_without_proto.build(roots),
+        Ok(Self {
+            iterator_result: iterator_result.build(roots)?,
+            ordinary_object: ordinary_object.build(roots)?,
+            array: array.build(roots)?,
+            number: number.build(roots)?,
+            string: string.build(roots)?,
+            symbol: symbol.build(roots)?,
+            bigint: bigint.build(roots)?,
+            boolean: boolean.build(roots)?,
+            regexp: regexp.build(roots)?,
+            regexp_without_proto: regexp_without_proto.build(roots)?,
+            unmapped_arguments: unmapped_arguments.build(roots)?,
+            mapped_arguments: mapped_arguments.build(roots)?,
+            function_with_prototype: function_with_prototype.build(roots)?,
+            function_prototype: function_prototype.build(roots)?,
+            function: function.build(roots)?,
+            async_function: async_function.build(roots)?,
+            generator_function: generator_function.build(roots)?,
+            async_generator_function: async_generator_function.build(roots)?,
+            function_without_proto: function_without_proto.build(roots)?,
             function_with_prototype_without_proto: function_with_prototype_without_proto
-                .build(roots),
-            namespace: namespace.build(roots),
-            with_resolvers: with_resolvers.build(roots),
-            wait_async: wait_async.build(roots),
-        }
+                .build(roots)?,
+            namespace: namespace.build(roots)?,
+            with_resolvers: with_resolvers.build(roots)?,
+            wait_async: wait_async.build(roots)?,
+        })
     }
 
     /// Cached iterator result template.
@@ -1889,3 +1905,6 @@ impl ObjectTemplates {
         &self.wait_async
     }
 }
+
+#[cfg(test)]
+mod projection_tests;

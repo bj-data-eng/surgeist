@@ -7,7 +7,7 @@ use surgeist_js_test_host::RuntimeExtension;
 
 #[rstest]
 fn clone(#[files("tests/clone/**/*.js")] path: PathBuf) {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     surgeist_js_test_host::clone::register(None, context).expect("Could not register runtime");
     surgeist_js_test_host::extensions::ConsoleExtension::default()
         .register(None, context)

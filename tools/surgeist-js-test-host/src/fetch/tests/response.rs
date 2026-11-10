@@ -77,6 +77,7 @@ fn response_text() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -115,6 +116,7 @@ fn response_json() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             let response = response
@@ -154,6 +156,7 @@ fn response_bytes() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -193,6 +196,7 @@ fn response_getter() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -235,6 +239,7 @@ fn fetch_request_uses_request_signal() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             let response = response
@@ -282,6 +287,7 @@ fn fetch_options_signal_overrides_request_signal() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             let response = response
@@ -385,7 +391,11 @@ fn response_json_static() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let p = ctx.global_object().get(js_str!("p"), ctx.access()).unwrap();
+            let p = ctx
+                .global_object()
+                .unwrap()
+                .get(js_str!("p"), ctx.access())
+                .unwrap();
             p.as_promise()
                 .unwrap()
                 .await_blocking(ctx.access())
@@ -419,6 +429,7 @@ fn response_headers_get_combines_duplicate_values_with_comma_space() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -455,6 +466,7 @@ fn response_clone_read_both() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -495,6 +507,7 @@ fn response_clone_header_independence() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response
@@ -530,6 +543,7 @@ fn response_clone_preserves_status() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             response

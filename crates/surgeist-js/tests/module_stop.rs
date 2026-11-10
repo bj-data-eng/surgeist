@@ -80,6 +80,7 @@ fn setup() -> (Context, Rc<StoppingLoader>, JsObject, JsValue) {
     let saved_value = JsValue::from(saved_object.clone());
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("savedError"),
             saved_value.clone(),
@@ -141,6 +142,7 @@ fn assert_retained_stop_precedes_loader_error_materialization(dynamic: bool) {
     };
     context
         .global_object()
+        .unwrap()
         .set(js_string!("loaded"), loaded, true, context.access())
         .unwrap();
     context

@@ -140,7 +140,7 @@ fn ready(value: JsValue) -> ContextTask<JsValue> {
 #[test]
 fn preparation_zero_exact_and_one_short_caps_count_only_created_inner_futures() {
     for limit in [0, 1, 2] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let called = Rc::new(Cell::new(0));
         let outcome = context
             .with_execution(
@@ -193,7 +193,7 @@ fn preparation_zero_exact_and_one_short_caps_count_only_created_inner_futures() 
 #[test]
 fn invocation_zero_exact_and_one_short_caps_refuse_before_reusable_callbacks() {
     for limit in [0, 1, 2] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let calls = Rc::new(Cell::new(0));
         let job = reusable_counted(&calls);
         let outcome = context
@@ -239,7 +239,7 @@ fn invocation_zero_exact_and_one_short_caps_refuse_before_reusable_callbacks() {
 #[test]
 fn poll_zero_exact_and_one_short_caps_count_pending_and_ready_separately() {
     for limit in [0, 1, 2] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let entries = Rc::new(Cell::new(0));
         let calls = entries.clone();
         let mut first = true;
@@ -304,7 +304,7 @@ fn poll_zero_exact_and_one_short_caps_count_pending_and_ready_separately() {
 }
 #[test]
 fn every_wrapper_delegates_to_exactly_one_synchronous_invocation_owner() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let realm = context.realm().clone();
     let calls = Rc::new(Cell::new(0));
     let outcome = context
@@ -374,7 +374,7 @@ fn callback_vm_instructions_retain_their_own_units_beside_job_invocation() {
 }
 #[test]
 fn reentry_preserves_the_first_invocation_stop_over_success_and_later_job_dimensions() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let calls = Rc::new(Cell::new(0));
     let denied = calls.clone();
     let outer = NativeJob::new(move |mut access| {
@@ -427,7 +427,7 @@ fn reentry_preserves_the_first_invocation_stop_over_success_and_later_job_dimens
 }
 #[test]
 fn availability_realm_validation_and_preexisting_stops_do_not_charge_new_job_units() {
-    let foreign = Context::default();
+    let foreign = Context::builder().build().unwrap();
     let foreign_realm = foreign.realm().clone();
     let mut context = vm_context();
     let calls = Rc::new(Cell::new(0));
@@ -621,7 +621,7 @@ fn inline_executor_dispatch_cannot_bypass_the_selected_job_invocation_cap() {
 }
 #[test]
 fn reentrant_jobs_share_owner_units_while_same_runtime_peers_keep_independent_caps() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let peer = Rc::new(RefCell::new(
         Context::builder()
             .runtime(context.runtime().clone())
@@ -712,7 +712,7 @@ impl Drop for DropCount {
 }
 #[test]
 fn unpolled_prepared_task_disposal_has_no_poll_units_and_retains_factory_effects() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let called = Rc::new(Cell::new(false));
     let c = called.clone();
@@ -746,7 +746,7 @@ fn dropping_or_polling_pending_jobs_inside_a_real_lease_is_safe_in_every_profile
             for busy in [false, true] {
                 TIME.set(Duration::ZERO);
                 CLOCK_READS.set(0);
-                let mut context = Context::default();
+                let mut context = Context::builder().build().unwrap();
                 let realm = context.realm().clone();
                 let drops = Rc::new(Cell::new(0));
                 let probe = DropCount(drops.clone());
@@ -826,7 +826,7 @@ fn action_timing_excludes_host_gaps_while_the_execution_lifetime_includes_them()
     for mode in modes() {
         TIME.set(Duration::ZERO);
         CLOCK_READS.set(0);
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let outcome = context
             .with_execution(
                 ExecutionOptions::new(0)
@@ -933,7 +933,7 @@ fn a_stop_during_ready_or_pending_poll_disposes_inner_work_before_phase_close_an
         for returns_pending in [false, true] {
             TIME.set(Duration::ZERO);
             CLOCK_READS.set(0);
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let slot = Rc::new(RefCell::new(None));
             let disposed = Rc::new(Cell::new(false));
             let unpublished = Rc::new(Cell::new(false));
@@ -1035,7 +1035,7 @@ fn admitted_native_unwind_retains_its_unit_and_closes_its_action_before_abandonm
     for mode in modes() {
         TIME.set(Duration::ZERO);
         CLOCK_READS.set(0);
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let mut task = context
             .execution_task(
                 ExecutionOptions::new(0)
@@ -1083,7 +1083,7 @@ fn admitted_native_unwind_retains_its_unit_and_closes_its_action_before_abandonm
 fn unscoped_job_calls_do_not_retain_a_previous_operations_profiling_clock() {
     TIME.set(Duration::ZERO);
     CLOCK_READS.set(0);
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .with_execution(
             ExecutionOptions::new(0)

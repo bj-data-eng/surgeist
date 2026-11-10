@@ -273,8 +273,8 @@ pub struct Generator {
 
 impl IntrinsicObject for Generator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 1)?
             .static_method(Self::r#return, js_string!("return"), 1)?
             .static_method(Self::throw, js_string!("throw"), 1)?
@@ -289,7 +289,7 @@ impl IntrinsicObject for Generator {
                     .intrinsics()
                     .constructors()
                     .generator_function()
-                    .prototype(),
+                    .prototype()?,
                 Attribute::CONFIGURABLE,
             )?
             .build()?;
@@ -297,8 +297,8 @@ impl IntrinsicObject for Generator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().generator()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().generator()?)
     }
 }
 
@@ -409,11 +409,7 @@ impl Generator {
                 // 2. If state is completed, return CreateIterResultObject(undefined, true).
                 GeneratorState::Completed => {
                     drop(r#gen);
-                    return Ok(create_iter_result_object_trusted(
-                        JsValue::undefined(),
-                        true,
-                        context,
-                    ));
+                    return create_iter_result_object_trusted(JsValue::undefined(), true, context);
                 }
                 // 3. Assert: state is either suspendedStart or suspendedYield.
                 GeneratorState::SuspendedStart { context } => (context.to_context()?, true),
@@ -451,7 +447,7 @@ impl Generator {
                 }
                 CompletionRecord::Return(value) => {
                     r#gen.state = GeneratorState::Completed;
-                    Ok(create_iter_result_object_trusted(value, true, context))
+                    create_iter_result_object_trusted(value, true, context)
                 }
                 CompletionRecord::Throw(err) => {
                     r#gen.state = GeneratorState::Completed;
@@ -518,7 +514,7 @@ impl Generator {
                     // a. If abruptCompletion.[[Type]] is return, then
                     if let Ok(value) = abrupt_completion {
                         // i. Return CreateIterResultObject(abruptCompletion.[[Value]], true).
-                        let value = create_iter_result_object_trusted(value, true, context);
+                        let value = create_iter_result_object_trusted(value, true, context)?;
                         return Ok(value);
                     }
 
@@ -564,7 +560,7 @@ impl Generator {
                 }
                 CompletionRecord::Return(value) => {
                     r#gen.state = GeneratorState::Completed;
-                    Ok(create_iter_result_object_trusted(value, true, context))
+                    create_iter_result_object_trusted(value, true, context)
                 }
                 CompletionRecord::Throw(err) => {
                     r#gen.state = GeneratorState::Completed;

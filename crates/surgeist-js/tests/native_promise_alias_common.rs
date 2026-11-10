@@ -72,7 +72,7 @@ fn native_registration_under_a_mutable_promise_alias_returns_a_host_error_and_ke
 {
     let executor = Rc::new(ManualExecutor::default());
     let mut owner = context(executor.clone());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let factories = Rc::new(Cell::new(0));
     let made = factories.clone();
@@ -121,7 +121,7 @@ fn native_registration_under_a_mutable_promise_alias_returns_a_host_error_and_ke
 fn native_poll_under_a_mutable_promise_alias_returns_a_host_error_without_losing_settlement() {
     let executor = Rc::new(ManualExecutor::default());
     let mut owner = context(executor.clone());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let factories = Rc::new(Cell::new(0));
     let made = factories.clone();

@@ -122,7 +122,7 @@ pub(crate) fn string_exotic_own_property_keys(
     // 8. For each own property key P of O such that Type(P) is Symbol, in ascending
     // chronological order of property creation, do
     //      a. Add P as the last element of keys.
-    keys.extend(obj.borrow()?.properties.shape().keys());
+    keys.extend(obj.borrow()?.properties.shape()?.keys()?);
 
     // 9. Return keys.
     Ok(keys)

@@ -83,7 +83,7 @@
 //! }
 //!
 //! fn main() {
-//!     let mut context = Context::default();
+//!     let mut context = Context::builder().build().unwrap();
 //!
 //!     context.register_global_class::<Animal>().unwrap();
 //!
@@ -106,7 +106,7 @@ use crate::ContextAccess;
 use crate::{
     JsResult, JsValue,
     context::intrinsics::StandardConstructor,
-    error::JsNativeError,
+    error::{JsNativeError, RootingError},
     native_function::NativeFunction,
     object::{ConstructorBuilder, FunctionBinding, JsFunction, JsObject, NativeObject, PROTOTYPE},
     property::{Attribute, PropertyDescriptor, PropertyKey},
@@ -190,7 +190,7 @@ pub trait Class: NativeObject + Sized {
                 context.realm().clone()
             };
             realm
-                .get_class::<Self>()
+                .get_class::<Self>()?
                 .ok_or_else(|| {
                     JsNativeError::typ().with_message(format!(
                         "could not find native class `{}` in the map of registered classes",
@@ -225,7 +225,7 @@ pub trait Class: NativeObject + Sized {
     /// </div>
     fn from_data(data: Self, mut context: ContextAccess<'_>) -> JsResult<JsObject> {
         let prototype = context
-            .get_global_class::<Self>()
+            .get_global_class::<Self>()?
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(format!(
                     "could not find native class `{}` in the map of registered classes",
@@ -276,8 +276,10 @@ impl ClassConstructor {
         )
     }
 
-    pub(crate) fn from_stored(constructor: &StandardConstructor) -> Self {
-        Self::new(constructor.constructor(), constructor.prototype())
+    pub(crate) fn from_stored(constructor: &StandardConstructor) -> Result<Self, RootingError> {
+        let constructor_object = constructor.constructor()?;
+        let prototype = constructor.prototype()?;
+        Ok(Self::new(constructor_object, prototype))
     }
 }
 
@@ -422,3 +424,6 @@ impl<'ctx> ClassBuilder<'ctx> {
         self.builder.context()
     }
 }
+
+#[cfg(test)]
+mod restoration_tests;

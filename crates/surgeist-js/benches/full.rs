@@ -11,7 +11,7 @@ use surgeist_js::{
 
 fn create_realm(c: &mut Criterion) {
     c.bench_function("Create Realm", move |b| {
-        let root_shape = RootShape::new(Runtime::default());
+        let root_shape = RootShape::new(Runtime::default()).unwrap();
         b.iter(|| Realm::create(&DefaultHooks, &root_shape));
     });
 }
@@ -22,7 +22,7 @@ macro_rules! full_benchmarks {
             $(
                 {
                     static CODE: &str = include_str!(concat!("bench_scripts/", stringify!($name), ".js"));
-                    let mut context = Context::default();
+                    let mut context = Context::builder().build().unwrap();
 
                     // Disable optimizations
                     context.set_optimizer_options(OptimizerOptions::empty());
@@ -43,7 +43,7 @@ macro_rules! full_benchmarks {
             $(
                 {
                     static CODE: &str = include_str!(concat!("bench_scripts/", stringify!($name), ".js"));
-                    let context = &mut Context::default();
+                    let context = &mut Context::builder().build().unwrap();
 
                     // Disable optimizations
                     context.set_optimizer_options(OptimizerOptions::empty());
@@ -65,7 +65,7 @@ macro_rules! full_benchmarks {
             $(
                 {
                     static CODE: &str = include_str!(concat!("bench_scripts/", stringify!($name), ".js"));
-                    let context = &mut Context::default();
+                    let context = &mut Context::builder().build().unwrap();
 
                     // Disable optimizations
                     context.set_optimizer_options(OptimizerOptions::empty());

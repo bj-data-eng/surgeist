@@ -91,127 +91,127 @@ impl IntrinsicObject for Date {
         let to_utc_string = BuiltInBuilder::callable(realm, Self::to_utc_string)
             .name(js_string!("toUTCString"))
             .length(0)
-            .build();
+            .build()?;
 
         let to_primitive = BuiltInBuilder::callable(realm, Self::to_primitive)
             .name(js_string!("[Symbol.toPrimitive]"))
             .length(1)
-            .build();
+            .build()?;
 
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_method(Self::now, js_string!("now"), 0)
-            .static_method(Self::parse, js_string!("parse"), 1)
-            .static_method(Self::utc, js_string!("UTC"), 7)
-            .method(Self::get_date::<true>, js_string!("getDate"), 0)
-            .method(Self::get_day::<true>, js_string!("getDay"), 0)
-            .method(Self::get_full_year::<true>, js_string!("getFullYear"), 0)
-            .method(Self::get_hours::<true>, js_string!("getHours"), 0)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_method(Self::now, js_string!("now"), 0)?
+            .static_method(Self::parse, js_string!("parse"), 1)?
+            .static_method(Self::utc, js_string!("UTC"), 7)?
+            .method(Self::get_date::<true>, js_string!("getDate"), 0)?
+            .method(Self::get_day::<true>, js_string!("getDay"), 0)?
+            .method(Self::get_full_year::<true>, js_string!("getFullYear"), 0)?
+            .method(Self::get_hours::<true>, js_string!("getHours"), 0)?
             .method(
                 Self::get_milliseconds::<true>,
                 js_string!("getMilliseconds"),
                 0,
-            )
-            .method(Self::get_minutes::<true>, js_string!("getMinutes"), 0)
-            .method(Self::get_month::<true>, js_string!("getMonth"), 0)
-            .method(Self::get_seconds::<true>, js_string!("getSeconds"), 0)
-            .method(Self::get_time, js_string!("getTime"), 0)
+            )?
+            .method(Self::get_minutes::<true>, js_string!("getMinutes"), 0)?
+            .method(Self::get_month::<true>, js_string!("getMonth"), 0)?
+            .method(Self::get_seconds::<true>, js_string!("getSeconds"), 0)?
+            .method(Self::get_time, js_string!("getTime"), 0)?
             .method(
                 Self::get_timezone_offset,
                 js_string!("getTimezoneOffset"),
                 0,
-            )
-            .method(Self::get_date::<false>, js_string!("getUTCDate"), 0)
-            .method(Self::get_day::<false>, js_string!("getUTCDay"), 0)
+            )?
+            .method(Self::get_date::<false>, js_string!("getUTCDate"), 0)?
+            .method(Self::get_day::<false>, js_string!("getUTCDay"), 0)?
             .method(
                 Self::get_full_year::<false>,
                 js_string!("getUTCFullYear"),
                 0,
-            )
-            .method(Self::get_hours::<false>, js_string!("getUTCHours"), 0)
+            )?
+            .method(Self::get_hours::<false>, js_string!("getUTCHours"), 0)?
             .method(
                 Self::get_milliseconds::<false>,
                 js_string!("getUTCMilliseconds"),
                 0,
-            )
-            .method(Self::get_minutes::<false>, js_string!("getUTCMinutes"), 0)
-            .method(Self::get_month::<false>, js_string!("getUTCMonth"), 0)
-            .method(Self::get_seconds::<false>, js_string!("getUTCSeconds"), 0)
-            .method(Self::get_year, js_string!("getYear"), 0)
-            .method(Self::set_date::<true>, js_string!("setDate"), 1)
-            .method(Self::set_full_year::<true>, js_string!("setFullYear"), 3)
-            .method(Self::set_hours::<true>, js_string!("setHours"), 4)
+            )?
+            .method(Self::get_minutes::<false>, js_string!("getUTCMinutes"), 0)?
+            .method(Self::get_month::<false>, js_string!("getUTCMonth"), 0)?
+            .method(Self::get_seconds::<false>, js_string!("getUTCSeconds"), 0)?
+            .method(Self::get_year, js_string!("getYear"), 0)?
+            .method(Self::set_date::<true>, js_string!("setDate"), 1)?
+            .method(Self::set_full_year::<true>, js_string!("setFullYear"), 3)?
+            .method(Self::set_hours::<true>, js_string!("setHours"), 4)?
             .method(
                 Self::set_milliseconds::<true>,
                 js_string!("setMilliseconds"),
                 1,
-            )
-            .method(Self::set_minutes::<true>, js_string!("setMinutes"), 3)
-            .method(Self::set_month::<true>, js_string!("setMonth"), 2)
-            .method(Self::set_seconds::<true>, js_string!("setSeconds"), 2)
-            .method(Self::set_time, js_string!("setTime"), 1)
-            .method(Self::set_date::<false>, js_string!("setUTCDate"), 1)
+            )?
+            .method(Self::set_minutes::<true>, js_string!("setMinutes"), 3)?
+            .method(Self::set_month::<true>, js_string!("setMonth"), 2)?
+            .method(Self::set_seconds::<true>, js_string!("setSeconds"), 2)?
+            .method(Self::set_time, js_string!("setTime"), 1)?
+            .method(Self::set_date::<false>, js_string!("setUTCDate"), 1)?
             .method(
                 Self::set_full_year::<false>,
                 js_string!("setUTCFullYear"),
                 3,
-            )
-            .method(Self::set_hours::<false>, js_string!("setUTCHours"), 4)
+            )?
+            .method(Self::set_hours::<false>, js_string!("setUTCHours"), 4)?
             .method(
                 Self::set_milliseconds::<false>,
                 js_string!("setUTCMilliseconds"),
                 1,
-            )
-            .method(Self::set_minutes::<false>, js_string!("setUTCMinutes"), 3)
-            .method(Self::set_month::<false>, js_string!("setUTCMonth"), 2)
-            .method(Self::set_seconds::<false>, js_string!("setUTCSeconds"), 2)
-            .method(Self::set_year, js_string!("setYear"), 1)
-            .method(Self::to_date_string, js_string!("toDateString"), 0)
-            .method(Self::to_iso_string, js_string!("toISOString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 1)
+            )?
+            .method(Self::set_minutes::<false>, js_string!("setUTCMinutes"), 3)?
+            .method(Self::set_month::<false>, js_string!("setUTCMonth"), 2)?
+            .method(Self::set_seconds::<false>, js_string!("setUTCSeconds"), 2)?
+            .method(Self::set_year, js_string!("setYear"), 1)?
+            .method(Self::to_date_string, js_string!("toDateString"), 0)?
+            .method(Self::to_iso_string, js_string!("toISOString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 1)?
             .method(
                 Self::to_locale_date_string,
                 js_string!("toLocaleDateString"),
                 0,
-            )
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
+            )?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
             .method(
                 Self::to_locale_time_string,
                 js_string!("toLocaleTimeString"),
                 0,
-            )
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_time_string, js_string!("toTimeString"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+            )?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_time_string, js_string!("toTimeString"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .property(
                 js_string!("toGMTString"),
                 to_utc_string.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("toUTCString"),
                 to_utc_string,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::to_primitive(),
                 to_primitive,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "temporal")]
         let builder = builder.method(
             Self::to_temporal_instant,
             js_string!("toTemporalInstant"),
             0,
-        );
+        )?;
 
         builder.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -356,7 +356,7 @@ impl BuiltInConstructor for Date {
 
         // 7. Set O.[[DateValue]] to dv.
         let obj =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, dv);
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, dv)?;
 
         // 8. Return O.
         Ok(obj.into())

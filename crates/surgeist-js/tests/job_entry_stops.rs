@@ -74,7 +74,7 @@ fn queued_async_job_refuses_callback_entry_after_a_retained_instruction_stop() {
 
 #[test]
 fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let selected = context.create_realm().unwrap();
     let entered = Rc::new(Cell::new(0));
     let continued = Rc::new(Cell::new(0));

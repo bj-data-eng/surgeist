@@ -42,7 +42,7 @@ fn first_future_results_preserve_success_conversion_and_an_ordinary_guest_error(
                 calls.set(calls.get() + 1);
                 Ok(value + 2)
             });
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         let host = owner.host_access();
         assert_eq!(
             poll(&mut task, &host),
@@ -67,7 +67,7 @@ fn completed_poll_tasks_reject_further_polls_without_entering_the_owned_callback
         seen.set(seen.get() + 1);
         Poll::Ready(Ok(42))
     });
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let host = owner.host_access();
     assert_eq!(poll(&mut task, &host), Poll::Ready(Ok(42)));
     let second = catch_unwind(AssertUnwindSafe(|| poll(&mut task, &host)));
@@ -103,7 +103,7 @@ fn completed_then_tasks_do_not_repoll_the_source_or_consume_completion_twice() {
         complete_calls.set(complete_calls.get() + 1);
         Ok(value + 2)
     });
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let host = owner.host_access();
     assert_eq!(poll(&mut task, &host), Poll::Ready(Ok(42)));
     assert_eq!(completion_drops.get(), 1);
@@ -139,7 +139,7 @@ fn an_ordinary_error_completes_the_task_once_without_running_its_success_convers
         complete_calls.set(complete_calls.get() + 1);
         Ok(value)
     });
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let host = owner.host_access();
     assert_eq!(poll(&mut task, &host), Poll::Ready(Err(original)));
     let second = catch_unwind(AssertUnwindSafe(|| poll(&mut task, &host)));
@@ -170,7 +170,7 @@ fn a_pending_stage_remains_viable_until_one_result_and_one_completion_are_delive
         converted.set(converted.get() + 1);
         Ok(value * 2)
     });
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let host = owner.host_access();
     assert_eq!(poll(&mut task, &host), Poll::Pending);
     assert_eq!(polls.get(), 1);

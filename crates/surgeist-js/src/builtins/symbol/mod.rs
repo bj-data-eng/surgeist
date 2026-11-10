@@ -115,71 +115,71 @@ impl IntrinsicObject for Symbol {
         let to_primitive = BuiltInBuilder::callable(realm, Self::to_primitive)
             .name(js_string!("[Symbol.toPrimitive]"))
             .length(1)
-            .build();
+            .build()?;
 
         let get_description = BuiltInBuilder::callable(realm, Self::get_description)
             .name(js_string!("get description"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_method(Self::for_, js_string!("for"), 1)
-            .static_method(Self::key_for, js_string!("keyFor"), 1)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_method(Self::for_, js_string!("for"), 1)?
+            .static_method(Self::key_for, js_string!("keyFor"), 1)?
             .static_property(
                 js_string!("asyncIterator"),
                 symbol_async_iterator,
                 attribute,
-            )
-            .static_property(js_string!("hasInstance"), symbol_has_instance, attribute)
+            )?
+            .static_property(js_string!("hasInstance"), symbol_has_instance, attribute)?
             .static_property(
                 js_string!("isConcatSpreadable"),
                 symbol_is_concat_spreadable,
                 attribute,
-            )
-            .static_property(js_string!("iterator"), symbol_iterator, attribute)
-            .static_property(js_string!("match"), symbol_match, attribute)
-            .static_property(js_string!("matchAll"), symbol_match_all, attribute)
-            .static_property(js_string!("replace"), symbol_replace, attribute)
-            .static_property(js_string!("search"), symbol_search, attribute)
-            .static_property(js_string!("species"), symbol_species, attribute)
-            .static_property(js_string!("split"), symbol_split, attribute)
+            )?
+            .static_property(js_string!("iterator"), symbol_iterator, attribute)?
+            .static_property(js_string!("match"), symbol_match, attribute)?
+            .static_property(js_string!("matchAll"), symbol_match_all, attribute)?
+            .static_property(js_string!("replace"), symbol_replace, attribute)?
+            .static_property(js_string!("search"), symbol_search, attribute)?
+            .static_property(js_string!("species"), symbol_species, attribute)?
+            .static_property(js_string!("split"), symbol_split, attribute)?
             .static_property(
                 js_string!("toPrimitive"),
                 symbol_to_primitive.clone(),
                 attribute,
-            )
+            )?
             .static_property(
                 js_string!("toStringTag"),
                 symbol_to_string_tag.clone(),
                 attribute,
-            )
-            .static_property(js_string!("unscopables"), symbol_unscopables, attribute)
-            .static_property(js_string!("dispose"), symbol_dispose, attribute)
-            .static_property(js_string!("asyncDispose"), symbol_async_dispose, attribute)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+            )?
+            .static_property(js_string!("unscopables"), symbol_unscopables, attribute)?
+            .static_property(js_string!("dispose"), symbol_dispose, attribute)?
+            .static_property(js_string!("asyncDispose"), symbol_async_dispose, attribute)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .accessor(
                 js_string!("description"),
                 Some(get_description),
                 None,
                 Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-            )
+            )?
             .property(
                 symbol_to_string_tag,
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 symbol_to_primitive,
                 to_primitive,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 

@@ -107,73 +107,73 @@ impl IntrinsicObject for DataView {
 
         let get_buffer = BuiltInBuilder::callable(realm, Self::get_buffer)
             .name(js_string!("get buffer"))
-            .build();
+            .build()?;
 
         let get_byte_length = BuiltInBuilder::callable(realm, Self::get_byte_length)
             .name(js_string!("get byteLength"))
-            .build();
+            .build()?;
 
         let get_byte_offset = BuiltInBuilder::callable(realm, Self::get_byte_offset)
             .name(js_string!("get byteOffset"))
-            .build();
+            .build()?;
 
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .accessor(
                 js_string!("buffer"),
                 Some(get_buffer),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("byteLength"),
                 Some(get_byte_length),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("byteOffset"),
                 Some(get_byte_offset),
                 None,
                 flag_attributes,
-            )
-            .method(Self::get_big_int64, js_string!("getBigInt64"), 1)
-            .method(Self::get_big_uint64, js_string!("getBigUint64"), 1)
-            .method(Self::get_float32, js_string!("getFloat32"), 1)
-            .method(Self::get_float64, js_string!("getFloat64"), 1)
-            .method(Self::get_int8, js_string!("getInt8"), 1)
-            .method(Self::get_int16, js_string!("getInt16"), 1)
-            .method(Self::get_int32, js_string!("getInt32"), 1)
-            .method(Self::get_uint8, js_string!("getUint8"), 1)
-            .method(Self::get_uint16, js_string!("getUint16"), 1)
-            .method(Self::get_uint32, js_string!("getUint32"), 1)
-            .method(Self::set_big_int64, js_string!("setBigInt64"), 2)
-            .method(Self::set_big_uint64, js_string!("setBigUint64"), 2)
-            .method(Self::set_float32, js_string!("setFloat32"), 2)
-            .method(Self::set_float64, js_string!("setFloat64"), 2)
-            .method(Self::set_int8, js_string!("setInt8"), 2)
-            .method(Self::set_int16, js_string!("setInt16"), 2)
-            .method(Self::set_int32, js_string!("setInt32"), 2)
-            .method(Self::set_uint8, js_string!("setUint8"), 2)
-            .method(Self::set_uint16, js_string!("setUint16"), 2)
-            .method(Self::set_uint32, js_string!("setUint32"), 2)
+            )?
+            .method(Self::get_big_int64, js_string!("getBigInt64"), 1)?
+            .method(Self::get_big_uint64, js_string!("getBigUint64"), 1)?
+            .method(Self::get_float32, js_string!("getFloat32"), 1)?
+            .method(Self::get_float64, js_string!("getFloat64"), 1)?
+            .method(Self::get_int8, js_string!("getInt8"), 1)?
+            .method(Self::get_int16, js_string!("getInt16"), 1)?
+            .method(Self::get_int32, js_string!("getInt32"), 1)?
+            .method(Self::get_uint8, js_string!("getUint8"), 1)?
+            .method(Self::get_uint16, js_string!("getUint16"), 1)?
+            .method(Self::get_uint32, js_string!("getUint32"), 1)?
+            .method(Self::set_big_int64, js_string!("setBigInt64"), 2)?
+            .method(Self::set_big_uint64, js_string!("setBigUint64"), 2)?
+            .method(Self::set_float32, js_string!("setFloat32"), 2)?
+            .method(Self::set_float64, js_string!("setFloat64"), 2)?
+            .method(Self::set_int8, js_string!("setInt8"), 2)?
+            .method(Self::set_int16, js_string!("setInt16"), 2)?
+            .method(Self::set_int32, js_string!("setInt32"), 2)?
+            .method(Self::set_uint8, js_string!("setUint8"), 2)?
+            .method(Self::set_uint16, js_string!("setUint16"), 2)?
+            .method(Self::set_uint32, js_string!("setUint32"), 2)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "float16")]
         let builder = builder
-            .method(Self::get_float16, js_string!("getFloat16"), 1)
-            .method(Self::set_float16, js_string!("setFloat16"), 2);
+            .method(Self::get_float16, js_string!("getFloat16"), 1)?
+            .method(Self::set_float16, js_string!("setFloat16"), 2)?;
 
         builder.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -311,7 +311,7 @@ impl BuiltInConstructor for DataView {
             context.root_shape(),
             prototype,
             Self::new(&buffer, view_byte_len, offset),
-        );
+        )?;
 
         // 18. Return O.
         Ok(obj.into())

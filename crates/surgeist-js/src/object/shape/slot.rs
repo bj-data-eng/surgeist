@@ -84,27 +84,6 @@ impl Slot {
         self.attributes.width()
     }
 
-    /// Calculate next slot from previous one.
-    ///
-    /// This is needed because slots do not have the same width.
-    pub(crate) fn from_previous(
-        previous_slot: Option<Self>,
-        new_attributes: SlotAttributes,
-    ) -> Self {
-        // If there was no previous slot then return 0 as the index.
-        let Some(previous_slot) = previous_slot else {
-            return Self {
-                index: 0,
-                attributes: new_attributes,
-            };
-        };
-
-        Self {
-            index: previous_slot.index + previous_slot.width(),
-            attributes: new_attributes,
-        }
-    }
-
     pub(crate) fn set_not_cacheable_if_already_prototype(&mut self) {
         // NOTE(HalidOdat): This is a bit of a hack to avoid conditional branches.
         //

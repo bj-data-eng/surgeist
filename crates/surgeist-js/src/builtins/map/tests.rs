@@ -401,12 +401,12 @@ fn get_or_insert_computed_this_is_undefined_and_key_canonicalized() {
 fn iterator_keeps_map_edges_live_until_the_iterator_is_unreachable() {
     use crate::{Context, JsObject, js_string, object::builtins::JsMap};
 
-    let context = &mut Context::default();
-    let map = JsMap::new(context.access());
+    let context = &mut Context::builder().build().unwrap();
+    let map = JsMap::new(context.access()).unwrap();
     let map_edge = map.edge();
-    let key = JsObject::with_null_proto(context.runtime());
+    let key = JsObject::with_null_proto(context.runtime()).unwrap();
     let key_edge = key.edge();
-    let value = JsObject::with_null_proto(context.runtime());
+    let value = JsObject::with_null_proto(context.runtime()).unwrap();
     let value_edge = value.edge();
 
     map.set(key, value, context.access()).unwrap();
@@ -456,9 +456,9 @@ fn clear_and_reinsertion_preserve_independent_map_iterators() {
 fn map_rejects_foreign_edges_without_replacing_an_existing_entry() {
     use crate::{Context, JsObject, Runtime, object::builtins::JsMap};
 
-    let context = &mut Context::default();
-    let map = JsMap::new(context.access());
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let map = JsMap::new(context.access()).unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
 
     map.set(1, 2, context.access()).unwrap();
     let error = map.set(1, foreign.clone(), context.access()).unwrap_err();

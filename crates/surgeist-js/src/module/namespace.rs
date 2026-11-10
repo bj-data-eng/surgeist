@@ -1,3 +1,4 @@
+use crate::object::AllocationOrigin;
 use std::hash::BuildHasherDefault;
 
 use indexmap::IndexSet;
@@ -56,7 +57,11 @@ impl ModuleNamespace {
     /// Abstract operation [`ModuleNamespaceCreate ( module, exports )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-modulenamespacecreate
-    pub(crate) fn create(module: Module, names: Vec<JsString>, context: &mut Context) -> JsObject {
+    pub(crate) fn create(
+        module: Module,
+        names: Vec<JsString>,
+        context: &mut Context,
+    ) -> JsResult<JsObject> {
         // 1. Assert: module.[[Namespace]] is empty.
         // ignored since this is ensured by `Module::namespace`.
 
@@ -93,6 +98,7 @@ impl ModuleNamespace {
                 resolved_bindings,
             },
             vec![js_string!("Module").into()],
+            AllocationOrigin::TrustedConstruction,
         )
     }
 

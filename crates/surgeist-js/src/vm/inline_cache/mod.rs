@@ -1,12 +1,12 @@
 use arrayvec::ArrayVec;
-use itertools::Itertools;
 use std::{
     cell::{Cell, RefCell},
     fmt,
 };
 
 use crate::{
-    JsString,
+    JsResult, JsString,
+    error::RootingError,
     object::shape::{Shape, ShapeRef, slot::Slot},
 };
 
@@ -45,12 +45,15 @@ impl fmt::Display for InlineCache {
         }
 
         let entries = self.entries.borrow();
-        let entries = entries
-            .iter()
-            .map(|e| e.shape.upgrade().map(|shape| shape.identity()))
-            .format(", ");
-
-        write!(f, "({entries:?}))")
+        f.write_str("(")?;
+        for (index, entry) in entries.iter().enumerate() {
+            if index != 0 {
+                f.write_str(", ")?;
+            }
+            let shape = entry.shape.upgrade().map_err(|_| fmt::Error)?;
+            write!(f, "{:?}", shape.map(|shape| shape.identity()))?;
+        }
+        f.write_str("))")
     }
 }
 
@@ -87,9 +90,9 @@ impl InlineCache {
     /// Returns the cached `(Shape, Slot)` if a matching shape exists in the inline cache.
     ///
     /// Opportunistically cleans up stale weak shape references during lookup.
-    pub(crate) fn get(&self, shape: &Shape) -> Option<(Shape, Slot)> {
+    pub(crate) fn get(&self, shape: &Shape) -> JsResult<Option<(Shape, Slot)>> {
         if self.megamorphic.get() {
-            return None;
+            return Ok(None);
         }
 
         let mut entries = self.entries.borrow_mut();
@@ -98,7 +101,7 @@ impl InlineCache {
         let identity = shape.identity();
 
         while i < entries.len() {
-            if let Some(upgraded) = entries[i].shape.upgrade() {
+            if let Some(upgraded) = entries[i].shape.upgrade().map_err(RootingError::from)? {
                 if upgraded.identity() == identity {
                     result = Some((upgraded, entries[i].slot));
                     break;
@@ -110,6 +113,6 @@ impl InlineCache {
             }
         }
 
-        result
+        Ok(result)
     }
 }

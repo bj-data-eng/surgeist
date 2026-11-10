@@ -416,17 +416,18 @@ impl Await {
         value: RegisterOperand,
         context: &mut Context,
     ) -> ControlFlow<CompletionRecord> {
-        let value = context.vm.get_register(value.into());
-        let promise = match Promise::promise_resolve(
-            &context.intrinsics().constructors().promise().constructor(),
-            value.clone(),
-            context,
-        )
-        .and_then(|promise| {
-            promise
-                .downcast::<Promise>()
-                .map_err(|_| crate::JsError::from(crate::error::EngineError::InvalidEntryPermit))
-        }) {
+        let value = context.vm.get_register(value.into()).clone();
+        let constructor = match context.intrinsics().constructors().promise().constructor() {
+            Ok(constructor) => constructor,
+            Err(error) => return context.handle_error(error.into()),
+        };
+        let promise = match Promise::promise_resolve(&constructor, value.clone(), context).and_then(
+            |promise| {
+                promise.downcast::<Promise>().map_err(|_| {
+                    crate::JsError::from(crate::error::EngineError::InvalidEntryPermit)
+                })
+            },
+        ) {
             Ok(promise) => promise,
             Err(error) => return context.handle_error(error),
         };
@@ -636,7 +637,11 @@ impl CreatePromiseCapability {
     #[inline(always)]
     pub(super) fn operation((): (), context: &mut Context) -> JsResult<()> {
         let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             context,
         )?;
 

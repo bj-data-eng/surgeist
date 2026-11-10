@@ -48,7 +48,7 @@ impl Animal {
     #[boa(method)]
     #[boa(length = 11)]
     fn method(mut context: ContextAccess<'_>) -> JsObject {
-        let obj = JsObject::with_null_proto(context.runtime());
+        let obj = JsObject::with_null_proto(context.runtime()).unwrap();
         obj.set(js_string!("key"), 43, false, context.reborrow())
             .unwrap();
         obj
@@ -117,7 +117,7 @@ const ASSERT_DECL: &str = r"
 
 #[test]
 fn boa_class() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
 
     context.register_global_class::<Animal>().unwrap();
 
@@ -165,7 +165,7 @@ fn boa_class() {
 fn generated_shared_getter_refuses_exclusive_alias_and_retries_same_receiver() {
     use surgeist_js::error::{EngineError, ObjectAccessError};
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.register_global_class::<Animal>().unwrap();
     let pet = context
         .eval(Source::from_bytes("new Animal('dog', 3)"))
@@ -200,7 +200,7 @@ fn generated_mutable_method_refuses_aliases_before_write_and_retries_same_receiv
     use surgeist_js::error::{EngineError, ObjectAccessError};
 
     for exclusive in [false, true] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.register_global_class::<Animal>().unwrap();
         let pet = context
             .eval(Source::from_bytes("new Animal('dog', 3)"))
@@ -241,7 +241,7 @@ fn generated_mutable_method_refuses_aliases_before_write_and_retries_same_receiv
 
 #[test]
 fn boa_class_symbol_methods() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
 
     context.register_global_class::<Pair>().unwrap();
 

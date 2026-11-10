@@ -48,7 +48,7 @@ pub(crate) struct ImportMeta;
 
 impl ImportMeta {
     #[inline(always)]
-    pub(super) fn operation(dst: RegisterOperand, context: &mut Context) {
+    pub(super) fn operation(dst: RegisterOperand, context: &mut Context) -> crate::JsResult<()> {
         // Meta Properties
         //
         // ImportMeta : import . meta
@@ -69,19 +69,22 @@ impl ImportMeta {
         // 4. If importMeta is empty, then
         // 5. Else,
         //     a. Assert: importMeta is an Object.
-        let import_meta = src.import_meta().unwrap_or_else(|| {
-            let import_meta = JsObject::with_null_proto(context.runtime());
+        let import_meta = if let Some(import_meta) = src.import_meta() {
+            import_meta
+        } else {
+            let import_meta = JsObject::with_null_proto(context.runtime())?;
             // Publish the shell before a reentrant host hook can read it.
             src.set_import_meta(&import_meta);
             context
                 .module_loader()
                 .init_import_meta(&import_meta, &module, context.access());
             import_meta
-        });
+        };
 
         //     b. Return importMeta.
         //     f. Return importMeta.
         context.vm.set_register(dst.into(), import_meta.into());
+        Ok(())
     }
 }
 

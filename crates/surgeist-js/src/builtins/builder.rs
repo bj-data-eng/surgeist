@@ -1,496 +1,545 @@
 use crate::{
-    JsObject, JsString, JsValue, NativeFunction, js_string,
+    JsObject, JsResult, JsString, JsValue,
+    error::{EngineResourceError, ObjectConstructionError},
+    js_string,
     native_function::{BuiltinFunctionPointer, NativeFunctionObject},
     object::{
-        CONSTRUCTOR, FunctionBinding, JsFunction, JsPrototype, PROTOTYPE,
-        shape::{property_table::PropertyTableInner, slot::SlotAttributes},
+        AllocationOrigin, BuiltinPrototype, BuiltinTargetMode, CONSTRUCTOR, FunctionBinding,
+        JsFunction, JsPrototype, NamedLayout, PROTOTYPE, PreparedBuiltinFunction,
+        PreparedBuiltinTarget, PreparedNamedProperties, commit_builtin_targets,
+        shape::slot::SlotAttributes,
     },
-    property::{Attribute, PropertyDescriptor, PropertyKey},
+    property::{Attribute, PropertyKey},
     realm::Realm,
     string::StaticJsStrings,
 };
+use surgeist_js_gc::heap::AccessError;
 
 use super::{BuiltInConstructor, IntrinsicObject, function::ConstructorKind};
 
-/// Marker for a constructor function.
-// TODO: Remove this marker and use `Constructor` directly.
-#[allow(dead_code)]
-pub(crate) struct Constructor {
-    prototype: JsObject,
-    inherits: JsPrototype,
-    attributes: Attribute,
+/// Authored named properties retain their live values until whole-target admission.
+struct NamedRecipe {
+    layout: NamedLayout,
+    values: Vec<JsValue>,
 }
 
-/// Marker for a constructor function without a custom prototype for its instances.
-// TODO: Remove this marker and use `ConstructorNoProto` directly.
-#[allow(dead_code)]
-pub(crate) struct ConstructorNoProto;
+impl NamedRecipe {
+    fn new(capacity: usize) -> JsResult<Self> {
+        let layout = NamedLayout::new(capacity)?;
+        let mut values = Vec::new();
+        values
+            .try_reserve(capacity)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        Ok(Self { layout, values })
+    }
 
-/// Marker for an ordinary function.
-pub(crate) struct OrdinaryFunction;
+    fn reserve_entry(
+        &mut self,
+        key: PropertyKey,
+        attributes: SlotAttributes,
+        width: usize,
+    ) -> JsResult<()> {
+        self.layout.push(key, attributes)?;
+        self.values
+            .try_reserve(width)
+            .map_err(|_| EngineResourceError::Allocation)?;
+        Ok(())
+    }
 
-/// Indicates if the marker is a constructor.
-pub(crate) trait IsConstructor {
-    const IS_CONSTRUCTOR: bool;
+    fn data(&mut self, key: PropertyKey, value: JsValue, attribute: Attribute) -> JsResult<()> {
+        self.reserve_entry(key, SlotAttributes::from_bits_truncate(attribute.bits()), 1)?;
+        self.values.push(value);
+        Ok(())
+    }
+
+    fn accessor(
+        &mut self,
+        key: PropertyKey,
+        get: Option<JsFunction>,
+        set: Option<JsFunction>,
+        attribute: Attribute,
+    ) -> JsResult<()> {
+        if attribute.contains(Attribute::WRITABLE) || (get.is_none() && set.is_none()) {
+            return Err(ObjectConstructionError::InvalidAccessorLayout.into());
+        }
+        let mut attributes = SlotAttributes::from_bits_truncate(attribute.bits());
+        attributes.set(SlotAttributes::GET, get.is_some());
+        attributes.set(SlotAttributes::SET, set.is_some());
+        self.reserve_entry(key, attributes, 2)?;
+        self.values.extend([
+            get.map(JsValue::new).unwrap_or_default(),
+            set.map(JsValue::new).unwrap_or_default(),
+        ]);
+        Ok(())
+    }
+
+    fn method(
+        &mut self,
+        realm: &Realm,
+        function: BuiltinFunctionPointer,
+        binding: FunctionBinding,
+        length: usize,
+    ) -> JsResult<()> {
+        self.reserve_entry(
+            binding.binding,
+            SlotAttributes::WRITABLE | SlotAttributes::CONFIGURABLE,
+            1,
+        )?;
+        let function = BuiltInBuilder::callable(realm, function)
+            .name(binding.name)
+            .length(length)
+            .build()?;
+        self.values.push(function.into());
+        Ok(())
+    }
+
+    fn prepare(self) -> JsResult<PreparedNamedProperties> {
+        self.layout.prepare(self.values)
+    }
 }
 
-impl IsConstructor for Constructor {
-    const IS_CONSTRUCTOR: bool = true;
+/// A target recipe is not a live result. Its roots survive preparation and refusal.
+struct TargetRecipe {
+    object: JsObject,
+    properties: NamedRecipe,
+    prototype: JsPrototype,
+    native: Option<PreparedBuiltinFunction>,
+    extensible: Option<bool>,
 }
 
-impl IsConstructor for ConstructorNoProto {
-    const IS_CONSTRUCTOR: bool = true;
+impl TargetRecipe {
+    fn prepare(self, mode: BuiltinTargetMode) -> JsResult<PreparedBuiltinTarget> {
+        let properties = self.properties.prepare()?;
+        let prototype = BuiltinPrototype::Set(self.prototype);
+        let target = match self.native {
+            Some(function) => {
+                PreparedBuiltinTarget::callable(self.object, mode, properties, prototype, function)
+            }
+            None => PreparedBuiltinTarget::ordinary(self.object, mode, properties, prototype),
+        };
+        Ok(match self.extensible {
+            Some(extensible) => target.extensible(extensible),
+            None => target,
+        })
+    }
 }
 
-impl IsConstructor for OrdinaryFunction {
-    const IS_CONSTRUCTOR: bool = false;
+fn check_prototype(realm: &Realm, prototype: &JsPrototype) -> JsResult<()> {
+    if prototype
+        .as_ref()
+        .is_some_and(|prototype| !realm.runtime().same_heap(&prototype.runtime()))
+    {
+        return Err(ObjectConstructionError::InvalidStoredEdge(AccessError::ForeignHeap).into());
+    }
+    Ok(())
 }
 
-/// Marker for a callable object.
-pub(crate) struct Callable<Kind> {
+/// Marker for a recipe that returns its ordinary object.
+pub(crate) struct OrdinaryObject;
+
+/// A callable recipe records metadata without changing a live native payload.
+pub(crate) struct Callable {
     function: BuiltinFunctionPointer,
     name: JsString,
     length: usize,
-    kind: Kind,
-    realm: Realm,
 }
 
-/// Marker for an ordinary object.
-pub(crate) struct OrdinaryObject;
-
-/// Applies the pending builder data to the object.
-pub(crate) trait ApplyToObject {
-    fn apply_to(self, object: &JsObject) -> crate::JsResult<()>;
-}
-
-impl ApplyToObject for Constructor {
-    fn apply_to(self, object: &JsObject) -> crate::JsResult<()> {
-        object.insert(
-            PROTOTYPE,
-            PropertyDescriptor::builder()
-                .value(self.prototype.clone())
-                .writable(false)
-                .enumerable(false)
-                .configurable(false),
-        )?;
-        {
-            let mut prototype = self.prototype.borrow_mut()?;
-            prototype.set_prototype(self.inherits);
-            prototype.insert(
-                CONSTRUCTOR,
-                PropertyDescriptor::builder()
-                    .value(object.clone())
-                    .writable(self.attributes.writable())
-                    .enumerable(self.attributes.enumerable())
-                    .configurable(self.attributes.configurable()),
-            );
-        }
-        Ok(())
-    }
-}
-
-impl ApplyToObject for ConstructorNoProto {
-    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
-        Ok(())
-    }
-}
-
-impl ApplyToObject for OrdinaryFunction {
-    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
-        Ok(())
-    }
-}
-
-impl<S: ApplyToObject + IsConstructor> ApplyToObject for Callable<S> {
-    fn apply_to(self, object: &JsObject) -> crate::JsResult<()> {
-        {
-            let mut function = object
-                .downcast_mut::<NativeFunctionObject>()?
-                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
-            function.f = NativeFunction::from_builtin(self.function).stored();
-            function.constructor = S::IS_CONSTRUCTOR.then_some(ConstructorKind::Base);
-            function.realm = Some(self.realm.edge());
-        }
-        object.insert(
-            StaticJsStrings::LENGTH,
-            PropertyDescriptor::builder()
-                .value(self.length)
-                .writable(false)
-                .enumerable(false)
-                .configurable(true),
-        )?;
-        object.insert(
-            js_string!("name"),
-            PropertyDescriptor::builder()
-                .value(self.name)
-                .writable(false)
-                .enumerable(false)
-                .configurable(true),
-        )?;
-
-        self.kind.apply_to(object)?;
-
-        Ok(())
-    }
-}
-
-impl ApplyToObject for OrdinaryObject {
-    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
-        Ok(())
-    }
-}
-
-/// Builder for creating built-in objects, like `Array`.
+/// Fluent preparation returns its first error immediately, before later arguments run.
 ///
-/// The marker `ObjectType` restricts the methods that can be called depending on the
-/// type of object that is being constructed.
-#[derive(Debug)]
-#[must_use = "You need to call the `build` method in order for this to correctly assign the inner data"]
+/// Every successful stage is an authored recipe. Only build admits and commits targets.
+#[must_use = "Call build to admit and publish the prepared builtin"]
 pub(crate) struct BuiltInBuilder<'ctx, Kind> {
     realm: &'ctx Realm,
-    object: JsObject,
+    target: TargetRecipe,
     kind: Kind,
-    prototype: JsObject,
 }
 
 impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
     pub(crate) fn with_intrinsic<I: IntrinsicObject>(
         realm: &'ctx Realm,
-    ) -> BuiltInBuilder<'ctx, OrdinaryObject> {
-        BuiltInBuilder {
+    ) -> JsResult<BuiltInBuilder<'ctx, OrdinaryObject>> {
+        let object = I::get(realm.intrinsics())?;
+        let prototype = realm.intrinsics().constructors().object().prototype()?;
+        Ok(BuiltInBuilder {
             realm,
-            object: I::get(realm.intrinsics()),
+            target: TargetRecipe {
+                object,
+                properties: NamedRecipe::new(0)?,
+                prototype: Some(prototype),
+                native: None,
+                extensible: None,
+            },
             kind: OrdinaryObject,
-            prototype: realm.intrinsics().constructors().object().prototype(),
+        })
+    }
+
+    pub(crate) fn callable(
+        realm: &'ctx Realm,
+        function: BuiltinFunctionPointer,
+    ) -> BuiltInCallable<'ctx> {
+        BuiltInCallable {
+            realm,
+            function,
+            name: js_string!(),
+            length: 0,
         }
     }
-}
 
-pub(crate) struct BuiltInConstructorWithPrototype<'ctx> {
-    realm: &'ctx Realm,
-    function: BuiltinFunctionPointer,
-    name: JsString,
-    length: usize,
+    pub(crate) fn callable_with_intrinsic<I: IntrinsicObject>(
+        realm: &'ctx Realm,
+        function: BuiltinFunctionPointer,
+    ) -> JsResult<BuiltInBuilder<'ctx, Callable>> {
+        let object = I::get(realm.intrinsics())?;
+        Self::callable_with_object(realm, object, function)
+    }
 
-    constructor_property_table: PropertyTableInner,
-    constructor_storage: Vec<JsValue>,
-    constructor: JsObject,
-    #[cfg(debug_assertions)]
-    constructor_storage_slots_expected: usize,
+    pub(crate) fn callable_with_object(
+        realm: &'ctx Realm,
+        object: JsObject,
+        function: BuiltinFunctionPointer,
+    ) -> JsResult<BuiltInBuilder<'ctx, Callable>> {
+        let prototype = realm.intrinsics().constructors().function().prototype()?;
+        Ok(BuiltInBuilder {
+            realm,
+            target: TargetRecipe {
+                object,
+                properties: NamedRecipe::new(0)?,
+                prototype: Some(prototype),
+                native: None,
+                extensible: None,
+            },
+            kind: Callable {
+                function,
+                name: js_string!(),
+                length: 0,
+            },
+        })
+    }
 
-    prototype_property_table: PropertyTableInner,
-    prototype_storage: Vec<JsValue>,
-    prototype: JsObject,
-    #[cfg(debug_assertions)]
-    prototype_storage_slots_expected: usize,
-    __proto__: JsPrototype,
-    inherits: Option<JsObject>,
-    attributes: Attribute,
-}
+    pub(crate) fn from_standard_constructor<SC: BuiltInConstructor>(
+        realm: &'ctx Realm,
+    ) -> JsResult<BuiltInConstructorWithPrototype<'ctx>> {
+        let standard = SC::STANDARD_CONSTRUCTOR(realm.intrinsics().constructors());
+        let constructor_properties = NamedRecipe::new(
+            SC::CONSTRUCTOR_STORAGE_SLOTS
+                .checked_add(3)
+                .ok_or(EngineResourceError::SizeOverflow)?,
+        )?;
+        let constructor = standard.constructor()?;
+        let prototype_properties = NamedRecipe::new(
+            SC::PROTOTYPE_STORAGE_SLOTS
+                .checked_add(1)
+                .ok_or(EngineResourceError::SizeOverflow)?,
+        )?;
+        let prototype = standard.prototype()?;
+        let constructor_parent = realm.intrinsics().constructors().function().prototype()?;
+        let prototype_parent = realm.intrinsics().constructors().object().prototype()?;
+        Ok(BuiltInConstructorWithPrototype {
+            realm,
+            function: SC::constructor,
+            name: js_string!(SC::NAME),
+            length: SC::CONSTRUCTOR_ARGUMENTS,
+            constructor: TargetRecipe {
+                object: constructor,
+                properties: constructor_properties,
+                prototype: Some(constructor_parent),
+                native: None,
+                extensible: None,
+            },
+            prototype: TargetRecipe {
+                object: prototype,
+                properties: prototype_properties,
+                prototype: Some(prototype_parent),
+                native: None,
+                extensible: None,
+            },
+            attributes: Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
+        })
+    }
 
-#[allow(dead_code)]
-impl BuiltInConstructorWithPrototype<'_> {
-    /// The number of storage slots that are always present in a standard
-    /// constructor object.
+    /// Records native metadata without adding callable default properties.
     ///
-    /// See [`BuiltInConstructorWithPrototype::build`].
-    const OWN_CONSTRUCTOR_STORAGE_SLOTS: usize = 3;
-
-    /// The number of storage slots properties that are always present in a
-    /// standard constructor's prototype object when `constructor` is a **data** property.
-    ///
-    /// See [`BuiltInConstructorWithPrototype::build`].
-    const OWN_PROTOTYPE_STORAGE_SLOTS: usize = 1;
-
-    /// Specify how many arguments the constructor function takes.
-    ///
-    /// Default is `0`.
-    #[inline]
-    pub(crate) const fn length(mut self, length: usize) -> Self {
-        self.length = length;
+    /// This supports intrinsic shells with explicitly authored length/name attributes.
+    pub(crate) fn native_function(
+        mut self,
+        function: BuiltinFunctionPointer,
+        constructor: Option<ConstructorKind>,
+    ) -> Self {
+        self.target.native = Some(PreparedBuiltinFunction::new(
+            function,
+            constructor,
+            self.realm.clone(),
+        ));
         self
     }
 
-    /// Specify the name of the constructor function.
-    ///
-    /// Default is `""`
-    pub(crate) fn name(mut self, name: JsString) -> Self {
-        self.name = name;
-        self
+    pub(crate) fn build(self) -> JsResult<JsObject> {
+        let object = self.target.object.clone();
+        let target = self.target.prepare(BuiltinTargetMode::Update)?;
+        commit_builtin_targets(target, None)?;
+        Ok(object)
     }
+}
 
-    /// Adds a new static method to the builtin object.
+impl<Kind> BuiltInBuilder<'_, Kind> {
     pub(crate) fn static_method<B>(
         mut self,
         function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
-    ) -> Self
+    ) -> JsResult<Self>
     where
         B: Into<FunctionBinding>,
     {
-        let binding = binding.into();
-        let function = BuiltInBuilder::callable(self.realm, function)
-            .name(binding.name)
-            .length(length)
-            .build();
-
-        debug_assert!(
-            !self
-                .constructor_property_table
-                .map
-                .contains_key(&binding.binding)
-        );
-        self.constructor_property_table.insert(
-            binding.binding,
-            SlotAttributes::WRITABLE | SlotAttributes::CONFIGURABLE,
-        );
-        self.constructor_storage.push(function.into());
-        self
+        self.target
+            .properties
+            .method(self.realm, function, binding.into(), length)?;
+        Ok(self)
     }
 
-    /// Adds a new static data property to the builtin object.
-    pub(crate) fn static_property<K, V>(mut self, key: K, value: V, attribute: Attribute) -> Self
+    pub(crate) fn static_property<K, V>(
+        mut self,
+        key: K,
+        value: V,
+        attribute: Attribute,
+    ) -> JsResult<Self>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
-        let key = key.into();
-
-        debug_assert!(!self.constructor_property_table.map.contains_key(&key));
-        self.constructor_property_table
-            .insert(key, SlotAttributes::from_bits_truncate(attribute.bits()));
-        self.constructor_storage.push(value.into());
-        self
+        self.target
+            .properties
+            .data(key.into(), value.into(), attribute)?;
+        Ok(self)
     }
 
-    /// Adds a new static accessor property to the builtin object.
     pub(crate) fn static_accessor<K>(
         mut self,
         key: K,
         get: Option<JsFunction>,
         set: Option<JsFunction>,
         attribute: Attribute,
-    ) -> Self
+    ) -> JsResult<Self>
     where
         K: Into<PropertyKey>,
     {
-        let mut attributes = SlotAttributes::from_bits_truncate(attribute.bits());
-        debug_assert!(!attributes.contains(SlotAttributes::WRITABLE));
-        attributes.set(SlotAttributes::GET, get.is_some());
-        attributes.set(SlotAttributes::SET, set.is_some());
+        self.target
+            .properties
+            .accessor(key.into(), get, set, attribute)?;
+        Ok(self)
+    }
 
-        let key = key.into();
+    pub(crate) fn prototype(mut self, prototype: JsObject) -> JsResult<Self> {
+        let prototype = Some(prototype);
+        check_prototype(self.realm, &prototype)?;
+        self.target.prototype = prototype;
+        Ok(self)
+    }
 
-        debug_assert!(!self.constructor_property_table.map.contains_key(&key));
-        self.constructor_property_table.insert(key, attributes);
-        self.constructor_storage.extend([
-            get.map(JsValue::new).unwrap_or_default(),
-            set.map(JsValue::new).unwrap_or_default(),
-        ]);
+    /// Records extensibility for the same admitted target commit.
+    pub(crate) fn extensible(mut self, extensible: bool) -> Self {
+        self.target.extensible = Some(extensible);
+        self
+    }
+}
+
+impl BuiltInBuilder<'_, Callable> {
+    pub(crate) const fn length(mut self, length: usize) -> Self {
+        self.kind.length = length;
         self
     }
 
-    /// Specify the `[[Prototype]]` internal field of the builtin object.
-    ///
-    /// Default is `Function.prototype` for constructors and `Object.prototype` for statics.
-    pub(crate) fn prototype(mut self, prototype: JsObject) -> Self {
-        self.__proto__ = Some(prototype);
+    pub(crate) fn name(mut self, name: JsString) -> Self {
+        self.kind.name = name;
         self
     }
 
-    /// Adds a new method to the constructor's prototype.
+    pub(crate) fn build(mut self) -> JsResult<JsFunction> {
+        self.target.properties.data(
+            StaticJsStrings::LENGTH.into(),
+            self.kind.length.into(),
+            Attribute::CONFIGURABLE,
+        )?;
+        self.target.properties.data(
+            js_string!("name").into(),
+            self.kind.name.into(),
+            Attribute::CONFIGURABLE,
+        )?;
+        self.target.native = Some(PreparedBuiltinFunction::new(
+            self.kind.function,
+            None,
+            self.realm.clone(),
+        ));
+        let object = self.target.object.clone();
+        let target = self.target.prepare(BuiltinTargetMode::Update)?;
+        commit_builtin_targets(target, None)?;
+        Ok(JsFunction::from_object_unchecked(object))
+    }
+}
+
+/// A standard constructor has two fresh targets committed as one operation.
+pub(crate) struct BuiltInConstructorWithPrototype<'ctx> {
+    realm: &'ctx Realm,
+    function: BuiltinFunctionPointer,
+    name: JsString,
+    length: usize,
+    constructor: TargetRecipe,
+    prototype: TargetRecipe,
+    attributes: Attribute,
+}
+
+impl BuiltInConstructorWithPrototype<'_> {
+    pub(crate) fn static_method<B>(
+        mut self,
+        function: BuiltinFunctionPointer,
+        binding: B,
+        length: usize,
+    ) -> JsResult<Self>
+    where
+        B: Into<FunctionBinding>,
+    {
+        self.constructor
+            .properties
+            .method(self.realm, function, binding.into(), length)?;
+        Ok(self)
+    }
+
+    pub(crate) fn static_property<K, V>(
+        mut self,
+        key: K,
+        value: V,
+        attribute: Attribute,
+    ) -> JsResult<Self>
+    where
+        K: Into<PropertyKey>,
+        V: Into<JsValue>,
+    {
+        self.constructor
+            .properties
+            .data(key.into(), value.into(), attribute)?;
+        Ok(self)
+    }
+
+    pub(crate) fn static_accessor<K>(
+        mut self,
+        key: K,
+        get: Option<JsFunction>,
+        set: Option<JsFunction>,
+        attribute: Attribute,
+    ) -> JsResult<Self>
+    where
+        K: Into<PropertyKey>,
+    {
+        self.constructor
+            .properties
+            .accessor(key.into(), get, set, attribute)?;
+        Ok(self)
+    }
+
+    pub(crate) fn prototype(mut self, prototype: JsObject) -> JsResult<Self> {
+        let prototype = Some(prototype);
+        check_prototype(self.realm, &prototype)?;
+        self.constructor.prototype = prototype;
+        Ok(self)
+    }
+
     pub(crate) fn method<B>(
         mut self,
         function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
-    ) -> Self
+    ) -> JsResult<Self>
     where
         B: Into<FunctionBinding>,
     {
-        let binding = binding.into();
-        let function = BuiltInBuilder::callable(self.realm, function)
-            .name(binding.name)
-            .length(length)
-            .build();
-
-        debug_assert!(
-            !self
-                .prototype_property_table
-                .map
-                .contains_key(&binding.binding)
-        );
-        self.prototype_property_table.insert(
-            binding.binding,
-            SlotAttributes::WRITABLE | SlotAttributes::CONFIGURABLE,
-        );
-        self.prototype_storage.push(function.into());
-        self
+        self.prototype
+            .properties
+            .method(self.realm, function, binding.into(), length)?;
+        Ok(self)
     }
 
-    /// Adds a new data property to the constructor's prototype.
-    pub(crate) fn property<K, V>(mut self, key: K, value: V, attribute: Attribute) -> Self
+    pub(crate) fn property<K, V>(mut self, key: K, value: V, attribute: Attribute) -> JsResult<Self>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
-        let key = key.into();
-
-        debug_assert!(!self.prototype_property_table.map.contains_key(&key));
-        self.prototype_property_table
-            .insert(key, SlotAttributes::from_bits_truncate(attribute.bits()));
-        self.prototype_storage.push(value.into());
-        self
+        self.prototype
+            .properties
+            .data(key.into(), value.into(), attribute)?;
+        Ok(self)
     }
 
-    /// Adds new accessor property to the constructor's prototype.
     pub(crate) fn accessor<K>(
         mut self,
         key: K,
         get: Option<JsFunction>,
         set: Option<JsFunction>,
         attribute: Attribute,
-    ) -> Self
+    ) -> JsResult<Self>
     where
         K: Into<PropertyKey>,
     {
-        let mut attributes = SlotAttributes::from_bits_truncate(attribute.bits());
-        debug_assert!(!attributes.contains(SlotAttributes::WRITABLE));
-        attributes.set(SlotAttributes::GET, get.is_some());
-        attributes.set(SlotAttributes::SET, set.is_some());
-
-        let key = key.into();
-
-        debug_assert!(!self.prototype_property_table.map.contains_key(&key));
-        self.prototype_property_table.insert(key, attributes);
-        self.prototype_storage.extend([
-            get.map(JsValue::new).unwrap_or_default(),
-            set.map(JsValue::new).unwrap_or_default(),
-        ]);
-        self
+        self.prototype
+            .properties
+            .accessor(key.into(), get, set, attribute)?;
+        Ok(self)
     }
 
-    /// Specifies the parent prototype which objects created by this constructor inherit from.
-    ///
-    /// Default is `Object.prototype`.
-    #[allow(clippy::missing_const_for_fn)]
-    pub(crate) fn inherits(mut self, prototype: JsPrototype) -> Self {
-        self.inherits = prototype;
-        self
+    pub(crate) fn inherits(mut self, prototype: JsPrototype) -> JsResult<Self> {
+        check_prototype(self.realm, &prototype)?;
+        self.prototype.prototype = prototype;
+        Ok(self)
     }
 
-    /// Specifies the property attributes of the prototype's "constructor" property.
     pub(crate) const fn constructor_attributes(mut self, attributes: Attribute) -> Self {
         self.attributes = attributes;
         self
     }
 
-    #[track_caller]
-    pub(crate) fn build(mut self) -> crate::JsResult<()> {
-        let length = self.length;
-        let name = self.name.clone();
-        let prototype = self.prototype.clone();
-        self = self.static_property(js_string!("length"), length, Attribute::CONFIGURABLE);
-        self = self.static_property(js_string!("name"), name, Attribute::CONFIGURABLE);
-        self = self.static_property(PROTOTYPE, prototype, Attribute::empty());
-
-        let attributes = self.attributes;
-        let object = self.constructor.clone();
-        self = self.property(CONSTRUCTOR, object, attributes);
-        #[cfg(debug_assertions)]
-        assert!(
-            self.prototype_storage.len()
-                <= self.prototype_storage_slots_expected + Self::OWN_PROTOTYPE_STORAGE_SLOTS,
-            "expected to allocate at most {} prototype storage slots, got {}. \
-                constant {}::PROTOTYPE_STORAGE_SLOTS may need to be adjusted",
-            self.prototype_storage_slots_expected,
-            self.prototype_storage.len() - Self::OWN_PROTOTYPE_STORAGE_SLOTS,
-            self.name.display_escaped(),
-        );
-
-        #[cfg(debug_assertions)]
-        assert!(
-            self.constructor_storage.len()
-                <= self.constructor_storage_slots_expected + Self::OWN_CONSTRUCTOR_STORAGE_SLOTS,
-            "expected to allocate at most {} constructor storage slots, got {}. \
-            constant {}::CONSTRUCTOR_STORAGE_SLOTS may need to be adjusted",
-            self.constructor_storage_slots_expected,
-            self.constructor_storage.len() - Self::OWN_CONSTRUCTOR_STORAGE_SLOTS,
-            self.name.display_escaped(),
-        );
-
-        {
-            let mut prototype = self.prototype.borrow_mut()?;
-            prototype
-                .properties_mut()
-                .shape()
-                .as_unique()
-                .expect("The object should have a unique shape")
-                .override_internal(self.prototype_property_table, self.inherits);
-
-            prototype
-                .properties_mut()
-                .initialize_named_slots(self.prototype_storage);
-        }
-
-        {
-            let mut function = self
-                .constructor
-                .downcast_mut::<NativeFunctionObject>()?
-                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
-            function.f = NativeFunction::from_builtin(self.function).stored();
-            function.constructor = Some(ConstructorKind::Base);
-            function.realm = Some(self.realm.edge());
-        }
-
-        let mut object = self.constructor.borrow_mut()?;
-        object
-            .properties_mut()
-            .shape()
-            .as_unique()
-            .expect("The object should have a unique shape")
-            .override_internal(self.constructor_property_table, self.__proto__);
-
-        object
-            .properties_mut()
-            .initialize_named_slots(self.constructor_storage);
-
+    fn prepare_constructor(&mut self) -> JsResult<()> {
+        self.constructor.properties.data(
+            js_string!("length").into(),
+            self.length.into(),
+            Attribute::CONFIGURABLE,
+        )?;
+        self.constructor.properties.data(
+            js_string!("name").into(),
+            self.name.clone().into(),
+            Attribute::CONFIGURABLE,
+        )?;
+        self.constructor.native = Some(PreparedBuiltinFunction::new(
+            self.function,
+            Some(ConstructorKind::Base),
+            self.realm.clone(),
+        ));
         Ok(())
     }
 
-    pub(crate) fn build_without_prototype(mut self) -> crate::JsResult<()> {
-        let length = self.length;
-        let name = self.name.clone();
-        self = self.static_property(js_string!("length"), length, Attribute::CONFIGURABLE);
-        self = self.static_property(js_string!("name"), name, Attribute::CONFIGURABLE);
+    pub(crate) fn build(mut self) -> JsResult<()> {
+        self.prepare_constructor()?;
+        self.constructor.properties.data(
+            PROTOTYPE.into(),
+            self.prototype.object.clone().into(),
+            Attribute::empty(),
+        )?;
+        self.prototype.properties.data(
+            CONSTRUCTOR.into(),
+            self.constructor.object.clone().into(),
+            self.attributes,
+        )?;
+        let constructor = self.constructor.prepare(BuiltinTargetMode::Fresh)?;
+        let prototype = self.prototype.prepare(BuiltinTargetMode::Fresh)?;
+        commit_builtin_targets(constructor, Some(prototype))
+    }
 
-        {
-            let mut function = self
-                .constructor
-                .downcast_mut::<NativeFunctionObject>()?
-                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
-            function.f = NativeFunction::from_builtin(self.function).stored();
-            function.constructor = Some(ConstructorKind::Base);
-            function.realm = Some(self.realm.edge());
-        }
-
-        let mut object = self.constructor.borrow_mut()?;
-        object
-            .properties_mut()
-            .shape()
-            .as_unique()
-            .expect("The object should have a unique shape")
-            .override_internal(self.constructor_property_table, self.__proto__);
-
-        object
-            .properties_mut()
-            .initialize_named_slots(self.constructor_storage);
-
-        Ok(())
+    pub(crate) fn build_without_prototype(mut self) -> JsResult<()> {
+        self.prepare_constructor()?;
+        let constructor = self.constructor.prepare(BuiltinTargetMode::Fresh)?;
+        commit_builtin_targets(constructor, None)
     }
 }
 
+/// An authored callable recipe acquires its template only when built.
 pub(crate) struct BuiltInCallable<'ctx> {
     realm: &'ctx Realm,
     function: BuiltinFunctionPointer,
@@ -499,267 +548,98 @@ pub(crate) struct BuiltInCallable<'ctx> {
 }
 
 impl BuiltInCallable<'_> {
-    /// Specify how many arguments the constructor function takes.
-    ///
-    /// Default is `0`.
-    #[inline]
     pub(crate) const fn length(mut self, length: usize) -> Self {
         self.length = length;
         self
     }
 
-    /// Specify the name of the constructor function.
-    ///
-    /// Default is `""`
     pub(crate) fn name(mut self, name: JsString) -> Self {
         self.name = name;
         self
     }
 
-    pub(crate) fn build(self) -> JsFunction {
+    pub(crate) fn build(self) -> JsResult<JsFunction> {
         let object = self.realm.intrinsics().templates().function().create(
             NativeFunctionObject {
-                f: NativeFunction::from_builtin(self.function).stored(),
+                f: crate::NativeFunction::from_builtin(self.function).stored(),
                 name: self.name.clone(),
                 constructor: None,
                 realm: Some(self.realm.edge()),
             },
             [JsValue::new(self.length), JsValue::new(self.name)],
-        );
-
-        JsFunction::from_object_unchecked(object)
-    }
-}
-
-impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
-    pub(crate) fn callable(
-        realm: &'ctx Realm,
-        function: BuiltinFunctionPointer,
-    ) -> BuiltInCallable<'ctx> {
-        BuiltInCallable {
-            realm,
-            function,
-            length: 0,
-            name: js_string!(),
-        }
-    }
-
-    pub(crate) fn callable_with_intrinsic<I: IntrinsicObject>(
-        realm: &'ctx Realm,
-        function: BuiltinFunctionPointer,
-    ) -> BuiltInBuilder<'ctx, Callable<OrdinaryFunction>> {
-        BuiltInBuilder {
-            realm,
-            object: I::get(realm.intrinsics()),
-            kind: Callable {
-                function,
-                name: js_string!(),
-                length: 0,
-                kind: OrdinaryFunction,
-                realm: realm.clone(),
-            },
-            prototype: realm.intrinsics().constructors().function().prototype(),
-        }
-    }
-
-    pub(crate) fn callable_with_object(
-        realm: &'ctx Realm,
-        object: JsObject,
-        function: BuiltinFunctionPointer,
-    ) -> BuiltInBuilder<'ctx, Callable<OrdinaryFunction>> {
-        BuiltInBuilder {
-            realm,
-            object,
-            kind: Callable {
-                function,
-                name: js_string!(),
-                length: 0,
-                kind: OrdinaryFunction,
-                realm: realm.clone(),
-            },
-            prototype: realm.intrinsics().constructors().function().prototype(),
-        }
-    }
-}
-
-impl<'ctx> BuiltInBuilder<'ctx, Callable<Constructor>> {
-    /// Create a new builder for a constructor function.
-    ///
-    /// This sets the properties ahead of time for optimizations
-    /// (less reallocations).
-    pub(crate) fn from_standard_constructor<SC: BuiltInConstructor>(
-        realm: &'ctx Realm,
-    ) -> BuiltInConstructorWithPrototype<'ctx> {
-        let constructor = SC::STANDARD_CONSTRUCTOR(realm.intrinsics().constructors());
-        BuiltInConstructorWithPrototype {
-            realm,
-            function: SC::constructor,
-            name: js_string!(SC::NAME),
-            length: SC::CONSTRUCTOR_ARGUMENTS,
-            constructor_property_table: PropertyTableInner::with_capacity(
-                SC::CONSTRUCTOR_STORAGE_SLOTS
-                    + BuiltInConstructorWithPrototype::OWN_CONSTRUCTOR_STORAGE_SLOTS,
-            ),
-            constructor_storage: Vec::with_capacity(
-                SC::CONSTRUCTOR_STORAGE_SLOTS
-                    + BuiltInConstructorWithPrototype::OWN_CONSTRUCTOR_STORAGE_SLOTS,
-            ),
-            constructor: constructor.constructor(),
-            #[cfg(debug_assertions)]
-            constructor_storage_slots_expected: SC::CONSTRUCTOR_STORAGE_SLOTS,
-            prototype_property_table: PropertyTableInner::with_capacity(
-                SC::PROTOTYPE_STORAGE_SLOTS
-                    + BuiltInConstructorWithPrototype::OWN_PROTOTYPE_STORAGE_SLOTS,
-            ),
-            prototype_storage: Vec::with_capacity(
-                SC::PROTOTYPE_STORAGE_SLOTS
-                    + BuiltInConstructorWithPrototype::OWN_PROTOTYPE_STORAGE_SLOTS,
-            ),
-            prototype: constructor.prototype(),
-            #[cfg(debug_assertions)]
-            prototype_storage_slots_expected: SC::PROTOTYPE_STORAGE_SLOTS,
-            __proto__: Some(realm.intrinsics().constructors().function().prototype()),
-            inherits: Some(realm.intrinsics().constructors().object().prototype()),
-            attributes: Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
-        }
-    }
-}
-
-impl<T> BuiltInBuilder<'_, T> {
-    /// Adds a new static method to the builtin object.
-    pub(crate) fn static_method<B>(
-        self,
-        function: BuiltinFunctionPointer,
-        binding: B,
-        length: usize,
-    ) -> crate::JsResult<Self>
-    where
-        B: Into<FunctionBinding>,
-    {
-        let binding = binding.into();
-        let function = BuiltInBuilder::callable(self.realm, function)
-            .name(binding.name)
-            .length(length)
-            .build();
-
-        self.object.insert(
-            binding.binding,
-            PropertyDescriptor::builder()
-                .value(function)
-                .writable(true)
-                .enumerable(false)
-                .configurable(true),
+            AllocationOrigin::TrustedConstruction,
         )?;
-        Ok(self)
-    }
-
-    /// Adds a new static data property to the builtin object.
-    pub(crate) fn static_property<K, V>(
-        self,
-        key: K,
-        value: V,
-        attribute: Attribute,
-    ) -> crate::JsResult<Self>
-    where
-        K: Into<PropertyKey>,
-        V: Into<JsValue>,
-    {
-        let property = PropertyDescriptor::builder()
-            .value(value)
-            .writable(attribute.writable())
-            .enumerable(attribute.enumerable())
-            .configurable(attribute.configurable());
-        self.object.insert(key, property)?;
-        Ok(self)
-    }
-
-    /// Adds a new accessor property to the builtin object.
-    pub(crate) fn static_accessor<K>(
-        self,
-        key: K,
-        get: Option<JsFunction>,
-        set: Option<JsFunction>,
-        attribute: Attribute,
-    ) -> crate::JsResult<Self>
-    where
-        K: Into<PropertyKey>,
-    {
-        let mut property = PropertyDescriptor::builder()
-            .enumerable(attribute.enumerable())
-            .configurable(attribute.configurable());
-
-        if let Some(get) = get {
-            property = property.get(get);
-        }
-
-        if let Some(set) = set {
-            property = property.set(set);
-        }
-
-        let key = key.into();
-
-        self.object.insert(key, property)?;
-
-        Ok(self)
-    }
-
-    /// Specify the `[[Prototype]]` internal field of the builtin object.
-    ///
-    /// Default is `Function.prototype` for constructors and `Object.prototype` for statics.
-    pub(crate) fn prototype(mut self, prototype: JsObject) -> Self {
-        self.prototype = prototype;
-        self
-    }
-}
-
-impl<FnTyp> BuiltInBuilder<'_, Callable<FnTyp>> {
-    /// Specify how many arguments the constructor function takes.
-    ///
-    /// Default is `0`.
-    #[inline]
-    pub(crate) const fn length(mut self, length: usize) -> Self {
-        self.kind.length = length;
-        self
-    }
-
-    /// Specify the name of the constructor function.
-    ///
-    /// Default is `""`
-    pub(crate) fn name(mut self, name: JsString) -> Self {
-        self.kind.name = name;
-        self
-    }
-}
-
-impl BuiltInBuilder<'_, OrdinaryObject> {
-    /// Build the builtin object.
-    pub(crate) fn build(self) -> crate::JsResult<JsObject> {
-        self.kind.apply_to(&self.object)?;
-
-        self.object.set_prototype(Some(self.prototype))?;
-
-        Ok(self.object)
-    }
-}
-
-impl<FnTyp: ApplyToObject + IsConstructor> BuiltInBuilder<'_, Callable<FnTyp>> {
-    /// Build the builtin callable.
-    pub(crate) fn build(self) -> crate::JsResult<JsFunction> {
-        self.kind.apply_to(&self.object)?;
-
-        self.object.set_prototype(Some(self.prototype))?;
-
-        Ok(JsFunction::from_object_unchecked(self.object))
+        Ok(JsFunction::from_object_unchecked(object))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Source, js_string};
+    use super::BuiltInBuilder;
+    use crate::{
+        Context, JsResult, JsValue, Source,
+        builtins::Math,
+        error::{EngineError, RootingError},
+        js_string,
+        property::Attribute,
+    };
+    use std::cell::Cell;
+    use surgeist_js_gc::heap::AccessError;
+
+    #[test]
+    fn method_preparation_refusal_stops_later_arguments_and_keeps_target_unchanged() {
+        let context = Context::builder().build().unwrap();
+        let builder = BuiltInBuilder::with_intrinsic::<Math>(context.realm()).unwrap();
+        let target = builder.target.object.clone();
+        let later_arguments = Cell::new(0);
+        let heap = context.runtime().heap.clone();
+
+        heap.read(|_| {
+            let result = (|| -> JsResult<()> {
+                builder
+                    .static_method(
+                        |_, _, _| Ok(JsValue::undefined()),
+                        js_string!("unpublishedMethod"),
+                        0,
+                    )?
+                    .static_property(
+                        js_string!("unpublishedProperty"),
+                        {
+                            later_arguments.set(later_arguments.get() + 1);
+                            true
+                        },
+                        Attribute::CONFIGURABLE,
+                    )?
+                    .build()?;
+                Ok(())
+            })();
+            assert_eq!(
+                result.unwrap_err().as_engine(),
+                Some(&EngineError::Rooting(RootingError::Access(
+                    AccessError::HeapBorrowed,
+                )))
+            );
+        })
+        .unwrap();
+
+        assert_eq!(later_arguments.get(), 0);
+        assert!(
+            target
+                .get_property(&js_string!("unpublishedMethod").into())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            target
+                .get_property(&js_string!("unpublishedProperty").into())
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn builtin_builders_preserve_callable_constructor_and_method_behavior() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let result = context
             .eval(Source::from_bytes(
                 "[Array.of(1, 2).join('-'), Math.max(3, 7),

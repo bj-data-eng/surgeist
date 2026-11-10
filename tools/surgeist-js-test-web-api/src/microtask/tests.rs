@@ -85,7 +85,7 @@ fn explicit_discard_does_not_execute_a_microtask() {
 
 #[test]
 fn queue_microtask() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::microtask::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -114,6 +114,7 @@ fn queue_microtask() {
             TestAction::inspect_context(|ctx| {
                 let order = ctx
                     .global_object()
+                    .unwrap()
                     .get(js_str!("order"), ctx.access())
                     .unwrap();
                 let order = order.as_object().unwrap();

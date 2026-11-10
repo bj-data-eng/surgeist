@@ -88,7 +88,7 @@ impl SetAnnexBGlobal {
         }
         let value = context.vm.get_register(value.into()).clone();
         context
-            .global_object()
+            .global_object()?
             .set(name, value, false, context.access())?;
         Ok(())
     }
@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn annex_global_assignment_uses_this_frames_eligibility_and_non_strict_set() {
         fn assign(eligible: bool, writable: bool) -> JsValue {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let name = js_string!("block_function");
             let attributes = if writable {
                 Attribute::WRITABLE
@@ -218,6 +218,7 @@ mod tests {
                 .expect("non-strict global assignment");
             let value = context
                 .global_object()
+                .unwrap()
                 .get(name, context.access())
                 .expect("global property");
             context.vm.pop_frame();

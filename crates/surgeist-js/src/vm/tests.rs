@@ -47,7 +47,7 @@ fn basic_op() {
 
 #[test]
 fn vm_registers_use_the_active_frame_base() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let vm = &mut context.vm;
     vm.stack.stack.extend([11.into(), 20.into(), 30.into()]);
     vm.frame_mut().rp = 1;
@@ -61,7 +61,7 @@ fn vm_registers_use_the_active_frame_base() {
 
 #[test]
 fn stack_register_lookup_refuses_an_overflowing_index() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let vm = &mut context.vm;
     vm.frame_mut().rp = 1;
 
@@ -71,7 +71,7 @@ fn stack_register_lookup_refuses_an_overflowing_index() {
 #[test]
 #[should_panic(expected = "register index out of bounds")]
 fn vm_register_access_reports_an_overflowing_index() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let vm = &mut context.vm;
     vm.frame_mut().rp = 1;
 
@@ -80,7 +80,7 @@ fn vm_register_access_reports_an_overflowing_index() {
 
 #[test]
 fn position() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     context
         .register_global_callable(
             js_string!("check_stack"),
@@ -379,7 +379,7 @@ fn loop_runtime_limit() {
 #[test_case::test_case("while (true) {}"; "script")]
 #[test_case::test_case("function stop() { while (true) {} } stop();"; "nested_call")]
 fn a_runtime_stop_releases_the_execution_stack(source: &str) {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.runtime_limits_mut().set_loop_iteration_limit(0);
     let stack_len = context.vm.stack.stack.len();
     let frame_count = context.vm.frames.len();
@@ -399,7 +399,7 @@ fn a_runtime_stop_releases_the_execution_stack(source: &str) {
 
 #[test]
 fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.runtime_limits_mut().set_loop_iteration_limit(0);
     let error = context
         .eval(Source::from_bytes(
@@ -444,7 +444,7 @@ fn instructions_through(source: &str, end: super::opcode::Opcode, context: &mut 
 #[test]
 fn an_instruction_stop_before_the_catch_discards_the_pending_exception() {
     let source = "try { throw 42; } catch { globalThis.caught = true; }";
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let limit = instructions_through(source, super::opcode::Opcode::Throw, &mut context);
 
     let outcome = context
@@ -471,7 +471,7 @@ fn an_instruction_stop_before_the_catch_discards_the_pending_exception() {
 #[test]
 fn an_instruction_stop_discards_the_unreturned_result() {
     let source = "({})";
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let limit = instructions_through(source, super::opcode::Opcode::SetAccumulator, &mut context);
     let outcome = context
         .eval_with_budget(
@@ -490,7 +490,7 @@ fn an_instruction_stop_discards_the_unreturned_result() {
 
 #[test]
 fn a_script_declaration_error_releases_the_prepared_stack() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let stack_len = context.vm.stack.stack.len();
     let frame_count = context.vm.frames.len();
 
@@ -619,7 +619,7 @@ fn super_construction_with_parameter_expression() {
 
 #[test]
 fn cross_context_function_call() {
-    let context1 = &mut Context::default();
+    let context1 = &mut Context::builder().build().unwrap();
     let result = context1.eval(Source::from_bytes(indoc! {r"
         var global = 100;
 
@@ -712,7 +712,7 @@ fn installed_code_fixture(context: &Context) -> std::rc::Rc<super::CodeBlock> {
 #[test]
 fn activation_refuses_unprepared_pending_and_aborted_associations() {
     use surgeist_js_ast::scope::{PreparedScopes, ScopeStateError};
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let unprepared = std::rc::Rc::new(super::CodeBlock::new(js_string!("raw"), 0, true));
     assert_eq!(
         super::ActivatedCode::from_installed(unprepared)
@@ -743,7 +743,7 @@ fn activation_refuses_unprepared_pending_and_aborted_associations() {
 
 #[test]
 fn activation_retains_the_original_code_and_rejects_foreign_scope_constants() {
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let mut code = super::CodeBlock::new(js_string!("scoped"), 0, true);
     code.scope_association = context.realm().scope().handle();
     code.constants.push(super::Constant::Scope(
@@ -767,7 +767,7 @@ fn activation_retains_the_original_code_and_rejects_foreign_scope_constants() {
 #[test]
 fn host_start_and_dummy_frames_refuse_sync_and_async_bytecode_entry() {
     use std::future::Future as _;
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     assert!(
         matches!(context.run(), super::CompletionRecord::Throw(error)
         if matches!(error.as_engine(), Some(EngineError::InvalidEntryPermit)))
@@ -797,7 +797,7 @@ fn host_start_and_dummy_frames_refuse_sync_and_async_bytecode_entry() {
 
 #[test]
 fn first_dispatch_reservation_rejects_another_code_or_instruction() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let code = installed_code_fixture(&context);
     let other = installed_code_fixture(&context);
     let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
@@ -826,7 +826,7 @@ fn first_dispatch_reservation_rejects_another_code_or_instruction() {
 
 #[test]
 fn reserved_first_dispatch_consumes_one_instruction_and_the_next_dispatch_refuses() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.execution =
         Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(1)).unwrap());
     let code = installed_code_fixture(&context);
@@ -873,7 +873,7 @@ fn reserved_first_dispatch_consumes_one_instruction_and_the_next_dispatch_refuse
 #[test]
 #[cfg(feature = "fuzz")]
 fn first_dispatch_reservation_checks_fuzz_before_instruction_and_ticks_once() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.execution =
         Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(0)).unwrap());
     context.instructions_remaining = 0;
@@ -921,7 +921,7 @@ fn first_dispatch_reservation_checks_fuzz_before_instruction_and_ticks_once() {
 
 #[test]
 fn a_frame_rejects_a_matching_code_permit_from_another_invocation() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let code = installed_code_fixture(&context);
     let first = context.reserve_guest_entry(code.clone(), 0).unwrap();
     let second = context.reserve_guest_entry(code.clone(), 0).unwrap();
@@ -941,7 +941,7 @@ fn a_frame_rejects_a_matching_code_permit_from_another_invocation() {
 
 #[test]
 fn suspended_and_cloned_frames_retain_their_actual_scope_activation() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let handle = context.realm().scope().handle();
     let mut code = super::CodeBlock::new(js_string!("resume"), 0, true);
     code.scope_association = handle.clone();
@@ -976,7 +976,7 @@ fn suspended_and_cloned_frames_retain_their_actual_scope_activation() {
 
 #[test]
 fn a_prepared_function_recipe_preserves_properties_and_constructor_back_reference() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let mut code = super::CodeBlock::new(js_string!("prepared"), 2, true);
     code.scope_association = context.realm().scope().handle();
     code.flags
@@ -1018,7 +1018,7 @@ fn a_prepared_function_recipe_preserves_properties_and_constructor_back_referenc
 
 #[test]
 fn a_prepared_function_recipe_cannot_expose_a_different_activated_codeblock() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let code = installed_code_fixture(&context);
     let other = installed_code_fixture(&context);
     let recipe = super::prepare_function_object_fast(
@@ -1040,7 +1040,7 @@ fn a_prepared_function_recipe_cannot_expose_a_different_activated_codeblock() {
 
 #[test]
 fn a_reserved_dispatch_preserves_an_intervening_retained_stop() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.execution =
         Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(1)).unwrap());
     let code = installed_code_fixture(&context);
@@ -1074,7 +1074,7 @@ fn a_reserved_dispatch_preserves_an_intervening_retained_stop() {
 
 #[test]
 fn deferred_guest_arguments_check_the_normal_call_stack_boundary_before_entry() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context.runtime_limits_mut().set_stack_size_limit(3);
     // Normal ordinary-call admission sees this, function and one argument.
     assert_eq!(

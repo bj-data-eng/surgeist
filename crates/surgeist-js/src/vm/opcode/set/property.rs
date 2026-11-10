@@ -25,17 +25,17 @@ fn set_by_name(
     let ic = &context.vm.frame().code_block().ic[usize::from(index)];
 
     let object_borrowed = object.borrow()?;
-    if let Some((shape, slot)) = ic.get(&object_borrowed.shape()) {
+    if let Some((shape, slot)) = ic.get(&object_borrowed.shape()?)? {
         let slot_index = slot.index as usize;
 
         if slot.attributes.is_accessor_descriptor() {
             let result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
-                let prototype = shape.prototype().expect("prototype should have value");
+                let prototype = shape.prototype()?.expect("prototype should have value");
                 let prototype = prototype.borrow()?;
 
-                prototype.properties().named_slot(slot_index + 1)
+                prototype.properties().named_slot(slot_index + 1)?
             } else {
-                object_borrowed.properties().named_slot(slot_index + 1)
+                object_borrowed.properties().named_slot(slot_index + 1)?
             };
 
             drop(object_borrowed);
@@ -47,18 +47,18 @@ fn set_by_name(
                 )?;
             }
         } else if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
-            let prototype = shape.prototype().expect("prototype should have value");
+            let prototype = shape.prototype()?.expect("prototype should have value");
             let mut prototype = prototype.borrow_mut()?;
 
             prototype
                 .properties_mut()
-                .write_named_slot(slot_index, value.clone());
+                .write_named_slot(slot_index, value.clone())?;
         } else {
             drop(object_borrowed);
             let mut object_borrowed = object.borrow_mut()?;
             object_borrowed
                 .properties_mut()
-                .write_named_slot(slot_index, value.clone());
+                .write_named_slot(slot_index, value.clone())?;
         }
         return Ok(());
     }
@@ -79,7 +79,7 @@ fn set_by_name(
     if succeeded && slot.is_cacheable() {
         let ic = &context.vm.frame().code_block.ic[usize::from(index)];
         let object_borrowed = object.borrow()?;
-        let shape = object_borrowed.shape();
+        let shape = object_borrowed.shape()?;
         ic.set(&shape, slot);
     }
 

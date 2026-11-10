@@ -167,7 +167,7 @@ impl Encoder<'_> {
             let value = array
                 .borrow()?
                 .properties()
-                .get(&index.into())
+                .get(&index.into())?
                 .and_then(|descriptor| descriptor.value().cloned());
             let item = value
                 .map(|value| self.value(&value, context.reborrow()))

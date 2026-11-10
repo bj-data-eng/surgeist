@@ -51,7 +51,7 @@ fn encode_right(value: &i32, mut access: ContextAccess<'_>) -> JsResult<JsValue>
 
 #[test]
 fn derived_conversions_reborrow_for_each_custom_field_and_preserve_rename_and_skip() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let value = owner
         .eval(Source::from_bytes(
             "globalThis.conversionLog = []; ({ left: 7, right: 35, hidden: 42 })",
@@ -132,7 +132,7 @@ impl Gauge {
 
 #[test]
 fn generated_class_constructor_methods_static_and_accessors_receive_reentrant_access() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     owner
         .eval(Source::from_bytes("globalThis.events = []"))
         .unwrap();
@@ -163,7 +163,7 @@ mod protected_module {
 
 #[test]
 fn generated_module_exports_protected_functions_classes_and_renamed_constants() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     owner
         .eval(Source::from_bytes(
             "globalThis.events = []; globalThis.moduleLog = []",
@@ -215,7 +215,7 @@ fn generated_module_exports_protected_functions_classes_and_renamed_constants() 
 
 #[test]
 fn literal_context_expression_runs_once_before_values_keys_and_nested_construction() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let order = RefCell::new(Vec::new());
     let value = || {
         order.borrow_mut().push("value");
@@ -254,7 +254,7 @@ struct AccessExpression<'a> {
 
 #[test]
 fn literals_accept_general_moved_and_temporary_owner_capability_expressions() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let object =
         js_object!({ answer: 42 }, AccessExpression { access: owner.access() }.access).unwrap();
     assert_eq!(
@@ -287,9 +287,9 @@ fn replace_local_access<'a>(
 
 #[test]
 fn literal_custody_is_hygienic_and_cannot_be_redirected_by_a_caller_capability_binding() {
-    let mut owner = Context::default();
-    let mut second = Context::default();
-    let mut third = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let mut second = Context::builder().build().unwrap();
+    let mut third = Context::builder().build().unwrap();
     let object = 40;
     let value = 2;
     let element = 7;
@@ -350,7 +350,7 @@ fn question_from_literal(
 
 #[test]
 fn embedded_return_break_and_question_mark_keep_the_callers_control_flow() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     assert_eq!(return_from_literal(&mut owner, true), 42);
     assert_eq!(return_from_literal(&mut owner, false), 7);
     let siblings = Cell::new(0);
@@ -378,9 +378,9 @@ impl Drop for Probe<'_> {
 
 #[test]
 fn literal_arrays_keep_temporaries_and_sibling_evaluation_order_on_nested_failure() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
-    let foreign_object = surgeist_js::JsObject::with_null_proto(foreign.runtime());
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
+    let foreign_object = surgeist_js::JsObject::with_null_proto(foreign.runtime()).unwrap();
     for variant in 0..3 {
         let order = RefCell::new(Vec::new());
         let first = |probe: &Probe<'_>| {

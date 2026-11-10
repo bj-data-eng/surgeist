@@ -275,7 +275,7 @@ mod tests {
     }
 
     fn refusal_preserves_state_and_retry_enters_once(block_capture: bool) {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let capture = snapshot(&context, 7);
         let state = snapshot(&context, 11);
         let coroutine = Coroutine::<Snapshot, Snapshot> {

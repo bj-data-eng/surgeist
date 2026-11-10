@@ -56,18 +56,20 @@ impl GetNameGlobal {
         context.find_runtime_binding(&mut binding_locator)?;
 
         if binding_locator.is_global() {
-            let object = context.global_object();
+            let object = context.global_object()?;
 
             let ic = &context.vm.frame().code_block().ic[usize::from(ic_index)];
 
             let object_borrowed = object.borrow()?;
-            if let Some((shape, slot)) = ic.get(&object_borrowed.shape()) {
+            if let Some((shape, slot)) = ic.get(&object_borrowed.shape()?)? {
                 let mut result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
-                    let prototype = shape.prototype().expect("prototype should have value");
+                    let prototype = shape.prototype()?.expect("prototype should have value");
                     let prototype = prototype.borrow()?;
-                    prototype.properties().named_slot(slot.index as usize)
+                    prototype.properties().named_slot(slot.index as usize)?
                 } else {
-                    object_borrowed.properties().named_slot(slot.index as usize)
+                    object_borrowed
+                        .properties()
+                        .named_slot(slot.index as usize)?
                 };
 
                 drop(object_borrowed);
@@ -99,7 +101,7 @@ impl GetNameGlobal {
             if slot.is_cacheable() {
                 let ic = &context.vm.frame().code_block.ic[usize::from(ic_index)];
                 let object_borrowed = object.borrow()?;
-                let shape = object_borrowed.shape();
+                let shape = object_borrowed.shape()?;
                 ic.set(&shape, slot);
             }
 

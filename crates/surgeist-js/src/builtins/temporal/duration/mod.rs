@@ -62,150 +62,150 @@ impl IntrinsicObject for Duration {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_years = BuiltInBuilder::callable(realm, Self::get_years)
             .name(js_string!("get Years"))
-            .build();
+            .build()?;
 
         let get_months = BuiltInBuilder::callable(realm, Self::get_months)
             .name(js_string!("get Months"))
-            .build();
+            .build()?;
 
         let get_weeks = BuiltInBuilder::callable(realm, Self::get_weeks)
             .name(js_string!("get Weeks"))
-            .build();
+            .build()?;
 
         let get_days = BuiltInBuilder::callable(realm, Self::get_days)
             .name(js_string!("get Days"))
-            .build();
+            .build()?;
 
         let get_hours = BuiltInBuilder::callable(realm, Self::get_hours)
             .name(js_string!("get Hours"))
-            .build();
+            .build()?;
 
         let get_minutes = BuiltInBuilder::callable(realm, Self::get_minutes)
             .name(js_string!("get Minutes"))
-            .build();
+            .build()?;
 
         let get_seconds = BuiltInBuilder::callable(realm, Self::get_seconds)
             .name(js_string!("get Seconds"))
-            .build();
+            .build()?;
 
         let get_milliseconds = BuiltInBuilder::callable(realm, Self::get_milliseconds)
             .name(js_string!("get Milliseconds"))
-            .build();
+            .build()?;
 
         let get_microseconds = BuiltInBuilder::callable(realm, Self::get_microseconds)
             .name(js_string!("get Microseconds"))
-            .build();
+            .build()?;
 
         let get_nanoseconds = BuiltInBuilder::callable(realm, Self::get_nanoseconds)
             .name(js_string!("get Nanoseconds"))
-            .build();
+            .build()?;
 
         let get_sign = BuiltInBuilder::callable(realm, Self::get_sign)
             .name(js_string!("get Sign"))
-            .build();
+            .build()?;
 
         let is_blank = BuiltInBuilder::callable(realm, Self::get_blank)
             .name(js_string!("get blank"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::DURATION_TAG,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("years"),
                 Some(get_years),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("months"),
                 Some(get_months),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("weeks"),
                 Some(get_weeks),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("days"),
                 Some(get_days),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("hours"),
                 Some(get_hours),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("minutes"),
                 Some(get_minutes),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("seconds"),
                 Some(get_seconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("milliseconds"),
                 Some(get_milliseconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("microseconds"),
                 Some(get_microseconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("nanoseconds"),
                 Some(get_nanoseconds),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("sign"),
                 Some(get_sign),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("blank"),
                 Some(is_blank),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::compare, js_string!("compare"), 2)
-            .method(Self::with, js_string!("with"), 1)
-            .method(Self::negated, js_string!("negated"), 0)
-            .method(Self::abs, js_string!("abs"), 0)
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::subtract, js_string!("subtract"), 1)
-            .method(Self::round, js_string!("round"), 1)
-            .method(Self::total, js_string!("total"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::compare, js_string!("compare"), 2)?
+            .method(Self::with, js_string!("with"), 1)?
+            .method(Self::negated, js_string!("negated"), 0)?
+            .method(Self::abs, js_string!("abs"), 0)?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::subtract, js_string!("subtract"), 1)?
+            .method(Self::round, js_string!("round"), 1)?
+            .method(Self::total, js_string!("total"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -933,7 +933,7 @@ impl Duration {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto(context.runtime());
+            let new_round_to = JsObject::with_null_proto(context.runtime())?;
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -1036,7 +1036,7 @@ impl Duration {
             JsVariant::String(param_string) => {
                 // a. Let paramString be totalOf.
                 // b. Set totalOf to OrdinaryObjectCreate(null).
-                let total_of = JsObject::with_null_proto(context.runtime());
+                let total_of = JsObject::with_null_proto(context.runtime())?;
                 // c. Perform ! CreateDataPropertyOrThrow(totalOf, "unit", paramString).
                 total_of.create_data_property_or_throw(
                     js_string!("unit"),
@@ -1281,7 +1281,7 @@ pub(crate) fn create_temporal_duration(
             .intrinsics()
             .constructors()
             .duration()
-            .constructor()
+            .constructor()?
             .into()
     };
 

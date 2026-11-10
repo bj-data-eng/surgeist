@@ -90,7 +90,7 @@ impl SliceRef<'_> {
                 .intrinsics()
                 .constructors()
                 .array_buffer()
-                .constructor()
+                .constructor()?
                 .into(),
             self.len() as u64,
             None,

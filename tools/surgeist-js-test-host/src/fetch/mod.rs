@@ -248,7 +248,7 @@ pub fn register<F: Fetcher>(
     let headers_proto = match realm {
         Some(realm) => realm.get_class::<JsHeaders>(),
         None => context.get_global_class::<JsHeaders>(),
-    }
+    }?
     .ok_or_else(|| js_error!(Error: "Headers class should be registered"))?
     .prototype();
 

@@ -222,7 +222,7 @@ impl JsObject {
                     let array = Array::create_array_from_list(
                         std::iter::repeat_with(JsValue::undefined).take(argument_count),
                         context,
-                    );
+                    )?;
                     let values = vec![proxy_target.into(), this, array.clone().into()];
                     transforms.push(ArgumentTransform::Proxy { array, values });
                     argument_count = 3;
@@ -306,8 +306,8 @@ mod tests {
 
     #[test]
     fn immutable_property_rejection_keeps_the_function_recipe_unmaterialized() {
-        let context = &mut Context::default();
-        let object = JsObject::with_object_proto(context.intrinsics());
+        let context = &mut Context::builder().build().unwrap();
+        let object = JsObject::with_object_proto(context.intrinsics()).unwrap();
         object
             .define_property_or_throw(
                 js_string!("kept"),
@@ -341,8 +341,8 @@ mod tests {
 
     #[test]
     fn ordinary_definition_exposes_the_materialized_callable_once() {
-        let context = &mut Context::default();
-        let object = JsObject::with_object_proto(context.intrinsics());
+        let context = &mut Context::builder().build().unwrap();
+        let object = JsObject::with_object_proto(context.intrinsics()).unwrap();
         let calls = Cell::new(0);
         let answer = native_answer(context);
         let function = object
@@ -379,8 +379,8 @@ mod tests {
 
     #[test]
     fn value_only_function_replacement_preserves_existing_property_attributes() {
-        let context = &mut Context::default();
-        let object = JsObject::with_object_proto(context.intrinsics());
+        let context = &mut Context::builder().build().unwrap();
+        let object = JsObject::with_object_proto(context.intrinsics()).unwrap();
         let old_function = native_answer(context);
         object
             .define_property_or_throw(
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn guest_zero_instruction_refusal_happens_before_argument_materialization() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let function = context
             .eval(Source::from_bytes("(function(value) { return value; })"))
             .unwrap()
@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn host_runtime_refusal_happens_before_argument_materialization() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let function = native_answer(context);
         context.runtime_limits_mut().set_recursion_limit(0);
         let materialized = Cell::new(false);
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn prospective_guest_stack_refusal_happens_before_argument_materialization() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let function = context
             .eval(Source::from_bytes("(function(value) { return value; })"))
             .unwrap()
@@ -507,8 +507,8 @@ mod tests {
 
     #[test]
     fn only_the_actual_declaration_write_marks_an_execution_effect() {
-        let context = &mut Context::default();
-        let object = JsObject::with_object_proto(context.intrinsics());
+        let context = &mut Context::builder().build().unwrap();
+        let object = JsObject::with_object_proto(context.intrinsics()).unwrap();
         object
             .define_property_or_throw(
                 js_string!("kept"),
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn bound_proxy_resolution_preserves_get_method_and_argument_order() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let function = context
             .eval(Source::from_bytes(
                 r#"
@@ -584,7 +584,7 @@ mod tests {
                 PreparedArguments::new(vec![JsValue::undefined()], |values, context| {
                     assert_eq!(
                         context
-                            .global_object()
+                            .global_object()?
                             .get(js_string!("preparedLookups"), context.access())?,
                         JsValue::new(1)
                     );
@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn proxy_trap_wrappers_receive_an_immediately_callable_prepared_function() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let object = context.eval(Source::from_bytes(r#"
             globalThis.preparedOrder = [];
             globalThis.preparedGetterRan = false;
@@ -630,7 +630,7 @@ mod tests {
                 Box::new(|context| {
                     assert_eq!(
                         context
-                            .global_object()
+                            .global_object()?
                             .get(js_string!("preparedGetterRan"), context.access())?,
                         JsValue::new(true)
                     );

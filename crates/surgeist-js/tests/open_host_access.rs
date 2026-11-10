@@ -25,7 +25,9 @@ fn instruction_error(limit: u64) -> EngineError {
 
 #[test]
 fn plain_and_captured_native_reentry_share_exact_instruction_limits() {
-    let control = Context::default()
+    let control = Context::builder()
+        .build()
+        .unwrap()
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
@@ -41,7 +43,7 @@ fn plain_and_captured_native_reentry_share_exact_instruction_limits() {
     );
     for native in [plain, captured] {
         for limit in [exact, exact - 1] {
-            let mut owner = Context::default();
+            let mut owner = Context::builder().build().unwrap();
             let outcome = owner
                 .with_execution(ExecutionOptions::new(limit), |mut access| {
                     native.call(&JsValue::undefined(), &[], access.reborrow())
@@ -77,7 +79,7 @@ fn native_callbacks_cannot_replace_the_first_stop_with_success_or_another_error(
         7_u32,
     );
     for native in [plain, captured] {
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         let outcome = owner
             .with_execution(ExecutionOptions::new(32), |mut access| {
                 native.call(&JsValue::undefined(), &[], access.reborrow())
@@ -135,7 +137,7 @@ impl TryFromJs for LoggedResult {
 
 #[test]
 fn typed_call_keeps_argument_guest_and_result_conversion_order_and_one_budget() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let function = owner
         .eval(Source::from_bytes(
             "globalThis.trace = []; (function(value) { trace.push('call'); return value + 2; })",
@@ -216,7 +218,7 @@ fn typed_native_adapter_reborrows_for_argument_callback_and_result_hooks() {
         callback.into_js_function(),
         captured.into_js_function_with_captures(2_u32),
     ] {
-        let mut owner = Context::default();
+        let mut owner = Context::builder().build().unwrap();
         owner
             .eval(Source::from_bytes("globalThis.trace = []"))
             .unwrap();
@@ -242,7 +244,7 @@ struct IndependentlySelectedArguments;
 
 impl TryIntoJsArguments for IndependentlySelectedArguments {
     fn into_js_args(self, mut access: ContextAccess<'_>) -> JsResult<Vec<JsValue>> {
-        let mut other = Context::default();
+        let mut other = Context::builder().build().unwrap();
         let mut selected = access.reborrow();
         let _original = std::mem::replace(&mut selected, other.access());
         assert_eq!(
@@ -255,7 +257,7 @@ impl TryIntoJsArguments for IndependentlySelectedArguments {
 
 #[test]
 fn custom_argument_converter_cannot_redirect_the_typed_adapters_original_owner() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let function = owner
         .eval(Source::from_bytes(
             "(function(value) { globalThis.called = true; return value + 40; })",
@@ -344,7 +346,11 @@ impl Class for HookClass {
 
     fn from_data(data: Self, mut access: ContextAccess<'_>) -> JsResult<JsObject> {
         access.eval(Source::from_bytes("classLog.push('from-data')"))?;
-        let prototype = access.get_global_class::<Self>().unwrap().prototype();
+        let prototype = access
+            .get_global_class::<Self>()
+            .unwrap()
+            .unwrap()
+            .prototype();
         let object = JsObject::new(access.root_shape(), prototype, data)?;
         Self::object_constructor(&object, &[], access.reborrow())?;
         Ok(object.upcast())
@@ -353,7 +359,7 @@ impl Class for HookClass {
 
 #[test]
 fn every_class_hook_and_short_builder_getter_operates_on_the_reserved_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     owner
         .eval(Source::from_bytes("globalThis.classLog = []"))
         .unwrap();
@@ -429,9 +435,9 @@ impl Class for ForeignClass {
 
 #[test]
 fn protected_class_builder_still_rejects_a_foreign_runtime_property() {
-    let foreign = Context::default();
-    let object = JsObject::with_null_proto(foreign.runtime());
-    let mut owner = Context::default();
+    let foreign = Context::builder().build().unwrap();
+    let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
+    let mut owner = Context::builder().build().unwrap();
     assert!(owner.insert_data(object).is_none());
     let error = owner.register_global_class::<ForeignClass>().unwrap_err();
     assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
@@ -445,7 +451,7 @@ fn protected_class_builder_still_rejects_a_foreign_runtime_property() {
 
 #[test]
 fn promise_executor_reenters_through_access_and_retains_the_first_stop() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let completed = owner
         .with_execution(ExecutionOptions::new(64), |mut access| {
             JsPromise::new(
@@ -497,7 +503,7 @@ fn promise_executor_reenters_through_access_and_retains_the_first_stop() {
 fn open_module_conversion_exports_a_protected_reentrant_native_function() {
     let exported =
         NativeFunction::from_fn_ptr(|_, _, mut access| access.eval(Source::from_bytes("40 + 2")));
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let outcome = owner
         .with_execution(ExecutionOptions::new(128), |mut access| {
             let module =

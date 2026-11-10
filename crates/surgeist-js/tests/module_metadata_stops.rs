@@ -141,7 +141,7 @@ fn finish(module: &Module, context: &mut Context) {
 fn retained_stop_refuses_synthetic_construction_before_storing_or_evaluating_captures() {
     let mut context = context();
     let observation = Rc::new(Observation::default());
-    let object = JsObject::with_null_proto(context.runtime());
+    let object = JsObject::with_null_proto(context.runtime()).unwrap();
     let capture = Capture {
         value: object.clone(),
         observation: observation.clone(),
@@ -193,7 +193,7 @@ fn retained_stop_precedes_synthetic_foreign_realm_validation_without_storing_cap
     let foreign = context();
     let observation = Rc::new(Observation::default());
     let capture = Capture {
-        value: JsObject::with_null_proto(owner.runtime()),
+        value: JsObject::with_null_proto(owner.runtime()).unwrap(),
         observation: observation.clone(),
     };
     let steps = initializer(capture.clone());
@@ -226,7 +226,7 @@ fn retained_stop_precedes_synthetic_foreign_realm_validation_without_storing_cap
 #[test]
 fn retained_stop_refuses_default_value_construction_and_preserves_a_fresh_attempt() {
     let mut context = context();
-    let value: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let value: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     let (direct, first) = after_stop(&mut context, |access| {
         Module::from_value_as_default(value.clone(), access)
     });
@@ -286,7 +286,7 @@ fn ordinary_receiving_checks_reject_foreign_realm_and_capture_but_accept_a_peer(
         .build()
         .unwrap();
     let observation = Rc::new(Observation::default());
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let capture = Capture {
         value: value.clone(),
         observation: observation.clone(),
@@ -311,7 +311,7 @@ fn ordinary_receiving_checks_reject_foreign_realm_and_capture_but_accept_a_peer(
     assert_eq!(observation.evaluations.get(), 0);
 
     let foreign_capture = Capture {
-        value: JsObject::with_null_proto(foreign.runtime()),
+        value: JsObject::with_null_proto(foreign.runtime()).unwrap(),
         observation: Rc::new(Observation::default()),
     };
     let foreign_observation = foreign_capture.observation.clone();

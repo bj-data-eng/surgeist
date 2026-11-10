@@ -20,7 +20,7 @@ use crate::ContextAccess;
 use crate::builtins::function::arguments::{MappedArguments, UnmappedArguments};
 use crate::value::JsVariant;
 use crate::{
-    Context, JsArgs, JsData, JsExpect, JsResult, JsString,
+    Context, JsArgs, JsData, JsResult, JsString,
     builtins::{BuiltInObject, iterable::IteratorHint, map},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_error, js_string,
@@ -53,195 +53,195 @@ impl IntrinsicObject for OrdinaryObject {
             Self::legacy_proto_getter(this, args, context.access())
         })
         .name(js_string!("get __proto__"))
-        .build();
+        .build()?;
 
         let legacy_setter_proto = BuiltInBuilder::callable(realm, |this, args, context| {
             Self::legacy_proto_setter(this, args, context.access())
         })
         .name(js_string!("set __proto__"))
         .length(1)
-        .build();
+        .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .inherits(None)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .inherits(None)?
             .accessor(
                 js_string!("__proto__"),
                 Some(legacy_proto_getter),
                 Some(legacy_setter_proto),
                 Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .method(
                 |this, args, context| Self::has_own_property(this, args, context.access()),
                 js_string!("hasOwnProperty"),
                 1,
-            )
+            )?
             .method(
                 |this, args, context| Self::property_is_enumerable(this, args, context.access()),
                 js_string!("propertyIsEnumerable"),
                 1,
-            )
+            )?
             .method(
                 |this, args, context| Self::to_string(this, args, context.access()),
                 js_string!("toString"),
                 0,
-            )
+            )?
             .method(
                 |this, args, context| Self::to_locale_string(this, args, context.access()),
                 js_string!("toLocaleString"),
                 0,
-            )
+            )?
             .method(
                 |this, args, context| Self::value_of(this, args, context.access()),
                 js_string!("valueOf"),
                 0,
-            )
+            )?
             .method(
                 |this, args, context| Self::is_prototype_of(this, args, context.access()),
                 js_string!("isPrototypeOf"),
                 1,
-            )
+            )?
             .method(
                 |this, args, context| Self::legacy_define_getter(this, args, context.access()),
                 js_string!("__defineGetter__"),
                 2,
-            )
+            )?
             .method(
                 |this, args, context| Self::legacy_define_setter(this, args, context.access()),
                 js_string!("__defineSetter__"),
                 2,
-            )
+            )?
             .method(
                 |this, args, context| Self::legacy_lookup_getter(this, args, context.access()),
                 js_string!("__lookupGetter__"),
                 1,
-            )
+            )?
             .method(
                 |this, args, context| Self::legacy_lookup_setter(this, args, context.access()),
                 js_string!("__lookupSetter__"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::create(this, args, context.access()),
                 js_string!("create"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::set_prototype_of(this, args, context.access()),
                 js_string!("setPrototypeOf"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::get_prototype_of(this, args, context.access()),
                 js_string!("getPrototypeOf"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::define_property(this, args, context.access()),
                 js_string!("defineProperty"),
                 3,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::define_properties(this, args, context.access()),
                 js_string!("defineProperties"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::assign(this, args, context.access()),
                 js_string!("assign"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::is(this, args, context.access()),
                 js_string!("is"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::keys(this, args, context.access()),
                 js_string!("keys"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::values(this, args, context.access()),
                 js_string!("values"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::entries(this, args, context.access()),
                 js_string!("entries"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::seal(this, args, context.access()),
                 js_string!("seal"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::is_sealed(this, args, context.access()),
                 js_string!("isSealed"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::freeze(this, args, context.access()),
                 js_string!("freeze"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::is_frozen(this, args, context.access()),
                 js_string!("isFrozen"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::prevent_extensions(this, args, context.access()),
                 js_string!("preventExtensions"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::is_extensible(this, args, context.access()),
                 js_string!("isExtensible"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| {
                     Self::get_own_property_descriptor(this, args, context.access())
                 },
                 js_string!("getOwnPropertyDescriptor"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| {
                     Self::get_own_property_descriptors(this, args, context.access())
                 },
                 js_string!("getOwnPropertyDescriptors"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::get_own_property_names(this, args, context.access()),
                 js_string!("getOwnPropertyNames"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::get_own_property_symbols(this, args, context.access()),
                 js_string!("getOwnPropertySymbols"),
                 1,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::has_own(this, args, context.access()),
                 js_string!("hasOwn"),
                 2,
-            )
+            )?
             .static_method(
                 |this, args, context| Self::from_entries(this, args, context.access()),
                 js_string!("fromEntries"),
                 1,
-            )
-            .static_method(Self::group_by, js_string!("groupBy"), 2)
+            )?
+            .static_method(Self::group_by, js_string!("groupBy"), 2)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -267,7 +267,14 @@ impl BuiltInConstructor for OrdinaryObject {
             && new_target
                 != &context
                     .active_function_object()
-                    .unwrap_or_else(|| context.intrinsics().constructors().object().constructor())
+                    .map_or_else(
+                        || {
+                            Ok::<_, crate::JsError>(
+                                context.intrinsics().constructors().object().constructor()?,
+                            )
+                        },
+                        Ok,
+                    )?
                     .into()
         {
             //     a. Return ? OrdinaryCreateFromConstructor(NewTarget, "%Object.prototype%").
@@ -277,7 +284,7 @@ impl BuiltInConstructor for OrdinaryObject {
                 context.root_shape(),
                 prototype,
                 OrdinaryObject,
-            );
+            )?;
             return Ok(object.into());
         }
 
@@ -285,7 +292,7 @@ impl BuiltInConstructor for OrdinaryObject {
 
         // 2. If value is undefined or null, return OrdinaryObjectCreate(%Object.prototype%).
         if value.is_null_or_undefined() {
-            Ok(JsObject::with_object_proto(context.intrinsics()).into())
+            Ok(JsObject::with_object_proto(context.intrinsics())?.into())
         } else {
             // 3. Return ! ToObject(value).
             value.to_object(context.access()).map(JsValue::from)
@@ -569,7 +576,7 @@ impl OrdinaryObject {
                     context.root_shape(),
                     prototype.as_object(),
                     OrdinaryObject,
-                )
+                )?
                 .upcast()
             }
             _ => {
@@ -643,7 +650,7 @@ impl OrdinaryObject {
             obj.__own_property_keys__(&mut InternalMethodPropertyContext::new(context))?;
 
         // 3. Let descriptors be OrdinaryObjectCreate(%Object.prototype%).
-        let descriptors = JsObject::with_object_proto(context.intrinsics());
+        let descriptors = JsObject::with_object_proto(context.intrinsics())?;
 
         // 4. For each element key of ownKeys, do
         for key in own_keys {
@@ -658,9 +665,7 @@ impl OrdinaryObject {
             // c. If descriptor is not undefined,
             //    perform ! CreateDataPropertyOrThrow(descriptors, key, descriptor).
             if !descriptor.is_undefined() {
-                descriptors
-                    .create_data_property_or_throw(key, descriptor, context.access())
-                    .js_expect("should not fail according to spec")?;
+                descriptors.create_data_property_or_throw(key, descriptor, context.access())?;
             }
         }
 
@@ -684,34 +689,34 @@ impl OrdinaryObject {
 
         // 2. Let obj be ! OrdinaryObjectCreate(%Object.prototype%).
         // 3. Assert: obj is an extensible ordinary object with no own properties.
-        let obj = JsObject::with_object_proto(context.intrinsics());
+        let obj = JsObject::with_object_proto(context.intrinsics())?;
 
         // 4. If Desc has a [[Value]] field, then
         if let Some(value) = desc.value() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "value", Desc.[[Value]]).
-            obj.create_data_property_or_throw(js_string!("value"), value.clone(), context.access())
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(
+                js_string!("value"),
+                value.clone(),
+                context.access(),
+            )?;
         }
 
         // 5. If Desc has a [[Writable]] field, then
         if let Some(writable) = desc.writable() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "writable", Desc.[[Writable]]).
-            obj.create_data_property_or_throw(js_string!("writable"), writable, context.access())
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(js_string!("writable"), writable, context.access())?;
         }
 
         // 6. If Desc has a [[Get]] field, then
         if let Some(get) = desc.get() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "get", Desc.[[Get]]).
-            obj.create_data_property_or_throw(js_string!("get"), get.clone(), context.access())
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(js_string!("get"), get.clone(), context.access())?;
         }
 
         // 7. If Desc has a [[Set]] field, then
         if let Some(set) = desc.set() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "set", Desc.[[Set]]).
-            obj.create_data_property_or_throw(js_string!("set"), set.clone(), context.access())
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(js_string!("set"), set.clone(), context.access())?;
         }
 
         // 8. If Desc has an [[Enumerable]] field, then
@@ -721,8 +726,7 @@ impl OrdinaryObject {
                 js_string!("enumerable"),
                 enumerable,
                 context.access(),
-            )
-            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            )?;
         }
 
         // 9. If Desc has a [[Configurable]] field, then
@@ -732,8 +736,7 @@ impl OrdinaryObject {
                 js_string!("configurable"),
                 configurable,
                 context.access(),
-            )
-            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            )?;
         }
 
         // 10. Return obj.
@@ -957,9 +960,7 @@ impl OrdinaryObject {
             return Ok(js_string!("[object Null]").into());
         }
         // 3. Let O be ! ToObject(this value).
-        let o = this
-            .to_object(context.access())
-            .js_expect("toObject cannot fail here")?;
+        let o = this.to_object(context.access())?;
 
         //  4. Let isArray be ? IsArray(O).
         //  5. If isArray is true, let builtinTag be "Array".
@@ -1113,9 +1114,7 @@ impl OrdinaryObject {
             // 3.a. If nextSource is neither undefined nor null, then
             if !source.is_null_or_undefined() {
                 // 3.a.i. Let from be ! ToObject(nextSource).
-                let from = source
-                    .to_object(context.access())
-                    .js_expect("this ToObject call must not fail")?;
+                let from = source.to_object(context.access())?;
                 // 3.a.ii. Let keys be ? from.[[OwnPropertyKeys]]().
                 let keys =
                     from.__own_property_keys__(&mut InternalMethodPropertyContext::new(context))?;
@@ -1167,7 +1166,7 @@ impl OrdinaryObject {
         let name_list = obj.enumerable_own_property_names(PropertyNameKind::Key, context)?;
 
         // 3. Return CreateArrayFromList(nameList).
-        let result = Array::create_array_from_list(name_list, context);
+        let result = Array::create_array_from_list(name_list, context)?;
 
         Ok(result.into())
     }
@@ -1193,7 +1192,7 @@ impl OrdinaryObject {
         let name_list = obj.enumerable_own_property_names(PropertyNameKind::Value, context)?;
 
         // 3. Return CreateArrayFromList(nameList).
-        let result = Array::create_array_from_list(name_list, context);
+        let result = Array::create_array_from_list(name_list, context)?;
 
         Ok(result.into())
     }
@@ -1224,7 +1223,7 @@ impl OrdinaryObject {
             obj.enumerable_own_property_names(PropertyNameKind::KeyAndValue, context)?;
 
         // 3. Return CreateArrayFromList(nameList).
-        let result = Array::create_array_from_list(name_list, context);
+        let result = Array::create_array_from_list(name_list, context)?;
 
         Ok(result.into())
     }
@@ -1466,7 +1465,7 @@ impl OrdinaryObject {
 
         // 2. Let obj be ! OrdinaryObjectCreate(%Object.prototype%).
         // 3. Assert: obj is an extensible ordinary object with no own properties.
-        let obj = JsObject::with_object_proto(context.intrinsics());
+        let obj = JsObject::with_object_proto(context.intrinsics())?;
 
         // 4. Let closure be a new Abstract Closure with parameters (key, value) that captures
         // obj and performs the following steps when called:
@@ -1588,16 +1587,15 @@ impl OrdinaryObject {
         }
 
         // 2. Let obj be OrdinaryObjectCreate(null).
-        let obj = JsObject::with_null_proto(context.runtime());
+        let obj = JsObject::with_null_proto(context.runtime())?;
 
         // 3. For each Record { [[Key]], [[Elements]] } g of groups, do
         for (key, elements) in groups {
             // a. Let elements be CreateArrayFromList(g.[[Elements]]).
-            let elements = Array::create_array_from_list(elements, context);
+            let elements = Array::create_array_from_list(elements, context)?;
 
             // b. Perform ! CreateDataPropertyOrThrow(obj, g.[[Key]], elements).
-            obj.create_data_property_or_throw(key, elements, context.access())
-                .js_expect("cannot fail for a newly created object")?;
+            obj.create_data_property_or_throw(key, elements, context.access())?;
         }
 
         // 4. Return obj.
@@ -1698,5 +1696,5 @@ fn get_own_property_keys(
     });
 
     // 5. Return CreateArrayFromList(nameList).
-    Ok(Array::create_array_from_list(name_list, context).into())
+    Ok(Array::create_array_from_list(name_list, context)?.into())
 }

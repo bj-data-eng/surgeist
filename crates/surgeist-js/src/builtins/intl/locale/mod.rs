@@ -32,130 +32,130 @@ impl IntrinsicObject for Locale {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let base_name = BuiltInBuilder::callable(realm, Self::base_name)
             .name(js_string!("get baseName"))
-            .build();
+            .build()?;
 
         let calendar = BuiltInBuilder::callable(realm, Self::calendar)
             .name(js_string!("get calendar"))
-            .build();
+            .build()?;
 
         let case_first = BuiltInBuilder::callable(realm, Self::case_first)
             .name(js_string!("get caseFirst"))
-            .build();
+            .build()?;
 
         let collation = BuiltInBuilder::callable(realm, Self::collation)
             .name(js_string!("get collation"))
-            .build();
+            .build()?;
 
         let hour_cycle = BuiltInBuilder::callable(realm, Self::hour_cycle)
             .name(js_string!("get hourCycle"))
-            .build();
+            .build()?;
 
         let numeric = BuiltInBuilder::callable(realm, Self::numeric)
             .name(js_string!("get numeric"))
-            .build();
+            .build()?;
 
         let numbering_system = BuiltInBuilder::callable(realm, Self::numbering_system)
             .name(js_string!("get numberingSystem"))
-            .build();
+            .build()?;
 
         let language = BuiltInBuilder::callable(realm, Self::language)
             .name(js_string!("get language"))
-            .build();
+            .build()?;
 
         let script = BuiltInBuilder::callable(realm, Self::script)
             .name(js_string!("get script"))
-            .build();
+            .build()?;
 
         let region = BuiltInBuilder::callable(realm, Self::region)
             .name(js_string!("get region"))
-            .build();
+            .build()?;
 
         let variants = BuiltInBuilder::callable(realm, Self::variants)
             .name(js_string!("get variants"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.Locale"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::maximize, js_string!("maximize"), 0)
-            .method(Self::minimize, js_string!("minimize"), 0)
-            .method(Self::to_string, js_string!("toString"), 0)
+            )?
+            .method(Self::maximize, js_string!("maximize"), 0)?
+            .method(Self::minimize, js_string!("minimize"), 0)?
+            .method(Self::to_string, js_string!("toString"), 0)?
             .accessor(
                 js_string!("baseName"),
                 Some(base_name),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("calendar"),
                 Some(calendar),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("caseFirst"),
                 Some(case_first),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("collation"),
                 Some(collation),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("hourCycle"),
                 Some(hour_cycle),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("numeric"),
                 Some(numeric),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("numberingSystem"),
                 Some(numbering_system),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("language"),
                 Some(language),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("script"),
                 Some(script),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("region"),
                 Some(region),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("variants"),
                 Some(variants),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -328,7 +328,7 @@ impl BuiltInConstructor for Locale {
             .canonicalize(&mut tag);
 
         let locale =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, tag);
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, tag)?;
 
         // 39. Return locale.
         Ok(locale.into())
@@ -369,9 +369,9 @@ impl Locale {
             .maximize(&mut loc.id);
 
         // 4. Return ! Construct(%Locale%, maximal).
-        let prototype = context.intrinsics().constructors().locale().prototype();
+        let prototype = context.intrinsics().constructors().locale().prototype()?;
         Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)?
                 .into(),
         )
     }
@@ -410,9 +410,9 @@ impl Locale {
             .minimize(&mut loc.id);
 
         // 4. Return ! Construct(%Locale%, minimal).
-        let prototype = context.intrinsics().constructors().locale().prototype();
+        let prototype = context.intrinsics().constructors().locale().prototype()?;
         Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, loc)?
                 .into(),
         )
     }

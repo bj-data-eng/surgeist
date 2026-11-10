@@ -13,7 +13,7 @@ fn print_obj_value_internals(
 ) -> crate::JsResult<()> {
     let object = obj.borrow()?;
     write!(f, "{:>indent$}__proto__: ", "")?;
-    if let Some(object) = object.prototype() {
+    if let Some(object) = object.prototype()? {
         log_object_to_internal(
             f,
             &object.clone().into(),
@@ -41,7 +41,7 @@ fn print_obj_value_props(
         .index_property_keys()
         .map(PropertyKey::from)
         .collect();
-    keys.extend(obj.borrow()?.properties().shape().keys());
+    keys.extend(obj.borrow()?.properties().shape()?.keys()?);
 
     let mut first = true;
     for key in keys {
@@ -54,7 +54,7 @@ fn print_obj_value_props(
         let val = obj
             .borrow()?
             .properties()
-            .get(&key)
+            .get(&key)?
             .ok_or(super::ValueRenderError::MissingProperty)?;
 
         write!(f, "{:>width$}{}: ", "", key, width = indent)?;
@@ -148,7 +148,7 @@ fn get_constructor_name_of(obj: &JsObject) -> crate::JsResult<Option<JsString>> 
     let Some(constructor_property) = prototype
         .borrow()?
         .properties()
-        .get(&PropertyKey::from(js_string!("constructor")))
+        .get(&PropertyKey::from(js_string!("constructor")))?
     else {
         return Ok(None);
     };
@@ -159,7 +159,7 @@ fn get_constructor_name_of(obj: &JsObject) -> crate::JsResult<Option<JsString>> 
     let name = constructor
         .borrow()?
         .properties()
-        .get(&PropertyKey::from(js_string!("name")))
+        .get(&PropertyKey::from(js_string!("name")))?
         .and_then(|property| property.value().and_then(JsValue::as_string));
 
     Ok(name)
@@ -184,7 +184,7 @@ pub(super) fn log_plain_object_compact(
         .index_property_keys()
         .map(PropertyKey::from)
         .collect();
-    keys.extend(obj.borrow()?.properties().shape().keys());
+    keys.extend(obj.borrow()?.properties().shape()?.keys()?);
 
     if keys.is_empty() {
         encounters.remove(&addr);
@@ -201,7 +201,7 @@ pub(super) fn log_plain_object_compact(
         }
         write!(f, "{key}: ")?;
 
-        if let Some(val) = obj.borrow()?.properties().get(key) {
+        if let Some(val) = obj.borrow()?.properties().get(key)? {
             match val.kind() {
                 DescriptorKind::Data { value, .. } => {
                     if let Some(value) = value {

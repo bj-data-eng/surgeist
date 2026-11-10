@@ -50,7 +50,7 @@ fn modes() -> [ProfileMode; 6] {
 }
 
 fn context_with_clock_callback() -> Context {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     context
         .register_global_builtin_callable(
             js_string!("advanceClock"),

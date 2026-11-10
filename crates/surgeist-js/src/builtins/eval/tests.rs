@@ -4,7 +4,7 @@ use surgeist_js_parser::frontend::InternerLimitKind;
 #[test]
 fn direct_eval_admits_lookup_of_an_ambient_private_name_absent_from_the_source() {
     for limit in [15, 19] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .eval(Source::from_bytes(
                 "globalThis.probe = new (class { #café; m() { return eval('1'); } })().m;",
@@ -50,7 +50,7 @@ fn direct_eval_deduplicates_ambient_symbols_without_changing_shadowing() {
         })().m;
     ";
     for limit in [1, 2] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.eval(Source::from_bytes(setup)).unwrap();
         // One comparison deduplicates the resolved outer symbol. The next
         // checks the private access against the projected symbol.
@@ -79,7 +79,7 @@ use crate::{Context, EngineError, JsValue, Source, execution::ExecutionOptions};
 fn direct_eval_private_validation_precedes_environment_poisoning() {
     let source = "eval('(class { #a; #b; m() { return this.#b; } }); 42')";
     for limit in [3, 4] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let environment = context.realm().environment();
         assert!(!environment.poisoned());
 

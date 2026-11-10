@@ -329,7 +329,7 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
                 "view => { view[0] = 173; return view[0]; }",
             ),
         ] {
-            let context = &mut Context::default();
+            let context = &mut Context::builder().build().unwrap();
             let backing = context
                 .eval(Source::from_bytes(backing_source))
                 .unwrap()
@@ -338,6 +338,7 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
             let backing_edge = backing.edge();
             let constructor = context
                 .global_object()
+                .unwrap()
                 .get(view_name, context.access())
                 .unwrap()
                 .as_object()

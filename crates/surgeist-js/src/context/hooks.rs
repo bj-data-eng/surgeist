@@ -172,19 +172,21 @@ pub trait HostHooks {
     /// Creates the global object of a new [`crate::Context`] from the initial intrinsics.
     ///
     /// Equivalent to the step 7 of [`InitializeHostDefinedRealm ( )`][ihdr].
+    /// Construction failures prevent later realm initialization hooks from running.
     ///
     /// [ihdr]: https://tc39.es/ecma262/#sec-initializehostdefinedrealm
-    fn create_global_object(&self, intrinsics: &Intrinsics) -> JsObject {
+    fn create_global_object(&self, intrinsics: &Intrinsics) -> JsResult<JsObject> {
         JsObject::with_object_proto(intrinsics)
     }
 
     /// Creates the global `this` of a new [`crate::Context`] from the initial intrinsics.
     ///
     /// Equivalent to the step 8 of [`InitializeHostDefinedRealm ( )`][ihdr].
+    /// `Ok(None)` uses the already constructed global object as global `this`.
     ///
     /// [ihdr]: https://tc39.es/ecma262/#sec-initializehostdefinedrealm
-    fn create_global_this(&self, _intrinsics: &Intrinsics) -> Option<JsObject> {
-        None
+    fn create_global_this(&self, _intrinsics: &Intrinsics) -> JsResult<Option<JsObject>> {
+        Ok(None)
     }
 
     /// Gets the current UTC time of the host, in milliseconds since epoch.

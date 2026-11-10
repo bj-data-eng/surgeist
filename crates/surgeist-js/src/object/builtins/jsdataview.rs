@@ -19,7 +19,7 @@ use std::ops::Deref;
 /// # };
 /// # fn main() -> JsResult<()> {
 /// // Create a new context and ArrayBuffer
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 /// let array_buffer = JsArrayBuffer::new(4, context.access())?;
 ///
 /// // Create a new Dataview from pre-existing ArrayBuffer
@@ -106,7 +106,11 @@ impl JsDataView {
 
         // 10. Let O be ? OrdinaryCreateFromConstructor(NewTarget, "%DataView.prototype%",
         //     « [[DataView]], [[ViewedArrayBuffer]], [[ByteLength]], [[ByteOffset]] »).
-        let prototype = context.intrinsics().constructors().data_view().prototype();
+        let prototype = context
+            .intrinsics()
+            .constructors()
+            .data_view()
+            .prototype()?;
 
         // 11. If IsDetachedBuffer(buffer) is true, throw a TypeError exception.
         // 12. Set bufferByteLength to ArrayBufferByteLength(buffer, seq-cst).

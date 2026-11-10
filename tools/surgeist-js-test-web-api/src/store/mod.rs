@@ -190,9 +190,82 @@ mod tests {
     use super::*;
     use surgeist_js::{Context, JsObject, Source, js_string};
 
+    fn publish_clone(source: &str, context: &mut Context) {
+        let original = context.eval(Source::from_bytes(source)).unwrap();
+        let snapshot = JsValueStore::try_from_js(&original, context.access(), Vec::new()).unwrap();
+        let cloned = snapshot.try_into_js(context.access()).unwrap();
+        context
+            .register_global_property(
+                js_string!("cloned"),
+                cloned,
+                surgeist_js::property::Attribute::all(),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn reconstruction_preserves_self_mutual_cycles_and_shared_object_identity() {
+        let mut context = Context::builder().build().unwrap();
+        publish_clone(
+            "const shared = { value: 42 }; const root = { left: shared, right: shared }; \
+             const peer = { root, shared }; root.self = root; root.peer = peer; root",
+            &mut context,
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "cloned !== root && cloned.self === cloned && \
+                     cloned.peer.root === cloned && cloned.left === cloned.right && \
+                     cloned.left === cloned.peer.shared && cloned.left !== shared && \
+                     cloned.left.value === 42",
+                ))
+                .unwrap(),
+            JsValue::from(true)
+        );
+    }
+
+    #[test]
+    fn reconstruction_publishes_map_set_and_array_nodes_before_their_cycle_edges() {
+        let mut context = Context::builder().build().unwrap();
+        publish_clone(
+            "const root = []; const map = new Map(); const set = new Set(); \
+             root.push(map, set, root); map.set(root, set); set.add(root); set.add(map); root",
+            &mut context,
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "cloned !== root && cloned[2] === cloned && \
+                     cloned[0].get(cloned) === cloned[1] && \
+                     cloned[1].has(cloned) && cloned[1].has(cloned[0]) && \
+                     cloned[0] !== map && cloned[1] !== set",
+                ))
+                .unwrap(),
+            JsValue::from(true)
+        );
+    }
+
+    #[test]
+    fn reconstruction_sets_date_time_and_preserves_shared_date_identity() {
+        let mut context = Context::builder().build().unwrap();
+        publish_clone(
+            "const date = new Date(12345); ({ left: date, right: date, invalid: new Date(NaN) })",
+            &mut context,
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "cloned.left === cloned.right && cloned.left !== date && \
+                     cloned.left.getTime() === 12345 && Number.isNaN(cloned.invalid.getTime())",
+                ))
+                .unwrap(),
+            JsValue::from(true)
+        );
+    }
+
     #[test]
     fn dropping_the_last_snapshot_releases_a_cycle() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let original = context
             .eval(Source::from_bytes(
                 "const node = {}; node.self = node; node",

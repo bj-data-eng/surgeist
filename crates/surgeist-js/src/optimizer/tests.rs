@@ -9,7 +9,7 @@ const MODES: [OptimizerOptions; 3] = [
 #[test]
 fn exponentiation_reads_an_observable_identifier_once() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let result = context
             .eval(Source::from_bytes(
@@ -27,7 +27,7 @@ fn exponentiation_reads_an_observable_identifier_once() {
 #[test]
 fn exponentiation_coerces_an_object_base_once() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let result = context
             .eval(Source::from_bytes(
@@ -44,7 +44,7 @@ fn exponentiation_coerces_an_object_base_once() {
 #[test]
 fn exponentiation_rejects_a_bigint_base_with_a_number_exponent() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let error = context.eval(Source::from_bytes("2n ** 2")).unwrap_err();
         assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
@@ -54,7 +54,7 @@ fn exponentiation_rejects_a_bigint_base_with_a_number_exponent() {
 #[test]
 fn numeric_exponentiation_retains_special_values_and_bigint_results() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let result = context
             .eval(Source::from_bytes(
@@ -69,7 +69,7 @@ fn numeric_exponentiation_retains_special_values_and_bigint_results() {
 #[test]
 fn division_reduction_retains_values_and_one_object_coercion() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let result = context
             .eval(Source::from_bytes(
@@ -91,7 +91,7 @@ fn division_reduction_retains_values_and_one_object_coercion() {
 #[test]
 fn contextual_numeric_conversion_preserves_floating_edge_results() {
     for options in MODES {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context.set_optimizer_options(options);
         let value = context
             .eval(Source::from_bytes(

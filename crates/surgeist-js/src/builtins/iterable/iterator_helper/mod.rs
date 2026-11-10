@@ -83,8 +83,8 @@ enum HelperState {
 
 impl IntrinsicObject for IteratorHelper {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_method(Self::r#return, js_string!("return"), 0)?
             .static_property(
@@ -97,8 +97,11 @@ impl IntrinsicObject for IteratorHelper {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().iterator_helper()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
+            .objects()
+            .iterator_prototypes()
+            .iterator_helper()?)
     }
 }
 
@@ -146,11 +149,7 @@ impl IteratorHelper {
         let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
             drop(helper_guard);
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
 
         // 3. Assert: state is either suspended-start or suspended-yield.
@@ -196,14 +195,12 @@ impl IteratorHelper {
 
         match result {
             ControlFlow::Continue(value) => {
-                Ok(create_iter_result_object_trusted(value, false, context))
+                create_iter_result_object_trusted(value, false, context)
             }
             // 2. If state is completed, return CreateIteratorResultObject(undefined, true).
-            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            )),
+            ControlFlow::Break(Ok(())) => {
+                create_iter_result_object_trusted(JsValue::undefined(), true, context)
+            }
             ControlFlow::Break(Err(err)) => Err(err),
         }
     }
@@ -250,11 +247,7 @@ impl IteratorHelper {
         let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
             drop(helper_guard);
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
 
         // 2. If state is suspended-start, then
@@ -299,11 +292,9 @@ impl IteratorHelper {
             )
             .into()),
             // Step 3.a
-            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            )),
+            ControlFlow::Break(Ok(())) => {
+                create_iter_result_object_trusted(JsValue::undefined(), true, context)
+            }
             // Step 3.b
             ControlFlow::Break(Err(err)) => Err(err),
         };
@@ -344,26 +335,28 @@ impl IteratorHelper {
     }
 
     /// Creates a new `IteratorHelper` object.
-    pub(crate) fn create(op: NativeCoroutine, context: &mut Context) -> JsObject {
-        // All eager iterators follow the following steps:
-        //
-        // i. Let result be CreateIteratorFromClosure(
-        //         closure, "Iterator Helper",
-        //         %IteratorHelperPrototype%, « [[UnderlyingIterators]] »
-        //     ).
-        // ii. Set result.[[UnderlyingIterators]] to « iterated ».
-        JsObject::from_proto_and_data_with_shared_shape(
-            context.root_shape(),
-            context
-                .intrinsics()
-                .objects()
-                .iterator_prototypes()
-                .iterator_helper(),
-            Self {
-                state: HelperState::Suspended(op.store()),
-            },
+    pub(crate) fn create(op: NativeCoroutine, context: &mut Context) -> JsResult<JsObject> {
+        Ok(
+            // All eager iterators follow the following steps:
+            //
+            // i. Let result be CreateIteratorFromClosure(
+            //         closure, "Iterator Helper",
+            //         %IteratorHelperPrototype%, « [[UnderlyingIterators]] »
+            //     ).
+            // ii. Set result.[[UnderlyingIterators]] to « iterated ».
+            JsObject::from_proto_and_data_with_shared_shape(
+                context.root_shape(),
+                context
+                    .intrinsics()
+                    .objects()
+                    .iterator_prototypes()
+                    .iterator_helper()?,
+                Self {
+                    state: HelperState::Suspended(op.store()),
+                },
+            )?
+            .upcast(),
         )
-        .upcast()
     }
 }
 
@@ -391,7 +384,7 @@ mod tests {
     #[test]
     fn closed_map_helper_keeps_suspension_on_preparation_refusal_and_retries() {
         for returning in [false, true] {
-            let mut context = Context::default();
+            let mut context = Context::builder().build().unwrap();
             let helper = context
                 .eval(Source::from_bytes(
                     r#"
@@ -485,7 +478,7 @@ mod tests {
 
     #[test]
     fn entered_body_payload_refusal_completes_helper_without_replaying_work() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let calls = context
             .runtime()
             .heap
@@ -511,7 +504,7 @@ mod tests {
             &context,
         )
         .unwrap();
-        let helper = IteratorHelper::create(coroutine, &mut context);
+        let helper = IteratorHelper::create(coroutine, &mut context).unwrap();
         let typed_helper = helper.clone().downcast::<IteratorHelper>().unwrap();
         let held_payload = source.borrow_mut();
 

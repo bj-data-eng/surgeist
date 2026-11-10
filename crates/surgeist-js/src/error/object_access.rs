@@ -158,6 +158,7 @@ mod tests {
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(crate::js_string!("caught"), context.access())
                 .unwrap()
                 .as_boolean(),

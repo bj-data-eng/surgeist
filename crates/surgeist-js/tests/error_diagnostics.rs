@@ -7,7 +7,8 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JobError, JsErasedError, ObjectAccessError, PanicDiagnostic, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, ObjectAccessError, ObjectConstructionError, PanicDiagnostic,
+        PanicError, RuntimeLimitError,
     },
     job::JobRetirement,
     js_string,
@@ -15,6 +16,7 @@ use surgeist_js::{
     vm::SourcePath,
 };
 use surgeist_js_ast::scope::ScopeStateError;
+use surgeist_js_gc::heap::AccessError;
 use surgeist_js_parser::frontend::InternerLimitKind;
 
 thread_local! {
@@ -32,7 +34,7 @@ fn diagnostic_context() -> Context {
     }
     #[cfg(not(feature = "fuzz"))]
     {
-        Context::default()
+        Context::builder().build().unwrap()
     }
 }
 
@@ -177,6 +179,7 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::Resource(error) => DiagnosticEngine::Resource(*error),
         EngineError::Rooting(error) => DiagnosticEngine::Rooting(*error),
         EngineError::ValueRender(error) => DiagnosticEngine::ValueRender(*error),
+        EngineError::ObjectConstruction(error) => DiagnosticEngine::ObjectConstruction(*error),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
         EngineError::ObjectAccess(error) => DiagnosticEngine::ObjectAccess(*error),
@@ -234,6 +237,26 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
         },
         EngineError::InvocationIdExhausted,
     ];
+    cases.extend(
+        [
+            ObjectConstructionError::InvalidStoredEdge(AccessError::ForeignHeap),
+            ObjectConstructionError::InvalidStoredEdge(AccessError::StaleHandle),
+            ObjectConstructionError::InvalidStoredEdge(AccessError::WrongType),
+            ObjectConstructionError::ExpectedUniqueShape,
+            ObjectConstructionError::IndexedTemplateKey,
+            ObjectConstructionError::DuplicateTemplateProperty,
+            ObjectConstructionError::InvalidAccessorLayout,
+            ObjectConstructionError::NamedSlotCount {
+                expected: 5,
+                actual: 3,
+            },
+            ObjectConstructionError::NamedSlotsAlreadyInitialized,
+            ObjectConstructionError::IncompatibleSlotLayout,
+            ObjectConstructionError::PrototypeRefused,
+            ObjectConstructionError::PropertyRefused,
+        ]
+        .map(EngineError::ObjectConstruction),
+    );
     cases.extend(
         [
             ValueRenderError::Sink,
@@ -339,6 +362,12 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
                 Some(&ErasedEngineError::ValueRender(error))
             );
         }
+        if let EngineError::ObjectConstruction(error) = engine {
+            assert_eq!(
+                source.as_engine(),
+                Some(&ErasedEngineError::ObjectConstruction(error))
+            );
+        }
         if let EngineError::Job(error) = engine {
             assert_eq!(source.as_engine(), Some(&ErasedEngineError::Job(error)));
         }
@@ -370,8 +399,8 @@ fn nested_panic_views_preserve_their_own_message_and_borrowed_source() {
 fn clone_and_sequential_cross_runtime_admission_never_resurrect_hidden_objects() {
     let mut a = diagnostic_context();
     let mut b = diagnostic_context();
-    let left = JsObject::with_null_proto(a.runtime());
-    let right = JsObject::with_null_proto(b.runtime());
+    let left = JsObject::with_null_proto(a.runtime()).unwrap();
+    let right = JsObject::with_null_proto(b.runtime()).unwrap();
     let raw = panic_with(JsNativeError::aggregate(vec![
         JsError::from_opaque(left.clone().into()).unwrap(),
         JsError::from_opaque(right.clone().into()).unwrap(),
@@ -513,8 +542,8 @@ fn semantic_equality_ignores_capture_storage_but_distinguishes_messages_and_iden
         panic_with(JsNativeError::range().with_message("changed")),
         panic_with(JsNativeError::range().with_message("other"))
     );
-    let one = JsObject::with_null_proto(context.runtime());
-    let two = JsObject::with_null_proto(context.runtime());
+    let one = JsObject::with_null_proto(context.runtime()).unwrap();
+    let two = JsObject::with_null_proto(context.runtime()).unwrap();
     assert_eq!(
         panic_with(JsError::from_opaque(one.clone().into()).unwrap()),
         panic_with(JsError::from_opaque(one.into()).unwrap())
@@ -522,7 +551,8 @@ fn semantic_equality_ignores_capture_storage_but_distinguishes_messages_and_iden
     assert_ne!(
         panic_with(JsError::from_opaque(two.into()).unwrap()),
         panic_with(
-            JsError::from_opaque(JsObject::with_null_proto(context.runtime()).into()).unwrap()
+            JsError::from_opaque(JsObject::with_null_proto(context.runtime()).unwrap().into())
+                .unwrap()
         )
     );
 }

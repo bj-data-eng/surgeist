@@ -11,7 +11,6 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy
 
 use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject, OrdinaryObject};
-use crate::JsExpect;
 use crate::object::internal_methods::InternalMethodCallContext;
 use crate::value::JsVariant;
 use crate::{
@@ -122,15 +121,15 @@ impl JsData for Proxy {
 
 impl IntrinsicObject for Proxy {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_method(Self::revocable, js_string!("revocable"), 2)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_method(Self::revocable, js_string!("revocable"), 2)?
             .build_without_prototype()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -232,9 +231,9 @@ impl Proxy {
         // 7. Set P.[[ProxyHandler]] to handler.
         let p = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().constructors().object().prototype(),
+            context.intrinsics().constructors().object().prototype()?,
             Self::new(&target, &handler),
-        )
+        )?
         .upcast();
 
         // 8. Return P.
@@ -290,17 +289,13 @@ impl Proxy {
         let revoker = Self::revoker(p.clone(), context)?;
 
         // 5. Let result be ! OrdinaryObjectCreate(%Object.prototype%).
-        let result = JsObject::with_object_proto(context.intrinsics());
+        let result = JsObject::with_object_proto(context.intrinsics())?;
 
         // 6. Perform ! CreateDataPropertyOrThrow(result, "proxy", p).
-        result
-            .create_data_property_or_throw(js_string!("proxy"), p, context.access())
-            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+        result.create_data_property_or_throw(js_string!("proxy"), p, context.access())?;
 
         // 7. Perform ! CreateDataPropertyOrThrow(result, "revoke", revoker).
-        result
-            .create_data_property_or_throw(js_string!("revoke"), revoker, context.access())
-            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+        result.create_data_property_or_throw(js_string!("revoke"), revoker, context.access())?;
 
         // 8. Return result.
         Ok(result.into())
@@ -786,13 +781,13 @@ pub(crate) fn proxy_define_prepared_function(
         crate::object::prepared::function_value_descriptor(&desc, JsValue::undefined());
     let desc_object = OrdinaryObject::from_property_descriptor(Some(pending_desc), context)?
         .as_object()
-        .expect("a present descriptor creates an object");
+        .ok_or(crate::error::ObjectConstructionError::IncompatibleSlotLayout)?;
     let mut value_slot = crate::object::shape::slot::Slot::new();
     desc_object
         .borrow()?
         .properties
-        .get_with_slot(&js_string!("value").into(), &mut value_slot)
-        .expect("private descriptor has a value slot");
+        .get_with_slot(&js_string!("value").into(), &mut value_slot)?
+        .ok_or(crate::error::ObjectConstructionError::IncompatibleSlotLayout)?;
     let mut function = None;
     let arguments = crate::object::prepared::PreparedArguments::new(
         vec![
@@ -805,7 +800,7 @@ pub(crate) fn proxy_define_prepared_function(
             desc_object
                 .borrow_mut()?
                 .properties_mut()
-                .write_named_slot(value_slot.index as usize, value.clone().into());
+                .write_named_slot(value_slot.index as usize, value.clone().into())?;
             function = Some(value);
             Ok(())
         },
@@ -1299,7 +1294,7 @@ fn proxy_exotic_call(
         .calling_convention_pop_arguments(argument_count);
 
     // 7. Let argArray be ! CreateArrayFromList(argumentsList).
-    let arg_array = array::Array::create_array_from_list(args, context);
+    let arg_array = array::Array::create_array_from_list(args, context)?;
 
     // 8. Return ? Call(trap, handler, « target, thisArgument, argArray »).
     let _func = context.vm.stack.pop();
@@ -1353,7 +1348,7 @@ fn proxy_exotic_construct(
     let _this = context.vm.stack.pop();
 
     // 8. Let argArray be ! CreateArrayFromList(argumentsList).
-    let arg_array = array::Array::create_array_from_list(args, context);
+    let arg_array = array::Array::create_array_from_list(args, context)?;
 
     // 9. Let newObj be ? Call(trap, handler, « target, argArray, newTarget »).
     let new_obj = trap.call(

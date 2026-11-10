@@ -44,7 +44,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Creates a blank array buffer of n bytes
     /// let array_buffer = JsArrayBuffer::new(4, context.access())?;
     ///
@@ -64,7 +64,7 @@ impl JsArrayBuffer {
                 .intrinsics()
                 .constructors()
                 .array_buffer()
-                .constructor()
+                .constructor()?
                 .into(),
             byte_length as u64,
             None,
@@ -87,7 +87,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     ///
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
@@ -106,7 +106,7 @@ impl JsArrayBuffer {
             .intrinsics()
             .constructors()
             .array_buffer()
-            .constructor()
+            .constructor()?
             .into();
 
         // 1. Let obj be ? OrdinaryCreateFromConstructor(constructor, "%ArrayBuffer.prototype%", « [[ArrayBufferData]], [[ArrayBufferByteLength]], [[ArrayBufferDetachKey]] »).
@@ -167,7 +167,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
@@ -198,7 +198,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
@@ -244,7 +244,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
@@ -274,7 +274,7 @@ impl JsArrayBuffer {
     /// # use surgeist_js::object::builtins::JsArrayBuffer;
     /// # use surgeist_js::{Context, JsResult, JsValue};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let data = vec![1u8, 2, 3, 4];
     /// let buffer = JsArrayBuffer::from_byte_block(data, context.access())?;
     /// assert_eq!(buffer.to_vec()?, Some(vec![1u8, 2, 3, 4]));
@@ -300,7 +300,7 @@ impl JsArrayBuffer {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn array_buffer_access_distinguishes_alias_refusal_from_detachment() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let buffer = JsArrayBuffer::from_byte_block(vec![3, 5], context.access()).unwrap();
         let alias: JsObject<ArrayBuffer> = buffer.clone().into();
         let view = alias.borrow_mut().unwrap();
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn array_buffer_to_vec_roundtrip_and_detach() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         let data = vec![1u8, 2, 3, 4, 5];
         let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn array_buffer_to_vec_empty() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         let data = Vec::new();
         let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();

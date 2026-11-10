@@ -7,7 +7,7 @@ use crate::{
     builtins::{OrdinaryObject, function::OrdinaryFunction},
     js_string,
     object::{
-        ObjectInitializer, internal_methods::InternalMethodPropertyContext,
+        AllocationOrigin, ObjectInitializer, internal_methods::InternalMethodPropertyContext,
         shape::slot::SlotAttributes,
     },
     property::{Attribute, PropertyDescriptor, PropertyKey},
@@ -16,13 +16,18 @@ use crate::{
 
 #[test]
 fn get_own_property_internal_method() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
@@ -48,9 +53,9 @@ fn get_own_property_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().unwrap().shape();
+    let shape = o.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -61,13 +66,18 @@ fn get_own_property_internal_method() {
 
 #[test]
 fn get_internal_method() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
@@ -93,9 +103,9 @@ fn get_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().unwrap().shape();
+    let shape = o.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -106,18 +116,28 @@ fn get_internal_method() {
 
 #[test]
 fn get_internal_method_in_prototype() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    let prototype = context.intrinsics().constructors().object().prototype();
+    let prototype = context
+        .intrinsics()
+        .constructors()
+        .object()
+        .prototype()
+        .unwrap();
 
     prototype
         .set(property.clone(), value, true, context.access())
@@ -141,9 +161,9 @@ fn get_internal_method_in_prototype() {
         "Since it's an prototype property, this should be cacheable"
     );
 
-    let shape = prototype.borrow().unwrap().shape();
+    let shape = prototype.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -154,13 +174,18 @@ fn get_internal_method_in_prototype() {
 
 #[test]
 fn define_own_property_internal_method_non_existent_property() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
@@ -195,9 +220,9 @@ fn define_own_property_internal_method_non_existent_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().unwrap().shape();
+    let shape = o.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -208,13 +233,18 @@ fn define_own_property_internal_method_non_existent_property() {
 
 #[test]
 fn define_own_property_internal_method_existing_property_property() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
@@ -261,9 +291,9 @@ fn define_own_property_internal_method_existing_property_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().unwrap().shape();
+    let shape = o.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -274,13 +304,18 @@ fn define_own_property_internal_method_existing_property_property() {
 
 #[test]
 fn set_internal_method() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let o = context
         .intrinsics()
         .templates()
         .ordinary_object()
-        .create(OrdinaryObject, Vec::default());
+        .create(
+            OrdinaryObject,
+            Vec::default(),
+            AllocationOrigin::TrustedConstruction,
+        )
+        .unwrap();
 
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
@@ -306,9 +341,9 @@ fn set_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().unwrap().shape();
+    let shape = o.borrow().unwrap().shape().unwrap();
 
-    let slot = shape.lookup(&property);
+    let slot = shape.lookup(&property).unwrap();
 
     assert!(slot.is_some(), "the property should be found in the object");
 
@@ -330,7 +365,7 @@ fn get_codeblock(value: &JsValue) -> Option<(JsObject, Rc<CodeBlock>)> {
 
 #[test]
 fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let function = context.eval(Source::from_bytes("(function (o) { return o.test; })"))?;
     let (function, code) = get_codeblock(&function).unwrap();
 
@@ -341,7 +376,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
-    let o_shape = o.borrow().unwrap().shape();
+    let o_shape = o.borrow().unwrap().shape().unwrap();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 
@@ -350,6 +385,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         code.ic[0].entries.borrow()[0]
             .shape
             .upgrade()
+            .unwrap()
             .unwrap()
             .identity(),
         o_shape.identity()
@@ -360,7 +396,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
 #[test]
 fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let function = context.eval(Source::from_bytes("(function (o) { o.test = 30; })"))?;
     let (function, code) = get_codeblock(&function).unwrap();
 
@@ -371,7 +407,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
-    let o_shape = o.borrow().unwrap().shape();
+    let o_shape = o.borrow().unwrap().shape().unwrap();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 
@@ -380,6 +416,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         code.ic[0].entries.borrow()[0]
             .shape
             .upgrade()
+            .unwrap()
             .unwrap()
             .identity(),
         o_shape.identity()
@@ -390,7 +427,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
 #[test]
 fn test_polymorphic_inline_cache() -> JsResult<()> {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let function = context.eval(Source::from_bytes("(function (o) { return o.test; })"))?;
     let (function, code) = get_codeblock(&function).unwrap();
 
@@ -432,7 +469,7 @@ fn test_polymorphic_inline_cache() -> JsResult<()> {
 
 #[test]
 fn test_megamorphic_inline_cache() -> JsResult<()> {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let function = context.eval(Source::from_bytes("(function (o) { return o.test; })"))?;
     let (function, code) = get_codeblock(&function).unwrap();
 

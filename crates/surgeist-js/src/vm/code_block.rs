@@ -8,7 +8,7 @@ use crate::{
         OrdinaryObject,
         function::{OrdinaryFunction, ThisMode},
     },
-    object::JsObject,
+    object::{AllocationOrigin, JsObject},
 };
 use bitflags::bitflags;
 use itertools::Itertools;
@@ -1224,12 +1224,12 @@ fn prepare_function_recipe(
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if code.is_async() {
-                context.intrinsics().objects().async_generator()
+                context.intrinsics().objects().async_generator()?
             } else {
-                context.intrinsics().objects().generator()
+                context.intrinsics().objects().generator()?
             },
             OrdinaryObject,
-        );
+        )?;
         let template = if code.is_async() {
             templates.async_generator_function()
         } else {
@@ -1262,9 +1262,11 @@ fn prepare_function_recipe(
             [length, name],
         )?
     } else {
-        let prototype = templates
-            .function_prototype()
-            .try_create(OrdinaryObject, [JsValue::undefined()])?;
+        let prototype = templates.function_prototype().create(
+            OrdinaryObject,
+            [JsValue::undefined()],
+            AllocationOrigin::TrustedConstruction,
+        )?;
         let function = OrdinaryFunction::prepare_unpublished(
             code,
             environments,
@@ -1296,12 +1298,12 @@ pub(crate) fn prepare_function_object_with_prototype(
         let function_prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if code.is_async() {
-                context.intrinsics().objects().async_generator()
+                context.intrinsics().objects().async_generator()?
             } else {
-                context.intrinsics().objects().generator()
+                context.intrinsics().objects().generator()?
             },
             OrdinaryObject,
-        );
+        )?;
         (
             templates.function_with_prototype_without_proto(),
             Some(function_prototype.into()),
@@ -1310,22 +1312,34 @@ pub(crate) fn prepare_function_object_with_prototype(
     } else if code.is_async() {
         (templates.function_without_proto(), None, None)
     } else {
-        let constructor_prototype = templates
-            .function_prototype()
-            .try_create(OrdinaryObject, [JsValue::undefined()])?;
+        let constructor_prototype = templates.function_prototype().create(
+            OrdinaryObject,
+            [JsValue::undefined()],
+            AllocationOrigin::TrustedConstruction,
+        )?;
         (
             templates.function_with_prototype_without_proto(),
             Some(constructor_prototype.clone().into()),
             Some(constructor_prototype),
         )
     };
+    let mut storage = Vec::new();
+    let slots = if prototype_slot.is_some() { 3 } else { 2 };
+    storage
+        .try_reserve_exact(slots)
+        .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+    storage.push(length);
+    storage.push(name);
+    if let Some(prototype) = prototype_slot {
+        storage.push(prototype);
+    }
     let function = OrdinaryFunction::prepare_unpublished(
         code,
         environments.stored(),
         script_or_module,
         realm,
         template,
-        [length, name].into_iter().chain(prototype_slot),
+        storage,
     )?;
     function.set_private_prototype(prototype)?;
     if let Some(prototype) = constructor_prototype {
@@ -1360,48 +1374,60 @@ pub(crate) fn create_function_object_fast(
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if is_async {
-                context.intrinsics().objects().async_generator()
+                context.intrinsics().objects().async_generator()?
             } else {
-                context.intrinsics().objects().generator()
+                context.intrinsics().objects().generator()?
             },
             OrdinaryObject,
-        );
+        )?;
         let template = if is_async {
             context.intrinsics().templates().async_generator_function()
         } else {
             context.intrinsics().templates().generator_function()
         };
 
-        template.create(function, [length, name, prototype.into()])
+        template.create(
+            function,
+            [length, name, prototype.into()],
+            AllocationOrigin::TrustedConstruction,
+        )?
     } else if is_async {
-        context
-            .intrinsics()
-            .templates()
-            .async_function()
-            .create(function, [length, name])
+        context.intrinsics().templates().async_function().create(
+            function,
+            [length, name],
+            AllocationOrigin::TrustedConstruction,
+        )?
     } else if !has_prototype_property {
-        context
-            .intrinsics()
-            .templates()
-            .function()
-            .create(function, [length, name])
+        context.intrinsics().templates().function().create(
+            function,
+            [length, name],
+            AllocationOrigin::TrustedConstruction,
+        )?
     } else {
         let prototype = context
             .intrinsics()
             .templates()
             .function_prototype()
-            .create(OrdinaryObject, [JsValue::undefined()]);
+            .create(
+                OrdinaryObject,
+                [JsValue::undefined()],
+                AllocationOrigin::TrustedConstruction,
+            )?;
 
         let constructor = context
             .intrinsics()
             .templates()
             .function_with_prototype()
-            .create(function, [length, name, prototype.clone().into()]);
+            .create(
+                function,
+                [length, name, prototype.clone().into()],
+                AllocationOrigin::TrustedConstruction,
+            )?;
 
         prototype
             .borrow_mut()?
             .properties_mut()
-            .write_named_slot(0, constructor.clone().into());
+            .write_named_slot(0, constructor.clone().into())?;
 
         constructor
     })

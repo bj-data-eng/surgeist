@@ -105,7 +105,7 @@ fn formatter_float_format_works() {
 
 #[test]
 fn console_log_cyclic() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let console = Console::init_with_logger(NullLogger, context.access()).unwrap();
     context
         .register_global_property(Console::NAME, console, Attribute::all())
@@ -188,7 +188,7 @@ const self = globalThis;
 /// The WPT test `console/console-log-symbol.any.js`.
 #[test]
 fn wpt_log_symbol_any() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -220,7 +220,7 @@ fn wpt_log_symbol_any() {
 /// The WPT test `console/console-is-a-namespace.any.js`.
 #[test]
 fn wpt_console_is_a_namespace() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -255,7 +255,7 @@ fn wpt_console_is_a_namespace() {
 /// The WPT test `console/console-label-conversion.any.js`.
 #[test]
 fn wpt_console_label_conversion() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -299,7 +299,7 @@ fn wpt_console_label_conversion() {
 /// The WPT test `console/console-namespace-object-class-string.any.js`.
 #[test]
 fn console_namespace_object_class_string() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -350,7 +350,7 @@ fn console_namespace_object_class_string() {
 
 #[test]
 fn console_log_arguments() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -378,7 +378,7 @@ fn console_log_arguments() {
 
 #[test]
 fn console_log_regexp() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -406,7 +406,7 @@ fn console_log_regexp() {
 
 #[test]
 fn console_log_date() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -430,7 +430,7 @@ fn console_log_date() {
 
 #[test]
 fn trace_with_stack_trace() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -474,7 +474,7 @@ fn trace_with_stack_trace() {
 /// Helper: runs JS code with a `RecordingLogger` and returns the captured log.
 macro_rules! run_table_test {
     ($js:expr) => {{
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let logger = RecordingLogger::default();
         Console::register_with_logger(logger.clone(), &mut context).unwrap();
 
@@ -854,7 +854,7 @@ fn console_table_map_ignores_properties_filter() {
 /// exception should be an alias for error.
 #[test]
 fn console_exception_is_alias_for_error() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let logger = RecordingLogger::default();
     Console::register_with_logger(logger.clone(), &mut context).unwrap();
 

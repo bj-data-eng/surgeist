@@ -179,6 +179,19 @@ pub struct RecordRef<T> {
 }
 
 impl<T> RecordRef<T> {
+    /// Returns the originating heap while that heap is still alive.
+    ///
+    /// This only upgrades the heap's weak owner: it neither borrows the heap
+    /// nor checks the record's liveness or installs a record root. `Some` also
+    /// permits ordinary access to the surviving origin heap when this record
+    /// has been reclaimed, including after its slot has been reused.
+    /// Retaining the returned owner extends the heap's lifetime, but does not
+    /// keep this record alive. `None` means the origin heap has expired.
+    #[must_use]
+    pub fn owning_heap(&self) -> Option<RuntimeHeap> {
+        self.runtime.upgrade().map(RuntimeHeap)
+    }
+
     /// Returns the typed, non-owning identity of the record.
     #[must_use]
     pub const fn handle(&self) -> Handle<T> {

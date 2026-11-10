@@ -169,7 +169,7 @@ fn waiterlist_block_indexedposition_wake() {
                     .module_loader(Rc::new(IdleModuleLoader))
                     .build()
                     .unwrap();
-                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context.access());
+                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context.access()).unwrap();
                 let i32a =
                     JsInt32Array::from_shared_array_buffer(buffer, context.access()).unwrap();
 

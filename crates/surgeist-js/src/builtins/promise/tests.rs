@@ -5,8 +5,8 @@ use indoc::indoc;
 fn pending_reaction_cycle_is_reclaimed_when_its_promise_is_dropped() {
     use crate::{Context, JsObject, NativeFunction, object::builtins::JsPromise};
 
-    let context = &mut Context::default();
-    let (promise, resolvers) = JsPromise::new_pending(context.access());
+    let context = &mut Context::builder().build().unwrap();
+    let (promise, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let handler = NativeFunction::from_fn_with_captures(
         |_, _, promise, _| Ok(promise.clone().into()),
         JsObject::from(promise.clone()),
@@ -64,9 +64,9 @@ fn every_reaction_survives_collection_during_job_enqueue() {
         .job_executor(Rc::new(CollectingExecutor::default()))
         .build()
         .unwrap();
-    let (promise, resolvers) = JsPromise::new_pending(context.access());
+    let (promise, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let first = promise.then(None, None, context.access()).unwrap();
-    let captured = JsObject::with_null_proto(context.runtime());
+    let captured = JsObject::with_null_proto(context.runtime()).unwrap();
     let captured_edge = captured.edge();
     let handler =
         NativeFunction::from_fn_with_captures(|_, _, value, _| Ok(value.clone().into()), captured)
@@ -74,7 +74,7 @@ fn every_reaction_survives_collection_during_job_enqueue() {
             .unwrap();
     let second = promise.then(Some(handler), None, context.access()).unwrap();
 
-    let result = JsObject::with_null_proto(context.runtime());
+    let result = JsObject::with_null_proto(context.runtime()).unwrap();
     let result_edge = result.edge();
     resolvers
         .resolve
@@ -116,7 +116,7 @@ fn rust_promise_handlers_must_belong_to_the_receiving_runtime() {
         .runtime(Runtime::default())
         .build()
         .unwrap();
-    let (promise, _) = JsPromise::new_pending(context.access());
+    let (promise, _) = JsPromise::new_pending(context.access()).unwrap();
     let handler = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()))
         .to_js_function(foreign.realm())
         .unwrap();
@@ -163,7 +163,7 @@ fn context_with_foreign_job_callback_data(invalid_at: usize) -> crate::Context {
     Context::builder()
         .runtime(Runtime::default())
         .host_hooks(Rc::new(Hooks {
-            foreign: JsObject::with_null_proto(&foreign),
+            foreign: JsObject::with_null_proto(&foreign).unwrap(),
             call_count: Cell::new(0),
             invalid_at,
         }))
@@ -352,11 +352,13 @@ fn promise_race_resolves_first() {
 fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
     use crate::{Context, JsObject, Runtime, object::JsPromise};
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let promise = JsPromise::from_task(
         |_| {
             Ok(crate::job::ContextTask::from_future(async {
-                Ok(JsObject::with_null_proto(&Runtime::default()).into())
+                Ok(JsObject::with_null_proto(&Runtime::default())
+                    .unwrap()
+                    .into())
             }))
         },
         context.access(),
@@ -370,8 +372,8 @@ fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
 fn promise_executor_error_materialization_refuses_a_foreign_nested_cause() {
     use crate::{Context, JsError, JsNativeError, JsObject, Runtime, object::JsPromise};
 
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()).unwrap());
     let error = JsNativeError::error().with_cause(inner).into();
 
@@ -383,8 +385,8 @@ fn promise_executor_error_materialization_refuses_a_foreign_nested_cause() {
 fn promise_reject_error_materialization_refuses_a_foreign_nested_cause() {
     use crate::{Context, JsError, JsNativeError, JsObject, Runtime, object::JsPromise};
 
-    let context = &mut Context::default();
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
     let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()).unwrap());
     let error = JsNativeError::error().with_cause(inner);
 
@@ -396,7 +398,7 @@ fn promise_reject_error_materialization_refuses_a_foreign_nested_cause() {
 fn promise_reject_error_materialization_preserves_the_original_engine_error() {
     use crate::{Context, JsError, error::PanicError, object::JsPromise};
 
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     let error = JsError::from(PanicError::new("engine failure"));
 
     assert_eq!(

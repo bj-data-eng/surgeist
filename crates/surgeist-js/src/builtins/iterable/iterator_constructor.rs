@@ -41,20 +41,20 @@ pub(crate) struct IteratorConstructor;
 
 impl IntrinsicObject for IteratorConstructor {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        let iterator_prototype = realm.intrinsics().constructors().iterator().prototype();
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .inherits(Some(iterator_prototype.clone()))
+        let iterator_prototype = realm.intrinsics().constructors().iterator().prototype()?;
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .inherits(Some(iterator_prototype.clone()))?
             // Static methods
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::concat, js_string!("concat"), 0)
-            .static_property(PROTOTYPE, iterator_prototype, Attribute::empty())
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::concat, js_string!("concat"), 0)?
+            .static_property(PROTOTYPE, iterator_prototype, Attribute::empty())?
             .build_without_prototype()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.constructors().iterator().constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.constructors().iterator().constructor()?)
     }
 }
 
@@ -85,7 +85,18 @@ impl BuiltInConstructor for IteratorConstructor {
             || new_target
                 == &context
                     .active_function_object()
-                    .unwrap_or_else(|| context.intrinsics().constructors().iterator().constructor())
+                    .map_or_else(
+                        || {
+                            Ok::<_, crate::JsError>(
+                                context
+                                    .intrinsics()
+                                    .constructors()
+                                    .iterator()
+                                    .constructor()?,
+                            )
+                        },
+                        Ok,
+                    )?
                     .into()
         {
             return Err(JsNativeError::typ()
@@ -106,7 +117,7 @@ impl BuiltInConstructor for IteratorConstructor {
             context.root_shape(),
             prototype,
             OrdinaryObject,
-        )
+        )?
         .upcast()
         .into())
     }
@@ -126,7 +137,11 @@ impl IteratorConstructor {
         let iterator_record = super::get_iterator_flattenable(o, true, context)?;
 
         // 2. Let hasInstance be ? OrdinaryHasInstance(%Iterator%, iteratorRecord.[[Iterator]]).
-        let iterator_constructor = context.intrinsics().constructors().iterator().constructor();
+        let iterator_constructor = context
+            .intrinsics()
+            .constructors()
+            .iterator()
+            .constructor()?;
         let has_instance = JsValue::ordinary_has_instance(
             &iterator_constructor.clone().into(),
             &iterator_record.iterator().clone().into(),
@@ -148,11 +163,11 @@ impl IteratorConstructor {
                 .intrinsics()
                 .objects()
                 .iterator_prototypes()
-                .wrap_for_valid_iterator(),
+                .wrap_for_valid_iterator()?,
             WrapForValidIterator {
                 iterated: iterator_record.stored(),
             },
-        );
+        )?;
 
         Ok(wrapper.into())
     }
@@ -193,7 +208,7 @@ impl IteratorConstructor {
         // 4-5. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", ...)
         //      with [[UnderlyingIterators]] set to a new empty List.
         let helper =
-            IteratorHelper::create(iterator_helper::Concat::new(iterables, context)?, context);
+            IteratorHelper::create(iterator_helper::Concat::new(iterables, context)?, context)?;
 
         // 6. Return result.
         Ok(helper.into())

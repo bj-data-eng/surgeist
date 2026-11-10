@@ -173,7 +173,7 @@ fn assert_terminal_steps(
 fn ordinary_ready_success_and_guest_error_dispose_once_and_publish_completed() {
     for guest_error in [false, true] {
         let mut owner = context();
-        let object = JsObject::with_null_proto(owner.runtime());
+        let object = JsObject::with_null_proto(owner.runtime()).unwrap();
         let original = JsError::from_opaque(object.clone().into()).unwrap();
         let result = if guest_error {
             Err(original.clone())

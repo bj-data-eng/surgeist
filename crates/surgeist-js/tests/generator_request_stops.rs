@@ -230,6 +230,7 @@ fn assert_counts(context: &mut Context, starts: i32, resumes: i32, closes: i32) 
         assert_eq!(
             context
                 .global_object()
+                .unwrap()
                 .get(surgeist_js::JsString::from(name), context.access())
                 .unwrap(),
             JsValue::new(expected),

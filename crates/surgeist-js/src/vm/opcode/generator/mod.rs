@@ -30,19 +30,29 @@ impl Generator {
             );
         };
 
-        let proto = this_function_object
-            .get(PROTOTYPE, context.access())
-            .ok()
-            .and_then(|v| v.as_object())
-            .unwrap_or_else(|| context.intrinsics().objects().generator());
+        let prototype = match this_function_object.get(PROTOTYPE, context.access()) {
+            Ok(value) => value,
+            Err(error) => return context.handle_error(error),
+        };
+        let proto = if let Some(prototype) = prototype.as_object() {
+            prototype
+        } else {
+            match context.intrinsics().objects().generator() {
+                Ok(prototype) => prototype,
+                Err(error) => return context.handle_error(error.into()),
+            }
+        };
 
-        let generator = JsObject::from_proto_and_data_with_shared_shape(
+        let generator = match JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             proto,
             NativeGenerator {
                 state: GeneratorState::Completed,
             },
-        );
+        ) {
+            Ok(generator) => generator,
+            Err(error) => return context.handle_error(error),
+        };
 
         let gen_ctx = match GeneratorContext::from_current(context, None) {
             Ok(value) => value,
@@ -86,13 +96,20 @@ impl AsyncGenerator {
             );
         };
 
-        let proto = this_function_object
-            .get(PROTOTYPE, context.access())
-            .ok()
-            .and_then(|v| v.as_object())
-            .unwrap_or_else(|| context.intrinsics().objects().async_generator());
+        let prototype = match this_function_object.get(PROTOTYPE, context.access()) {
+            Ok(value) => value,
+            Err(error) => return context.handle_error(error),
+        };
+        let proto = if let Some(prototype) = prototype.as_object() {
+            prototype
+        } else {
+            match context.intrinsics().objects().async_generator() {
+                Ok(prototype) => prototype,
+                Err(error) => return context.handle_error(error.into()),
+            }
+        };
 
-        let generator = JsObject::from_proto_and_data_with_shared_shape(
+        let generator = match JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             proto,
             NativeAsyncGenerator {
@@ -100,7 +117,10 @@ impl AsyncGenerator {
                 context: None,
                 queue: VecDeque::new(),
             },
-        );
+        ) {
+            Ok(generator) => generator,
+            Err(error) => return context.handle_error(error),
+        };
 
         let gen_ctx =
             match GeneratorContext::from_current(context, Some(generator.clone().upcast())) {

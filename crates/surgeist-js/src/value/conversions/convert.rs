@@ -20,7 +20,7 @@ use crate::{JsData, JsResult, JsString, JsValue};
 /// ```
 /// # use surgeist_js::{Context, js_string, JsValue};
 /// # use surgeist_js::value::{Convert, TryFromJs};
-/// # let mut context = Context::default();
+/// # let mut context = Context::builder().build().unwrap();
 /// let value = JsValue::from(js_string!("42"));
 /// let Convert(converted): Convert<i32> =
 ///     Convert::try_from_js(&value, context.access()).unwrap();
@@ -32,7 +32,7 @@ use crate::{JsData, JsResult, JsString, JsValue};
 /// ```
 /// # use surgeist_js::{Context, js_string, JsValue};
 /// # use surgeist_js::value::{Convert, TryFromJs};
-/// # let mut context = Context::default();
+/// # let mut context = Context::builder().build().unwrap();
 /// let Convert(conv0): Convert<bool> =
 ///     Convert::try_from_js(&JsValue::new(0), context.access()).unwrap();
 /// let Convert(conv5): Convert<bool> =

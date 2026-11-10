@@ -20,7 +20,7 @@ use surgeist_js::{
 
 #[test]
 fn access_and_reborrow_evaluate_against_the_same_committed_guest_state() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     {
         let mut access = owner.access();
         assert_eq!(
@@ -49,7 +49,7 @@ fn access_and_reborrow_evaluate_against_the_same_committed_guest_state() {
 
 #[test]
 fn typed_host_data_mutations_through_views_remain_owned_by_the_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     assert!(owner.insert_data(Cell::new(1_u32)).is_none());
     {
         let mut access = owner.access();
@@ -76,7 +76,7 @@ fn typed_host_data_mutations_through_views_remain_owned_by_the_context() {
 
 #[test]
 fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits() {
-    let mut first = Context::default();
+    let mut first = Context::builder().build().unwrap();
     let completed = {
         let mut access = first.access();
         access
@@ -96,7 +96,7 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
     let retained_batches = retained_report.profile().unwrap().unwrap().scopes[0].accepted_batches;
     assert!(retained_batches > 0);
 
-    let mut second = Context::default();
+    let mut second = Context::builder().build().unwrap();
     second
         .access()
         .eval(Source::from_bytes("globalThis.ownerValue = -1"))
@@ -179,7 +179,7 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
 
 #[test]
 fn script_compilation_and_async_evaluation_compose_through_one_outer_access() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     {
         let mut access = owner.access();
         let script = Script::parse(
@@ -226,7 +226,7 @@ fn script_compilation_and_async_evaluation_compose_through_one_outer_access() {
 
 #[test]
 fn sequential_value_conversions_reborrow_one_access_for_primitive_results() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     assert_eq!(
         JsValue::new(js_string!("42.75"))
@@ -265,7 +265,7 @@ fn sequential_value_conversions_reborrow_one_access_for_primitive_results() {
 
 #[test]
 fn value_conversion_hooks_receive_ordered_hints_and_preserve_exact_thrown_value() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let value = access.eval(Source::from_bytes(
         "globalThis.hints = []; ({ [Symbol.toPrimitive](hint) { hints.push(hint); return hint === 'string' ? 'answer' : 41; } })",
@@ -326,7 +326,7 @@ fn value_conversion_hooks_receive_ordered_hints_and_preserve_exact_thrown_value(
 
 #[test]
 fn value_to_property_descriptor_runs_guest_getters_in_specified_order() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let value = access
         .eval(Source::from_bytes(
@@ -353,7 +353,7 @@ fn value_to_property_descriptor_runs_guest_getters_in_specified_order() {
 
 #[test]
 fn descriptor_getter_work_keeps_first_stop_and_skips_later_getters_and_guest_cleanup() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let value = owner
         .access()
         .eval(Source::from_bytes(
@@ -395,7 +395,7 @@ fn descriptor_getter_work_keeps_first_stop_and_skips_later_getters_and_guest_cle
 
 #[test]
 fn object_properties_getters_and_key_mutations_compose_through_reborrowed_access() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let object = access
         .eval(Source::from_bytes(
@@ -472,7 +472,7 @@ fn object_properties_getters_and_key_mutations_compose_through_reborrowed_access
 
 #[test]
 fn object_operations_preserve_guest_proxy_trap_order_and_results() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let proxy = access.eval(Source::from_bytes(
         "globalThis.trapLog = []; new Proxy({ a: 7 }, {
@@ -532,7 +532,7 @@ fn object_operations_preserve_guest_proxy_trap_order_and_results() {
 
 #[test]
 fn object_call_and_construct_preserve_receiver_results_and_instruction_admission() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let callable = owner
         .access()
         .eval(Source::from_bytes(
@@ -616,7 +616,7 @@ fn direct_native_function_call_accepts_access_and_keeps_reentrant_guest_work_in_
         context.eval(Source::from_bytes("globalThis.nativeCommitted = 7"))?;
         Ok(args[0].clone())
     });
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let outcome = owner
         .with_execution(ExecutionOptions::new(64), |mut access| {
             native.call(&JsValue::new(7), &[JsValue::new(42)], access.reborrow())
@@ -635,7 +635,7 @@ fn direct_native_function_call_accepts_access_and_keeps_reentrant_guest_work_in_
 
 #[test]
 fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_stop() {
-    let mut original = Context::default();
+    let mut original = Context::builder().build().unwrap();
     let mut peer = Context::builder()
         .runtime(original.runtime().clone())
         .build()
@@ -703,7 +703,7 @@ fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_
 
 #[test]
 fn retained_typed_array_iterator_releases_access_after_authored_values_are_consumed() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let array = JsUint8Array::from_iter([7_u8, 35, 42], access.reborrow()).unwrap();
     {
@@ -721,7 +721,7 @@ fn retained_typed_array_iterator_releases_access_after_authored_values_are_consu
 
 #[test]
 fn json_conversion_reuses_access_for_roundtrip_and_guest_data_properties() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let json =
         serde_json::json!({ "answer": 42, "items": [7, 35], "enabled": true, "empty": null });
@@ -740,7 +740,7 @@ fn json_conversion_reuses_access_for_roundtrip_and_guest_data_properties() {
 
 #[test]
 fn realm_registration_uses_the_target_realm_with_same_runtime_access() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = Context::builder()
         .runtime(owner.runtime().clone())
         .build()
@@ -787,7 +787,7 @@ fn realm_registration_uses_the_target_realm_with_same_runtime_access() {
 
 #[test]
 fn arithmetic_and_abstract_equality_preserve_guest_coercion_hints_and_order() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let left = access.eval(Source::from_bytes(
         "globalThis.operatorLog = []; ({ [Symbol.toPrimitive](hint) { operatorLog.push('left:' + hint); return 20; } })",
@@ -818,7 +818,7 @@ fn arithmetic_and_abstract_equality_preserve_guest_coercion_hints_and_order() {
 
 #[test]
 fn public_object_keys_helper_and_installed_builtin_preserve_property_order() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let object = access
         .eval(Source::from_bytes("({ beta: 7, 2: 35, alpha: 42 })"))
@@ -848,7 +848,7 @@ fn public_object_keys_helper_and_installed_builtin_preserve_property_order() {
 
 #[test]
 fn error_materialization_and_erasure_keep_native_details_and_exact_engine_cause() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let object = JsNativeError::typ()
         .with_message("capability error")
@@ -895,7 +895,7 @@ fn error_materialization_and_erasure_keep_native_details_and_exact_engine_cause(
 
 #[test]
 fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let outcome = owner.with_execution(ExecutionOptions::new(256), |mut access| {
         let module = Module::parse(Source::from_bytes(
             "export const answer = 42; export function read() { return answer; } globalThis.moduleCommitted = 7;",
@@ -929,7 +929,7 @@ fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
 
 #[test]
 fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut access = owner.access();
     let value_module = Module::from_value_as_default(JsValue::new(42), access.reborrow()).unwrap();
     let completed = value_module.load_link_evaluate(access.reborrow()).unwrap();
@@ -971,7 +971,7 @@ fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
 
 #[test]
 fn module_parse_uses_the_selected_source_budget_before_guest_effects() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let outcome = owner
         .with_execution(
             ExecutionOptions::new(64).with_source_read_limit(0),

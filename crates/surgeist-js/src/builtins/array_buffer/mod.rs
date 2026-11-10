@@ -352,58 +352,58 @@ impl IntrinsicObject for ArrayBuffer {
 
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let get_byte_length = BuiltInBuilder::callable(realm, Self::get_byte_length)
             .name(js_string!("get byteLength"))
-            .build();
+            .build()?;
 
         let get_resizable = BuiltInBuilder::callable(realm, Self::get_resizable)
             .name(js_string!("get resizable"))
-            .build();
+            .build()?;
 
         let get_max_byte_length = BuiltInBuilder::callable(realm, Self::get_max_byte_length)
             .name(js_string!("get maxByteLength"))
-            .build();
+            .build()?;
 
         #[cfg(feature = "experimental")]
         let get_detached = BuiltInBuilder::callable(realm, Self::get_detached)
             .name(js_string!("get detached"))
-            .build();
+            .build()?;
 
-        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::is_view, js_string!("isView"), 1)
+            )?
+            .static_method(Self::is_view, js_string!("isView"), 1)?
             .accessor(
                 js_string!("byteLength"),
                 Some(get_byte_length),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("resizable"),
                 Some(get_resizable),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("maxByteLength"),
                 Some(get_max_byte_length),
                 None,
                 flag_attributes,
-            )
-            .method(Self::js_resize, js_string!("resize"), 1)
-            .method(Self::slice, js_string!("slice"), 2)
+            )?
+            .method(Self::js_resize, js_string!("resize"), 1)?
+            .method(Self::slice, js_string!("slice"), 2)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "experimental")]
         let builder = builder
@@ -412,21 +412,21 @@ impl IntrinsicObject for ArrayBuffer {
                 Some(get_detached),
                 None,
                 flag_attributes,
-            )
-            .method(Self::transfer::<false>, js_string!("transfer"), 0)
+            )?
+            .method(Self::transfer::<false>, js_string!("transfer"), 0)?
             .method(
                 Self::transfer::<true>,
                 js_string!("transferToFixedLength"),
                 0,
-            );
+            )?;
 
         builder.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -871,7 +871,7 @@ impl ArrayBuffer {
             .intrinsics()
             .constructors()
             .array_buffer()
-            .prototype();
+            .prototype()?;
 
         Ok(JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
@@ -881,7 +881,7 @@ impl ArrayBuffer {
                 max_byte_len: new_max_len,
                 detach_key: StoredValue::Undefined,
             },
-        )
+        )?
         .into())
     }
 

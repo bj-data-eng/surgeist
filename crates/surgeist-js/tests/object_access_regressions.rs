@@ -3,7 +3,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use surgeist_js::{
     Context, ContextAccess, JsData, JsObject, JsResult, JsValue, Source,
     class::{Class, ClassBuilder},
-    error::ObjectAccessError,
+    error::{EngineError, ObjectAccessError},
     execution::ExecutionOptions,
     object::NativeProjection,
 };
@@ -216,7 +216,7 @@ fn multiple_immutable_object_and_payload_reads_preserve_a_later_class_update() {
 fn unborrowed_wrong_brand_is_absent_without_changing_either_payload_or_identity() {
     let (context, object) = fixture();
     let identity = object.identity();
-    let ordinary = JsObject::with_null_proto(context.runtime());
+    let ordinary = JsObject::with_null_proto(context.runtime()).unwrap();
     let ordinary_identity = ordinary.identity();
     assert!(!ordinary.is::<AccessPayload>());
     assert!(ordinary.downcast_ref::<AccessPayload>().unwrap().is_none());
@@ -227,7 +227,7 @@ fn unborrowed_wrong_brand_is_absent_without_changing_either_payload_or_identity(
             .is_none()
     );
     assert_eq!(ordinary.identity(), ordinary_identity);
-    assert!(ordinary.borrow().unwrap().prototype().is_none());
+    assert!(ordinary.borrow().unwrap().prototype().unwrap().is_none());
     assert_eq!(object.identity(), identity);
     assert_eq!(object.borrow().unwrap().data().value, 17);
 }
@@ -281,11 +281,20 @@ fn checked_prototype_observation_and_update_preserve_state_across_alias_refusal(
     let alias = object.clone();
     let read = alias.borrow().unwrap();
     assert_eq!(object.prototype().unwrap(), original);
-    assert_eq!(object.set_prototype(None), Err(ObjectAccessError::Borrowed));
+    assert_eq!(
+        object.set_prototype(None).unwrap_err().as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
     drop(read);
     let write = alias.borrow_mut().unwrap();
-    assert_eq!(object.prototype(), Err(ObjectAccessError::Borrowed));
-    assert_eq!(object.set_prototype(None), Err(ObjectAccessError::Borrowed));
+    assert_eq!(
+        object.prototype().unwrap_err().as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
+    assert_eq!(
+        object.set_prototype(None).unwrap_err().as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
     drop(write);
     assert_eq!(object.prototype().unwrap(), original);
     assert_eq!(object.borrow().unwrap().data().value, 17);

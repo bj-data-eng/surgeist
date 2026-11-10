@@ -37,8 +37,8 @@ pub(crate) struct ArrayIterator {
 
 impl IntrinsicObject for ArrayIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
@@ -50,8 +50,8 @@ impl IntrinsicObject for ArrayIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().array()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().iterator_prototypes().array()?)
     }
 }
 
@@ -80,7 +80,11 @@ impl ArrayIterator {
         array.check_runtime(context.runtime())?;
         let array_iterator = JsObject::new(
             context.root_shape(),
-            context.intrinsics().objects().iterator_prototypes().array(),
+            context
+                .intrinsics()
+                .objects()
+                .iterator_prototypes()
+                .array()?,
             Self::new(&array, kind),
         )?;
         Ok(array_iterator.upcast().into())
@@ -106,11 +110,7 @@ impl ArrayIterator {
         drop(state);
 
         let Some(array) = array else {
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         };
         let array = JsObject::from_inner(array);
 
@@ -133,35 +133,21 @@ impl ArrayIterator {
 
         if index >= len {
             array_iterator.borrow_mut()?.data_mut().array = None;
-            return Ok(create_iter_result_object_trusted(
-                JsValue::undefined(),
-                true,
-                context,
-            ));
+            return create_iter_result_object_trusted(JsValue::undefined(), true, context);
         }
         array_iterator.borrow_mut()?.data_mut().next_index = index + 1;
         match kind {
-            PropertyNameKind::Key => Ok(create_iter_result_object_trusted(
-                index.into(),
-                false,
-                context,
-            )),
+            PropertyNameKind::Key => {
+                create_iter_result_object_trusted(index.into(), false, context)
+            }
             PropertyNameKind::Value => {
                 let element_value = array.get(index, context.access())?;
-                Ok(create_iter_result_object_trusted(
-                    element_value,
-                    false,
-                    context,
-                ))
+                create_iter_result_object_trusted(element_value, false, context)
             }
             PropertyNameKind::KeyAndValue => {
                 let element_value = array.get(index, context.access())?;
-                let result = Array::create_array_from_list([index.into(), element_value], context);
-                Ok(create_iter_result_object_trusted(
-                    result.into(),
-                    false,
-                    context,
-                ))
+                let result = Array::create_array_from_list([index.into(), element_value], context)?;
+                create_iter_result_object_trusted(result.into(), false, context)
             }
         }
     }

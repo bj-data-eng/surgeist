@@ -28,8 +28,8 @@ impl UnmappedArguments {
         // 1. Let len be the number of elements in argumentsList.
         let len = arguments_list.len();
 
-        let values_function = context.intrinsics().objects().array_prototype_values();
-        let throw_type_error = context.intrinsics().objects().throw_type_error();
+        let values_function = context.intrinsics().objects().array_prototype_values()?;
+        let throw_type_error = context.intrinsics().objects().throw_type_error()?;
 
         // 2. Let obj be ! OrdinaryObjectCreate(%Object.prototype%, « [[ParameterMap]] »).
         // 3. Set obj.[[ParameterMap]] to undefined.
@@ -54,7 +54,8 @@ impl UnmappedArguments {
                     throw_type_error.clone().into(), // get
                     throw_type_error.into(),         // set
                 ],
-            );
+                crate::object::AllocationOrigin::TrustedConstruction,
+            )?;
 
         // 5. Let index be 0.
         // 6. Repeat, while index < len,
@@ -174,7 +175,7 @@ impl MappedArguments {
         };
 
         // %Array.prototype.values%
-        let values_function = context.intrinsics().objects().array_prototype_values();
+        let values_function = context.intrinsics().objects().array_prototype_values()?;
 
         // 11. Set obj.[[ParameterMap]] to map.
         let obj = context.intrinsics().templates().mapped_arguments().create(
@@ -191,7 +192,8 @@ impl MappedArguments {
                 // [[Value]]: func, [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: true }).
                 func.clone().into(),
             ],
-        );
+            crate::object::AllocationOrigin::TrustedConstruction,
+        )?;
 
         // 14. Let index be 0.
         // 15. Repeat, while index < len,

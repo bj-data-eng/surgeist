@@ -3,7 +3,7 @@
 //! The `JsObject` is a garbage collected Object.
 
 use super::{
-    IndexedProperties, JsPrototype, NativeObject, NativeProjection, Object, ObjectState,
+    IndexedProperties, JsData, JsPrototype, NativeObject, NativeProjection, Object, ObjectState,
     PrivateName, PropertyMap,
     internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS},
     shape::{RootShape, UniqueShape, property_table::PropertyTableInner},
@@ -17,7 +17,10 @@ use crate::{
     },
     class::Class,
     context::intrinsics::Intrinsics,
-    error::{JsNativeError, ObjectAccessError},
+    error::{
+        EngineError, EngineResourceError, JsNativeError, ObjectAccessError,
+        ObjectConstructionError, RootingError,
+    },
     js_error, js_string,
     property::{PropertyDescriptor, PropertyKey},
     value::PreferredType,
@@ -65,9 +68,9 @@ impl<T: NativeObject + ?Sized> ObjectRef<'_, T> {
 ///
 /// ```compile_fail
 /// use surgeist_js::{Context, JsObject};
-/// let context = Context::default();
-/// let a = JsObject::with_object_proto(context.intrinsics());
-/// let b = JsObject::with_object_proto(context.intrinsics());
+/// let context = Context::builder().build().unwrap();
+/// let a = JsObject::with_object_proto(context.intrinsics()).unwrap();
+/// let b = JsObject::with_object_proto(context.intrinsics()).unwrap();
 /// std::mem::swap(&mut *a.borrow_mut().unwrap(), &mut *b.borrow_mut().unwrap());
 /// ```
 ///
@@ -75,7 +78,7 @@ impl<T: NativeObject + ?Sized> ObjectRef<'_, T> {
 ///
 /// ```compile_fail
 /// use surgeist_js::{Context, object::builtins::JsArrayBuffer};
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 /// let buffer = JsArrayBuffer::new(8, context.access()).unwrap();
 /// let mut object = buffer.borrow_mut().unwrap();
 /// let _ = object.data_mut();
@@ -106,12 +109,12 @@ impl<T: NativeObject + ?Sized> ObjectRefMut<'_, T> {
         &mut self,
         key: impl Into<PropertyKey>,
         property: impl Into<PropertyDescriptor>,
-    ) -> bool {
+    ) -> JsResult<bool> {
         self.state.insert(key, property)
     }
 
     /// Sets the prototype if it belongs to this runtime and the object permits it.
-    pub fn set_prototype(&mut self, prototype: impl Into<JsPrototype>) -> bool {
+    pub fn set_prototype(&mut self, prototype: impl Into<JsPrototype>) -> JsResult<bool> {
         self.state.set_prototype(prototype)
     }
 }
@@ -179,9 +182,10 @@ impl<T: NativeObject> UnpublishedObject<T> {
         runtime: &Runtime,
         object: Object,
         vtable: &'static InternalObjectMethods,
+        origin: AllocationOrigin,
     ) -> JsResult<Self> {
         Ok(Self {
-            inner: JsObject::<dyn NativeObject>::allocate(runtime, object, vtable)?,
+            inner: JsObject::<dyn NativeObject>::allocate(runtime, object, vtable, origin)?,
             brand: PhantomData,
         })
     }
@@ -220,10 +224,13 @@ impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
         let changed = self
             .inner
             .object
-            .borrow_mut()
+            .try_borrow_mut()
+            .map_err(|_| ObjectAccessError::Borrowed)?
             .state
-            .set_prototype(Some(prototype));
-        assert!(changed, "fresh unpublished functions are extensible");
+            .set_prototype(Some(prototype))?;
+        if !changed {
+            return Err(ObjectConstructionError::PrototypeRefused.into());
+        }
         Ok(())
     }
 
@@ -259,7 +266,7 @@ impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
         let mut slot = super::shape::slot::Slot::new();
         let descriptor = prototype
             .properties
-            .get_with_slot(&super::CONSTRUCTOR.into(), &mut slot)
+            .get_with_slot(&super::CONSTRUCTOR.into(), &mut slot)?
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("private function prototype lacks constructor slot")
@@ -273,7 +280,7 @@ impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
         }
         prototype
             .properties_mut()
-            .write_named_object_edge(slot.index as usize, ObjectEdge(self.inner.record_ref()));
+            .write_named_object_edge(slot.index as usize, ObjectEdge(self.inner.record_ref()))?;
         Ok(())
     }
 
@@ -319,6 +326,12 @@ impl ObjectEdge {
 
     pub(crate) fn upgrade(&self) -> Result<Option<JsObject>, AccessError> {
         self.0.upgrade().map(|root| root.map(JsObject::with_record))
+    }
+
+    /// Returns the origin runtime while its heap exists. This weak-locator
+    /// projection neither borrows the heap nor proves the record live.
+    pub(crate) fn owning_runtime(&self) -> Option<Runtime> {
+        self.0.owning_heap().map(|heap| Runtime { heap })
     }
 }
 
@@ -374,14 +387,13 @@ impl JsObject {
     ///
     /// ```
     /// # use surgeist_js::{Context, JsObject};
-    /// let context = &mut Context::default();
-    /// let obj = JsObject::default(context.intrinsics());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let obj = JsObject::default(context.intrinsics()).unwrap();
     ///
     /// assert!(obj.is_ordinary());
     /// ```
     #[inline]
-    #[must_use]
-    pub fn default(intrinsics: &Intrinsics) -> Self {
+    pub fn default(intrinsics: &Intrinsics) -> JsResult<Self> {
         Self::with_object_proto(intrinsics)
     }
 
@@ -390,17 +402,9 @@ impl JsObject {
         runtime: &Runtime,
         object: Object,
         vtable: &'static InternalObjectMethods,
-    ) -> Self {
-        Self::try_from_object_and_vtable(runtime, object, vtable)
-            .expect("internal object template has valid heap edges")
-    }
-
-    pub(crate) fn try_from_object_and_vtable(
-        runtime: &Runtime,
-        object: Object,
-        vtable: &'static InternalObjectMethods,
+        origin: AllocationOrigin,
     ) -> JsResult<Self> {
-        Self::allocate(runtime, object, vtable).map(Self::with_record)
+        Self::allocate(runtime, object, vtable, origin).map(Self::with_record)
     }
 
     pub(crate) fn from_inner(inner: ObjectEdge) -> Self {
@@ -413,12 +417,15 @@ impl JsObject {
     pub(crate) fn ordinary_prototype(
         runtime: &Runtime,
         vtable: &'static InternalObjectMethods,
-    ) -> Self {
-        JsObject::<OrdinaryObject>::new_unique_with_vtable(runtime, None, OrdinaryObject, |_| {
-            vtable
-        })
-        .expect("ordinary prototype has no external heap edges")
-        .upcast()
+    ) -> JsResult<Self> {
+        JsObject::<OrdinaryObject>::new_unique_with_vtable(
+            runtime,
+            None,
+            OrdinaryObject,
+            |_| vtable,
+            AllocationOrigin::TrustedConstruction,
+        )
+        .map(JsObject::upcast)
     }
 
     /// Creates a new ordinary object with its prototype set to the `Object` prototype.
@@ -432,21 +439,22 @@ impl JsObject {
     ///
     /// ```
     /// # use surgeist_js::{Context, JsObject};
-    /// let context = &mut Context::default();
-    /// let obj = JsObject::with_object_proto(context.intrinsics());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
     ///
     /// assert!(obj.is_ordinary());
     /// assert!(obj.prototype().unwrap().is_some());
     /// ```
     #[inline]
-    #[must_use]
-    pub fn with_object_proto(intrinsics: &Intrinsics) -> Self {
-        Self::from_proto_and_data(
-            &intrinsics.runtime(),
-            intrinsics.constructors().object().prototype(),
+    pub fn with_object_proto(intrinsics: &Intrinsics) -> JsResult<Self> {
+        JsObject::<OrdinaryObject>::new_unique_with_vtable(
+            &intrinsics.runtime()?,
+            intrinsics.constructors().object().prototype()?,
             OrdinaryObject,
+            OrdinaryObject::internal_methods,
+            AllocationOrigin::TrustedConstruction,
         )
-        .expect("ordinary object uses its runtime's intrinsic prototype")
+        .map(JsObject::upcast)
     }
 
     /// Creates a new ordinary object, with its prototype set to null.
@@ -460,15 +468,13 @@ impl JsObject {
     ///
     /// ```
     /// # use surgeist_js::{JsObject, Runtime};
-    /// let obj = JsObject::with_null_proto(&Runtime::default());
+    /// let obj = JsObject::with_null_proto(&Runtime::default()).unwrap();
     /// assert!(obj.prototype().unwrap().is_none());
     /// assert!(obj.is_ordinary());
     /// ```
     #[inline]
-    #[must_use]
-    pub fn with_null_proto(runtime: &Runtime) -> Self {
+    pub fn with_null_proto(runtime: &Runtime) -> JsResult<Self> {
         Self::from_proto_and_data(runtime, None, OrdinaryObject)
-            .expect("null-prototype ordinary object has no external heap edges")
     }
 
     /// Creates a new object with the provided prototype and object data.
@@ -489,10 +495,10 @@ impl JsObject {
     /// ```
     /// # use surgeist_js::{Context, JsObject};
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let obj = JsObject::from_proto_and_data(
     ///     context.runtime(),
-    ///     context.intrinsics().constructors().object().prototype(),
+    ///     context.intrinsics().constructors().object().prototype().unwrap(),
     ///     OrdinaryObject,
     /// )
     /// .unwrap();
@@ -525,8 +531,13 @@ impl JsObject {
         root_shape: &RootShape,
         prototype: O,
         data: T,
-    ) -> JsObject<T> {
-        JsObject::new(root_shape, prototype, data).expect("internal object has valid heap edges")
+    ) -> JsResult<JsObject<T>> {
+        JsObject::new_with_shared_shape(
+            root_shape,
+            prototype,
+            data,
+            AllocationOrigin::TrustedConstruction,
+        )
     }
 
     /// Downcasts the object's inner data if the object is of type `T`.
@@ -610,7 +621,7 @@ impl JsObject {
     /// ```compile_fail
     /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let object: JsObject = JsArrayBuffer::new(8, context.access()).unwrap().into();
     /// let _ = object.downcast_class_mut::<ArrayBuffer>();
     /// ```
@@ -618,7 +629,7 @@ impl JsObject {
     /// ```compile_fail
     /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// let object: JsObject = JsArrayBuffer::new(8, context.access()).unwrap().into();
     /// let _ = object.downcast_mut::<ArrayBuffer>();
     /// ```
@@ -674,8 +685,8 @@ impl JsObject {
     ///
     /// ```
     /// # use surgeist_js::{Context, JsObject};
-    /// let context = &mut Context::default();
-    /// let obj = JsObject::with_object_proto(context.intrinsics());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
     ///
     /// assert!(obj.is_ordinary());
     /// ```
@@ -694,14 +705,14 @@ impl JsObject {
     /// # use surgeist_js::{Context, JsObject, JsValue ,JsResult};
     /// # use surgeist_js::object::builtins::JsArray;
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let array = JsArray::new(context.access())?;
     /// // A JsArray's inner JsObject is an array.
     /// assert!(JsObject::from(array).is_array());
     ///
     /// // An ordinary object is not an array.
-    /// let obj = JsObject::with_object_proto(context.intrinsics());
+    /// let obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
     /// assert!(!obj.is_array());
     /// # Ok(())
     /// # }
@@ -790,12 +801,12 @@ impl JsObject {
     /// ```
     /// # use surgeist_js::{Context, JsObject, JsResult, js_string};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let obj1 = JsObject::with_object_proto(context.intrinsics());
+    /// let obj1 = JsObject::with_object_proto(context.intrinsics()).unwrap();
     /// obj1.set(js_string!("key"), 42, false, context.access())?;
     ///
-    /// let obj2 = JsObject::with_object_proto(context.intrinsics());
+    /// let obj2 = JsObject::with_object_proto(context.intrinsics()).unwrap();
     /// obj2.set(js_string!("key"), 42, false, context.access())?;
     ///
     /// assert!(JsObject::deep_strict_equals(&obj1, &obj2, context.access())?);
@@ -1040,10 +1051,10 @@ Cannot both specify accessors and a value or writable attribute",
 
         while let Some(o) = obj {
             let borrowed = o.borrow()?;
-            if let Some(v) = borrowed.properties.get(key) {
+            if let Some(v) = borrowed.properties.get(key)? {
                 return Ok(Some(v));
             }
-            obj = borrowed.prototype().clone();
+            obj = borrowed.prototype()?;
         }
         Ok(None)
     }
@@ -1100,7 +1111,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// # use surgeist_js::{JsObject, Runtime, builtins::object::OrdinaryObject};
     /// let obj = JsObject::from_proto_and_data(&Runtime::default(), None, OrdinaryObject).unwrap();
     /// let borrowed = obj.borrow().unwrap();
-    /// assert!(borrowed.prototype().is_none());
+    /// assert!(borrowed.prototype().unwrap().is_none());
     /// ```
     #[inline]
     pub fn borrow(&self) -> Result<ObjectRef<'_, T>, ObjectAccessError>
@@ -1128,7 +1139,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     /// # use surgeist_js::{JsObject, Runtime, builtins::object::OrdinaryObject};
     /// let obj = JsObject::from_proto_and_data(&Runtime::default(), None, OrdinaryObject).unwrap();
-    /// obj.borrow_mut().unwrap().set_prototype(None);
+    /// obj.borrow_mut().unwrap().set_prototype(None).unwrap();
     /// assert!(obj.prototype().unwrap().is_none());
     /// ```
     #[inline]
@@ -1181,21 +1192,21 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     ///
     /// ```
     /// # use surgeist_js::{Context, JsObject};
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let obj = JsObject::with_object_proto(context.intrinsics());
+    /// let obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
     /// assert!(obj.prototype().unwrap().is_some());
     ///
-    /// let null_obj = JsObject::with_null_proto(context.runtime());
+    /// let null_obj = JsObject::with_null_proto(context.runtime()).unwrap();
     /// assert!(null_obj.prototype().unwrap().is_none());
     /// ```
     #[inline]
     #[track_caller]
-    pub fn prototype(&self) -> Result<JsPrototype, ObjectAccessError>
+    pub fn prototype(&self) -> JsResult<JsPrototype>
     where
         T: NativeProjection,
     {
-        Ok(self.borrow()?.prototype())
+        self.borrow()?.prototype()
     }
 
     /// Gets extensibility, or returns a typed access failure.
@@ -1212,8 +1223,8 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     ///
     /// ```
     /// # use surgeist_js::{Context, JsObject};
-    /// let context = &mut Context::default();
-    /// let obj = JsObject::with_object_proto(context.intrinsics());
+    /// let context = &mut Context::builder().build().unwrap();
+    /// let obj = JsObject::with_object_proto(context.intrinsics()).unwrap();
     ///
     /// assert!(obj.prototype().unwrap().is_some());
     ///
@@ -1223,22 +1234,22 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     #[inline]
     #[track_caller]
-    pub fn set_prototype(&self, prototype: JsPrototype) -> Result<bool, ObjectAccessError>
+    pub fn set_prototype(&self, prototype: JsPrototype) -> JsResult<bool>
     where
         T: NativeProjection,
     {
-        Ok(self.borrow_mut()?.set_prototype(prototype))
+        self.borrow_mut()?.set_prototype(prototype)
     }
 
     /// Helper function for property insertion.
     #[track_caller]
-    pub(crate) fn insert<K, P>(&self, key: K, property: P) -> Result<bool, ObjectAccessError>
+    pub(crate) fn insert<K, P>(&self, key: K, property: P) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
         T: NativeProjection,
     {
-        Ok(self.borrow_mut()?.insert(key, property))
+        self.borrow_mut()?.insert(key, property)
     }
 
     /// Inserts a field in the object `properties` without checking if it's writable.
@@ -1254,7 +1265,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     {
         let property = property.into();
         self.runtime().check_descriptor(&property)?;
-        Ok(self.insert(key, property.complete_property_descriptor())?)
+        self.insert(key, property.complete_property_descriptor())
     }
 
     /// It determines if Object is a callable function with a `[[Call]]` internal method.
@@ -1336,11 +1347,12 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         runtime: &Runtime,
         object: Object,
         vtable: &'static InternalObjectMethods,
+        origin: AllocationOrigin,
     ) -> JsResult<Rooted<ObjectRecord>> {
         runtime
             .heap
             .allocate(ObjectRecord::new(object, vtable))
-            .map_err(|rejected| object_allocation_error(rejected.reason))
+            .map_err(|rejected| origin.access_error(rejected.reason))
     }
 
     /// Create a new private name with this object as the unique identifier.
@@ -1349,8 +1361,38 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     }
 }
 
-fn object_allocation_error(reason: AccessError) -> JsError {
-    JsNativeError::typ().with_message(reason.to_string()).into()
+/// The selected construction owner knows whether edges came from authored
+/// ingestion or from a closed represented engine recipe.
+#[derive(Clone, Copy)]
+pub(crate) enum AllocationOrigin {
+    AuthoredInput,
+    TrustedConstruction,
+}
+impl AllocationOrigin {
+    pub(crate) fn access_error(self, reason: AccessError) -> JsError {
+        match reason {
+            AccessError::HeapBorrowed | AccessError::PayloadBorrowed => {
+                RootingError::Access(reason).into()
+            }
+            AccessError::ForeignHeap | AccessError::StaleHandle | AccessError::WrongType => {
+                match self {
+                    Self::AuthoredInput => {
+                        JsNativeError::typ().with_message(reason.to_string()).into()
+                    }
+                    Self::TrustedConstruction => {
+                        ObjectConstructionError::InvalidStoredEdge(reason).into()
+                    }
+                }
+            }
+        }
+    }
+    pub(crate) fn shape_error(self, error: JsError) -> JsError {
+        if let Some(EngineError::Rooting(RootingError::Access(reason))) = error.as_engine() {
+            self.access_error(*reason)
+        } else {
+            error
+        }
+    }
 }
 
 impl<T: NativeObject> JsObject<T> {
@@ -1369,11 +1411,11 @@ impl<T: NativeObject> JsObject<T> {
     /// ```
     /// # use surgeist_js::{Context, JsObject};
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let typed_obj = JsObject::new(
     ///     context.root_shape(),
-    ///     context.intrinsics().constructors().object().prototype(),
+    ///     context.intrinsics().constructors().object().prototype().unwrap(),
     ///     OrdinaryObject,
     /// )
     /// .unwrap();
@@ -1387,6 +1429,14 @@ impl<T: NativeObject> JsObject<T> {
         prototype: O,
         data: T,
     ) -> JsResult<Self> {
+        Self::new_with_shared_shape(root_shape, prototype, data, AllocationOrigin::AuthoredInput)
+    }
+    fn new_with_shared_shape<O: Into<Option<JsObject>>>(
+        root_shape: &RootShape,
+        prototype: O,
+        data: T,
+        origin: AllocationOrigin,
+    ) -> JsResult<Self> {
         let runtime = root_shape.runtime();
         runtime
             .heap
@@ -1394,14 +1444,14 @@ impl<T: NativeObject> JsObject<T> {
                 let internal_methods = data.internal_methods();
                 let shape = root_shape
                     .shape()
-                    .try_change_prototype_transition(prototype.into())
-                    .map_err(object_allocation_error)?
+                    .change_prototype_transition(prototype.into())
+                    .map_err(|error| origin.shape_error(error))?
                     .into();
                 let object =
                     Object::new(PropertyMap::new(&shape, IndexedProperties::default()), data);
-                Self::allocate(runtime, object, internal_methods).map(Self::with_record)
+                Self::allocate(runtime, object, internal_methods, origin).map(Self::with_record)
             })
-            .map_err(object_allocation_error)?
+            .map_err(|error| origin.access_error(error))?
     }
 
     /// Creates a new `JsObject` with a unique shape from a prototype and native data.
@@ -1433,31 +1483,38 @@ impl<T: NativeObject> JsObject<T> {
         prototype: O,
         data: T,
     ) -> JsResult<Self> {
-        Self::new_unique_with_vtable(runtime, prototype, data, T::internal_methods)
+        Self::new_unique_with_vtable(
+            runtime,
+            prototype,
+            data,
+            T::internal_methods,
+            AllocationOrigin::AuthoredInput,
+        )
     }
 
-    fn new_unique_with_vtable(
+    pub(crate) fn new_unique_with_vtable(
         runtime: &Runtime,
         prototype: impl Into<JsPrototype>,
         data: T,
         vtable: impl FnOnce(&T) -> &'static InternalObjectMethods,
+        origin: AllocationOrigin,
     ) -> JsResult<Self> {
         runtime
             .heap
             .with_pending_edges(data, |data| {
                 let vtable = vtable(&data);
-                let shape = UniqueShape::try_new(
+                let shape = UniqueShape::new(
                     &runtime.heap,
                     prototype.into(),
                     PropertyTableInner::default(),
                 )
-                .map_err(object_allocation_error)?
+                .map_err(|error| origin.access_error(error))?
                 .into();
                 let object =
                     Object::new(PropertyMap::new(&shape, IndexedProperties::default()), data);
-                Self::allocate(runtime, object, vtable).map(Self::with_record)
+                Self::allocate(runtime, object, vtable, origin).map(Self::with_record)
             })
-            .map_err(object_allocation_error)?
+            .map_err(|error| origin.access_error(error))?
     }
 
     pub(crate) fn borrow_data(&self) -> Result<Ref<'_, T>, ObjectAccessError> {
@@ -1592,7 +1649,8 @@ impl<T: NativeObject + ?Sized> Debug for JsObject<T> {
                 let name_prop = obj
                     .state
                     .properties()
-                    .get(&PropertyKey::String(js_string!("name")));
+                    .get(&PropertyKey::String(js_string!("name")))
+                    .map_err(|_| fmt::Error)?;
                 let name = match name_prop {
                     None => JsString::default(),
                     Some(prop) => prop
@@ -1697,7 +1755,10 @@ mod tests {
             ObjectAccessError::Borrowed
         );
         assert!(alias.downcast_ref::<OtherHostPayload>().unwrap().is_none());
-        assert_eq!(object.prototype().unwrap_err(), ObjectAccessError::Borrowed);
+        assert_eq!(
+            object.prototype().unwrap_err().as_engine(),
+            Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+        );
         assert_eq!(
             object.extensible().unwrap_err(),
             ObjectAccessError::Borrowed
@@ -1754,8 +1815,8 @@ mod tests {
     #[test]
     fn native_object_creation_rejects_foreign_prototypes() {
         let runtime = Runtime::default();
-        let root_shape = RootShape::new(runtime.clone());
-        let foreign = JsObject::with_null_proto(&Runtime::default());
+        let root_shape = RootShape::new(runtime.clone()).unwrap();
+        let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
 
         for result in [
             JsObject::new(&root_shape, foreign.clone(), OrdinaryObject).map(JsObject::upcast),
@@ -1769,12 +1830,12 @@ mod tests {
     #[test]
     fn native_object_creation_checks_payload_edges() {
         let runtime = Runtime::default();
-        let root_shape = RootShape::new(runtime.clone());
-        let foreign = JsObject::with_null_proto(&Runtime::default());
+        let root_shape = RootShape::new(runtime.clone()).unwrap();
+        let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
         let error = JsObject::new(&root_shape, None, NativePayload(foreign.store())).unwrap_err();
         assert!(error.as_native().unwrap().is_type());
 
-        let reclaimed = JsObject::with_null_proto(&runtime).store();
+        let reclaimed = JsObject::with_null_proto(&runtime).unwrap().store();
         runtime.collect().unwrap();
         let error =
             JsObject::from_proto_and_data(&runtime, None, NativePayload(reclaimed)).unwrap_err();
@@ -1790,10 +1851,10 @@ mod tests {
             .heap
             .set_allocation_collection(AllocationCollection::BeforeAllocation)
             .unwrap();
-        let root_shape = RootShape::new(runtime.clone());
-        let prototype = JsObject::with_null_proto(&runtime);
+        let root_shape = RootShape::new(runtime.clone()).unwrap();
+        let prototype = JsObject::with_null_proto(&runtime).unwrap();
         for unique in [false, true] {
-            let target = JsObject::with_null_proto(&runtime);
+            let target = JsObject::with_null_proto(&runtime).unwrap();
             let identity = target.identity();
             let data = NativePayload(target.store());
             drop(target);
@@ -1814,6 +1875,970 @@ mod tests {
             drop(object);
             runtime.collect().unwrap();
             assert!(!edge.is_live().unwrap());
+        }
+    }
+}
+
+/// Private whole-target construction intent. It grants no access to a live guard.
+#[derive(Clone, Copy)]
+pub(crate) enum BuiltinTargetMode {
+    Fresh,
+    Update,
+}
+pub(crate) enum BuiltinPrototype {
+    Keep,
+    Set(JsPrototype),
+}
+pub(crate) struct PreparedBuiltinFunction {
+    function: crate::native_function::StoredNativeFunction,
+    constructor: Option<crate::builtins::function::ConstructorKind>,
+    realm: crate::realm::Realm,
+}
+impl PreparedBuiltinFunction {
+    pub(crate) fn new(
+        function: crate::native_function::BuiltinFunctionPointer,
+        constructor: Option<crate::builtins::function::ConstructorKind>,
+        realm: crate::realm::Realm,
+    ) -> Self {
+        Self {
+            function: crate::NativeFunction::from_builtin(function).stored(),
+            constructor,
+            realm,
+        }
+    }
+}
+pub(crate) struct PreparedBuiltinTarget {
+    target: JsObject,
+    mode: BuiltinTargetMode,
+    properties: super::PreparedNamedProperties,
+    prototype: BuiltinPrototype,
+    function: Option<PreparedBuiltinFunction>,
+    extensible: Option<bool>,
+}
+impl PreparedBuiltinTarget {
+    pub(crate) fn ordinary(
+        target: JsObject,
+        mode: BuiltinTargetMode,
+        properties: super::PreparedNamedProperties,
+        prototype: BuiltinPrototype,
+    ) -> Self {
+        Self {
+            target,
+            mode,
+            properties,
+            prototype,
+            function: None,
+            extensible: None,
+        }
+    }
+    pub(crate) fn callable(
+        target: JsObject,
+        mode: BuiltinTargetMode,
+        properties: super::PreparedNamedProperties,
+        prototype: BuiltinPrototype,
+        function: PreparedBuiltinFunction,
+    ) -> Self {
+        Self {
+            function: Some(function),
+            ..Self::ordinary(target, mode, properties, prototype)
+        }
+    }
+    pub(crate) fn extensible(mut self, value: bool) -> Self {
+        self.extensible = Some(value);
+        self
+    }
+}
+
+struct BuiltinMapPlan<'a> {
+    values: Vec<(&'a mut crate::value::StoredValue, crate::value::StoredValue)>,
+    keys: Vec<(
+        &'a mut (PropertyKey, super::shape::slot::Slot),
+        super::shape::slot::Slot,
+    )>,
+    post: BuiltinMapPost,
+}
+struct BuiltinMapPost {
+    records: Vec<(PropertyKey, u32, super::shape::slot::Slot)>,
+    appended: Vec<(PropertyKey, super::shape::slot::Slot)>,
+    values: Vec<crate::value::StoredValue>,
+    displaced: Vec<crate::value::StoredValue>,
+    required_slots: u32,
+}
+
+/// Bind checked, disjoint cells while access can still refuse. Sorting touches
+/// only the recipe's updates, never the existing property's whole storage bank.
+fn bind_builtin_cells<T, V>(
+    mut bank: &mut [T],
+    mut writes: Vec<(usize, V)>,
+) -> JsResult<Vec<(&mut T, V)>> {
+    writes.sort_unstable_by_key(|(index, _)| *index);
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(writes.len())
+        .map_err(|_| EngineResourceError::Allocation)?;
+    let mut offset = 0usize;
+    for (index, value) in writes {
+        let relative = index
+            .checked_sub(offset)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        let (_, rest) = bank
+            .split_at_mut_checked(relative)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        let (cell, tail) = rest
+            .split_first_mut()
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        result.push((cell, value));
+        bank = tail;
+        offset = index
+            .checked_add(1)
+            .ok_or(EngineResourceError::SizeOverflow)?;
+    }
+    Ok(result)
+}
+
+fn prepare_builtin_map<'a>(
+    properties: &'a mut PropertyMap,
+    table: &'a mut PropertyTableInner,
+    recipe: &super::PreparedNamedProperties,
+    mode: BuiltinTargetMode,
+) -> JsResult<BuiltinMapPlan<'a>> {
+    use super::shape::slot::Slot;
+    let storage = properties.named_storage_mut();
+    if matches!(mode, BuiltinTargetMode::Fresh) && (!storage.is_empty() || !table.keys.is_empty()) {
+        return Err(ObjectConstructionError::NamedSlotsAlreadyInitialized.into());
+    }
+    if storage.len() != table.required_slots as usize {
+        return Err(ObjectConstructionError::NamedSlotCount {
+            expected: table.required_slots as usize,
+            actual: storage.len(),
+        }
+        .into());
+    }
+    let count = recipe.table.keys.len();
+    table.reserve(count)?;
+    storage
+        .try_reserve(recipe.slots.storage.len())
+        .map_err(|_| EngineResourceError::Allocation)?;
+    let mut value_writes = Vec::new();
+    let mut key_writes = Vec::new();
+    let mut post = BuiltinMapPost {
+        records: Vec::new(),
+        appended: Vec::new(),
+        values: Vec::new(),
+        displaced: Vec::new(),
+        required_slots: table.required_slots,
+    };
+    value_writes
+        .try_reserve_exact(recipe.slots.storage.len())
+        .map_err(|_| EngineResourceError::Allocation)?;
+    key_writes
+        .try_reserve_exact(count)
+        .map_err(|_| EngineResourceError::Allocation)?;
+    post.records
+        .try_reserve_exact(count)
+        .map_err(|_| EngineResourceError::Allocation)?;
+    post.appended
+        .try_reserve_exact(count)
+        .map_err(|_| EngineResourceError::Allocation)?;
+    post.values
+        .try_reserve_exact(recipe.slots.storage.len())
+        .map_err(|_| EngineResourceError::Allocation)?;
+    post.displaced
+        .try_reserve_exact(recipe.slots.storage.len())
+        .map_err(|_| EngineResourceError::Allocation)?;
+    for (key, source_slot) in &recipe.table.keys {
+        let start = source_slot.index as usize;
+        let end = start
+            .checked_add(source_slot.width() as usize)
+            .ok_or(EngineResourceError::SizeOverflow)?;
+        let values = recipe
+            .slots
+            .storage
+            .get(start..end)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        if let Some((index, old)) = table.map.get(key).map(std::cell::Cell::get) {
+            if !old.attributes.width_match(source_slot.attributes) {
+                return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+            }
+            if table.keys.get(index as usize) != Some(&(key.clone(), old)) {
+                return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+            }
+            let slot = Slot {
+                index: old.index,
+                attributes: source_slot.attributes,
+            };
+            for (relative, value) in values.iter().enumerate() {
+                let index = (old.index as usize)
+                    .checked_add(relative)
+                    .ok_or(EngineResourceError::SizeOverflow)?;
+                value_writes.push((index, value.clone()));
+            }
+            key_writes.push((index as usize, slot));
+            post.records.push((key.clone(), index, slot));
+        } else {
+            let index = u32::try_from(
+                table
+                    .keys
+                    .len()
+                    .checked_add(post.appended.len())
+                    .ok_or(EngineResourceError::SizeOverflow)?,
+            )
+            .map_err(|_| EngineResourceError::SizeOverflow)?;
+            let slot = Slot {
+                index: post.required_slots,
+                attributes: source_slot.attributes,
+            };
+            post.required_slots = post
+                .required_slots
+                .checked_add(slot.width())
+                .ok_or(EngineResourceError::SizeOverflow)?;
+            post.records.push((key.clone(), index, slot));
+            post.appended.push((key.clone(), slot));
+            post.values.extend(values.iter().cloned());
+        }
+    }
+    let values = bind_builtin_cells(storage.as_mut_slice(), value_writes)?;
+    let keys = bind_builtin_cells(table.keys.as_mut_slice(), key_writes)?;
+    Ok(BuiltinMapPlan { values, keys, post })
+}
+impl BuiltinMapPlan<'_> {
+    fn commit(mut self) -> BuiltinMapPost {
+        for (cell, value) in self.values {
+            self.post.displaced.push(std::mem::replace(cell, value));
+        }
+        for (cell, slot) in self.keys {
+            cell.1 = slot;
+        }
+        self.post
+    }
+}
+impl BuiltinMapPost {
+    fn finish(
+        mut self,
+        properties: &mut PropertyMap,
+        table: &mut PropertyTableInner,
+    ) -> Vec<crate::value::StoredValue> {
+        for (key, index, slot) in self.records {
+            table.map.insert(key, std::cell::Cell::new((index, slot)));
+        }
+        table.keys.append(&mut self.appended);
+        properties.named_storage_mut().append(&mut self.values);
+        table.required_slots = self.required_slots;
+        self.displaced
+    }
+}
+fn builtin_prototype(
+    target: &PreparedBuiltinTarget,
+    extensible: bool,
+    current: &Option<ObjectEdge>,
+) -> JsResult<Option<Option<ObjectEdge>>> {
+    match &target.prototype {
+        BuiltinPrototype::Keep => Ok(None),
+        BuiltinPrototype::Set(value) => {
+            if value
+                .as_ref()
+                .is_some_and(|value| !target.target.identity().same_heap(value.identity()))
+            {
+                return Err(ObjectConstructionError::PrototypeRefused.into());
+            }
+            let edge = value.as_ref().map(JsObject::edge);
+            if !extensible && *current != edge {
+                return Err(ObjectConstructionError::PrototypeRefused.into());
+            }
+            Ok(Some(edge))
+        }
+    }
+}
+
+/// All roots/intents outlive every guard on every return path. Only checked host
+/// reservations and closed scalar admission occur under the guards. No callback,
+/// GC allocation, fallible lookup or opaque capture disposal occurs after commit.
+fn validate_builtin_roots(target: &PreparedBuiltinTarget) -> JsResult<()> {
+    let identity = target.target.identity();
+    for value in &target.properties.slots._roots {
+        if value
+            .as_object()
+            .is_some_and(|object| !identity.same_heap(object.identity()))
+        {
+            return Err(
+                ObjectConstructionError::InvalidStoredEdge(AccessError::ForeignHeap).into(),
+            );
+        }
+    }
+    if target
+        .function
+        .as_ref()
+        .is_some_and(|metadata| !identity.same_heap(metadata.realm.identity()))
+    {
+        return Err(ObjectConstructionError::InvalidStoredEdge(AccessError::ForeignHeap).into());
+    }
+    Ok(())
+}
+
+pub(crate) fn commit_builtin_targets(
+    first: PreparedBuiltinTarget,
+    second: Option<PreparedBuiltinTarget>,
+) -> JsResult<()> {
+    validate_builtin_roots(&first)?;
+    if let Some(second) = &second {
+        validate_builtin_roots(second)?;
+    }
+    match second {
+        Some(second) => commit_builtin_pair(first, second),
+        None => commit_builtin_single(first),
+    }
+}
+fn commit_builtin_single(target: PreparedBuiltinTarget) -> JsResult<()> {
+    use crate::native_function::NativeFunctionObject;
+    let shape = target.target.borrow()?.shape()?;
+    let unique = shape
+        .as_unique()
+        .ok_or(ObjectConstructionError::ExpectedUniqueShape)?;
+    let mut object = target.target.borrow_mut()?;
+    let mut guards = unique.borrow_for_builtin().map_err(RootingError::Access)?;
+    if !object.properties.same_shape(&shape) {
+        return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+    }
+    let prototype = builtin_prototype(&target, object.extensible, &guards.prototype)?;
+    let native = target
+        .function
+        .as_ref()
+        .map(|metadata| {
+            object
+                .data
+                .downcast_mut::<NativeFunctionObject>()
+                .ok_or(ObjectAccessError::WrongNativeBrand)
+                .map(|native| (native, metadata))
+        })
+        .transpose()?;
+    let plan = prepare_builtin_map(
+        &mut object.state.properties,
+        &mut guards.table,
+        &target.properties,
+        target.mode,
+    )?;
+    let displaced = plan
+        .commit()
+        .finish(&mut object.state.properties, &mut guards.table);
+    let old_prototype =
+        prototype.map(|prototype| std::mem::replace(&mut *guards.prototype, prototype));
+    let old_function = native.map(|(native, metadata)| {
+        native.constructor = metadata.constructor;
+        native.realm = Some(metadata.realm.edge());
+        std::mem::replace(&mut native.f, metadata.function.clone())
+    });
+    if let Some(value) = target.extensible {
+        object.state.extensible = value;
+    }
+    drop(guards);
+    drop(object);
+    drop((displaced, old_prototype, old_function));
+    Ok(())
+}
+fn commit_builtin_pair(
+    first: PreparedBuiltinTarget,
+    second: PreparedBuiltinTarget,
+) -> JsResult<()> {
+    use crate::native_function::NativeFunctionObject;
+    let first_shape = first.target.borrow()?.shape()?;
+    let second_shape = second.target.borrow()?.shape()?;
+    let first_unique = first_shape
+        .as_unique()
+        .ok_or(ObjectConstructionError::ExpectedUniqueShape)?;
+    let second_unique = second_shape
+        .as_unique()
+        .ok_or(ObjectConstructionError::ExpectedUniqueShape)?;
+    let mut first_object = first.target.borrow_mut()?;
+    let mut second_object = second.target.borrow_mut()?;
+    let mut first_guards = first_unique
+        .borrow_for_builtin()
+        .map_err(RootingError::Access)?;
+    let mut second_guards = second_unique
+        .borrow_for_builtin()
+        .map_err(RootingError::Access)?;
+    if !first_object.properties.same_shape(&first_shape)
+        || !second_object.properties.same_shape(&second_shape)
+    {
+        return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
+    }
+    let first_proto = builtin_prototype(&first, first_object.extensible, &first_guards.prototype)?;
+    let second_proto =
+        builtin_prototype(&second, second_object.extensible, &second_guards.prototype)?;
+    let first_native = first
+        .function
+        .as_ref()
+        .map(|metadata| {
+            first_object
+                .data
+                .downcast_mut::<NativeFunctionObject>()
+                .ok_or(ObjectAccessError::WrongNativeBrand)
+                .map(|native| (native, metadata))
+        })
+        .transpose()?;
+    let second_native = second
+        .function
+        .as_ref()
+        .map(|metadata| {
+            second_object
+                .data
+                .downcast_mut::<NativeFunctionObject>()
+                .ok_or(ObjectAccessError::WrongNativeBrand)
+                .map(|native| (native, metadata))
+        })
+        .transpose()?;
+    let first_plan = prepare_builtin_map(
+        &mut first_object.state.properties,
+        &mut first_guards.table,
+        &first.properties,
+        first.mode,
+    )?;
+    let second_plan = prepare_builtin_map(
+        &mut second_object.state.properties,
+        &mut second_guards.table,
+        &second.properties,
+        second.mode,
+    )?;
+    // No refusal remains after the first cell write. Both targets, including
+    // native payloads and prototype cells, remain guarded until both commits end.
+    let first_post = first_plan.commit();
+    let second_post = second_plan.commit();
+    let first_displaced =
+        first_post.finish(&mut first_object.state.properties, &mut first_guards.table);
+    let second_displaced = second_post.finish(
+        &mut second_object.state.properties,
+        &mut second_guards.table,
+    );
+    let first_old_proto =
+        first_proto.map(|prototype| std::mem::replace(&mut *first_guards.prototype, prototype));
+    let second_old_proto =
+        second_proto.map(|prototype| std::mem::replace(&mut *second_guards.prototype, prototype));
+    let first_old_function = first_native.map(|(native, metadata)| {
+        native.constructor = metadata.constructor;
+        native.realm = Some(metadata.realm.edge());
+        std::mem::replace(&mut native.f, metadata.function.clone())
+    });
+    let second_old_function = second_native.map(|(native, metadata)| {
+        native.constructor = metadata.constructor;
+        native.realm = Some(metadata.realm.edge());
+        std::mem::replace(&mut native.f, metadata.function.clone())
+    });
+    if let Some(value) = first.extensible {
+        first_object.state.extensible = value;
+    }
+    if let Some(value) = second.extensible {
+        second_object.state.extensible = value;
+    }
+    drop(second_guards);
+    drop(first_guards);
+    drop(second_object);
+    drop(first_object);
+    drop((
+        first_displaced,
+        second_displaced,
+        first_old_proto,
+        second_old_proto,
+        first_old_function,
+        second_old_function,
+    ));
+    Ok(())
+}
+
+#[cfg(test)]
+mod construction_tests {
+    use super::*;
+    use crate::object::shape::slot::SlotAttributes;
+    use crate::{js_string, object::NamedLayout};
+    use surgeist_js_gc::heap::AllocationCollection;
+
+    #[test]
+    fn displaced_native_capture_drop_reenters_both_targets_after_complete_commit() {
+        use crate::{
+            NativeFunction,
+            builtins::function::ConstructorKind,
+            native_function::{CapturedObject, NativeCapture, NativeFunctionObject},
+            object::JsFunction,
+        };
+        use std::cell::Cell;
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct Snapshot {
+            first_value: Option<i32>,
+            second_value: Option<i32>,
+            first_prototype: Option<ObjectId>,
+            second_prototype: Option<ObjectId>,
+            first_extensible: bool,
+            second_extensible: bool,
+            native_is_base_constructor: bool,
+            native_has_realm: bool,
+            native_name: JsString,
+        }
+
+        #[derive(Default)]
+        struct Observation {
+            calls: Cell<usize>,
+            result: RefCell<Option<JsResult<Snapshot>>>,
+        }
+
+        struct LiveCapture {
+            first: JsObject,
+            second: JsObject,
+            observation: Rc<Observation>,
+        }
+
+        #[derive(surgeist_js_gc::heap::Trace)]
+        struct StoredCapture {
+            first: CapturedObject,
+            second: CapturedObject,
+            #[heap_trace(skip)]
+            observation: Rc<Observation>,
+        }
+
+        impl NativeCapture for LiveCapture {
+            type Stored = StoredCapture;
+
+            fn store(&self) -> Self::Stored {
+                StoredCapture {
+                    first: self.first.store(),
+                    second: self.second.store(),
+                    observation: self.observation.clone(),
+                }
+            }
+
+            fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+                Ok(Self {
+                    first: JsObject::restore(&stored.first)?,
+                    second: JsObject::restore(&stored.second)?,
+                    observation: stored.observation.clone(),
+                })
+            }
+        }
+
+        impl StoredCapture {
+            fn observe(&self) -> JsResult<Snapshot> {
+                let first: JsObject = JsObject::restore(&self.first)?;
+                let second: JsObject = JsObject::restore(&self.second)?;
+                let first_shape = first.borrow()?.shape()?;
+                let second_shape = second.borrow()?.shape()?;
+                let first_unique = first_shape
+                    .as_unique()
+                    .ok_or(ObjectConstructionError::ExpectedUniqueShape)?;
+                let second_unique = second_shape
+                    .as_unique()
+                    .ok_or(ObjectConstructionError::ExpectedUniqueShape)?;
+                let first = first
+                    .downcast::<NativeFunctionObject>()
+                    .map_err(|_| ObjectAccessError::WrongNativeBrand)?;
+
+                // Keep every real object/native and shape/table/prototype guard
+                // together, rather than using a preflight or observer-only flag.
+                let first_object = first.borrow_mut()?;
+                let second_object = second.borrow_mut()?;
+                let first_guards = first_unique
+                    .borrow_for_builtin()
+                    .map_err(RootingError::Access)?;
+                let second_guards = second_unique
+                    .borrow_for_builtin()
+                    .map_err(RootingError::Access)?;
+
+                // Read storage via the already-held table's slot. A normal
+                // lookup would conflict with the table guard acquired above.
+                let first_value = first_guards
+                    .table
+                    .map
+                    .get(&js_string!("left").into())
+                    .map(|entry| first_object.properties().get_storage(entry.get().1))
+                    .transpose()?
+                    .and_then(|property| property.value().and_then(JsValue::as_i32));
+                let second_value = second_guards
+                    .table
+                    .map
+                    .get(&js_string!("right").into())
+                    .map(|entry| second_object.properties().get_storage(entry.get().1))
+                    .transpose()?
+                    .and_then(|property| property.value().and_then(JsValue::as_i32));
+                let native = first_object.data();
+                Ok(Snapshot {
+                    first_value,
+                    second_value,
+                    first_prototype: first_guards.prototype.as_ref().map(ObjectEdge::identity),
+                    second_prototype: second_guards.prototype.as_ref().map(ObjectEdge::identity),
+                    first_extensible: first_object.extensible,
+                    second_extensible: second_object.extensible,
+                    native_is_base_constructor: matches!(
+                        native.constructor,
+                        Some(ConstructorKind::Base)
+                    ),
+                    native_has_realm: native.realm.is_some(),
+                    native_name: native.name.clone(),
+                })
+            }
+        }
+
+        impl Drop for StoredCapture {
+            fn drop(&mut self) {
+                // Report a refused reentry to the outer test without panicking
+                // from a destructor or swallowing the exact checked failure.
+                let result = self.observe();
+                self.observation.calls.set(self.observation.calls.get() + 1);
+                drop(self.observation.result.replace(Some(result)));
+            }
+        }
+
+        let mut context = Context::builder().build().unwrap();
+        let runtime = context.runtime().clone();
+        let first: JsObject = JsFunction::empty_intrinsic_function(&runtime, true)
+            .unwrap()
+            .into();
+        let second = JsObject::with_null_proto(&runtime).unwrap();
+        let first_parent = JsObject::with_null_proto(&runtime).unwrap();
+        let second_parent = JsObject::with_null_proto(&runtime).unwrap();
+        let observation = Rc::new(Observation::default());
+        let old_function = NativeFunction::from_fn_with_captures(
+            |_, _, _, _| Ok(JsValue::undefined()),
+            LiveCapture {
+                first: first.clone(),
+                second: second.clone(),
+                observation: observation.clone(),
+            },
+        );
+        let old_pointer = {
+            let mut native = first
+                .downcast_mut::<NativeFunctionObject>()
+                .unwrap()
+                .unwrap();
+            native.name = js_string!("retained native name");
+            std::mem::replace(&mut native.f, old_function.stored())
+        };
+        drop(old_pointer);
+        // Leave the actual target payload as the sole owner of the old stored
+        // closure. Its traced capture holds edges, not rooted heap owners.
+        drop(old_function);
+        assert_eq!(observation.calls.get(), 0);
+
+        commit_builtin_targets(
+            PreparedBuiltinTarget::callable(
+                first.clone(),
+                BuiltinTargetMode::Fresh,
+                properties("left", 11.into()),
+                BuiltinPrototype::Set(Some(first_parent.clone())),
+                PreparedBuiltinFunction::new(
+                    |_, _, _| Ok(JsValue::from(73)),
+                    Some(ConstructorKind::Base),
+                    context.realm().clone(),
+                ),
+            )
+            .extensible(false),
+            Some(PreparedBuiltinTarget::ordinary(
+                second,
+                BuiltinTargetMode::Fresh,
+                properties("right", 22.into()),
+                BuiltinPrototype::Set(Some(second_parent.clone())),
+            )),
+        )
+        .unwrap();
+
+        // No collection triggers the observation: disposal is synchronous with
+        // replacement, and both targets must already expose the completed state.
+        assert_eq!(observation.calls.get(), 1);
+        assert_eq!(
+            observation.result.take().unwrap().unwrap(),
+            Snapshot {
+                first_value: Some(11),
+                second_value: Some(22),
+                first_prototype: Some(first_parent.identity()),
+                second_prototype: Some(second_parent.identity()),
+                first_extensible: false,
+                second_extensible: true,
+                native_is_base_constructor: true,
+                native_has_realm: true,
+                native_name: js_string!("retained native name"),
+            }
+        );
+        assert_eq!(
+            first
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap(),
+            JsValue::from(73)
+        );
+    }
+
+    fn properties(key: &str, value: JsValue) -> super::super::PreparedNamedProperties {
+        let mut layout = NamedLayout::new(1).unwrap();
+        layout
+            .push(JsString::from(key).into(), SlotAttributes::CONFIGURABLE)
+            .unwrap();
+        layout.prepare(vec![value]).unwrap()
+    }
+    #[test]
+    fn edge_runtime_locator_uses_metadata_without_rooting_or_proving_liveness() {
+        let runtime = Runtime::default();
+        let object = JsObject::with_null_proto(&runtime).unwrap();
+        let edge = object.edge();
+        runtime
+            .heap
+            .read(|_| {
+                assert!(edge.owning_runtime().unwrap().same_heap(&runtime));
+            })
+            .unwrap();
+        drop(object);
+        runtime.collect().unwrap();
+        assert!(!edge.is_live().unwrap());
+        assert!(edge.owning_runtime().unwrap().same_heap(&runtime));
+        drop(runtime);
+        assert!(edge.owning_runtime().is_none());
+    }
+
+    #[test]
+    fn named_layout_refuses_index_duplicate_and_wrong_storage_count() {
+        let mut layout = NamedLayout::new(2).unwrap();
+        assert_eq!(
+            layout
+                .push(1u32.into(), SlotAttributes::empty())
+                .unwrap_err()
+                .as_engine(),
+            Some(&EngineError::ObjectConstruction(
+                ObjectConstructionError::IndexedTemplateKey
+            ))
+        );
+        layout
+            .push(js_string!("first").into(), SlotAttributes::empty())
+            .unwrap();
+        assert_eq!(
+            layout
+                .push(js_string!("first").into(), SlotAttributes::empty())
+                .unwrap_err()
+                .as_engine(),
+            Some(&EngineError::ObjectConstruction(
+                ObjectConstructionError::DuplicateTemplateProperty
+            ))
+        );
+        let error = layout.prepare(vec![]).err().unwrap();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ObjectConstruction(
+                ObjectConstructionError::NamedSlotCount {
+                    expected: 1,
+                    actual: 0
+                }
+            ))
+        );
+    }
+    #[test]
+    fn pair_admission_refusal_preserves_both_targets_and_can_retry() {
+        let runtime = Runtime::default();
+        let first = JsObject::with_null_proto(&runtime).unwrap();
+        let second = JsObject::with_null_proto(&runtime).unwrap();
+        let held = second.borrow().unwrap();
+        let attempt = || {
+            commit_builtin_targets(
+                PreparedBuiltinTarget::ordinary(
+                    first.clone(),
+                    BuiltinTargetMode::Fresh,
+                    properties("left", 1.into()),
+                    BuiltinPrototype::Keep,
+                ),
+                Some(PreparedBuiltinTarget::ordinary(
+                    second.clone(),
+                    BuiltinTargetMode::Fresh,
+                    properties("right", 2.into()),
+                    BuiltinPrototype::Keep,
+                )),
+            )
+        };
+        assert_eq!(
+            attempt().unwrap_err().as_engine(),
+            Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+        );
+        assert!(
+            first
+                .get_property(&js_string!("left").into())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            held.properties()
+                .get(&js_string!("right").into())
+                .unwrap()
+                .is_none()
+        );
+        drop(held);
+        attempt().unwrap();
+        assert_eq!(
+            first
+                .get_property(&js_string!("left").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&JsValue::from(1))
+        );
+        assert_eq!(
+            second
+                .get_property(&js_string!("right").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&JsValue::from(2))
+        );
+    }
+    #[test]
+    fn populated_update_preserves_members_overwrites_same_width_and_appends() {
+        let runtime = Runtime::default();
+        let object = JsObject::with_null_proto(&runtime).unwrap();
+        object
+            .insert_property(
+                js_string!("method"),
+                PropertyDescriptor::builder().value(9).configurable(true),
+            )
+            .unwrap();
+        object
+            .insert_property(
+                js_string!("length"),
+                PropertyDescriptor::builder().value(1).configurable(true),
+            )
+            .unwrap();
+        let mut layout = NamedLayout::new(2).unwrap();
+        layout
+            .push(js_string!("length").into(), SlotAttributes::CONFIGURABLE)
+            .unwrap();
+        layout
+            .push(js_string!("name").into(), SlotAttributes::CONFIGURABLE)
+            .unwrap();
+        commit_builtin_targets(
+            PreparedBuiltinTarget::ordinary(
+                object.clone(),
+                BuiltinTargetMode::Update,
+                layout
+                    .prepare(vec![2.into(), js_string!("new").into()])
+                    .unwrap(),
+                BuiltinPrototype::Keep,
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            object
+                .get_property(&js_string!("method").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&JsValue::from(9))
+        );
+        assert_eq!(
+            object
+                .get_property(&js_string!("length").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&JsValue::from(2))
+        );
+        assert_eq!(
+            object.borrow().unwrap().shape().unwrap().keys().unwrap(),
+            vec![
+                PropertyKey::from(js_string!("method")),
+                PropertyKey::from(js_string!("length")),
+                PropertyKey::from(js_string!("name"))
+            ]
+        );
+    }
+    #[test]
+    fn incompatible_update_width_is_refused_without_changing_existing_value() {
+        let runtime = Runtime::default();
+        let object = JsObject::with_null_proto(&runtime).unwrap();
+        object
+            .insert_property(
+                js_string!("length"),
+                PropertyDescriptor::builder().value(3).configurable(true),
+            )
+            .unwrap();
+        let mut layout = NamedLayout::new(1).unwrap();
+        layout
+            .push(js_string!("length").into(), SlotAttributes::GET)
+            .unwrap();
+        let error = commit_builtin_targets(
+            PreparedBuiltinTarget::ordinary(
+                object.clone(),
+                BuiltinTargetMode::Update,
+                layout
+                    .prepare(vec![JsValue::undefined(), JsValue::undefined()])
+                    .unwrap(),
+                BuiltinPrototype::Keep,
+            ),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ObjectConstruction(
+                ObjectConstructionError::IncompatibleSlotLayout
+            ))
+        );
+        assert_eq!(
+            object
+                .get_property(&js_string!("length").into())
+                .unwrap()
+                .unwrap()
+                .value(),
+            Some(&JsValue::from(3))
+        );
+    }
+    #[test]
+    fn prepared_children_remain_rooted_across_later_allocations() {
+        let runtime = Runtime::default();
+        runtime
+            .heap
+            .set_allocation_collection(AllocationCollection::BeforeAllocation)
+            .unwrap();
+        let object = JsObject::with_null_proto(&runtime).unwrap();
+        let child = JsObject::with_null_proto(&runtime).unwrap();
+        let identity = child.identity();
+        let prepared = PreparedBuiltinTarget::ordinary(
+            object.clone(),
+            BuiltinTargetMode::Fresh,
+            properties("child", child.into()),
+            BuiltinPrototype::Keep,
+        );
+        for _ in 0..8 {
+            drop(JsObject::with_null_proto(&runtime).unwrap());
+        }
+        commit_builtin_targets(prepared, None).unwrap();
+        let value = object
+            .get_property(&js_string!("child").into())
+            .unwrap()
+            .unwrap()
+            .value()
+            .unwrap()
+            .clone();
+        assert_eq!(value.as_object().unwrap().identity(), identity);
+    }
+    #[test]
+    fn authored_and_trusted_access_origins_preserve_distinct_refusals() {
+        for reason in [AccessError::HeapBorrowed, AccessError::PayloadBorrowed] {
+            for origin in [
+                AllocationOrigin::AuthoredInput,
+                AllocationOrigin::TrustedConstruction,
+            ] {
+                assert_eq!(
+                    origin.access_error(reason).as_engine(),
+                    Some(&EngineError::Rooting(RootingError::Access(reason)))
+                );
+            }
+        }
+        for reason in [
+            AccessError::ForeignHeap,
+            AccessError::StaleHandle,
+            AccessError::WrongType,
+        ] {
+            let authored = AllocationOrigin::AuthoredInput.access_error(reason);
+            assert!(authored.as_native().unwrap().is_type());
+            assert_eq!(authored.as_native().unwrap().message(), reason.to_string());
+            assert_eq!(
+                AllocationOrigin::TrustedConstruction
+                    .access_error(reason)
+                    .as_engine(),
+                Some(&EngineError::ObjectConstruction(
+                    ObjectConstructionError::InvalidStoredEdge(reason)
+                ))
+            );
         }
     }
 }

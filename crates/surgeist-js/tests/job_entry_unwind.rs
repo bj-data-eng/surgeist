@@ -15,7 +15,7 @@ use surgeist_js::{
 fn realm_free_async_job_unwind_releases_nested_guest_frames_before_reentry() {
     // Keep this owner unscoped: only the async job boundary can restore its
     // nested invocation state before the host inspects it.
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let original_realm = context.realm().clone();
     context
         .register_global_builtin_callable(

@@ -23,7 +23,7 @@ use std::ops::Deref;
 /// # };
 /// # fn main() -> JsResult<()> {
 /// // Initialize the `Context`
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 ///
 /// // Create a new RegExp with pattern and flags
 /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
@@ -50,7 +50,7 @@ impl JsRegExp {
     /// # };
     /// # fn main() -> JsResult<()> {
     /// // Initialize the `Context`
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// // Create a new RegExp with pattern and flags
     /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
@@ -166,7 +166,7 @@ impl JsRegExp {
     /// #  Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
     ///
     /// let flags = regexp.flags(context.access())?;
@@ -192,7 +192,7 @@ impl JsRegExp {
     /// #  Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
     ///
     /// let src = regexp.source(context.access())?;
@@ -218,7 +218,7 @@ impl JsRegExp {
     /// #  Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
     ///
     /// let test_result = regexp.test(js_string!("football"), context.access())?;
@@ -250,9 +250,7 @@ impl JsRegExp {
             if v.is_null() {
                 Ok(None)
             } else {
-                let obj = v
-                    .to_object(context.access())
-                    .js_expect("value must be an array")?;
+                let obj = v.to_object(context.access())?;
                 let array = JsArray::from_object(obj)
                     .js_expect("from_object must not fail if value is an array object")?;
                 Ok(Some(array))
@@ -267,7 +265,7 @@ impl JsRegExp {
     /// #  Context, JsValue, JsResult, js_string
     /// # };
     /// # fn main() -> JsResult<()> {
-    /// # let context = &mut Context::default();
+    /// # let context = &mut Context::builder().build().unwrap();
     /// let regexp = JsRegExp::new(js_string!("foo"), js_string!("gi"), context.access())?;
     ///
     /// let to_string = regexp.to_string(context.access())?;

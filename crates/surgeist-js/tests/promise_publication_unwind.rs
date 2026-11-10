@@ -137,7 +137,7 @@ fn publication_unwind_finishes_each_unattempted_tail_and_preserves_the_initiatin
     #[cfg(feature = "fuzz")]
     let builder = builder.instructions_remaining(1_000_000);
     let mut context = builder.build().unwrap();
-    let (source, resolver) = JsPromise::new_pending(context.access());
+    let (source, resolver) = JsPromise::new_pending(context.access()).unwrap();
     // Native observation installs the source association before the authored
     // reactions, so each result promise has its actual job-retirement binding.
     let _source_future = source.clone().into_js_future(context.access()).unwrap();
@@ -156,7 +156,7 @@ fn publication_unwind_finishes_each_unattempted_tail_and_preserves_the_initiatin
         );
         tails.push((tail, future, count));
     }
-    let value = JsObject::with_null_proto(context.runtime());
+    let value = JsObject::with_null_proto(context.runtime()).unwrap();
     captures.armed.set(true);
     captures.throw_once.set(true);
     let unwind = catch_unwind(AssertUnwindSafe(|| {

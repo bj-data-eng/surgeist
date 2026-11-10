@@ -42,6 +42,7 @@ pub(crate) use builtins::*;
 
 pub use datatypes::JsData;
 pub use jsobject::*;
+pub(crate) use shape::property_table::NamedLayout;
 
 /// Const `constructor`, usually set on prototypes as a key to point to their respective constructor object.
 pub const CONSTRUCTOR: JsString = js_string!("constructor");
@@ -234,16 +235,14 @@ impl From<&PrivateElement> for StoredPrivateElement {
 
 impl ObjectState {
     /// Returns the shape of the object.
-    #[must_use]
-    pub fn shape(&self) -> Shape {
+    pub fn shape(&self) -> JsResult<Shape> {
         self.properties.shape()
     }
 
     /// Gets the prototype instance of this object.
     #[inline]
-    #[must_use]
-    pub fn prototype(&self) -> JsPrototype {
-        self.properties.shape().prototype()
+    pub fn prototype(&self) -> JsResult<JsPrototype> {
+        self.properties.shape()?.prototype()
     }
 
     /// Sets the prototype instance of the object.
@@ -252,24 +251,20 @@ impl ObjectState {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-invariants-of-the-essential-internal-methods
     #[track_caller]
-    pub fn set_prototype<O: Into<JsPrototype>>(&mut self, prototype: O) -> bool {
+    pub fn set_prototype<O: Into<JsPrototype>>(&mut self, prototype: O) -> JsResult<bool> {
         let prototype = prototype.into();
-        if prototype.as_ref().is_some_and(|prototype| {
-            !self
-                .properties
-                .shape()
-                .identity()
-                .same_heap(prototype.identity())
-        }) {
-            return false;
+        let shape = self.properties.shape()?;
+        if prototype
+            .as_ref()
+            .is_some_and(|prototype| !shape.identity().same_heap(prototype.identity()))
+        {
+            return Ok(false);
         }
         if self.extensible {
-            self.properties.set_prototype(prototype);
-            true
+            self.properties.set_prototype(prototype)?;
+            Ok(true)
         } else {
-            // If target is non-extensible, [[SetPrototypeOf]] must return false
-            // unless V is the SameValue as the target's observed [[GetPrototypeOf]] value.
-            self.prototype() == prototype
+            Ok(shape.prototype()? == prototype)
         }
     }
 
@@ -289,7 +284,7 @@ impl ObjectState {
     ///
     /// If a field was already in the object with the same name, then `true` is returned
     /// otherwise, `false` is returned.
-    pub(crate) fn insert<K, P>(&mut self, key: K, property: P) -> bool
+    pub(crate) fn insert<K, P>(&mut self, key: K, property: P) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
@@ -301,7 +296,7 @@ impl ObjectState {
     ///
     /// Returns `true` if the property was removed, `false` otherwise.
     #[inline]
-    pub(crate) fn remove(&mut self, key: &PropertyKey) -> bool {
+    pub(crate) fn remove(&mut self, key: &PropertyKey) -> JsResult<bool> {
         self.properties.remove(key)
     }
 
@@ -471,7 +466,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 
     /// Builds the function object, rejecting captures the realm cannot own.
     pub fn build(self) -> JsResult<JsFunction> {
-        let object = self.realm.intrinsics().templates().function().try_create(
+        let object = self.realm.intrinsics().templates().function().create(
             NativeFunctionObject {
                 f: self.function.stored(),
                 name: self.name.clone(),
@@ -479,6 +474,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
                 realm: Some(self.realm.edge()),
             },
             [self.length.into(), self.name.into()],
+            AllocationOrigin::AuthoredInput,
         )?;
 
         Ok(JsFunction::from_object_unchecked(object))
@@ -498,7 +494,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 /// #     property::Attribute,
 /// #     js_string,
 /// # };
-/// let mut context = Context::default();
+/// let mut context = Context::builder().build().unwrap();
 /// let object = ObjectInitializer::new(context.access())
 ///     .property(js_string!("hello"), js_string!("world"), Attribute::all())
 ///     .property(1, 1, Attribute::all())
@@ -530,20 +526,19 @@ impl<'ctx> ObjectInitializer<'ctx> {
     #[inline]
     pub fn new(context: ContextAccess<'ctx>) -> Self {
         let object = JsObject::with_object_proto(context.intrinsics());
-        Self {
-            context,
-            object: Ok(object),
-        }
+        Self { context, object }
     }
 
     /// Create a new `ObjectBuilder` with custom [`NativeObject`] data.
     pub fn with_native_data<T: NativeObject>(data: T, context: ContextAccess<'ctx>) -> Self {
-        let object = JsObject::new(
-            context.root_shape(),
-            context.intrinsics().constructors().object().prototype(),
-            data,
-        )
-        .map(JsObject::upcast);
+        let object = context
+            .intrinsics()
+            .constructors()
+            .object()
+            .prototype()
+            .map_err(crate::JsError::from)
+            .and_then(|prototype| JsObject::new(context.root_shape(), prototype, data))
+            .map(JsObject::upcast);
         Self { context, object }
     }
 
@@ -562,6 +557,9 @@ impl<'ctx> ObjectInitializer<'ctx> {
     where
         B: Into<FunctionBinding>,
     {
+        if self.object.is_err() {
+            return self;
+        }
         let binding = binding.into();
         let property = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
@@ -597,9 +595,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
 
     /// Add new accessor property to the object.
     ///
-    /// # Panics
-    ///
-    /// If both getter or setter are [`None`].
+    /// The recipe refuses an accessor with neither getter nor setter.
     pub fn accessor<K>(
         &mut self,
         key: K,
@@ -610,8 +606,13 @@ impl<'ctx> ObjectInitializer<'ctx> {
     where
         K: Into<PropertyKey>,
     {
-        // Accessors should have at least one function.
-        assert!(set.is_some() || get.is_some());
+        if self.object.is_err() {
+            return self;
+        }
+        if set.is_none() && get.is_none() {
+            self.object = Err(crate::error::ObjectConstructionError::InvalidAccessorLayout.into());
+            return self;
+        }
 
         let property = PropertyDescriptor::builder()
             .maybe_get(get)
@@ -676,7 +677,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             context,
             function,
             static_properties: Vec::new(),
-            prototype: Ok(prototype),
+            prototype,
             length: 0,
             name: js_string!(),
             callable: true,
@@ -692,6 +693,9 @@ impl<'ctx> ConstructorBuilder<'ctx> {
     where
         B: Into<FunctionBinding>,
     {
+        if self.prototype.is_err() {
+            return self;
+        }
         let binding = binding.into();
         let property = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
@@ -720,6 +724,9 @@ impl<'ctx> ConstructorBuilder<'ctx> {
     where
         B: Into<FunctionBinding>,
     {
+        if self.prototype.is_err() {
+            return self;
+        }
         let binding = binding.into();
         let result = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
@@ -930,18 +937,27 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .enumerable(false)
             .configurable(true);
 
-        {
-            let mut state = prototype.borrow_mut()?;
-            let parent = self.inherit.take().unwrap_or_else(|| {
+        let prototype_parent = match self.inherit.take() {
+            Some(parent) => parent,
+            None => Some(
                 self.context
                     .intrinsics()
                     .constructors()
                     .object()
-                    .prototype()
-                    .into()
-            });
-            state.set_prototype(parent);
-        }
+                    .prototype()?,
+            ),
+        };
+        let constructor_parent = match self.custom_prototype.take() {
+            Some(parent) => parent,
+            None => Some(
+                self.context
+                    .intrinsics()
+                    .constructors()
+                    .function()
+                    .prototype()?,
+            ),
+        };
+        prototype.borrow_mut()?.set_prototype(prototype_parent)?;
 
         let constructor = {
             let data = NativeFunctionObject {
@@ -950,22 +966,14 @@ impl<'ctx> ConstructorBuilder<'ctx> {
                 constructor: self.kind,
                 realm: Some(self.context.realm().edge()),
             };
-            let parent = self.custom_prototype.take().unwrap_or_else(|| {
-                self.context
-                    .intrinsics()
-                    .constructors()
-                    .function()
-                    .prototype()
-                    .into()
-            });
-            let constructor = JsObject::new_unique(runtime, parent, data)?.upcast();
+            let constructor = JsObject::new_unique(runtime, constructor_parent, data)?.upcast();
             {
                 let mut state = constructor.borrow_mut()?;
                 for (key, property) in self.static_properties {
-                    state.insert(key, property);
+                    state.insert(key, property)?;
                 }
-                state.insert(StaticJsStrings::LENGTH, length);
-                state.insert(js_string!("name"), name);
+                state.insert(StaticJsStrings::LENGTH, length)?;
+                state.insert(js_string!("name"), name)?;
                 if self.has_prototype_property {
                     state.insert(
                         PROTOTYPE,
@@ -974,7 +982,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
                             .writable(false)
                             .enumerable(false)
                             .configurable(false),
-                    );
+                    )?;
                 }
             }
             constructor
@@ -989,7 +997,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
                     .writable(true)
                     .enumerable(false)
                     .configurable(true),
-            );
+            )?;
         }
 
         Ok(ClassConstructor::new(constructor, prototype))

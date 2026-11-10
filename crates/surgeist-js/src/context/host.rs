@@ -20,7 +20,7 @@ use crate::{JsResult, error::EngineError};
 /// ```
 /// use surgeist_js::{Context, Source};
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let host = owner.host_access();
 /// let value = host.with(|mut access| access.eval(Source::from_bytes("40 + 2")))?;
 /// assert_eq!(value.as_number(), Some(42.0));
@@ -32,7 +32,7 @@ use crate::{JsResult, error::EngineError};
 /// ```compile_fail
 /// use surgeist_js::Context;
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let host = owner.host_access();
 /// let escaped = host.with(|access| Ok(access));
 /// ```
@@ -42,7 +42,7 @@ use crate::{JsResult, error::EngineError};
 /// ```compile_fail
 /// use surgeist_js::Context;
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let host = owner.host_access();
 /// let escaped = host.with(|access| Ok(access.into_host_access()));
 /// ```
@@ -52,7 +52,7 @@ use crate::{JsResult, error::EngineError};
 /// ```compile_fail
 /// use surgeist_js::{Context, Source};
 ///
-/// let mut owner = Context::default();
+/// let mut owner = Context::builder().build().unwrap();
 /// let host = owner.host_access();
 /// let escaped = host.with(|mut access| Ok(async move {
 ///     access.eval(Source::from_bytes("42"))
@@ -144,7 +144,7 @@ impl HostContext<'_> {
     /// ```
     /// use surgeist_js::{Context, Source};
     ///
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let holder = owner.host_access();
     /// let answer = holder
     ///     .with_owned("40 + 2", |source, mut access| {
@@ -160,7 +160,7 @@ impl HostContext<'_> {
     /// ```compile_fail
     /// use surgeist_js::Context;
     ///
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let holder = owner.host_access();
     /// let escaped = holder.with_owned((), |(), access| access).unwrap();
     /// ```
@@ -170,7 +170,7 @@ impl HostContext<'_> {
     /// ```compile_fail
     /// use surgeist_js::{Context, Source};
     ///
-    /// let mut owner = Context::default();
+    /// let mut owner = Context::builder().build().unwrap();
     /// let holder = owner.host_access();
     /// let escaped = holder
     ///     .with_owned((), |(), mut access| async move {

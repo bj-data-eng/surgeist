@@ -99,59 +99,59 @@ impl IntrinsicObject for SharedArrayBuffer {
 
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let get_byte_length = BuiltInBuilder::callable(realm, Self::get_byte_length)
             .name(js_string!("get byteLength"))
-            .build();
+            .build()?;
 
         let get_growable = BuiltInBuilder::callable(realm, Self::get_growable)
             .name(js_string!("get growable"))
-            .build();
+            .build()?;
 
         let get_max_byte_length = BuiltInBuilder::callable(realm, Self::get_max_byte_length)
             .name(js_string!("get maxByteLength"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("byteLength"),
                 Some(get_byte_length),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("growable"),
                 Some(get_growable),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("maxByteLength"),
                 Some(get_max_byte_length),
                 None,
                 flag_attributes,
-            )
-            .method(Self::slice, js_string!("slice"), 2)
-            .method(Self::grow, js_string!("grow"), 1)
+            )?
+            .method(Self::slice, js_string!("slice"), 2)?
+            .method(Self::grow, js_string!("grow"), 1)?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 

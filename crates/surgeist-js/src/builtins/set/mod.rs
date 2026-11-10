@@ -121,72 +121,72 @@ fn get_set_record(obj: &JsValue, context: &mut Context) -> JsResult<SetRecord> {
 pub(crate) struct Set;
 
 impl IntrinsicObject for Set {
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let size_getter = BuiltInBuilder::callable(realm, Self::size_getter)
             .name(js_string!("get size"))
-            .build();
+            .build()?;
 
         let values_function = BuiltInBuilder::callable(realm, Self::values)
             .name(js_string!("values"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::clear, js_string!("clear"), 0)
-            .method(Self::delete, js_string!("delete"), 1)
-            .method(Self::entries, js_string!("entries"), 0)
-            .method(Self::for_each, js_string!("forEach"), 1)
-            .method(Self::has, js_string!("has"), 1)
-            .method(Self::difference, js_string!("difference"), 1)
-            .method(Self::intersection, js_string!("intersection"), 1)
-            .method(Self::is_disjoint_from, js_string!("isDisjointFrom"), 1)
-            .method(Self::is_subset_of, js_string!("isSubsetOf"), 1)
-            .method(Self::is_superset_of, js_string!("isSupersetOf"), 1)
+            )?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::clear, js_string!("clear"), 0)?
+            .method(Self::delete, js_string!("delete"), 1)?
+            .method(Self::entries, js_string!("entries"), 0)?
+            .method(Self::for_each, js_string!("forEach"), 1)?
+            .method(Self::has, js_string!("has"), 1)?
+            .method(Self::difference, js_string!("difference"), 1)?
+            .method(Self::intersection, js_string!("intersection"), 1)?
+            .method(Self::is_disjoint_from, js_string!("isDisjointFrom"), 1)?
+            .method(Self::is_subset_of, js_string!("isSubsetOf"), 1)?
+            .method(Self::is_superset_of, js_string!("isSupersetOf"), 1)?
             .method(
                 Self::symmetric_difference,
                 js_string!("symmetricDifference"),
                 1,
-            )
-            .method(Self::union, js_string!("union"), 1)
+            )?
+            .method(Self::union, js_string!("union"), 1)?
             .property(
                 js_string!("keys"),
                 values_function.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("size"),
                 Some(size_getter),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 js_string!("values"),
                 values_function.clone(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::iterator(),
                 values_function,
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .build()?;
 
         Ok(())
@@ -227,7 +227,7 @@ impl BuiltInConstructor for Set {
             context.root_shape(),
             prototype,
             OrderedSet::default(),
-        )
+        )?
         .upcast();
 
         // 4. If iterable is either undefined or null, return set.
@@ -929,7 +929,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. Let resultSetData be a new empty List.
-        let result_set = Self::create_from_data(OrderedSet::new(), context);
+        let result_set = Self::create_from_data(OrderedSet::new(), context)?;
 
         // 5. If SetDataSize(O.[[SetData]]) ≤ otherRec.[[Size]], then
         if this.borrow()?.data().len() <= other_rec.size {
@@ -1095,7 +1095,7 @@ impl Set {
             return Err(js_error!(TypeError: "collection data crosses JavaScript runtimes"));
         }
         let data = set.borrow()?.data().clone();
-        Ok(Self::create_from_data(data, context))
+        Self::create_from_data(data, context)
     }
 
     pub(crate) fn add_to_data(set: &JsObject<OrderedSet>, value: JsValue) -> JsResult<()> {
@@ -1104,10 +1104,13 @@ impl Set {
         Ok(())
     }
 
-    pub(crate) fn create_from_data(data: OrderedSet, context: &Context) -> JsObject<OrderedSet> {
+    pub(crate) fn create_from_data(
+        data: OrderedSet,
+        context: &Context,
+    ) -> JsResult<JsObject<OrderedSet>> {
         JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().constructors().set().prototype(),
+            context.intrinsics().constructors().set().prototype()?,
             data,
         )
     }

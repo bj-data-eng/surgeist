@@ -377,7 +377,7 @@ mod tests {
         limit: u64,
         strict: bool,
     ) -> (JsResult<Vec<JsString>>, Vec<Sym>, ExecutionReport) {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let root = context.realm().scope().clone();
         let before = Scope::new(root.clone(), false).unique_id();
         let bindings = root.num_bindings();

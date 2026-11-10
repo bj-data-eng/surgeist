@@ -4,7 +4,7 @@ use surgeist_js::Context;
 
 #[test]
 fn btoa_basic() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -31,7 +31,7 @@ fn btoa_basic() {
 
 #[test]
 fn atob_basic() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -58,7 +58,7 @@ fn atob_basic() {
 
 #[test]
 fn roundtrip() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -76,7 +76,7 @@ fn roundtrip() {
 
 #[test]
 fn btoa_throws_on_non_latin1() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -101,7 +101,7 @@ fn btoa_throws_on_non_latin1() {
 
 #[test]
 fn atob_throws_on_invalid_input() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(
@@ -128,7 +128,7 @@ fn atob_throws_on_invalid_input() {
 
 #[test]
 fn atob_ignores_whitespace() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
     crate::base64::register(None, context).unwrap();
 
     run_test_actions_with(

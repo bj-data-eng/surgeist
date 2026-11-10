@@ -667,7 +667,7 @@ pub(crate) fn typed_array_exotic_own_property_keys(
     //     a. Append P to keys.
     // 5. For each own property key P of O such that P is a Symbol, in ascending chronological order of property creation, do
     //     a. Append P to keys.
-    keys.extend(obj.borrow()?.properties.shape().keys());
+    keys.extend(obj.borrow()?.properties.shape()?.keys()?);
 
     // 6. Return keys.
     Ok(keys)

@@ -167,11 +167,11 @@ fn completion_refusal(resumed: bool, guest_throw: bool) {
             }),
         )
         .unwrap();
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("bodyCompletionGate"), gate, Attribute::all())
         .unwrap();
-    let guest_reason: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let guest_reason: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     context
         .register_global_property(
             js_string!("bodyCompletionGuestReason"),
@@ -179,7 +179,7 @@ fn completion_refusal(resumed: bool, guest_throw: bool) {
             Attribute::all(),
         )
         .unwrap();
-    let hook_leaf: JsValue = JsObject::with_null_proto(context.runtime()).into();
+    let hook_leaf: JsValue = JsObject::with_null_proto(context.runtime()).unwrap().into();
     let original: JsError = PanicError::new("authored body-completion refusal")
         .with_source(
             JsNativeError::range()

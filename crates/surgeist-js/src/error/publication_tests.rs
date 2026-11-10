@@ -22,8 +22,8 @@ fn payload(error: &JsError) -> &ForeignSelectedRealm {
 
 #[test]
 fn receiving_ownership_produces_direct_type_error_and_typed_publication_refusal() {
-    let mut receiving = Context::default();
-    let selected = Context::default();
+    let mut receiving = Context::builder().build().unwrap();
+    let selected = Context::builder().build().unwrap();
     let direct = receiving.check_realm(selected.realm()).unwrap_err();
     assert!(direct.is_catchable());
     assert!(matches!(
@@ -91,8 +91,8 @@ fn publication_diagnostic_preserves_topology_identity_trace_and_stored_edge_cust
         AllocationCollection::Manual,
         AllocationCollection::BeforeAllocation,
     ] {
-        let receiving = Context::default();
-        let selected = Context::default();
+        let receiving = Context::builder().build().unwrap();
+        let selected = Context::builder().build().unwrap();
         let runtime = receiving.runtime();
         runtime.heap.set_allocation_collection(policy).unwrap();
         let drops = Rc::new(Cell::new(0));
@@ -179,8 +179,8 @@ fn publication_diagnostic_preserves_topology_identity_trace_and_stored_edge_cust
 
 #[test]
 fn publication_admission_masks_a_foreign_parent_without_retaining_local_descendants() {
-    let receiving = Context::default();
-    let selected = Context::default();
+    let receiving = Context::builder().build().unwrap();
+    let selected = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let object = JsObject::new_unique(receiving.runtime(), None, Probe(drops.clone()))
         .unwrap()
@@ -216,7 +216,7 @@ fn publication_admission_masks_a_foreign_parent_without_retaining_local_descenda
 
 #[test]
 fn deadline_failure_preserves_exact_large_operands_through_all_error_forms() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let now = JsInstant::new(u64::MAX, 999_999_999);
     let delay = JsDuration::from(Duration::new(u64::MAX, 123));
     let error: JsError = EngineError::JobDeadlineOverflow { now, delay }.into();
@@ -247,8 +247,8 @@ impl Drop for Cycle {
 
 #[test]
 fn stored_publication_diagnostic_cycle_collects_after_external_observation_drops() {
-    let receiving = Context::default();
-    let selected = Context::default();
+    let receiving = Context::builder().build().unwrap();
+    let selected = Context::builder().build().unwrap();
     let runtime = receiving.runtime();
     runtime
         .heap
@@ -293,8 +293,8 @@ fn stored_publication_diagnostic_cycle_collects_after_external_observation_drops
 
 #[test]
 fn enclosing_diagnostic_traces_and_masks_the_nested_publication_source() {
-    let receiving = Context::default();
-    let selected = Context::default();
+    let receiving = Context::builder().build().unwrap();
+    let selected = Context::builder().build().unwrap();
     let drops = Rc::new(Cell::new(0));
     let object = JsObject::new_unique(receiving.runtime(), None, Probe(drops.clone()))
         .unwrap()

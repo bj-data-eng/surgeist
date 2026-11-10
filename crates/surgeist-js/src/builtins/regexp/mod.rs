@@ -63,123 +63,123 @@ impl IntrinsicObject for RegExp {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
-            .build();
+            .build()?;
 
         let flag_attributes = Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE;
 
         let get_has_indices = BuiltInBuilder::callable(realm, Self::get_has_indices)
             .name(js_string!("get hasIndices"))
-            .build();
+            .build()?;
         let get_global = BuiltInBuilder::callable(realm, Self::get_global)
             .name(js_string!("get global"))
-            .build();
+            .build()?;
         let get_ignore_case = BuiltInBuilder::callable(realm, Self::get_ignore_case)
             .name(js_string!("get ignoreCase"))
-            .build();
+            .build()?;
         let get_multiline = BuiltInBuilder::callable(realm, Self::get_multiline)
             .name(js_string!("get multiline"))
-            .build();
+            .build()?;
         let get_dot_all = BuiltInBuilder::callable(realm, Self::get_dot_all)
             .name(js_string!("get dotAll"))
-            .build();
+            .build()?;
         let get_unicode = BuiltInBuilder::callable(realm, Self::get_unicode)
             .name(js_string!("get unicode"))
-            .build();
+            .build()?;
         let get_unicode_sets = BuiltInBuilder::callable(realm, Self::get_unicode_sets)
             .name(js_string!("get unicodeSets"))
-            .build();
+            .build()?;
         let get_sticky = BuiltInBuilder::callable(realm, Self::get_sticky)
             .name(js_string!("get sticky"))
-            .build();
+            .build()?;
         let get_flags = BuiltInBuilder::callable(realm, Self::get_flags)
             .name(js_string!("get flags"))
-            .build();
+            .build()?;
         let get_source = BuiltInBuilder::callable(realm, Self::get_source)
             .name(js_string!("get source"))
-            .build();
-        let regexp = BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .static_method(Self::escape, js_string!("escape"), 1)
+            .build()?;
+        let regexp = BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .static_method(Self::escape, js_string!("escape"), 1)?
             .static_accessor(
                 JsSymbol::species(),
                 Some(get_species),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .property(js_string!("lastIndex"), 0, Attribute::all())
-            .method(Self::test, js_string!("test"), 1)
-            .method(Self::exec, js_string!("exec"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::r#match, JsSymbol::r#match(), 1)
-            .method(Self::match_all, JsSymbol::match_all(), 1)
-            .method(Self::replace, JsSymbol::replace(), 2)
-            .method(Self::search, JsSymbol::search(), 1)
-            .method(Self::split, JsSymbol::split(), 2)
+            )?
+            .property(js_string!("lastIndex"), 0, Attribute::all())?
+            .method(Self::test, js_string!("test"), 1)?
+            .method(Self::exec, js_string!("exec"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::r#match, JsSymbol::r#match(), 1)?
+            .method(Self::match_all, JsSymbol::match_all(), 1)?
+            .method(Self::replace, JsSymbol::replace(), 2)?
+            .method(Self::search, JsSymbol::search(), 1)?
+            .method(Self::split, JsSymbol::split(), 2)?
             .accessor(
                 js_string!("hasIndices"),
                 Some(get_has_indices),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("global"),
                 Some(get_global),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("ignoreCase"),
                 Some(get_ignore_case),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("multiline"),
                 Some(get_multiline),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("dotAll"),
                 Some(get_dot_all),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("unicode"),
                 Some(get_unicode),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("unicodeSets"),
                 Some(get_unicode_sets),
                 None,
                 flag_attributes,
-            )
+            )?
             .accessor(
                 js_string!("sticky"),
                 Some(get_sticky),
                 None,
                 flag_attributes,
-            )
-            .accessor(js_string!("flags"), Some(get_flags), None, flag_attributes)
+            )?
+            .accessor(js_string!("flags"), Some(get_flags), None, flag_attributes)?
             .accessor(
                 js_string!("source"),
                 Some(get_source),
                 None,
                 flag_attributes,
-            );
+            )?;
 
         #[cfg(feature = "annex-b")]
-        let regexp = regexp.method(Self::compile, js_string!("compile"), 2);
+        let regexp = regexp.method(Self::compile, js_string!("compile"), 2)?;
 
         regexp.build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -430,13 +430,18 @@ impl RegExp {
                 .intrinsics()
                 .templates()
                 .regexp_without_proto()
-                .create_with_prototype(prototype, regexp, vec![0.into()])
+                .create_with_prototype(
+                    prototype,
+                    regexp,
+                    vec![0.into()],
+                    crate::object::AllocationOrigin::TrustedConstruction,
+                )?
         } else {
-            context
-                .intrinsics()
-                .templates()
-                .regexp()
-                .create(regexp, vec![0.into()])
+            context.intrinsics().templates().regexp().create(
+                regexp,
+                vec![0.into()],
+                crate::object::AllocationOrigin::TrustedConstruction,
+            )?
         };
 
         // 23. Return obj.
@@ -489,7 +494,7 @@ impl RegExp {
 
             if JsObject::equals(
                 &object,
-                &context.intrinsics().constructors().regexp().prototype(),
+                &context.intrinsics().constructors().regexp().prototype()?,
             ) {
                 return Ok(JsValue::undefined());
             }
@@ -792,7 +797,7 @@ impl RegExp {
                 // b. Otherwise, throw a TypeError exception.
                 if JsValue::same_value(
                     this,
-                    &JsValue::new(context.intrinsics().constructors().regexp().prototype()),
+                    &JsValue::new(context.intrinsics().constructors().regexp().prototype()?),
                 ) {
                     Ok(JsValue::new(js_string!("(?:)")))
                 } else {
@@ -1272,7 +1277,7 @@ impl RegExp {
         let match_record = Array::create_array_from_list(
             [match_value.start().into(), match_value.end().into()],
             context,
-        );
+        )?;
 
         // 25. Let indices be a new empty List.
         let indices = Array::array_create(n + 1, None, context)?;
@@ -1298,8 +1303,8 @@ impl RegExp {
         #[allow(clippy::if_not_else)]
         let (groups, group_names) = if !named_groups.clone().is_empty() {
             // a. Let groups be OrdinaryObjectCreate(null).
-            let groups = JsObject::with_null_proto(context.runtime());
-            let group_names = JsObject::with_null_proto(context.runtime());
+            let groups = JsObject::with_null_proto(context.runtime())?;
+            let group_names = JsObject::with_null_proto(context.runtime())?;
 
             // e. If the ith capture of R was defined with a GroupName, then
             // i. Let s be the CapturingGroupName of that GroupName.
@@ -1322,7 +1327,7 @@ impl RegExp {
                         Array::create_array_from_list(
                             [range.start.into(), range.end.into()],
                             context,
-                        ),
+                        )?,
                         context.access(),
                     )?;
                 } else {
@@ -1382,10 +1387,14 @@ impl RegExp {
                 // i. Let matchIndexPair be GetMatchIndexPair(S, matchIndices).
                 // c. Else,
                 // i. Let matchIndexPair be undefined.
-                let indices_range = capture.map_or_else(JsValue::undefined, |range| {
-                    Array::create_array_from_list([range.start.into(), range.end.into()], context)
-                        .into()
-                });
+                let indices_range = match capture {
+                    Some(range) => Array::create_array_from_list(
+                        [range.start.into(), range.end.into()],
+                        context,
+                    )?
+                    .into(),
+                    None => JsValue::undefined(),
+                };
 
                 // d. Perform ! CreateDataPropertyOrThrow(A, ! ToString(𝔽(i)), matchIndexPair).
                 indices.create_data_property_or_throw(i, indices_range, context.access())?;
@@ -1598,13 +1607,13 @@ impl RegExp {
         let unicode = flags.contains(b'u') || flags.contains(b'v');
 
         // 13. Return ! CreateRegExpStringIterator(matcher, S, global, fullUnicode).
-        Ok(RegExpStringIterator::create_regexp_string_iterator(
+        RegExpStringIterator::create_regexp_string_iterator(
             matcher.clone(),
             arg_str,
             global,
             unicode,
             context,
-        ))
+        )
     }
 
     /// `RegExp.prototype [ @@replace ] ( string, replaceValue )`

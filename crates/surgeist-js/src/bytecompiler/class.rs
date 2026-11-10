@@ -927,7 +927,7 @@ mod tests {
     #[test]
     fn generated_class_compilers_share_admission_and_preserve_element_order_on_retry() {
         let expected = js_string!("42|7|1|0|41|first,field,block");
-        let mut baseline = Context::default();
+        let mut baseline = Context::builder().build().unwrap();
         let complete = baseline
             .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(4096))
             .unwrap();
@@ -937,7 +937,7 @@ mod tests {
         assert!(work > 0);
         assert!(peak > 1);
         for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-            let mut exact = Context::default();
+            let mut exact = Context::builder().build().unwrap();
             let exact = exact
                 .eval_with_budget(
                     Source::from_bytes(SOURCE),
@@ -952,7 +952,7 @@ mod tests {
             assert_eq!(exact.report.compiler_depth_peak(), peak);
 
             let limit = work - 1;
-            let mut retry = Context::default();
+            let mut retry = Context::builder().build().unwrap();
             let stopped = retry
                 .eval_with_budget(
                     Source::from_bytes(SOURCE),

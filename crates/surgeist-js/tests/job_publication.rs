@@ -87,7 +87,7 @@ fn rejected_generic_job_retries_with_its_original_realm_capture_and_observer() {
     let mut owner = context(Rc::new(Rejector(expected.clone())));
     let selected = owner.realm().clone();
     let captured_realm = selected.clone();
-    let value = JsObject::with_null_proto(owner.runtime());
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let supplied = value.clone();
     let calls = Rc::new(Cell::new(0));
     let seen = calls.clone();
@@ -248,7 +248,7 @@ impl surgeist_js::context::time::Clock for MaximumClock {
 
 #[test]
 fn idle_policy_discards_even_a_foreign_timer_without_sampling_an_overflowing_deadline() {
-    let original = Context::default();
+    let original = Context::builder().build().unwrap();
     let mut owner = Context::builder()
         .job_executor(Rc::new(IdleJobExecutor))
         .clock(Rc::new(MaximumClock))
@@ -339,8 +339,8 @@ fn actual_deadline_rejection_retains_exact_clock_delay_and_unaccepted_timer_cust
 
 #[test]
 fn checked_publication_causes_keep_authored_diagnostics_and_return_catchable_inputs() {
-    let mut owner = Context::default();
-    let value = JsObject::with_null_proto(owner.runtime());
+    let mut owner = Context::builder().build().unwrap();
+    let value = JsObject::with_null_proto(owner.runtime()).unwrap();
     let ordinary = JsError::from_opaque(value.clone().into()).unwrap();
     let refused = JobPublicationCause::try_new(ordinary.clone(), owner.access()).unwrap_err();
     assert_eq!(refused, ordinary);
@@ -586,12 +586,12 @@ fn foreign_publication_retains_the_original_job_while_direct_entry_keeps_its_typ
     assert!(
         mismatch
             .selected_realm()
-            .same_heap(selected.global_object().identity())
+            .same_heap(selected.global_object().unwrap().identity())
     );
     assert!(
         mismatch
             .receiving_realm()
-            .same_heap(receiving.global_object().identity())
+            .same_heap(receiving.global_object().unwrap().identity())
     );
     let DiagnosticKind::Native(cause) = mismatch.diagnostic().kind() else {
         panic!("the owner-generated direct TypeError remains typed diagnostic data")

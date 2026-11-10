@@ -11,7 +11,7 @@ pub(super) fn log_array_to(
     let len = x
         .borrow()?
         .properties()
-        .get(&js_string!("length").into())
+        .get(&js_string!("length").into())?
         .ok_or(super::ValueRenderError::MissingArrayLength)?
         .value()
         .and_then(JsValue::as_number)
@@ -37,7 +37,7 @@ pub(super) fn log_array_to(
                 f.write_str(", ")?;
             }
 
-            if let Some(desc) = x.borrow()?.properties().get(&i.into()) {
+            if let Some(desc) = x.borrow()?.properties().get(&i.into())? {
                 match desc.kind() {
                     DescriptorKind::Data { value, .. } => {
                         if let Some(value) = value {
@@ -86,7 +86,7 @@ pub(super) fn log_array_compact(
     let len = x
         .borrow()?
         .properties()
-        .get(&js_string!("length").into())
+        .get(&js_string!("length").into())?
         .ok_or(super::ValueRenderError::MissingArrayLength)?
         .value()
         .and_then(JsValue::as_number)
@@ -105,7 +105,7 @@ pub(super) fn log_array_compact(
         } else {
             f.write_str(", ")?;
         }
-        if let Some(desc) = x.borrow()?.properties().get(&i.into()) {
+        if let Some(desc) = x.borrow()?.properties().get(&i.into())? {
             match desc.kind() {
                 DescriptorKind::Data { value, .. } => {
                     if let Some(value) = value {

@@ -64,64 +64,64 @@ impl IntrinsicObject for Instant {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_millis = BuiltInBuilder::callable(realm, Self::get_epoch_milliseconds)
             .name(js_string!("get epochMilliseconds"))
-            .build();
+            .build()?;
 
         let get_nanos = BuiltInBuilder::callable(realm, Self::get_epoch_nanoseconds)
             .name(js_string!("get epochNanoseconds"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::INSTANT_TAG,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("epochMilliseconds"),
                 Some(get_millis),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("epochNanoseconds"),
                 Some(get_nanos),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
             .static_method(
                 Self::from_epoch_milliseconds,
                 js_string!("fromEpochMilliseconds"),
                 1,
-            )
+            )?
             .static_method(
                 Self::from_epoch_nanoseconds,
                 js_string!("fromEpochNanoseconds"),
                 1,
-            )
-            .static_method(Self::compare, js_string!("compare"), 2)
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::subtract, js_string!("subtract"), 1)
-            .method(Self::until, js_string!("until"), 1)
-            .method(Self::since, js_string!("since"), 1)
-            .method(Self::round, js_string!("round"), 1)
-            .method(Self::equals, js_string!("equals"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
+            )?
+            .static_method(Self::compare, js_string!("compare"), 2)?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::subtract, js_string!("subtract"), 1)?
+            .method(Self::until, js_string!("until"), 1)?
+            .method(Self::since, js_string!("since"), 1)?
+            .method(Self::round, js_string!("round"), 1)?
+            .method(Self::equals, js_string!("equals"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
             .method(
                 Self::to_zoned_date_time_iso,
                 js_string!("toZonedDateTimeISO"),
                 1,
-            )
+            )?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -526,7 +526,7 @@ impl Instant {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto(context.runtime());
+            let new_round_to = JsObject::with_null_proto(context.runtime())?;
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -800,15 +800,20 @@ pub(crate) fn create_temporal_instant(
 ) -> JsResult<JsValue> {
     // 1. Assert: ! IsValidEpochNanoseconds(epochNanoseconds) is true.
     // 2. If newTarget is not present, set newTarget to %Temporal.Instant%.
-    let new_target = new_target.unwrap_or_else(|| {
-        context
-            .realm()
-            .intrinsics()
-            .constructors()
-            .instant()
-            .constructor()
-            .into()
-    });
+    let new_target = new_target.map_or_else(
+        || {
+            Ok::<_, crate::JsError>(
+                context
+                    .realm()
+                    .intrinsics()
+                    .constructors()
+                    .instant()
+                    .constructor()?
+                    .into(),
+            )
+        },
+        Ok,
+    )?;
     // 3. Let object be ? OrdinaryCreateFromConstructor(newTarget, "%Temporal.Instant.prototype%"), « [[InitializedTemporalInstant]], [[Nanoseconds]] »).
     let proto =
         get_prototype_from_constructor(&new_target, StandardConstructors::instant, context)?;

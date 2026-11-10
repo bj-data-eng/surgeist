@@ -16,12 +16,11 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError
 
 use crate::{
-    Context, JsResult, JsString, JsValue, NativeFunction,
+    Context, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    native_function::NativeFunctionObject,
     object::JsObject,
     property::Attribute,
     realm::Realm,
@@ -37,18 +36,18 @@ pub(crate) struct TypeError;
 impl IntrinsicObject for TypeError {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().error().constructor())
-            .inherits(Some(realm.intrinsics().constructors().error().prototype()))
-            .property(js_string!("name"), Self::NAME, attribute)
-            .property(js_string!("message"), js_string!(), attribute)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().error().constructor()?)?
+            .inherits(Some(realm.intrinsics().constructors().error().prototype()?))?
+            .property(js_string!("name"), Self::NAME, attribute)?
+            .property(js_string!("message"), js_string!(), attribute)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -85,35 +84,25 @@ pub(crate) struct ThrowTypeError;
 
 impl IntrinsicObject for ThrowTypeError {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        let obj = BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().function().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().function().prototype()?)?
             .static_property(StaticJsStrings::LENGTH, 0, Attribute::empty())?
             .static_property(js_string!("name"), js_string!(), Attribute::empty())?
-            .build()?;
-
-        {
-            let mut obj = obj
-                .downcast_mut::<NativeFunctionObject>()?
-                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
-            obj.f = NativeFunction::from_builtin(|_, _, _| {
+            .native_function(|_, _, _| {
                 Err(JsNativeError::typ()
                     .with_message(
                         "'caller', 'callee', and 'arguments' properties may not be accessed on strict mode \
                         functions or the arguments objects for calls to them",
                     )
                     .into())
-            }).stored();
-            obj.name = js_string!();
-            obj.constructor = None;
-            obj.realm = Some(realm.edge());
-        }
-
-        obj.borrow_mut()?.state_mut().extensible = false;
+            }, None)
+            .extensible(false)
+            .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().throw_type_error().into()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().throw_type_error().map(Into::into)?)
     }
 }

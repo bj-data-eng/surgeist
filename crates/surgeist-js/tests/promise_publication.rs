@@ -167,13 +167,13 @@ fn retired(future: &mut JsFuture) {
 fn fanout(reject_source: bool, inline_first: bool) {
     let executor = Rc::new(ScriptedExecutor::default());
     let mut owner = context(executor.clone());
-    let (source, source_resolvers) = JsPromise::new_pending(owner.access());
-    let value: JsValue = JsObject::with_null_proto(owner.runtime()).into();
+    let (source, source_resolvers) = JsPromise::new_pending(owner.access()).unwrap();
+    let value: JsValue = JsObject::with_null_proto(owner.runtime()).unwrap().into();
     let mut targets = Vec::new();
     let mut futures = Vec::new();
     let mut wakes = Vec::new();
     for _ in 0..3 {
-        let (target, resolvers) = JsPromise::new_pending(owner.access());
+        let (target, resolvers) = JsPromise::new_pending(owner.access()).unwrap();
         // Establish the target's actual native association before attaching
         // these real resolving functions as the source's ordered reactions.
         let mut future = target.clone().into_js_future(owner.access()).unwrap();

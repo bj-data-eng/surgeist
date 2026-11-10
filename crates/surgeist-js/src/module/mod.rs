@@ -546,7 +546,11 @@ impl Module {
 
                 // 2. Let pc be ! NewPromiseCapability(%Promise%).
                 let pc = PromiseCapability::new(
-                    &context.intrinsics().constructors().promise().constructor(),
+                    &context
+                        .intrinsics()
+                        .constructors()
+                        .promise()
+                        .constructor()?,
                     context,
                 )?;
 
@@ -816,7 +820,11 @@ impl Module {
         let result = (|| {
             self.check_runtime(context)?;
             let capability = builtins::promise::PromiseCapability::new(
-                &context.intrinsics().constructors().promise().constructor(),
+                &context
+                    .intrinsics()
+                    .constructors()
+                    .promise()
+                    .constructor()?,
                 context,
             )?;
             let result = capability
@@ -888,7 +896,8 @@ impl Module {
     ///
     /// # Errors
     ///
-    /// Returns a `TypeError` if the module belongs to another runtime.
+    /// Returns a `TypeError` if the module belongs to another runtime, or a
+    /// typed host failure if namespace construction cannot complete.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getmodulenamespace
     /// [ns]: https://tc39.es/ecma262/#sec-module-namespace-exotic-objects
@@ -910,7 +919,7 @@ impl Module {
             .filter(|name| self.resolve_export(name, &mut HashSet::default()).is_ok())
             .collect();
 
-        let namespace = ModuleNamespace::create(self.clone(), unambiguous_names, context);
+        let namespace = ModuleNamespace::create(self.clone(), unambiguous_names, context)?;
         self.inner.namespace.replace(Some(namespace.edge()));
         Ok(namespace)
     }
@@ -1022,8 +1031,8 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 
 #[test]
 fn native_exports_do_not_root_unreachable_module_cycles() {
-    let mut context = Context::default();
-    let exported = JsObject::with_null_proto(context.runtime());
+    let mut context = Context::builder().build().unwrap();
+    let exported = JsObject::with_null_proto(context.runtime()).unwrap();
     let module = Module::from_value_as_default(exported.clone().into(), context.access()).unwrap();
     let module_edge = module.edge();
     let exported_edge = exported.edge();
@@ -1053,8 +1062,8 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
 
 #[test]
 fn module_execution_rejects_a_foreign_context() {
-    let mut owner = Context::default();
-    let mut foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let mut foreign = Context::builder().build().unwrap();
     let module = Module::parse(
         Source::from_bytes("export const value = 1;"),
         None,
@@ -1110,8 +1119,8 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
         }
     }
 
-    let mut owner = Context::default();
-    let foreign = Context::default();
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
     let realm = foreign.realm().clone();
     let error = Module::parse(
         Source::from_reader(UnreadableSource, None),
@@ -1158,9 +1167,9 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
 
 #[test]
 fn synthetic_module_construction_rejects_foreign_captures() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
-    let object = JsObject::with_null_proto(foreign.runtime());
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
+    let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
     let initializer =
         SyntheticModuleInitializer::from_fn_with_captures(|_, _, _| Ok(()), object.clone());
     let error = Module::synthetic(&[], initializer, None, None, owner.access()).unwrap_err();
@@ -1173,12 +1182,12 @@ fn synthetic_module_construction_rejects_foreign_captures() {
 
 #[test]
 fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = Context::builder()
         .runtime(owner.runtime().clone())
         .build()
         .unwrap();
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
@@ -1213,9 +1222,9 @@ fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
 
 #[test]
 fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
-    let mut owner = Context::default();
-    let foreign = Context::default();
-    let object = JsObject::with_null_proto(foreign.runtime());
+    let mut owner = Context::builder().build().unwrap();
+    let foreign = Context::builder().build().unwrap();
+    let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
     let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
@@ -1245,7 +1254,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
         .module_loader(loader.clone())
         .build()
         .unwrap();
-    let mut foreign = Context::default();
+    let mut foreign = Context::builder().build().unwrap();
     let dependency = Module::from_value_as_default(1.into(), foreign.access()).unwrap();
     loader.insert("dependency", dependency);
     let module = Module::parse(
@@ -1299,8 +1308,8 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
         }
     }
 
-    let foreign = Context::default();
-    let object = JsObject::with_null_proto(foreign.runtime());
+    let foreign = Context::builder().build().unwrap();
+    let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
     let loader = Rc::new(ForeignErrorLoader(
         JsError::from_opaque(object.into()).unwrap(),
     ));
@@ -1344,8 +1353,8 @@ fn module_promises_reject_foreign_host_job_callback_data() {
         }
     }
 
-    let foreign = Context::default();
-    let object = JsObject::with_null_proto(foreign.runtime());
+    let foreign = Context::builder().build().unwrap();
+    let object = JsObject::with_null_proto(foreign.runtime()).unwrap();
     let loader = Rc::new(MapModuleLoader::new());
     let mut owner = Context::builder()
         .host_hooks(Rc::new(ForeignCallbackData(object)))
@@ -1396,7 +1405,7 @@ fn synthetic_module_foreign_failures_reject_dynamic_import() {
         let initializer = SyntheticModuleInitializer::from_fn_with_captures(
             |_, nested, _| {
                 let runtime = crate::Runtime::default();
-                let foreign = JsObject::with_null_proto(&runtime);
+                let foreign = JsObject::with_null_proto(&runtime)?;
                 let error = JsError::from_opaque(foreign.into())?;
                 Err(if *nested {
                     JsNativeError::error().with_cause(error).into()

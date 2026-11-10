@@ -14,11 +14,13 @@ use surgeist_js_macros::js_str;
 fn native_callbacks_cannot_return_or_throw_foreign_objects() {
     use crate::{Context, JsError, Runtime};
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let function = FunctionObjectBuilder::new(
         context.realm(),
         NativeFunction::from_fn_ptr(|_, args, _| {
-            let object = JsObject::with_null_proto(&Runtime::default()).into();
+            let object = JsObject::with_null_proto(&Runtime::default())
+                .unwrap()
+                .into();
             match args[0].as_number() {
                 Some(1.0) => Err(JsError::from_opaque(object)?),
                 Some(2.0) => {
@@ -46,8 +48,8 @@ fn native_callbacks_cannot_return_or_throw_foreign_objects() {
 fn native_async_job_owns_captures_after_the_function_drops() {
     use crate::{Context, builtins::promise::PromiseState, object::JsPromise};
 
-    let mut context = Context::default();
-    let capture = JsObject::with_null_proto(context.runtime());
+    let mut context = Context::builder().build().unwrap();
+    let capture = JsObject::with_null_proto(context.runtime()).unwrap();
     let weak_capture = capture.edge();
     let callback = NativeFunction::from_async_fn_with_captures(
         |_, _, capture, _| {
@@ -84,14 +86,14 @@ fn native_async_job_owns_captures_after_the_function_drops() {
 fn nested_native_invocation_restores_the_outer_activation() {
     use crate::{Context, JsError};
 
-    let inner_context = Context::default();
+    let inner_context = Context::builder().build().unwrap();
     let inner = FunctionObjectBuilder::new(
         inner_context.realm(),
         NativeFunction::from_fn_with_captures(
             |_, args, inner_realm, context| {
                 assert!(context.realm() == inner_realm);
                 context.runtime().collect().unwrap();
-                let value = JsObject::with_null_proto(context.runtime()).into();
+                let value = JsObject::with_null_proto(context.runtime()).unwrap().into();
                 if args[0].as_boolean() == Some(true) {
                     Err(JsError::from_opaque(value)?)
                 } else {
@@ -272,7 +274,7 @@ fn closure_capture_clone() {
     run_test_actions([
         TestAction::inspect_context(|ctx| {
             let string = js_string!("Hello");
-            let object = JsObject::with_object_proto(ctx.intrinsics());
+            let object = JsObject::with_object_proto(ctx.intrinsics()).unwrap();
             object
                 .define_property_or_throw(
                     js_string!("key"),
@@ -339,7 +341,7 @@ fn function_constructor_early_errors_super() {
 fn dynamic_function_private_parameters_reject_undeclared_names() {
     use crate::{Context, Source};
 
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let mut unexpected = Vec::new();
     for constructor in [
         "Function",

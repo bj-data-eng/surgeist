@@ -51,27 +51,27 @@ impl Service for PluralRules {
 
 impl IntrinsicObject for PluralRules {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .static_method(
                 Self::supported_locales_of,
                 js_string!("supportedLocalesOf"),
                 1,
-            )
+            )?
             .property(
                 JsSymbol::to_string_tag(),
                 js_string!("Intl.PluralRules"),
                 Attribute::CONFIGURABLE,
-            )
-            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
-            .method(Self::select, js_string!("select"), 1)
-            .method(Self::select_range, js_string!("selectRange"), 2)
+            )?
+            .method(Self::resolved_options, js_string!("resolvedOptions"), 0)?
+            .method(Self::select, js_string!("select"), 1)?
+            .method(Self::select_range, js_string!("selectRange"), 2)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -165,7 +165,7 @@ impl BuiltInConstructor for PluralRules {
                 notation,
                 format_options,
             },
-        )
+        )?
         .into())
     }
 }
@@ -403,7 +403,7 @@ impl PluralRules {
         }
 
         let plural_categories =
-            Array::create_array_from_list(plural_categories, options.context().into_owner());
+            Array::create_array_from_list(plural_categories, options.context().into_owner())?;
         options
             .property(
                 js_string!("pluralCategories"),

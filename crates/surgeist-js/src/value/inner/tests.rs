@@ -177,7 +177,7 @@ fn bigint() {
 
 #[test]
 fn object() {
-    let object = JsObject::with_null_proto(&crate::Runtime::default());
+    let object = JsObject::with_null_proto(&crate::Runtime::default()).unwrap();
     let v = InnerValue::object(object.clone());
     assert_type!(v is object(object));
 }

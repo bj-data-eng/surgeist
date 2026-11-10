@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn nested_function_work_exact_and_one_short_preserve_formals_and_fresh_retry() {
-        let mut baseline = Context::default();
+        let mut baseline = Context::builder().build().unwrap();
         let complete = baseline
             .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(512))
             .unwrap();
@@ -293,7 +293,7 @@ mod tests {
         let work = complete.report.compiler_work().unwrap();
         assert!(work > 0);
         for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
-            let mut exact = Context::default();
+            let mut exact = Context::builder().build().unwrap();
             let result = exact
                 .eval_with_budget(
                     Source::from_bytes(SOURCE),
@@ -306,7 +306,7 @@ mod tests {
             assert_eq!(result.report.compiler_work().unwrap(), work);
 
             let limit = work - 1;
-            let mut retry = Context::default();
+            let mut retry = Context::builder().build().unwrap();
             let stopped = retry
                 .eval_with_budget(
                     Source::from_bytes(SOURCE),
@@ -328,14 +328,14 @@ mod tests {
 
     #[test]
     fn nested_functions_share_the_structural_depth_limit() {
-        let mut baseline = Context::default();
+        let mut baseline = Context::builder().build().unwrap();
         let complete = baseline
             .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(512))
             .unwrap();
         assert_eq!(complete.result.unwrap(), 242.into());
         let peak = complete.report.compiler_depth_peak();
         assert!(peak > 1);
-        let mut exact = Context::default();
+        let mut exact = Context::builder().build().unwrap();
         let exact = exact
             .eval_with_budget(
                 Source::from_bytes(SOURCE),
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(exact.report.compiler_depth_peak(), peak);
 
         let limit = peak - 1;
-        let mut retry = Context::default();
+        let mut retry = Context::builder().build().unwrap();
         let stopped = retry
             .eval_with_budget(
                 Source::from_bytes(SOURCE),

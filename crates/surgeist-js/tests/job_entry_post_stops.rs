@@ -13,7 +13,7 @@ use surgeist_js::{
 };
 
 fn assert_poll_returns_its_retained_stop(pending: bool) {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let actual_poll = RefCell::new(None);
     let mut job = NativeAsyncJob::new(move |_| {
         Ok(ContextTask::from_poll(move |_, host| {

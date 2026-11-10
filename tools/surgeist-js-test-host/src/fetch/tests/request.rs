@@ -27,6 +27,7 @@ fn request_constructor() {
         TestAction::inspect_context(|ctx| {
             let response = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
             let response = response
@@ -102,6 +103,7 @@ fn request_clone_preserves_body_without_override() {
         TestAction::inspect_context(|ctx| {
             let request = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
@@ -132,6 +134,7 @@ fn request_clone_empty_body_preserved() {
         TestAction::inspect_context(|ctx| {
             let request = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
@@ -162,6 +165,7 @@ fn request_clone_body_override() {
         TestAction::inspect_context(|ctx| {
             let request = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
@@ -189,6 +193,7 @@ fn request_clone_no_body_preserved() {
         TestAction::inspect_context(|ctx| {
             let request = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
@@ -217,6 +222,7 @@ fn request_clone_method_preserves_body() {
         TestAction::inspect_context(|ctx| {
             let cloned = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
@@ -246,6 +252,7 @@ fn request_clone_method_is_independent() {
         TestAction::inspect_context(|ctx| {
             let original = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("original"), ctx.access())
                 .unwrap();
             let original_obj = original.as_object().unwrap();
@@ -253,6 +260,7 @@ fn request_clone_method_is_independent() {
 
             let cloned = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
@@ -288,6 +296,7 @@ fn request_stores_signal() {
         TestAction::inspect_context(|ctx| {
             let request = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("request"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
@@ -295,6 +304,7 @@ fn request_stores_signal() {
 
             let signal = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("ctrl"), ctx.access())
                 .unwrap();
             let signal = signal
@@ -335,6 +345,7 @@ fn request_clone_preserves_signal_without_override() {
         TestAction::inspect_context(|ctx| {
             let cloned = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
@@ -342,6 +353,7 @@ fn request_clone_preserves_signal_without_override() {
 
             let signal = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("ctrl"), ctx.access())
                 .unwrap();
             let signal = signal
@@ -383,6 +395,7 @@ fn request_clone_signal_override() {
         TestAction::inspect_context(|ctx| {
             let cloned = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
@@ -390,6 +403,7 @@ fn request_clone_signal_override() {
 
             let signal = ctx
                 .global_object()
+                .unwrap()
                 .get(js_str!("ctrl2"), ctx.access())
                 .unwrap();
             let signal = signal

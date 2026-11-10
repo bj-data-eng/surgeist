@@ -35,7 +35,7 @@ use std::{future::Future, pin::Pin, task};
 /// # };
 /// # use std::error::Error;
 /// # fn main() -> Result<(), Box<dyn Error>> {
-/// let context = &mut Context::default();
+/// let context = &mut Context::builder().build().unwrap();
 ///
 /// context.register_global_property(
 ///     js_string!("finally"),
@@ -76,7 +76,7 @@ use std::{future::Future, pin::Pin, task};
 ///     )?
 ///     .finally(
 ///         NativeFunction::from_fn_ptr(|_, _, mut context| {
-///             context.global_object().clone().set(
+///             context.global_object()?.set(
 ///                 js_string!("finally"),
 ///                 JsValue::from(true),
 ///                 true,
@@ -97,7 +97,7 @@ use std::{future::Future, pin::Pin, task};
 ///
 /// assert_eq!(
 ///     context
-///         .global_object()
+///         .global_object()?
 ///         .clone()
 ///         .get(js_string!("finally"), context.access())?,
 ///     JsValue::from(true)
@@ -142,7 +142,7 @@ impl JsPromise {
     /// #    Context, JsValue, js_string
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::new(
     ///     |resolvers, mut context| {
@@ -175,10 +175,10 @@ impl JsPromise {
         let context = context.into_owner();
         let promise = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().constructors().promise().prototype(),
+            context.intrinsics().constructors().promise().prototype()?,
             Promise::new(),
-        );
-        let resolvers = Promise::create_resolving_functions(&promise, context);
+        )?;
+        let resolvers = Promise::create_resolving_functions(&promise, context)?;
 
         if let Err(e) = executor(&resolvers, context.access()) {
             context.check_execution_stop()?;
@@ -198,6 +198,10 @@ impl JsPromise {
     /// running an `executor` function that automatically settles the promise on creation
     /// (see [`JsPromise::new`]).
     ///
+    /// # Errors
+    ///
+    /// Propagates failure to acquire the required intrinsic or construct the promise object.
+    ///
     /// # Examples
     ///
     /// ```
@@ -208,9 +212,9 @@ impl JsPromise {
     /// #    Context, JsValue
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let (promise, resolvers) = JsPromise::new_pending(context.access());
+    /// let (promise, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     ///
     /// assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     ///
@@ -224,16 +228,16 @@ impl JsPromise {
     /// # }
     /// ```
     #[inline]
-    pub fn new_pending(context: ContextAccess<'_>) -> (Self, ResolvingFunctions) {
+    pub fn new_pending(context: ContextAccess<'_>) -> JsResult<(Self, ResolvingFunctions)> {
         let context = context.into_owner();
         let promise = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().constructors().promise().prototype(),
+            context.intrinsics().constructors().promise().prototype()?,
             Promise::new(),
-        );
-        let resolvers = Promise::create_resolving_functions(&promise, context);
+        )?;
+        let resolvers = Promise::create_resolving_functions(&promise, context)?;
 
-        (promise.into(), resolvers)
+        Ok((promise.into(), resolvers))
     }
 
     /// Wraps an existing object with the `JsPromise` interface, returning `Err` if the object
@@ -249,7 +253,7 @@ impl JsPromise {
     /// #    Context, JsObject, JsValue, Source
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = context.eval(Source::from_bytes(
     ///     "new Promise((resolve, reject) => resolve())",
@@ -263,7 +267,7 @@ impl JsPromise {
     ///     PromiseState::Fulfilled(JsValue::undefined())
     /// );
     ///
-    /// assert!(JsPromise::from_object(JsObject::with_null_proto(context.runtime())).is_err());
+    /// assert!(JsPromise::from_object(JsObject::with_null_proto(context.runtime()).unwrap()).is_err());
     ///
     /// # Ok(())
     /// # }
@@ -295,7 +299,7 @@ impl JsPromise {
     /// async fn f() -> JsResult<JsValue> {
     ///     Ok(JsValue::null())
     /// }
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::from_task(|_| Ok(surgeist_js::job::ContextTask::from_future(f())), context.access()).unwrap();
     ///
@@ -313,7 +317,7 @@ impl JsPromise {
     {
         let context = context.into_owner();
         context.check_execution_stop()?;
-        let (promise, resolvers) = Self::new_pending(context.access());
+        let (promise, resolvers) = Self::new_pending(context.access())?;
         let association = Promise::ensure_native_association(&promise.inner, context)?;
         let realm = context.realm().clone();
         let job = NativeAsyncJob::with_realm(
@@ -372,7 +376,7 @@ impl JsPromise {
     /// #    Context, JsResult, JsString, js_string, js_error
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// fn do_thing(success: bool) -> JsResult<JsString> {
     ///     success
@@ -423,7 +427,7 @@ impl JsPromise {
     /// #    Context, js_string
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::resolve(js_string!("resolved!"), context.access())?;
     ///
@@ -440,13 +444,15 @@ impl JsPromise {
     pub fn resolve<V: Into<JsValue>>(value: V, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
         Promise::promise_resolve(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             value.into(),
             context,
         )
         .and_then(Self::from_object)
-        .js_expect("default resolve functions cannot throw and must return a promise")
-        .map_err(Into::into)
     }
 
     /// Creates a `JsPromise` that is rejected with the reason `error`.
@@ -471,7 +477,7 @@ impl JsPromise {
     /// #    Context, js_string, JsError
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::reject(
     ///     JsError::from_opaque(js_string!("oops!").into())?,
@@ -492,13 +498,15 @@ impl JsPromise {
         let context = context.into_owner();
         let reason = error.into().into_opaque(context.access())?;
         Promise::promise_reject(
-            &context.intrinsics().constructors().promise().constructor(),
+            &context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             reason,
             context,
         )
         .and_then(Self::from_object)
-        .js_expect("default reject functions cannot throw and must return a promise")
-        .map_err(Into::into)
     }
 
     /// Gets the current state of the promise.
@@ -515,9 +523,9 @@ impl JsPromise {
     /// #    builtins::promise::PromiseState,
     /// #    Context
     /// # };
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let promise = JsPromise::new_pending(context.access()).0;
+    /// let promise = JsPromise::new_pending(context.access()).unwrap().0;
     ///
     /// assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     /// ```
@@ -561,7 +569,7 @@ impl JsPromise {
     /// #     Context, JsArgs, JsError, JsValue, NativeFunction,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::new(
     ///     |resolvers, mut context| {
@@ -633,7 +641,7 @@ impl JsPromise {
     /// #     Context, JsArgs, JsNativeError, JsValue, NativeFunction,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::new(
     ///     |resolvers, mut context| {
@@ -698,7 +706,7 @@ impl JsPromise {
     /// #     Context, JsNativeError, JsValue, NativeFunction, js_string
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// context.register_global_property(
     ///     js_string!("finally"),
@@ -721,7 +729,7 @@ impl JsPromise {
     /// )?
     /// .finally(
     ///     NativeFunction::from_fn_ptr(|_, _, mut context| {
-    ///         context.global_object().clone().set(
+    ///         context.global_object()?.set(
     ///             js_string!("finally"),
     ///             JsValue::from(true),
     ///             true,
@@ -737,7 +745,7 @@ impl JsPromise {
     ///
     /// assert_eq!(
     ///     context
-    ///         .global_object()
+    ///         .global_object()?
     ///         .clone()
     ///         .get(js_string!("finally"), context.access())?,
     ///     JsValue::from(true)
@@ -757,7 +765,11 @@ impl JsPromise {
         on_finally.check_runtime(context.runtime())?;
 
         let (then, catch) = Promise::then_catch_finally_closures(
-            context.intrinsics().constructors().promise().constructor(),
+            context
+                .intrinsics()
+                .constructors()
+                .promise()
+                .constructor()?,
             on_finally,
             context,
         )?;
@@ -779,7 +791,7 @@ impl JsPromise {
     /// #     Context, JsNativeError, JsValue,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise1 = JsPromise::all(
     ///     [
@@ -832,11 +844,10 @@ impl JsPromise {
             .intrinsics()
             .constructors()
             .promise()
-            .constructor()
+            .constructor()?
             .into();
 
-        let value = Promise::all(c, &[promises.into()], context)
-            .js_expect("Promise.all cannot fail with the default `%Promise%` constructor")?;
+        let value = Promise::all(c, &[promises.into()], context)?;
 
         let object = value
             .as_object()
@@ -861,7 +872,7 @@ impl JsPromise {
     /// #     Context, JsNativeError, JsValue,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::all_settled(
     ///     [
@@ -923,12 +934,10 @@ impl JsPromise {
             .intrinsics()
             .constructors()
             .promise()
-            .constructor()
+            .constructor()?
             .into();
 
-        let value = Promise::all_settled(c, &[promises.into()], context).js_expect(
-            "`Promise.all_settled` cannot fail with the default `%Promise%` constructor",
-        )?;
+        let value = Promise::all_settled(c, &[promises.into()], context)?;
 
         let object = value
             .as_object()
@@ -957,7 +966,7 @@ impl JsPromise {
     /// #     Context, JsNativeError,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let promise = JsPromise::any(
     ///     [
@@ -992,11 +1001,10 @@ impl JsPromise {
             .intrinsics()
             .constructors()
             .promise()
-            .constructor()
+            .constructor()?
             .into();
 
-        let value = Promise::any(c, &[promises.into()], context)
-            .js_expect("`Promise.any` cannot fail with the default `%Promise%` constructor")?;
+        let value = Promise::any(c, &[promises.into()], context)?;
 
         let object = value
             .as_object()
@@ -1024,11 +1032,11 @@ impl JsPromise {
     /// #     Context, JsValue,
     /// # };
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let (a, resolvers_a) = JsPromise::new_pending(context.access());
-    /// let (b, resolvers_b) = JsPromise::new_pending(context.access());
-    /// let (c, resolvers_c) = JsPromise::new_pending(context.access());
+    /// let (a, resolvers_a) = JsPromise::new_pending(context.access()).unwrap();
+    /// let (b, resolvers_b) = JsPromise::new_pending(context.access()).unwrap();
+    /// let (c, resolvers_c) = JsPromise::new_pending(context.access()).unwrap();
     ///
     /// let promise = JsPromise::race([a, b, c], context.access())?;
     ///
@@ -1068,11 +1076,10 @@ impl JsPromise {
             .intrinsics()
             .constructors()
             .promise()
-            .constructor()
+            .constructor()?
             .into();
 
-        let value = Promise::race(c, &[promises.into()], context)
-            .js_expect("`Promise.race` cannot fail with the default `%Promise%` constructor")?;
+        let value = Promise::race(c, &[promises.into()], context)?;
 
         let object = value
             .as_object()
@@ -1098,9 +1105,9 @@ impl JsPromise {
     /// # };
     /// # use futures_lite::future;
     /// # fn main() -> Result<(), Box<dyn Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
-    /// let (promise, resolvers) = JsPromise::new_pending(context.access());
+    /// let (promise, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     /// let promise_future = promise.into_js_future(context.access())?;
     ///
     /// let future1 = async move { promise_future.await };
@@ -1169,7 +1176,7 @@ impl JsPromise {
     /// # use surgeist_js::{Context, JsArgs, JsValue, NativeFunction};
     /// # use surgeist_js::object::builtins::{JsFunction, JsPromise};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     ///
     /// let p1 = JsPromise::new(
     ///     |fns, mut context| {
@@ -1201,7 +1208,7 @@ impl JsPromise {
     /// # use surgeist_js::object::builtins::JsPromise;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let p1 = JsPromise::new(
     ///     |fns, mut context| fns.resolve.call(&JsValue::undefined(), &[], context.reborrow()),
     ///     context.access(),

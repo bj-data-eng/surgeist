@@ -59,22 +59,21 @@ impl ForInIterator {
     pub(crate) fn create_for_in_iterator(
         object: JsValue,
         context: &Context,
-    ) -> (JsObject, JsValue) {
+    ) -> JsResult<(JsObject, JsValue)> {
         let iterator = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            context.intrinsics().constructors().iterator().prototype(),
+            context.intrinsics().constructors().iterator().prototype()?,
             Self::new(&object),
-        )
+        )?
         .upcast();
 
         let next_method =
             FunctionObjectBuilder::new(context.realm(), NativeFunction::from_builtin(Self::next))
                 .name(js_string!("next"))
                 .length(0)
-                .build()
-                .expect("capture-free iterator method uses the current realm");
+                .build()?;
 
-        (iterator, next_method.into())
+        Ok((iterator, next_method.into()))
     }
 
     /// %ForInIteratorPrototype%.next( )
@@ -130,11 +129,11 @@ impl ForInIterator {
                         .visited_keys
                         .insert(key.clone());
                     if desc.expect_enumerable() {
-                        return Ok(create_iter_result_object_trusted(
+                        return create_iter_result_object_trusted(
                             JsValue::new(key),
                             false,
                             context,
-                        ));
+                        );
                     }
                 }
             }
@@ -144,11 +143,7 @@ impl ForInIterator {
                     object = o;
                 }
                 _ => {
-                    return Ok(create_iter_result_object_trusted(
-                        JsValue::undefined(),
-                        true,
-                        context,
-                    ));
+                    return create_iter_result_object_trusted(JsValue::undefined(), true, context);
                 }
             }
             let mut state = iterator.borrow_mut()?;

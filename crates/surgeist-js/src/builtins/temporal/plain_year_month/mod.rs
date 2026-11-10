@@ -64,130 +64,130 @@ impl IntrinsicObject for PlainYearMonth {
     fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
-            .build();
+            .build()?;
 
         let get_era_year = BuiltInBuilder::callable(realm, Self::get_era_year)
             .name(js_string!("get eraYear"))
-            .build();
+            .build()?;
 
         let get_era = BuiltInBuilder::callable(realm, Self::get_era)
             .name(js_string!("get era"))
-            .build();
+            .build()?;
 
         let get_year = BuiltInBuilder::callable(realm, Self::get_year)
             .name(js_string!("get year"))
-            .build();
+            .build()?;
 
         let get_month = BuiltInBuilder::callable(realm, Self::get_month)
             .name(js_string!("get month"))
-            .build();
+            .build()?;
 
         let get_month_code = BuiltInBuilder::callable(realm, Self::get_month_code)
             .name(js_string!("get monthCode"))
-            .build();
+            .build()?;
 
         let get_days_in_month = BuiltInBuilder::callable(realm, Self::get_days_in_month)
             .name(js_string!("get daysInMonth"))
-            .build();
+            .build()?;
 
         let get_days_in_year = BuiltInBuilder::callable(realm, Self::get_days_in_year)
             .name(js_string!("get daysInYear"))
-            .build();
+            .build()?;
 
         let get_months_in_year = BuiltInBuilder::callable(realm, Self::get_months_in_year)
             .name(js_string!("get monthsInYear"))
-            .build();
+            .build()?;
 
         let get_in_leap_year = BuiltInBuilder::callable(realm, Self::get_in_leap_year)
             .name(js_string!("get inLeapYear"))
-            .build();
+            .build()?;
 
-        BuiltInBuilder::from_standard_constructor::<Self>(realm)
+        BuiltInBuilder::from_standard_constructor::<Self>(realm)?
             .property(
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::PLAIN_YM_TAG,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("calendarId"),
                 Some(get_calendar_id),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("era"),
                 Some(get_era),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("eraYear"),
                 Some(get_era_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("year"),
                 Some(get_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("month"),
                 Some(get_month),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("monthCode"),
                 Some(get_month_code),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("daysInMonth"),
                 Some(get_days_in_month),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("daysInYear"),
                 Some(get_days_in_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("monthsInYear"),
                 Some(get_months_in_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .accessor(
                 js_string!("inLeapYear"),
                 Some(get_in_leap_year),
                 None,
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::from, js_string!("from"), 1)
-            .static_method(Self::compare, js_string!("compare"), 2)
-            .method(Self::with, js_string!("with"), 1)
-            .method(Self::add, js_string!("add"), 1)
-            .method(Self::subtract, js_string!("subtract"), 1)
-            .method(Self::until, js_string!("until"), 1)
-            .method(Self::since, js_string!("since"), 1)
-            .method(Self::equals, js_string!("equals"), 1)
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::to_json, js_string!("toJSON"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .method(Self::to_plain_date, js_string!("toPlainDate"), 1)
+            )?
+            .static_method(Self::from, js_string!("from"), 1)?
+            .static_method(Self::compare, js_string!("compare"), 2)?
+            .method(Self::with, js_string!("with"), 1)?
+            .method(Self::add, js_string!("add"), 1)?
+            .method(Self::subtract, js_string!("subtract"), 1)?
+            .method(Self::until, js_string!("until"), 1)?
+            .method(Self::since, js_string!("since"), 1)?
+            .method(Self::equals, js_string!("equals"), 1)?
+            .method(Self::to_string, js_string!("toString"), 0)?
+            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)?
+            .method(Self::to_json, js_string!("toJSON"), 0)?
+            .method(Self::value_of, js_string!("valueOf"), 0)?
+            .method(Self::to_plain_date, js_string!("toPlainDate"), 1)?
             .build()?;
 
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()?)
     }
 }
 
@@ -972,7 +972,7 @@ pub(crate) fn create_temporal_year_month(
             .intrinsics()
             .constructors()
             .plain_year_month()
-            .constructor()
+            .constructor()?
             .into()
     };
 

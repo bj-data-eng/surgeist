@@ -44,8 +44,8 @@ pub(crate) struct RegExpStringIterator {
 
 impl IntrinsicObject for RegExpStringIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
@@ -57,8 +57,8 @@ impl IntrinsicObject for RegExpStringIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics.objects().iterator_prototypes().regexp_string()
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics.objects().iterator_prototypes().regexp_string()?)
     }
 }
 
@@ -86,7 +86,7 @@ impl RegExpStringIterator {
         global: bool,
         unicode: bool,
         context: &mut Context,
-    ) -> JsValue {
+    ) -> JsResult<JsValue> {
         // TODO: Implement this with closures and generators.
         //       For now all values of the closure are stored in RegExpStringIterator and the actual closure execution is in `.next()`.
 
@@ -105,11 +105,10 @@ impl RegExpStringIterator {
                 .intrinsics()
                 .objects()
                 .iterator_prototypes()
-                .regexp_string(),
+                .regexp_string()?,
             Self::new(&matcher, string, global, unicode),
-        );
-
-        regexp_string_iterator.into()
+        )?;
+        Ok(regexp_string_iterator.into())
     }
 
     /// `%RegExpStringIteratorPrototype%.next ( )`
@@ -135,11 +134,7 @@ impl RegExpStringIterator {
             }
             let Some(matcher) = &state.matcher else {
                 drop(object);
-                return Ok(create_iter_result_object_trusted(
-                    JsValue::undefined(),
-                    true,
-                    context,
-                ));
+                return create_iter_result_object_trusted(JsValue::undefined(), true, context);
             };
             let matcher = JsObject::from_inner(matcher.clone());
             state.executing = true;
@@ -156,8 +151,8 @@ impl RegExpStringIterator {
         drop(object);
 
         Ok(match result? {
-            Some(m) => create_iter_result_object_trusted(m.into(), false, context),
-            None => create_iter_result_object_trusted(JsValue::undefined(), true, context),
+            Some(m) => create_iter_result_object_trusted(m.into(), false, context)?,
+            None => create_iter_result_object_trusted(JsValue::undefined(), true, context)?,
         })
     }
 

@@ -487,7 +487,7 @@ fn generate_conversion(
 
         let error_str = format!("cannot get property {name} of value");
         final_fields.push(quote! {
-            let #name = match props.get(&::surgeist_js::js_string!(#field_name).into()) {
+            let #name = match props.get(&::surgeist_js::js_string!(#field_name).into())? {
                 Some(pd) => pd.value().ok_or_else(|| ::surgeist_js::JsError::from(
                         ::surgeist_js::JsNativeError::typ().with_message(#error_str)
                     ))?.clone().try_js_into(context.reborrow())?,
@@ -560,7 +560,7 @@ pub fn derive_try_into_js(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         impl ::surgeist_js::value::TryIntoJs for #type_name {
             fn try_into_js(&self, #context_binding: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::JsValue> {
-                let obj = surgeist_js::JsObject::default(context.intrinsics());
+                let obj = surgeist_js::JsObject::default(context.intrinsics())?;
                 #props
                 surgeist_js::JsResult::Ok(obj.into())
             }

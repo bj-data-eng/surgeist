@@ -171,7 +171,7 @@ fn pending_receiver_reports_its_exact_owners_loss_to_its_native_waiter() {
 /// Create a basic context and allow postMessage from the same context.
 #[test]
 fn basic() {
-    let context = &mut Context::default();
+    let context = &mut Context::builder().build().unwrap();
 
     let sender = OnMessageQueueSender::create(context).unwrap();
     message::register(sender, None, context).unwrap();
@@ -217,7 +217,7 @@ fn shared_multi_thread() {
     let (sender, receiver) = std::sync::mpsc::channel::<OnMessageQueueSender>();
 
     let destination_handle = thread::spawn(move || {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         // It's important to declare the `onMessageQueue` function before we might
         // receive any messages, as those will be lost.
@@ -245,7 +245,7 @@ fn shared_multi_thread() {
             thread::sleep(Duration::from_millis(10));
             context.run_jobs().unwrap();
 
-            let global_object = context.global_object();
+            let global_object = context.global_object().unwrap();
             if global_object
                 .get(js_string!("done"), context.access())
                 .unwrap()
@@ -258,7 +258,7 @@ fn shared_multi_thread() {
     });
 
     let source_handle = thread::spawn(move || {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let message_sender = receiver.recv().unwrap();
         message::register(message_sender, None, context).unwrap();
 
@@ -282,7 +282,7 @@ fn shared_array_buffer() {
     let (sender, receiver) = std::sync::mpsc::channel::<OnMessageQueueSender>();
 
     let destination_handle = thread::spawn(move || {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         // It's important to declare the `onMessageQueue` function before we might
         // receive any messages, as those will be lost.
@@ -324,7 +324,7 @@ fn shared_array_buffer() {
             thread::sleep(Duration::from_millis(10));
             context.run_jobs().unwrap();
 
-            let global_object = context.global_object();
+            let global_object = context.global_object().unwrap();
             if global_object
                 .get(js_string!("done"), context.access())
                 .unwrap()
@@ -337,7 +337,7 @@ fn shared_array_buffer() {
     });
 
     let source_handle = thread::spawn(move || {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
 
         let message_sender = receiver.recv().unwrap();
         message::register(message_sender, None, context).unwrap();

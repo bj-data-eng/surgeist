@@ -174,7 +174,10 @@ fn cleanup_retains_job_callback_host_data() {
             callback: JsFunction,
             context: crate::ContextAccess<'_>,
         ) -> JobCallback {
-            JobCallback::new(callback, HostData(JsObject::default(context.intrinsics())))
+            JobCallback::new(
+                callback,
+                HostData(JsObject::default(context.intrinsics()).unwrap()),
+            )
         }
 
         fn call_job_callback(

@@ -68,6 +68,7 @@ fn interrupt(
     MODULE_MARKER.with(|slot| assert!(slot.replace(Some(marker.into())).is_none()));
     context
         .global_object()
+        .unwrap()
         .set(js_string!("custodyEffects"), 0, true, context.access())
         .unwrap();
     let module = Module::parse(Source::from_bytes(
@@ -95,6 +96,7 @@ fn interrupt(
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("custodyEffects"), context.access())
             .unwrap(),
         1.into()
@@ -452,6 +454,7 @@ fn final_foreign_interruption_disposal_reenters_only_after_visible_local_roots_a
     .upcast();
     foreign
         .global_object()
+        .unwrap()
         .set(
             js_string!("interruptionDisposalSentinel"),
             sentinel,
@@ -611,13 +614,16 @@ fn preexisting_native_future_polls_terminal_cause_under_a_held_heap_read_without
     let original = original(leaf);
     let marker = probe(&runtime, &module_drops);
     MODULE_MARKER.with(|slot| assert!(slot.replace(Some(marker.into())).is_none()));
-    let (gate, resolvers) = crate::object::builtins::JsPromise::new_pending(context.access());
+    let (gate, resolvers) =
+        crate::object::builtins::JsPromise::new_pending(context.access()).unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("custodyGate"), gate, true, context.access())
         .unwrap();
     context
         .global_object()
+        .unwrap()
         .set(js_string!("custodyEffects"), 0, true, context.access())
         .unwrap();
     let module = Module::parse(
@@ -662,6 +668,7 @@ fn preexisting_native_future_polls_terminal_cause_under_a_held_heap_read_without
     assert_eq!(
         context
             .global_object()
+            .unwrap()
             .get(js_string!("custodyEffects"), context.access())
             .unwrap(),
         1.into()
@@ -888,7 +895,7 @@ fn checked_interruption_anchor_restoration_preserves_identity_and_cause_on_retry
     use super::{RetainedInterruption, RootingError};
     use surgeist_js_gc::heap::AccessError;
 
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let (retained, anchor) = RetainedInterruption::prepare(&context).unwrap();
     let source: JsError = EngineError::InvalidEntryPermit.into();
     let retained = retained.seal(&source);

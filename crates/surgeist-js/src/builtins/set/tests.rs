@@ -504,10 +504,10 @@ fn intersection_other_not_set_like() {
 fn set_cycle_retires_after_its_iterator_is_unreachable() {
     use crate::{Context, JsObject, object::builtins::JsSet};
 
-    let context = &mut Context::default();
-    let set = JsSet::new(context.access());
+    let context = &mut Context::builder().build().unwrap();
+    let set = JsSet::new(context.access()).unwrap();
     let set_edge = set.edge();
-    let value = JsObject::with_null_proto(context.runtime());
+    let value = JsObject::with_null_proto(context.runtime()).unwrap();
     let value_edge = value.edge();
 
     set.add(value, context.access()).unwrap();
@@ -546,9 +546,9 @@ fn clear_and_reinsertion_preserve_set_iteration_positions() {
 fn set_rejects_foreign_edges_at_both_rust_entry_points() {
     use crate::{Context, JsObject, Runtime, object::builtins::JsSet};
 
-    let context = &mut Context::default();
-    let set = JsSet::new(context.access());
-    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let context = &mut Context::builder().build().unwrap();
+    let set = JsSet::new(context.access()).unwrap();
+    let foreign = JsObject::with_null_proto(&Runtime::default()).unwrap();
 
     let error = set.add(foreign.clone(), context.access()).unwrap_err();
     assert!(error.try_native(context.access()).unwrap().is_type());

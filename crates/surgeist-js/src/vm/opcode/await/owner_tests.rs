@@ -42,7 +42,7 @@ fn pending_receipt(
     witness: &PreparedAwaitRef,
     context: &mut Context,
 ) -> (JsPromise, CommittedReactions) {
-    let (source, _resolvers) = JsPromise::new_pending(context.access());
+    let (source, _resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let lifecycle = ReactionLifecycle::for_await(witness, None).unwrap();
     let registration =
         Promise::perform_promise_then_with_lifecycle(&source, None, None, None, lifecycle, context);
@@ -63,7 +63,7 @@ fn assert_fault(error: &crate::JsError, cause: JobFaultCause) {
 
 #[test]
 fn wrong_await_receipt_refuses_without_changing_either_capture() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let original = prepared(&context);
     let other = prepared(&context);
     let (_source, receipt) = pending_receipt(&original, &mut context);
@@ -85,7 +85,7 @@ fn wrong_await_receipt_refuses_without_changing_either_capture() {
 #[test]
 fn late_real_receipt_keeps_retired_and_unavailable_captures_negative() {
     for retired in [false, true] {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let witness = prepared(&context);
         let (_source, receipt) = pending_receipt(&witness, &mut context);
         if retired {
@@ -113,7 +113,7 @@ fn late_real_receipt_keeps_retired_and_unavailable_captures_negative() {
 
 #[test]
 fn late_real_receipt_cannot_recreate_a_consumed_baseline() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let witness = prepared(&context);
     let (_source, receipt) = pending_receipt(&witness, &mut context);
     // Private owner fixture: model an already consumed capture with no old
@@ -165,7 +165,7 @@ fn dropping_producer_roots_keeps_the_accepted_job_available_until_dispatch() {
     let witness = prepared(&context);
     let reference = witness.reference().clone();
     let producer_hold = reference.root().unwrap();
-    let (source, resolvers) = JsPromise::new_pending(context.access());
+    let (source, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let lifecycle = ReactionLifecycle::for_await(&witness, None).unwrap();
     Promise::perform_promise_then_with_lifecycle(
         &source,
@@ -225,7 +225,7 @@ fn old_pending_receipt_cannot_downgrade_actual_executor_acceptance() {
     let executor = Rc::new(HeldExecutor::default());
     let mut context = held_context(executor.clone());
     let witness = prepared(&context);
-    let (source, resolvers) = JsPromise::new_pending(context.access());
+    let (source, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     let lifecycle = ReactionLifecycle::for_await(&witness, None).unwrap();
     let registration = Promise::perform_promise_then_with_lifecycle(
         &source,
@@ -269,7 +269,7 @@ fn old_pending_receipt_cannot_downgrade_actual_executor_acceptance() {
 
 #[test]
 fn consumed_baseline_needs_a_distinct_current_qualified_successor() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let old = prepared(&context);
     let successor = prepared(&context);
     // Valid phase-only terminal fixture, not a simulated runnable continuation.
@@ -300,7 +300,7 @@ fn consumed_baseline_needs_a_distinct_current_qualified_successor() {
 
 #[test]
 fn self_lineage_and_a_corrupted_cycle_return_typed_faults() {
-    let context = Context::default();
+    let context = Context::builder().build().unwrap();
     let first = prepared(&context);
     let second = prepared(&context);
     first.root.capture.0.phase.set(AwaitPhase::Consumed);

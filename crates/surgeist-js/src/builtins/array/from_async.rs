@@ -34,7 +34,7 @@ impl Array {
     ) -> JsResult<JsValue> {
         // 1. Let C be the this value.
         // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
-        let (promise, resolvers) = JsPromise::new_pending(context.access());
+        let (promise, resolvers) = JsPromise::new_pending(context.access())?;
 
         let async_items = args.get_or_undefined(0);
         let mapfn = args.get_or_undefined(1);
@@ -78,7 +78,7 @@ impl Array {
                 AsyncFromSyncIterator::create(
                     async_items.get_iterator_from_method(&method, context.access())?,
                     context,
-                )
+                )?
             }
             // i. Else,
             else {

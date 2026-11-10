@@ -43,7 +43,7 @@ pub mod embedded;
 ///         Some(Path::new("/base")),
 ///         &js_string!("../a.js"),
 ///         Some(Path::new("/base/hello/ref.js")),
-///         Context::default().access()
+///         Context::builder().build().unwrap().access()
 ///     ),
 ///     Ok("/base/a.js".into())
 /// );
@@ -500,7 +500,7 @@ mod tests {
     fn resolve_test(ref_path: Option<&str>, spec: &str, expected: Result<&str, ()>) {
         let base = PathBuf::from("/base");
 
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let spec = js_string!(spec);
         let ref_path = ref_path.map(PathBuf::from);
 
@@ -533,7 +533,7 @@ mod tests {
     #[test_case(Some("/base/ref.js"),       "other/../../m.js", Err(()))]
     #[test_case(None,                       "../n.js",          Err(()))]
     fn resolve_test_no_base(ref_path: Option<&str>, spec: &str, expected: Result<&str, ()>) {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let spec = js_string!(spec);
         let ref_path = ref_path.map(PathBuf::from);
 
@@ -567,7 +567,7 @@ mod tests {
     fn resolve_test(ref_path: Option<&str>, spec: &str, expected: Result<&str, ()>) {
         let base = PathBuf::from("a:\\base");
 
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let spec = js_string!(spec);
         let ref_path = ref_path.map(PathBuf::from);
 

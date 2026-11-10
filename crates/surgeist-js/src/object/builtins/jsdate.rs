@@ -18,9 +18,9 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 ///
 /// fn main() -> JsResult<()> {
 ///     // JS mutable Context
-///     let context = &mut Context::default();
+///     let context = &mut Context::builder().build().unwrap();
 ///
-///     let date = JsDate::new(context.access());
+///     let date = JsDate::new(context.access()).unwrap();
 ///
 ///     date.set_full_year(&[1995.into(), 11.into(), 4.into()], context.access())?;
 ///
@@ -40,15 +40,15 @@ pub struct JsDate {
 impl JsDate {
     /// Create a new `Date` object with universal time.
     #[inline]
-    pub fn new(context: ContextAccess<'_>) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        let prototype = context.intrinsics().constructors().date().prototype();
+        let prototype = context.intrinsics().constructors().date().prototype()?;
         let now = Date::utc_now(context);
         let inner =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, now)
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, now)?
                 .upcast();
 
-        Self { inner }
+        Ok(Self { inner })
     }
 
     /// Create a new `JsDate` object from an existing object.
@@ -612,7 +612,7 @@ impl JsDate {
     /// Utility create a `Date` object from RFC3339 string
     pub fn new_from_parse(value: &JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        let prototype = context.intrinsics().constructors().date().prototype();
+        let prototype = context.intrinsics().constructors().date().prototype()?;
         let string = value
             .to_string(context.access())?
             .to_std_string()
@@ -626,7 +626,7 @@ impl JsDate {
                 context.root_shape(),
                 prototype,
                 date_time,
-            )
+            )?
             .upcast(),
         })
     }

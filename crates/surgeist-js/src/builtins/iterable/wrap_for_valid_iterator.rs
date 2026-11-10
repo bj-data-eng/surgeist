@@ -35,8 +35,8 @@ pub(crate) struct WrapForValidIterator {
 
 impl IntrinsicObject for WrapForValidIterator {
     fn init(realm: &Realm) -> crate::JsResult<()> {
-        BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .prototype(realm.intrinsics().constructors().iterator().prototype())
+        BuiltInBuilder::with_intrinsic::<Self>(realm)?
+            .prototype(realm.intrinsics().constructors().iterator().prototype()?)?
             .static_method(Self::next, js_string!("next"), 0)?
             .static_method(Self::r#return, js_string!("return"), 0)?
             .build()?;
@@ -44,11 +44,11 @@ impl IntrinsicObject for WrapForValidIterator {
         Ok(())
     }
 
-    fn get(intrinsics: &Intrinsics) -> JsObject {
-        intrinsics
+    fn get(intrinsics: &Intrinsics) -> crate::JsResult<JsObject> {
+        Ok(intrinsics
             .objects()
             .iterator_prototypes()
-            .wrap_for_valid_iterator()
+            .wrap_for_valid_iterator()?)
     }
 }
 
@@ -119,11 +119,7 @@ impl WrapForValidIterator {
             // 6. If returnMethod is undefined, then
             None => {
                 // a. Return CreateIterResultObject(undefined, true).
-                Ok(create_iter_result_object_trusted(
-                    JsValue::undefined(),
-                    true,
-                    context,
-                ))
+                create_iter_result_object_trusted(JsValue::undefined(), true, context)
             }
             // 7. Return ? Call(returnMethod, iterator).
             Some(return_method) => return_method.call(&iterator.into(), &[], context.access()),

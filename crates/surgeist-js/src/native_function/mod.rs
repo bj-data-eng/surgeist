@@ -316,7 +316,7 @@ impl NativeFunction {
     ///     let value = args.get_or_undefined(0).to_u32(access.reborrow())?;
     ///     Ok(ContextTask::from_future(async move { Ok(JsValue::new(value * 2)) }))
     /// });
-    /// let mut context = Context::default();
+    /// let mut context = Context::builder().build().unwrap();
     /// callback.call(&JsValue::undefined(), &[3.into()], context.access()).unwrap();
     /// context.run_jobs().unwrap();
     /// ```
@@ -556,7 +556,7 @@ fn native_function_construct(
                         context.root_shape(),
                         prototype,
                         OrdinaryObject,
-                    )
+                    )?
                     .upcast())
                 } else {
                     Err(JsNativeError::typ()
@@ -602,7 +602,7 @@ mod tests {
         let stored = builtin.store();
         drop(builtin);
         let restored = NativeFunction::restore(&stored).unwrap();
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let function = restored.to_js_function(context.realm()).unwrap();
 
         assert_eq!(
@@ -625,7 +625,7 @@ mod tests {
         let stored = host.store();
         drop(host);
         let restored = NativeFunction::restore(&stored).unwrap();
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
 
         assert_eq!(
             restored
@@ -661,8 +661,8 @@ mod tests {
         }
 
         for builtin in [false, true] {
-            let mut context = Context::default();
-            let capture = JsObject::with_null_proto(context.runtime());
+            let mut context = Context::builder().build().unwrap();
+            let capture = JsObject::with_null_proto(context.runtime()).unwrap();
             let weak_capture = capture.edge();
             let callback = if builtin {
                 NativeFunction::from_builtin_with_captures(
@@ -707,8 +707,8 @@ mod tests {
     fn shared_async_capture_storage_keeps_pending_job_roots_after_function_drop() {
         use crate::builtins::promise::PromiseState;
 
-        let mut context = Context::default();
-        let capture = JsObject::with_null_proto(context.runtime());
+        let mut context = Context::builder().build().unwrap();
+        let capture = JsObject::with_null_proto(context.runtime()).unwrap();
         let weak_capture = capture.edge();
         let callback = NativeFunction::from_async_fn_with_captures(
             |_, _, capture, _| Ok(ContextTask::from_future(async move { Ok(capture.into()) })),
@@ -803,7 +803,7 @@ mod tests {
 
     #[test]
     fn restored_function_retains_closure_and_resolution_metadata_graph_until_last_owner_drop() {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         context
             .runtime()
             .heap
@@ -881,7 +881,7 @@ mod tests {
 
     #[test]
     fn resolution_metadata_heap_refusal_releases_previously_restored_closure_roots() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         context
             .runtime()
             .heap
@@ -930,7 +930,7 @@ mod tests {
 
     #[test]
     fn expired_resolution_metadata_releases_previously_restored_closure_roots() {
-        let context = Context::default();
+        let context = Context::builder().build().unwrap();
         context
             .runtime()
             .heap

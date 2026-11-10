@@ -96,7 +96,7 @@ fn held_heap_read_refuses_capture_root_acquisition_and_preserves_retry_identity(
 #[test]
 fn stored_ordinary_object_refuses_native_brand_and_callable_restoration() {
     let context = context();
-    let object = JsObject::with_null_proto(context.runtime());
+    let object = JsObject::with_null_proto(context.runtime()).unwrap();
     let identity = object.identity();
     let stored = object.store();
     assert_eq!(

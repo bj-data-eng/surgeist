@@ -198,6 +198,7 @@ fn route(context: &mut Context, generator: &Generator, request: Request, guest: 
     }
     context
         .global_object()
+        .unwrap()
         .set(
             js_string!("requestSubject"),
             generator.value(),
@@ -249,6 +250,7 @@ fn iterator(value: JsValue, expected: JsValue, done: bool, context: &mut Context
 fn property(context: &mut Context, name: &str) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }

@@ -86,7 +86,7 @@ impl Process {
     where
         P: ProcessProvider + 'static,
     {
-        let env = JsObject::default(context.intrinsics());
+        let env = JsObject::default(context.intrinsics())?;
         for (key, value) in provider.env() {
             env.set(key, JsValue::from(value), false, context.reborrow())?;
         }

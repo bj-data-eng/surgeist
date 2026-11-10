@@ -65,12 +65,10 @@ impl This {
             return Ok(());
         }
 
-        let this = context
-            .vm
-            .frame()
-            .environments
-            .get_this_binding()?
-            .unwrap_or(context.realm().global_this().into());
+        let this = match context.vm.frame().environments.get_this_binding()? {
+            Some(this) => this,
+            None => context.realm().global_this()?.into(),
+        };
         context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;
         context.vm.stack.set_this(
             context.vm.frames.last().js_expect("frame must exist")?,

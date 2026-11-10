@@ -13,7 +13,8 @@ use surgeist_js_gc::heap::{
 };
 
 use crate::{
-    JsObject,
+    JsObject, JsResult,
+    error::{EngineResourceError, ObjectConstructionError, RootingError},
     object::{JsPrototype, ObjectEdge},
     property::PropertyKey,
 };
@@ -129,28 +130,37 @@ impl SharedShape {
         self.inner.transition_count
     }
     /// Getter for the previous field.
-    #[must_use]
-    pub fn previous(&self) -> Option<Self> {
-        self.inner.previous.as_ref().map(|previous| Self {
-            inner: previous
-                .upgrade()
-                .expect("shape predecessor heap is available")
-                .expect("live shape retains its predecessor"),
-        })
+    pub fn previous(&self) -> Result<Option<Self>, RootingError> {
+        self.inner
+            .previous
+            .as_ref()
+            .map(|previous| {
+                Ok(Self {
+                    inner: previous.upgrade()?.ok_or(RootingError::Expired)?,
+                })
+            })
+            .transpose()
     }
     /// Get the prototype of the shape.
-    #[must_use]
-    pub fn prototype(&self) -> JsPrototype {
-        self.inner.prototype.clone().map(JsObject::from_inner)
+    pub fn prototype(&self) -> Result<JsPrototype, RootingError> {
+        self.inner
+            .prototype
+            .as_ref()
+            .map(|edge| edge.upgrade()?.ok_or(RootingError::Expired))
+            .transpose()
     }
     /// Get the property this [`SharedShape`] refers to.
-    pub(crate) fn property(&self) -> (PropertyKey, Slot) {
-        let inner = self.property_table().inner().borrow();
+    pub(crate) fn property(&self) -> JsResult<(PropertyKey, Slot)> {
+        let inner = self
+            .property_table()
+            .inner()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
         let (key, slot) = inner
             .keys
             .get(self.property_index() as usize)
-            .expect("There should be a property");
-        (key.clone(), *slot)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        Ok((key.clone(), *slot))
     }
     /// Get the flags of the shape.
     fn flags(&self) -> ShapeFlags {
@@ -170,18 +180,13 @@ impl SharedShape {
     }
 
     /// Create a new [`SharedShape`].
-    fn new(heap: &RuntimeHeap, inner: Inner) -> Self {
-        Self::try_new(heap, inner).expect("shape has valid heap edges")
-    }
-
-    fn try_new(heap: &RuntimeHeap, inner: Inner) -> Result<Self, AccessError> {
+    fn new(heap: &RuntimeHeap, inner: Inner) -> Result<Self, AccessError> {
         let inner = heap.allocate(inner).map_err(|rejected| rejected.reason)?;
         Ok(Self { inner })
     }
 
     /// Create a root [`SharedShape`].
-    #[must_use]
-    pub(crate) fn root(heap: &RuntimeHeap) -> Self {
+    pub(crate) fn root(heap: &RuntimeHeap) -> JsResult<Self> {
         Self::new(
             heap,
             Inner {
@@ -189,26 +194,23 @@ impl SharedShape {
                 prototype: None,
                 property_count: 0,
                 // Most of the time the root shape initiates with between 1-4 properties.
-                property_table: PropertyTable::with_capacity(4),
+                property_table: PropertyTable::with_capacity(4)?,
                 previous: None,
                 flags: ShapeFlags::default(),
                 transition_count: 0,
             },
         )
+        .map_err(|error| RootingError::Access(error).into())
     }
 
     /// Create a [`SharedShape`] change prototype transition.
-    pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
-        self.try_change_prototype_transition(prototype)
-            .expect("shape transition has valid heap edges")
-    }
-
-    pub(crate) fn try_change_prototype_transition(
-        &self,
-        prototype: JsPrototype,
-    ) -> Result<Self, AccessError> {
+    pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> JsResult<Self> {
         let key = prototype.as_ref().map(JsObject::identity);
-        if let Some(inner) = self.forward_transitions().get_prototype(key)? {
+        if let Some(inner) = self
+            .forward_transitions()
+            .get_prototype(key)
+            .map_err(RootingError::Access)?
+        {
             return Ok(Self { inner });
         }
         let new_inner_shape = Inner {
@@ -217,113 +219,132 @@ impl SharedShape {
             property_table: self.property_table().clone(),
             property_count: self.property_count(),
             previous: Some(self.inner.record_ref()),
-            transition_count: self.transition_count() + 1,
+            transition_count: self
+                .transition_count()
+                .checked_add(1)
+                .ok_or(EngineResourceError::SizeOverflow)?,
             flags: ShapeFlags::prototype_transition_from(self.flags()),
         };
-        let new_shape = Self::try_new(self.inner.runtime(), new_inner_shape)?;
+        let new_shape =
+            Self::new(self.inner.runtime(), new_inner_shape).map_err(RootingError::Access)?;
 
         self.forward_transitions()
-            .insert_prototype(key, &new_shape.inner);
+            .insert_prototype(key, &new_shape.inner)?;
 
         Ok(new_shape)
     }
 
     /// Create a [`SharedShape`] insert property transition.
-    pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> Self {
+    pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> JsResult<Self> {
         // Check if we have already created such a transition, if so use it!
-        if let Some(shape) = self.forward_transitions().get_property(&key) {
-            if let Some(inner) = shape.upgrade().expect("shape heap is available") {
-                return Self { inner };
-            }
-
-            self.forward_transitions().prune_property_transitions();
+        if let Some(shape) = self
+            .forward_transitions()
+            .get_property(&key)
+            .map_err(RootingError::Access)?
+            && let Some(inner) = shape.upgrade().map_err(RootingError::Access)?
+        {
+            return Ok(Self { inner });
         }
+        // An expired hit is a miss; periodic insertion pruning owns full scans.
 
         let property_table = self.property_table().add_property_deep_clone_if_needed(
             key.property_key.clone(),
             key.attributes,
             self.property_count(),
-        );
+        )?;
         let new_inner_shape = Inner {
             prototype: self.inner.prototype.clone(),
             forward_transitions: ForwardTransition::default(),
             property_table,
-            property_count: self.property_count() + 1,
+            property_count: self
+                .property_count()
+                .checked_add(1)
+                .ok_or(EngineResourceError::SizeOverflow)?,
             previous: Some(self.inner.record_ref()),
-            transition_count: self.transition_count() + 1,
+            transition_count: self
+                .transition_count()
+                .checked_add(1)
+                .ok_or(EngineResourceError::SizeOverflow)?,
             flags: ShapeFlags::insert_property_transition_from(self.flags()),
         };
-        let new_shape = Self::new(self.inner.runtime(), new_inner_shape);
+        let new_shape =
+            Self::new(self.inner.runtime(), new_inner_shape).map_err(RootingError::Access)?;
 
         self.forward_transitions()
-            .insert_property(key, &new_shape.inner);
+            .insert_property(key, &new_shape.inner)?;
 
-        new_shape
+        Ok(new_shape)
     }
 
     /// Create a [`SharedShape`] change prototype transition, returning [`ChangeTransition`].
     pub(crate) fn change_attributes_transition(
         &self,
         key: TransitionKey,
-    ) -> ChangeTransition<Self> {
-        let slot = self.property_table().get_expect(&key.property_key);
+    ) -> JsResult<ChangeTransition<Self>> {
+        let slot = self.property_table().get(&key.property_key)?;
 
         // Check if we have already created such a transition, if so use it!
-        if let Some(shape) = self.forward_transitions().get_property(&key) {
-            if let Some(inner) = shape.upgrade().expect("shape heap is available") {
-                let action = if slot.attributes.width_match(key.attributes) {
-                    ChangeTransitionAction::Nothing
-                } else if slot.attributes.is_accessor_descriptor() {
-                    // Accessor property --> Data property
-                    ChangeTransitionAction::Remove
-                } else {
-                    // Data property --> Accessor property
-                    ChangeTransitionAction::Insert
-                };
+        if let Some(shape) = self
+            .forward_transitions()
+            .get_property(&key)
+            .map_err(RootingError::Access)?
+            && let Some(inner) = shape.upgrade().map_err(RootingError::Access)?
+        {
+            let action = if slot.attributes.width_match(key.attributes) {
+                ChangeTransitionAction::Nothing
+            } else if slot.attributes.is_accessor_descriptor() {
+                // Accessor property --> Data property
+                ChangeTransitionAction::Remove
+            } else {
+                // Data property --> Accessor property
+                ChangeTransitionAction::Insert
+            };
 
-                return ChangeTransition {
-                    shape: Self { inner },
-                    action,
-                };
-            }
-
-            self.forward_transitions().prune_property_transitions();
+            return Ok(ChangeTransition {
+                shape: Self { inner },
+                action,
+            });
         }
+        // An expired hit is a miss; periodic insertion pruning owns full scans.
 
         // The attribute change transitions, didn't change from accessor to data property or vice-versa.
         if slot.attributes.width_match(key.attributes) {
-            let property_table = self.property_table().deep_clone_all();
-            property_table.set_attributes_at_index(&key.property_key, key.attributes);
+            let property_table = self.property_table().deep_clone_all()?;
+            property_table.set_attributes_at_index(&key.property_key, key.attributes)?;
             let inner_shape = Inner {
                 forward_transitions: ForwardTransition::default(),
                 prototype: self.inner.prototype.clone(),
                 property_table,
                 property_count: self.property_count(),
                 previous: Some(self.inner.record_ref()),
-                transition_count: self.transition_count() + 1,
+                transition_count: self
+                    .transition_count()
+                    .checked_add(1)
+                    .ok_or(EngineResourceError::SizeOverflow)?,
                 flags: ShapeFlags::configure_property_transition_from(self.flags()),
             };
-            let shape = Self::new(self.inner.runtime(), inner_shape);
+            let shape =
+                Self::new(self.inner.runtime(), inner_shape).map_err(RootingError::Access)?;
 
             self.forward_transitions()
-                .insert_property(key, &shape.inner);
+                .insert_property(key, &shape.inner)?;
 
-            return ChangeTransition {
+            return Ok(ChangeTransition {
                 shape,
                 action: ChangeTransitionAction::Nothing,
-            };
+            });
         }
 
         // Rollback before the property has added.
-        let (mut base, prototype, transitions) = self.rollback_before(&key.property_key);
+        let (mut base, prototype, transitions) = self.rollback_before(&key.property_key)?;
 
         // Apply prototype transition, if it was found.
         if let Some(prototype) = prototype {
-            base = base.change_prototype_transition(prototype);
+            base = base.change_prototype_transition(prototype)?;
         }
 
         // Apply this property.
-        base = base.insert_property_transition(key);
+        base = base.insert_property_transition(key)?;
 
         // Apply previous properties.
         for (property_key, attributes) in transitions.into_iter().rev() {
@@ -331,7 +352,7 @@ impl SharedShape {
                 property_key,
                 attributes,
             };
-            base = base.insert_property_transition(transition);
+            base = base.insert_property_transition(transition)?;
         }
 
         // Determine action to be performed on the storage.
@@ -343,10 +364,10 @@ impl SharedShape {
             ChangeTransitionAction::Insert
         };
 
-        ChangeTransition {
+        Ok(ChangeTransition {
             shape: base,
             action,
-        }
+        })
     }
 
     /// Rollback to shape before the insertion of the [`PropertyKey`] that is provided.
@@ -376,11 +397,11 @@ impl SharedShape {
     fn rollback_before(
         &self,
         key: &PropertyKey,
-    ) -> (
+    ) -> JsResult<(
         Self,
         Option<JsPrototype>,
         IndexMap<PropertyKey, SlotAttributes>,
-    ) {
+    )> {
         let mut prototype = None;
         let mut transitions: IndexMap<PropertyKey, SlotAttributes, RandomState> =
             IndexMap::default();
@@ -388,24 +409,24 @@ impl SharedShape {
         let mut current = Some(self.clone());
         let base = loop {
             let Some(current_shape) = current else {
-                unreachable!("The chain should have insert transition type!")
+                return Err(ObjectConstructionError::IncompatibleSlotLayout.into());
             };
 
             // We only take the latest prototype change it, if it exists.
             if current_shape.flags().is_prototype_transition_type() {
                 if prototype.is_none() {
-                    prototype = Some(current_shape.prototype().clone());
+                    prototype = Some(current_shape.prototype()?);
                 }
 
                 // Skip when it is a prototype transition.
-                current = current_shape.previous();
+                current = current_shape.previous()?;
                 continue;
             }
 
-            let (current_property_key, slot) = current_shape.property();
+            let (current_property_key, slot) = current_shape.property()?;
 
             if current_shape.flags().is_insert_transition_type() && &current_property_key == key {
-                let base = if let Some(base) = current_shape.previous() {
+                let base = if let Some(base) = current_shape.previous()? {
                     base
                 } else {
                     // It's the root, because it doesn't have previous.
@@ -419,23 +440,26 @@ impl SharedShape {
             if &current_property_key != key {
                 // Only take the latest changes to a property. To try to build a smaller tree.
                 transitions
+                    .try_reserve(1)
+                    .map_err(|_| EngineResourceError::Allocation)?;
+                transitions
                     .entry(current_property_key)
                     .or_insert(slot.attributes);
             }
 
-            current = current_shape.previous();
+            current = current_shape.previous()?;
         };
 
-        (base, prototype, transitions)
+        Ok((base, prototype, transitions))
     }
 
     /// Remove a property from [`SharedShape`], returning the new [`SharedShape`].
-    pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> Self {
-        let (mut base, prototype, transitions) = self.rollback_before(key);
+    pub(crate) fn remove_property_transition(&self, key: &PropertyKey) -> JsResult<Self> {
+        let (mut base, prototype, transitions) = self.rollback_before(key)?;
 
         // Apply prototype transition, if it was found.
         if let Some(prototype) = prototype {
-            base = base.change_prototype_transition(prototype);
+            base = base.change_prototype_transition(prototype)?;
         }
 
         for (property_key, attributes) in transitions.into_iter().rev() {
@@ -443,45 +467,72 @@ impl SharedShape {
                 property_key,
                 attributes,
             };
-            base = base.insert_property_transition(transition);
+            base = base.insert_property_transition(transition)?;
         }
 
-        base
+        Ok(base)
     }
 
     /// Do a property lookup, returns [`None`] if property not found.
-    pub(crate) fn lookup(&self, key: &PropertyKey) -> Option<Slot> {
+    pub(crate) fn lookup(&self, key: &PropertyKey) -> JsResult<Option<Slot>> {
         let property_count = self.property_count();
         if property_count == 0 {
-            return None;
+            return Ok(None);
         }
 
-        let property_table_inner = self.property_table().inner().borrow();
+        let property_table_inner = self
+            .property_table()
+            .inner()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
         // Check if we are trying to access properties that belong to another shape.
-        if let Some((property_table_index, slot)) = property_table_inner.map.get(key)
-            && *property_table_index < self.property_count()
+        if let Some((property_table_index, slot)) =
+            property_table_inner.map.get(key).map(std::cell::Cell::get)
+            && property_table_index < self.property_count()
         {
-            return Some(*slot);
+            return Ok(Some(slot));
         }
-        None
+        Ok(None)
     }
 
     /// Gets all keys first strings then symbols in creation order.
-    pub(crate) fn keys(&self) -> Vec<PropertyKey> {
-        let property_table = self.property_table().inner().borrow();
+    pub(crate) fn keys(&self) -> JsResult<Vec<PropertyKey>> {
+        let property_table = self
+            .property_table()
+            .inner()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
         property_table.keys_cloned_n(self.property_count())
     }
 
     /// Returns a new [`UniqueShape`] with the properties of the [`SharedShape`].
-    pub(crate) fn to_unique(&self) -> UniqueShape {
-        UniqueShape::new(
-            self.inner.runtime(),
-            self.prototype(),
-            self.property_table()
-                .inner()
-                .borrow()
-                .clone_count(self.property_count()),
-        )
+    pub(crate) fn required_slots(&self) -> JsResult<usize> {
+        let table = self
+            .property_table()
+            .inner()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        if self.property_count() == 0 {
+            return Ok(0);
+        }
+        let (_, slot) = table
+            .keys
+            .get(self.property_index() as usize)
+            .ok_or(ObjectConstructionError::IncompatibleSlotLayout)?;
+        Ok(slot
+            .index
+            .checked_add(slot.width())
+            .ok_or(EngineResourceError::SizeOverflow)? as usize)
+    }
+    pub(crate) fn to_unique(&self) -> JsResult<UniqueShape> {
+        let table = self
+            .property_table()
+            .inner()
+            .try_borrow()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+            .clone_count(self.property_count())?;
+        UniqueShape::new(self.inner.runtime(), self.prototype()?, table)
+            .map_err(|error| RootingError::Access(error).into())
     }
 
     pub(crate) const fn heap(&self) -> &RuntimeHeap {
@@ -503,11 +554,8 @@ impl SharedShapeRef {
     /// Upgrade returns a [`SharedShape`] pointer for the internal value if the pointer is still live,
     /// or [`None`] if the value was already garbage collected.
     #[inline]
-    #[must_use]
-    pub(crate) fn upgrade(&self) -> Option<SharedShape> {
-        Some(SharedShape {
-            inner: self.inner.upgrade().expect("shape heap is available")?,
-        })
+    pub(crate) fn upgrade(&self) -> Result<Option<SharedShape>, AccessError> {
+        Ok(self.inner.upgrade()?.map(|inner| SharedShape { inner }))
     }
 }
 

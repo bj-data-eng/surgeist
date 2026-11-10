@@ -55,7 +55,7 @@ mod tests;
 /// ```
 /// # use surgeist_js::{Context, JsValue};
 /// # use surgeist_js::value::Nullable;
-/// # let context = &mut Context::default();
+/// # let context = &mut Context::builder().build().unwrap();
 /// let maybe_10: Nullable<u8> = JsValue::new(10).try_js_into(context.access()).unwrap();
 /// assert_eq!(maybe_10, Nullable::NonNull(10u8));
 ///
@@ -66,7 +66,7 @@ mod tests;
 /// ```
 /// # use surgeist_js::{Context, JsResult, JsValue};
 /// # use surgeist_js::value::Nullable;
-/// # let context = &mut Context::default();
+/// # let context = &mut Context::builder().build().unwrap();
 /// let mut v: JsResult<Nullable<Option<u8>>> =
 ///     JsValue::undefined().try_js_into(context.access());
 /// assert_eq!(v, Ok(Nullable::NonNull(None)));

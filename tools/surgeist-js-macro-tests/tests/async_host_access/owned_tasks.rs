@@ -33,7 +33,7 @@ fn main() {
         }))
     });
     let observer = job.observer();
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let host = owner.host_access();
     let mut task = TaskContext::from_waker(Waker::noop());
     assert!(matches!(job.run_step(&mut task, &host), JobStep::Prepared));

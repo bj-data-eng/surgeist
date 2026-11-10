@@ -17,13 +17,10 @@ impl CreateForInIterator {
         let object = context.vm.get_register(value.into()).clone();
         let object = object.to_object(context.access())?;
         let (iterator, next_method) =
-            ForInIterator::create_for_in_iterator(JsValue::new(object), context);
+            ForInIterator::create_for_in_iterator(JsValue::new(object), context)?;
 
-        context
-            .vm
-            .frame_mut()
-            .iterators
-            .push(IteratorRecord::new(iterator, next_method));
+        let record = IteratorRecord::new(iterator, next_method)?;
+        context.vm.frame_mut().iterators.push(record);
 
         Ok(())
     }

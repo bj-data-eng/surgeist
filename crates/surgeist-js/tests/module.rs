@@ -9,7 +9,7 @@ use surgeist_js::{Context, JsString, Module, Source, js_string};
 
 #[test]
 fn dropping_a_parsed_module_preserves_shared_scope_identities() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let root = context.realm().scope().clone();
     let baseline = surgeist_js_ast::scope::Scope::new(root.clone(), false).unique_id();
     let module = Module::parse(
@@ -75,7 +75,7 @@ fn failed_linking_preserves_empty_synthetic_dependency_scope_identities() {
 #[test]
 fn one_short_module_preparation_preserves_identities_and_retained_source_retry() {
     fn setup() -> (Context, Module, u32) {
-        let mut context = Context::default();
+        let mut context = Context::builder().build().unwrap();
         let module = Module::parse(
             Source::from_bytes(
                 "export function answer(value = 1) { return value + 41; } export const value = 42;",
@@ -157,7 +157,7 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
 
 #[test]
 fn linking_prepares_captures_without_entering_a_guest_frame() {
-    let mut context = Context::default();
+    let mut context = Context::builder().build().unwrap();
     let module = Module::parse(
         Source::from_bytes("export function answer() { return 42; }"),
         None,
@@ -754,7 +754,7 @@ fn test_dynamic_import_symbol_key() {
 
 #[test]
 fn a_cold_module_links_and_evaluates_in_a_peer_context() {
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let mut peer = Context::builder()
         .runtime(owner.runtime().clone())
         .build()
@@ -812,7 +812,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
         }
     }
 
-    let mut owner = Context::default();
+    let mut owner = Context::builder().build().unwrap();
     let named = Module::parse(
         Source::from_bytes("const nameInDependency = 17; export { nameInDependency as '*' };"),
         None,

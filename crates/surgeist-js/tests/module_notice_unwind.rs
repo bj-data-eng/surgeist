@@ -69,6 +69,7 @@ impl Graph {
         ] {
             context
                 .global_object()
+                .unwrap()
                 .set(js_string!(name), 0, true, context.access())
                 .unwrap();
         }
@@ -124,6 +125,7 @@ impl Graph {
     fn count(&mut self, name: &str) -> JsValue {
         self.context
             .global_object()
+            .unwrap()
             .get(js_string!(name), self.context.access())
             .unwrap()
     }
@@ -249,10 +251,11 @@ fn interruption(error: &JsError) -> &ModuleInterruption {
 #[test]
 fn transitive_module_notices_finish_after_secondary_payload_drop_panics_and_keep_first_unwind() {
     let mut graph = Graph::new();
-    let (gate, resolvers) = JsPromise::new_pending(graph.context.access());
+    let (gate, resolvers) = JsPromise::new_pending(graph.context.access()).unwrap();
     graph
         .context
         .global_object()
+        .unwrap()
         .set(
             js_string!("childGate"),
             gate.clone(),

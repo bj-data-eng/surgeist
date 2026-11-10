@@ -172,6 +172,7 @@ fn eval(source: &str, context: &mut Context) -> JsResult<JsValue> {
 fn value(name: &str, context: &mut Context) -> JsValue {
     context
         .global_object()
+        .unwrap()
         .get(surgeist_js::JsString::from(name), context.access())
         .unwrap()
 }
@@ -307,7 +308,7 @@ fn async_generator_inline_consumption_keeps_a_newer_pending_await_after_the_encl
     let executor = Rc::new(AdapterExecutor::default());
     let rejections = Rc::new(Rejections::default());
     let mut context = context(executor.clone(), rejections.clone());
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("adapterGate"), gate.clone(), Attribute::all())
         .unwrap();
@@ -391,7 +392,7 @@ fn a_native_array_coroutine_keeps_its_recursive_stored_await_after_the_post_stor
     let executor = Rc::new(AdapterExecutor::default());
     let rejections = Rc::new(Rejections::default());
     let mut context = context(executor.clone(), rejections.clone());
-    let (gate, resolvers) = JsPromise::new_pending(context.access());
+    let (gate, resolvers) = JsPromise::new_pending(context.access()).unwrap();
     context
         .register_global_property(js_string!("adapterGate"), gate, Attribute::all())
         .unwrap();

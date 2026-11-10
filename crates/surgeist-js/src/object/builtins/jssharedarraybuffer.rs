@@ -44,7 +44,7 @@ impl JsSharedArrayBuffer {
                 .intrinsics()
                 .constructors()
                 .shared_array_buffer()
-                .constructor()
+                .constructor()?
                 .into(),
             byte_length as u64,
             None,
@@ -56,18 +56,17 @@ impl JsSharedArrayBuffer {
 
     /// Creates a [`JsSharedArrayBuffer`] from a shared raw buffer.
     #[inline]
-    pub fn from_buffer(buffer: SharedArrayBuffer, context: ContextAccess<'_>) -> Self {
+    pub fn from_buffer(buffer: SharedArrayBuffer, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
         let proto = context
             .intrinsics()
             .constructors()
             .shared_array_buffer()
-            .prototype();
+            .prototype()?;
 
-        let inner = JsObject::new(context.root_shape(), proto, buffer)
-            .expect("shared buffer uses its runtime's intrinsic prototype");
+        let inner = JsObject::new(context.root_shape(), proto, buffer)?;
 
-        Self { inner }
+        Ok(Self { inner })
     }
 
     /// Creates a [`JsSharedArrayBuffer`] from a [`JsObject`], throwing a `TypeError` if the object
@@ -103,7 +102,7 @@ impl JsSharedArrayBuffer {
     /// ```
     /// # use surgeist_js::{Context, JsResult, object::builtins::JsSharedArrayBuffer};
     /// # fn main() -> JsResult<()> {
-    /// let context = &mut Context::default();
+    /// let context = &mut Context::builder().build().unwrap();
     /// let sab = JsSharedArrayBuffer::new(64, context.access())?;
     /// let bytes = sab.to_vec()?;
     /// assert_eq!(bytes.len(), 64);
@@ -165,7 +164,7 @@ mod tests {
 
     #[test]
     fn shared_array_buffer_to_vec_roundtrip() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let len = 64;
         let sab = JsSharedArrayBuffer::new(len, context.access()).unwrap();
         assert_eq!(sab.byte_length().unwrap(), len);
@@ -186,7 +185,7 @@ mod tests {
 
     #[test]
     fn shared_array_buffer_to_vec_zero_length() {
-        let context = &mut Context::default();
+        let context = &mut Context::builder().build().unwrap();
         let sab = JsSharedArrayBuffer::new(0, context.access()).unwrap();
         assert_eq!(sab.byte_length().unwrap(), 0);
 

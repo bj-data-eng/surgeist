@@ -598,7 +598,7 @@ pub(crate) fn ordinary_get_prototype_of(
     _context: &mut Context,
 ) -> JsResult<JsPrototype> {
     // 1. Return O.[[Prototype]].
-    Ok(obj.prototype()?)
+    obj.prototype()
 }
 
 /// Abstract operation `OrdinarySetPrototypeOf`.
@@ -714,7 +714,7 @@ pub(crate) fn ordinary_get_own_property(
     // 7. Set D.[[Enumerable]] to the value of X's [[Enumerable]] attribute.
     // 8. Set D.[[Configurable]] to the value of X's [[Configurable]] attribute.
     // 9. Return D.
-    Ok(obj.borrow()?.properties.get_with_slot(key, context.slot()))
+    obj.borrow()?.properties.get_with_slot(key, context.slot())
 }
 
 /// Abstract operation `OrdinaryDefineOwnProperty`.
@@ -1046,7 +1046,7 @@ pub(crate) fn ordinary_delete(
             // 4. If desc.[[Configurable]] is true, then
             Some(desc) if desc.expect_configurable() => {
                 // a. Remove the own property with name P from O.
-                obj.borrow_mut()?.state_mut().remove(key);
+                obj.borrow_mut()?.state_mut().remove(key)?;
                 // b. Return true.
                 true
             }
@@ -1087,7 +1087,7 @@ pub(crate) fn ordinary_own_property_keys(
     //
     // 4. For each own property key P of O such that Type(P) is Symbol, in ascending chronological order of property creation, do
     //     a. Add P as the last element of keys.
-    keys.extend(obj.borrow()?.properties.shape().keys());
+    keys.extend(obj.borrow()?.properties.shape()?.keys()?);
 
     // 5. Return keys.
     Ok(keys)
@@ -1131,7 +1131,7 @@ pub(crate) fn validate_and_apply_property_descriptor(
     if let Some((obj, key)) = obj_and_key {
         obj.borrow_mut()?
             .properties_mut()
-            .insert_with_slot(key, descriptor, slot);
+            .insert_with_slot(key, descriptor, slot)?;
         if existing {
             slot.attributes |= SlotAttributes::FOUND;
         }
@@ -1288,7 +1288,7 @@ where
         context.realm().clone()
     };
     // b. Set proto to realm's intrinsic object named intrinsicDefaultProto.
-    Ok(default(realm.intrinsics().constructors()).prototype())
+    Ok(default(realm.intrinsics().constructors()).prototype()?)
 }
 
 fn non_existent_call(
