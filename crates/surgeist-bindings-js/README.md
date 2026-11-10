@@ -6,7 +6,7 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
-property operations, calls, original exception values, Web IDL integer
+property operations, calls, original exception values, Web IDL primitive
 conversion and explicit shared microtask checkpoints. Installed Web IDL
 interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
@@ -54,6 +54,12 @@ It preserves one guest ToNumber coercion, exact modulo, ties-even clamping and
 the selected standard's safe-integer bounds for 64-bit range/clamp conversions.
 `IntegerKind` selects a standard IDL type and `IntegerValue` retains that type
 with its corresponding fixed-width Rust payload.
+
+The other primitive conversions preserve noncoercive boolean semantics, exact
+DOMString code units, USVString surrogate replacement and checked ByteString
+bytes. Restricted and unrestricted floating conversions preserve the selected
+standard's rounding, signed zero, overflow and canonical NaN rules. Conversions
+that invoke guest coercion do so once and preserve the original thrown value.
 
 ## Verification
 

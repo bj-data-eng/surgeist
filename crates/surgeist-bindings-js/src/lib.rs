@@ -81,7 +81,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use error::{Error, Exception, ExceptionPhase};
-pub use idl::{IntegerKind, IntegerMode, IntegerValue};
+pub use idl::{ByteString, DomString, IntegerKind, IntegerMode, IntegerValue, UsvString};
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -287,6 +287,62 @@ impl<'scope> Scope<'scope> {
     /// exception capture, this explicit conversion may run guest code.
     pub fn to_utf16(&mut self, value: &Value<'scope>) -> Result<Vec<u16>, Error> {
         self.engine.to_utf16(&self.realm, &value.root)
+    }
+
+    /// Converts to Web IDL boolean through noncoercive ECMAScript ToBoolean.
+    /// Objects are truthy without invoking their conversion hooks.
+    pub fn boolean(&mut self, value: &Value<'scope>) -> Result<bool, Error> {
+        self.engine.to_boolean(&self.realm, &value.root)
+    }
+
+    /// Converts to ordinary Web IDL DOMString through one ECMAScript ToString.
+    /// Preserves exact UTF-16, including unmatched surrogates. Null becomes
+    /// `"null"`; no LegacyNullToEmptyString extended attribute is applied.
+    pub fn dom_string(&mut self, value: &Value<'scope>) -> Result<DomString, Error> {
+        self.to_utf16(value).map(DomString::new)
+    }
+
+    /// Converts to Web IDL USVString through one ToString, replacing each
+    /// unmatched surrogate with U+FFFD and retaining valid surrogate pairs.
+    pub fn usv_string(&mut self, value: &Value<'scope>) -> Result<UsvString, Error> {
+        self.to_utf16(value).map(UsvString::normalize)
+    }
+
+    /// Converts to Web IDL ByteString through one ToString. Code units above
+    /// 255 produce [`Error::ByteStringOutOfRange`], corresponding to TypeError
+    /// in an installed interface; no UTF-8 encoding or byte truncation occurs.
+    pub fn byte_string(&mut self, value: &Value<'scope>) -> Result<ByteString, Error> {
+        ByteString::convert(self.to_utf16(value)?)
+    }
+
+    /// Converts to finite Web IDL float through one ECMAScript ToNumber and
+    /// binary32 rounding to nearest with ties to even. Nonfinite values and
+    /// rounding overflow produce [`Error::FloatOutOfRange`] (IDL TypeError).
+    /// Negative zero and negative underflow retain their sign.
+    pub fn float(&mut self, value: &Value<'scope>) -> Result<f32, Error> {
+        let number = self.engine.to_number(&self.realm, &value.root)?;
+        idl::float(number).map_err(|_| Error::FloatOutOfRange)
+    }
+
+    /// Converts to unrestricted Web IDL float through one ToNumber, allowing
+    /// infinities and rounding overflow. NaN is canonicalized to 0x7fc00000.
+    pub fn unrestricted_float(&mut self, value: &Value<'scope>) -> Result<f32, Error> {
+        let number = self.engine.to_number(&self.realm, &value.root)?;
+        Ok(idl::unrestricted_float(number))
+    }
+
+    /// Converts to finite Web IDL double through one ECMAScript ToNumber.
+    /// Nonfinite values produce [`Error::FloatOutOfRange`] (IDL TypeError).
+    pub fn double(&mut self, value: &Value<'scope>) -> Result<f64, Error> {
+        let number = self.engine.to_number(&self.realm, &value.root)?;
+        idl::double(number).map_err(|_| Error::FloatOutOfRange)
+    }
+
+    /// Converts to unrestricted Web IDL double through one ToNumber, retaining
+    /// infinities and signed zero. NaN is canonicalized to 0x7ff8000000000000.
+    pub fn unrestricted_double(&mut self, value: &Value<'scope>) -> Result<f64, Error> {
+        let number = self.engine.to_number(&self.realm, &value.root)?;
+        Ok(idl::unrestricted_double(number))
     }
 
     /// Converts through ECMAScript ToNumber and the selected Web IDL integer

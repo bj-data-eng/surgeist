@@ -131,7 +131,7 @@ notices and verify its actual target, features and bundled material.
 
 ## Web IDL algorithm basis
 
-The integer conversion implementation adapts the pinned Web IDL algorithms,
+The primitive conversion implementation adapts the pinned Web IDL algorithms,
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft), under the existing
 [complete license](../../licenses/whatwg/LICENSE) and
 [adaptation notice](../../licenses/whatwg/NOTICE.md#javascript-binding-algorithms).

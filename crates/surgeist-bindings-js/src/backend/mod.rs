@@ -28,6 +28,7 @@ pub(crate) trait Engine {
         arguments: &[Root],
     ) -> Result<Root, Error>;
     fn to_utf16(&mut self, realm: &Realm, value: &Root) -> Result<Vec<u16>, Error>;
+    fn to_boolean(&mut self, realm: &Realm, value: &Root) -> Result<bool, Error>;
     fn to_number(&mut self, realm: &Realm, value: &Root) -> Result<f64, Error>;
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;

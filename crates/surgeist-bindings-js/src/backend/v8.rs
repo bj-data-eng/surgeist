@@ -432,6 +432,13 @@ impl super::Engine for Engine {
         })
     }
 
+    fn to_boolean(&mut self, realm: &Realm, value: &Root) -> Result<bool, Error> {
+        self.validate_root(value)?;
+        self.enter(realm, ExceptionPhase::Coerce, |scope, roots| {
+            Ok(roots.local(scope, value)?.boolean_value(scope))
+        })
+    }
+
     fn to_number(&mut self, realm: &Realm, value: &Root) -> Result<f64, Error> {
         self.validate_root(value)?;
         self.enter(realm, ExceptionPhase::Coerce, |scope, roots| {

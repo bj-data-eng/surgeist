@@ -1,6 +1,6 @@
 use surgeist_bindings_js::{
     EngineKind, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode, IntegerValue, Process,
-    Realm,
+    Realm, Scope, Value,
 };
 
 fn units(source: &str) -> Vec<u16> {
@@ -281,6 +281,241 @@ fn web_idl_integer_conversion_preserves_coercion_and_exact_modulo(
     Ok(())
 }
 
+fn web_idl_boolean_is_noncoercive(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        for source in ["undefined", "null", "false", "0", "-0", "NaN", "0n", "''"] {
+            let value = scope.evaluate(&units(source))?;
+            assert!(!scope.boolean(&value)?, "{source}");
+        }
+        for source in ["true", "1", "-1", "Infinity", "1n", "'0'", "Symbol()", "[]", "({})", "new Boolean(false)"] {
+            let value = scope.evaluate(&units(source))?;
+            assert!(scope.boolean(&value)?, "{source}");
+        }
+        let value = scope.evaluate(&units("globalThis.booleanCoercions = 0; ({valueOf() { booleanCoercions++; throw 1 }, toString() { booleanCoercions++; throw 2 }, [Symbol.toPrimitive]() { booleanCoercions++; throw 3 }})"))?;
+        assert!(scope.boolean(&value)?);
+        let proxy = scope.evaluate(&units("new Proxy({}, {get() { booleanCoercions++; throw 4 }})"))?;
+        assert!(scope.boolean(&proxy)?);
+        let count = scope.evaluate(&units("booleanCoercions"))?;
+        assert_eq!(scope.to_utf16(&count)?, units("0"));
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn web_idl_strings_preserve_units_and_validate_bytes(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let value = scope.string(&[0, 0xd800, 0x61, 0xdc00, 0xd83d, 0xde00, 0xdbff])?;
+        let dom = scope.dom_string(&value)?;
+        assert_eq!(
+            dom.as_code_units(),
+            [0, 0xd800, 0x61, 0xdc00, 0xd83d, 0xde00, 0xdbff]
+        );
+        assert_eq!(
+            dom.into_code_units(),
+            [0, 0xd800, 0x61, 0xdc00, 0xd83d, 0xde00, 0xdbff]
+        );
+        let usv = scope.usv_string(&value)?;
+        assert_eq!(
+            usv.as_code_units(),
+            [0, 0xfffd, 0x61, 0xfffd, 0xd83d, 0xde00, 0xfffd]
+        );
+        assert_eq!(
+            usv.into_code_units(),
+            [0, 0xfffd, 0x61, 0xfffd, 0xd83d, 0xde00, 0xfffd]
+        );
+        assert!(matches!(
+            scope.byte_string(&value),
+            Err(Error::ByteStringOutOfRange)
+        ));
+
+        let bytes = scope.string(&[0, 0x7f, 0x80, 0xff])?;
+        let bytes = scope.byte_string(&bytes)?;
+        assert_eq!(bytes.as_bytes(), [0, 0x7f, 0x80, 0xff]);
+        assert_eq!(bytes.into_bytes(), [0, 0x7f, 0x80, 0xff]);
+        let too_large = scope.string(&[0x100])?;
+        assert!(matches!(
+            scope.byte_string(&too_large),
+            Err(Error::ByteStringOutOfRange)
+        ));
+        for (source, expected) in [
+            ("null", "null"),
+            ("undefined", "undefined"),
+            ("123n", "123"),
+            ("true", "true"),
+            ("''", ""),
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.dom_string(&value)?.as_code_units(), units(expected));
+            assert_eq!(scope.usv_string(&value)?.as_code_units(), units(expected));
+            assert_eq!(scope.byte_string(&value)?.as_bytes(), expected.as_bytes());
+        }
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn web_idl_floating_conversions_apply_rounding_and_restrictions(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        for (source, expected) in [
+            ("1 + 2 ** -24", 1.0),
+            ("1 + 3 * 2 ** -24", f32::from_bits(0x3f80_0002)),
+            ("2 ** -150", 0.0),
+            ("3 * 2 ** -150", f32::from_bits(2)),
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.float(&value)?, expected);
+            assert_eq!(scope.unrestricted_float(&value)?, expected);
+        }
+        for source in ["2 ** 128 - 2 ** 104", "2 ** 128 - 2 ** 103 - 2 ** 75"] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.float(&value)?, f32::MAX);
+        }
+        for source in [
+            "2 ** 128 - 2 ** 103",
+            "2 ** 128",
+            "-(2 ** 128)",
+            "Number.MAX_VALUE",
+            "NaN",
+            "Infinity",
+            "-Infinity",
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert!(
+                matches!(scope.float(&value), Err(Error::FloatOutOfRange)),
+                "{source}"
+            );
+        }
+        let finite = scope.evaluate(&units("Number.MAX_VALUE"))?;
+        assert_eq!(scope.double(&finite)?, f64::MAX);
+        assert_eq!(scope.unrestricted_double(&finite)?, f64::MAX);
+        assert_eq!(scope.unrestricted_float(&finite)?, f32::INFINITY);
+        for (source, sign) in [("Infinity", 1.0), ("-Infinity", -1.0)] {
+            let value = scope.evaluate(&units(source))?;
+            assert!(matches!(scope.double(&value), Err(Error::FloatOutOfRange)));
+            assert_eq!(scope.unrestricted_double(&value)?, sign * f64::INFINITY);
+            assert_eq!(
+                scope.unrestricted_float(&value)?,
+                sign as f32 * f32::INFINITY
+            );
+        }
+        let nan = scope.evaluate(&units("NaN"))?;
+        assert!(matches!(scope.double(&nan), Err(Error::FloatOutOfRange)));
+        assert_eq!(scope.unrestricted_float(&nan)?.to_bits(), 0x7fc0_0000);
+        assert_eq!(
+            scope.unrestricted_double(&nan)?.to_bits(),
+            0x7ff8_0000_0000_0000
+        );
+        for source in ["-0", "-(2 ** -151)"] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.float(&value)?.to_bits(), 0x8000_0000);
+            assert_eq!(scope.unrestricted_float(&value)?.to_bits(), 0x8000_0000);
+        }
+        let minus_zero = scope.evaluate(&units("-0"))?;
+        assert_eq!(scope.double(&minus_zero)?.to_bits(), 0x8000_0000_0000_0000);
+        assert_eq!(
+            scope.unrestricted_double(&minus_zero)?.to_bits(),
+            0x8000_0000_0000_0000
+        );
+        for (source, expected) in [("null", 0.0), ("true", 1.0), ("'42.25'", 42.25)] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.float(&value)?, expected as f32);
+            assert_eq!(scope.unrestricted_float(&value)?, expected as f32);
+            assert_eq!(scope.double(&value)?, expected);
+            assert_eq!(scope.unrestricted_double(&value)?, expected);
+        }
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum PrimitiveConversion {
+    DomString,
+    UsvString,
+    ByteString,
+    Float,
+    UnrestrictedFloat,
+    Double,
+    UnrestrictedDouble,
+}
+
+impl PrimitiveConversion {
+    fn coerce<'scope>(self, scope: &mut Scope<'scope>, value: &Value<'scope>) -> Result<(), Error> {
+        match self {
+            Self::DomString => scope.dom_string(value).map(|_| ()),
+            Self::UsvString => scope.usv_string(value).map(|_| ()),
+            Self::ByteString => scope.byte_string(value).map(|_| ()),
+            Self::Float => scope.float(value).map(|_| ()),
+            Self::UnrestrictedFloat => scope.unrestricted_float(value).map(|_| ()),
+            Self::Double => scope.double(value).map(|_| ()),
+            Self::UnrestrictedDouble => scope.unrestricted_double(value).map(|_| ()),
+        }
+    }
+
+    fn hint(self) -> &'static str {
+        match self {
+            Self::DomString | Self::UsvString | Self::ByteString => "string",
+            Self::Float | Self::UnrestrictedFloat | Self::Double | Self::UnrestrictedDouble => {
+                "number"
+            }
+        }
+    }
+}
+
+fn web_idl_primitive_coercion_runs_once_and_preserves_original_throws(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        for conversion in [PrimitiveConversion::DomString, PrimitiveConversion::UsvString, PrimitiveConversion::ByteString, PrimitiveConversion::Float, PrimitiveConversion::UnrestrictedFloat, PrimitiveConversion::Double, PrimitiveConversion::UnrestrictedDouble] {
+            let value = scope.evaluate(&units("globalThis.primitiveCalls = 0; globalThis.primitiveHint = ''; ({[Symbol.toPrimitive](hint) { primitiveCalls++; primitiveHint = hint; return '42' }})"))?;
+            conversion.coerce(scope, &value)?;
+            let count = scope.evaluate(&units("primitiveCalls + ':' + primitiveHint"))?;
+            assert_eq!(scope.to_utf16(&count)?, units(&format!("1:{}", conversion.hint())));
+
+            let value = scope.evaluate(&units("globalThis.primitiveCalls = 0; globalThis.primitiveDiagnostics = 0; globalThis.primitiveThrown = {toString() { primitiveDiagnostics++; throw 7 }, get stack() { primitiveDiagnostics++; throw 8 }}; ({[Symbol.toPrimitive]() { primitiveCalls++; throw primitiveThrown }})"))?;
+            let exception = match conversion.coerce(scope, &value) {
+                Err(Error::Exception(exception)) => exception,
+                _ => return Err(Error::BackendUnavailable),
+            };
+            assert_eq!(exception.phase(), ExceptionPhase::Coerce);
+            let thrown = scope.import(exception.value())?;
+            let original = scope.evaluate(&units("primitiveThrown"))?;
+            assert!(scope.strict_equals(&thrown, &original)?);
+            let counts = scope.evaluate(&units("primitiveCalls + ':' + primitiveDiagnostics"))?;
+            assert_eq!(scope.to_utf16(&counts)?, units("1:0"));
+
+            // Symbol fails ToString and ToNumber. BigInt succeeds ToString but
+            // fails ToNumber, unlike the explicit Number(bigint) operation.
+            for source in ["Symbol()", "1n"] {
+                if source == "1n" && conversion.hint() == "string" {
+                    continue;
+                }
+                let value = scope.evaluate(&units(source))?;
+                let exception = match conversion.coerce(scope, &value) {
+                    Err(Error::Exception(exception)) => exception,
+                    _ => return Err(Error::BackendUnavailable),
+                };
+                assert_eq!(exception.phase(), ExceptionPhase::Coerce);
+                let thrown = scope.import(exception.value())?;
+                let name = scope.get(&thrown, &units("name"))?;
+                assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
+            }
+        }
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     let mut process = Process::bootstrap(EngineKind::V8)?;
     assert!(matches!(
@@ -299,6 +534,10 @@ fn main() -> Result<(), Error> {
     properties_and_calls_refuse_invalid_values(&mut process)?;
     checkpoints_are_explicit_and_shared(&mut process)?;
     web_idl_integer_conversion_preserves_coercion_and_exact_modulo(&mut process)?;
+    web_idl_boolean_is_noncoercive(&mut process)?;
+    web_idl_strings_preserve_units_and_validate_bytes(&mut process)?;
+    web_idl_floating_conversions_apply_rounding_and_restrictions(&mut process)?;
+    web_idl_primitive_coercion_runs_once_and_preserves_original_throws(&mut process)?;
 
     let (old_realm, old_value) = {
         let mut execution = process.execution();

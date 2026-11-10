@@ -28,6 +28,18 @@ before testing bounds and throws **TypeError**. Clamping rounds ties to even.
 The implementation decomposes binary64 to compute modulo exactly; a floating
 `rem_euclid(2^64)` would round values such as `-2` incorrectly near the modulus.
 
+Boolean conversion delegates noncoercive ToBoolean. String conversion performs
+ToString once: ordinary DOMString preserves every code unit, USVString replaces
+unpaired surrogates, and ByteString rejects a code unit above 255. The legacy
+null-to-empty extended attribute must be applied explicitly by interface metadata;
+it is not the ordinary string conversion policy.
+
+Restricted float rejects nonfinite input and finite input that rounds outside
+the finite single-precision range. Rounding follows nearest with ties to even,
+including the overflow midpoint and signed underflow. Restricted double rejects
+nonfinite input. Unrestricted floating conversions retain infinities and use
+the exact canonical NaN bit patterns required by the selected Web IDL edition.
+
 ## Delegated ECMAScript operations
 
 Use the existing [dated ECMAScript 2026 source selection](ecmascript-number-serialization--2026--cd65f2eaa201.md#source-identity-and-bounds),

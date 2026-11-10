@@ -59,6 +59,12 @@ pub enum Error {
     /// Web IDL EnforceRange rejected a nonfinite or out-of-range Number.
     /// Installed JavaScript interfaces map this category to TypeError.
     IntegerOutOfRange,
+    /// Web IDL float/double conversion rejected a nonfinite value or float overflow.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    FloatOutOfRange,
+    /// Web IDL ByteString conversion encountered a code unit greater than 255.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    ByteStringOutOfRange,
     /// Guest Set rejected the property update.
     PropertyRejected,
     /// Execution was terminated by the backend.
@@ -86,6 +92,8 @@ impl fmt::Display for Error {
             Self::ExpectedObject => "an object is required",
             Self::ExpectedFunction => "a callable function is required",
             Self::IntegerOutOfRange => "the Number is outside the Web IDL integer range",
+            Self::FloatOutOfRange => "the Number is outside the Web IDL floating point range",
+            Self::ByteStringOutOfRange => "the string contains a code unit outside the byte range",
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
