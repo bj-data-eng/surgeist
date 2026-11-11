@@ -5,7 +5,7 @@ use super::super::{
 use super::image::{
     BackgroundAreas, BackgroundClipGeometry, ImageAttachmentPlan, ImagePlacementInput,
     ImageRepeatPlan, ResolvedImagePlacement, ResolvedImageRepeat, ResolvedImageResource,
-    StyleImageLayer, StyleImageSourceKind,
+    StyleImageLayer, StyleImageSource, StyleImageSourceKind,
 };
 use crate::{
     accounting::{
@@ -424,9 +424,8 @@ impl BackgroundNormalizationInput {
                 NormalizedBackgroundLayerSource::ResolvedImage(resource.clone()),
                 resource.intrinsic_size(),
             ),
-            StyleImageSourceKind::Unresolved(_) => {
-                layer.source().require_resolved()?;
-                unreachable!("unresolved image sources return an error")
+            StyleImageSourceKind::Unresolved(reference) => {
+                return Err(StyleImageSource::unresolved_error(reference));
             }
         };
         let placement = ImagePlacementInput::try_new(

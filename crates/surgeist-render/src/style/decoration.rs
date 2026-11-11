@@ -807,12 +807,12 @@ fn border_clip_geometry(
 }
 
 fn normalize_border_style(side: &BorderSide) -> Result<Option<NormalizedBorderStyle>> {
-    if side.width() == 0.0 || matches!(side.style(), BorderStyle::None | BorderStyle::Hidden) {
+    if side.width() == 0.0 {
         return Ok(None);
     }
 
     let style = match side.style() {
-        BorderStyle::None | BorderStyle::Hidden => unreachable!("suppressed before style mapping"),
+        BorderStyle::None | BorderStyle::Hidden => return Ok(None),
         BorderStyle::Solid => NormalizedBorderStyle::Solid,
         BorderStyle::Dashed => NormalizedBorderStyle::Dashed,
         BorderStyle::Dotted => NormalizedBorderStyle::Dotted,
@@ -844,12 +844,12 @@ fn unsupported_border_style(
 }
 
 fn normalize_outline_style(outline: &Outline) -> Result<Option<NormalizedOutlineStyle>> {
-    if outline.width() == 0.0 || matches!(outline.style(), OutlineStyle::None) {
+    if outline.width() == 0.0 {
         return Ok(None);
     }
 
     let style = match outline.style() {
-        OutlineStyle::None => unreachable!("suppressed before style mapping"),
+        OutlineStyle::None => return Ok(None),
         OutlineStyle::Solid => NormalizedOutlineStyle::Solid,
         OutlineStyle::Dashed => NormalizedOutlineStyle::Dashed,
         OutlineStyle::Dotted => NormalizedOutlineStyle::Dotted,
