@@ -550,13 +550,14 @@ impl ResourceManagerState {
         let generation_health_before = self.generation.ensure_healthy();
         let retained_before = self.generation.registered_cache_bytes()?;
         self.generation.probe_cache(None)?;
-        let entry = self
-            .entries
-            .remove(&token.resource_identity)
-            .expect("a validated resource lease must remain registered");
-        let removed_bytes = entry.byte_len;
-        self.generation.eviction(entry.key.generation_class());
-        drop(entry);
+        let removed_bytes = match Self::remove_selected_entry(
+            &self.generation,
+            &mut self.entries,
+            token.resource_identity,
+        ) {
+            Ok(bytes) => bytes,
+            Err(fault) => return self.fail_accounting(fault),
+        };
         if self.accounting_fault.is_some() {
             return Ok(());
         }
@@ -665,13 +666,19 @@ impl ResourceManagerState {
             let generation_health_before = self.generation.ensure_healthy();
             let retained_before = self.generation.registered_cache_bytes();
             let _ = self.generation.probe_cache(None);
-            let entry = self
-                .entries
-                .remove(&identity)
-                .expect("selected frame resource remains registered");
-            let removed_bytes = entry.byte_len;
-            self.generation.eviction(entry.key.generation_class());
-            drop(entry);
+            let removed_bytes =
+                match Self::remove_selected_entry(&self.generation, &mut self.entries, identity) {
+                    Ok(bytes) => bytes,
+                    Err(fault) => {
+                        if generation_health_before.is_err() || retained_before.is_err() {
+                            self.record_accounting_fault(
+                                ResourceAccountingFault::GenerationAccountingFailure,
+                            );
+                        }
+                        self.record_accounting_fault(fault);
+                        continue;
+                    }
+                };
             if cleanup.push_reserved(identity).is_err() {
                 self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
             }
@@ -770,12 +777,12 @@ impl ResourceManagerState {
                 }
             }
             let _ = self.generation.probe_cache(None);
-            let entry = self
-                .entries
-                .remove(&identity)
-                .expect("selected idle resource remains registered");
-            self.generation.eviction(entry.key.generation_class());
-            drop(entry);
+            if let Err(fault) =
+                Self::remove_selected_entry(&self.generation, &mut self.entries, identity)
+            {
+                self.record_accounting_fault(fault);
+                continue;
+            }
             if cleanup.push_reserved(identity).is_err() {
                 self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
             }
