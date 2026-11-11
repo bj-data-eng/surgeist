@@ -5,14 +5,17 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use surgeist_generator::browser::{self, AcquisitionMode, BrowserLocation, GenerationRequest};
+use serde::Deserialize;
+use surgeist_generator::browser::{
+    self, AcquisitionMode, BrowserCorpus, BrowserLocation, BrowserReportSummary, GenerationRequest,
+};
 use surgeist_generator::{CorpusLocation, RelativePath, Sha256Digest};
 
 use crate::adapter::LayoutAdapter;
 
 #[path = "source_owner.rs"]
 mod source_owner;
-use source_owner::Manifest;
+use source_owner::{LIVE_DECLARATION, Manifest};
 
 const ROOT_ENV: &str = "SURGEIST_LAYOUT_BROWSER_PARITY_ROOT";
 const FILTER_ENV: &str = "SURGEIST_LAYOUT_GENERATE_FILTER";
@@ -85,13 +88,13 @@ pub(super) fn run_from_env() -> Result<()> {
         }
         Command::CheckCorpus => {
             let attestation = browser::verify_import(location, &import).map_err(message)?;
-            let inputs = expected_inputs(&manifest_digest, &attestation)?;
-            let corpus = manifest
-                .corpus(browser_location, attestation.fixture_paths())?
-                .with_expected_inputs(inputs)
-                .map_err(message)?
-                .with_import_provenance(vec![attestation.provenance().map_err(message)?])
-                .map_err(message)?;
+            let corpus = live_corpus(
+                &manifest,
+                manifest_digest,
+                browser_location,
+                attestation.fixture_paths(),
+                &attestation,
+            )?;
             browser::check_corpus(&corpus, &LayoutAdapter).map_err(message)?;
             Ok(())
         }
@@ -100,13 +103,13 @@ pub(super) fn run_from_env() -> Result<()> {
             let attestation = browser::verify_import(location, &import).map_err(message)?;
             let fixture_paths = attestation.fixture_paths();
             let filter = environment.filter(location, &fixture_paths)?;
-            let inputs = expected_inputs(&manifest_digest, &attestation)?;
-            let corpus = manifest
-                .corpus(browser_location, fixture_paths)?
-                .with_expected_inputs(inputs)
-                .map_err(message)?
-                .with_import_provenance(vec![attestation.provenance().map_err(message)?])
-                .map_err(message)?;
+            let corpus = live_corpus(
+                &manifest,
+                manifest_digest,
+                browser_location,
+                fixture_paths,
+                &attestation,
+            )?;
             let executable = match environment.browser_path {
                 Some(path) => path,
                 None => browser::acquire_browser(owner, corpus.browser(), AcquisitionMode::Managed)
@@ -133,13 +136,50 @@ fn revalidate_manifest(path: &Path, expected: &Sha256Digest) -> Result<()> {
     Ok(())
 }
 
-fn expected_inputs(
-    manifest_digest: &Sha256Digest,
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LiveDeclaration {
+    schema_version: u32,
+    counts: BrowserReportSummary,
+}
+
+fn live_corpus(
+    manifest: &Manifest,
+    manifest_digest: Sha256Digest,
+    location: BrowserLocation,
+    fixture_paths: Vec<RelativePath>,
     attestation: &browser::SourceAttestation,
-) -> Result<BTreeMap<RelativePath, Sha256Digest>> {
+) -> Result<BrowserCorpus> {
+    let path = location.location().corpus_root().join(LIVE_DECLARATION);
+    let bytes = fs::read_to_string(&path)
+        .map_err(|error| format!("read live corpus declaration {}: {error}", path.display()))?;
+    let declaration: LiveDeclaration =
+        surgeist_generator::parse_manifest(&bytes, &path).map_err(message)?;
+    if declaration.schema_version != 1 {
+        return Err("live corpus declaration schema_version must be 1".to_string());
+    }
+    let counts = declaration.counts;
+    let counts = BrowserReportSummary::new(
+        counts.generated(),
+        counts.unsupported(),
+        counts.expected_fail(),
+        counts.quarantined(),
+        counts.failed_to_generate(),
+    )
+    .map_err(message)?;
     let mut inputs = attestation.verified_inputs();
-    inputs.insert(relative("corpus.toml")?, manifest_digest.clone());
-    Ok(inputs)
+    inputs.insert(relative("corpus.toml")?, manifest_digest);
+    inputs.insert(
+        relative(LIVE_DECLARATION)?,
+        Sha256Digest::from_bytes(bytes.as_bytes()),
+    );
+    manifest
+        .corpus(location, fixture_paths)?
+        .with_expected_counts(counts)
+        .with_expected_inputs(inputs)
+        .map_err(message)?
+        .with_import_provenance(vec![attestation.provenance().map_err(message)?])
+        .map_err(message)
 }
 
 struct GenerationEnvironment {

@@ -14,6 +14,8 @@ use crate::adapter::fixture_cases;
 use crate::browser_profile::BrowserManifest;
 
 const SOURCE_ATTESTATION: &str = "html/.surgeist-source.json";
+pub(super) const LIVE_DECLARATION: &str = "live-corpus.toml";
+const LIVE_OUTPUT_ROOT: &str = "live-xml";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -149,6 +151,7 @@ impl Manifest {
             );
         }
         self.browser.validate()?;
+        self.historical_counts()?;
         let mut ids = BTreeSet::new();
         let mut sources = BTreeSet::new();
         for case in &self.cases {
@@ -252,7 +255,7 @@ impl Manifest {
                     .into_iter()
                     .map(|(variant, _)| {
                         let id = format!("{stem}__{variant}");
-                        let output = Path::new("xml")
+                        let output = Path::new(LIVE_OUTPUT_ROOT)
                             .join(path.parent().unwrap_or_else(|| Path::new("")))
                             .join(format!("{id}.xml"));
                         CaseSpec::new(id, variant.to_string(), relative(output.to_string_lossy())?)
@@ -293,7 +296,7 @@ impl Manifest {
             browser_location,
             relative("corpus.toml")?,
             "surgeist-layout-generate".to_string(),
-            relative("xml")?,
+            relative(LIVE_OUTPUT_ROOT)?,
             reports,
             self.browser.settings()?,
             fixtures,
@@ -302,17 +305,17 @@ impl Manifest {
                 relative("scripts/gentest/test_base_style.css")?,
                 relative("fonts/Ahem.ttf")?,
                 relative("fonts/PROVENANCE.md")?,
+                relative(LIVE_DECLARATION)?,
             ],
             vec![relative(SOURCE_ATTESTATION)?],
         )
         .map_err(message)?
-        .with_expected_counts(self.expected_counts()?)
         .with_exact_input_roots(vec![relative("scripts/gentest")?, relative("fonts")?])
         .map_err(message)?;
         Ok(corpus)
     }
 
-    fn expected_counts(&self) -> Result<browser::BrowserReportSummary> {
+    fn historical_counts(&self) -> Result<browser::BrowserReportSummary> {
         let expected = &self.generation_reports.full;
         browser::BrowserReportSummary::new(
             expected.generated,
