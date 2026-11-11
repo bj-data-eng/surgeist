@@ -289,10 +289,11 @@ fn nonseparable_clip_color(color: vec3<f32>) -> vec3<f32> {
 }
 
 fn nonseparable_set_lum(color: vec3<f32>, luminosity: f32) -> vec3<f32> {
+    let exact = vec3<bool>(surgeist_blend_luminosity_identity(color, luminosity));
     let difference = luminosity - nonseparable_lum(color);
-    let clipped = nonseparable_clip_color(color + vec3<f32>(difference));
-    let exact = surgeist_blend_luminosity_identity(color, luminosity);
-    return select(clipped, vec3<f32>(luminosity), vec3<bool>(exact));
+    let shifted = select(color + vec3<f32>(difference), vec3<f32>(0.0), exact);
+    let clipped = nonseparable_clip_color(shifted);
+    return select(clipped, vec3<f32>(luminosity), exact);
 }
 
 fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {

@@ -517,6 +517,13 @@ fn nonseparable_gpu_helpers_preserve_original_extrema_and_channel_identity() {
             ));
         }
     }
+    fixtures.push((
+        SetLum {
+            color: [1.0e-39, 0.0, 0.0],
+            luminosity: 0.0,
+        },
+        [0.0; 3],
+    ));
     let (mut backend, identity, _) =
         super::gpu::composition_selected_backend_and_requests_for_test();
     let inputs = fixtures.iter().map(|(input, _)| *input).collect::<Vec<_>>();

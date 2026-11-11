@@ -522,9 +522,9 @@ Local Plus retains its separate additive composition arithmetic.
 
 Color dodge returns zero for a zero backdrop before considering a source of
 one. Color burn returns one for a backdrop of one before considering a source
-of zero. Hard light branches on the source component at one half; overlay
-branches on the backdrop. Soft light uses its polynomial curve through a
-backdrop of one quarter, then its square-root curve.
+of zero. Hard light selects its curve at a source component of one half.
+Overlay uses the backdrop component for that selection. Soft light uses its
+polynomial curve through a backdrop of one quarter, then its square-root curve.
 
 Hue preserves backdrop saturation and luminosity with source hue. Saturation
 preserves backdrop hue and luminosity with source saturation. Color preserves

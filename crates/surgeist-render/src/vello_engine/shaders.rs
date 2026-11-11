@@ -230,7 +230,7 @@ const MSAA8_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 2] = [
 
 const SET_LUM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    return clip_color(c + (l - lum(c)));\n}",
-    to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    let shifted = c + (l - lum(c));\n    let clipped = surgeist_blend_clip_color(shifted, lum(shifted));\n    let exact = surgeist_blend_luminosity_identity(c, l);\n    return select(clipped, vec3<f32>(l), vec3<bool>(exact));\n}",
+    to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    let exact = vec3<bool>(surgeist_blend_luminosity_identity(c, l));\n    let shifted = select(c + (l - lum(c)), vec3<f32>(0.0), exact);\n    let clipped = surgeist_blend_clip_color(shifted, lum(shifted));\n    return select(clipped, vec3<f32>(l), exact);\n}",
     count: 1,
     failure: "internal Vello fine shader no longer has the checked SetLum helper",
 };
