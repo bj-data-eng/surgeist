@@ -199,6 +199,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::attached_proxy_uses_its_own_realm();
     super::guest::tests::attached_object_listeners_look_up_handle_event_when_invoked();
     super::guest::tests::attached_window_event_follows_the_listener_invocation();
+    super::guest::tests::attached_window_event_clears_on_terminal_listener_refusal();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
@@ -227,6 +228,8 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         HostFailureSlot<CssSerializationError, DomHostedRuntimeRetention>,
         DomHostedRuntimeRetention,
     )>() + account;
+    let window_event =
+        size_of::<(RefCell<Option<Root>>, DomHostedRuntimeRetention)>() + 2 * size_of::<Rc<()>>();
     let exact = size_of::<NativeOwner>()
         + size_of_val(&read)
         + size_of_val(&detach)
@@ -235,7 +238,8 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + DomDocumentScriptRegistration::storage_bytes()
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
-        + dom_exception;
+        + dom_exception
+        + window_event;
     drop(read);
     drop(detach);
 
@@ -252,9 +256,15 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     let native_bindings_are_live = |host: &mut DocumentScriptHost| {
         let permit = host.permit().unwrap();
         host.in_document(&permit, |scope| {
-            let script = r#"new DOMException().name === "Error" && CSS.escape("0") === "\\30 ""#
-                .encode_utf16()
-                .collect::<Vec<_>>();
+            let script = r#"(() => {
+                const current = Object.getOwnPropertyDescriptor(globalThis, "event");
+                return new DOMException().name === "Error" && CSS.escape("0") === "\\30 " &&
+                       globalThis.event === undefined && current.enumerable && current.configurable &&
+                       current.get.name === "get event" && current.get.length === 0 &&
+                       current.set.name === "set event" && current.set.length === 1;
+            })()"#
+            .encode_utf16()
+            .collect::<Vec<_>>();
             let value = scope.evaluate(&script)?;
             assert_eq!(scope.to_utf16(&value)?, [116, 114, 117, 101]);
             Ok(())
@@ -280,7 +290,7 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
             native_bindings_are_live(&mut host);
             let charged = host.engine.as_ref().unwrap().retained_bytes;
             panic!(
-                "one-byte-short native Window published CSS.escape and DOMException: limit={one_short}, required={exact}, charged={charged}, account={account}"
+                "one-byte-short native Window published bindings: limit={one_short}, required={exact}, charged={charged}, account={account}"
             );
         }
     };

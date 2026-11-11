@@ -331,6 +331,59 @@ pub(in crate::document_scripting) fn attached_window_event_follows_the_listener_
     .unwrap();
 }
 
+pub(in crate::document_scripting) fn attached_window_event_clears_on_terminal_listener_refusal() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = units("terminal");
+    let event = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let callback = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            let projected = event.object(scope)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("expectedEvent")),
+                &projected,
+            )?;
+            let callback = scope.evaluate(&units(
+                "({ get handleEvent() {
+                    if (globalThis.event !== expectedEvent) throw new Error('getter Event');
+                    return function(e) {
+                        if (globalThis.event !== e || e !== expectedEvent) throw new Error('method Event');
+                        try { detachIf(); } catch (_) { throw new Error('caught host refusal'); }
+                    };
+                } })",
+            ))?;
+            Ok(scope.retain(&callback))
+        })
+        .unwrap();
+    host.add_guest_event_listener(&permit, &target, &kind, &callback, Default::default())
+        .unwrap();
+    let window_event = host.engine.as_ref().unwrap().window_event.clone();
+    let Err(DocumentGuestEventError::Document(DocumentScriptError::Script(Error::HostFailure(
+        failure,
+    )))) = host.dispatch_guest_event(&permit, &target, &event)
+    else {
+        panic!("the selected object listener must reach the real terminal Source refusal")
+    };
+    let cause = failure.cause::<DocumentScriptNativeError>().unwrap();
+    assert!(matches!(cause, DocumentScriptNativeError::SourceAccess));
+    assert!(window_event.is_idle());
+    assert_eq!(event.native().current_target(), None);
+    assert_eq!(event.native().composed_path().count(), 0);
+    let Err(DocumentScriptError::Script(Error::HostFailure(again))) = host.checkpoint() else {
+        panic!("the original sticky refusal must survive dispatch cleanup")
+    };
+    assert!(std::ptr::eq(
+        cause,
+        again.cause::<DocumentScriptNativeError>().unwrap()
+    ));
+}
+
 pub(in crate::document_scripting) fn attached_object_listeners_look_up_handle_event_when_invoked() {
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();

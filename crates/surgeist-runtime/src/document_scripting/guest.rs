@@ -469,8 +469,14 @@ impl DocumentScriptHost {
         self.check_permit(permit)?;
         let owner = self.native.clone();
         let events = self.guest_events()?;
+        let window_event = self
+            .engine
+            .as_ref()
+            .ok_or(DocumentScriptNativeError::Revoked)?
+            .window_event
+            .clone();
         self.in_document(permit, |scope| {
-            Ok(events.dispatch(&owner, scope, target, event))
+            Ok(events.dispatch(&owner, &window_event, scope, target, event))
         })?
     }
 }
@@ -482,6 +488,7 @@ impl GuestEvents {
     fn dispatch(
         &self,
         owner: &NativeOwner,
+        window_event: &window_event::WindowEvent,
         scope: &mut Scope<'_>,
         target: &DocumentGuestEventTarget,
         event: &DocumentGuestEvent,
@@ -585,6 +592,7 @@ impl GuestEvents {
                 }
             };
             let key = selected.key();
+            let mut current_event = None;
             let result = (|| {
                 let callback = selected
                     .selected_guest()
@@ -610,6 +618,8 @@ impl GuestEvents {
                 }
                 self.step()?;
                 let object = scope.open_callback_object(&callback.object)?;
+                // A standalone path item is outside any shadow tree.
+                current_event = Some(window_event.enter(scope.retain(&argument)));
                 let arguments = std::slice::from_ref(&argument);
                 let called = if scope.is_callable(&object)? {
                     scope.call(&object, &receiver, arguments)
@@ -645,6 +655,7 @@ impl GuestEvents {
                     return Err(error);
                 }
             }
+            drop(current_event);
         }
     }
 }
