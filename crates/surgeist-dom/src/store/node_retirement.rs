@@ -325,7 +325,10 @@ impl Row {
             retiring,
             created,
             _backing: backing,
-        } = *pair;
+        } = {
+            let allocation = pair;
+            *allocation
+        };
         drop(backing);
         let (removed, remaining) = if remove_retiring {
             (retiring, created)
@@ -396,7 +399,10 @@ impl Drop for DomNodeRetirementWatch {
         // usize::BITS branch visits. This also works after Source exhaustion.
         let removed = Row::disarm(&mut lock(&self.index.armed), self.node, self.slot);
         if let Some(Disarmed { armed, empty }) = removed {
-            let released = *armed;
+            let released = {
+                let allocation = armed;
+                *allocation
+            };
             drop(released);
             if let Some(empty) = empty {
                 empty.release_empty();

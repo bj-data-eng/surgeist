@@ -97,7 +97,10 @@ impl Watches {
 
     pub(super) fn publish(self) {
         match self {
-            Self::Single(Some(armed)) => publish_notice(*armed),
+            Self::Single(Some(armed)) => publish_notice({
+                let allocation = armed;
+                *allocation
+            }),
             Self::Single(None) => {}
             Self::Shared(shared) => {
                 let Shared {
@@ -105,11 +108,17 @@ impl Watches {
                     backing,
                     slots_backing,
                     ..
-                } = *shared;
+                } = {
+                    let allocation = shared;
+                    *allocation
+                };
                 drop(backing);
                 for entry in slots {
                     if let Entry::Armed(armed) = entry {
-                        publish_notice(*armed);
+                        publish_notice({
+                            let allocation = armed;
+                            *allocation
+                        });
                     }
                 }
                 drop(slots_backing);
@@ -124,7 +133,10 @@ impl Watches {
                 backing,
                 slots_backing,
                 ..
-            } = *shared;
+            } = {
+                let allocation = shared;
+                *allocation
+            };
             drop(slots);
             drop(slots_backing);
             drop(backing);
