@@ -354,7 +354,8 @@ impl SemanticSourceContribution {
             command @ (RenderCommand::Fill { .. }
             | RenderCommand::Stroke { .. }
             | RenderCommand::Shadow { .. }
-            | RenderCommand::Image { .. }) => {
+            | RenderCommand::Image { .. }
+            | RenderCommand::ImageRegion { .. }) => {
                 let bounds = SemanticSourceBounds::try_for_command(&command, account)?;
                 SemanticCommandContribution::try_new(command, bounds, current_parent)
             }

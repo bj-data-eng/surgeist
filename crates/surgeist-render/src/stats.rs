@@ -168,7 +168,7 @@ mod diagnostic {
                 RenderCommand::Shadow { .. } => {
                     stats.shadows = stats.shadows.saturating_add(1);
                 }
-                RenderCommand::Image { image, .. } => {
+                RenderCommand::Image { image, .. } | RenderCommand::ImageRegion { image, .. } => {
                     collect_image_stats(image, stats, uploaded_images);
                 }
                 RenderCommand::PreparedGlyphRun {

@@ -1724,6 +1724,7 @@ fn count_empty_text_commands(commands: &[RenderCommand]) -> usize {
             | RenderCommand::Stroke { .. }
             | RenderCommand::Shadow { .. }
             | RenderCommand::Image { .. }
+            | RenderCommand::ImageRegion { .. }
             | RenderCommand::TextRun { .. } => 0,
             RenderCommand::PreparedGlyphRun { run: outline, .. } => {
                 usize::from(outline.bounds().kind() == TextRunBoundsKind::Empty)
@@ -1738,7 +1739,8 @@ fn observe_vello_command(command: &crate::command::RenderCommand) -> VelloComman
         crate::command::RenderCommand::Fill { .. } => VelloCommandObservation::Fill,
         crate::command::RenderCommand::Stroke { .. } => VelloCommandObservation::Stroke,
         crate::command::RenderCommand::Shadow { .. } => VelloCommandObservation::Shadow,
-        crate::command::RenderCommand::Image { .. } => VelloCommandObservation::Image,
+        crate::command::RenderCommand::Image { .. }
+        | crate::command::RenderCommand::ImageRegion { .. } => VelloCommandObservation::Image,
         crate::command::RenderCommand::TextRun { .. } => VelloCommandObservation::Text,
         crate::command::RenderCommand::PreparedGlyphRun { .. } => VelloCommandObservation::Text,
         crate::command::RenderCommand::Layer { .. } => VelloCommandObservation::LocalLayer,

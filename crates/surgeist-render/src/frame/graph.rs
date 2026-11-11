@@ -2464,7 +2464,9 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
     for command in commands {
         account.work(RenderWork::CommandVisits, 1)?;
         let requires = match command {
-            RenderCommand::Image { image, .. } => sensitive(image),
+            RenderCommand::Image { image, .. } | RenderCommand::ImageRegion { image, .. } => {
+                sensitive(image)
+            }
             RenderCommand::Fill { paint, .. } | RenderCommand::Stroke { paint, .. } => {
                 account.work(RenderWork::PaintVisits, 1)?;
                 match paint {

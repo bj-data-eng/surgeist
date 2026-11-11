@@ -693,6 +693,24 @@ bytes and expanded texel work before packing and recording uploads. These are
 defined operation costs, not allocator or process-memory measurements. The
 existing resource manager continues to own GPU residency and cross-frame leases.
 
+### Source-region draws
+
+`Scene::image_region` maps a nonempty source rectangle in pixel coordinates
+onto a destination rectangle in scene coordinates. Normalization checks the
+source against the original image axes. The mapping keeps the fractional source
+origin and extent. The atlas window contains the texel cells that intersect the
+source rectangle, and sampling clamps to that window. For an integral source
+rectangle, neighboring slices supply no samples.
+
+The draw uses the image's selected quality and the existing per-axis Pixelated
+rule. The GPU copies the source window to the atlas, applying integer
+expansion when selected. The original CPU pixel backing is shared. Atlas
+identity includes the window and expansion, so draws using the same image
+window and expansion reuse one entry. Ledger counts the full original
+backing staged for each distinct entry and the actual cropped or expanded
+atlas texels. Source validation, atlas preparation and encoding can return
+typed refusal before the frame publishes.
+
 ## Host features
 
 | Configuration | Leaf boundary |

@@ -15,6 +15,17 @@ fn black_white_image() -> Image {
     .unwrap()
 }
 
+fn border_image_fixture() -> Image {
+    Image::from_rgba(
+        Size::new(4.0, 2.0),
+        Arc::<[u8]>::from([
+            255, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 255, 0, 255, 255, 255, 0, 255, 0,
+            0, 255, 255, 255, 0, 255, 255, 0, 255, 255, 255,
+        ]),
+    )
+    .unwrap()
+}
+
 #[test]
 fn selecting_rendering_replaces_quality_without_changing_image_content() {
     let image = black_white_image();
@@ -74,6 +85,164 @@ fn assert_pixel(actual: [u8; 4], expected: [u8; 4]) {
             actual.abs_diff(expected) <= 2,
             "pixel channel {actual} differs from {expected}"
         );
+    }
+}
+
+#[test]
+fn image_region_isolates_texels_and_keeps_fractional_source_mapping() {
+    let image = border_image_fixture().extend(crate::Extend::Repeat);
+    let mut scene = Scene::new();
+    scene.image_region(
+        image.clone(),
+        Rect::new(1.0, 1.0, 1.0, 1.0),
+        Rect::new(0.0, 0.0, 6.0, 1.0),
+    );
+    scene.image_region(
+        image.clone(),
+        Rect::new(1.25, 0.0, 1.5, 1.0),
+        Rect::new(0.0, 1.0, 6.0, 1.0),
+    );
+    scene.image_region(
+        image,
+        Rect::new(1.0, 1.0, 1.0, 1.0),
+        Rect::new(0.0, 2.0, 6.0, 1.0),
+    );
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let output = render(&mut renderer, &scene, 6, 3);
+    assert_eq!(
+        renderer.stats().route,
+        Some(crate::RenderRoute::DirectVello)
+    );
+    for (x, value) in [0, 32, 96, 159, 223, 255].into_iter().enumerate() {
+        assert_pixel(pixel_rgba(&output, x as u32, 0), [0, 0, 255, 255]);
+        assert_pixel(pixel_rgba(&output, x as u32, 1), [value, value, value, 255]);
+        assert_pixel(pixel_rgba(&output, x as u32, 2), [0, 0, 255, 255]);
+    }
+    let report = renderer.last_attempt().unwrap();
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(crate::RenderWork::AtlasTexels), 3);
+    assert_eq!(usage.work(crate::RenderWork::ImageSourceBytes), 64);
+}
+
+#[test]
+fn image_region_keeps_pixelated_sampling_in_graph_capture() {
+    assert_scaled_opacity_group_keeps_pixelated_lattice(|scene| {
+        scene.image_region(
+            border_image_fixture().rendering(ImageRendering::Pixelated),
+            Rect::new(1.0, 0.0, 2.0, 1.0),
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+        );
+    });
+}
+
+#[test]
+fn image_region_keeps_a_texel_crossed_by_a_rounded_endpoint() {
+    let region = crate::image::ResolvedImageRegion::try_new(
+        &border_image_fixture(),
+        Rect::new(1.0_f64.next_up(), 0.0, 1.0, 1.0),
+        &crate::accounting::Account::for_test(),
+    )
+    .unwrap();
+    assert_eq!(region.window().first_pixel(), 1);
+    assert_eq!(region.window().size(), crate::PhysicalSize::new(2, 1));
+    assert_eq!(region.local().x(), f64::EPSILON);
+}
+
+#[test]
+fn image_region_rejects_invalid_source_and_keeps_the_published_frame() {
+    let image = border_image_fixture();
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(3.0, 1.0), 1.0)).unwrap();
+    let target = Rect::new(0.0, 0.0, 3.0, 1.0);
+    let mut good = Scene::new();
+    good.image_region(image.clone(), Rect::new(2.0, 0.0, 1.0, 1.0), target);
+    pollster::block_on(renderer.render(&mut surface, &good, Parameters::default())).unwrap();
+    let stats = renderer.stats();
+    for source in [
+        Rect::new(-0.25, 0.0, 1.0, 1.0),
+        Rect::new(3.5, 0.0, 1.0, 1.0),
+        Rect::new(2.0, 0.0, 0.0, 1.0),
+        Rect::new(f64::from_bits(1), 0.0, 4.0, 1.0),
+    ] {
+        let mut invalid = Scene::new();
+        invalid.image_region(image.clone(), source, target);
+        let error =
+            pollster::block_on(renderer.render(&mut surface, &invalid, Parameters::default()))
+                .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+        assert_eq!(
+            error.invalid_value_diagnostic().unwrap().field(),
+            "image source region x"
+        );
+        assert_eq!(renderer.stats(), stats);
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        for x in 0..3 {
+            assert_pixel(pixel_rgba(&output, x, 0), [255; 4]);
+        }
+    }
+    pollster::block_on(renderer.render(&mut surface, &good, Parameters::default())).unwrap();
+}
+
+#[test]
+fn image_region_atlas_refusal_keeps_the_prefix_and_allows_retry() {
+    use crate::{
+        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
+        RenderQuantity, RenderRefusalReason, RenderResource, RenderWork,
+    };
+
+    let image = border_image_fixture();
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::ImageSourceBytes, 32)
+        .unwrap();
+    let options =
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(4.0, 1.0), 1.0)).unwrap();
+    let mut scene = Scene::new();
+    scene.image_region(
+        image.clone(),
+        Rect::new(1.0, 1.0, 1.0, 1.0),
+        Rect::new(0.0, 0.0, 4.0, 1.0),
+    );
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let stats = renderer.stats();
+    let mut excessive = scene.clone();
+    excessive.image_region(
+        image,
+        Rect::new(3.0, 1.0, 1.0, 1.0),
+        Rect::new(2.0, 0.0, 2.0, 1.0),
+    );
+    let error =
+        pollster::block_on(renderer.render(&mut surface, &excessive, Parameters::default()))
+            .unwrap_err();
+    let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+        panic!("expected typed atlas byte refusal: {error}");
+    };
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::ImageSourceBytes)
+    );
+    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 32 });
+    assert_eq!(refusal.current(), 32);
+    assert_eq!(refusal.amount(), 32);
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.cleanup_fault(), None);
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::ImageSourceBytes), 32);
+    assert_eq!(usage.work(RenderWork::AtlasTexels), 1);
+    assert_eq!(usage.live(RenderResource::LocalAtlasSourceByteQuota), 0);
+    assert_eq!(usage.live(RenderResource::LocalAtlasTexelQuota), 0);
+    assert_eq!(renderer.stats(), stats);
+
+    let unchanged = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let retried = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(retried.rgba(), unchanged.rgba());
+    for x in 0..4 {
+        assert_pixel(pixel_rgba(&retried, x, 0), [0, 0, 255, 255]);
     }
 }
 

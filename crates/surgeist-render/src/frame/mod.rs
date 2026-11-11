@@ -281,6 +281,7 @@ fn require_graph_text_bounds(
             | RenderCommand::Stroke { .. }
             | RenderCommand::Shadow { .. }
             | RenderCommand::Image { .. }
+            | RenderCommand::ImageRegion { .. }
             | RenderCommand::TextRun { .. }
             | RenderCommand::PreparedGlyphRun { .. } => {}
         }
