@@ -4642,14 +4642,20 @@ fn validate_closed_layer_composite(
     {
         return None;
     }
-    let expected_read_count = 2usize
-        .checked_add(usize::from(layer.clip_coverage.is_some()))?
-        .checked_add(usize::from(alpha_mask.is_some()))?;
-    if pass.reads.len() != expected_read_count {
-        return None;
+    match (layer.clip_coverage, alpha_mask, pass.reads.as_slice()) {
+        (None, None, [_, _]) => {}
+        (Some(coverage), None, [_, _, coverage_read]) => {
+            validate_closed_clip_coverage(pass.id, resources, coverage, coverage_read)?;
+        }
+        (None, Some(mask), [_, _, mask_read]) => {
+            validate_closed_alpha_mask(pass.id, resources, mask, mask_read)?;
+        }
+        (Some(coverage), Some(mask), [_, _, coverage_read, mask_read]) => {
+            validate_closed_clip_coverage(pass.id, resources, coverage, coverage_read)?;
+            validate_closed_alpha_mask(pass.id, resources, mask, mask_read)?;
+        }
+        _ => return None,
     }
-    let next_read = validate_closed_clip_coverage(pass, resources, layer.clip_coverage, 2)?;
-    validate_closed_alpha_mask(pass, resources, alpha_mask, next_read)?;
     Some(Some(ExecutableLayerCompositionFacts {
         pass: pass.id,
         parent: parent.current,
@@ -4684,17 +4690,14 @@ fn closed_composite_source_is_valid(
 }
 
 fn validate_closed_clip_coverage(
-    pass: &RuntimePass,
+    pass: RuntimePassId,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
-    clip_coverage: Option<RuntimeResourceId>,
-    next_read: usize,
-) -> Option<usize> {
-    let Some(coverage) = clip_coverage else {
-        return Some(next_read);
-    };
+    coverage: RuntimeResourceId,
+    read: &RuntimeReadBinding,
+) -> Option<()> {
     let coverage_resource = resources.get(&coverage).copied()?;
     if !runtime_read_has_exact_facts(
-        &pass.reads[next_read],
+        read,
         RuntimeReadRole::ClipCoverage,
         coverage_resource,
         RuntimeSamplingFilter::Linear,
@@ -4705,22 +4708,19 @@ fn validate_closed_clip_coverage(
         || !matches!(coverage_resource.producer, RuntimeResourceProducer::Pass(_))
         || coverage_resource.import.is_some()
         || coverage_resource.expected_reads != 1
-        || coverage_resource.last_use != pass.id
+        || coverage_resource.last_use != pass
     {
         return None;
     }
-    next_read.checked_add(1)
+    Some(())
 }
 
 fn validate_closed_alpha_mask(
-    pass: &RuntimePass,
+    pass: RuntimePassId,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
-    alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
-    next_read: usize,
+    mask: RuntimeResolvedAlphaMaskComposition,
+    read: &RuntimeReadBinding,
 ) -> Option<()> {
-    let Some(mask) = alpha_mask else {
-        return Some(());
-    };
     let mask_resource = resources.get(&mask.resource()).copied()?;
     let Some(RuntimeResourceImport::ResolvedAlphaMask(upload)) = &mask_resource.import else {
         return None;
@@ -4732,7 +4732,7 @@ fn validate_closed_alpha_mask(
         | ShaderMaskQualityKey::Pixelated => RuntimeSamplingFilter::Linear,
     };
     (runtime_read_has_exact_facts(
-        &pass.reads[next_read],
+        read,
         RuntimeReadRole::AlphaMask,
         mask_resource,
         mask_filter,
@@ -4752,7 +4752,7 @@ fn validate_closed_alpha_mask(
         && RuntimeMaskTexelCenterFacts::try_new(mask.image_dimensions()).ok()
             == Some(mask.texel_center_facts())
         && mask_resource.expected_reads != 0
-        && mask_resource.last_use >= pass.id)
+        && mask_resource.last_use >= pass)
         .then_some(())
 }
 
