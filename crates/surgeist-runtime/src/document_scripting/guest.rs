@@ -361,7 +361,7 @@ struct TracedListener {
 }
 
 enum RegisteredListenerObject {
-    Retained(RetainedCallbackObject),
+    Retained(RefCell<Option<RetainedCallbackObject>>),
     Traced(TracedListener),
 }
 
@@ -1133,7 +1133,7 @@ impl GuestEvents {
             let prepared = (|| {
                 projected?;
                 let callback = callback.ok_or(DocumentGuestEventError::RegistryState)?;
-                let authority = callback.realm();
+                let authority = callback.realm()?;
                 authority.check_owner_active()?;
                 if callback.registration_window != attachment.target
                     || authority.identity() != attachment.realm.identity()
@@ -1158,9 +1158,7 @@ impl GuestEvents {
             // Native selection already removed this once registration. Keep the
             // selected object local on success, but always clear the exact edge.
             let cleared = match callback {
-                Some(callback) if selected.once_removed() => {
-                    callback.clear_receiver(scope, receiver)
-                }
+                Some(callback) if selected.once_removed() => callback.release(scope),
                 _ => Ok(()),
             };
             let result = (|| {

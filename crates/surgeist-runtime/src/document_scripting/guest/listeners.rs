@@ -13,10 +13,15 @@ pub(super) struct ListenerMatch<'value, 'scope> {
 }
 
 impl RegisteredGuestListener {
-    pub(super) fn realm(&self) -> &RealmAuthority {
+    pub(super) fn realm(&self) -> Result<RealmAuthority, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => callback.associated_realm(),
-            RegisteredListenerObject::Traced(traced) => &traced.realm,
+            RegisteredListenerObject::Retained(callback) => callback
+                .try_borrow()
+                .map_err(|_| Error::RegistryConflict)?
+                .as_ref()
+                .map(|callback| callback.associated_realm().clone())
+                .ok_or(Error::RegistryConflict),
+            RegisteredListenerObject::Traced(traced) => Ok(traced.realm.clone()),
         }
     }
 
@@ -26,24 +31,36 @@ impl RegisteredGuestListener {
         receiver: &Value<'scope>,
     ) -> Result<Value<'scope>, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => scope.open_callback_object(callback),
+            RegisteredListenerObject::Retained(callback) => {
+                let callback = callback.try_borrow().map_err(|_| Error::RegistryConflict)?;
+                scope.open_callback_object(callback.as_ref().ok_or(Error::RegistryConflict)?)
+            }
             RegisteredListenerObject::Traced(traced) => scope
                 .native_object_reference::<GuestTargetProjection>(receiver, traced.slot)?
                 .ok_or(Error::RegistryConflict),
         }
     }
 
-    pub(super) fn clear_receiver<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        receiver: &Value<'scope>,
-    ) -> Result<(), Error> {
-        if let RegisteredListenerObject::Traced(traced) = &self.object {
-            scope.set_native_object_reference::<GuestTargetProjection>(
-                receiver,
-                traced.slot,
-                None,
-            )?;
+    pub(super) fn release(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
+        match &self.object {
+            RegisteredListenerObject::Retained(callback) => {
+                let callback = callback
+                    .try_borrow_mut()
+                    .map_err(|_| Error::RegistryConflict)?
+                    .take();
+                if let Some(callback) = callback {
+                    scope.release_callback_object(callback)?;
+                }
+            }
+            RegisteredListenerObject::Traced(traced) => {
+                if let Some(target) = scope.open_native_object(&traced.target)? {
+                    scope.set_native_object_reference::<GuestTargetProjection>(
+                        &target,
+                        traced.slot,
+                        None,
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -127,7 +144,7 @@ impl GuestEvents {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
             code,
-            object: RegisteredListenerObject::Retained(object),
+            object: RegisteredListenerObject::Retained(RefCell::new(Some(object))),
             registration_window: attachment.target,
             _backing: backing,
         }));
@@ -166,11 +183,8 @@ impl GuestEvents {
                 registry.remove_listener(id),
             )
         };
-        if let Some(callback) = callback
-            && let RegisteredListenerObject::Traced(traced) = &callback.object
-            && let Some(target) = scope.open_native_object(&traced.target)?
-        {
-            callback.clear_receiver(scope, &target)?;
+        if let Some(callback) = callback {
+            callback.release(scope)?;
         }
         Ok(removed)
     }
