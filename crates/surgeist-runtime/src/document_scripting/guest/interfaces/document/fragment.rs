@@ -6,7 +6,7 @@ const FRAGMENT: &[u16] = &ascii(b"DocumentFragment");
 const CREATE_FRAGMENT: &[u16] = &ascii(b"createDocumentFragment");
 
 pub(super) struct FragmentBindings {
-    prototype: RetainedCallbackObject,
+    pub(super) prototype: RetainedCallbackObject,
 }
 
 impl FragmentBindings {

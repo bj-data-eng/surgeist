@@ -81,6 +81,7 @@ enum ElementObservation {
 
 enum NativeProjection {
     Document(DocumentId),
+    Fragment,
     Element {
         origin: DomHostedGlobalId,
         attached: DomHostedGlobalId,
@@ -350,7 +351,7 @@ impl PublicEventBindings {
             let node = snapshot.node_with(node, || events.step())?;
             if !matches!(
                 node.kind(),
-                DomNodeKind::Document(_) | DomNodeKind::Element(_)
+                DomNodeKind::Document(_) | DomNodeKind::DocumentFragment | DomNodeKind::Element(_)
             ) {
                 return Err(DocumentScriptNativeError::ProjectionCustody.into());
             }
@@ -368,6 +369,12 @@ impl PublicEventBindings {
                 return Ok(NativeProjection::Document(document.id()));
             }
             let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
+            if matches!(node.kind(), DomNodeKind::DocumentFragment) {
+                if origin != attached {
+                    return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
+                }
+                return Ok(NativeProjection::Fragment);
+            }
             let element = node
                 .as_element()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
@@ -381,6 +388,15 @@ impl PublicEventBindings {
             NativeProjection::Document(document) => {
                 return self.project_unpinned_document(scope, owner, events, document);
             }
+            NativeProjection::Fragment => {
+                return self.project_watched_node(
+                    scope,
+                    owner,
+                    events,
+                    GuestNode::Fragment(node),
+                    &bindings.fragment.prototype,
+                );
+            }
             NativeProjection::Element {
                 origin,
                 attached,
@@ -389,30 +405,41 @@ impl PublicEventBindings {
         };
         let project = |elements: &ElementBindings| {
             let prototype = elements.prototype(events, interface)?;
-            bindings.ordinary.project(
-                scope,
-                owner,
-                events,
-                ordinary::NodePrototype::Creation(prototype),
-                |inbox, key| {
-                    self.callbacks.with_native(owner, |session, _| {
-                        let watch = session.dom().raw_mut().watch_node_retirement(
-                            node,
-                            inbox,
-                            key,
-                            events.limits.node_retirement,
-                            &owner.cancellation,
-                        )?;
-                        Ok((GuestNode::Element(node), watch))
-                    })
-                },
-            )
+            self.project_watched_node(scope, owner, events, GuestNode::Element(node), prototype)
         };
         if origin == attached {
             project(&bindings.element)
         } else {
             self.with_origin(events, origin, |origin| project(&origin.elements))
         }
+    }
+
+    fn project_watched_node<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        node: GuestNode,
+        prototype: &RetainedCallbackObject,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.document.ordinary.project(
+            scope,
+            owner,
+            events,
+            ordinary::NodePrototype::Creation(prototype),
+            |inbox, key| {
+                self.callbacks.with_native(owner, |session, _| {
+                    let watch = session.dom().raw_mut().watch_node_retirement(
+                        node.node(),
+                        inbox,
+                        key,
+                        events.limits.node_retirement,
+                        &owner.cancellation,
+                    )?;
+                    Ok((node, watch))
+                })
+            },
+        )
     }
 }
 
