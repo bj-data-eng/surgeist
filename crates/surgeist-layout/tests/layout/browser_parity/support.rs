@@ -30,7 +30,7 @@ use surgeist_layout::{GridSpan, LayoutTree as _};
 #[path = "root_context.rs"]
 mod root_context;
 pub use root_context::RootContext;
-use root_context::parse_root_context;
+pub(crate) use root_context::parse_root_context;
 #[path = "root_diagnostics.rs"]
 mod root_diagnostics;
 pub use root_diagnostics::WorldRoundedLayout;

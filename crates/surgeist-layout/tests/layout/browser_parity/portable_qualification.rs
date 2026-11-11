@@ -22,7 +22,7 @@ use support::exact_differences::{
     QualifiedComparison, QualifiedVerdict, RawVerdict, complete_captured_comparison,
     flex_composition_qualification as flex, verify_wrapping_world_predecessor,
 };
-use support::{ObservedPlacement, capture_authority};
+use support::{ObservedPlacement, capture_authority, parse_root_context};
 
 #[path = "qualification_catalogue.rs"]
 mod qualification_catalogue;

@@ -34,7 +34,9 @@ use crate::original_subgrid_axes_profile::SOURCES as ORIGINAL_SUBGRID_AXES_SOURC
 use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
-use crate::parity_support::{original_subgrid_body, prepared_atomic_percentage};
+use crate::parity_support::{
+    original_subgrid_body, parse_root_context, prepared_atomic_percentage,
+};
 use crate::prepared_atomic_percentage_profile::SOURCE as PREPARED_ATOMIC_SOURCE;
 use crate::vertical_br_font_band_profile::SOURCES as VERTICAL_BR_SOURCES;
 
@@ -2162,10 +2164,8 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
     let ExpectedDisposition::Generated { metadata } = &case.expected else {
         return Err("Unsupported case unexpectedly emitted XML".into());
     };
-    let (root_direction, root_writing_mode, root_position) = match metadata {
+    match metadata {
         ExpectedMetadata::AbsoluteLocal {
-            root_direction,
-            root_writing_mode,
             inline_offset,
             root_size,
             ..
@@ -2183,57 +2183,17 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
                 *inline_offset,
                 case.case.id(),
             )?;
-            (
-                root_direction.as_str(),
-                root_writing_mode.as_str(),
-                "absolute",
-            )
         }
-        ExpectedMetadata::BlockFlow {
-            parent_direction,
-            root_direction,
-            root_writing_mode,
-            root_position,
-            atomic_paragraphs: _,
-            grid_reference_owners: _,
-        } => {
-            // The zero-edge Htb Auto body owns only its actual inline extent.
-            // No used/root height is promoted into a body percentage basis or
-            // a hypothetical static-position rectangle. The reader independently
-            // validates the actual Native body-origin placement.
-            assert_eq!(test.attribute("observation-frame"), Some("root-border"));
-            assert_eq!(viewport.attribute("root-context"), Some("block-flow-auto"));
-            assert_eq!(
-                viewport.attribute("parent-direction"),
-                Some(parent_direction.as_str())
-            );
-            assert_eq!(
-                px_attribute(viewport, "parent-inline-extent")?,
-                px_attribute(viewport, "fallback-icb-width")?
-            );
-            for field in [
-                "containing-width",
-                "containing-height",
-                "containing-direction",
-                "hypothetical-direction",
-                "hypothetical-display",
-                "hypothetical-anchor",
-                "hypothetical-inline-offset",
-                "parent-block-extent",
-            ] {
-                assert_eq!(
-                    viewport.attribute(field),
-                    None,
-                    "Auto body has no definite block/hypothetical authority"
-                );
-            }
-            (
-                root_direction.as_str(),
-                root_writing_mode.as_str(),
-                root_position.as_str(),
-            )
+        ExpectedMetadata::BlockFlow { .. } => {
+            qualification_catalogue::verify_block_flow_metadata(
+                test,
+                metadata,
+                case.case.id(),
+                case.case.variant(),
+            )?;
         }
-    };
+    }
+
     assert_eq!(
         viewport.attribute("fallback-nearest-scrollport"),
         Some("none")
@@ -2258,29 +2218,7 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
         ExpectedMetadata::AbsoluteLocal { .. } => None,
     };
     qualify_atomic_metric_census(input, expected_atomic_paragraphs, case.case.id())?;
-    let root = input
-        .children()
-        .find(roxmltree::Node::is_element)
-        .ok_or("missing root node")?;
-    // Relative and HorizontalTb are the protocol's explicit elision defaults.
-    assert_eq!(
-        root.attribute("position").unwrap_or("relative"),
-        root_position
-    );
-    assert_eq!(
-        root.attribute("writing-mode").unwrap_or("horizontal-tb"),
-        root_writing_mode
-    );
-    let root_direction = if root_direction == "variant" {
-        if case.case.variant().ends_with("_rtl") {
-            "rtl"
-        } else {
-            "ltr"
-        }
-    } else {
-        root_direction
-    };
-    assert_eq!(root.attribute("direction"), Some(root_direction));
+
     Ok(())
 }
 

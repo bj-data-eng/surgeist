@@ -47,7 +47,7 @@ fn extent(node: roxmltree::Node<'_, '_>, name: &str) -> Result<layout::NonNegati
         .map_err(|error| Error::new(format!("invalid {name}: {error:?}")))
 }
 
-pub(super) fn parse_root_context(
+pub(crate) fn parse_root_context(
     node: roxmltree::Node<'_, '_>,
     version: Option<&str>,
 ) -> Result<RootContext, Error> {

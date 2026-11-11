@@ -12,6 +12,7 @@ use super::capture_authority::{
     grid_lanes_control_source, matching_metadata_is_valid,
 };
 pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
+use super::parse_root_context;
 use crate::fixture_variants::fixture_cases;
 
 pub(crate) struct Declaration {
@@ -128,6 +129,8 @@ pub(crate) enum ExpectedMetadata {
         root_direction: String,
         root_writing_mode: String,
         root_position: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root_display: Option<String>,
         atomic_paragraphs: Option<usize>,
         grid_reference_owners: Option<Vec<String>>,
     },
@@ -604,15 +607,7 @@ pub(crate) fn verify_absolute_metadata(
         .find(|n| n.has_tag_name("input"))
         .and_then(|n| n.children().find(roxmltree::Node::is_element))
         .ok_or("missing root input")?;
-    let direction = if root_direction == "variant" {
-        if variant.ends_with("_rtl") {
-            "rtl"
-        } else {
-            "ltr"
-        }
-    } else {
-        root_direction.as_str()
-    };
+    let direction = captured_root_direction(root_direction, variant);
     if !test.has_tag_name("test")
         || test.attribute("name") != Some(name)
         || test.attribute("measurement-version") != Some("4")
@@ -657,6 +652,61 @@ pub(crate) fn verify_absolute_metadata(
         }
     }
     Ok(())
+}
+
+/// Validate the declared root against the same Auto Body certificate used by Native.
+pub(crate) fn verify_block_flow_metadata(
+    test: roxmltree::Node<'_, '_>,
+    metadata: &ExpectedMetadata,
+    name: &str,
+    variant: &str,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let ExpectedMetadata::BlockFlow {
+        parent_direction,
+        root_direction,
+        root_writing_mode,
+        root_position,
+        root_display,
+        ..
+    } = metadata
+    else {
+        return Err("expected BlockFlow root metadata".into());
+    };
+    let viewport = test
+        .children()
+        .find(|node| node.has_tag_name("viewport"))
+        .ok_or("missing viewport")?;
+    let root = test
+        .children()
+        .find(|node| node.has_tag_name("input"))
+        .and_then(|node| node.children().find(roxmltree::Node::is_element))
+        .ok_or("missing root input")?;
+    let version = test.attribute("measurement-version");
+    if !test.has_tag_name("test")
+        || test.attribute("name") != Some(name)
+        || version != Some("4")
+        || test.attribute("observation-frame") != Some("root-border")
+        || viewport.attribute("root-context") != Some("block-flow-auto")
+        || viewport.attribute("parent-direction") != Some(parent_direction.as_str())
+        || root.attribute("direction") != Some(captured_root_direction(root_direction, variant))
+        || root.attribute("writing-mode").unwrap_or("horizontal-tb") != root_writing_mode
+        || root.attribute("position").unwrap_or("relative") != root_position
+        || root_display
+            .as_deref()
+            .is_some_and(|display| root.attribute("display") != Some(display))
+    {
+        return Err("declared BlockFlow root capture metadata changed".into());
+    }
+    parse_root_context(viewport, version)?;
+    Ok(())
+}
+
+fn captured_root_direction<'a>(declared: &'a str, variant: &str) -> &'a str {
+    match (declared, variant.ends_with("_rtl")) {
+        ("variant", true) => "rtl",
+        ("variant", false) => "ltr",
+        (direction, _) => direction,
+    }
 }
 
 impl Record {
@@ -730,41 +780,14 @@ impl Record {
             (MatchingProvenance::Authored, None) => {}
             _ => return Err("matching capture history disagrees with its source".into()),
         }
-        if self.matching_edition() == Some(super::capture_authority::FRI06_SUBGRID_EDITION) {
-            let document = roxmltree::Document::parse(current)?;
-            let test = document.root_element();
-            let viewport = test
-                .children()
-                .find(|node| node.has_tag_name("viewport"))
-                .ok_or("missing viewport")?;
-            let root = test
-                .children()
-                .find(|node| node.has_tag_name("input"))
-                .and_then(|node| node.children().find(roxmltree::Node::is_element))
-                .ok_or("missing root input")?;
-            let (mode, _) = super::capture_authority::fri06_subgrid_profile(self.source.as_str())
-                .ok_or("unexpected Subgrid source")?;
-            let direction = if variant.ends_with("_rtl") {
-                "rtl"
-            } else {
-                "ltr"
-            };
-            if test.attribute("name") != Some(name)
-                || test.attribute("measurement-version") != Some("4")
-                || test.attribute("observation-frame") != Some("root-border")
-                || viewport.attribute("root-context") != Some("block-flow-auto")
-                || viewport.attribute("parent-direction") != Some("ltr")
-                || viewport.attribute("parent-inline-extent")
-                    != viewport.attribute("fallback-icb-width")
-                || root.attribute("writing-mode").unwrap_or("horizontal-tb") != mode
-                || root.attribute("position").unwrap_or("relative") != "relative"
-                || root.attribute("direction") != Some(direction)
-            {
-                return Err("declared FRI06 Subgrid root capture metadata changed".into());
+        match metadata {
+            ExpectedMetadata::AbsoluteLocal { .. } => {
+                verify_absolute_metadata(current, metadata, name, variant)
             }
-            Ok(())
-        } else {
-            verify_absolute_metadata(current, metadata, name, variant)
+            ExpectedMetadata::BlockFlow { .. } => {
+                let document = roxmltree::Document::parse(current)?;
+                verify_block_flow_metadata(document.root_element(), metadata, name, variant)
+            }
         }
     }
 }
