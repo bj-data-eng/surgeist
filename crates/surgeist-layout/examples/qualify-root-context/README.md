@@ -356,6 +356,22 @@ The check replays the retained edition without a browser. The publisher
 `--publish-original-flex-axes-qualification` requires an absent edition
 directory, a verified original source import, and the pinned browser.
 
+## Original Grid axes qualification
+
+The [Grid axis edition](../../tests/layout/browser_parity/captured/original-grid-axes-qualification/)
+binds nine original sources and their 36 direction and box-sizing variants.
+The source supplies the Auto root dimensions, fixed tracks, child placement,
+writing modes and static frame in the 800 × 600 initial containing block.
+Qualification compares complete historical and Native rectangle trees.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-grid-axes-qualification
+~~~
+
+The check replays the retained edition without a browser. The publisher
+`--publish-original-grid-axes-qualification` requires an absent edition
+directory, a verified original source import, and the pinned browser.
+
 ## Original subgrid body qualification
 
 This edition authenticates the original subgrid gap fixture and its inline

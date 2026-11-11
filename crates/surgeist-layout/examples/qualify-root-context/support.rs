@@ -29,6 +29,7 @@ use crate::original_flex_parent_profile::{
     SOURCES as ORIGINAL_FLEX_PARENT_SOURCES,
     percentage::SOURCE as ORIGINAL_PERCENTAGE_FLEX_PARENT_SOURCE,
 };
+use crate::original_grid_axes_profile::SOURCES as ORIGINAL_GRID_AXES_SOURCES;
 use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
@@ -64,6 +65,7 @@ pub(super) enum QualificationMode {
     OriginalPercentageFlexParentCapture,
     OriginalBlockAxesCapture,
     OriginalFlexAxesCapture,
+    OriginalGridAxesCapture,
     OriginalSubgridBodyCapture,
     PreparedAtomicPercentageCapture,
     HorizontalBrFontBandCapture,
@@ -104,6 +106,7 @@ impl Serialize for QualificationMode {
             Self::OriginalPercentageFlexParentCapture => "original-percentage-flex-parent-capture",
             Self::OriginalBlockAxesCapture => "original-block-axes-capture",
             Self::OriginalFlexAxesCapture => "original-flex-axes-capture",
+            Self::OriginalGridAxesCapture => "original-grid-axes-capture",
             Self::OriginalSubgridBodyCapture => "original-subgrid-body-capture",
             Self::PreparedAtomicPercentageCapture => "prepared-atomic-percentage-capture",
             Self::HorizontalBrFontBandCapture => "horizontal-br-font-band-capture",
@@ -191,6 +194,12 @@ impl QualificationMode {
             | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalFlexAxes)
             | Self::DeriveSpecialized(SpecializedProfile::OriginalFlexAxes) => {
                 BoxObservationRequest::OriginalFlexAxes
+            }
+            Self::OriginalGridAxesCapture
+            | Self::PublishSpecialized(SpecializedProfile::OriginalGridAxes)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalGridAxes)
+            | Self::DeriveSpecialized(SpecializedProfile::OriginalGridAxes) => {
+                BoxObservationRequest::OriginalGridAxes
             }
             Self::OriginalSubgridBodyCapture
             | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
@@ -302,6 +311,15 @@ fn select_records(
             .records
             .retain(|record| !ORIGINAL_FLEX_AXES_SOURCES.contains(&record.source.as_str()));
     }
+    if mode == QualificationMode::OriginalGridAxesCapture {
+        if !fixture.is_some_and(|source| ORIGINAL_GRID_AXES_SOURCES.contains(&source)) {
+            return Err("original Grid axis capture requires a declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| !ORIGINAL_GRID_AXES_SOURCES.contains(&record.source.as_str()));
+    }
     if mode == QualificationMode::OriginalSubgridBodyCapture {
         if fixture != Some(ORIGINAL_SUBGRID_BODY_SOURCE) {
             return Err("original subgrid body capture requires its declared fixture".into());
@@ -404,6 +422,7 @@ fn select_records(
                 | QualificationMode::OriginalPercentageFlexParentCapture
                 | QualificationMode::OriginalBlockAxesCapture
                 | QualificationMode::OriginalFlexAxesCapture
+                | QualificationMode::OriginalGridAxesCapture
                 | QualificationMode::OriginalSubgridBodyCapture
                 | QualificationMode::PreparedAtomicPercentageCapture
                 | QualificationMode::HorizontalBrFontBandCapture
@@ -866,6 +885,11 @@ fn effective_mode(mode: QualificationMode, fixture: Option<&str>) -> Qualificati
             if ORIGINAL_FLEX_AXES_SOURCES.contains(&source) =>
         {
             QualificationMode::OriginalFlexAxesCapture
+        }
+        (QualificationMode::Regular, Some(source))
+            if ORIGINAL_GRID_AXES_SOURCES.contains(&source) =>
+        {
+            QualificationMode::OriginalGridAxesCapture
         }
         (QualificationMode::Regular, Some(ORIGINAL_SUBGRID_BODY_SOURCE)) => {
             QualificationMode::OriginalSubgridBodyCapture
@@ -1435,7 +1459,9 @@ fn validate_corpus(
             }
         } else if matches!(
             observation,
-            BoxObservationRequest::OriginalBlockAxes | BoxObservationRequest::OriginalFlexAxes
+            BoxObservationRequest::OriginalBlockAxes
+                | BoxObservationRequest::OriginalFlexAxes
+                | BoxObservationRequest::OriginalGridAxes
         ) {
             let (raw, verdict) =
                 crate::parity_support::exact_differences::compare_matching_geometry(&golden)?;
@@ -1608,6 +1634,7 @@ fn validate_corpus(
         | QualificationMode::OriginalPercentageFlexParentCapture
         | QualificationMode::OriginalBlockAxesCapture
         | QualificationMode::OriginalFlexAxesCapture
+        | QualificationMode::OriginalGridAxesCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1844,6 +1871,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::OriginalPercentageFlexParentCapture
         | QualificationMode::OriginalBlockAxesCapture
         | QualificationMode::OriginalFlexAxesCapture
+        | QualificationMode::OriginalGridAxesCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1875,6 +1903,7 @@ fn inventory_with_retained_helper(
                     | BoxObservationRequest::OriginalPercentageFlexParent
                     | BoxObservationRequest::OriginalBlockAxes
                     | BoxObservationRequest::OriginalFlexAxes
+                    | BoxObservationRequest::OriginalGridAxes
             )
         {
             continue;
@@ -1965,6 +1994,7 @@ fn inventory_with_retained_helper(
             | SpecializedProfile::OriginalPercentageFlexParent
             | SpecializedProfile::OriginalBlockAxes
             | SpecializedProfile::OriginalFlexAxes
+            | SpecializedProfile::OriginalGridAxes
             | SpecializedProfile::OriginalSubgridBody
             | SpecializedProfile::PreparedAtomicPercentage
             | SpecializedProfile::HorizontalBrFontBand

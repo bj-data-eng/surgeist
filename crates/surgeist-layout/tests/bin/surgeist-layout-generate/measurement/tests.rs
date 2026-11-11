@@ -1196,3 +1196,80 @@ fn original_flex_axes_require_the_qualified_static_frame() {
     root["style"]["alignItems"] = json!("center");
     assert_eq!(decode_original(&root).unwrap_err().field_path, "style");
 }
+
+#[test]
+fn original_grid_axes_require_auto_root_and_authored_placement() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"original_grid_axes\":\"fixed-first-grid-v1\"}\n";
+
+    let rectangle = |x, y, width, height| json!({"x": x, "y": y, "width": width, "height": height});
+    let child = |line, geometry: serde_json::Value| {
+        json!({
+            "layoutInput": "box", "tagName": "div",
+            "style": {
+                "display": "flex", "position": "relative", "boxSizing": "border-box",
+                "writingMode": "vertical-rl", "direction": "ltr",
+                "gridColumnStart": {"kind": "line", "value": line},
+                "gridColumnEnd": {"kind": "line", "value": line + 1},
+                "gridRowStart": {"kind": "line", "value": line},
+                "gridRowEnd": {"kind": "line", "value": line + 1},
+            },
+            "unroundedLayout": geometry, "smartRoundedLayout": geometry,
+            "worldRoundedLayout": geometry, "children": [],
+        })
+    };
+    let track = |value| json!({"kind": "scalar", "unit": "px", "value": value});
+    let geometry = rectangle(0, 0, 110, 70);
+    let mut root = json!({
+        "layoutInput": "box", "tagName": "div", "useRounding": true,
+        "gridAlignmentProfile": {"profile": 1, "owners": []},
+        "viewport": {"rootContext": {
+            "kind": "absolute-root-local",
+            "containingWidth": 800, "containingHeight": 600, "containingDirection": "ltr",
+            "hypotheticalDirection": "ltr", "hypotheticalDisplay": "grid",
+            "hypotheticalAnchor": "inline-start", "hypotheticalInlineOffset": 0,
+            "hypotheticalBlockOffset": 0,
+            "fallback": {
+                "initialContainingBlock": {"width": 800, "height": 600},
+                "nearestScrollport": "none",
+                "containingLimits": {"width": "unbounded", "height": "unbounded"},
+            },
+        }},
+        "style": {
+            "display": "grid", "position": "absolute", "boxSizing": "border-box",
+            "writingMode": "vertical-rl", "direction": "ltr",
+            "gridTemplateColumns": [track(30), track(40)],
+            "gridTemplateRows": [track(50), track(60)],
+        },
+        "unroundedLayout": geometry, "smartRoundedLayout": geometry, "worldRoundedLayout": geometry,
+        "children": [child(1, rectangle(60, 0, 50, 30)), child(2, rectangle(0, 30, 60, 40))],
+    });
+    let request = BoxObservationRequest::from_input_bytes(Some(REQUEST))
+        .expect("the original Grid axis source profile must be admitted");
+    let decode_original = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "grid_axes_vertical_rl_parallel__border_box_ltr",
+            "border-box-ltr",
+            request,
+        )
+    };
+    assert!(matches!(
+        decode_original(&root).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+
+    let mut altered = root.clone();
+    altered["viewport"]["rootContext"]["hypotheticalBlockOffset"] = json!(1);
+    assert_eq!(
+        decode_original(&altered).unwrap_err().field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+    altered = root.clone();
+    altered["style"]["size"] = json!({"width": {"unit": "px", "value": 110}});
+    assert_eq!(decode_original(&altered).unwrap_err().field_path, "style");
+    root["children"][1]["style"]["gridRowEnd"] = json!({"kind": "line", "value": 4});
+    let error = decode_original(&root).unwrap_err();
+    assert_eq!(error.node_path, "root.children[1]");
+    assert_eq!(error.field_path, "style");
+}

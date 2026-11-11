@@ -84,6 +84,11 @@ covers 80 variants across five writing modes and four Flex directions.
 The focused Flex axis test checks the original topology and compares every
 registered rectangle tree through Native layout.
 
+The [original Grid axis edition](../../../examples/qualify-root-context/README.md#original-grid-axes-qualification)
+covers 36 variants across nine parent and child writing-mode combinations.
+The focused Grid axis test checks the original tracks and diagonal placement,
+then compares each registered rectangle tree through Native layout.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
