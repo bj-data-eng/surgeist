@@ -778,6 +778,74 @@ mod cpu_tests {
     use crate::accounting::RendererCpu;
     use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn blend_programs_branch_only_on_the_selected_mode() {
+        use wgpu::naga::{Expression, Statement, front::wgsl};
+
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let area = fine_shader_source(&cpu, &SHADERS.fine_area, false).unwrap();
+        let msaa8 = fine_shader_source(&cpu, &SHADERS.fine_msaa8, true).unwrap();
+        let msaa16 = fine_shader_source(&cpu, &SHADERS.fine_msaa16, false).unwrap();
+        let mut conditional = Vec::new();
+        for (route, entry, source) in [
+            (
+                "graph",
+                "blend_rgb",
+                include_str!("../shaders/layer_composite.wgsl"),
+            ),
+            ("area", "blend_mix", std::str::from_utf8(&area).unwrap()),
+            ("msaa8", "blend_mix", std::str::from_utf8(&msaa8).unwrap()),
+            ("msaa16", "blend_mix", std::str::from_utf8(&msaa16).unwrap()),
+        ] {
+            let module = wgsl::parse_str(source).unwrap();
+            let (root, _) = module
+                .functions
+                .iter()
+                .find(|(_, function)| function.name.as_deref() == Some(entry))
+                .unwrap();
+            let mut pending = vec![root];
+            let mut visited = Vec::new();
+            while let Some(handle) = pending.pop() {
+                if visited.contains(&handle) {
+                    continue;
+                }
+                visited.push(handle);
+                let function = &module.functions[handle];
+                let mut blocks = vec![&function.body];
+                while let Some(block) = blocks.pop() {
+                    for statement in block {
+                        match statement {
+                            Statement::Block(block) => blocks.push(block),
+                            Statement::Call { function, .. } => pending.push(*function),
+                            Statement::Switch { selector, cases }
+                                if handle == root
+                                    && matches!(
+                                        function.expressions[*selector],
+                                        Expression::FunctionArgument(2)
+                                    ) =>
+                            {
+                                blocks.extend(cases.iter().map(|case| &case.body));
+                            }
+                            Statement::If { .. }
+                            | Statement::Loop { .. }
+                            | Statement::Switch { .. } => {
+                                conditional
+                                    .push((route, function.name.as_deref().unwrap().to_owned()));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            conditional.is_empty(),
+            "blend control flow outside mode selection: {conditional:?}"
+        );
+    }
+
     #[test]
     fn fine_replacements_preserve_the_exact_program_and_release_each_scratch_buffer() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
