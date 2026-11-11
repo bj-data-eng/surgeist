@@ -3358,6 +3358,21 @@ fn default_corpus_rejects_missing_current_authority_and_additional_differences()
     );
 }
 
+#[test]
+fn default_corpus_requires_complete_live_accounting() {
+    let qualified = QualifiedBrowserParity {
+        historical: Some(historical_disposition::HistoricalCounts::default()),
+        current_cases: 1,
+        ..Default::default()
+    };
+    assert_eq!(
+        qualified.require_complete().expect_err(
+            "complete historical and registered results do not account for live captures"
+        ),
+        "live corpus accounting is incomplete"
+    );
+}
+
 struct BrowserParityRun {
     raw: RawBrowserParity,
     qualified: Option<QualifiedBrowserParity>,
