@@ -191,6 +191,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     stylesheet_constructor_keeps_its_native_window_with_a_foreign_new_target();
     stylesheet_new_target_reentry_revalidates_the_actual_current_attachment();
     stylesheet_rule_list_and_rule_retain_the_original_owner_through_guest_gc();
+    live_stylesheet_list_reuses_custody_after_historical_rule_wrappers_collect();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
@@ -1159,6 +1160,92 @@ fn stylesheet_rule_list_and_rule_retain_the_original_owner_through_guest_gc() {
         assert_eq!(original.snapshot().unwrap().revision().value(), 2);
     })
     .unwrap();
+}
+
+fn live_stylesheet_list_reuses_custody_after_historical_rule_wrappers_collect() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = enable(session, target, cancel);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"(() => {
+                globalThis.sheet = new CSSStyleSheet();
+                globalThis.rules = sheet.cssRules;
+                sheet.insertRule('main {}');
+                globalThis.live = rules[0];
+                sheet.insertRule('header {}', 1);
+                globalThis.detached = rules[1];
+                if (rules.item(0) !== live || rules.item(1) !== detached)
+                    throw new Error('initial rule identity');
+                sheet.deleteRule(1);
+            })()"#,
+        )?;
+        Ok(())
+    })
+    .unwrap();
+
+    let cycle = |host: &mut DocumentScriptHost| {
+        host.in_document(&permit, |scope| {
+            evaluate(
+                scope,
+                r#"(() => {
+                    sheet.insertRule('aside {}', 1);
+                    const transient = rules[1];
+                    if (rules.item(1) !== transient || transient === detached)
+                        throw new Error('transient rule identity');
+                    globalThis.weakTransient = new WeakRef(transient);
+                    sheet.deleteRule(1);
+                })()"#,
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        for _ in 0..8 {
+            stylesheet_gc(host);
+            let collected = host
+                .in_document(&permit, |scope| {
+                    let value = evaluate(scope, "weakTransient.deref() === undefined")?;
+                    scope.boolean(&value)
+                })
+                .unwrap();
+            if collected {
+                return;
+            }
+        }
+        panic!("the actual deleted rule wrapper stayed reachable");
+    };
+
+    // Warm the list through the same peak set of guest identities that each
+    // subsequent cycle reaches. Only the two intentionally held rules survive.
+    cycle(&mut host);
+    let baseline = host.native.stylesheet_bytes.get();
+    for _ in 0..12 {
+        cycle(&mut host);
+    }
+    let after = host.native.stylesheet_bytes.get();
+    host.in_document(&permit, |scope| {
+        let control = evaluate(
+            scope,
+            "sheet.cssRules === rules && rules.length === 1 && rules[0] === live && rules.item(0) === live && detached.cssText === 'header { }'",
+        )?;
+        assert!(scope.boolean(&control)?);
+        Ok(())
+    })
+    .unwrap();
+    host.with_native(|dom, _, _| {
+        let original = dom
+            .style_cssom_root(target.document().node())
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.snapshot().unwrap().revision().value(), 30);
+    })
+    .unwrap();
+    assert!(
+        after <= baseline,
+        "historical collected rules increased live projection custody from {baseline} to {after} bytes"
+    );
 }
 
 fn stylesheet_gc(host: &mut DocumentScriptHost) {

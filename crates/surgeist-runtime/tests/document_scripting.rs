@@ -1579,6 +1579,7 @@ fn main() {
                 native_window_constructs_a_stylesheet_with_a_live_rule_list()
             }
             "cssom-window-contract" => cssom::run(),
+            "cssom-prototype-order" => cssom::prototype_own_key_order(),
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
