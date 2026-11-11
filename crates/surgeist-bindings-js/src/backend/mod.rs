@@ -122,6 +122,9 @@ pub(crate) trait Operations {
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error>;
     fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error>;
+    fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
+    -> Result<(), Error>;
+    fn argument_locals_storage_bytes(&self, count: usize) -> Option<usize>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn native_error(&mut self) -> Result<Root, Error>;
     fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;

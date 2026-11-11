@@ -5,6 +5,9 @@ use super::*;
 pub(super) fn window_schedules_and_cancels_after_guest_entry() {
     let (session, target) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
+        .with_window_timer_limits(
+            surgeist_runtime::document_scripting::WindowTimerLimits::new(16, 8, 4096),
+        )
         .enable(target, ALLOW, hooks(&hook()))
         .unwrap();
     let permit = host.permit().unwrap();

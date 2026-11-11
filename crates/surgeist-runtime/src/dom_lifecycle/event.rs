@@ -97,11 +97,13 @@ impl HostedState {
         let origin = self
             .event_settings(dom, association, cancel)?
             .navigation_start;
-        let occurrence = self.sample_event_clock(dom, cancel)?.map_err(clock_error)?;
+        let occurrence = self
+            .sample_admitted_clock(dom, cancel)?
+            .map_err(clock_error)?;
         creation_observation(association.global, origin, occurrence).map(EventCreation)
     }
 
-    fn sample_event_clock(
+    fn sample_admitted_clock(
         &mut self,
         dom: &DomEventDom<'_>,
         cancel: &AtomicBool,
@@ -197,12 +199,53 @@ impl NativeTaskRunning {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        let sample = state.sample_event_clock(dom, cancel)?;
+        let sample = state.sample_admitted_clock(dom, cancel)?;
         firing_creation_from_sample(self.global, self.time_origin, sample)
     }
 }
 
 impl HostedRuntime {
+    /// Sample the native scheduling clock for this live Window's Settings.
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn sample_window_timer(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<WindowTimerMoment, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        let association = state.event_global(dom, global, cancel)?;
+        let settings = state.event_settings(dom, &association, cancel)?;
+        if !settings.ready {
+            return Err(DomHostedRuntimeError::Inactive);
+        }
+        let settings_source = settings.navigation_start.source;
+        let source = state.source.id();
+        if settings_source != source || global.source() != source || state.clock.source() != source
+        {
+            return Err(DomHostedRuntimeError::Protocol);
+        }
+        state
+            .sample_admitted_clock(dom, cancel)?
+            .map_err(clock_error)
+    }
+
+    /// Supply finite native observations relative to the last accepted sample.
+    #[cfg(all(test, feature = "document-scripting"))]
+    pub(crate) fn script_window_timer_clock(
+        &self,
+        offsets: impl IntoIterator<Item = std::time::Duration>,
+    ) {
+        self.state()
+            .unwrap()
+            .borrow_mut()
+            .clock
+            .script_offsets(offsets);
+    }
+
     pub(crate) fn finish_source_event_firing(
         &self,
         lease: &mut DomSourceLease<'_>,

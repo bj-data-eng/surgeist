@@ -419,7 +419,7 @@ fn call_guest(
         })
     })();
     drop(active);
-    engine.finish_projection_cleanup(&attachment.realm);
+    engine.settle_engine_cleanup(&attachment.realm);
     result
 }
 

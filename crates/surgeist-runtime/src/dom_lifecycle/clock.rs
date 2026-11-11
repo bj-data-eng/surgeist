@@ -1,14 +1,13 @@
 //! The one native monotonic epoch owned by a hosted session.
 //!
-//! The selected non-isolated profile floors observations to 100 microseconds,
-//! without jitter. These are elapsed native-domain observations, not Unix time
-//! or a claim about an ECMAScript performance clock.
+//! The selected non-isolated profile floors exposed timestamps to 100
+//! microseconds without jitter. Scheduling uses native elapsed time.
 use std::time::{Duration, Instant};
 use surgeist_dom::DomHostedSourceId;
 
 /// A real observation of the epoch bound to the original hosted source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Sample {
+pub(crate) struct Sample {
     source: DomHostedSourceId,
     elapsed: Duration,
 }
@@ -18,9 +17,19 @@ pub(super) struct CoarsenedSample {
     pub microseconds: u64,
 }
 impl Sample {
+    #[cfg(feature = "document-scripting")]
+    pub(crate) const fn source(self) -> DomHostedSourceId {
+        self.source
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) const fn elapsed(self) -> Duration {
+        self.elapsed
+    }
+
     /// Derive source timing from the retained original sample at its actual
     /// coarsening phase; neither resample nor expose the finer private moment.
-    pub fn coarsen(&self) -> Result<CoarsenedSample, Error> {
+    pub(super) fn coarsen(&self) -> Result<CoarsenedSample, Error> {
         Ok(CoarsenedSample {
             source: self.source,
             microseconds: coarsen(self.elapsed)?,
@@ -57,6 +66,18 @@ impl Clock {
 
     pub const fn source(&self) -> DomHostedSourceId {
         self.source
+    }
+
+    #[cfg(all(test, feature = "document-scripting"))]
+    pub(super) fn script_offsets(&mut self, offsets: impl IntoIterator<Item = Duration>) {
+        assert!(self.observations.is_none());
+        let latest = self.epoch.unwrap().checked_add(self.latest).unwrap();
+        self.observations = Some(
+            offsets
+                .into_iter()
+                .map(|offset| Ok(latest.checked_add(offset).unwrap()))
+                .collect(),
+        );
     }
 
     /// Samples the actual clock; the source identity fixes its epoch/domain.
@@ -528,6 +549,28 @@ mod tests {
                 let owner = session.hosted_execution().state().unwrap();
                 let sample = owner.borrow_mut().clock.sample().unwrap();
                 (session, sample)
+            }
+
+            #[cfg(feature = "document-scripting")]
+            #[test]
+            fn window_timer_samples_preserve_native_resolution_and_reject_regression() {
+                let mut session = session();
+                let mut hosted = session.hosted_execution();
+                let mut dom = session.dom();
+                let cancel = AtomicBool::new(false);
+                let host = hosted.create_host(&mut dom, &cancel).unwrap();
+                let top = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+                let settings = hosted.settings(&dom, top.global(), &cancel).unwrap();
+                hosted.script_window_timer_clock([0, 51, 50, 52].map(Duration::from_nanos));
+
+                let sample = || hosted.sample_window_timer(&dom, top.global(), &cancel);
+                let first = sample().unwrap();
+                assert_eq!(first.source(), settings.clock_source());
+                let second = sample().unwrap();
+                assert_eq!(second.elapsed() - first.elapsed(), Duration::from_nanos(51));
+                assert_eq!(sample(), Err(DomHostedRuntimeError::ClockRegressed));
+                let fourth = sample().unwrap();
+                assert_eq!(fourth.elapsed() - first.elapsed(), Duration::from_nanos(52));
             }
 
             fn top_phase(
