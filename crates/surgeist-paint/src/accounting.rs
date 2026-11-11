@@ -59,6 +59,7 @@ pub(crate) enum OperationKind {
     BorderImageArea,
     BorderImage,
     BorderImageTiling,
+    MaskBorder,
 }
 const MAX_OPERATION_SCOPES: usize = 10;
 
@@ -74,6 +75,7 @@ impl OperationKind {
             Self::BorderImageArea => "paint border image area",
             Self::BorderImage => "paint border image geometry",
             Self::BorderImageTiling => "paint border image tiling",
+            Self::MaskBorder => "paint mask border",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -86,6 +88,7 @@ impl OperationKind {
             Self::ZeroHeightGradient => 7,
             Self::BorderImageArea | Self::BorderImage => 5,
             Self::BorderImageTiling => 4,
+            Self::MaskBorder => 6,
         }
     }
 }

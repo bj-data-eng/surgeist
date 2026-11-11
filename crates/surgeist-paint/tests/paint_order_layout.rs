@@ -591,7 +591,7 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
         BorderImageAreaRequest, BorderImageAxisPlacement, BorderImageOutset,
         BorderImagePartitionRequest, BorderImageRepeat, BorderImageSlice, BorderImageSource,
         BorderImageWidth, resolve_border_image_area, resolve_border_image_in_area,
-        resolve_border_image_tiling,
+        resolve_border_image_tiling, resolve_mask_border_in_area,
     };
 
     let border = |value| layout::LengthOf::value(layout::LengthPercentageOf::px(value).unwrap());
@@ -626,33 +626,27 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
     assert_eq!(area.rect().min(), layout::Point::new(-5.0, -2.0));
     assert_eq!(area.rect().max(), layout::Point::new(43.0, 24.0));
 
-    let geometry = resolve_border_image_in_area(
-        area,
-        BorderImagePartitionRequest {
-            source: BorderImageSource {
-                coordinate_size: layout::Size::new(20.0, 10.0),
-                natural_size: layout::Size::new(Some(10.0), Some(5.0)),
-            },
-            slices: layout::Edges::all(BorderImageSlice::SourceUnits(2.0)),
-            widths: layout::Edges::all(BorderImageWidth::BorderWidthMultiple(2.0)),
-            fill_center: true,
+    let partition = BorderImagePartitionRequest {
+        source: BorderImageSource {
+            coordinate_size: layout::Size::new(20.0, 10.0),
+            natural_size: layout::Size::new(Some(10.0), Some(5.0)),
         },
-        options(),
-    )
-    .result
-    .unwrap();
+        slices: layout::Edges::all(BorderImageSlice::SourceUnits(2.0)),
+        widths: layout::Edges::all(BorderImageWidth::BorderWidthMultiple(2.0)),
+        fill_center: true,
+    };
+    let geometry = resolve_border_image_in_area(area, partition, options())
+        .result
+        .unwrap();
     assert_eq!(geometry.area(), area.rect());
     assert_eq!(
         geometry.used_widths(),
         layout::Edges::new(4.0, 6.0, 8.0, 10.0)
     );
-    let tiling = resolve_border_image_tiling(
-        &geometry,
-        layout::Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Round),
-        options(),
-    )
-    .result
-    .unwrap();
+    let repeat = layout::Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Round);
+    let tiling = resolve_border_image_tiling(&geometry, repeat, options())
+        .result
+        .unwrap();
     let top = tiling.regions()[0][1].unwrap();
     assert_eq!(top.clip().min(), layout::Point::new(5.0, -2.0));
     assert_eq!(top.clip().max(), layout::Point::new(37.0, 2.0));
@@ -669,5 +663,27 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
             count: std::num::NonZeroU64::MIN
         }
     );
+    let filled = resolve_mask_border_in_area(area, partition, repeat, options())
+        .result
+        .unwrap();
+    assert_eq!(filled.area(), area.rect());
+    assert_eq!(filled.tiles(), &tiling);
+    assert_eq!(filled.opaque_center(), None);
+    let opaque = resolve_mask_border_in_area(
+        area,
+        BorderImagePartitionRequest {
+            fill_center: false,
+            ..partition
+        },
+        repeat,
+        options(),
+    )
+    .result
+    .unwrap();
+    assert_eq!(opaque.tiles().regions()[0][1], Some(top));
+    assert!(opaque.tiles().regions()[1][1].is_none());
+    let center = opaque.opaque_center().unwrap();
+    assert_eq!(center.min(), layout::Point::new(5.0, 2.0));
+    assert_eq!(center.max(), layout::Point::new(37.0, 16.0));
     assert_eq!(node.final_output(), output);
 }
