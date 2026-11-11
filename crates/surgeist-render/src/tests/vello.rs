@@ -196,14 +196,34 @@ fn authored_runs_reuse_backend_font_identity_for_the_same_admitted_resource() {
 
 #[test]
 fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
+    use crate::GeometryRealizationError;
+
     let font = FontData::try_from_bytes(
         AHEM_FONT_BYTES.to_vec(),
         0,
         surgeist_test::fixtures::FONT_LIMITS,
     )
     .unwrap();
-    let seed = [TextGlyph::try_new(AHEM_GLYPH_X, 16_777_217.0, -0.5, -1.0).unwrap()];
     let mut scene = VelloScene::default();
+    let over_capacity = [TextGlyph::try_new(AHEM_GLYPH_X, 16_777_217.0, -0.5, -1.0).unwrap()];
+    let error = scene
+        .encode_text_run(
+            &text_run_for(font.clone(), 16.0, Transform::identity(), &over_capacity),
+            &crate::accounting::Account::for_test(),
+        )
+        .expect_err("one pixel of placement loss exceeds the native allowance");
+    assert_eq!(
+        error.geometry_realization_diagnostic(),
+        Some(&GeometryRealizationError::InsufficientNativeCapacity)
+    );
+    let empty = scene.observation_for_test();
+    assert_eq!(empty.glyph_count_for_test(), 0);
+    assert_eq!(empty.glyph_run_count_for_test(), 0);
+    assert_eq!(empty.patch_count_for_test(), 0);
+
+    // A quarter of an f32 ULP rounds to 1.0 within the placement allowance.
+    let authored_x = 1.0 + f64::from(f32::EPSILON) / 4.0;
+    let seed = [TextGlyph::try_new(AHEM_GLYPH_X, authored_x, -0.5, -1.0).unwrap()];
     scene
         .encode_text_run(
             &text_run_for(font.clone(), 16.0, Transform::identity(), &seed),
@@ -212,7 +232,7 @@ fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
         .unwrap();
     let before = scene.observation_for_test();
     let first = before.first_glyph_for_test().unwrap();
-    assert_eq!(first.x_for_test(), 16_777_216.0);
+    assert_eq!(first.x_for_test(), 1.0);
     assert_eq!(first.y_for_test(), -0.5);
     assert_eq!(before.glyph_count_for_test(), 1);
     assert_eq!(before.glyph_run_count_for_test(), 1);
@@ -235,17 +255,17 @@ fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
                     &crate::accounting::Account::for_test(),
                 )
                 .expect_err("the later invalid coordinate must refuse the complete run");
-            assert_eq!(error.code(), ErrorCode::InvalidInput);
+            assert_eq!(error.code(), ErrorCode::GeometryRealization);
             assert_eq!(
-                error.invalid_value_diagnostic().unwrap().field(),
-                "glyph backend coordinate"
+                error.geometry_realization_diagnostic(),
+                Some(&GeometryRealizationError::UnrepresentableGlyph { glyph_index: 1 })
             );
             let after = scene.observation_for_test();
             assert_eq!(after.glyph_count_for_test(), 1);
             assert_eq!(after.glyph_run_count_for_test(), 1);
             assert_eq!(after.patch_count_for_test(), patches);
             let first = after.first_glyph_for_test().unwrap();
-            assert_eq!(first.x_for_test(), 16_777_216.0);
+            assert_eq!(first.x_for_test(), 1.0);
             assert_eq!(first.y_for_test(), -0.5);
         }
     }
