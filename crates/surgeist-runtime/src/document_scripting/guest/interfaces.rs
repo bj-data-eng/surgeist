@@ -101,9 +101,11 @@ struct OriginBindings {
 
 pub(super) struct PublicEventBindings {
     callbacks: Rc<Callbacks>,
+    window: RetainedCallbackObject,
     event: RetainedCallbackObject,
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
+    dispatch_in_attachment: RetainedCallbackObject,
     document: document::DocumentBindings,
     origins: RefCell<Option<Box<OriginBindings>>>,
 }
@@ -287,11 +289,35 @@ impl PublicEventBindings {
         let target = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
+        let window = scope.global()?;
+        let window = scope.callback_object(&window)?;
+        let window = scope.retain_callback_object(window, fund)?;
+        let dispatch = capture(size_of::<Capture>())?;
+        let dispatch_in_attachment = scope.fixed_arity_function(
+            &Callback::new(move |scope, arguments| {
+                let (owner, events) = dispatch.active(scope)?;
+                wrapper::call_dispatch_event(
+                    &events,
+                    &owner,
+                    scope,
+                    arguments,
+                    wrapper::DispatchEntry::Attachment,
+                )
+            }),
+            FunctionMetadata {
+                name: &[],
+                length: 1,
+            },
+        )?;
+        let dispatch_in_attachment = scope.callback_object(&dispatch_in_attachment)?;
+        let dispatch_in_attachment = scope.retain_callback_object(dispatch_in_attachment, fund)?;
         Ok(Self {
             callbacks,
+            window,
             event,
             target,
             trusted,
+            dispatch_in_attachment,
             document,
             origins: RefCell::new(None),
         })
@@ -319,6 +345,11 @@ impl PublicEventBindings {
                 _backing: fund(bytes)?,
             })
         };
+        dom_exception::install(
+            scope,
+            owner.dom_exception_limits.get(),
+            fund(dom_exception::constructor_storage_bytes::<GuestBacking>())?,
+        )?;
         let target = install_target_prototype(scope, &capture)?;
         install_event_interface(scope, Interface::Target, &target, &capture)?;
         let (constructor, node) = document::install_node(scope, &target, &capture)?;
@@ -372,6 +403,10 @@ impl PublicEventBindings {
             events: Rc::downgrade(events),
             _backing: events.backing.clone(),
         });
+    }
+
+    pub(super) fn window<'scope>(&self, scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {
+        scope.open_callback_object(&self.window)
     }
 
     pub(super) fn target_prototype<'scope>(
@@ -540,7 +575,13 @@ impl Capture {
         arguments: Arguments<'scope>,
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
-        wrapper::call_dispatch_event(&events, &owner, scope, arguments)
+        let entry = if self.origin.is_some() {
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            wrapper::DispatchEntry::Origin(&public.dispatch_in_attachment)
+        } else {
+            wrapper::DispatchEntry::Direct
+        };
+        wrapper::call_dispatch_event(&events, &owner, scope, arguments, entry)
     }
 
     fn construct<'scope>(

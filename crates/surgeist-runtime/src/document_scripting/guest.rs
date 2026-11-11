@@ -1086,7 +1086,7 @@ impl GuestEvents {
                 scope
                     .native_object::<GuestEventProjection>(argument)?
                     .ok_or(Error::ExpectedNativeObject)?,
-                wrapper::event_receiver(owner, scope, receiver)?
+                wrapper::event_receiver(owner, self, scope, receiver)?
                     .ok_or(Error::ExpectedNativeObject)?
                     .target(),
             ))

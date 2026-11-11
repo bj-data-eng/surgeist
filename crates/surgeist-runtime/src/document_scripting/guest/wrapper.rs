@@ -1,5 +1,5 @@
 use super::*;
-use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject};
+use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject, ValueKind};
 
 pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
@@ -22,6 +22,7 @@ impl GuestReceiver {
 
 pub(super) fn event_receiver<'scope>(
     owner: &NativeOwner,
+    events: &GuestEvents,
     scope: &mut Scope<'scope>,
     receiver: &Value<'scope>,
 ) -> Result<Option<GuestReceiver>, Error> {
@@ -36,10 +37,13 @@ pub(super) fn event_receiver<'scope>(
         }));
     }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
-    if scope.realm_authority()?.identity() != attachment.realm.identity() {
+    let global = if scope.realm_authority()?.identity() == attachment.realm.identity() {
+        scope.global()?
+    } else if let Some(public) = &events.public {
+        public.window(scope)?
+    } else {
         return Ok(None);
-    }
-    let global = scope.global()?;
+    };
     Ok(scope
         .strict_equals(receiver, &global)?
         .then(|| GuestReceiver::Window(attachment.target.global())))
@@ -196,8 +200,16 @@ impl DispatchMethod {
     ) -> Result<Completion<'scope>, Error> {
         let events = self.events.upgrade().ok_or(Error::ExpiredIdentity)?;
         let owner = self.owner.upgrade().ok_or(Error::ExpiredIdentity)?;
-        call_dispatch_event(&events, &owner, scope, arguments)
+        call_dispatch_event(&events, &owner, scope, arguments, DispatchEntry::Direct)
     }
+}
+
+pub(super) enum DispatchEntry<'a> {
+    Direct,
+    // Native dispatch uses the attachment's actual event path and callback
+    // realm. InvalidState returns to the originating method for its exception.
+    Attachment,
+    Origin(&'a RetainedCallbackObject),
 }
 
 pub(super) fn call_dispatch_event<'scope>(
@@ -205,12 +217,13 @@ pub(super) fn call_dispatch_event<'scope>(
     owner: &NativeOwner,
     scope: &mut Scope<'scope>,
     arguments: Arguments<'scope>,
+    entry: DispatchEntry<'_>,
 ) -> Result<Completion<'scope>, Error> {
     if let Err(error) = events.step() {
         return refuse(scope, &events.refusal, error);
     }
     let receiver = arguments.receiver();
-    let Some(target) = event_receiver(owner, scope, receiver)? else {
+    let Some(target) = event_receiver(owner, events, scope, receiver)? else {
         return Ok(Completion::Throw(
             scope.type_error(&b"EventTarget required".map(u16::from))?,
         ));
@@ -225,6 +238,14 @@ pub(super) fn call_dispatch_event<'scope>(
             scope.type_error(&b"Event required".map(u16::from))?,
         ));
     };
+    if let DispatchEntry::Origin(dispatch) = entry {
+        let dispatch = scope.open_callback_object(dispatch)?;
+        let result = scope.call(&dispatch, receiver, std::slice::from_ref(argument))?;
+        if scope.kind(&result)? == ValueKind::Undefined {
+            return invalid_dispatch_state(scope);
+        }
+        return Ok(Completion::Return(result));
+    }
     match events.dispatch_from_guest(
         owner,
         scope,
@@ -238,11 +259,18 @@ pub(super) fn call_dispatch_event<'scope>(
         )),
         Err(DocumentGuestEventError::Dispatch(
             DomEventDispatchError::AlreadyDispatching | DomEventDispatchError::Uninitialized,
-        )) => Ok(Completion::Throw(scope.dom_exception(
-            dom_exception::DomExceptionName::InvalidStateError,
-            &[],
-        )?)),
+        )) => match entry {
+            DispatchEntry::Attachment => Ok(Completion::Undefined),
+            _ => invalid_dispatch_state(scope),
+        },
         Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => Err(error),
         Err(error) => refuse(scope, &events.refusal, error),
     }
+}
+
+fn invalid_dispatch_state<'scope>(scope: &mut Scope<'scope>) -> Result<Completion<'scope>, Error> {
+    Ok(Completion::Throw(scope.dom_exception(
+        dom_exception::DomExceptionName::InvalidStateError,
+        &[],
+    )?))
 }

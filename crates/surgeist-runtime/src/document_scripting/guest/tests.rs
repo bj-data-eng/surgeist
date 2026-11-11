@@ -151,7 +151,7 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         .find(origin.global(), || Ok::<(), Error>(()))
         .unwrap()
         .unwrap();
-    let original_marker = engine.process.execution().in_realm(original, |scope| {
+    let (original_marker, origin_dom_exception) = engine.process.execution().in_realm(original, |scope| {
         assert_eq!(scope.realm_authority()?.identity(), realm);
         let global = scope.global()?;
         let wrapper = scope.import(&wrapper)?;
@@ -161,9 +161,20 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
             "Object.getPrototypeOf(adopted) === HTMLDivElement.prototype && \
              adopted instanceof Node && adopted instanceof Element && adopted instanceof EventTarget",
         )?;
+        assert_guest(
+            scope,
+            r#"(() => {
+                try { EventTarget.prototype.dispatchEvent.call(globalThis, null); }
+                catch (error) {
+                    return error instanceof TypeError && error.message === "EventTarget required";
+                }
+                return false;
+            })()"#,
+        )?;
         let marker = scope.evaluate(&units("adopted.marker"))?;
+        let exception = scope.evaluate(&units("DOMException"))?;
         scope.evaluate(&units("delete globalThis.adopted"))?;
-        Ok(scope.retain(&marker))
+        Ok((scope.retain(&marker), scope.retain(&exception)))
     }).unwrap();
 
     host.with_native(|dom, mut hosted, _| {
@@ -199,6 +210,13 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         let wrapper = scope.import(&wrapper)?;
         let observed = scope.get(&wrapper, PropertyKey::String(&units("marker")))?;
         assert!(scope.strict_equals(&marker, &observed)?);
+        let global = scope.global()?;
+        let exception = scope.import(&origin_dom_exception)?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("originDomException")),
+            &exception,
+        )?;
         assert_guest(
             scope,
             r#"(() => {
@@ -207,11 +225,17 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
                 const listener = { handleEvent(value) {
                     calls.push(this === listener && value === event
                         && value.target === adopted && value.currentTarget === adopted);
+                    try { adopted.dispatchEvent(value); }
+                    catch (error) {
+                        calls.push(error instanceof originDomException
+                            && !(error instanceof DOMException)
+                            && error.name === "InvalidStateError");
+                    }
                 } };
                 adopted.addEventListener("adopted", listener, { once: true });
                 const same = adopted === destination.documentElement;
                 const dispatched = adopted.dispatchEvent(event);
-                return same && dispatched && calls.length === 1 && calls[0]
+                return same && dispatched && calls.length === 2 && calls.every(Boolean)
                     && event.target === adopted && event.currentTarget === null;
             })()"#,
         )
