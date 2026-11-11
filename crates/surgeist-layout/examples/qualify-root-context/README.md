@@ -301,6 +301,19 @@ inventory also retains the separate Ahem TTF.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-wrapped-subgrid-text
 ~~~
 
+The [FRI08 intrinsic Grid Lanes edition](../../tests/layout/browser_parity/captured/fri08-grid-lanes-monospace-text/qualification.json)
+covers both original sizing sources in both box modes and directions.
+Each 15px monospace occurrence has independent min-content, max-content,
+and line sizing observations from a standalone browser block. The
+measured intrinsic widths are 54.1875px and 72.25px. The last measured
+wrapping width is 72.21875px, and the first fitting width is 72.234375px.
+Replay uses these measurements at the original Layout constraints and
+checks all historical box observations.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-grid-lanes-monospace-text
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
