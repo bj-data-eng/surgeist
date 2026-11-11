@@ -1770,3 +1770,30 @@ fn root_local_auto_block_uses_orthogonal_subgrid_geometry_f32() {
 fn root_local_auto_block_uses_orthogonal_subgrid_geometry_f64() {
     assert_root_local_auto_block_with_subgrids::<f64>();
 }
+
+#[test]
+fn orthogonal_float_keeps_its_existing_available_inline_offer() {
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                writing_mode: WritingMode::VerticalRl,
+                float: Float::Left,
+                size: Size::new(PreferredSizeOf::px(20.0), PreferredSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        )
+        .measure(1, Size::new(20.0, 30.0));
+    let batch = compute_layout(&tree, 0, inset_container_request()).unwrap();
+    assert_eq!(output(&batch, 1, false).size, Size::new(20.0, 100.0));
+}
