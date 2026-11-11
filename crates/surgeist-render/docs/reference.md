@@ -928,6 +928,13 @@ binding or release visits its slot once. The frame resolves leases in
 recording order and handles persistent atlas retention at commit. It
 releases the scratch backing after closing the frame scope.
 
+Selected native bitmap glyph validation runs in `NativeGlyphBitmap` under
+`Encode`. PNG and packed-mask providers receive caller-owned output slices
+whose actual capacity is held under `FrameBacking` until validation returns.
+`NativeBitmapDecodeBytes` admits the full output slice length before each
+decode call and retains the charge if the provider rejects the payload.
+Provider-internal buffers are outside this output-capacity measure.
+
 `Summary` and `Detailed` optionally collect host elapsed time using Ledger's
 platform clock or `RenderClock::Host`. Timed phases surround actual work and
 awaits, including pending preparation, submission resolution and surface
