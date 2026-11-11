@@ -82,37 +82,57 @@ fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
 
     // Independently measure the ordinary publication's actual retained
     // preparation, then add the fixed first-watch index, leaf and notice.
-    let (batch, _) = fragment();
+    let (batch, ticket) = fragment();
     let prepared = dom.prepare(batch, &cancel).unwrap();
     let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
     publication.close_ordinary_sharing(&cancel).unwrap();
     let exact = bytes(&dom) + size_of::<Index>() + size_of::<Armed>() + size_of::<Notice>();
-    drop(publication);
-    dom.custody_registry.reconcile_releases();
-    assert_eq!(bytes(&dom), baseline);
     // The initial native lookup uses one slot page. Retirement reserves
     // descent, unwind and exact-leaf disarm from the same work allowance.
     let work = 5 + 2 * u64::from(usize::BITS) + 1;
-    for limits in [
-        DomNodeRetirementLimits::new(exact, work - 1),
-        DomNodeRetirementLimits::new(exact - 1, work),
-    ] {
-        let (batch, ticket) = fragment();
-        let refused =
-            dom.apply_with_node_retirement_watch(batch, &ticket, &inbox, 29, limits, &cancel);
-        assert!(match refused {
-            Err(DomError::NodeRetirementWorkLimit { limit }) => limit == work - 1,
-            Err(DomError::ResourceLimit {
-                resource: DomResource::NodeRetirementCanonicalBytes,
-                limit,
-            }) => limit == exact - 1,
-            _ => false,
-        });
-        assert_eq!(dom.snapshot().stamp(), before.stamp());
-        assert_eq!(bytes(&dom), baseline);
-        assert!(dom.node_retirements.is_none());
-        assert!(inbox.take().is_none());
-    }
+    let staged = resolve_created_node(&publication.owner, &publication.created, &ticket)
+        .unwrap()
+        .unwrap();
+    let admit = |limit| {
+        dom.arm_ordinary_watch(
+            &publication.state,
+            staged,
+            &inbox,
+            29,
+            DomNodeRetirementLimits::new(limit, work),
+            &cancel,
+        )
+    };
+    assert!(matches!(
+        admit(exact - 1),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeRetirementCanonicalBytes,
+            limit,
+        }) if limit == exact - 1
+    ));
+    let provisional = admit(exact).unwrap();
+    assert_eq!(bytes(&dom), exact);
+    drop(provisional);
+    drop(publication);
+    dom.custody_registry.reconcile_releases();
+    assert_eq!(bytes(&dom), baseline);
+
+    let (batch, ticket) = fragment();
+    assert!(matches!(
+        dom.apply_with_node_retirement_watch(
+            batch,
+            &ticket,
+            &inbox,
+            29,
+            DomNodeRetirementLimits::new(16_000_000, work - 1),
+            &cancel,
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit }) if limit == work - 1
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(bytes(&dom), baseline);
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
 
     let (batch, ticket) = fragment();
     let created = dom
@@ -121,7 +141,7 @@ fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
             &ticket,
             &inbox,
             29,
-            DomNodeRetirementLimits::new(exact, work),
+            DomNodeRetirementLimits::new(16_000_000, work),
             &cancel,
         )
         .unwrap();
@@ -198,6 +218,9 @@ fn watched_creation_refuses_cancelled_foreign_and_destroyed_tickets() {
 fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, original) = fixture(&cancel);
+    let mut detach = DomBatch::new();
+    detach.detach(original);
+    dom.apply(detach, &cancel).unwrap();
     let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
     let original_watch = dom
         .watch_node_retirement(original, &inbox, 11, GENEROUS, &cancel)
@@ -213,18 +236,20 @@ fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
     };
 
     let (batch, ticket) = replace();
-    let result = dom.apply_with_node_retirement_watch(
+    let Err(error) = dom.apply_with_node_retirement_watch(
         batch,
         &ticket,
         &inbox,
         13,
         DomNodeRetirementLimits::new(16_000_000, 0),
         &cancel,
+    ) else {
+        panic!("one short watch budget must refuse the whole batch");
+    };
+    assert!(
+        matches!(error, DomError::NodeRetirementWorkLimit { limit: 0 }),
+        "{error:?}"
     );
-    assert!(matches!(
-        result,
-        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
-    ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());
     assert!(dom.snapshot().node(original).is_ok());
     assert_eq!(bytes(&dom), baseline);
