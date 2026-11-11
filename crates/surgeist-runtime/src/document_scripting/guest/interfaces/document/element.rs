@@ -1,15 +1,54 @@
 //! Element projection over a current canonical Document read.
 
 use super::*;
-use surgeist_dom::DomError;
-use surgeist_html::vocabulary::KnownHtmlElement;
+use surgeist_dom::{DomError, DomQualifiedName};
+use surgeist_html::{
+    bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
+};
 
 const ELEMENT: &[u16] = &ascii(b"Element");
 const HTML_ELEMENT: &[u16] = &ascii(b"HTMLElement");
-const HTML_HTML_ELEMENT: &[u16] = &ascii(b"HTMLHtmlElement");
+const HTML_MEDIA_ELEMENT: &[u16] = &ascii(b"HTMLMediaElement");
+const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
+
+// The HTML element interface algorithm and the defining obsolete clauses
+// supplement the language owner's individually named element inventory.
+const OBSOLETE_UNKNOWN: &[&str] = &[
+    "applet", "bgsound", "blink", "isindex", "keygen", "multicol", "nextid", "spacer",
+];
+const OBSOLETE_GENERIC: &[&str] = &[
+    "acronym",
+    "basefont",
+    "big",
+    "center",
+    "nobr",
+    "noembed",
+    "noframes",
+    "plaintext",
+    "rb",
+    "rtc",
+    "strike",
+    "tt",
+];
+const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
+    ("dir", "HTMLDirectoryElement"),
+    ("font", "HTMLFontElement"),
+    ("frame", "HTMLFrameElement"),
+    ("frameset", "HTMLFrameSetElement"),
+    ("listing", "HTMLPreElement"),
+    ("marquee", "HTMLMarqueeElement"),
+    ("param", "HTMLParamElement"),
+    ("xmp", "HTMLPreElement"),
+];
 
 pub(super) struct ElementBindings {
-    html_root: RetainedCallbackObject,
+    html: Vec<HtmlPrototype>,
+    _html_backing: GuestBacking,
+}
+
+struct HtmlPrototype {
+    interface: &'static str,
+    prototype: RetainedCallbackObject,
 }
 
 #[derive(Clone, Copy)]
@@ -53,7 +92,52 @@ impl ElementBindings {
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
         let (html_constructor, html) =
             install(scope, &global, HTML_ELEMENT, &constructor, &element)?;
-        let (_, html_root) = install(scope, &global, HTML_HTML_ELEMENT, &html_constructor, &html)?;
+        let (media_constructor, media) =
+            install(scope, &global, HTML_MEDIA_ELEMENT, &html_constructor, &html)?;
+        let capacity = KnownHtmlElement::ALL.len() + OBSOLETE_SPECIAL.len() + 2;
+        let bytes = capacity
+            .checked_mul(size_of::<HtmlPrototype>())
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let html_backing = fund(bytes)?;
+        let mut classes = Vec::new();
+        classes
+            .try_reserve_exact(capacity)
+            .map_err(|_| DocumentScriptNativeError::StorageLimit)?;
+        if classes.capacity() != capacity {
+            return Err(DocumentScriptNativeError::RepresentationExhausted.into());
+        }
+        let observed = scope.callback_object(&html)?;
+        classes.push(HtmlPrototype {
+            interface: "HTMLElement",
+            prototype: scope.retain_callback_object(observed, fund)?,
+        });
+        for interface in KnownHtmlElement::ALL
+            .iter()
+            .map(|element| element.inventory_row().interface())
+            .chain(OBSOLETE_SPECIAL.iter().map(|&(_, interface)| interface))
+            .chain(["HTMLUnknownElement"])
+        {
+            if classes.iter().any(|class| class.interface == interface) {
+                continue;
+            }
+            let (parent_constructor, parent) = match interface {
+                "HTMLAudioElement" | "HTMLVideoElement" => (&media_constructor, &media),
+                _ => (&html_constructor, &html),
+            };
+            let mut name = [0; 32];
+            let units = name
+                .get_mut(..interface.len())
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+            for (unit, byte) in units.iter_mut().zip(interface.bytes()) {
+                *unit = u16::from(byte);
+            }
+            let (_, prototype) = install(scope, &global, units, parent_constructor, parent)?;
+            let observed = scope.callback_object(&prototype)?;
+            classes.push(HtmlPrototype {
+                interface,
+                prototype: scope.retain_callback_object(observed, fund)?,
+            });
+        }
         for (member, key, name) in [
             (
                 ElementMember::Namespace,
@@ -97,11 +181,74 @@ impl ElementBindings {
             true,
             Callback::new(move |scope, arguments| handler.document_element(scope, arguments)),
         )?;
-        let observed = scope.callback_object(&html_root)?;
         Ok(Self {
-            html_root: scope.retain_callback_object(observed, fund)?,
+            html: classes,
+            _html_backing: html_backing,
         })
     }
+
+    fn html_prototype(
+        &self,
+        events: &GuestEvents,
+        interface: &str,
+    ) -> Result<&RetainedCallbackObject, DocumentGuestEventError> {
+        for entry in &self.html {
+            events.step()?;
+            if entry.interface == interface {
+                return Ok(&entry.prototype);
+            }
+        }
+        Err(DocumentScriptNativeError::ProjectionCustody.into())
+    }
+}
+
+fn html_interface(
+    name: &DomQualifiedName,
+    events: &GuestEvents,
+) -> Result<&'static str, DocumentGuestEventError> {
+    events.step()?;
+    if !name
+        .namespace_uri()
+        .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
+    {
+        return Err(Error::BackendUnavailable.into());
+    }
+    let local = name.local_name();
+    let matches = |spelling: &str| {
+        local
+            .code_units()
+            .iter()
+            .copied()
+            .eq(spelling.bytes().map(u16::from))
+    };
+    events.step()?;
+    if let Some(known) = KnownHtmlElement::from_units(local.code_units()) {
+        return Ok(known.inventory_row().interface());
+    }
+    for &spelling in OBSOLETE_UNKNOWN {
+        events.step()?;
+        if matches(spelling) {
+            return Ok("HTMLUnknownElement");
+        }
+    }
+    for &spelling in OBSOLETE_GENERIC {
+        events.step()?;
+        if matches(spelling) {
+            return Ok("HTMLElement");
+        }
+    }
+    for &(spelling, interface) in OBSOLETE_SPECIAL {
+        events.step()?;
+        if matches(spelling) {
+            return Ok(interface);
+        }
+    }
+    let valid = validate_custom_element_name_with(local, |_| events.step())?.is_ok();
+    Ok(if valid {
+        "HTMLElement"
+    } else {
+        "HTMLUnknownElement"
+    })
 }
 
 fn install<'scope>(
@@ -157,44 +304,37 @@ impl Capture {
                 .as_ref()
                 .ok_or(Error::ExpiredIdentity)?
                 .document;
-            let observed = self.with_native(&owner, |session, global| {
+            let root = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let root = snapshot.document_element_with(document, || {
+                Ok(snapshot.document_element_with(document, || {
                     events.step().map_err(RootReadError::Guest)
+                })?)
+            })?;
+            let Some(root) = root else {
+                return Ok(scope.primitive(Primitive::Null)?);
+            };
+            if let Some(value) = bindings.ordinary.open(scope, &events, root)? {
+                return Ok(value);
+            }
+            let interface = self.with_native(&owner, |session, global| {
+                let snapshot = session.snapshot();
+                events.step()?;
+                let origin = snapshot.relevant_global(root).map_err(|error| {
+                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(error))
                 })?;
-                let Some(root) = root else {
-                    return Ok(None);
-                };
+                if origin != Some(global) {
+                    return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
+                }
                 events.step()?;
                 let element = snapshot
                     .node(root)
                     .map_err(DocumentScriptNativeError::from)?
                     .as_element()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                events.step()?;
-                let origin = snapshot.relevant_global(root).map_err(|error| {
-                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(error))
-                })?;
-                Ok(Some((
-                    root,
-                    origin,
-                    global,
-                    KnownHtmlElement::from_name(element.name()),
-                )))
+                html_interface(element.name(), &events)
             })?;
-            let Some((root, origin, global, kind)) = observed else {
-                return Ok(scope.primitive(Primitive::Null)?);
-            };
-            if let Some(value) = bindings.ordinary.open(scope, &events, root)? {
-                return Ok(value);
-            }
-            if origin != Some(global) {
-                return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
-            }
-            if kind != Some(KnownHtmlElement::Html) {
-                return Err(Error::BackendUnavailable.into());
-            }
-            let prototype = scope.open_callback_object(&bindings.element.html_root)?;
+            let prototype =
+                scope.open_callback_object(bindings.element.html_prototype(&events, interface)?)?;
             bindings
                 .ordinary
                 .project(scope, &owner, &events, &prototype, |inbox, key| {
