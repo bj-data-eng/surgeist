@@ -1,6 +1,8 @@
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const RECEIPT_SHA256: &str = "a393498f143c6cbd7ebe7503c16fefb410d0495e586253bb1bc31b9354418d0e";
+static NEXT_BUNDLE: AtomicU64 = AtomicU64::new(0);
 
 fn artifact_root(owner: &Path) -> PathBuf {
     owner
@@ -49,8 +51,9 @@ impl CopiedBundle {
             .unwrap()
             .as_nanos();
         let temporary_owner = std::env::temp_dir().join(format!(
-            "surgeist-original-diagnostic-{}-{nonce}",
-            std::process::id()
+            "surgeist-original-diagnostic-{}-{nonce}-{}",
+            std::process::id(),
+            NEXT_BUNDLE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&temporary_owner).unwrap();
         let bundle = Self {
@@ -123,10 +126,10 @@ impl CopiedBundle {
         let mut receipt: authority::OriginalDiagnosticReceipt =
             serde_json::from_value(value).unwrap();
         receipt.browser_settings = witness;
-        self.write(
-            authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
-            &receipt.to_bytes().unwrap(),
-        )
+        // Reissue the edited wire so validation happens at the reader boundary.
+        let mut bytes = serde_json::to_vec_pretty(&receipt).unwrap();
+        bytes.push(b'\n');
+        self.write(authority::ORIGINAL_DIAGNOSTIC_RECEIPT, &bytes)
     }
 
     fn repin_report(
@@ -274,6 +277,41 @@ fn paired_matching_refuses_an_adoptable_older_producing_helper() {
             .contains("source-equivalent Grid Lanes producing helper"),
         "{error}"
     );
+}
+
+#[test]
+fn original_diagnostics_refuse_a_repinned_older_producing_helper() {
+    let bundle = CopiedBundle::new();
+    assert_eq!(
+        admit_original_diagnostics(&bundle.owner, RECEIPT_SHA256)
+            .unwrap()
+            .cases
+            .len(),
+        36
+    );
+    let mut receipt = bundle.receipt();
+    let report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    let helper = authority::ROOT_HELPER_INPUT;
+    let older = fs::read(
+        owner()
+            .join("tests/layout/browser_parity/captured/scriptless-order")
+            .join(helper),
+    )
+    .unwrap();
+    let older_digest = bundle.write(helper, &older);
+    assert_eq!(
+        older_digest,
+        crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
+    );
+    assert_ne!(receipt["retained_inputs"][helper], older_digest);
+    receipt["retained_inputs"][helper] = Value::from(older_digest);
+    let inputs = serde_json::from_value(receipt["retained_inputs"].clone()).unwrap();
+    receipt["capture_validation"] =
+        serde_json::to_value(authority::CaptureValidation::from_retained(&inputs).unwrap())
+            .unwrap();
+    let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
+    assert_ne!(pin, RECEIPT_SHA256);
+    bundle.expect_refusal(&pin, "Grid Lanes producing helper");
 }
 
 #[test]
