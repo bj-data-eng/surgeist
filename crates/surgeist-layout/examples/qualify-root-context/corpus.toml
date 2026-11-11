@@ -4791,3 +4791,218 @@ sources = [
   "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html",
   "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
 ]
+
+[[records]]
+source = "html/grid/fri08_auto_placement_span_after_occupied.html"
+source_sha256 = "876531e333ed6afc0217f54c5b0477d84c6febfa6780d0630bfcb9a3483fe37f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "521f4ae176528d5ba90c4ca3ff5b5db3668ab77b16c821c34982ab6271b2e612"
+content_box_ltr = "c2192f8c99a5a259e6819d1fad0aac78da0cdc1806039364ef10cc0a6a59f75c"
+border_box_rtl = "425d73698df358c87d307e85bc163acd173b009a2151553e3b24d34e2e7227e2"
+content_box_rtl = "91f49400c564d487c640a9cac1ee45081d5c33bdb5c59e849750af51468bd946"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_explicit_overlap_no_implicit_growth.html"
+source_sha256 = "e461ddac71a8997aeeaedcfe108ceb17360ebc1e35ff52542ec1de6496d83bcb"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "618b559ce10cdc50f2f819c7d646d51ed14b4cb548e13ad7820c6f7751e961ac"
+content_box_ltr = "6493d5ebda777ed942cddd16ea11b75af77cfd3d517d2e17084efdd281d38d09"
+border_box_rtl = "3b8fa10b3b114da39f79dda59ee9acd57d09686b258bebdc262e8ec04f3bd7b8"
+content_box_rtl = "f17f5fe8478d332444e0d85afa45a761c9b197861c6bf76e6e498f474c168bd0"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_fit_content_flex_composition.html"
+source_sha256 = "a140f5cea08fedc5c27d8571a2cad30026cea4afd1383ec2ec1133e2bb3e4ee5"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "fc91490838c31fa0bcd84ec298e925d8a61c0ee4cff7301ece6deb436c4030ee"
+content_box_ltr = "46e1f3b19c223e60257b85d6cc0a7a5233e125580b2c1e564cc048c3367b5b41"
+border_box_rtl = "687bc29270dfd8b9a47ce1ce52cdf0d26b16e7bfc4eade0fee50c11ee387d9e1"
+content_box_rtl = "dc9c745a72c1c2c6183892964723d631d565e039e35d08ccefd3ca6504c41c95"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_template_areas_explicit_tracks.html"
+source_sha256 = "97daf1161239c2c3054c564cbd8f0c4c6e3f09e21d85631388ede30d31c33d72"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "04c0daee31b62acaacbde8fbb4057fcfdfaf34c44ca0db128cda76b112d6654d"
+content_box_ltr = "dab5f5c742127ee7b3c532f84692f63cb4a49ce0231fce79c9362f5a35377f41"
+border_box_rtl = "95f35554fdb8ed8b8e3dba5040201f921fc5ebcb9480c191647a973525a6a889"
+content_box_rtl = "dae84523f511c1818ff2e79eb386aff055b3a88e60e0f6be9f583a40d2bf7a93"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_stretch_minmax_auto.html"
+source_sha256 = "66d4289394fc999b959f2ea322fd6216886f144b235889ab5c440a16805a9d2a"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "478808943574235c44a4453af295fbca643147da2804f174ce3a03526d256cfe"
+content_box_ltr = "71b9902df599324a04efede733426db3a52ea4a540593d0eda2eb0a4d14c68c8"
+border_box_rtl = "54a654fc6bedf7d664641fa5b7d15c26e9b3bd7d2c5ad1082a42628ac97418d7"
+content_box_rtl = "8c275b690c2e60d4df7424b6fd403970be79ed886c98cfbfd0b011620202357a"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_duplicate_line_name_token.html"
+source_sha256 = "ea4a276d73ec156af788bb573c9d465521e64157f94eed813574408552524cff"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "e7078004424c55c05f3770964586775b391ab73c162c9608a01ede237e5ce7f5"
+content_box_ltr = "f76a48290acc1eee3240ea138e3bfa7e50ed3c19c68c753cb623d64809a07f7f"
+border_box_rtl = "42deaa6f5c4b54cd5837382f673ef1625348c0137776c51e1ff66de4242963dc"
+content_box_rtl = "c4ab1a4e81febd070268b0915037f339a702ee636a5f7343f2a89c787462dbb7"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_grid_composition.html"
+source_sha256 = "bafb481d2ca1442e16e924be5fd4c3af00d2df7a27a738e4865ebb5e6387e7f0"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "4a960337e2331d09cb507ec3c09bbafd048ed5f4a55e21b2f38c02670148b119"
+content_box_ltr = "ef79229b38b8081f7e0226720b892967d9cd2dd887a7e427d5a151e413ec7358"
+border_box_rtl = "8e7e135e4e0bf680f3c163e2dc7ecbe238860097ac8bcb55471b6dee1d62f55c"
+content_box_rtl = "dec3c9ec720f9b34752d7783bc6c18a72b55c2697ad5e1b024afd5cc872fb888"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/fri08_nested_indefinite_subgrid.html"
+source_sha256 = "bba93b3b86245bd17f6a2f2c23ca53e87d261eeb3e256937853ed7d9d4e8665b"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "3e4fedf9cec5a4233fe9ed600341400e79a70c173e3cfca5b7dfedee5bc1ea2a"
+content_box_ltr = "35a251e1721a8b658c03e01a07480aed1ab2c04fdb9bd73daf4fbd0719c438af"
+border_box_rtl = "b0be6a56fddec5f22b4af4c704e06e1fd8e1675fa76dc775ccb6c207e1a2797f"
+content_box_rtl = "025bee698981e15ba208266c7ea464b6c71cff2ad339f978ec7bcf2d4c5da349"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid-lanes"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_item_containing_block_content_width.html"
+source_sha256 = "f461d6e1933c90a7aab8638fc3226e998ea1f0b1c4d7995798e61c371aec47f9"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "deeab3de5562c201488c7c42f2a0a596b6908e817d1c6bbc9acf92c563da4da7"
+content_box_ltr = "b1a0d39cddae74c25df6209e41626d13a08f1e5c5afb30f251c575c2fbee5b06"
+border_box_rtl = "aa85f4ad036f121b4a9c98b268966e1fd549c4323cdd6c04e6416fb48ea10886"
+content_box_rtl = "d69c2eee7b0df8a2f8c813643be16e6bd0fb16e88b0d9cb59cb348705f2220db"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid-lanes"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/fri08_standalone_intrinsic_composition.html"
+source_sha256 = "9a689f60e1cdbab908d182fe34e0f6164d2134a97962daa2f948c9fb36b53df0"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "517fac9ee0f78dffcbb20c62d1a1437d69501da6f3e3bbd0de1f28a9dcd9627f"
+content_box_ltr = "7eb5e9d76d7d2285b027fe3ea4e4ee0e17d71a32606a7015d4d063caeace65c1"
+border_box_rtl = "6821418cc303b6b8a6ad26394d52acc3bb04317fb040400d53cf9cd6d5aab115"
+content_box_rtl = "27b23bd1524c8423318cd710889ac40681b357db3dfd1fd1e6f13861643f5554"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[matching_publications]]
+edition = "fri08-manifest-plain-box-sources"
+sources = [
+  "html/grid/fri08_auto_placement_span_after_occupied.html",
+  "html/grid/fri08_explicit_overlap_no_implicit_growth.html",
+  "html/grid/fri08_fit_content_flex_composition.html",
+  "html/grid/fri08_template_areas_explicit_tracks.html",
+  "html/grid/fri08_stretch_minmax_auto.html",
+  "html/grid/fri08_duplicate_line_name_token.html",
+  "html/grid/fri08_grid_composition.html",
+  "html/grid-lanes/fri08_nested_indefinite_subgrid.html",
+  "html/grid-lanes/grid_lanes_item_containing_block_content_width.html",
+  "html/subgrid/fri08_standalone_intrinsic_composition.html",
+]
