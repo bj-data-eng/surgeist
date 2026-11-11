@@ -685,10 +685,59 @@ pub(crate) fn allocate<T>(
         // Record the refusal, never a speculative accepted allocation/peak.
         apply(meter, root, request)?;
     }
+    admit_capacity(meter, root, reserve_exact(capacity, kind)?, kind)
+}
+
+/// Prefer spare capacity when its requested and actual backing both fit.
+/// Only the selected allocation commits custody or records a refusal.
+pub(crate) fn allocate_with_headroom<T>(
+    meter: &mut PhaseMeter<'_, '_>,
+    root: Scope,
+    required: usize,
+    preferred: usize,
+    kind: ResourceKind,
+) -> Result<Vec<T>, PaintError> {
+    if preferred > required
+        && preview_optional_capacity::<T>(meter, root, preferred, kind)?
+        && let Ok(values) = reserve_exact::<T>(preferred, kind)
+        && (values.capacity() == preferred
+            || preview_optional_capacity::<T>(meter, root, values.capacity(), kind)?)
+    {
+        return admit_capacity(meter, root, values, kind);
+    }
+    allocate(meter, root, required, kind)
+}
+
+fn preview_optional_capacity<T>(
+    meter: &mut PhaseMeter<'_, '_>,
+    root: Scope,
+    capacity: usize,
+    kind: ResourceKind,
+) -> Result<bool, PaintError> {
+    let Ok(amount) = bytes::<T>(capacity) else {
+        return Ok(false);
+    };
+    match meter.check_batch(root, &[Change::Acquire(kind, amount)]) {
+        Ok(()) => Ok(true),
+        Err(LedgerError::Refused(_)) => Ok(false),
+        Err(error) => Err(setup_error(error)),
+    }
+}
+
+fn reserve_exact<T>(capacity: usize, kind: ResourceKind) -> Result<Vec<T>, PaintError> {
     let mut values = Vec::new();
     values
         .try_reserve_exact(capacity)
         .map_err(|_| PaintError::Allocation { resource: kind })?;
+    Ok(values)
+}
+
+fn admit_capacity<T>(
+    meter: &mut PhaseMeter<'_, '_>,
+    root: Scope,
+    values: Vec<T>,
+    kind: ResourceKind,
+) -> Result<Vec<T>, PaintError> {
     apply(
         meter,
         root,
