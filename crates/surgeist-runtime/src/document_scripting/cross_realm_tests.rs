@@ -224,7 +224,9 @@ fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
         + DomDocumentScriptRegistration::storage_bytes()
         + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
-        + dom_exception;
+        + dom_exception
+        + surgeist_bindings_js::cssom::installation_storage_bytes::<cssom::Host>()
+        + cssom::FailureSlot::storage_bytes();
     drop(read);
     drop(detach);
 

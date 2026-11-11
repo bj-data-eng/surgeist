@@ -109,6 +109,7 @@ impl DocumentScriptHost {
         let bytes = event_report_bytes();
         if engine
             .retained_bytes_with(bytes)
+            .and_then(|total| total.checked_add(self.native.stylesheet_bytes.get()))
             .is_none_or(|total| total > self.native.storage_limit)
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -285,7 +286,8 @@ fn call_guest(
         .zip(slot_bytes)
         .and_then(|(pin, slots)| pin.checked_add(slots))
         .and_then(|bytes| bytes.checked_add(event_report_bytes()))
-        .and_then(|additional| engine.retained_bytes_with(additional));
+        .and_then(|additional| engine.retained_bytes_with(additional))
+        .and_then(|total| total.checked_add(native.stylesheet_bytes.get()));
     let comments = &mut engine.comments;
     let receiving_realm = &engine.realm;
     let result = (|| {

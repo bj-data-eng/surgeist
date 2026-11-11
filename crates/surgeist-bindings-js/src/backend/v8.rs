@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
 use super::{
-    CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
-    PropertyDescriptor, PropertyKey,
+    CoercedString, DomExceptionProfile, IndexedTrap, ObjectPrototype, Operations, Projection,
+    PropertyDefinition, PropertyDescriptor, PropertyKey,
 };
 use crate::conversion::ConversionAccount;
 use crate::owner::OwnerState;
@@ -18,6 +18,7 @@ use crate::{
     ValueKind, WellKnownSymbol,
 };
 
+mod cssom;
 #[cfg(test)]
 mod tests;
 
@@ -27,6 +28,8 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
 
 const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
+const CSSOM_PROTOTYPES_FIELD: usize = 8;
+const INDEXED_REFLECT_FIELD: usize = 9;
 
 struct ActiveOwner;
 
@@ -44,6 +47,7 @@ struct RootEntry {
 enum NativeCallback {
     Callable(Callback, Option<i32>),
     Constructor(ConstructorCallback),
+    Projection(Rc<dyn std::any::Any>),
 }
 
 struct CallbackLease {
@@ -61,7 +65,7 @@ enum CallbackRole {
 struct CallbackEntry {
     // Release the ORIGINAL weak handle before dropping arbitrary captures.
     // Cloning an SDK Weak would lose its finalizer.
-    _function: v8::Weak<v8::Function>,
+    object: v8::Weak<v8::Value>,
     retired: Rc<Cell<bool>>,
     // The SDK finalizer previously held this same strong lease. Registry
     // custody adds no guest root: the function handle above remains weak.
@@ -73,9 +77,10 @@ struct Roots {
     next: Cell<u64>,
     entries: RefCell<BTreeMap<u64, Rc<RootEntry>>>,
     next_callback: Cell<u32>,
-    callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
+    callbacks: RefCell<BTreeMap<u32, Rc<CallbackEntry>>>,
     interrupt: v8::IsolateHandle,
     dom_exception_key: v8::Global<v8::Private>,
+    projection_key: v8::Global<v8::Private>,
     cleanup_interrupt: Cell<bool>,
     // User panic payloads remain owned until teardown outside native callback
     // frames. Their arbitrary destructors follow ordinary Rust drop behavior.
@@ -170,6 +175,31 @@ impl Roots {
         self.fail(Error::RegistryConflict)
     }
 
+    fn register_callback(
+        &self,
+        scope: &mut v8::PinScope,
+        id: u32,
+        object: v8::Local<v8::Value>,
+        lease: Rc<CallbackLease>,
+    ) -> Result<(), Error> {
+        let retired = Rc::new(Cell::new(false));
+        let signal = retired.clone();
+        let object =
+            v8::Weak::with_guaranteed_finalizer(scope, object, Box::new(move || signal.set(true)));
+        self.callbacks
+            .try_borrow_mut()
+            .map_err(|_| self.conflict())?
+            .insert(
+                id,
+                Rc::new(CallbackEntry {
+                    object,
+                    retired,
+                    lease,
+                }),
+            );
+        Ok(())
+    }
+
     fn reap(&self) {
         let retired = match self.entries.try_borrow_mut() {
             Ok(mut entries) => {
@@ -248,10 +278,14 @@ impl Engine {
             .map_err(|_| Error::IdentityExhausted)?;
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-        let dom_exception_key = {
+        let (dom_exception_key, projection_key) = {
             v8::scope!(let scope, &mut isolate);
-            let key = v8::Private::new(scope, None);
-            v8::Global::new(scope, key)
+            let exception = v8::Private::new(scope, None);
+            let projection = v8::Private::new(scope, None);
+            (
+                v8::Global::new(scope, exception),
+                v8::Global::new(scope, projection),
+            )
         };
         let roots = Rc::new(Roots {
             owner: Rc::new(OwnerState::new(owner)),
@@ -261,6 +295,7 @@ impl Engine {
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
             dom_exception_key,
+            projection_key,
             cleanup_interrupt: Cell::new(false),
             panic_payloads: Cell::new(Vec::new()),
         });
@@ -382,8 +417,9 @@ impl super::Engine for Engine {
                 .map_err(|_| Error::BackendUnavailable)?;
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
+            let indexed = cssom::capture_reflect(scope, reflect)?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(DOM_EXCEPTION_PROFILE_FIELD + 1) {
+            if !template.set_internal_field_count(INDEXED_REFLECT_FIELD + 1) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -396,6 +432,7 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(4, construct.into())
                 || !intrinsics.set_internal_field(5, object_constructor.into())
                 || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
+                || !intrinsics.set_internal_field(INDEXED_REFLECT_FIELD, indexed.into())
             {
                 return Err(Error::BackendUnavailable);
             }
@@ -634,28 +671,7 @@ impl Entered<'_, '_, '_> {
             } else {
                 (function.into(), function)
             };
-            let retired = Rc::new(Cell::new(false));
-            let retirement_signal = retired.clone();
-            let weak = v8::Weak::with_guaranteed_finalizer(
-                scope,
-                lifetime_function,
-                // SDK second-pass callbacks cross an extern-C boundary. This
-                // callback only marks retirement: no allocation, registry
-                // access, fallible work or arbitrary capture destructor.
-                Box::new(move || retirement_signal.set(true)),
-            );
-            roots
-                .callbacks
-                .try_borrow_mut()
-                .map_err(|_| roots.conflict())?
-                .insert(
-                    id,
-                    CallbackEntry {
-                        _function: weak,
-                        retired,
-                        lease,
-                    },
-                );
+            roots.register_callback(scope, id, lifetime_function.into(), lease)?;
             roots.retain(scope, realm, value)
         })
     }
@@ -710,12 +726,13 @@ impl Operations for Entered<'_, '_, '_> {
     fn function(
         &mut self,
         callback: &Callback,
-        fixed: Option<FunctionMetadata<'_>>,
+        metadata: Option<FunctionMetadata<'_>>,
+        capture: Option<u32>,
     ) -> Result<Root, Error> {
-        let prefix = fixed
-            .map(|metadata| i32::try_from(metadata.length).map_err(|_| Error::TooManyArguments))
+        let prefix = capture
+            .map(|count| i32::try_from(count).map_err(|_| Error::TooManyArguments))
             .transpose()?;
-        self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
+        self.native_function(NativeCallback::Callable(callback.clone(), prefix), metadata)
     }
 
     fn constructor(
@@ -1172,21 +1189,9 @@ impl Operations for Entered<'_, '_, '_> {
         self.attempt(
             ExceptionPhase::Prototype,
             |scope, roots, realm, intrinsics| {
-                let template = v8::ObjectTemplate::new(scope);
-                if !template.set_internal_field_count(3) {
-                    return Err(Error::BackendUnavailable);
-                }
-                let holder = template
-                    .new_instance(scope)
-                    .ok_or(Error::BackendUnavailable)?;
                 let object = v8::Object::new(scope);
                 let context = scope.get_current_context();
-                if !holder.set_internal_field(0, object.into())
-                    || !holder.set_internal_field(1, context.into())
-                    || !holder.set_internal_field(2, intrinsics.into())
-                {
-                    return Err(Error::BackendUnavailable);
-                }
+                let holder = managed_holder(scope, object.into(), context, intrinsics, 3)?;
                 roots.retain(scope, realm, holder.into())
             },
         )
@@ -1204,6 +1209,152 @@ impl Operations for Entered<'_, '_, '_> {
                 .and_then(|value| v8::Local::<v8::Value>::try_from(value).ok())
                 .ok_or_else(|| roots.conflict())?;
             roots.retain(scope, realm, object)
+        })
+    }
+
+    fn projection_storage_bytes(&self) -> usize {
+        size_of::<CallbackEntry>()
+            + size_of::<CallbackLease>()
+            + size_of::<Cell<bool>>()
+            + size_of::<(u32, Rc<CallbackEntry>)>()
+    }
+
+    fn project(
+        &mut self,
+        object: &Root,
+        state: Rc<dyn std::any::Any>,
+        links: &[&Root],
+    ) -> Result<Projection, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                cssom::project(scope, roots, realm, intrinsics, object, state, links)
+            },
+        )
+    }
+
+    fn projection(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+            let object = roots.local(scope, object)?;
+            Ok(cssom::projection(scope, roots, object)?.map(|(_, state)| state))
+        })
+    }
+
+    fn projection_link(&mut self, object: &Root, index: usize) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let object = roots.local(scope, object)?;
+            let (holder, _) =
+                cssom::projection(scope, roots, object)?.ok_or(Error::ExpectedObject)?;
+            let value = captured_value(scope, holder, 4 + index)?;
+            roots.retain(scope, realm, value)
+        })
+    }
+
+    fn reopen_projection(&mut self, identity: Projection) -> Result<Option<Root>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            if identity.realm.owner != realm.owner {
+                return Err(Error::ForeignOwner);
+            }
+            let value = cssom::reopen(scope, roots, identity)?;
+            value
+                .map(|value| roots.retain(scope, realm, value))
+                .transpose()
+        })
+    }
+
+    fn cssom_prototypes(&mut self, prototypes: &[&Root]) -> Result<(), Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, _, intrinsics| {
+            let prototypes = cssom::values::<5>(scope, roots, prototypes)?;
+            let array = v8::Array::new_with_elements(scope, &prototypes);
+            if intrinsics.set_internal_field(CSSOM_PROTOTYPES_FIELD, array.into()) {
+                Ok(())
+            } else {
+                Err(Error::BackendUnavailable)
+            }
+        })
+    }
+
+    fn cssom_prototype(&mut self, index: u32) -> Result<Root, Error> {
+        self.attempt(
+            ExceptionPhase::Prototype,
+            |scope, roots, realm, intrinsics| {
+                let prototypes = captured_value(scope, intrinsics, CSSOM_PROTOTYPES_FIELD)?;
+                let array = v8::Local::<v8::Array>::try_from(prototypes)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                if index >= array.length() {
+                    return Err(Error::BackendUnavailable);
+                }
+                let prototype = array
+                    .get_index(scope, index)
+                    .ok_or(Error::BackendUnavailable)?;
+                roots.retain(scope, realm, prototype)
+            },
+        )
+    }
+
+    fn indexed_proxy(&mut self, prototype: &Root, handlers: &[&Root; 9]) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
+            let proxy = cssom::indexed_proxy(scope, roots, prototype, handlers)?;
+            roots.retain(scope, realm, proxy.into())
+        })
+    }
+
+    fn indexed_key(&mut self, key: &Root) -> Result<Option<u32>, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, _, _| {
+            cssom::indexed_key(scope, roots.local(scope, key)?)
+        })
+    }
+
+    fn indexed_fallback(&mut self, trap: IndexedTrap, arguments: &[&Root]) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Invoke, |scope, roots, realm, intrinsics| {
+            let value = cssom::fallback(scope, roots, intrinsics, trap, arguments)?;
+            roots.retain(scope, realm, value)
+        })
+    }
+
+    fn indexed_own_keys(&mut self, target: &Root) -> Result<(Root, u32), Error> {
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, intrinsics| {
+                let target = roots.local(scope, target)?;
+                let keys = cssom::own_keys(scope, intrinsics, target)?;
+                Ok((roots.retain(scope, realm, keys.into())?, keys.length()))
+            },
+        )
+    }
+
+    fn indexed_keys(&mut self, own_keys: &Root, length: u32) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let keys = v8::Local::<v8::Array>::try_from(roots.local(scope, own_keys)?)
+                .map_err(|_| Error::BackendUnavailable)?;
+            let array = cssom::keys(scope, keys, length)?;
+            roots.retain(scope, realm, array.into())
+        })
+    }
+
+    fn indexed_prototype_step(
+        &mut self,
+        target: &Root,
+        candidate: &Root,
+    ) -> Result<super::PrototypeStep, Error> {
+        self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
+            let target = roots.local(scope, target)?;
+            let candidate = roots.local(scope, candidate)?;
+            Ok(
+                match cssom::prototype_step(scope, roots, target, candidate)? {
+                    Ok(None) => super::PrototypeStep::Complete,
+                    Err(()) => super::PrototypeStep::Cycle,
+                    Ok(Some(next)) => super::PrototypeStep::Next(roots.retain(scope, realm, next)?),
+                },
+            )
+        })
+    }
+
+    fn indexed_descriptor(&mut self, value: &Root) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
+            let value = roots.local(scope, value)?;
+            let descriptor = cssom::descriptor(scope, value)?;
+            roots.retain(scope, realm, descriptor.into())
         })
     }
 
@@ -1637,6 +1788,29 @@ fn invoke_callback<'s>(
         )),
         Err(error) => Err(error),
     }
+}
+
+fn managed_holder<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    object: v8::Local<'s, v8::Value>,
+    context: v8::Local<'s, v8::Context>,
+    intrinsics: v8::Local<'s, v8::Object>,
+    fields: usize,
+) -> Result<v8::Local<'s, v8::Object>, Error> {
+    let template = v8::ObjectTemplate::new(scope);
+    if !template.set_internal_field_count(fields) {
+        return Err(Error::BackendUnavailable);
+    }
+    let holder = template
+        .new_instance(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    if !holder.set_internal_field(0, object.into())
+        || !holder.set_internal_field(1, context.into())
+        || !holder.set_internal_field(2, intrinsics.into())
+    {
+        return Err(Error::BackendUnavailable);
+    }
+    Ok(holder)
 }
 
 fn callback_data<'s>(

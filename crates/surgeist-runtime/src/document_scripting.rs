@@ -26,6 +26,7 @@ use crate::{
     HostedRuntime,
 };
 
+mod cssom;
 mod projection;
 mod source;
 pub use source::{
@@ -151,6 +152,8 @@ struct NativeOwner {
     active_source: Cell<Option<source::ActiveSource>>,
     cancellation: Arc<AtomicBool>,
     storage_limit: usize,
+    stylesheet_base: Cell<usize>,
+    stylesheet_bytes: Cell<usize>,
     css_limits: Cell<CssNamespaceLimits>,
     dom_exception_limits: Cell<DomExceptionLimits>,
     _backing: DomHostedRuntimeRetention,
@@ -288,6 +291,8 @@ impl PreparedDocumentScriptHost {
                 active_source: Cell::new(None),
                 cancellation,
                 storage_limit,
+                stylesheet_base: Cell::new(0),
+                stylesheet_bytes: Cell::new(0),
                 css_limits: Cell::new(CssNamespaceLimits::default()),
                 dom_exception_limits: Cell::new(DomExceptionLimits::default()),
                 _backing: backing,
@@ -362,7 +367,7 @@ impl PreparedDocumentScriptHost {
             document: target.document(),
         };
         let read = child_count_callback(Rc::downgrade(owner), permit.clone());
-        let detach = source::detach_callback(Rc::downgrade(owner), permit);
+        let detach = source::detach_callback(Rc::downgrade(owner), permit.clone());
         let hook_bytes = size_of_val(&read)
             .checked_add(size_of_val(&detach))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
@@ -374,6 +379,9 @@ impl PreparedDocumentScriptHost {
             HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes();
         let dom_exception_bytes =
             dom_exception::constructor_storage_bytes::<DomHostedRuntimeRetention>();
+        let stylesheet_bytes =
+            surgeist_bindings_js::cssom::installation_storage_bytes::<cssom::Host>();
+        let stylesheet_failure_bytes = cssom::FailureSlot::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
@@ -382,6 +390,8 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(css_bytes))
             .and_then(|bytes| bytes.checked_add(css_failure_bytes))
             .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
+            .and_then(|bytes| bytes.checked_add(stylesheet_bytes))
+            .and_then(|bytes| bytes.checked_add(stylesheet_failure_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -394,6 +404,8 @@ impl PreparedDocumentScriptHost {
             css_backing,
             css_failure_backing,
             dom_exception_backing,
+            stylesheet_backing,
+            stylesheet_failure_backing,
         ) = {
             let mut session = owner
                 .session
@@ -421,6 +433,12 @@ impl PreparedDocumentScriptHost {
             let dom_exception = hosted
                 .retain_script_payload(&mut dom, dom_exception_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
+            let stylesheet = hosted
+                .retain_script_payload(&mut dom, stylesheet_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            let stylesheet_failure = hosted
+                .retain_script_payload(&mut dom, stylesheet_failure_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
             (
                 hook,
                 failure,
@@ -429,10 +447,13 @@ impl PreparedDocumentScriptHost {
                 css,
                 css_failure,
                 dom_exception,
+                stylesheet,
+                stylesheet_failure,
             )
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
+        let stylesheet_failures = cssom::FailureSlot::new(&authority, stylesheet_failure_backing)?;
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -475,6 +496,15 @@ impl PreparedDocumentScriptHost {
                 scope,
                 owner.dom_exception_limits.get(),
                 dom_exception_backing,
+            )?;
+            surgeist_bindings_js::cssom::install(
+                scope,
+                cssom::Host {
+                    owner: Rc::downgrade(owner),
+                    permit,
+                    failures: stylesheet_failures,
+                },
+                cssom::Retention::installation(owner, stylesheet_backing),
             )
         })?;
 
@@ -507,6 +537,7 @@ impl PreparedDocumentScriptHost {
             failures,
             source_failures,
         });
+        owner.stylesheet_base.set(bytes);
         Ok(ScriptEngine {
             registration,
             process,
@@ -749,6 +780,7 @@ impl DocumentScriptHost {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let total = engine
             .retained_bytes_with(bytes)
+            .and_then(|total| total.checked_add(self.native.stylesheet_bytes.get()))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let cancel = &self.native.cancellation;
         let backing = {
@@ -876,6 +908,11 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        self.native.stylesheet_base.set(
+            engine
+                .retained_bytes_with(0)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        );
         let result = engine.process.execution().in_realm(&engine.realm, action);
         engine.finish_projection_cleanup(&attachment.realm);
         Ok(result?)
@@ -904,6 +941,11 @@ impl DocumentScriptHost {
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        self.native.stylesheet_base.set(
+            engine
+                .retained_bytes_with(0)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        );
         let result = engine.process.execution().checkpoint();
         engine.finish_projection_cleanup(&attachment.realm);
         Ok(result?)

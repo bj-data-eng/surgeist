@@ -3,6 +3,7 @@
 
 mod account;
 mod composition;
+pub(crate) mod cssom;
 pub mod declarations;
 mod failure;
 mod sequence;

@@ -36,6 +36,16 @@ impl<T> CssomCapture<T> {
     }
 }
 
+impl CssomSnapshot {
+    /// Capture the exact stylesheet from this owning immutable revision.
+    pub fn capture_style_sheet(
+        &self,
+        id: &CssomSheetId,
+    ) -> Result<CssomCapture<CssStyleSheet>, CssomError> {
+        CssStyleSheet::from_state(&self.state, id)?.capture(self)
+    }
+}
+
 #[derive(Clone, Copy)]
 enum RuleClass {
     Any,

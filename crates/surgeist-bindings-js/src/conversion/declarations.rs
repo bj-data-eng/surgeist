@@ -147,6 +147,173 @@ pub fn css_escape_0_ident() -> Argument<Type<DomString>> {
     Argument::new("CSS.escape:0/ident", 0, false, types::DOM_STRING, None)
 }
 
+/// Selected argument `CSSStyleSheet.insertRule:0/rule` (not overload selection).
+pub fn css_style_sheet_insert_rule_0_rule() -> Argument<Type<DomString>> {
+    Argument::new(
+        "CSSStyleSheet.insertRule:0/rule",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+fn default_css_style_sheet_insert_rule_0_index(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::UnsignedLong(0)))
+}
+
+/// Selected argument `CSSStyleSheet.insertRule:0/index` (not overload selection).
+pub fn css_style_sheet_insert_rule_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "CSSStyleSheet.insertRule:0/index",
+        1,
+        true,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        Some(default_css_style_sheet_insert_rule_0_index),
+    )
+}
+
+/// Selected argument `CSSStyleSheet.deleteRule:0/index` (not overload selection).
+pub fn css_style_sheet_delete_rule_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "CSSStyleSheet.deleteRule:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `CSSStyleSheet.replace:0/text` (not overload selection).
+pub fn css_style_sheet_replace_0_text() -> Argument<Type<UsvString>> {
+    Argument::new(
+        "CSSStyleSheet.replace:0/text",
+        0,
+        false,
+        types::USV_STRING,
+        None,
+    )
+}
+
+/// Selected argument `CSSStyleSheet.replaceSync:0/text` (not overload selection).
+pub fn css_style_sheet_replace_sync_0_text() -> Argument<Type<UsvString>> {
+    Argument::new(
+        "CSSStyleSheet.replaceSync:0/text",
+        0,
+        false,
+        types::USV_STRING,
+        None,
+    )
+}
+
+fn default_css_style_sheet_legacy_add_rule_0_selector(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    cx.default_dom_string(&[117, 110, 100, 101, 102, 105, 110, 101, 100])
+}
+
+/// Selected argument `CSSStyleSheet.legacy.addRule:0/selector` (not overload selection).
+pub fn css_style_sheet_legacy_add_rule_0_selector() -> Argument<Type<DomString>> {
+    Argument::new(
+        "CSSStyleSheet.legacy.addRule:0/selector",
+        0,
+        true,
+        types::DOM_STRING,
+        Some(default_css_style_sheet_legacy_add_rule_0_selector),
+    )
+}
+
+fn default_css_style_sheet_legacy_add_rule_0_style(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<DomString>, Failure> {
+    cx.default_dom_string(&[117, 110, 100, 101, 102, 105, 110, 101, 100])
+}
+
+/// Selected argument `CSSStyleSheet.legacy.addRule:0/style` (not overload selection).
+pub fn css_style_sheet_legacy_add_rule_0_style() -> Argument<Type<DomString>> {
+    Argument::new(
+        "CSSStyleSheet.legacy.addRule:0/style",
+        1,
+        true,
+        types::DOM_STRING,
+        Some(default_css_style_sheet_legacy_add_rule_0_style),
+    )
+}
+
+/// Selected argument `CSSStyleSheet.legacy.addRule:0/index` (not overload selection).
+pub fn css_style_sheet_legacy_add_rule_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "CSSStyleSheet.legacy.addRule:0/index",
+        2,
+        true,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+fn default_css_style_sheet_legacy_remove_rule_0_index(
+    cx: &mut Conversion<'_, '_>,
+) -> Result<Converted<IntegerValue>, Failure> {
+    Ok(cx.plain(IntegerValue::UnsignedLong(0)))
+}
+
+/// Selected argument `CSSStyleSheet.legacy.removeRule:0/index` (not overload selection).
+pub fn css_style_sheet_legacy_remove_rule_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "CSSStyleSheet.legacy.removeRule:0/index",
+        0,
+        true,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        Some(default_css_style_sheet_legacy_remove_rule_0_index),
+    )
+}
+
+/// Selected argument `CSSRuleList.item:0/index` (not overload selection).
+pub fn css_rule_list_item_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "CSSRuleList.item:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `MediaList.item:0/index` (not overload selection).
+pub fn media_list_item_0_index() -> Argument<IntegerType> {
+    Argument::new(
+        "MediaList.item:0/index",
+        0,
+        false,
+        IntegerType::new(IntegerKind::UnsignedLong, IntegerMode::Wrap),
+        None,
+    )
+}
+
+/// Selected argument `MediaList.appendMedium:0/medium` (not overload selection).
+pub fn media_list_append_medium_0_medium() -> Argument<Type<DomString>> {
+    Argument::new(
+        "MediaList.appendMedium:0/medium",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
+/// Selected argument `MediaList.deleteMedium:0/medium` (not overload selection).
+pub fn media_list_delete_medium_0_medium() -> Argument<Type<DomString>> {
+    Argument::new(
+        "MediaList.deleteMedium:0/medium",
+        0,
+        false,
+        types::DOM_STRING,
+        None,
+    )
+}
+
 /// Selected argument `NonElementParentNode.getElementById:0/elementId` (not overload selection).
 pub fn non_element_parent_node_get_element_by_id_0_element_id() -> Argument<Type<DomString>> {
     Argument::new(

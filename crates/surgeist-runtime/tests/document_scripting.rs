@@ -18,6 +18,8 @@ use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
 use surgeist_runtime::{document_scripting::*, *};
 
+#[path = "document_scripting/cssom.rs"]
+mod cssom;
 #[path = "document_scripting/script_preparation.rs"]
 mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
@@ -1576,6 +1578,7 @@ fn main() {
             "native-css-style-sheet" => {
                 native_window_constructs_a_stylesheet_with_a_live_rule_list()
             }
+            "cssom-window-contract" => cssom::run(),
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
@@ -1630,6 +1633,7 @@ fn main() {
     native_window_dom_exception_admission_and_hook_collision();
     native_window_dom_exception_meters_typed_diagnostics();
     native_window_constructs_a_stylesheet_with_a_live_rule_list();
+    cssom::run();
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();

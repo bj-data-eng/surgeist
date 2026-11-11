@@ -33,6 +33,66 @@
       "entries": ["CSSOMString"]
     },
     {
+      "id": "StyleSheet.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "the-stylesheet-interface",
+      "block": 0,
+      "sha256": "5c734c37f81802a7c2dd600a31074f98bf19cf0e29184fe64519cc6e101c4df9",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["StyleSheet"]
+    },
+    {
+      "id": "CSSStyleSheet.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "the-cssstylesheet-interface",
+      "block": 0,
+      "sha256": "8df0d12b7cb1af75922e05decff46b6a6ddd1a411bcf087db27191c9f4e0993b",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["CSSStyleSheet", "CSSStyleSheetInit"]
+    },
+    {
+      "id": "CSSStyleSheet.legacy.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "legacy-css-style-sheet-members",
+      "block": 0,
+      "sha256": "480d737132d8332250f3384c8105acebf55e80b82fedbddc4510dfa6b23d5a34",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["CSSStyleSheet.legacy"]
+    },
+    {
+      "id": "CSSRuleList.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "the-cssrulelist-interface",
+      "block": 0,
+      "sha256": "6c6274722346baa24a8ad91f69409dc566874f9ef27a2ad0361457f5ef47e19e",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["CSSRuleList"]
+    },
+    {
+      "id": "MediaList.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "the-medialist-interface",
+      "block": 0,
+      "sha256": "03f604097a3b34f2469edd1d8b1f55634731df6b08c8bf1693b88c6e3bdf18b6",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["MediaList"]
+    },
+    {
+      "id": "CSSRule.source",
+      "path": "references/cssom-1--editor-capture-20261009--d42e145ec395.md",
+      "anchor": "the-cssrule-interface",
+      "block": 0,
+      "sha256": "c61a8f85f9c1dba98c037d6bb2b4db23ce4e0e0420b62207c62e402cc8eeea18",
+      "revision": "4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c",
+      "url": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+      "entries": ["CSSRule"]
+    },
+    {
       "id": "NonElementParentNode.source",
       "path": "references/dom-foundation--editor-capture-20261010--08dff0a4827f.md",
       "anchor": "interface-nonelementparentnode",
@@ -647,6 +707,433 @@
       "name": "CSSOMString",
       "attributes": [],
       "type": {"kind": "named", "name": "DOMString"}
+    },
+    {
+      "id": "StyleSheet",
+      "kind": "interface",
+      "name": "StyleSheet",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "StyleSheet.type",
+          "kind": "attribute",
+          "name": "type",
+          "attributes": [],
+          "type": {"kind": "named", "name": "CSSOMString"},
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.href",
+          "kind": "attribute",
+          "name": "href",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "USVString"}},
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.ownerNode",
+          "kind": "attribute",
+          "name": "ownerNode",
+          "attributes": [],
+          "type": {
+            "kind": "nullable",
+            "inner": {
+              "kind": "union",
+              "members": [{"kind": "named", "name": "Element"}, {"kind": "named", "name": "ProcessingInstruction"}]
+            }
+          },
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.parentStyleSheet",
+          "kind": "attribute",
+          "name": "parentStyleSheet",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSStyleSheet"}},
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.title",
+          "kind": "attribute",
+          "name": "title",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}},
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.media",
+          "kind": "attribute",
+          "name": "media",
+          "attributes": [{"name": "SameObject"}, {"name": "PutForwards", "value": "mediaText"}],
+          "type": {"kind": "named", "name": "MediaList"},
+          "readonly": true
+        },
+        {
+          "id": "StyleSheet.disabled",
+          "kind": "attribute",
+          "name": "disabled",
+          "attributes": [],
+          "type": {"kind": "named", "name": "boolean"},
+          "readonly": false
+        }
+      ]
+    },
+    {
+      "id": "CSSStyleSheet",
+      "kind": "interface",
+      "name": "CSSStyleSheet",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "CSSStyleSheet.constructor:0",
+          "kind": "constructor",
+          "attributes": [],
+          "arguments": [
+            {
+              "name": "options",
+              "type": {"kind": "named", "name": "CSSStyleSheetInit"},
+              "presence": "optional",
+              "default": {"kind": "empty_dictionary"}
+            }
+          ]
+        },
+        {
+          "id": "CSSStyleSheet.ownerRule",
+          "kind": "attribute",
+          "name": "ownerRule",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSRule"}},
+          "readonly": true
+        },
+        {
+          "id": "CSSStyleSheet.cssRules",
+          "kind": "attribute",
+          "name": "cssRules",
+          "attributes": [{"name": "SameObject"}],
+          "type": {"kind": "named", "name": "CSSRuleList"},
+          "readonly": true
+        },
+        {
+          "id": "CSSStyleSheet.insertRule:0",
+          "kind": "operation",
+          "name": "insertRule",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned long"},
+          "arguments": [
+            {
+              "name": "rule",
+              "type": {"kind": "named", "name": "CSSOMString"},
+              "presence": "required"
+            },
+            {
+              "name": "index",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "optional",
+              "default": {"kind": "integer", "value": 0}
+            }
+          ]
+        },
+        {
+          "id": "CSSStyleSheet.deleteRule:0",
+          "kind": "operation",
+          "name": "deleteRule",
+          "attributes": [],
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [{"name": "index", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}]
+        },
+        {
+          "id": "CSSStyleSheet.replace:0",
+          "kind": "operation",
+          "name": "replace",
+          "attributes": [],
+          "type": {"kind": "promise", "inner": {"kind": "named", "name": "CSSStyleSheet"}},
+          "arguments": [{"name": "text", "type": {"kind": "named", "name": "USVString"}, "presence": "required"}]
+        },
+        {
+          "id": "CSSStyleSheet.replaceSync:0",
+          "kind": "operation",
+          "name": "replaceSync",
+          "attributes": [],
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [{"name": "text", "type": {"kind": "named", "name": "USVString"}, "presence": "required"}]
+        }
+      ],
+      "inherits": "StyleSheet"
+    },
+    {
+      "id": "CSSStyleSheetInit",
+      "kind": "dictionary",
+      "name": "CSSStyleSheetInit",
+      "attributes": [],
+      "members": [
+        {
+          "id": "CSSStyleSheetInit.baseURL",
+          "kind": "dictionary_member",
+          "name": "baseURL",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "DOMString"}},
+          "required": false,
+          "default": {"kind": "null"}
+        },
+        {
+          "id": "CSSStyleSheetInit.media",
+          "kind": "dictionary_member",
+          "name": "media",
+          "attributes": [],
+          "type": {
+            "kind": "union",
+            "members": [{"kind": "named", "name": "MediaList"}, {"kind": "named", "name": "DOMString"}]
+          },
+          "required": false,
+          "default": {"kind": "string", "value": ""}
+        },
+        {
+          "id": "CSSStyleSheetInit.disabled",
+          "kind": "dictionary_member",
+          "name": "disabled",
+          "attributes": [],
+          "type": {"kind": "named", "name": "boolean"},
+          "required": false,
+          "default": {"kind": "boolean", "value": false}
+        }
+      ]
+    },
+    {
+      "id": "CSSStyleSheet.legacy",
+      "kind": "interface",
+      "name": "CSSStyleSheet",
+      "attributes": [],
+      "members": [
+        {
+          "id": "CSSStyleSheet.legacy.rules",
+          "kind": "attribute",
+          "name": "rules",
+          "attributes": [{"name": "SameObject"}],
+          "type": {"kind": "named", "name": "CSSRuleList"},
+          "readonly": true
+        },
+        {
+          "id": "CSSStyleSheet.legacy.addRule:0",
+          "kind": "operation",
+          "name": "addRule",
+          "attributes": [],
+          "type": {"kind": "named", "name": "long"},
+          "arguments": [
+            {
+              "name": "selector",
+              "type": {"kind": "named", "name": "DOMString"},
+              "presence": "optional",
+              "default": {"kind": "string", "value": "undefined"}
+            },
+            {
+              "name": "style",
+              "type": {"kind": "named", "name": "DOMString"},
+              "presence": "optional",
+              "default": {"kind": "string", "value": "undefined"}
+            },
+            {
+              "name": "index",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "optional"
+            }
+          ]
+        },
+        {
+          "id": "CSSStyleSheet.legacy.removeRule:0",
+          "kind": "operation",
+          "name": "removeRule",
+          "attributes": [],
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [
+            {
+              "name": "index",
+              "type": {"kind": "named", "name": "unsigned long"},
+              "presence": "optional",
+              "default": {"kind": "integer", "value": 0}
+            }
+          ]
+        }
+      ],
+      "partial": true
+    },
+    {
+      "id": "CSSRuleList",
+      "kind": "interface",
+      "name": "CSSRuleList",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "CSSRuleList.item:0",
+          "kind": "operation",
+          "name": "item",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSRule"}},
+          "arguments": [{"name": "index", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}],
+          "special": "getter"
+        },
+        {
+          "id": "CSSRuleList.length",
+          "kind": "attribute",
+          "name": "length",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned long"},
+          "readonly": true
+        }
+      ]
+    },
+    {
+      "id": "MediaList",
+      "kind": "interface",
+      "name": "MediaList",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "MediaList.mediaText",
+          "kind": "attribute",
+          "name": "mediaText",
+          "attributes": [],
+          "type": {"kind": "named", "name": "CSSOMString", "attributes": [{"name": "LegacyNullToEmptyString"}]},
+          "readonly": false,
+          "stringifier": true
+        },
+        {
+          "id": "MediaList.length",
+          "kind": "attribute",
+          "name": "length",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned long"},
+          "readonly": true
+        },
+        {
+          "id": "MediaList.item:0",
+          "kind": "operation",
+          "name": "item",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSOMString"}},
+          "arguments": [{"name": "index", "type": {"kind": "named", "name": "unsigned long"}, "presence": "required"}],
+          "special": "getter"
+        },
+        {
+          "id": "MediaList.appendMedium:0",
+          "kind": "operation",
+          "name": "appendMedium",
+          "attributes": [],
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [{"name": "medium", "type": {"kind": "named", "name": "CSSOMString"}, "presence": "required"}]
+        },
+        {
+          "id": "MediaList.deleteMedium:0",
+          "kind": "operation",
+          "name": "deleteMedium",
+          "attributes": [],
+          "type": {"kind": "named", "name": "undefined"},
+          "arguments": [{"name": "medium", "type": {"kind": "named", "name": "CSSOMString"}, "presence": "required"}]
+        }
+      ]
+    },
+    {
+      "id": "CSSRule",
+      "kind": "interface",
+      "name": "CSSRule",
+      "attributes": [{"name": "Exposed", "value": "Window"}],
+      "members": [
+        {
+          "id": "CSSRule.cssText",
+          "kind": "attribute",
+          "name": "cssText",
+          "attributes": [],
+          "type": {"kind": "named", "name": "CSSOMString"},
+          "readonly": false
+        },
+        {
+          "id": "CSSRule.parentRule",
+          "kind": "attribute",
+          "name": "parentRule",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSRule"}},
+          "readonly": true
+        },
+        {
+          "id": "CSSRule.parentStyleSheet",
+          "kind": "attribute",
+          "name": "parentStyleSheet",
+          "attributes": [],
+          "type": {"kind": "nullable", "inner": {"kind": "named", "name": "CSSStyleSheet"}},
+          "readonly": true
+        },
+        {
+          "id": "CSSRule.type",
+          "kind": "attribute",
+          "name": "type",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "readonly": true
+        },
+        {
+          "id": "CSSRule.STYLE_RULE",
+          "kind": "constant",
+          "name": "STYLE_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 1
+        },
+        {
+          "id": "CSSRule.CHARSET_RULE",
+          "kind": "constant",
+          "name": "CHARSET_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 2
+        },
+        {
+          "id": "CSSRule.IMPORT_RULE",
+          "kind": "constant",
+          "name": "IMPORT_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 3
+        },
+        {
+          "id": "CSSRule.MEDIA_RULE",
+          "kind": "constant",
+          "name": "MEDIA_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 4
+        },
+        {
+          "id": "CSSRule.FONT_FACE_RULE",
+          "kind": "constant",
+          "name": "FONT_FACE_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 5
+        },
+        {
+          "id": "CSSRule.PAGE_RULE",
+          "kind": "constant",
+          "name": "PAGE_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 6
+        },
+        {
+          "id": "CSSRule.MARGIN_RULE",
+          "kind": "constant",
+          "name": "MARGIN_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 9
+        },
+        {
+          "id": "CSSRule.NAMESPACE_RULE",
+          "kind": "constant",
+          "name": "NAMESPACE_RULE",
+          "attributes": [],
+          "type": {"kind": "named", "name": "unsigned short"},
+          "value": 10
+        }
+      ]
     },
     {
       "id": "NonElementParentNode",
@@ -4210,6 +4697,343 @@
       "kind": "native",
       "adapter": "css.escape",
       "producers": [{"owner": "surgeist-cssom", "path": "crates/surgeist-cssom/src/css.rs", "symbol": "escape"}],
+      "requirements": []
+    },
+    "StyleSheet.type/get": {
+      "kind": "native",
+      "adapter": "cssom.stylesheet.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "sheet_type"
+        }
+      ],
+      "requirements": []
+    },
+    "StyleSheet.href/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected StyleSheet.href/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "StyleSheet.ownerNode/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected StyleSheet.ownerNode/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "StyleSheet.parentStyleSheet/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected StyleSheet.parentStyleSheet/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "StyleSheet.title/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected StyleSheet.title/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "StyleSheet.media/get": {
+      "kind": "native",
+      "adapter": "cssom.stylesheet.media.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "media"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "StyleSheet.media/set": {
+      "kind": "forwarding",
+      "getter": "StyleSheet.media/get",
+      "target": "mediaText",
+      "source": "https://webidl.spec.whatwg.org/#PutForwards"
+    },
+    "StyleSheet.disabled/get": {
+      "kind": "native",
+      "adapter": "cssom.stylesheet.disabled.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "disabled"
+        }
+      ],
+      "requirements": []
+    },
+    "StyleSheet.disabled/set": {
+      "kind": "native",
+      "adapter": "cssom.stylesheet.disabled.set",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "set_disabled"
+        }
+      ],
+      "requirements": []
+    },
+    "CSSStyleSheet.constructor:0/construct": {
+      "kind": "native",
+      "adapter": "cssom.cssstylesheet.constructor_0.construct",
+      "producers": [
+        {
+          "owner": "surgeist-runtime",
+          "path": "crates/surgeist-runtime/src/dom_style/constructed_sheet.rs",
+          "symbol": "construct_document_sheet"
+        }
+      ],
+      "requirements": []
+    },
+    "CSSStyleSheet.ownerRule/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSStyleSheet.ownerRule/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSStyleSheet.cssRules/get": {
+      "kind": "native",
+      "adapter": "cssom.cssstylesheet.cssrules.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "rules"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "CSSStyleSheet.insertRule:0/call": {
+      "kind": "native",
+      "adapter": "cssom.cssstylesheet.insertrule_0.call",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "insert"
+        }
+      ],
+      "requirements": []
+    },
+    "CSSStyleSheet.deleteRule:0/call": {
+      "kind": "native",
+      "adapter": "cssom.cssstylesheet.deleterule_0.call",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "delete"
+        }
+      ],
+      "requirements": []
+    },
+    "CSSStyleSheet.replace:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSStyleSheet.replace:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSStyleSheet.replaceSync:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSStyleSheet.replaceSync:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSStyleSheet.legacy.rules/get": {
+      "kind": "native",
+      "adapter": "cssom.cssstylesheet.legacy.rules.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "rules"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "CSSStyleSheet.legacy.addRule:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSStyleSheet.legacy.addRule:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSStyleSheet.legacy.removeRule:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSStyleSheet.legacy.removeRule:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSRuleList.item:0/call": {
+      "kind": "native",
+      "adapter": "cssom.cssrulelist.item_0.call",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/indexed.rs",
+          "symbol": "item"
+        }
+      ],
+      "requirements": [],
+      "result_view": "live"
+    },
+    "CSSRuleList.length/get": {
+      "kind": "native",
+      "adapter": "cssom.cssrulelist.length.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/indexed.rs",
+          "symbol": "length"
+        }
+      ],
+      "requirements": []
+    },
+    "MediaList.mediaText/get": {
+      "kind": "native",
+      "adapter": "cssom.medialist.mediatext.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "media_text"
+        }
+      ],
+      "requirements": []
+    },
+    "MediaList.mediaText/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected MediaList.mediaText/set operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2451
+      }
+    },
+    "MediaList.length/get": {
+      "kind": "native",
+      "adapter": "cssom.medialist.length.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/indexed.rs",
+          "symbol": "length"
+        }
+      ],
+      "requirements": []
+    },
+    "MediaList.item:0/call": {
+      "kind": "native",
+      "adapter": "cssom.medialist.item_0.call",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/indexed.rs",
+          "symbol": "item"
+        }
+      ],
+      "requirements": []
+    },
+    "MediaList.appendMedium:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected MediaList.appendMedium:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2451
+      }
+    },
+    "MediaList.deleteMedium:0/call": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected MediaList.deleteMedium:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2451
+      }
+    },
+    "CSSRule.cssText/get": {
+      "kind": "native",
+      "adapter": "cssom.cssrule.csstext.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "rule_text"
+        }
+      ],
+      "requirements": []
+    },
+    "CSSRule.cssText/set": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSRule.cssText/set operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSRule.parentRule/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSRule.parentRule/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSRule.parentStyleSheet/get": {
+      "kind": "host",
+      "requirement": {
+        "owner": "surgeist-runtime",
+        "contract": "Connect the selected CSSRule.parentStyleSheet/get operation to its native CSSOM owner and guest conversion or lifecycle.",
+        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
+        "issue": 2261
+      }
+    },
+    "CSSRule.type/get": {
+      "kind": "native",
+      "adapter": "cssom.cssrule.type.get",
+      "producers": [
+        {
+          "owner": "surgeist-bindings-js",
+          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "symbol": "rule_type"
+        }
+      ],
       "requirements": []
     },
     "NonElementParentNode.getElementById:0/call": {
