@@ -26,6 +26,16 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
             Object.getPrototypeOf(Node.prototype) !== EventTarget.prototype) {
             return "the real Document must use the native interface chain";
         }
+        for (const call of [() => Node(), () => new Node()]) {
+            let refused = false;
+            try { call(); }
+            catch (error) { refused = error instanceof TypeError; }
+            if (!refused) return "direct Node invocation must throw";
+        }
+        let nodePrototype;
+        try { nodePrototype = Object.getPrototypeOf(Reflect.construct(function () {}, [], Node)); }
+        catch (error) { return "Node must be usable as NewTarget"; }
+        if (nodePrototype !== Node.prototype) return "Node must expose its interface prototype";
         if (actual.nodeType !== 9 || actual.nodeName !== "#document" ||
             actual.ownerDocument !== null || actual.parentNode !== null || !actual.isConnected ||
             actual.getRootNode() !== actual) {
