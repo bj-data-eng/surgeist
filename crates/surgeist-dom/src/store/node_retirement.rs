@@ -311,7 +311,12 @@ impl Index {
                 mut notice,
                 queue,
                 backing,
-            } = *armed;
+            } = {
+                // Free the moved-out leaf before releasing its storage debit
+                // and before waiting on the independently drained inbox.
+                let leaf = armed;
+                *leaf
+            };
             drop(backing);
             let mut queue = lock(&queue);
             if queue.open {
@@ -493,7 +498,8 @@ impl Dom {
         self.require_source_idle()?;
         let ordinary = OrdinaryAdmission::new(self, limits, cancel);
         ordinary.admit_work(1)?;
-        self.state.node(self.owner, node)?;
+        self.state
+            .node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
         let admission = WatchAdmission {
             funding: Funding::Ordinary(ordinary),
             inbox,

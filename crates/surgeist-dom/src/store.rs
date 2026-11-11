@@ -1283,6 +1283,15 @@ impl PartialEq for State {
 }
 impl State {
     pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
+        self.node_with(owner, id, &mut || Ok(()))
+    }
+
+    fn node_with(
+        &self,
+        owner: DomOwnerId,
+        id: NodeId,
+        step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<&Node, DomError> {
         #[cfg(test)]
         if scale_metrics::ENABLED {
             scale_metrics::record(scale_metrics::Event::CanonicalRecordRead);
@@ -1292,7 +1301,7 @@ impl State {
             return Err(DomError::ForeignOwner);
         }
         self.slots
-            .get(id.slot)
+            .get_with(id.slot, step)?
             .filter(|s| s.generation == id.generation)
             .and_then(|s| s.node.as_ref())
             .ok_or(DomError::StaleNode)
