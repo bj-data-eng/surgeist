@@ -114,6 +114,12 @@ impl Golden {
         self.flex_content_text.is_some()
     }
 
+    pub(crate) fn has_intrinsic_flex_text(&self) -> bool {
+        self.flex_content_text
+            .as_ref()
+            .is_some_and(flex_content_text::Proof::is_intrinsic)
+    }
+
     /// Bind the retained source and capture report before admitting prepared Flex text.
     pub fn parse_with_flex_content_text(
         xml: &str,
@@ -506,8 +512,9 @@ fn compare_captured_with_projection(
         flex_text_projection::validate_batch_targets(&tree, &batch)?;
     }
     tree.apply_completed_batch(&batch);
-    if golden.flex_content_text.is_some() {
+    if let Some(proof) = &golden.flex_content_text {
         tree.flex_projection = Some(flex_text_projection::validate(&tree, &batch)?);
+        flex_content_text::verify_word_ranges(&tree, &batch, proof)?;
     }
     let normal_root = tree.nodes[0].unrounded;
     golden

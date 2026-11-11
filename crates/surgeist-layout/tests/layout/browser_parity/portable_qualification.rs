@@ -975,7 +975,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         Edition::Exact(edition) => edition,
         Edition::Matching(_) => {
             let (cases, diagnostic_freshness) =
-                admit_matching(owner, &root, &terminal, &report, &artifacts)?;
+                admit_matching(owner, &root, &terminal, &report, &report_bytes, &artifacts)?;
             freshness.verify()?;
             if let Some(diagnostics) = &diagnostic_freshness {
                 diagnostics.verify()?;
@@ -1629,6 +1629,7 @@ fn admit_matching(
     root: &Path,
     terminal: &Qualification,
     report: &Report,
+    report_bytes: &[u8],
     artifacts: &BTreeMap<&str, &CapturedArtifact>,
 ) -> Result<(Vec<AdmittedCase>, Option<Freshness>)> {
     let declaration = Declaration::parse(&read_pinned(root, &terminal.declaration)?)
@@ -1737,12 +1738,32 @@ fn admit_matching(
                     .map(|entry| entry.sha256.as_str()),
                 browser_settings: &terminal.browser_settings,
                 observation_request: case.category().observation_request(),
-                observation_input_sha256: None,
+                observation_input_sha256: case
+                    .category()
+                    .observation_input_sha256(&terminal.retained_inputs),
             })?;
         if &identity != case.identity() {
             return Err(changed("matching capture binding projection"));
         }
-        let golden = support::Golden::parse(xml).map_err(|error| changed(error.to_string()))?;
+        let golden = if case.category() == authority::MatchingCategory::Fri07IntrinsicFlexText {
+            let source = read_pinned(
+                root,
+                &PathDigest {
+                    path: descriptor.source.clone(),
+                    sha256: artifact.source_sha256.clone(),
+                },
+            )?;
+            support::Golden::parse_with_flex_content_text(
+                xml,
+                std::str::from_utf8(report_bytes).map_err(|error| malformed(error.to_string()))?,
+                &descriptor.source,
+                &source,
+                &descriptor.output.path,
+            )
+        } else {
+            support::Golden::parse(xml)
+        }
+        .map_err(|error| changed(error.to_string()))?;
         // Validate supported complete geometry without accepting a mismatch.
         let (raw, qualified) = support::exact_differences::compare_matching_capture(
             case.category(),

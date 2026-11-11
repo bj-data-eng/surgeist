@@ -1803,6 +1803,25 @@ impl Style {
             && matches!(self.flex_direction.as_deref(), None | Some("row"))
             && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 10.0)
     }
+    pub(super) fn has_intrinsic_flex_text_style(&self, item: usize) -> bool {
+        let unit = match item {
+            0 => Unit::MinContent,
+            1 => Unit::MaxContent,
+            _ => return false,
+        };
+        self.has_direct_flex_text_style()
+            && self.flex_grow == Some(1.0)
+            && self.flex_shrink.unwrap_or(1.0) == 1.0
+            && self
+                .flex_basis
+                .as_ref()
+                .is_some_and(|basis| basis.unit == unit && basis.value.is_none())
+            && matches!(
+                self.min_size.as_ref().and_then(|size| size.width.as_ref()),
+                Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(width)) }) if *width == 0.0
+            )
+    }
+
     pub(super) fn has_atomic_metric_font(&self) -> bool {
         self.has_reference_font()
             && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 0.0)

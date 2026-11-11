@@ -1061,7 +1061,11 @@ impl ExactDifferenceSpec {
             &golden.root,
             &golden.expectations,
             measured_path.as_deref(),
-            flex_text,
+            if flex_text {
+                FlexTextCensus::Direct
+            } else {
+                FlexTextCensus::None
+            },
         )?;
         let current = if let Some(edition) = edition {
             let current = self.0.representation.current.as_ref().ok_or_else(|| {
@@ -1310,21 +1314,32 @@ fn unsupported(owner: &str, category: &str) -> QualificationError {
         category: category.to_owned(),
     }
 }
+#[derive(Clone, Copy)]
+enum FlexTextCensus {
+    None,
+    Direct,
+    Nested,
+}
+
 fn source_census(
     root: &Node,
     expectation: &Expectation,
     measured_path: Option<&str>,
-    flex_text: bool,
+    flex_text: FlexTextCensus,
 ) -> Result<Vec<SourceNode>> {
     fn walk(
         node: &Node,
         expected: &Expectation,
         path: String,
         measured_path: Option<&str>,
-        flex_text: bool,
+        flex_text: FlexTextCensus,
         out: &mut Vec<SourceNode>,
     ) -> Result<()> {
-        let flex_label = flex_text && path != "/";
+        let flex_label = match flex_text {
+            FlexTextCensus::None => false,
+            FlexTextCensus::Direct => path != "/",
+            FlexTextCensus::Nested => path[1..].contains('/'),
+        };
         let role_matches = if flex_label {
             node.kind == NodeKind::Text && node.text.is_some() && node.children.is_empty()
         } else if measured_path == Some(path.as_str()) {
@@ -1428,8 +1443,29 @@ pub(crate) fn compare_matching_capture(
     std::result::Result<QualifiedComparison, String>,
 )> {
     use super::capture_authority::{MatchingCategory, fri06_subgrid_profile};
-    if category == MatchingCategory::Geometry {
-        return compare_matching_geometry(golden);
+    match category {
+        MatchingCategory::Geometry => return compare_matching_geometry(golden),
+        MatchingCategory::Fri07IntrinsicFlexText => {
+            if source != crate::fri07_intrinsic_flex_profile::SOURCE
+                || !golden.has_intrinsic_flex_text()
+                || !matches!(
+                    golden.viewport.root_context,
+                    super::RootContext::Qualified(
+                        super::root_context::QualifiedRootContext::AbsoluteRootLocal { .. }
+                    )
+                )
+                || golden.has_element_scroll_sizes()
+                || golden.has_prepared_range_frame()
+                || golden.measured_leaf.is_some()
+            {
+                return Err(unsupported(
+                    "/",
+                    "original intrinsic Flex Text observation profile",
+                ));
+            }
+            return compare_matching_boxes(golden, FlexTextCensus::Nested);
+        }
+        MatchingCategory::Fri06Subgrid => {}
     }
     let (_, owners) = fri06_subgrid_profile(source)
         .ok_or_else(|| malformed("unexpected FRI06 Subgrid source"))?;
@@ -1535,6 +1571,16 @@ pub(crate) fn compare_matching_geometry(
             "matching geometry requires qualified plain-box capture",
         ));
     }
+    compare_matching_boxes(golden, FlexTextCensus::None)
+}
+
+fn compare_matching_boxes(
+    golden: &Golden,
+    flex_text: FlexTextCensus,
+) -> Result<(
+    Vec<String>,
+    std::result::Result<QualifiedComparison, String>,
+)> {
     fn finite(expected: &Expectation) -> Result<()> {
         if [expected.x, expected.y, expected.width, expected.height]
             .into_iter()
@@ -1550,7 +1596,7 @@ pub(crate) fn compare_matching_geometry(
         Ok(())
     }
     finite(&golden.expectations)?;
-    let source = source_census(&golden.root, &golden.expectations, None, false)?;
+    let source = source_census(&golden.root, &golden.expectations, None, flex_text)?;
     let completed = collect_captured_comparison(golden, &source)?;
     let raw: Vec<_> = completed
         .raw_differences()

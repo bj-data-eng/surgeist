@@ -464,7 +464,13 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
         .attrs
         .insert("width".into(), "100px".into());
     golden.root.style.attrs.remove("height");
-    let source = source_census(&golden.root, &golden.expectations, None, false).unwrap();
+    let source = source_census(
+        &golden.root,
+        &golden.expectations,
+        None,
+        FlexTextCensus::None,
+    )
+    .unwrap();
     let tree = TestTree::from_golden(&golden.root, None).unwrap();
     assert!(tree.paragraphs.is_empty());
     let request = output_census_native_request();
@@ -575,7 +581,12 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
         }
     );
     assert!(matches!(
-        source_census(&golden.root, &golden.expectations, None, false),
+        source_census(
+            &golden.root,
+            &golden.expectations,
+            None,
+            FlexTextCensus::None
+        ),
         Err(QualificationError::UnsupportedObservation { .. })
     ));
 }

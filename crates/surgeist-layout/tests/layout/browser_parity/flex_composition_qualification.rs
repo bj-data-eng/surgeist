@@ -206,7 +206,12 @@ pub(crate) fn compare(golden: &Golden, variant: &str, inputs: &Inputs) -> Result
         .as_ref()
         .ok_or_else(|| unsupported("/", "sideways Flex composition capture authority"))?;
     let oracle = if rtl { &inputs.rtl } else { &inputs.ltr };
-    let source = source_census(&golden.root, &golden.expectations, None, false)?;
+    let source = source_census(
+        &golden.root,
+        &golden.expectations,
+        None,
+        FlexTextCensus::None,
+    )?;
     let completed = collect_captured_comparison(golden, &source)?;
     let (mut expected, scrollbar) = expected_pairs(rtl)?;
     let counts = (expected.len(), scrollbar.len());

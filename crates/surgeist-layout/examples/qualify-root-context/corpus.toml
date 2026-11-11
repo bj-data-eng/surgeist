@@ -4699,3 +4699,27 @@ sources = [
   "html/flex/fri07_cross_auto_margin_overflow.html",
   "html/flex/fri07_absolute_auto_margin_insets.html",
 ]
+
+[[records]]
+source = "html/flex/fri07_intrinsic_flex_basis.html"
+source_sha256 = "a79a520ec55e6c45e8358d73e77343d8338de6878dc79b2f62dde7e630cde599"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "01349e2d4cba1e617ca5c603eb4ae3db702d5511eceedc5499526875a2398d2e"
+content_box_ltr = "f2a563d5de34621d1392dbe856ec799fed2f7833eb61c7d90c1f9ab39193c9ed"
+border_box_rtl = "b2afe625ea2a7d9c872354939b18ea6db0b118a8a03db6b90f48a4d3b01c8b75"
+content_box_rtl = "5e12419cd7273de11598e138de2d428ff72c55f90006c2b49fda79876f7c44a3"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+inline_offset = 0
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+
+[[matching_publications]]
+edition = "fri07-intrinsic-flex-text"
+sources = ["html/flex/fri07_intrinsic_flex_basis.html"]

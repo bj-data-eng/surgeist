@@ -1,5 +1,6 @@
 //! Layout fixture semantics supplied to the generic browser engine.
 
+use crate::fri07_intrinsic_flex_profile as intrinsic_flex;
 use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
@@ -222,6 +223,15 @@ impl LayoutAdapter {
         {
             return Err(AdapterError::Preparation(
                 "Flex composition requires its registered original source".into(),
+            ));
+        }
+        if request == BoxObservationRequest::Fri07IntrinsicFlexText
+            && (input.fixture().source().as_str() != intrinsic_flex::SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != intrinsic_flex::SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "intrinsic Flex Text capture requires its exact original source".into(),
             ));
         }
         if request == BoxObservationRequest::OriginalFlexParent

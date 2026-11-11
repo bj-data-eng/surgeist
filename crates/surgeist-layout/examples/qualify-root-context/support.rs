@@ -249,6 +249,11 @@ impl QualificationMode {
             | Self::DeriveExact(PublishedEdition::FlexText) => {
                 BoxObservationRequest::FlexContentText
             }
+            Self::PublishMatching(capture_authority::FRI07_INTRINSIC_FLEX_EDITION)
+            | Self::CheckPublishedMatching(capture_authority::FRI07_INTRINSIC_FLEX_EDITION)
+            | Self::DeriveMatching(capture_authority::FRI07_INTRINSIC_FLEX_EDITION) => {
+                BoxObservationRequest::Fri07IntrinsicFlexText
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishExact(PublishedEdition::MeasuredGrid)
             | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
@@ -1350,6 +1355,7 @@ fn validate_corpus(
     let bound_report = if matches!(
         observation,
         BoxObservationRequest::FlexContentText
+            | BoxObservationRequest::Fri07IntrinsicFlexText
             | BoxObservationRequest::FlexComposition
             | BoxObservationRequest::PreparedAtomicPercentage
     ) {
@@ -2678,7 +2684,9 @@ fn parse_capture_golden(
 ) -> Result<crate::parity_support::Golden> {
     use crate::parity_support::Golden;
     let parse = match observation {
-        BoxObservationRequest::FlexContentText => Golden::parse_with_flex_content_text,
+        BoxObservationRequest::FlexContentText | BoxObservationRequest::Fri07IntrinsicFlexText => {
+            Golden::parse_with_flex_content_text
+        }
         BoxObservationRequest::PreparedAtomicPercentage => {
             Golden::parse_with_prepared_atomic_percentage
         }

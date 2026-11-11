@@ -269,6 +269,9 @@ pub use fragmentation::{
 #[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/capture_helper_identity.rs"]
 mod capture_helper_identity;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
+mod fri07_intrinsic_flex_profile;
 mod geometry;
 mod grid;
 #[cfg(test)]

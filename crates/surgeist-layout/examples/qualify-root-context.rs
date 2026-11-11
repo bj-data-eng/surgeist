@@ -15,6 +15,8 @@ mod empty_line_br_font_band_profile;
 mod envelope;
 #[path = "../tests/layout/browser_parity/fixture_variants.rs"]
 mod fixture_variants;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
+mod fri07_intrinsic_flex_profile;
 #[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
