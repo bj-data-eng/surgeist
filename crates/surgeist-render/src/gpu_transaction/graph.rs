@@ -72,10 +72,13 @@ struct GraphResourceReadinessReceipt {
 }
 
 #[must_use = "accounting-ready graph resources must commit or abort on drop"]
-struct AccountingReadyGraphResources {
+struct AccountingReadyGraphResources<'cache> {
     capture_resources: AccountingReadyVelloResourceCommit,
-    prepared_frame: AccountingReadyPreparedFrameCommit,
+    prepared_frame: AccountingReadyPreparedFrameCommit<'cache>,
 }
+
+#[must_use = "authorized graph resources must commit or abort on drop"]
+struct AuthorizedGraphResources<'cache>(AccountingReadyGraphResources<'cache>);
 
 /// A host effect that can exist only after clean graph submission.
 #[must_use = "clean graph host effects must be applied exactly once"]
@@ -140,11 +143,11 @@ impl GraphSubmissionPayload {
     }
 }
 
-impl AccountingReadyGraphResources {
+impl<'cache> AccountingReadyGraphResources<'cache> {
     fn try_new(
         capture_resources: PendingVelloResourceCommit,
         prepared_frame: PendingPreparedFrameCommit,
-        pass_cache: &mut DevicePassCache,
+        pass_cache: &'cache mut DevicePassCache,
         account: &Account,
     ) -> Result<Self> {
         let capture_resources = capture_resources.into_accounting_ready()?;
@@ -155,22 +158,29 @@ impl AccountingReadyGraphResources {
         })
     }
 
-    fn authorization_receipt(
-        &mut self,
-        pass_cache: &mut DevicePassCache,
+    fn into_authorized(
+        mut self,
         account: &Account,
-    ) -> Result<GraphResourceReadinessReceipt> {
+    ) -> Result<(
+        AuthorizedGraphResources<'cache>,
+        GraphResourceReadinessReceipt,
+    )> {
         self.capture_resources.ensure_commit_ready()?;
-        self.prepared_frame
-            .ensure_commit_ready(pass_cache, account)?;
-        Ok(GraphResourceReadinessReceipt { _private: () })
+        self.prepared_frame.ensure_commit_ready(account)?;
+        Ok((
+            AuthorizedGraphResources(self),
+            GraphResourceReadinessReceipt { _private: () },
+        ))
     }
+}
 
-    fn commit(self, pass_cache: &mut DevicePassCache) -> Result<FrameCleanup> {
+impl AuthorizedGraphResources<'_> {
+    fn commit(self) -> Result<FrameCleanup> {
         let capture_cleanup = self
+            .0
             .capture_resources
             .commit(VelloResourceCommitProof::new())?;
-        let prepared_cleanup = self.prepared_frame.commit(pass_cache)?;
+        let prepared_cleanup = self.0.prepared_frame.commit()?;
         capture_cleanup.followed_by(prepared_cleanup)
     }
 }
@@ -276,18 +286,18 @@ impl GpuOperationTransaction {
     ) -> Result<(GraphOutputCommit, FrameCleanup)> {
         let result = self.finish(operation, Some(account)).await;
         result?;
-        let mut resources = AccountingReadyGraphResources::try_new(
+        let resources = AccountingReadyGraphResources::try_new(
             submitted_resources.capture_resources,
             submitted_resources.prepared_frame,
             pass_cache,
             account,
         )?;
-        let receipt = resources.authorization_receipt(pass_cache, account)?;
+        let (resources, receipt) = resources.into_authorized(account)?;
         let output =
             PendingGraphHostEffect::Headless(publication).authorize(CleanGraphSubmissionReceipt {
                 _resource_readiness: receipt,
             });
-        let frame_cleanup = resources.commit(pass_cache)?;
+        let frame_cleanup = resources.commit()?;
         Ok((output.apply(account)?, frame_cleanup))
     }
 
@@ -305,13 +315,13 @@ impl GpuOperationTransaction {
         account: &Account,
     ) -> Result<(GraphOutputCommit, FrameCleanup)> {
         let transaction = self.resolve_submission_phase(operation, account).await?;
-        let mut resources = AccountingReadyGraphResources::try_new(
+        let resources = AccountingReadyGraphResources::try_new(
             submitted_resources.capture_resources,
             submitted_resources.prepared_frame,
             pass_cache,
             account,
         )?;
-        let receipt = resources.authorization_receipt(pass_cache, account)?;
+        let (resources, receipt) = resources.into_authorized(account)?;
         let clean =
             PendingGraphHostEffect::Presented(effect).authorize(CleanGraphSubmissionReceipt {
                 _resource_readiness: receipt,
@@ -324,7 +334,7 @@ impl GpuOperationTransaction {
         })?;
         let result = transaction.finish(operation, Some(account)).await;
         result?;
-        let frame_cleanup = resources.commit(pass_cache)?;
+        let frame_cleanup = resources.commit()?;
         Ok((output, frame_cleanup))
     }
 

@@ -16,9 +16,9 @@ use super::super::{
     shader::{
         BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
         CompositeParameterBytes, DevicePassCache, DropShadowParameterBytes,
-        PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
+        PassCacheCommitPreparation, PassSpatialUniformBytes, ProvisionalColorFilterPassObjects,
         ProvisionalCompositePassObjects, ProvisionalCorePassObjects,
-        ProvisionalDevicePassCacheUpdate, ShaderCompositePathKey,
+        ProvisionalDevicePassCacheUpdate, ReadyPassCacheUpdate, ShaderCompositePathKey,
     },
     vello_engine::{
         ActiveVelloEncodingScope, EncodedVelloCaptureProof, PendingVelloResourceCommit,
@@ -873,44 +873,51 @@ pub(crate) struct PendingPreparedFrameCommit {
     pass_cache_update: ProvisionalDevicePassCacheUpdate,
 }
 
-/// Sealed one-shot state proving that the prepared frame and provisional cache
-/// can still complete without an accounting or cache-identity fault.
+/// Owns the checked cache reservation and prepared frame between graph
+/// readiness checks.
 #[must_use = "accounting-ready prepared graph state must be committed or aborted on drop"]
-pub(crate) struct AccountingReadyPreparedFrameCommit {
+pub(crate) struct AccountingReadyPreparedFrameCommit<'cache> {
     frame_scope: FrameResourceScope,
-    pass_cache_update: ProvisionalDevicePassCacheUpdate,
+    pass_cache_update: ReadyPassCacheUpdate<'cache>,
 }
 
 impl PendingPreparedFrameCommit {
-    pub(crate) fn into_accounting_ready(
-        mut self,
-        pass_cache: &mut DevicePassCache,
+    pub(crate) fn into_accounting_ready<'cache>(
+        self,
+        pass_cache: &'cache mut DevicePassCache,
         account: &Account,
-    ) -> Result<AccountingReadyPreparedFrameCommit> {
-        self.pass_cache_update
-            .ensure_commit_ready(pass_cache, account)?;
-        self.frame_scope.ensure_commit_ready(&[])?;
-        Ok(AccountingReadyPreparedFrameCommit {
-            frame_scope: self.frame_scope,
-            pass_cache_update: self.pass_cache_update,
-        })
+    ) -> Result<AccountingReadyPreparedFrameCommit<'cache>> {
+        let Self {
+            frame_scope,
+            pass_cache_update,
+        } = self;
+        let pass_cache_update = match pass_cache_update.prepare_commit(pass_cache, account) {
+            PassCacheCommitPreparation::Ready(update) => update,
+            PassCacheCommitPreparation::Rejected { update, error } => {
+                // The frame scope releases before the provisional cache handles.
+                drop(frame_scope);
+                drop(update);
+                return Err(error);
+            }
+        };
+        let ready = AccountingReadyPreparedFrameCommit {
+            frame_scope,
+            pass_cache_update,
+        };
+        ready.frame_scope.ensure_commit_ready(&[])?;
+        Ok(ready)
     }
 }
 
-impl AccountingReadyPreparedFrameCommit {
-    pub(crate) fn ensure_commit_ready(
-        &mut self,
-        pass_cache: &mut DevicePassCache,
-        account: &Account,
-    ) -> Result<()> {
-        self.pass_cache_update
-            .ensure_commit_ready(pass_cache, account)?;
+impl AccountingReadyPreparedFrameCommit<'_> {
+    pub(crate) fn ensure_commit_ready(&mut self, account: &Account) -> Result<()> {
+        self.pass_cache_update.recheck(account)?;
         self.frame_scope.ensure_commit_ready(&[])
     }
 
-    pub(crate) fn commit(self, pass_cache: &mut DevicePassCache) -> Result<FrameCleanup> {
+    pub(crate) fn commit(self) -> Result<FrameCleanup> {
         let frame_cleanup = self.frame_scope.finish_checked()?;
-        self.pass_cache_update.commit(pass_cache);
+        self.pass_cache_update.commit();
         Ok(frame_cleanup)
     }
 }
