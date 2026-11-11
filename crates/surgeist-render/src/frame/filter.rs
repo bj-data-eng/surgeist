@@ -119,6 +119,7 @@ impl FrameContext {
                     initial_bounds,
                     final_bounds: current_bounds,
                     authored_operation_count: algorithm.authored_operation_count(),
+                    output_is_always_transparent: algorithm.output_is_always_transparent(),
                     steps: SharedValue::from_accounted(steps, &account.storage())?,
                 },
             ))
@@ -185,8 +186,6 @@ impl SemanticSourceContribution {
         let Some(backdrop) = layer.backdrop.as_ref() else {
             return Ok(source_bounds);
         };
-        let algorithm_filter_plan =
-            AlgorithmFilterPlan::from_ops(backdrop.filters().ops(), account)?;
         let capture_bounds = LogicalBounds::try_from_rect(
             backdrop.capture_bounds().rect(),
             "backdrop capture bounds",
@@ -198,11 +197,12 @@ impl SemanticSourceContribution {
             FilterSourceRole::Backdrop,
             account,
         )?;
-        let mut backdrop_contribution = match resolved_filter_plan {
-            ResolvedFrameFilterPlan::Empty(_) => SemanticSourceBounds::exactly_empty(),
-            ResolvedFrameFilterPlan::NonEmpty(plan) => {
-                SemanticSourceBounds::exact_known(plan.final_bounds)
-            }
+        let (mut backdrop_contribution, output_is_always_transparent) = match resolved_filter_plan {
+            ResolvedFrameFilterPlan::Empty(_) => (SemanticSourceBounds::exactly_empty(), true),
+            ResolvedFrameFilterPlan::NonEmpty(plan) => (
+                SemanticSourceBounds::exact_known(plan.final_bounds),
+                plan.output_is_always_transparent,
+            ),
         };
         if let Some(clip) = backdrop.clip() {
             let clip_bounds = SemanticSourceBounds::try_for_clip(clip, account)?;
@@ -214,7 +214,7 @@ impl SemanticSourceContribution {
             "backdrop current-parent intersection",
         )?;
         if captured_parent.is_exactly_empty()
-            || algorithm_filter_plan.output_is_always_transparent()
+            || output_is_always_transparent
             || backdrop_contribution.is_exactly_empty()
         {
             layer.backdrop = None;
@@ -248,6 +248,7 @@ pub(super) struct NonEmptyResolvedFilterPlan {
     pub(super) initial_bounds: NonEmptyLogicalBounds,
     pub(super) final_bounds: NonEmptyLogicalBounds,
     pub(super) authored_operation_count: usize,
+    output_is_always_transparent: bool,
     pub(super) steps: SharedValue<Vec<ResolvedFilterStep>>,
 }
 

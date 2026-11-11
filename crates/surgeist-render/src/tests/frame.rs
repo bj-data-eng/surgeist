@@ -915,6 +915,74 @@ fn zero_opacity_backdrop_preserves_foreground_without_graph_boundary() {
 }
 
 #[test]
+fn transparent_backdrop_planning_admits_only_one_algorithm_walk() {
+    use crate::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
+        RenderLimits, RenderPhase, RenderQuantity, RenderWork,
+    };
+
+    let filters = FilterList::try_ops(vec![
+        FilterOp::opacity(UnitFilterAmount::try_new(0.0).unwrap()),
+        FilterOp::invert(UnitFilterAmount::try_new(1.0).unwrap()),
+        FilterOp::blur(FilterBlur::try_new(1.0).unwrap()),
+    ])
+    .unwrap();
+    let bounds = BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 4.0, 4.0)).unwrap();
+    let backdrop = Layer::new()
+        .try_backdrop_filter(BackdropFilterInput::try_new(filters, bounds, None).unwrap())
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(backdrop, |scene| {
+        scene.fill(Rect::new(1.0, 1.0, 2.0, 2.0), Color::BLACK);
+    });
+    let context = crate::frame::FrameContext::try_new(
+        Size::new(8.0, 8.0),
+        1.0,
+        Antialiasing::Area,
+        Color::BLACK,
+    )
+    .unwrap();
+    // Three authored visits produce one color run and one blur step.
+    for limit in [4, 5] {
+        let normalized = scene
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::FilterOperationVisits, limit)
+            .unwrap();
+        let mut accounting =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let result = accounting.run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+            let plan = normalized.plan_for(context, account)?;
+            Ok(matches!(plan, crate::frame::FramePlan::DirectVello(_)))
+        });
+        let terminal = accounting.last_attempt().unwrap();
+        let attempt = terminal.attempt().unwrap();
+        assert_eq!(terminal.cleanup_fault(), None);
+        assert_eq!(
+            attempt.usage().work(RenderWork::FilterOperationVisits),
+            limit
+        );
+        if limit == 5 {
+            assert!(result.unwrap());
+            assert_eq!(attempt.status(), RenderAttemptStatus::Succeeded);
+        } else {
+            assert!(result.unwrap_err().accounting_diagnostic().is_some());
+            assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+            let refusal = attempt.refusal().unwrap();
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::FilterOperationVisits)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (4, 1));
+        }
+    }
+}
+
+#[test]
 fn zero_opacity_backdrop_preserves_resolved_device_range_failure() {
     let plan_with_opacity = |opacity| {
         let filters = FilterList::try_ops(vec![FilterOp::opacity(
