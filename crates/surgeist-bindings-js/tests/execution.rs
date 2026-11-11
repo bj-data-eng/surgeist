@@ -852,6 +852,42 @@ fn native_callback_capture_collection_and_owner_teardown(
     Ok(())
 }
 
+fn css_escape_backing_retires_with_the_engine() -> Result<(), Error> {
+    use surgeist_bindings_js::css::{CssNamespaceLimits, install_window_css};
+
+    let callback_drops = Rc::new(Cell::new(0));
+    let failure_drops = Rc::new(Cell::new(0));
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = {
+        let mut execution = process.execution();
+        let realm = execution.create_realm()?;
+        execution.in_realm(&realm, |scope| {
+            install_window_css(
+                scope,
+                CssNamespaceLimits::default(),
+                DropReceipt(callback_drops.clone()),
+                DropReceipt(failure_drops.clone()),
+            )
+        })?;
+        evaluate(
+            &mut execution,
+            &realm,
+            "globalThis.retainedEscape = CSS.escape; delete globalThis.CSS;",
+        )?;
+        execution.memory_pressure();
+        assert_eq!(
+            evaluate(&mut execution, &realm, "retainedEscape('0')")?,
+            units("\\30 ")
+        );
+        realm
+    };
+    assert_eq!((callback_drops.get(), failure_drops.get()), (0, 0));
+    drop(process);
+    assert_eq!((callback_drops.get(), failure_drops.get()), (1, 1));
+    drop(realm);
+    Ok(())
+}
+
 fn host_refusals_are_sticky_and_prevent_native_effects() -> Result<(), Error> {
     for source in [
         "try { fail() } catch (_) {} later()",
@@ -2301,6 +2337,7 @@ fn main() -> Result<(), Error> {
     assert_eq!(evaluate(&mut execution, &realm, "42")?, units("42"));
     drop(execution);
     drop(next);
+    css_escape_backing_retires_with_the_engine()?;
     host_refusals_are_sticky_and_prevent_native_effects()?;
     new_object_paths_preserve_the_first_host_failure()?;
     declared_constructor_host_refusals_are_terminal()?;
