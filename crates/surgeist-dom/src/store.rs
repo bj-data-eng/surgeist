@@ -52,6 +52,10 @@ use history::HistoryEntry;
 mod image;
 mod import;
 mod inline_style;
+pub use hosted::constructed_sheet::{
+    DomHostedSheetConstruction, DomHostedSheetConstructionError,
+    DomHostedSheetConstructionPublished,
+};
 pub use hosted::style_root_withdrawal::{
     DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
     DomHostedStyleRootWithdrawalPublished,

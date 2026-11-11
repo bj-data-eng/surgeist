@@ -778,8 +778,8 @@ impl HostedRuntime {
     }
 }
 
-#[cfg(feature = "document-scripting")]
 impl HostedRuntime {
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn with_script_target<R>(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -787,6 +787,21 @@ impl HostedRuntime {
         cancel: &AtomicBool,
         use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
     ) -> Result<R, DomHostedRuntimeError> {
+        self.with_current_top_level(dom, target, cancel, |source, dom| {
+            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
+        })
+    }
+
+    pub(crate) fn with_current_top_level<R, E>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, E>,
+    ) -> Result<R, E>
+    where
+        E: From<DomHostedRuntimeError>,
+    {
         self.with_script_settings(dom, target, None, cancel, |source, dom| {
             let canonical = dom
                 .raw()
@@ -803,8 +818,8 @@ impl HostedRuntime {
             {
                 return Err(DomHostedRuntimeError::Inactive);
             }
-            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
-        })
+            Ok(use_target(source, dom))
+        })?
     }
 
     pub(crate) fn with_script_settings<R>(
@@ -859,6 +874,7 @@ impl HostedRuntime {
         use_target(source, dom)
     }
 
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn admit_script_work(
         &self,
         dom: &DomEventDom<'_>,
@@ -876,6 +892,7 @@ impl HostedRuntime {
         Ok(())
     }
 
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn retain_script_payload(
         &self,
         dom: &mut DomEventDom<'_>,
