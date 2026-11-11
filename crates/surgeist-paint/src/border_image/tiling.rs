@@ -695,6 +695,32 @@ mod tests {
     }
 
     #[test]
+    fn tiling_refuses_an_unrepresentable_subnormal_repeat_phase() {
+        let input = center_only(f64::from_bits(6), f64::from_bits(3));
+        let repeat = Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Stretch);
+        let outcome = resolve_border_image_tiling(
+            &geometry(input),
+            repeat,
+            options(PaintLimits::unlimited()),
+        );
+        // The ideal anchor is negative 1.5 minimum-subnormal units.
+        assert_eq!(outcome.result, Err(geometry_error()));
+    }
+
+    #[test]
+    fn tiling_refuses_subnormal_space_with_unequal_outer_gaps() {
+        let input = center_only(f64::from_bits(205), f64::from_bits(100));
+        let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
+        let outcome = resolve_border_image_tiling(
+            &geometry(input),
+            repeat,
+            options(PaintLimits::unlimited()),
+        );
+        // Rounding the ideal 5/3-unit gap to two leaves only one unit at the end.
+        assert_eq!(outcome.result, Err(geometry_error()));
+    }
+
+    #[test]
     fn tiling_reports_refusal_prefix_and_releases_a_provisional_plan() {
         use BorderImageRepeat::{Repeat, Space};
         let geometry = geometry(request());
