@@ -1273,3 +1273,112 @@ fn original_grid_axes_require_auto_root_and_authored_placement() {
     assert_eq!(error.node_path, "root.children[1]");
     assert_eq!(error.field_path, "style");
 }
+
+#[test]
+fn original_subgrid_axes_require_auto_block_and_both_inherited_axes() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"original_subgrid_axes\":\"auto-first-subgrid-v1\"}\n";
+
+    let rectangle = |x, y, width, height| json!({"x": x, "y": y, "width": width, "height": height});
+    let make_box = |style, geometry: serde_json::Value, children| {
+        json!({
+            "layoutInput": "box", "tagName": "div", "style": style,
+            "unroundedLayout": geometry, "smartRoundedLayout": geometry,
+            "worldRoundedLayout": geometry, "children": children,
+        })
+    };
+    let line = |value| json!({"kind": "line", "value": value});
+    let px = |value| json!({"unit": "px", "value": value});
+    let track = |value| json!({"kind": "scalar", "unit": "px", "value": value});
+    let cell = |start, geometry| {
+        make_box(
+            json!({
+                "display": "flex", "position": "relative", "boxSizing": "border-box",
+                "writingMode": "vertical-rl", "direction": "ltr",
+                "gridColumnStart": line(start), "gridColumnEnd": line(start + 1),
+                "gridRowStart": line(start), "gridRowEnd": line(start + 1),
+            }),
+            geometry,
+            Vec::new(),
+        )
+    };
+    let parent = |inherit_columns, y| {
+        let style = json!({
+            "display": "grid", "position": "relative", "boxSizing": "border-box",
+            "writingMode": "vertical-rl", "direction": "ltr",
+            "gridTemplateColumns": [track(30), track(40)],
+            "gridTemplateRows": [track(50), track(60)],
+            "gap": {"row": px(7), "column": px(11)},
+        });
+        let mut inherited = style.clone();
+        let axis = if inherit_columns {
+            "gridTemplateColumns"
+        } else {
+            "gridTemplateRows"
+        };
+        inherited[axis] = json!([{"kind": "subgrid"}]);
+        inherited["gridColumnStart"] = line(1);
+        inherited["gridColumnEnd"] = line(3);
+        inherited["gridRowStart"] = line(1);
+        inherited["gridRowEnd"] = line(3);
+        let subgrid = make_box(
+            inherited,
+            rectangle(0, 0, 117, 81),
+            vec![
+                cell(1, rectangle(67, 0, 50, 30)),
+                cell(2, rectangle(0, 41, 60, 40)),
+            ],
+        );
+        make_box(style, rectangle(0, y, 117, 81), vec![subgrid])
+    };
+    let mut root = make_box(
+        json!({
+            "display": "block", "position": "absolute", "boxSizing": "border-box",
+            "writingMode": "horizontal-tb", "direction": "ltr",
+        }),
+        rectangle(0, 0, 117, 162),
+        vec![parent(true, 0), parent(false, 81)],
+    );
+    root["gridAlignmentProfile"] = json!({"profile": 1, "owners": []});
+    root["useRounding"] = json!(true);
+    root["viewport"] = json!({"rootContext": {
+        "kind": "absolute-root-local",
+        "containingWidth": 800, "containingHeight": 600, "containingDirection": "ltr",
+        "hypotheticalDirection": "ltr", "hypotheticalDisplay": "block",
+        "hypotheticalAnchor": "inline-start", "hypotheticalInlineOffset": 0,
+        "hypotheticalBlockOffset": 0,
+        "fallback": {
+            "initialContainingBlock": {"width": 800, "height": 600},
+            "nearestScrollport": "none",
+            "containingLimits": {"width": "unbounded", "height": "unbounded"},
+        },
+    }});
+
+    let request = BoxObservationRequest::from_input_bytes(Some(REQUEST))
+        .expect("the original Subgrid axis source profile must be admitted");
+    let decode_original = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "subgrid_axes_vertical_rl_parallel__border_box_ltr",
+            "border-box-ltr",
+            request,
+        )
+    };
+    assert!(matches!(
+        decode_original(&root).unwrap(),
+        DecodedMeasurement::Supported(_)
+    ));
+    let mut altered = root.clone();
+    altered["viewport"]["rootContext"]["hypotheticalBlockOffset"] = json!(1);
+    assert_eq!(
+        decode_original(&altered).unwrap_err().field_path,
+        "viewport.rootContext.hypotheticalBlockOffset"
+    );
+    altered = root.clone();
+    altered["style"]["size"] = json!({"height": px(162)});
+    assert_eq!(decode_original(&altered).unwrap_err().field_path, "style");
+    root["children"][1]["children"][0]["style"]["gridTemplateRows"] = json!([track(50), track(60)]);
+    let error = decode_original(&root).unwrap_err();
+    assert_eq!(error.node_path, "root.children[1].children[0]");
+    assert_eq!(error.field_path, "style");
+}
