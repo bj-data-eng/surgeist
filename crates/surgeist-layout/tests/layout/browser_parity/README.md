@@ -33,9 +33,8 @@ schema test is counted as native Text parity.
 
 ## FRI-05 Normalized Scroll Adapter
 
-The FRI-05 bridge is likewise a bounded fixture adapter, not authored CSS
-parsing. During the one authorized full C06 run, the generator read browser
-computed style and serialized only these normalized attributes: `overflow-x`,
+The fixture adapter reads browser computed style and serializes the normalized
+attributes `overflow-x`,
 `overflow-y`, `scrollbar-width`, `overflow-clip-margin`, `scrollbar-gutter`, the
 four physical `scroll-padding-*` edges, the four physical `scroll-margin-*`
 edges, `scroll-snap-type`, `scroll-snap-align`, and `scroll-snap-stop`. It emits
@@ -55,6 +54,11 @@ than being skipped. The comparator does not treat a maximum endpoint as a size.
 Target fields are layout-produced metadata only: this harness does not model
 retained association, transformed coordinates, current offsets, snap selection,
 CSSOM, host scrollbar UI, or runtime events.
+
+The [computed overflow edition](captured/fri05-computed-overflow/qualification.json)
+covers 44 variants across the original Block, Flex, Grid, and Grid Lanes
+sources. The default Layout test verifies the original topology and compares
+every registered box tree and recorded scroll-span pair.
 
 Current source pins, import rules, artifact inventory, and expected outcome counts
 are declared in `corpus.toml`. Ordinary Cargo test runs compare the original XML
