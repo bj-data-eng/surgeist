@@ -1,4 +1,5 @@
 use super::{Error, Result};
+use crate::accounting::{Account, RenderWork};
 
 /// A finite point in logical rendering coordinates.
 ///
@@ -361,8 +362,19 @@ impl Transform {
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] when any coefficient is non-finite.
     pub fn try_new(values: [f64; 6]) -> Result<Self> {
+        Self::try_new_with(values, |value| Ok(value.is_finite()))
+    }
+
+    pub(crate) fn try_new_in(values: [f64; 6], account: &Account) -> Result<Self> {
+        Self::try_new_with(values, |value| {
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            Ok(value.is_finite())
+        })
+    }
+
+    fn try_new_with(values: [f64; 6], mut finite: impl FnMut(f64) -> Result<bool>) -> Result<Self> {
         for value in values {
-            if !value.is_finite() {
+            if !finite(value)? {
                 return Err(Error::invalid_value(
                     "transform",
                     value,

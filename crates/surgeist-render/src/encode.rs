@@ -80,7 +80,7 @@ pub(crate) fn encode_vello_clip_coverage_scene(
             push_vello_clip(
                 &mut scene,
                 clip,
-                clip_coverage_transform(clip, *transform, initial_transform)?,
+                clip_coverage_transform(clip, *transform, initial_transform, &account)?,
                 &account,
             )?;
         }
@@ -108,12 +108,17 @@ fn clip_coverage_transform(
     clip: &RenderClip,
     transform: Transform,
     initial_transform: Transform,
+    account: &Account,
 ) -> Result<Transform> {
-    clip.coordinate_space()
-        .map(|coordinate_space| coordinate_space.transform())
-        .unwrap_or_else(Transform::identity)
-        .then(transform)?
-        .then(initial_transform)
+    let compose = |source: Transform, destination: Transform| {
+        let product = affine_product(destination.into(), source.into(), account)?;
+        Transform::try_new_in(product.as_coeffs(), account)
+    };
+    let clip_transform = clip
+        .coordinate_space()
+        .map_or(Transform::IDENTITY, CoordinateSpaceTag::transform);
+    let clip_in_parent = compose(clip_transform, transform)?;
+    compose(clip_in_parent, initial_transform)
 }
 
 fn exact_fit_clip_circle(
@@ -350,7 +355,7 @@ fn encode_vello_commands(
                 account,
             )?,
             RenderCommand::Layer { layer, children } => {
-                let layer_transform = transform * kurbo::Affine::from(layer.transform);
+                let layer_transform = affine_product(transform, layer.transform.into(), account)?;
                 if layer.isolation != LayerIsolation::None {
                     encode_layer_start(scene, layer, layer_transform, account)?;
                     encode_vello_commands(
@@ -842,19 +847,16 @@ fn encode_layer_start(
     account: &Account,
 ) -> Result<()> {
     let default_clip = RenderClipGeometry::Rect(Rect::new(-1.0e9, -1.0e9, 2.0e9, 2.0e9));
-    let (clip, clip_transform) = layer
-        .clip
-        .as_ref()
-        .map(|clip| {
-            let clip_transform = clip
-                .coordinate_space()
-                .map(|coordinate_space| {
-                    transform * kurbo::Affine::from(coordinate_space.transform())
-                })
-                .unwrap_or(transform);
+    let (clip, clip_transform) = match &layer.clip {
+        Some(clip) => {
+            let clip_transform = match clip.coordinate_space() {
+                Some(space) => affine_product(transform, space.transform().into(), account)?,
+                None => transform,
+            };
             (clip.geometry(), clip_transform)
-        })
-        .unwrap_or((&default_clip, transform));
+        }
+        None => (&default_clip, transform),
+    };
     match clip {
         RenderClipGeometry::Rect(rect) => push_vello_layer(
             scene,
@@ -1677,6 +1679,178 @@ mod image_fit_accounting_tests {
             .unwrap()
             .phase_usage(RenderPhase::Encode);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+    }
+}
+
+#[cfg(test)]
+mod layer_transform_accounting_tests {
+    use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+
+    fn tagged_layer_commands() -> (RenderCommands, Transform, Transform) {
+        let clip = ClipInput::try_shape(Shape::rect(Rect::new(0.0, 0.0, 1.0, 1.0)))
+            .unwrap()
+            .with_coordinate_space(
+                CoordinateSpaceTag::surface(Transform::translation(1.0, 1.0).unwrap()).unwrap(),
+            );
+        let layer_transform = Transform::try_new([2.0, 0.0, 0.0, 1.0, -1.0, -1.0]).unwrap();
+        let initial_transform = Transform::translation(3.0, 1.0).unwrap();
+        let layer = Layer::new()
+            .with_transform(layer_transform)
+            .try_clip_input(clip)
+            .unwrap();
+        let mut scene = Scene::new();
+        scene.layer(layer, |scene| {
+            scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), Color::BLACK);
+        });
+        let commands = scene
+            .normalize(Capabilities::CURRENT, &Account::for_test())
+            .unwrap();
+        (commands, layer_transform, initial_transform)
+    }
+
+    fn assert_refusal_before_native_path(
+        cap: u64,
+        amount: u64,
+        encode: impl FnOnce(&Account) -> Result<VelloScene>,
+    ) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, cap)
+            .unwrap()
+            .with_work_limit(RenderWork::PathElementVisits, 0)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 128,
+                filter: RenderPhaseFilter::Phase(RenderPhase::Encode),
+            });
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| encode(attempt.account()).map(drop))
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        let error = result.unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected a transform coordinate refusal at cap {cap}: {error:?}");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits),
+            "transform composition must refuse before native geometry at cap {cap}",
+        );
+        assert_eq!(
+            (refusal.current(), refusal.amount()),
+            (cap, amount),
+            "wrong admission boundary at cap {cap}",
+        );
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: cap });
+        let report = report.attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(
+            report.dropped_events(),
+            0,
+            "incomplete profile at cap {cap}"
+        );
+        assert!(report.events().any(|event| matches!(
+            event,
+            RenderEvent::Refused {
+                phase: RenderPhase::Encode,
+                ..
+            }
+        )));
+        let usage = report.phase_usage(RenderPhase::Encode);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+        assert_eq!(usage.work(RenderWork::PaintVisits), 0);
+    }
+
+    #[test]
+    fn direct_layer_and_tagged_clip_refuse_before_native_geometry() {
+        let (commands, _, initial_transform) = tagged_layer_commands();
+        let extent = PhysicalSize::new(8, 4);
+        // Each product reads twelve input coefficients and performs twenty
+        // scalar operations. A separate charge starts each product.
+        for (cap, amount) in [(0, 12), (31, 1), (32, 12), (63, 1)] {
+            assert_refusal_before_native_path(cap, amount, |account| {
+                encode_vello_scene_with_initial_transform(
+                    &commands,
+                    initial_transform,
+                    extent,
+                    account,
+                )
+            });
+        }
+        encode_vello_scene_with_initial_transform(
+            &commands,
+            initial_transform,
+            extent,
+            &Account::for_test(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn clip_capture_refuses_during_composition_and_finite_validation() {
+        let (commands, layer_transform, initial_transform) = tagged_layer_commands();
+        let Some(RenderCommand::Layer { layer, .. }) = commands.iter().next() else {
+            panic!("expected one normalized layer");
+        };
+        let elements = [(layer.clip.as_ref().unwrap().clone(), layer_transform)];
+        let extent = PhysicalSize::new(8, 4);
+        // Each product is followed by six finite checks before its result
+        // can be used as the next product's input.
+        for (cap, amount) in [(0, 12), (31, 1), (32, 1), (37, 1), (38, 12), (75, 1)] {
+            assert_refusal_before_native_path(cap, amount, |account| {
+                encode_vello_clip_coverage_scene(&elements, initial_transform, extent, account)
+            });
+        }
+        encode_vello_clip_coverage_scene(
+            &elements,
+            initial_transform,
+            extent,
+            &Account::for_test(),
+        )
+        .unwrap();
+    }
+    #[test]
+    fn clip_capture_keeps_the_first_nonfinite_coefficient_error() {
+        use crate::accounting::RenderAttemptKind;
+
+        let (commands, layer_transform, _) = tagged_layer_commands();
+        let Some(RenderCommand::Layer { layer, .. }) = commands.iter().next() else {
+            panic!("expected one normalized layer");
+        };
+        let elements = [(layer.clip.as_ref().unwrap().clone(), layer_transform)];
+        let initial_transform = Transform::scale(f64::MAX, 1.0).unwrap();
+        let mut context = RenderAccountingContext::new(RenderAccountingOptions::new());
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                encode_vello_clip_coverage_scene(
+                    &elements,
+                    initial_transform,
+                    PhysicalSize::new(8, 4),
+                    account,
+                )
+                .map(drop)
+            })
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        let diagnostic = error.invalid_value_diagnostic().unwrap();
+        assert_eq!(diagnostic.field(), "transform");
+        assert_eq!(diagnostic.value(), "inf");
+        let usage = context
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .phase_usage(RenderPhase::Encode);
+        // The first composition and its checks complete. The second
+        // composition refuses at its first finite check.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 38 + 32 + 1);
         assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
     }
 }
