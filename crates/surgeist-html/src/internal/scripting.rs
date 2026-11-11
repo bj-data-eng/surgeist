@@ -21,6 +21,18 @@ pub struct HtmlScriptingPolicy {
 }
 
 impl HtmlScriptingPolicy {
+    /// HTML's scripting condition for Window settings and their active sandbox.
+    pub fn window_settings_enabled(
+        self,
+        engine: HtmlScriptingEngine,
+        active_sandbox: &HtmlSandboxFlags,
+    ) -> bool {
+        engine == HtmlScriptingEngine::Supported
+            && self.user_allows
+            && !active_sandbox.contains(HtmlSandboxFlag::Scripts)
+            && self.automation_allows
+    }
+
     /// HTML's scripting condition for a Document associated with Window
     /// settings, including the independent node-document browsing-context check.
     pub fn document_enabled(
@@ -29,10 +41,7 @@ impl HtmlScriptingPolicy {
         active_sandbox: &HtmlSandboxFlags,
         browsing_context: HtmlBrowsingContextPresence,
     ) -> bool {
-        engine == HtmlScriptingEngine::Supported
-            && self.user_allows
-            && !active_sandbox.contains(HtmlSandboxFlag::Scripts)
-            && self.automation_allows
+        self.window_settings_enabled(engine, active_sandbox)
             && browsing_context == HtmlBrowsingContextPresence::Present
     }
 }

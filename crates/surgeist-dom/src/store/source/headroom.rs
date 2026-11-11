@@ -70,6 +70,7 @@ pub(in crate::store) struct Scan {
     selects: u64,
     details: u64,
     dialog_wait: bool,
+    script_settings_wait: bool,
 }
 impl Scan {
     fn new() -> Self {
@@ -85,6 +86,7 @@ impl Scan {
             selects: 0,
             details: 0,
             dialog_wait: false,
+            script_settings_wait: false,
         }
     }
     fn find(
@@ -331,6 +333,9 @@ impl Draft {
         match result {
             Err(DomError::DialogProcessingUnavailable { .. }) if scan.dialog_wait => {}
             Err(DomError::DesignModeProcessingUnavailable { .. }) => {}
+            // A later SVG requirement is reached only if the earlier real
+            // settings answer lets Script preparation continue.
+            Err(DomError::SvgScriptProcessingUnavailable) if scan.script_settings_wait => {}
             result => result?,
         }
         scan.qualify(self, dom, phases, cancel)
@@ -347,6 +352,29 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         Ok(())
     }
+    /// Account for the settings request in the rollback-only command scan.
+    /// A Script can finish locally after a disabled answer. Scan the possible
+    /// successors without supplying that answer to the HTML cursor.
+    pub(in crate::store) fn headroom_script_settings(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self.source_headroom.is_none() {
+            return Ok(false);
+        }
+        self.source_step(cancel)?;
+        let scan = self
+            .source_headroom
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        scan.script_settings_wait = true;
+        Ok(true)
+    }
+
     pub(in crate::store) fn headroom_external_hook(
         &mut self,
         cancel: &AtomicBool,

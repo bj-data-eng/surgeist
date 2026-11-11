@@ -13,6 +13,8 @@ impl Operation {
                 Receipt::Watcher { applied: true, .. }
                     | Receipt::Focus { applied: true, .. }
                     | Receipt::CloseWatcher { applied: true, .. }
+                    | Receipt::Inline { applied: true, .. }
+                    | Receipt::Cssom { applied: true, .. }
             )
         )
     }
@@ -20,7 +22,9 @@ impl Operation {
         if let Some(
             Receipt::Watcher { applied, .. }
             | Receipt::Focus { applied, .. }
-            | Receipt::CloseWatcher { applied, .. },
+            | Receipt::CloseWatcher { applied, .. }
+            | Receipt::Inline { applied, .. }
+            | Receipt::Cssom { applied, .. },
         ) = &mut self.receipt
         {
             *applied = value;

@@ -642,6 +642,229 @@ fn bound_detach_joins_inline_context_and_one_runtime_job_before_returning_receip
 }
 
 #[test]
+fn replacement_closes_svg_refusal_after_original_fullscreen_handoff() {
+    use surgeist_dom::{
+        DomDocumentScriptRegistration, DomDocumentScriptingFacts, DomSourceScriptStep,
+    };
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+
+    let cancel = AtomicBool::new(false);
+    let (mut session, mut hosted, top, _) = fixture();
+    let document = top.document();
+    let initial = session.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let mut batch = DomBatch::new();
+    let old = batch.create_element_ns(document, Namespace::html(), "span");
+    batch.insert_before(&old, parent, None);
+    let replacement = batch.create_element_ns(document, Namespace::html(), "div");
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let code = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&code, &script, None);
+    let detached = batch.create_html_document(document, None);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    batch.insert_before(&script, &replacement, None);
+    batch.insert_before(&svg, &replacement, None);
+    let setup = session.dom().apply(batch, &cancel).unwrap();
+    let [old, replacement, script, svg] =
+        [old, replacement, script, svg].map(|ticket| setup.created(&ticket).unwrap().unwrap());
+    let mut batch = DomBatch::new();
+    batch.fullscreen_element_model(old);
+    session.dom().apply(batch, &cancel).unwrap();
+    let owner = hosted.state().unwrap();
+    let (binding, registration) = {
+        let owner = owner.borrow();
+        assert_eq!(owner.source.id(), top.global().source());
+        let mut dom = session.dom();
+        let backing = owner
+            .source
+            .retain_runtime_payload(
+                dom.raw_mut(),
+                DomDocumentScriptRegistration::storage_bytes(),
+                &cancel,
+            )
+            .unwrap();
+        owner
+            .source
+            .attach_document_script_host(
+                dom.raw_mut(),
+                top.global(),
+                document,
+                DomDocumentScriptingFacts {
+                    engine: HtmlScriptingEngine::Supported,
+                    policy: HtmlScriptingPolicy {
+                        user_allows: true,
+                        automation_allows: true,
+                    },
+                },
+                backing,
+                &cancel,
+            )
+            .unwrap()
+    };
+    let before = session.snapshot();
+    assert_eq!(before.node(old).unwrap().parent(), Some(parent));
+    assert!(
+        before
+            .node(old)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .fullscreen_flag()
+    );
+    assert_eq!(before.node(replacement).unwrap().parent(), None);
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| panic!("the fixture has no Style service"),
+        url: None,
+    };
+    let mut source = session.source_execution();
+    let reached = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::replace_child(replacement, parent, old),
+            source_limits(),
+            &mut services,
+            &cancel,
+        )
+        .unwrap();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Script(read),
+        reason: crate::DomSourceUnavailable::Script(DomSourceScriptStep::ReadScripting),
+    } = reached
+    else {
+        panic!(
+            "the real fullscreen handoff must precede the original HTML Script read: {reached:?}"
+        );
+    };
+    assert_eq!(read.subject(), Some(script));
+    assert_eq!(read.node_document(), Some(document));
+    assert_eq!(read.relevant_global(), Some(top.global()));
+    let operation = read.operation();
+    let prefix = session.snapshot();
+    assert_eq!(prefix.stamp(), read.basis());
+    assert_ne!(prefix.stamp(), before.stamp());
+    assert_eq!(prefix.incomplete_source_operation(), Some(operation));
+    let check_prefix = |snapshot: &surgeist_dom::DomSnapshot| {
+        assert_eq!(snapshot.node(old).unwrap().parent(), None);
+        assert!(
+            !snapshot
+                .node(old)
+                .unwrap()
+                .as_element()
+                .unwrap()
+                .fullscreen_flag()
+        );
+        assert_eq!(snapshot.node(replacement).unwrap().parent(), None);
+        assert_eq!(
+            snapshot.node(replacement).unwrap().children(),
+            [script, svg]
+        );
+        let script = snapshot.node(script).unwrap().as_html_script().unwrap();
+        assert!(!script.flags().already_started());
+        assert_eq!(script.script_type(), None);
+        assert_eq!(script.preparation_document(), None);
+        let svg = snapshot.node(svg).unwrap().as_svg_script().unwrap();
+        assert!(!svg.flags().already_processed());
+    };
+    check_prefix(&prefix);
+    let queued_invocation = || {
+        let owner = owner.borrow();
+        let rows = &owner.hosts[0].top_levels[0]
+            .group
+            .as_ref()
+            .unwrap()
+            .fullscreen
+            .rows;
+        let [row] = rows.as_slice() else {
+            panic!("one actual queued Fullscreen job")
+        };
+        assert!(row.ready);
+        let permission = row.permission.as_ref().unwrap();
+        assert_eq!(permission.id(), row.invocation);
+        assert_eq!(permission.global(), top.global());
+        assert_eq!(permission.traversable(), top.navigable());
+        row.invocation
+    };
+    let invocation = queued_invocation();
+    let status = session.dom().fullscreen_exit_status(invocation).unwrap();
+    assert_eq!(status.operation(), operation);
+    assert_eq!(status.document(), document);
+    assert_eq!(
+        status.step(),
+        DomFullscreenExitStep::FullyUnlockScreenOrientation
+    );
+    assert!(matches!(
+        hosted.run_next(&mut session.dom(), top.navigable(), &cancel),
+        Err(DomHostedRuntimeError::Dom(
+            surgeist_dom::DomHostedError::Dom(DomError::SourceOperationPending)
+        ))
+    ));
+    assert_eq!(queued_invocation(), invocation);
+    drop(registration);
+    session
+        .dom()
+        .raw_mut()
+        .release_document_script_registration(&binding);
+    assert_eq!(session.snapshot().stamp(), prefix.stamp());
+
+    let refused = source.resume(
+        &mut session.dom(),
+        operation,
+        source_limits(),
+        &mut services,
+        &cancel,
+    );
+    assert!(
+        matches!(
+            refused,
+            Err(crate::DomSourceDriveError::Source(
+                crate::DomSourceRuntimeError::Dom(DomError::SvgScriptProcessingUnavailable)
+            ))
+        ),
+        "the actual Disabled answer must reach the later SVG refusal: {refused:?}"
+    );
+    let closed = session.snapshot();
+    check_prefix(&closed);
+    assert_eq!(queued_invocation(), invocation);
+    assert_eq!(
+        session.dom().fullscreen_exit_status(invocation).unwrap(),
+        status
+    );
+    let pending = session.dom().pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the settled fullscreen handoff must not keep the failed Source marker: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert_eq!(
+        session
+            .dom()
+            .raw()
+            .changes_since(prefix.stamp())
+            .unwrap()
+            .changes(),
+        [surgeist_dom::DomChange::SourceOperation]
+    );
+    assert_eq!(
+        hosted
+            .run_next(&mut session.dom(), top.navigable(), &cancel)
+            .unwrap(),
+        DomHostedTaskProgress::FullscreenExitPending {
+            invocation,
+            step: DomFullscreenExitStep::FullyUnlockScreenOrientation
+        }
+    );
+    assert_eq!(
+        hosted
+            .run_next(&mut session.dom(), top.navigable(), &cancel)
+            .unwrap(),
+        DomHostedTaskProgress::Quiescent
+    );
+}
+
+#[test]
 fn inline_commit_refusal_releases_reserved_runtime_row_and_preserves_exposed_source() {
     let cancel = AtomicBool::new(false);
     let (mut session, hosted, _, root, child, _, context) = inline_fixture(1);

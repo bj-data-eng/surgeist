@@ -264,11 +264,16 @@ detach retains the Comment's original Source association. Repeated exposure
 preserves the wrapper and its expandos until native destruction or attachment
 teardown. Canonical destruction publishes an admitted notice for the exact
 native generation. Runtime releases the pin after the native loan ends, even
-during unwind or terminal refusal. Guest execution retains any exact guest
-exception for the native report. The original
+during unwind or terminal refusal. Guest execution releases native loans and
+retains any exact guest exception for the native report. The original
 dispatcher then continues delivery and the caller resumes the same Source
-operation. Standard DOM interfaces and parser execution belong to their own
-contributions.
+operation.
+
+Native HTML Script preparation
+can pause for the original relevant Global's live scripting settings.
+`DocumentScriptHost::service_script_settings` supplies that fact through the
+original Source lease. Enabled settings leave executable preparation pending.
+Standard DOM interfaces and parser execution belong to their own contributions.
 
 ## Start
 

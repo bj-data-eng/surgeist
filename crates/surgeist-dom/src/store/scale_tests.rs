@@ -448,7 +448,8 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
             let job = lease
                 .prepare_fullscreen_exit_handoff(&request, source, &cancel)
                 .unwrap()
-                .publish();
+                .publish()
+                .unwrap();
             let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
                 panic!("original synchronous exit tail completes");
             };

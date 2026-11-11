@@ -544,13 +544,42 @@ impl Draft {
             AttributeChange::Added
         };
         self.input_attribute_change(node, changed, change, hook.cause, limits, cancelled)?;
-        self.script_attribute_change(
+        if self.script_attribute_change(
             node,
             changed,
             old_value.is_some(),
             new_value.is_none(),
             cancelled,
-        )?;
+        )? {
+            self.push_effect_retained(
+                select::Effect::AfterScriptAttribute(hook),
+                self.effect_scoped,
+                payload,
+                cancelled,
+            )?;
+            self.script_post_connection(node, cancelled)?;
+            return self.run_effects(limits, cancelled);
+        }
+        self.attribute_after_script(hook, payload, limits, cancelled)
+    }
+    pub(super) fn attribute_after_script(
+        &mut self,
+        hook: AttributeSuffix,
+        payload: Option<source::checkpoint::Charge>,
+        limits: DomLimits,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = hook.subject;
+        let changed = &hook.changed;
+        let old_value = hook.old_value.as_ref();
+        let new_value = hook.new_value.as_ref();
+        let change = if new_value.is_none() {
+            AttributeChange::Removed
+        } else if old_value.is_some() {
+            AttributeChange::Set
+        } else {
+            AttributeChange::Added
+        };
         self.reflected_attribute_change(node, changed, cancelled)?;
         self.slot_attribute(node, changed, old_value, limits, cancelled)?;
         self.control_attribute_change(node, changed, old_value, cancelled)?;

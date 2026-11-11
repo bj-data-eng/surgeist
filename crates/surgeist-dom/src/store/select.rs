@@ -860,6 +860,8 @@ pub(super) enum Effect {
     AutofocusInsertion(super::autofocus::Frame),
     DialogHook(dialog::HookFrame),
     AttributeSuffix(attributes::AttributeSuffix),
+    AfterScriptAttribute(attributes::AttributeSuffix),
+    Script(super::script::Frame),
     Style(style::Frame),
     XmlDocument(super::document::XmlDocumentFrame),
     ChildrenChanged {
@@ -947,7 +949,9 @@ impl Effect {
     ) -> Result<source::storage::Payload, DomError> {
         step()?;
         match self {
-            Self::AttributeSuffix(frame) => frame.retained_payload(step),
+            Self::AttributeSuffix(frame) | Self::AfterScriptAttribute(frame) => {
+                frame.retained_payload(step)
+            }
             Self::XmlDocument(frame) => frame.retained_payload(step),
             Self::Output(frame) => frame.retained_payload(step),
             Self::Setter {
@@ -983,6 +987,8 @@ impl EffectFrame {
             Effect::AutofocusInsertion(frame) => Effect::AutofocusInsertion(*frame),
             Effect::DialogHook(frame) => Effect::DialogHook(*frame),
             Effect::AttributeSuffix(frame) => Effect::AttributeSuffix(frame.clone()),
+            Effect::AfterScriptAttribute(frame) => Effect::AfterScriptAttribute(frame.clone()),
+            Effect::Script(frame) => Effect::Script(*frame),
             Effect::Style(frame) => Effect::Style(*frame),
             Effect::XmlDocument(frame) => Effect::XmlDocument(frame.clone()),
             Effect::ChildrenChanged { parent, stage } => Effect::ChildrenChanged {
@@ -1092,6 +1098,7 @@ impl Draft {
                 | Effect::Clone(_)
                 | Effect::XmlDocument(_)
                 | Effect::AttributeSuffix(_)
+                | Effect::AfterScriptAttribute(_)
         ));
         self.push_effect_retained(effect, scoped, None, cancel)
     }
@@ -1227,6 +1234,10 @@ impl Draft {
                     Effect::AttributeSuffix(frame) => {
                         self.attribute_suffix(frame, payload, limits, cancel)?
                     }
+                    Effect::AfterScriptAttribute(frame) => {
+                        self.attribute_after_script(frame, payload, limits, cancel)?
+                    }
+                    Effect::Script(frame) => self.script_effect(frame, cancel)?,
                     Effect::Style(frame) => self.style_effect(frame, cancel)?,
                     Effect::XmlDocument(frame) => {
                         self.xml_document_effect(frame, payload, limits, cancel)?

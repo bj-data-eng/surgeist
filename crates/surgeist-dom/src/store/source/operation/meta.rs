@@ -500,26 +500,10 @@ pub(super) struct Pending {
     disposition: Disposition,
     bases: Vec<(NodeId, surgeist_cssom::CssomSnapshot)>,
 }
-pub(super) struct SavedReceipt {
-    pub(super) receipt: Receipt,
-    pub(super) request: Option<DomStyleRequest>,
-    pub(super) binding: Option<DomStyleCssomOwnerBinding>,
-}
 impl Operation {
     pub(super) fn meta_reached(&self) -> bool {
         matches!(&self.draft, dialog::OperationDraft::Segment(draft)
             if draft.meta_recording.as_ref().is_some_and(|r| !r.entries.is_empty()))
-    }
-    pub(super) fn save_meta_receipt(&mut self) {
-        if self.meta_receipt.is_none()
-            && let Some(receipt) = self.receipt.take()
-        {
-            self.meta_receipt = Some(SavedReceipt {
-                receipt,
-                request: self.request.take(),
-                binding: self.owner_binding.take(),
-            });
-        }
     }
     pub(super) fn prepare_meta_execution(
         &mut self,
@@ -637,14 +621,6 @@ struct ReceiptLoan<'caps> {
     _charge: crate::store::meta_atomic::SourceGraphCharge,
 }
 impl DomSourceLease<'_> {
-    fn meta_receipt(&self) -> Option<(&Receipt, &DomStyleRequest)> {
-        let operation = self.dom.source_operation.as_ref()?;
-        if let Some(saved) = &operation.meta_receipt {
-            Some((&saved.receipt, saved.request.as_ref()?))
-        } else {
-            Some((operation.receipt.as_ref()?, operation.request.as_ref()?))
-        }
-    }
     #[expect(
         clippy::result_large_err,
         reason = "retain the exact Document and original producer refusal without allocating on failure"
@@ -656,9 +632,18 @@ impl DomSourceLease<'_> {
         limits: DomMetaAtomicLimits,
         cancel: &AtomicBool,
     ) -> Result<Option<ReceiptLoan<'caps>>, DomMetaAtomicError> {
-        let Some((Receipt::Cssom { revision, .. }, request)) = self.meta_receipt() else {
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let Some(receipt @ Receipt::Cssom { .. }) = &operation.receipt else {
             return Ok(None);
         };
+        let request = operation
+            .request
+            .as_ref()
+            .ok_or(DomError::StyleReceiptMismatch)?;
         let root = request.cssom_root().ok_or(DomError::StyleReceiptMismatch)?;
         let canonical = self
             .dom
@@ -666,11 +651,6 @@ impl DomSourceLease<'_> {
             .get(root)
             .ok_or(DomError::StyleReceiptMismatch)?;
         let formation = self.meta_formation(cancel)?;
-        let operation = self
-            .dom
-            .source_operation
-            .as_ref()
-            .expect("qualified Source");
         let envelope = Envelope::source(
             limits,
             DomMetaRuntimeUsage {
@@ -706,9 +686,13 @@ impl DomSourceLease<'_> {
             }
         })?;
         let snapshot = guard.snapshot();
-        if snapshot.revision() != revision {
-            return Err(DomError::StyleReceiptMismatch.into());
-        }
+        operation.qualify_retained_cssom_receipt(
+            receipt,
+            request,
+            operation.owner_binding.as_ref(),
+            &snapshot,
+            || envelope.step(cancel),
+        )?;
         Ok(Some(ReceiptLoan {
             root,
             guard: Some(guard),
@@ -763,7 +747,10 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                         runtime: self.usage,
                     }),
                 };
-                match self.lease.advance_execution(&mut execution, cancel) {
+                // Receipt validation already holds this exact producer lock
+                // through the Source advance and its publication fence.
+                let cssom = receipt.as_ref().and_then(|loan| loan.guard.as_ref());
+                match self.lease.advance_execution(&mut execution, cssom, cancel) {
                     Ok(source) => {
                         return Ok(Err(crate::DomInlineStyleSourceProgress {
                             source,
@@ -1194,7 +1181,6 @@ impl Pending {
         let changes = published.commit.changes.clone();
         operation.receipt = None;
         operation.owner_binding = None;
-        operation.meta_receipt = None;
         // The real journal is now rebased; no old native input may replay.
         drop(operation.draft.meta_recording.take());
         operation.draft.meta_scope = None;

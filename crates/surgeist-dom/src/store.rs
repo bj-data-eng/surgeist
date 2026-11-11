@@ -319,6 +319,8 @@ pub enum DomError {
     InvalidAdjacentPosition,
     InvalidCharacter,
     Namespace,
+    /// HTML Script preparation requires a live settings observation.
+    ScriptPreparationRequired,
     NotSupported,
     NativeInitializationRequired(surgeist_html::elements::native::HtmlElementClass),
     NonceInapplicable,

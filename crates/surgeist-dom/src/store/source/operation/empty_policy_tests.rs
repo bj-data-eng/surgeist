@@ -160,6 +160,7 @@ fn assert_gate(
                 bytes,
                 units,
                 observation: stored,
+                ..
             }) = &lease.dom.source_operation.as_ref().unwrap().receipt
             else {
                 panic!("accepted original Inline receipt")

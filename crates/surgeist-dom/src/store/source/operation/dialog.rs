@@ -1766,7 +1766,7 @@ impl DomSourceLease<'_> {
             }
         }
         operation.started = true;
-        let result = self.advance_operation(&mut operation, execution, cancel);
+        let result = self.advance_operation(&mut operation, execution, None, cancel);
         if self.complete || matches!(result, Ok(DomSourceProgress::Complete(_))) {
             self.complete = true;
             self.dom.source_operation = self.dom.source_parents.pop();
