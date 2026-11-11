@@ -4922,6 +4922,39 @@ fn foreground_layer_blur_keeps_off_surface_ink_on_a_transformed_local_grid() {
 }
 
 #[test]
+fn foreground_layer_blur_composites_into_the_transformed_parent_local_grid() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(16.0, 9.0), 1.0)).unwrap();
+    let mask_image = Image::from_rgba(Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+    let mask = ResolvedLayerAlphaMask::try_new(mask_image, Rect::new(0.0, 0.0, 9.0, 9.0)).unwrap();
+    let parent = Layer::new()
+        .with_resolved_alpha_mask(mask)
+        .with_transform(Transform::translation(4.0, 0.0).unwrap());
+    let child = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap());
+    let mut scene = Scene::new();
+    scene.layer(parent, |scene| {
+        scene.layer(child, |scene| {
+            scene.fill(Rect::new(4.0, 4.0, 1.0, 1.0), Color::BLACK);
+        });
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    // The impulse center moves from x=4 by 1 in the parent and then by 4 in
+    // the surface. Each translation applies exactly once.
+    let center_alpha = pixel_alpha(&output, 9, 4);
+    assert!(
+        (39..=43).contains(&center_alpha),
+        "unexpected alpha at the translated center {center_alpha}"
+    );
+    assert_eq!(pixel_alpha(&output, 13, 4), 0);
+}
+
+#[test]
 fn foreground_layer_blur_kernel_limit_preserves_frame_and_zero_sigma_needs_no_kernel() {
     use crate::{RenderAccountingOptions, RenderLimits, RenderPhase, RenderQuantity, RenderWork};
 
