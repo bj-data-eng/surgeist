@@ -1,4 +1,5 @@
 mod active_frames;
+mod entries;
 mod gaussian;
 mod lease;
 mod manager;
@@ -23,10 +24,7 @@ use crate::accounting::{Account, CpuAccount, Generation};
 #[cfg(test)]
 use crate::accounting::{RenderAccountingOptions, RenderCpuScope, RendererCpu};
 use manager::ResourceManagerState;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum WorkingFormat {
@@ -83,7 +81,7 @@ impl ResourceManager {
                 next_resource: 0,
                 accounting_fault: None,
                 active_frames: active_frames::ActiveFrames::default(),
-                entries: BTreeMap::new(),
+                entries: entries::ResourceEntries::default(),
                 pending_vello_atlas_recovery: None,
                 #[cfg(test)]
                 payload_creation_attempts: 0,

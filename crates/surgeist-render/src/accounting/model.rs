@@ -191,6 +191,9 @@ dimensions! {
         /// Active-frame index records shifted during mandatory in-place removal.
         /// Replacement capacity moves are counted as storage relocations.
         ActiveFrameRecordMoves,
+        /// Live resource-cache records moved during in-place removal compaction.
+        /// Replacement backing moves are counted as storage relocations.
+        ResourceCacheRecordMoves,
     }
 }
 impl RenderWork {

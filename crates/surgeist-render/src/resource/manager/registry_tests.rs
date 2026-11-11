@@ -79,8 +79,7 @@ fn resource_entry_backing_refuses_before_payload_creation() {
     let before = manager.observation_for_test();
     let error = frame
         .acquire(ResourceCacheKey::VelloAtlas, 4)
-        .err()
-        .expect("fresh resource admission needs funded index capacity");
+        .expect_err("fresh resource admission needs funded index capacity");
     assert!(matches!(
         error.accounting_diagnostic(),
         Some(RenderAccountingError::CpuRefused {
@@ -93,6 +92,128 @@ fn resource_entry_backing_refuses_before_payload_creation() {
     drop(frame.finish_checked().unwrap());
     cpu.ensure_healthy().unwrap();
     manager.generation().ensure_healthy().unwrap();
+}
+
+#[test]
+fn resource_entry_growth_preserves_old_entries_on_refusal_and_reuses_vacancy() {
+    use crate::accounting::{RenderCpuScope, RenderProfile, RendererCpu};
+
+    let bytes = crate::resource::entries::RECORD_BYTES;
+    let frame_bytes =
+        std::mem::size_of::<(FrameIdentity, crate::resource::lease::FrameScratch)>() as u64;
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let opening = RendererCpu::new(options)
+        .unwrap()
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    let options = options
+        .with_limits(RenderLimits::new().with_retained_bytes(opening + frame_bytes + 3 * bytes));
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DISABLED,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let mut frame = manager.begin_frame(None).unwrap();
+    let first = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let second = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let before = manager.observation_for_test();
+    let error = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap_err();
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+            current,
+            amount,
+            ..
+        }) if current == opening + frame_bytes + 2 * bytes && amount == 3 * bytes
+    ));
+    assert_eq!(manager.observation_for_test(), before);
+    let second_id = second.resource_identity();
+    frame.discard(first).unwrap();
+    let third = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    assert_eq!(third.resource_identity(), ResourceIdentity(3));
+    assert_eq!(
+        manager.observation_for_test().entry_identities_for_test(),
+        &[second_id, ResourceIdentity(3)]
+    );
+    let snapshot = cpu.snapshot().unwrap();
+    let backing = snapshot.scope_usage(RenderCpuScope::DeviceBacking).unwrap();
+    assert_eq!(
+        backing.peak(RenderResource::RetainedCpuBytes),
+        frame_bytes + 3 * bytes
+    );
+    assert_eq!(
+        backing.live(RenderResource::RetainedCpuBytes),
+        frame_bytes + 2 * bytes
+    );
+    assert_eq!(backing.work(RenderWork::StorageRelocations), 1);
+    assert_eq!(
+        snapshot
+            .scope_usage(RenderCpuScope::Cleanup)
+            .unwrap()
+            .work(RenderWork::ResourceCacheRecordMoves),
+        1
+    );
+    frame.release(second).unwrap();
+    frame.release(third).unwrap();
+    assert_eq!(
+        frame.finish().evicted_resources(),
+        &[second_id, ResourceIdentity(3)]
+    );
+    assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+    drop(manager);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        opening
+    );
+}
+
+#[test]
+fn graph_preflight_reserves_all_fresh_entry_slots_before_creation() {
+    use crate::accounting::{RenderCpuScope, RenderProfile, RendererCpu};
+
+    let bytes = crate::resource::entries::RECORD_BYTES;
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    manager
+        .preflight_graph_acquisitions(&[request.clone(), request], None)
+        .unwrap();
+    assert_eq!(registry_facts(&manager), (0, 0, 0, 0));
+    assert_eq!(manager.observation_for_test().payload_creation_attempts, 0);
+    let backing = cpu
+        .snapshot()
+        .unwrap()
+        .scope_usage(RenderCpuScope::DeviceBacking)
+        .unwrap();
+    assert_eq!(backing.live(RenderResource::RetainedCpuBytes), 2 * bytes);
+    let mut frame = manager.begin_frame(None).unwrap();
+    let key = ResourceCacheKey::EffectTexture(descriptor().cache_key());
+    let first = frame.acquire(key.clone(), 4).unwrap();
+    let second = frame.acquire(key, 4).unwrap();
+    let backing = cpu
+        .snapshot()
+        .unwrap()
+        .scope_usage(RenderCpuScope::DeviceBacking)
+        .unwrap();
+    assert_eq!(backing.work(RenderWork::StorageRelocations), 0);
+    frame.release(first).unwrap();
+    frame.release(second).unwrap();
+    drop(frame.finish_checked().unwrap());
+    assert_eq!(manager.observation_for_test().idle_count, 2);
 }
 
 #[test]

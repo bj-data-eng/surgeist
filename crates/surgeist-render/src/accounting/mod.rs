@@ -32,7 +32,7 @@ pub use model::*;
 #[cfg(test)]
 pub(crate) use storage::packed_size;
 pub(crate) use storage::{
-    AccountedVec, DisposalCompletion, DisposingVec, Hold, OwnedBox, PackedProducer,
+    AccountedVec, AppendSlot, DisposalCompletion, DisposingVec, Hold, OwnedBox, PackedProducer,
     PreparationValue, SharedValue, StorageAccount, StorageContractError, StorageSizing,
     preparation_backing, reserve_backing_with,
 };
