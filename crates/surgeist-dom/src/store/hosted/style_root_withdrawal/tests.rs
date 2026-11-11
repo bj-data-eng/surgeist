@@ -109,6 +109,68 @@ fn constructor() -> (Dom, DomHostedSource, DocumentId) {
     (dom, source, document)
 }
 
+fn publish_style_sheet(
+    lease: &mut crate::DomSourceLease<'_>,
+    root: &DomStyleCssomRoot,
+    create: crate::DomStyleRequest,
+) -> (
+    surgeist_cssom::CssomSheetId,
+    crate::DomStyleNotificationToken,
+) {
+    lease.bind_cssom_root(&create, root, &cancel()).unwrap();
+    let create = lease
+        .qualify_cssom(&create, root.root(), &root.snapshot().unwrap())
+        .unwrap();
+    let version = CssomInputVersion {
+        role: CssomInputRole::Owner,
+        identity: "direct-style".into(),
+        revision: 1,
+    };
+    lease
+        .bind_cssom_owner(
+            &create,
+            crate::DomStyleCssomOwnerBinding::new(&create, version.clone(), "direct-style".into())
+                .unwrap(),
+            &cancel(),
+        )
+        .unwrap();
+    let parser = CssParserContext::default();
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
+            create.source().text().clone(),
+            CssUtf16InputLimits::default(),
+            || Ok::<_, ()>(()),
+        )
+        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
+    let mut inputs = CssomSheetInputs::external(version, true);
+    inputs.owner = Some("direct-style".into());
+    let mut batch = root
+        .batch(CssomEditGuard::from_snapshot(&root.snapshot().unwrap()))
+        .unwrap();
+    let construction = batch
+        .create_parsed_sheet_with_media_reports(body, media, inputs)
+        .unwrap();
+    let commit = root.commit(&mut Some(batch)).unwrap();
+    let sheet = commit.sheet(construction.ticket()).unwrap().clone();
+    let notification = lease
+        .accept_cssom_publication(
+            &create,
+            commit,
+            root.snapshot().unwrap(),
+            Some(construction.ticket()),
+        )
+        .unwrap()
+        .unwrap();
+    (sheet, notification)
+}
+
 fn style_resource(
     dom: &mut Dom,
     document: DocumentId,
@@ -159,57 +221,7 @@ fn style_resource(
     else {
         panic!("actual create request")
     };
-    lease.bind_cssom_root(&create, &root, &cancel()).unwrap();
-    let create = lease
-        .qualify_cssom(&create, root.root(), &root.snapshot().unwrap())
-        .unwrap();
-    let version = CssomInputVersion {
-        role: CssomInputRole::Owner,
-        identity: "direct-style".into(),
-        revision: 1,
-    };
-    lease
-        .bind_cssom_owner(
-            &create,
-            crate::DomStyleCssomOwnerBinding::new(&create, version.clone(), "direct-style".into())
-                .unwrap(),
-            &cancel(),
-        )
-        .unwrap();
-    let parser = CssParserContext::default();
-    let body = CssParser::new(parser, Default::default())
-        .parse_sheet_utf16(
-            create.source().text().clone(),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
-    let media = CssMediaQueryList::parse_utf16(
-        &CssParser::new(parser, Default::default()),
-        Arc::new(Vec::new()),
-        CssUtf16InputLimits::default(),
-        || Ok::<_, ()>(()),
-    )
-    .unwrap();
-    let mut inputs = CssomSheetInputs::external(version, true);
-    inputs.owner = Some("direct-style".into());
-    let mut batch = root
-        .batch(CssomEditGuard::from_snapshot(&root.snapshot().unwrap()))
-        .unwrap();
-    let construction = batch
-        .create_parsed_sheet_with_media_reports(body, media, inputs)
-        .unwrap();
-    let commit = root.commit(&mut Some(batch)).unwrap();
-    let sheet = commit.sheet(construction.ticket()).unwrap().clone();
-    let mut notification = lease
-        .accept_cssom_publication(
-            &create,
-            commit,
-            root.snapshot().unwrap(),
-            Some(construction.ticket()),
-        )
-        .unwrap()
-        .unwrap();
+    let (sheet, mut notification) = publish_style_sheet(&mut lease, &root, create);
     assert!(matches!(
         lease.advance(&cancel()).unwrap(),
         DomSourceProgress::Complete(_)
@@ -1126,6 +1138,180 @@ fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
     assert_eq!(prepared.preparation_document(), Some(document));
     assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
     assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
+}
+
+#[test]
+fn published_style_acknowledges_sheet_after_svg_refusal() {
+    use crate::{DomDocumentScriptingFacts, DomSourceScriptStep, DomStyleInlineCspObservation};
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let navigable = initial.document(document).unwrap().navigable().unwrap();
+    let global = initial.hosted_navigable(navigable).unwrap().global();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let root = DomStyleCssomRoot::new(
+        document.node(),
+        CssomStore::new(Default::default(), Default::default()).unwrap(),
+    );
+    let empty = root.snapshot().unwrap();
+    assert!(empty.sheets().is_empty());
+
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let style = batch.create_element_ns(document, Namespace::html(), "style");
+    let css = batch.create_text(document, "div { color: red }");
+    batch.insert_before(&css, &style, None);
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let code = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&code, &script, None);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    for child in [&style, &script, &svg] {
+        batch.insert_before(child, &wrapper, None);
+    }
+    let setup = dom.apply(batch, &cancel).unwrap();
+    let [wrapper, style, script, svg] =
+        [wrapper, style, script, svg].map(|node| setup.created(&node).unwrap().unwrap());
+    let facts = DomDocumentScriptingFacts {
+        engine: HtmlScriptingEngine::Supported,
+        policy: HtmlScriptingPolicy {
+            user_allows: true,
+            automation_allows: true,
+        },
+    };
+    let backing = source
+        .retain_runtime_payload(
+            &mut dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel,
+        )
+        .unwrap();
+    let (binding, registration) = source
+        .attach_document_script_host(&mut dom, global, document, facts, backing, &cancel)
+        .unwrap();
+    let before = dom.snapshot();
+    assert_eq!(before.node(wrapper).unwrap().parent(), None);
+    let old_style = before.node(style).unwrap().as_style().unwrap().state();
+
+    let (read, prefix, sheet, applied, mut notification) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(wrapper, parent, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the first connected child must request Style policy");
+        };
+        assert_eq!(policy.source().element(), style);
+        let operation = lease.operation();
+        assert_eq!(policy.source().operation(), operation);
+        lease
+            .accept_inline_csp(
+                &policy,
+                &DomStyleInlineCspObservation::complete_empty(policy.source(), 1),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(create)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the actual allowed Style must request its CSSOM sheet");
+        };
+        let (sheet, notification) = publish_style_sheet(&mut lease, &root, create);
+        assert_eq!(
+            notification.origin(),
+            &crate::DomStyleNotificationOrigin::NativeSource(operation)
+        );
+        let applied = root.snapshot().unwrap();
+        assert_eq!(applied.sheets(), std::slice::from_ref(&sheet));
+        assert_ne!(applied.revision(), empty.revision());
+        let DomSourceProgress::Request(DomSourceRequest::Script(read)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the next connected child must request Script settings");
+        };
+        assert_eq!(read.operation(), operation);
+        assert_eq!(read.step(), DomSourceScriptStep::ReadScripting);
+        assert_eq!(read.subject(), Some(script));
+        assert_eq!(read.node_document(), Some(document));
+        assert_eq!(read.relevant_global(), Some(global));
+        let prefix = lease.snapshot();
+        assert_eq!(prefix.stamp(), read.basis());
+        assert_eq!(prefix.incomplete_source_operation(), Some(operation));
+        assert_eq!(
+            prefix.node(style).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        (read, prefix, sheet, applied, notification)
+    };
+    let check_prefix = |snapshot: &crate::DomSnapshot| {
+        assert_eq!(snapshot.node(wrapper).unwrap().parent(), Some(parent));
+        assert_eq!(
+            snapshot.node(wrapper).unwrap().children(),
+            [style, script, svg]
+        );
+        let script = snapshot.node(script).unwrap().as_html_script().unwrap();
+        assert!(!script.flags().already_started());
+        assert_eq!(script.script_type(), None);
+        assert_eq!(script.preparation_document(), None);
+        let svg = snapshot.node(svg).unwrap().as_svg_script().unwrap();
+        assert_eq!(svg.origin(), crate::DomSvgScriptOrigin::Native);
+        assert!(!svg.flags().already_processed());
+    };
+    check_prefix(&prefix);
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let mut lease = dom
+        .resume_source_edit(read.operation(), source_limits(), &cancel)
+        .unwrap();
+    let refused = lease.advance(&cancel);
+    assert!(
+        matches!(refused, Err(DomError::SvgScriptProcessingUnavailable)),
+        "the actual Disabled read must reach the later SVG refusal: {refused:?}"
+    );
+    drop(lease);
+
+    let closed = dom.snapshot();
+    check_prefix(&closed);
+    let current = root.snapshot().unwrap();
+    assert_eq!(current.revision(), applied.revision());
+    assert_eq!(current.sheets(), applied.sheets());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "published Style must settle its original CSSOM acknowledgment after SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    let association = closed
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    assert_eq!(association.id(), &sheet);
+    assert_eq!(association.revision(), applied.revision());
+    assert_eq!(association.root(), document.node());
+    assert!(matches!(
+        dom.finish_style_notification(
+            &mut notification,
+            crate::DomStyleNotificationDelivery::Native,
+            1,
+            &cancel
+        )
+        .unwrap(),
+        crate::DomStyleNotificationCompletion::Complete(_),
+    ));
 }
 
 #[test]
