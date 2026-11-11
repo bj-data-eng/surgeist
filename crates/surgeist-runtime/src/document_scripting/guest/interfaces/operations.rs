@@ -79,12 +79,21 @@ pub(super) fn event_setter<'scope>(
 
 pub(super) fn nullable_target<'scope>(
     owner: &NativeOwner,
+    events: &GuestEvents,
     scope: &mut Scope<'scope>,
     event: &Value<'scope>,
     target: Option<DomEventTarget>,
 ) -> Result<Value<'scope>, Error> {
     match target {
-        Some(target) => super::super::wrapper::event_target_value(owner, scope, event, &target),
+        Some(target) => {
+            match super::super::wrapper::event_target_value(owner, events, scope, event, &target) {
+                Ok(value) => Ok(value),
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                    Err(error)
+                }
+                Err(error) => refuse(scope, &events.refusal, error),
+            }
+        }
         None => scope.primitive(Primitive::Null),
     }
 }
@@ -109,19 +118,13 @@ impl Capture {
         let event = &native.payload().0;
         match method {
             Method::Path => {
-                let mut path = event.composed_path();
-                let result = if let Some(target) = path.next() {
-                    if path.next().is_some() {
-                        return Err(Error::RegistryConflict);
+                return match project_path(&owner, &events, scope, receiver, event.composed_path()) {
+                    Ok(path) => Ok(Completion::Return(path)),
+                    Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                        Err(error)
                     }
-                    let target = super::super::wrapper::event_target_value(
-                        &owner, scope, receiver, &target,
-                    )?;
-                    scope.array(&[target])?
-                } else {
-                    scope.array(&[])?
+                    Err(error) => refuse(scope, &events.refusal, error),
                 };
-                return Ok(Completion::Return(result));
             }
             Method::Stop => event.stop_propagation(),
             Method::StopImmediate => event.stop_immediate_propagation(),
@@ -205,4 +208,34 @@ impl Capture {
             [*bubbles, *cancelable],
         )
     }
+}
+
+fn project_path<'scope>(
+    owner: &NativeOwner,
+    events: &GuestEvents,
+    scope: &mut Scope<'scope>,
+    receiver: &Value<'scope>,
+    path: crate::DomEventComposedPath,
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    let count = path.size_hint().1.ok_or(Error::RegistryConflict)?;
+    if count == 0 {
+        return Ok(scope.array(&[])?);
+    }
+    let copied = scope.argument_copy_storage_bytes(count)?;
+    let bytes = count
+        .checked_mul(size_of::<Value<'scope>>())
+        .and_then(|bytes| bytes.checked_add(copied))
+        .ok_or(Error::Allocation)?;
+    let _backing = events.reserve(owner, bytes)?;
+    let mut projected = Vec::new();
+    projected
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Allocation)?;
+    for target in path {
+        events.step()?;
+        projected.push(super::super::wrapper::event_target_value(
+            owner, events, scope, receiver, &target,
+        )?);
+    }
+    Ok(scope.array(&projected)?)
 }

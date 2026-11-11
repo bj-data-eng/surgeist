@@ -4,6 +4,7 @@ use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject};
 pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
     Window(DomHostedGlobalId),
+    Document(DocumentId),
 }
 
 impl GuestReceiver {
@@ -11,6 +12,7 @@ impl GuestReceiver {
         match self {
             Self::Projected(projection) => projection.payload().native.clone().into(),
             Self::Window(global) => (*global).into(),
+            Self::Document(document) => document.node().into(),
         }
     }
 }
@@ -23,6 +25,10 @@ pub(super) fn event_receiver<'scope>(
     if let Some(projection) = scope.native_object::<GuestTargetProjection>(receiver)? {
         return Ok(Some(GuestReceiver::Projected(projection)));
     }
+    if let Some(document) = scope.native_object::<interfaces::GuestDocumentProjection>(receiver)? {
+        let id = document.payload().id().ok_or(Error::RegistryConflict)?;
+        return Ok(Some(GuestReceiver::Document(id)));
+    }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
     let global = scope.global()?;
     Ok(scope
@@ -32,29 +38,41 @@ pub(super) fn event_receiver<'scope>(
 
 pub(super) fn event_target_value<'scope>(
     owner: &NativeOwner,
+    events: &GuestEvents,
     scope: &mut Scope<'scope>,
     event: &Value<'scope>,
     target: &DomEventTarget,
-) -> Result<Value<'scope>, Error> {
-    if let DomEventTarget::Global(global) = target {
-        let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
-        if *global == attachment.target.global() {
-            return scope.global();
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    match target {
+        DomEventTarget::Global(global) => {
+            let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+            if *global == attachment.target.global() {
+                return Ok(scope.global()?);
+            }
         }
-        return Err(Error::RegistryConflict);
+        DomEventTarget::Node(node) => {
+            return events
+                .public
+                .as_ref()
+                .ok_or(Error::ExpiredIdentity)?
+                .document_object(scope, events, *node);
+        }
+        DomEventTarget::Standalone(expected) => {
+            let value = scope
+                .native_object_reference::<GuestEventProjection>(
+                    event,
+                    interfaces::EVENT_TARGET_REFERENCE,
+                )?
+                .ok_or(Error::RegistryConflict)?;
+            if scope
+                .native_object::<GuestTargetProjection>(&value)?
+                .is_some_and(|projection| &projection.payload().native == expected)
+            {
+                return Ok(value);
+            }
+        }
     }
-    let value = scope
-        .native_object_reference::<GuestEventProjection>(event, interfaces::EVENT_TARGET_REFERENCE)?
-        .ok_or(Error::RegistryConflict)?;
-    let original = scope
-        .native_object::<GuestTargetProjection>(&value)?
-        .ok_or(Error::RegistryConflict)?;
-    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().native)
-    {
-        Ok(value)
-    } else {
-        Err(Error::RegistryConflict)
-    }
+    Err(Error::RegistryConflict.into())
 }
 
 struct DispatchMethod {
