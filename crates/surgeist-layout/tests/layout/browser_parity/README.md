@@ -67,6 +67,11 @@ by digest. Each original source family has an authenticated successor or an
 obsolete observation retired from current evidence. Sources of retired
 observations remain available for recapture.
 
+The [retained capture helper](historical-inputs/scripts/gentest/test_helper.js)
+supplies the historical report's `scripts/gentest/test_helper.js` input. Its
+other inputs resolve at the paths recorded in the report. The ordinary suite
+checks all historical input digests and linked resource bindings.
+
 Ordinary tests traverse every historical XML and every registered current
 capture. The default verdict requires complete historical accounting and
 fresh current qualification. Retired observations retain their raw failures
