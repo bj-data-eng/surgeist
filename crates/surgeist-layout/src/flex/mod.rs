@@ -60,6 +60,22 @@ use scroll::{
     flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
+/// The authored axis whose intrinsic preference belongs to row Flex.
+pub(crate) fn preferred_inline_axis<S: LayoutScalar>(
+    display: crate::Display,
+    direction: FlexDirection,
+    flow_axes: FlowAxes,
+    preferred: &Size<crate::PreferredSizeOf<S>>,
+) -> Option<PhysicalAxis> {
+    let axis = flow_axes.inline_axis();
+    let inline = match axis {
+        PhysicalAxis::Horizontal => &preferred.width,
+        PhysicalAxis::Vertical => &preferred.height,
+    };
+    (display == crate::Display::Flex && direction.is_row() && inline.is_max_content())
+        .then_some(axis)
+}
+
 pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,

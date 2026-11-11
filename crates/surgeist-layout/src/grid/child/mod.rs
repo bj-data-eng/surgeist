@@ -1157,6 +1157,10 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         box_sizing_adjustment,
     } = grid_item_box_edges(child_style, container_flow_axes, containing_physical_size)?;
     let area_parent = containing_physical_size;
+    let deferred_axis = child_style.flex_preferred_inline_axis;
+    // A symbolic Flex preference is not an automatic size that ratio transfer
+    // or stretch can supply. Leave it open for the child formatter.
+    let preferred_ratio = child_style.aspect_ratio.filter(|_| deferred_axis.is_none());
     let algorithm = sizing_algorithm_for_grid_display(container_style.display);
     let inherent_size = Size::new(
         resolve_preferred_optional(
@@ -1174,7 +1178,7 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
             true,
         )?,
     )
-    .apply_aspect_ratio(child_style.aspect_ratio)
+    .apply_aspect_ratio(preferred_ratio)
     .add_optional(box_sizing_adjustment);
     let minimum = Size::new(
         resolve_standalone_subgrid_item_minimum_optional(
@@ -1259,10 +1263,12 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         },
     );
     let logical_unresolved_margin = grid_flow_axes.logical_edges(unresolved_margin);
-    let inline_stretches = logical_unresolved_margin.inline_start.is_some()
+    let inline_stretches = deferred_axis != Some(grid_flow_axes.inline_axis())
+        && logical_unresolved_margin.inline_start.is_some()
         && logical_unresolved_margin.inline_end.is_some()
         && justify_self == AlignItems::Stretch;
-    let block_stretches = logical_unresolved_margin.block_start.is_some()
+    let block_stretches = deferred_axis != Some(grid_flow_axes.block_axis())
+        && logical_unresolved_margin.block_start.is_some()
         && logical_unresolved_margin.block_end.is_some()
         && align_self == AlignItems::Stretch;
     let logical_known = LogicalSizeOf::new(
@@ -1273,7 +1279,7 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
             .block
             .or_else(|| block_stretches.then_some(logical_available.block)),
     );
-    let known = if child_style.aspect_ratio.is_some()
+    let known = if preferred_ratio.is_some()
         && logical_inherent_size.inline.is_none()
         && logical_known.block.is_some()
         && block_stretches
@@ -1287,11 +1293,11 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     {
         grid_flow_axes
             .physical_size(LogicalSizeOf::new(None, logical_known.block))
-            .apply_aspect_ratio(child_style.aspect_ratio)
+            .apply_aspect_ratio(preferred_ratio)
     } else {
         grid_flow_axes
             .physical_size(logical_known)
-            .apply_aspect_ratio(child_style.aspect_ratio)
+            .apply_aspect_ratio(preferred_ratio)
     }
     .clamp_max_before_min_optional(min_size, max_size);
 
