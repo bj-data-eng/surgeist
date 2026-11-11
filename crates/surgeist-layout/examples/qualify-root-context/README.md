@@ -339,6 +339,23 @@ The check replays the retained edition without a browser. The publisher
 `--publish-original-block-axes-qualification` requires an absent edition
 directory, a verified original source import, and the pinned browser.
 
+## Original Flex axes qualification
+
+The [Flex axis edition](../../tests/layout/browser_parity/captured/original-flex-axes-qualification/)
+captures the 20 original writing-mode and Flex-direction combinations in both
+directions and box-sizing variants. The source establishes the absolute
+root's frame, the Flex alignment and the children's logical margins. The
+comparison checks all 80 root-local rectangle trees against the historical
+observations and Native layout.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-flex-axes-qualification
+~~~
+
+The check replays the retained edition without a browser. The publisher
+`--publish-original-flex-axes-qualification` requires an absent edition
+directory, a verified original source import, and the pinned browser.
+
 ## Original subgrid body qualification
 
 This edition authenticates the original subgrid gap fixture and its inline
