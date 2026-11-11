@@ -29,7 +29,13 @@ pub fn prepare_sdr_srgb_color(
                 coordinates.phase(RenderPhase::Coordinates, || {
                     coordinates.work(RenderWork::PaintVisits, 1)?;
                     let alpha = coordinates.coordinate(|| resolved.alpha().unwrap_or(0.0))?;
-                    let [r, g, b] = map_to_srgb(resolved, &coordinates)?;
+                    // Resolve missing input coordinates before Color's
+                    // conversions can interpret a missing polar hue.
+                    coordinates.work(RenderWork::CoordinateVisits, 3)?;
+                    let zero = Finite::new(0.0);
+                    let channels = resolved.finite_channels().map(|channel| channel.or(zero));
+                    let source = ResolvedColor::new(resolved.space(), channels, None);
+                    let [r, g, b] = map_to_srgb(source, &coordinates)?;
                     coordinates.work(RenderWork::CoordinateVisits, 4)?;
                     Color::try_rgba(r as f32, g as f32, b as f32, alpha as f32)
                 })

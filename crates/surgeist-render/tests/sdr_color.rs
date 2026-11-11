@@ -105,7 +105,7 @@ fn sdr_color_reports_the_accepted_prefix_and_times_the_retry() {
     let mut accounting = RenderAccountingContext::new(
         options.with_limits(
             RenderLimits::new()
-                .with_work_limit(RenderWork::CoordinateVisits, 40)
+                .with_work_limit(RenderWork::CoordinateVisits, 43)
                 .unwrap(),
         ),
     );
@@ -122,7 +122,7 @@ fn sdr_color_reports_the_accepted_prefix_and_times_the_retry() {
         refusal.quantity(),
         RenderQuantity::Work(RenderWork::CoordinateVisits)
     );
-    assert_eq!((refusal.current(), refusal.amount()), (40, 3));
+    assert_eq!((refusal.current(), refusal.amount()), (43, 3));
 
     accounting.set_options(options);
     let output = prepare_sdr_srgb_color(source, &mut accounting).unwrap();
@@ -132,7 +132,7 @@ fn sdr_color_reports_the_accepted_prefix_and_times_the_retry() {
     assert!(attempt.phase_elapsed(RenderPhase::Coordinates).is_some());
     let usage = attempt.phase_usage(RenderPhase::Coordinates);
     assert_eq!(usage.work(RenderWork::PaintVisits), 1);
-    assert!(usage.work(RenderWork::CoordinateVisits) > 40);
+    assert!(usage.work(RenderWork::CoordinateVisits) > 43);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
