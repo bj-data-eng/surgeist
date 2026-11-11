@@ -181,19 +181,6 @@ fn a_text_run_slot_that_was_already_transferred_reports_the_registry_row() {
 }
 
 #[test]
-fn releasing_a_frozen_arena_without_its_publication_lease_keeps_the_owner() {
-    let request = request("<body><div id=a>");
-    let (mut c, mut session, _proof, _nodes) = graph(&request);
-    let mut frozen = session.freeze(&mut c).unwrap();
-    let lease = frozen.storage.as_mut().unwrap().lease.take();
-    assert_registry_row(frozen.release(&mut c), &c);
-    // The refusal consumed nothing: restoring the lease lets the owner finish.
-    frozen.storage.as_mut().unwrap().lease = lease;
-    frozen.release(&mut c).unwrap();
-    storage_zero(&c);
-}
-
-#[test]
 fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attributes() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
     let request = request("<div a=1 b=2>");

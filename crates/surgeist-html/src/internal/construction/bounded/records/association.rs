@@ -6,10 +6,8 @@
 //! to its new depth, and sets the owner and association fields.
 
 use super::depth::{DepthPlan, Placement, Request};
+use super::shape::{ordinary_owned_contents, unowned_fragment};
 use super::*;
-use crate::internal::construction::bounded::operations::{
-    ordinary_owned_contents, unowned_fragment,
-};
 
 /// The association a change writes.
 #[derive(Clone, Copy, Debug)]
@@ -227,7 +225,7 @@ impl HtmlConstructionStorage {
         // Every record the writes name exists, checked before the last step that can refuse.
         self.verify_association(write).map_err(faulted)?;
         admission.record_change(self, usage).map_err(stopped)?;
-        depths.apply(&mut self.arena);
+        depths.apply(&mut self.arena).map_err(faulted)?;
         self.apply_association(write).map_err(faulted)?;
         self.arena.usage = after;
         Ok(())

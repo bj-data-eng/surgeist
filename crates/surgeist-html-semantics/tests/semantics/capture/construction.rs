@@ -676,83 +676,103 @@ fn refused_finish_keeps_caller_facts_mapping_and_original_source() {
 
 // Drive the real controlled construction owner to create topology the ordinary
 // native authoring front door deliberately does not expose.
-fn storage() -> surgeist_html::bounded::construction::HtmlConstructionStorage {
-    use surgeist_html::bounded::construction::HtmlConstructionStorage;
-    let mut value = HtmlConstructionStorage::begin();
-    while let Some(action) = value.next_action().unwrap() {
-        action.perform().accept();
+type Storage = surgeist_html::bounded::construction::HtmlConstructionStorage;
+
+/// An admission that grants every request and charges nothing.
+struct Free;
+impl
+    surgeist_ledger::Charge<
+        surgeist_html::accounting::HtmlWork,
+        surgeist_html::accounting::HtmlResource,
+    > for Free
+{
+    type Stop = std::convert::Infallible;
+    fn charge(&mut self, _: &[surgeist_html::accounting::HtmlChange]) -> Result<(), Self::Stop> {
+        Ok(())
     }
-    value.try_ready().unwrap().commit()
-}
-fn command(
-    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
-    command: surgeist_html::bounded::construction::HtmlConstructionCommand,
-) -> surgeist_html::bounded::construction::HtmlConstructionCommit {
-    let mut value = storage.prepare(command);
-    while let Some(action) = value.next_action().unwrap() {
-        action.perform().unwrap().accept();
-    }
-    value.try_ready().unwrap().commit().unwrap()
-}
-fn change(
-    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
-    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
-) -> (
-    surgeist_html::bounded::construction::HtmlConstructionStorage,
-    Option<HtmlBuilderNode>,
-) {
-    match command(storage, request) {
-        surgeist_html::bounded::construction::HtmlConstructionCommit::Changed {
-            storage,
-            created,
-        } => (storage, created),
-        _ => panic!("change"),
+    fn record_largest(
+        &mut self,
+        _: surgeist_html::accounting::HtmlResource,
+        _: u64,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
     }
 }
-fn create(
-    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
-    request: surgeist_html::bounded::construction::HtmlConstructionCommand,
-) -> (
-    surgeist_html::bounded::construction::HtmlConstructionStorage,
-    HtmlBuilderNode,
-) {
-    let (storage, created) = change(storage, request);
-    (storage, created.unwrap())
-}
-fn publish(
-    storage: surgeist_html::bounded::construction::HtmlConstructionStorage,
-    root: HtmlBuilderNode,
-) -> HtmlConstructionResult {
-    match command(
-        storage,
-        surgeist_html::bounded::construction::HtmlConstructionCommand::Publish { root },
-    ) {
-        surgeist_html::bounded::construction::HtmlConstructionCommit::Published {
-            result, ..
-        } => result,
-        _ => panic!("publish"),
+impl surgeist_html::bounded::construction::HtmlRecordAdmission for Free {
+    fn admit_change(
+        &mut self,
+        _: &Storage,
+        _: surgeist_html::bounded::construction::HtmlConstructionChange,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    fn admit_growth(
+        &mut self,
+        growth: surgeist_html::bounded::construction::HtmlConstructionBankGrowth,
+    ) -> Result<usize, Self::Stop> {
+        Ok(growth.minimum_capacity())
+    }
+    fn record_growth(
+        &mut self,
+        _: surgeist_html::bounded::construction::HtmlConstructionGrowthRecord,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    fn record_change(
+        &mut self,
+        _: &Storage,
+        _: surgeist_html::bounded::construction::HtmlConstructionChange,
+    ) -> Result<(), Self::Stop> {
+        Ok(())
     }
 }
-fn create_element(local: &str) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
-    surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
-        name: name(local),
-        attributes: OrderedAttributes::default(),
-        link_flags: None,
+/// The value of an operation that was granted, or its fault.
+fn granted<T>(
+    outcome: Result<
+        T,
+        surgeist_html::bounded::construction::HtmlConstructionRecordError<std::convert::Infallible>,
+    >,
+) -> T {
+    match outcome {
+        Ok(value) => value,
+        Err(surgeist_html::accounting::HtmlChargedError::Faulted(error)) => {
+            panic!("the owner refused: {error}")
+        }
+        Err(surgeist_html::accounting::HtmlChargedError::Stopped(never)) => match never {},
+    }
+}
+fn storage() -> Storage {
+    granted(Storage::new(&mut Free))
+}
+fn create_fragment(storage: &mut Storage) -> HtmlBuilderNode {
+    granted(storage.create_fragment(&mut Free))
+}
+fn create_document(storage: &mut Storage, mode: HtmlDocumentMode) -> HtmlBuilderNode {
+    granted(storage.create_document(mode, &mut Free))
+}
+fn create_shadow_contents(storage: &mut Storage) -> HtmlBuilderNode {
+    granted(storage.create_shadow_contents(properties(), &mut Free))
+}
+fn create_element(storage: &mut Storage, local: &str) -> HtmlBuilderNode {
+    granted(storage.create_element(&name(local), OrderedAttributes::default(), None, &mut Free))
+}
+fn insert(storage: &mut Storage, node: &HtmlBuilderNode, parent: &HtmlBuilderNode) {
+    granted(storage.insert(node, parent, None, &mut Free));
+}
+fn publish(storage: Storage, root: &HtmlBuilderNode) -> HtmlConstructionResult {
+    match storage.publish(root, &mut Free) {
+        Ok(result) => result,
+        Err(_) => panic!("publish"),
     }
 }
 #[test]
 fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, detached) = create(storage(), C::CreateFragment);
-    let (owner, doc) = create(
-        owner,
-        C::CreateDocument {
-            mode: HtmlDocumentMode::Quirks,
-        },
-    );
+    let mut owner = storage();
+    let detached = create_fragment(&mut owner);
+    let doc = create_document(&mut owner, HtmlDocumentMode::Quirks);
     let detached = owner.result_id(&detached).unwrap();
     let actual_root = owner.result_id(&doc).unwrap();
-    let source = publish(owner, doc);
+    let source = publish(owner, &doc);
     let (builder, revision) = new_builder();
     let facts = facts(
         &source,
@@ -783,16 +803,11 @@ fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
 /// example facts keyed to a different root, and are refused rather than ignored.
 #[test]
 fn facts_naming_a_node_outside_the_imported_closure_are_refused() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, detached) = create(storage(), C::CreateFragment);
-    let (owner, doc) = create(
-        owner,
-        C::CreateDocument {
-            mode: HtmlDocumentMode::Quirks,
-        },
-    );
+    let mut owner = storage();
+    let detached = create_fragment(&mut owner);
+    let doc = create_document(&mut owner, HtmlDocumentMode::Quirks);
     let detached = owner.result_id(&detached).unwrap();
-    let source = publish(owner, doc);
+    let source = publish(owner, &doc);
     let (builder, revision) = new_builder();
     let facts = facts_with(
         &source,
@@ -820,18 +835,13 @@ fn facts_naming_a_node_outside_the_imported_closure_are_refused() {
 /// among the facts.
 #[test]
 fn the_first_fact_entry_outside_the_closure_is_where_the_import_stops() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, first) = create(storage(), C::CreateFragment);
-    let (owner, second) = create(owner, C::CreateFragment);
-    let (owner, doc) = create(
-        owner,
-        C::CreateDocument {
-            mode: HtmlDocumentMode::Quirks,
-        },
-    );
+    let mut owner = storage();
+    let first = create_fragment(&mut owner);
+    let second = create_fragment(&mut owner);
+    let doc = create_document(&mut owner, HtmlDocumentMode::Quirks);
     let first = owner.result_id(&first).unwrap();
     let second = owner.result_id(&second).unwrap();
-    let source = publish(owner, doc);
+    let source = publish(owner, &doc);
     let stopped_with = |outside: &[HtmlNodeId], last: bool| {
         let (builder, revision) = new_builder();
         let facts = facts_with(
@@ -871,32 +881,14 @@ fn the_first_fact_entry_outside_the_closure_is_where_the_import_stops() {
 }
 #[test]
 fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, shadow) = create(
-        storage(),
-        C::CreateShadowContents {
-            properties: properties(),
-        },
-    );
-    let (owner, template) = create(owner, create_element("template"));
-    let (owner, _) = change(
-        owner,
-        C::Insert {
-            node: template,
-            parent: shadow,
-            before: None,
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::SetTemplateShadowContents {
-            template,
-            contents: shadow,
-        },
-    );
+    let mut owner = storage();
+    let shadow = create_shadow_contents(&mut owner);
+    let template = create_element(&mut owner, "template");
+    insert(&mut owner, &template, &shadow);
+    granted(owner.set_template_shadow_contents(&template, &shadow, &mut Free));
     let shadow_id = owner.result_id(&shadow).unwrap();
     let template_id = owner.result_id(&template).unwrap();
-    let source = publish(owner, shadow);
+    let source = publish(owner, &shadow);
     let (mut builder, revision) = new_builder();
     let document = external_document(&mut builder);
     let facts = facts(
@@ -933,36 +925,17 @@ fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth
 }
 #[test]
 fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, selected) = create(storage(), C::CreateFragment);
-    let (owner, template) = create(owner, create_element("template"));
-    let (owner, host) = create(owner, create_element("div"));
-    let (owner, shadow) = create(
-        owner,
-        C::CreateShadowContents {
-            properties: properties(),
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::Insert {
-            node: template,
-            parent: selected,
-            before: None,
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::AttachTemplateShadow {
-            template,
-            host,
-            contents: shadow,
-        },
-    );
+    let mut owner = storage();
+    let selected = create_fragment(&mut owner);
+    let template = create_element(&mut owner, "template");
+    let host = create_element(&mut owner, "div");
+    let shadow = create_shadow_contents(&mut owner);
+    insert(&mut owner, &template, &selected);
+    granted(owner.attach_template_shadow(&template, &host, &shadow, &mut Free));
     let template = owner.result_id(&template).unwrap();
     let host = owner.result_id(&host).unwrap();
     let shadow = owner.result_id(&shadow).unwrap();
-    let source = publish(owner, selected);
+    let source = publish(owner, &selected);
     let (mut builder, revision) = new_builder();
     let document = external_document(&mut builder);
     let facts = facts(
@@ -1004,46 +977,20 @@ fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
 // root's host still imports and finishes.
 #[test]
 fn a_template_below_an_unrelated_element_keeps_its_shadow_reference() {
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, selected) = create(storage(), C::CreateFragment);
-    let (owner, parent) = create(owner, create_element("p"));
-    let (owner, template) = create(owner, create_element("template"));
-    let (owner, host) = create(owner, create_element("div"));
-    let (owner, shadow) = create(
-        owner,
-        C::CreateShadowContents {
-            properties: properties(),
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::Insert {
-            node: parent,
-            parent: selected,
-            before: None,
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::Insert {
-            node: template,
-            parent,
-            before: None,
-        },
-    );
-    let (owner, _) = change(
-        owner,
-        C::AttachTemplateShadow {
-            template,
-            host,
-            contents: shadow,
-        },
-    );
+    let mut owner = storage();
+    let selected = create_fragment(&mut owner);
+    let parent = create_element(&mut owner, "p");
+    let template = create_element(&mut owner, "template");
+    let host = create_element(&mut owner, "div");
+    let shadow = create_shadow_contents(&mut owner);
+    insert(&mut owner, &parent, &selected);
+    insert(&mut owner, &template, &parent);
+    granted(owner.attach_template_shadow(&template, &host, &shadow, &mut Free));
     let parent = owner.result_id(&parent).unwrap();
     let template = owner.result_id(&template).unwrap();
     let host = owner.result_id(&host).unwrap();
     let shadow = owner.result_id(&shadow).unwrap();
-    let source = publish(owner, selected);
+    let source = publish(owner, &selected);
     let (mut builder, revision) = new_builder();
     let document = external_document(&mut builder);
     let facts = facts(
@@ -1174,14 +1121,9 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
         },
         HtmlConstructionCaptureError::ForeignBuilder,
     );
-    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
-    let (owner, shadow) = create(
-        storage(),
-        C::CreateShadowContents {
-            properties: properties(),
-        },
-    );
-    let source = publish(owner, shadow);
+    let mut owner = storage();
+    let shadow = create_shadow_contents(&mut owner);
+    let source = publish(owner, &shadow);
     let (mut builder, revision) = new_builder();
     let document = external_document(&mut builder);
     let missing = HtmlConstructionCaptureFacts::new(

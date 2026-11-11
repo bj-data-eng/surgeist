@@ -72,7 +72,7 @@ fn an_owner_limit_refusal_latches_the_capacity_mismatch_invariant() {
 /// The cause values of HTML's construction owner's error, one per variant. A cause added to
 /// the owner's enum does not compile in [`disposition`] until it has a row there, and a row
 /// here is what this test file then pins.
-fn every_cause() -> [HtmlConstructionCause; 30] {
+fn every_cause() -> [HtmlConstructionCause; 27] {
     use HtmlConstructionCause as C;
     [
         C::ForeignBuilder,
@@ -92,14 +92,11 @@ fn every_cause() -> [HtmlConstructionCause; 30] {
             first: 0,
             duplicate: 1,
         },
-        C::AttributeNameMismatch,
-        C::AttributeOrderMismatch,
         C::InvalidShadowAssociation,
         C::InvalidContentsReference,
         C::ParentChildConflict,
         C::InvalidOutputRoot,
-        C::OperationNotReady,
-        C::ForeignAllocation,
+        C::OperandMissing,
         C::CapacityMismatch,
         C::IndexUnavailable,
         C::SharedAllocationAliased,
@@ -177,7 +174,6 @@ fn every_owner_cause_reports_what_it_violates() {
         (C::RepresentationExhausted, exhausted, true),
         (C::CapacityMismatch, mismatch, true),
         (C::IndexUnavailable, refusal, true),
-        (C::ForeignAllocation, mismatch, true),
         (limit, mismatch, true),
         (
             C::ReleaseUnderflow,
@@ -196,12 +192,10 @@ fn every_owner_cause_reports_what_it_violates() {
         (C::AssociationAlreadyOwned, refusal, true),
         (C::InvalidTemplateAssociation, refusal, true),
         (duplicate, refusal, true),
-        (C::AttributeNameMismatch, refusal, true),
-        (C::AttributeOrderMismatch, refusal, true),
         (C::InvalidShadowAssociation, refusal, true),
         (C::InvalidContentsReference, refusal, true),
         (C::InvalidOutputRoot, refusal, true),
-        (C::OperationNotReady, refusal, true),
+        (C::OperandMissing, refusal, true),
     ];
     assert_eq!(rows.len(), every_cause().len());
     for cause in every_cause() {

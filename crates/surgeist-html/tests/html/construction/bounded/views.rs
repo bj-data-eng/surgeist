@@ -1,17 +1,13 @@
 //! The build view reports the records a storage holds as borrowed code units. Every expectation
 //! is built from the values handed to the commands, never read back from the owner.
 use super::*;
-use surgeist_html::{
-    bounded::construction::HtmlConstructionLeaf,
-    construction::{BuildStr, HtmlDoctype, HtmlProcessingInstruction},
-    values::Attribute,
-};
+use surgeist_html::{construction::BuildStr, values::Attribute};
 
-fn leaf(
-    owner: HtmlConstructionStorage,
-    leaf: HtmlConstructionLeaf,
-) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-    create(owner, HtmlConstructionCommand::Create { leaf })
+fn utf16(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
+}
+fn leaf(owner: HtmlConstructionStorage, leaf: Make) -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    create(owner, leaf)
 }
 fn units(value: BuildStr<'_>) -> Vec<u16> {
     value.code_units().to_vec()
@@ -20,14 +16,8 @@ fn units(value: BuildStr<'_>) -> Vec<u16> {
 #[test]
 fn text_and_comment_views_carry_the_exact_units_and_their_length() {
     let units_in = vec![0x61, 0, 0xD800, 0xDC00, 0xDFFF];
-    let (owner, text) = leaf(
-        storage(),
-        HtmlConstructionLeaf::Text(DocumentString::from_utf16(units_in.clone())),
-    );
-    let (owner, comment) = leaf(
-        owner,
-        HtmlConstructionLeaf::Comment(DocumentString::default()),
-    );
+    let (owner, text) = leaf(storage(), Make::Text(units_in.clone()));
+    let (owner, comment) = leaf(owner, Make::Comment(Vec::new()));
     let ConstructionNodeKind::Text(shown) = owner.node(&text).unwrap().kind() else {
         panic!("expected text");
     };
@@ -50,19 +40,12 @@ fn text_and_comment_views_carry_the_exact_units_and_their_length() {
 fn instruction_and_doctype_views_keep_absent_and_empty_identifiers_apart() {
     let (owner, pi) = leaf(
         storage(),
-        HtmlConstructionLeaf::ProcessingInstruction(HtmlProcessingInstruction::new("tool", "a b")),
+        Make::ProcessingInstruction(utf16("tool"), utf16("a b")),
     );
-    let (owner, absent) = leaf(
-        owner,
-        HtmlConstructionLeaf::Doctype(HtmlDoctype::new("html", None, None)),
-    );
+    let (owner, absent) = leaf(owner, Make::Doctype(utf16("html"), None, None));
     let (owner, present) = leaf(
         owner,
-        HtmlConstructionLeaf::Doctype(HtmlDoctype::new(
-            "svg",
-            Some(DocumentString::default()),
-            Some("sys".into()),
-        )),
+        Make::Doctype(utf16("svg"), Some(Vec::new()), Some(utf16("sys"))),
     );
     let ConstructionNodeKind::ProcessingInstruction(shown) = owner.node(&pi).unwrap().kind() else {
         panic!("expected a processing instruction");
@@ -104,7 +87,7 @@ fn element_document_and_fragment_views_report_the_created_records() {
     let name = QualifiedName::new(Namespace::html(), None, "section");
     let (owner, element) = create(
         storage(),
-        HtmlConstructionCommand::CreateElement {
+        Make::Element {
             name: name.clone(),
             attributes: attributes.clone(),
             link_flags: None,
@@ -112,11 +95,11 @@ fn element_document_and_fragment_views_report_the_created_records() {
     );
     let (owner, document) = create(
         owner,
-        HtmlConstructionCommand::CreateDocument {
+        Make::Document {
             mode: HtmlDocumentMode::Quirks,
         },
     );
-    let (owner, fragment) = create(owner, HtmlConstructionCommand::CreateFragment);
+    let (owner, fragment) = create(owner, Make::Fragment);
     let ConstructionNodeKind::Element(shown) = owner.node(&element).unwrap().kind() else {
         panic!("expected an element");
     };

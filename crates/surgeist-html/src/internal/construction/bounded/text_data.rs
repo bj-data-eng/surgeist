@@ -286,7 +286,6 @@ impl HtmlConstructionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
     use crate::internal::values::DocumentString;
 
     /// The refusal of a [`Meter`].
@@ -373,29 +372,12 @@ mod tests {
     }
 
     fn make_storage() -> HtmlConstructionStorage {
-        let mut initialization = Some(HtmlConstructionStorage::begin());
-        while let Some(action) = initialization.as_mut().unwrap().next_action().unwrap() {
-            action.perform().accept();
-        }
-        slots::initialization(&mut initialization).unwrap().commit()
-    }
-    fn add_leaf(
-        storage: HtmlConstructionStorage,
-        leaf: HtmlConstructionLeaf,
-    ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create { leaf }));
-        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-            action.perform().unwrap().accept();
-        }
-        let HtmlConstructionCommit::Changed { storage, created } =
-            slots::operation(&mut operation).unwrap().commit().unwrap()
-        else {
-            panic!("create")
-        };
-        (storage, created.unwrap())
+        super::super::free::storage()
     }
     fn text_node(text: DocumentString) -> (HtmlConstructionStorage, HtmlBuilderNode) {
-        add_leaf(make_storage(), HtmlConstructionLeaf::Text(text))
+        let mut storage = make_storage();
+        let node = super::super::free::text(&mut storage, text.code_units());
+        (storage, node)
     }
     fn units(storage: &HtmlConstructionStorage, node: &HtmlBuilderNode) -> Vec<u16> {
         match &storage.arena.records[storage.position(node).unwrap()].kind {
@@ -633,8 +615,14 @@ mod tests {
 
     #[test]
     fn a_text_another_string_holds_is_refused_and_unchanged() {
-        let held = DocumentString::from("ab");
-        let (mut storage, node) = text_node(held.clone());
+        let (mut storage, node) = text_node("ab".into());
+        // A text node made by the storage holds its own string, so another owner is given a
+        // handle on it the way a reader of the record would be.
+        let position = storage.position(&node).unwrap();
+        let held = match &storage.arena.records[position].kind {
+            NodeContent::Text(text) => text.clone(),
+            _ => panic!("a text node"),
+        };
         let usage = storage.usage();
         let error = storage
             .append_text(&node, &utf16("c"), &mut Meter::default())
@@ -647,8 +635,8 @@ mod tests {
 
     #[test]
     fn a_node_that_is_not_text_is_refused() {
-        let (mut storage, node) =
-            add_leaf(make_storage(), HtmlConstructionLeaf::Comment("ab".into()));
+        let mut storage = make_storage();
+        let node = super::super::free::comment(&mut storage, "ab");
         let error = storage
             .append_text(&node, &utf16("c"), &mut Meter::default())
             .unwrap_err();

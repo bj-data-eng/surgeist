@@ -93,13 +93,16 @@ impl SessionStorage {
             keep_first(&mut refused, evidence.release(control));
         }
         keep_first(&mut refused, effects.release(control));
+        // The records are dropped before the figures the parse holds for them are released.
+        let usage = construction.usage();
+        drop(construction);
         keep_first(
             &mut refused,
             release_parts(
                 control,
                 &owner,
                 ReleasedStorage {
-                    construction,
+                    usage,
                     holds,
                     payloads,
                 },

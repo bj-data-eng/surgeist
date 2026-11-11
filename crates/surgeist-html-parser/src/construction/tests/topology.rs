@@ -785,15 +785,10 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
         .unwrap();
     let root_capacity = probe_control.usage().actual_capacity_bytes as usize;
     let mut probe_output = frozen(probe_session, &mut probe_control);
-    let wrapper_bytes = probe_output
-        .storage
-        .as_ref()
-        .unwrap()
-        .lease
-        .as_ref()
-        .unwrap()
-        .allocation()
-        .payload_bytes();
+    // The publication adds the shared arena to what the parse holds, and nothing else. The size
+    // of the arena is private to HTML and no public item reports it, so the delta of a successful
+    // freeze of the same tree is the figure the stop below is compared with.
+    let wrapper_bytes = probe_control.usage().actual_capacity_bytes as usize - root_capacity;
     probe_output.release(&mut probe_control).unwrap();
     storage_zero(&probe_control);
     selected = selected

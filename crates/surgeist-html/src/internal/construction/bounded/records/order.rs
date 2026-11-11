@@ -7,16 +7,16 @@
 //! which the edit shifts anyway. Appending a node costs a constant whatever the fanout.
 
 use super::depth::{DepthPlan, Placement, Request};
+use super::shape::structural_parent;
 use super::*;
-use crate::internal::construction::bounded::operations::structural_parent;
 
 /// The place of an entry in a child order, and what the edit of the order writes.
 #[derive(Clone, Copy, Debug, Default)]
-struct Edit {
-    old_parent: Option<NodeIx>,
-    old_position: usize,
+pub(super) struct Edit {
+    pub(super) old_parent: Option<NodeIx>,
+    pub(super) old_position: usize,
     /// The place in the new parent's order, counted without the moving node.
-    insertion_position: usize,
+    pub(super) insertion_position: usize,
 }
 
 impl Edit {
@@ -383,7 +383,7 @@ impl HtmlConstructionStorage {
         // the last step that can refuse, so that the writes find what they name.
         self.verify_order(node, parent, &edit).map_err(faulted)?;
         admission.record_change(self, usage).map_err(stopped)?;
-        depths.apply(&mut self.arena);
+        depths.apply(&mut self.arena).map_err(faulted)?;
         self.apply_order(node, parent, &edit).map_err(faulted)?;
         self.arena.usage = after;
         Ok(())
@@ -391,7 +391,7 @@ impl HtmlConstructionStorage {
 
     /// Checks that the edit applies as planned: the node is the entry planning located, the
     /// position in the new parent's order exists, and the order has room for the entry.
-    fn verify_order(
+    pub(super) fn verify_order(
         &self,
         node: NodeIx,
         parent: Option<NodeIx>,

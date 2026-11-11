@@ -14,7 +14,6 @@ pub(super) struct FrozenStorage {
     pub(super) view: HtmlConstructionResult,
     pub(super) control: ControlIdentity,
     pub(super) holds: StorageHolds,
-    pub(super) lease: Option<surgeist_html::bounded::construction::HtmlConstructionLease>,
     pub(super) payloads: PayloadStorage,
     pub(super) effects: ConstructionEffects,
     /// Present until publication moves the evidence into the published history
@@ -65,16 +64,19 @@ impl FrozenArena {
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
         cleanup_owner(control, &storage.control)?;
-        // A missing lease is refused before anything is taken, so the owner
-        // stays where it was.
-        if storage.lease.is_none() {
-            return Err(latch_registry_row(control));
+        // A result another owner holds cannot be released: the refusal is raised before anything
+        // is taken, so the owner stays where it was and the release can be retried once the other
+        // owner is gone.
+        if storage.view.is_shared() {
+            return Err(construction_error(
+                control,
+                surgeist_html::construction::HtmlConstructionCause::SharedAllocationAliased.into(),
+            ));
         }
         let Some(FrozenStorage {
             view,
             control: owner,
             holds,
-            mut lease,
             payloads,
             effects,
             evidence,
@@ -83,67 +85,12 @@ impl FrozenArena {
         else {
             return Err(SessionError::Consumed);
         };
-        let Some(held_lease) = lease.take() else {
-            // The lease was checked above; a missing one is an impossible
-            // custody state, so the owner stays where it was.
-            self.storage = Some(FrozenStorage {
-                view,
-                control: owner,
-                holds,
-                lease: None,
-                payloads,
-                effects,
-                evidence,
-                fragment,
-            });
-            return Err(latch_registry_row(control));
-        };
-        let result = match view {
-            HtmlConstructionResult::Document(value) => {
-                surgeist_html::construction::HtmlConstructionResult::Document(value)
-            }
-            HtmlConstructionResult::Fragment(value) => {
-                surgeist_html::construction::HtmlConstructionResult::Fragment(value)
-            }
-        };
-        let recovery =
-            match surgeist_html::bounded::construction::HtmlConstructionLease::try_recover(
-                result, held_lease,
-            ) {
-                Ok(recovery) => recovery,
-                Err(refusal) => {
-                    // A refused recovery hands the result and the lease back.
-                    let ((result, held_lease), error) = refusal.into_parts();
-                    let view = match result {
-                        surgeist_html::construction::HtmlConstructionResult::Document(value) => {
-                            HtmlConstructionResult::Document(value)
-                        }
-                        surgeist_html::construction::HtmlConstructionResult::Fragment(value) => {
-                            HtmlConstructionResult::Fragment(value)
-                        }
-                    };
-                    self.storage = Some(FrozenStorage {
-                        view,
-                        control: owner,
-                        holds,
-                        lease: Some(held_lease),
-                        payloads,
-                        effects,
-                        evidence,
-                        fragment,
-                    });
-                    return Err(construction_error(control, error));
-                }
-            };
+        // The usage the published records hold is read here, and the result is dropped with the
+        // other owners of the records before the figures the parse holds for them are released.
+        let usage = view.usage();
         // Every owner is released even after a refusal; the first one is
-        // returned at the end. The recovery put the storage back before it
-        // could refuse, so the owner below can still be retired.
+        // returned at the end.
         let mut refused = None;
-        let (records, _) = recovery.into_parts();
-        #[cfg(test)]
-        if control.take_construction_recovery_fault() {
-            keep_first(&mut refused, Err(latch_registry_row(control)));
-        }
         #[cfg(test)]
         inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
         if let Some(fragment) = fragment {
@@ -162,11 +109,12 @@ impl FrozenArena {
         #[cfg(test)]
         inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
         keep_first(&mut refused, released);
+        drop(view);
         let released = release_parts(
             control,
             &owner,
             ReleasedStorage {
-                construction: records,
+                usage,
                 holds,
                 payloads,
             },

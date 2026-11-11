@@ -340,7 +340,7 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
             HtmlParseInvariant::SharedAllocationAliased,
         )),
         Cause::RepresentationExhausted => Representation,
-        Cause::CapacityMismatch | Cause::ForeignAllocation | Cause::LimitExceeded { .. } => {
+        Cause::CapacityMismatch | Cause::LimitExceeded { .. } => {
             Class(SessionClass::Fault(HtmlParseInvariant::CapacityMismatch))
         }
         Cause::ReleaseUnderflow => Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow)),
@@ -359,12 +359,10 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
         | Cause::AssociationAlreadyOwned
         | Cause::InvalidTemplateAssociation
         | Cause::DuplicateAttribute { .. }
-        | Cause::AttributeNameMismatch
-        | Cause::AttributeOrderMismatch
         | Cause::InvalidShadowAssociation
         | Cause::InvalidContentsReference
         | Cause::InvalidOutputRoot
-        | Cause::OperationNotReady
+        | Cause::OperandMissing
         | Cause::IndexUnavailable => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,
         )),

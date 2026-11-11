@@ -1,16 +1,8 @@
-//! The sole mutable owner of shared HTML construction records, and its controlled operations.
+//! The sole mutable owner of shared HTML construction records, and its direct operations.
 
 pub use crate::internal::construction::bounded::attribute_list::{
     HtmlAttributeAdmission, HtmlAttributeMerge, HtmlConstructionAttributeCapacity,
     HtmlConstructionAttributeError, HtmlConstructionAttributeGrowth,
-};
-pub use crate::internal::construction::bounded::operations::{
-    HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
-    HtmlConstructionActionFailure, HtmlConstructionCommand, HtmlConstructionCommit,
-    HtmlConstructionContent, HtmlConstructionGrowth, HtmlConstructionLeaf,
-    HtmlConstructionObservation, HtmlConstructionOperation, HtmlConstructionReadyOperation,
-    HtmlConstructionRetirement, HtmlConstructionRetirementAction,
-    HtmlConstructionRetirementDescription, HtmlConstructionStepWork,
 };
 pub use crate::internal::construction::bounded::records::{
     HtmlConstructionBank, HtmlConstructionBankCapacity, HtmlConstructionBankGrowth,
@@ -21,11 +13,4 @@ pub use crate::internal::construction::bounded::text_data::{
     HtmlConstructionTextCapacity, HtmlConstructionTextError, HtmlConstructionTextGrowth,
     HtmlTextAdmission,
 };
-pub use crate::internal::construction::bounded::{
-    HtmlConstructionAllocationId, HtmlConstructionAllocationRole,
-    HtmlConstructionAllocationSnapshot, HtmlConstructionChargeFault,
-    HtmlConstructionInitialization, HtmlConstructionInitializationAction,
-    HtmlConstructionInitializationObservation, HtmlConstructionLease, HtmlConstructionNode,
-    HtmlConstructionReadyInitialization, HtmlConstructionRecovery, HtmlConstructionRefusal,
-    HtmlConstructionRetired, HtmlConstructionStorage,
-};
+pub use crate::internal::construction::bounded::{HtmlConstructionNode, HtmlConstructionStorage};

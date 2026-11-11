@@ -426,7 +426,7 @@ impl ParserArenaSession {
         let mut taken = self.storage.take().ok_or(SessionError::Consumed)?;
         let records = taken.construction;
         let published = publish_records(control, &taken.control, &mut taken.holds, records, &root);
-        let (result, lease) = match published {
+        let result = match published {
             Ok(published) => published,
             Err((records, error)) => {
                 taken.construction = records;
@@ -482,7 +482,6 @@ impl ParserArenaSession {
                 view,
                 control: owner,
                 holds,
-                lease: Some(lease),
                 payloads,
                 effects,
                 evidence,
