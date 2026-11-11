@@ -627,6 +627,8 @@ const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
 const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
     "3136e2f0c9c4ea5c32cdb33f6b95883ccf5751c0f5aa1cd6aac5ee6ee36a7d19";
 
+const REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256: &str =
+    "2b27fb7562dbb00dc9098c8d812034358a4451cd8d7d3057a7c0f6731b4d2d90";
 const REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256: &str =
     "8008320aeadedcd97a5b07e41ca5298ae5ffa08fc25e297449cedecba02cabab";
 const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
@@ -753,6 +755,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::OriginalBlockAxes),
                 terminal_sha256: REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalFlexAxes),
+                terminal_sha256: REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256,
             },
         )?,
         admit(
