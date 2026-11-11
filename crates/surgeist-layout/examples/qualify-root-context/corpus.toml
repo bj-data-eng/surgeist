@@ -4653,3 +4653,41 @@ sources = [
   "html/grid/fri05_scroll_extent_area_origin.html",
   "html/block/fri05_scroll_target_geometry.html",
 ]
+
+[[records]]
+source = "html/flex/fri07_cross_auto_margin_overflow.html"
+source_sha256 = "c67883454d7189a6d82977e342779facf4eed5c45f335926af83281ecf917a57"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "821d2ad2068ac591b1b613a19bb449fcbb99da83e422552203b098369f92fe4f"
+content_box_ltr = "cc77742e40e52ee3b2bc7b7d825f096dbb734190c1a1451fe684968299227c44"
+border_box_rtl = "cd7fc658307e3aea45f046eec6e15916b5c9ea7bf1859ee5edfb2ad1ef27386b"
+content_box_rtl = "cd9c56d7cc99e3fecdf5b616e8afdb1a4e4d1ba201684f6fa65b1e35eea17e90"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+inline_offset = 0
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+
+[[records]]
+source = "html/flex/fri07_absolute_auto_margin_insets.html"
+source_sha256 = "5950e55d82d3e5e06b7213e7fa1313623fa6463d5d932cc93385b8d5932b2603"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "484ba5a6b3dde86fda07f10b25c09366ee9eb138ec419923754ea7a85cc6d0b1"
+content_box_ltr = "8e17bcd49868e102aff846021f65ce5b5712a7ebfe30f41ff97cf22440bce41a"
+border_box_rtl = "80fc205e81d62ddc0f9e4f0ad552296e709e7a5c852edb73bd858543447089f0"
+content_box_rtl = "964b7c839ca844487663777688250a6a6ad9d452d6df5f44b49f63e0a1a212d1"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_position = "relative"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"

@@ -1207,7 +1207,7 @@
     "tests/layout/browser_parity/html/flex/flex_calc_basis_margin_gap.html": "c8b27572e4b775292daa82619f05f56da4e0ed14bd65963ebeb6228c6cccb439",
     "tests/layout/browser_parity/html/grid/grid_calc_track_and_item_margin.html": "f9bbf7a99e1e26809accd22f9abf08056256af1f4fded88e465b59e50e819cd9",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
     "tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml": "29e762a56b65722483fbdb9bc745ef08e9aa7b5d86be059c63d4cbadf2b843f5",
     "tests/layout/browser_parity/xml/block/block_basic__border_box_rtl.xml": "44e6978d13af87f81a4dfdcac9914b1f6dba9fbfe265d4498543af5c91e1603f",
     "tests/layout/browser_parity/xml/block/block_basic__content_box_ltr.xml": "b0736fdadad7408df1ab9199c14b83055ddf0edc1bb0cd81c413f8fa6c782b7a",
@@ -1228,7 +1228,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
   }
 }

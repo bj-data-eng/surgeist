@@ -86,6 +86,13 @@ fn script_custody_flex_terminal_admits_the_current_prepared_range_producer() {
 }
 
 #[test]
+fn computed_margin_helper_preserves_prepared_range_custody() {
+    let helper = crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256;
+    script_custody_flex_terminal_helper_controls("prepared-ranges", &[(helper, true)]);
+    script_custody_flex_terminal_helper_controls("flex-composition", &[(helper, false)]);
+}
+
+#[test]
 fn fixed_orthogonal_terminal_helpers_keep_range_and_flex_profile_boundaries() {
     for request in ["prepared-ranges", "flex-composition"] {
         script_custody_flex_terminal_helper_controls(request, &[

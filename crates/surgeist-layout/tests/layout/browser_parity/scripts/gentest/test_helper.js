@@ -1451,21 +1451,20 @@ function parseEdges(edges) {
 }
 
 function parseEffectiveMargin(e, computedStyle) {
-  const autoEdges = inlineAutoMarginEdges(e, computedStyle);
   const authoredEdges = authoredMarginEdges(e, computedStyle);
-  if (!hasAuthoredMarginDeclaration(e, computedStyle) && !Object.values(autoEdges).some(Boolean)) return undefined;
+  if (!hasAuthoredMarginDeclaration(e, computedStyle) &&
+      !Object.values(authoredEdges).includes("auto")) return undefined;
 
   return representedEdges({
-    left: effectiveMarginValue(authoredEdges.left, computedStyle.marginLeft, autoEdges.left),
-    right: effectiveMarginValue(authoredEdges.right, computedStyle.marginRight, autoEdges.right),
-    top: effectiveMarginValue(authoredEdges.top, computedStyle.marginTop, autoEdges.top),
-    bottom: effectiveMarginValue(authoredEdges.bottom, computedStyle.marginBottom, autoEdges.bottom),
+    left: effectiveMarginValue(authoredEdges.left, computedStyle.marginLeft),
+    right: effectiveMarginValue(authoredEdges.right, computedStyle.marginRight),
+    top: effectiveMarginValue(authoredEdges.top, computedStyle.marginTop),
+    bottom: effectiveMarginValue(authoredEdges.bottom, computedStyle.marginBottom),
   });
 }
 
-function effectiveMarginValue(authoredValue, computedValue, isAuto) {
-  if (isAuto) return "auto";
-  if (authoredValue.trim() !== "auto" && marginValueIsNonInitial(authoredValue)) return authoredValue;
+function effectiveMarginValue(authoredValue, computedValue) {
+  if (marginValueIsNonInitial(authoredValue)) return authoredValue;
   return marginValueIsNonInitial(computedValue) ? computedValue : "";
 }
 
@@ -2075,6 +2074,7 @@ function typedOmMarginEdges(e, allowCalc = false) {
 }
 
 function typedOmMarginValue(value, allowCalc = false) {
+  if (value?.value === "auto") return "auto";
   const dimension = parseTypedOmDimension(value);
   if (!dimension) return "";
   if (dimension.unit === "percent") return `${dimension.value * 100}%`;
@@ -2090,46 +2090,65 @@ function inlineAuthoredMarginHasCalc(style) {
 }
 
 function applyInlineAuthoredMarginDeclarations(edges, style, computedStyle) {
+  const importantEdges = new Set();
   for (const property of styleDeclarationProperties(style)) {
-    applyInlineAuthoredMarginDeclaration(edges, property, styleDeclarationValue(style, property), computedStyle);
+    const important = style.getPropertyPriority?.(property) === "important";
+    const assign = (edge, value) => {
+      if (!important && importantEdges.has(edge)) return;
+      edges[edge] = value;
+      if (important) importantEdges.add(edge);
+    };
+    applyInlineAuthoredMarginDeclaration(assign, property, styleDeclarationValue(style, property), computedStyle);
   }
 }
 
-function applyInlineAuthoredMarginDeclaration(edges, property, value, computedStyle) {
-  if (!marginValueIsNonInitial(value)) return;
+function applyInlineAuthoredMarginDeclaration(assign, property, value, computedStyle) {
+  if (!value.trim()) return;
 
   switch (property) {
     case "margin-top":
-      edges.top = value;
+      assign("top", value);
       return;
     case "margin-right":
-      edges.right = value;
+      assign("right", value);
       return;
     case "margin-bottom":
-      edges.bottom = value;
+      assign("bottom", value);
       return;
     case "margin-left":
-      edges.left = value;
+      assign("left", value);
       return;
+    case "margin-block-start":
+      assign(blockStartEdge(computedStyle), value);
+      return;
+    case "margin-block-end":
+      assign(blockEndEdge(computedStyle), value);
+      return;
+    case "margin-block": {
+      const [start, end = start] = splitCssComponentValues(value);
+      assign(blockStartEdge(computedStyle), start);
+      assign(blockEndEdge(computedStyle), end);
+      return;
+    }
     case "margin-inline-start":
-      edges[inlineStartEdge(computedStyle)] = value;
+      assign(inlineStartEdge(computedStyle), value);
       return;
     case "margin-inline-end":
-      edges[inlineEndEdge(computedStyle)] = value;
+      assign(inlineEndEdge(computedStyle), value);
       return;
     case "margin-inline": {
       const [start, end = start] = splitCssComponentValues(value);
-      edges[inlineStartEdge(computedStyle)] = start;
-      edges[inlineEndEdge(computedStyle)] = end;
+      assign(inlineStartEdge(computedStyle), start);
+      assign(inlineEndEdge(computedStyle), end);
       return;
     }
     case "margin": {
       const parts = splitCssComponentValues(value);
       const [top, right = top, bottom = top, left = right] = parts;
-      edges.top = top;
-      edges.right = right;
-      edges.bottom = bottom;
-      edges.left = left;
+      assign("top", top);
+      assign("right", right);
+      assign("bottom", bottom);
+      assign("left", left);
       return;
     }
   }
@@ -2153,18 +2172,6 @@ function computedMarginIsNonInitial(computedStyle) {
   });
 }
 
-function inlineAutoMarginEdges(e, computedStyle) {
-  const edges = { left: false, right: false, top: false, bottom: false };
-  applyAutoMarginDeclarations(edges, e.style, computedStyle);
-  return edges;
-}
-
-function applyAutoMarginDeclarations(edges, style, computedStyle) {
-  for (const property of styleDeclarationProperties(style)) {
-    applyAutoMarginDeclaration(edges, property, styleDeclarationValue(style, property), computedStyle);
-  }
-}
-
 function styleDeclarationProperties(style) {
   if (!style || !style.length) return [];
   return Array.from({ length: style.length }, (_, index) => style[index]).filter(Boolean);
@@ -2175,43 +2182,21 @@ function styleDeclarationValue(style, property) {
   return style.getPropertyValue ? style.getPropertyValue(property) : "";
 }
 
-function applyAutoMarginDeclaration(edges, property, value, computedStyle) {
-  const isAuto = value.trim() === "auto";
-  switch (property) {
-    case "margin-top":
-      edges.top = isAuto;
-      return;
-    case "margin-right":
-      edges.right = isAuto;
-      return;
-    case "margin-bottom":
-      edges.bottom = isAuto;
-      return;
-    case "margin-left":
-      edges.left = isAuto;
-      return;
-    case "margin-inline-start":
-      edges[inlineStartEdge(computedStyle)] = isAuto;
-      return;
-    case "margin-inline-end":
-      edges[inlineEndEdge(computedStyle)] = isAuto;
-      return;
-    case "margin-inline": {
-      const [start, end = start] = splitCssComponentValues(value);
-      edges[inlineStartEdge(computedStyle)] = start === "auto";
-      edges[inlineEndEdge(computedStyle)] = end === "auto";
-      return;
-    }
-    case "margin": {
-      const parts = splitCssComponentValues(value);
-      const [top, right = top, bottom = top, left = right] = parts;
-      edges.top = top === "auto";
-      edges.right = right === "auto";
-      edges.bottom = bottom === "auto";
-      edges.left = left === "auto";
-      return;
-    }
+function blockStartEdge(computedStyle) {
+  switch (computedStyle.writingMode) {
+    case "vertical-rl":
+    case "sideways-rl":
+      return "right";
+    case "vertical-lr":
+    case "sideways-lr":
+      return "left";
+    default:
+      return "top";
   }
+}
+
+function blockEndEdge(computedStyle) {
+  return oppositeEdge(blockStartEdge(computedStyle));
 }
 
 function inlineStartEdge(computedStyle) {
@@ -2229,8 +2214,11 @@ function inlineStartEdge(computedStyle) {
 }
 
 function inlineEndEdge(computedStyle) {
-  const start = inlineStartEdge(computedStyle);
-  return { left: "right", right: "left", top: "bottom", bottom: "top" }[start];
+  return oppositeEdge(inlineStartEdge(computedStyle));
+}
+
+function oppositeEdge(edge) {
+  return { left: "right", right: "left", top: "bottom", bottom: "top" }[edge];
 }
 
 function explicitTrueMarker(e, name) {

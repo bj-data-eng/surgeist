@@ -24,6 +24,7 @@ pub(crate) const REQUEST: &[u8] = include_bytes!("original_flex_parent_request.j
 
 pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
+        || digest == crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256
 }
 
 pub(crate) mod percentage {

@@ -215,6 +215,20 @@ fn matching_input<'a>(bytes: &'a [u8], edition: &str) -> Result<DeclarationInput
     Ok(input)
 }
 
+fn current_diagnostic_reference(owner: &Path) -> Result<authority::DiagnosticReference> {
+    let catalogue = RelativePath::new("examples/qualify-root-context/corpus.toml")?;
+    require_regular_input(owner, &catalogue)?;
+    let bytes = fs::read(owner.join(catalogue.as_str()))?;
+    let paired = matching_input(&bytes, authority::GRID_LANES_PAIRED_EDITION)?;
+    paired
+        .declaration
+        .records
+        .iter()
+        .find_map(Record::source_equivalent_matching)
+        .map(|pair| pair.diagnostics.clone())
+        .ok_or_else(|| "missing current original diagnostic reference".into())
+}
+
 fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<DeclarationInput<'_>> {
     let mut input = DeclarationInput::parse(bytes)?;
     input
@@ -338,8 +352,16 @@ fn finish(
     let mut snapshot = inventory(root, owner, input, mode, access)?;
     origin.inputs(root, &mut snapshot, access)?;
     let stored_terminal = if has_terminal && matches!(access, InputAccess::ReadOnly) {
-        require_regular_input(root, &RelativePath::new(terminal_name)?)?;
-        let bytes = fs::read(root.join(terminal_name))?;
+        let bytes = if diagnostics {
+            read_pair_input(
+                root,
+                terminal_name,
+                &current_diagnostic_reference(owner)?.sha256,
+            )?
+        } else {
+            require_regular_input(root, &RelativePath::new(terminal_name)?)?;
+            fs::read(root.join(terminal_name))?
+        };
         if diagnostics {
             authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(&bytes)?)?;
         } else if !derive_terminal {
@@ -476,7 +498,22 @@ fn finish(
         };
         let bytes = if diagnostics {
             let cases = original_diagnostic_cases(&context, diagnostic_raw)?;
-            terminal_data(context, cases, |case| &case.case, |_| Vec::new())?.to_bytes()?
+            let mut receipt = terminal_data(context, cases, |case| &case.case, |_| Vec::new())?;
+            if let Some(stored) = stored_terminal.as_deref() {
+                let recorded =
+                    authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(stored)?)?;
+                // Replay used the live owner. Compare its result to the receipt
+                // with the validator stamp recorded at issuance.
+                receipt.capture_validation.validator_profile =
+                    recorded.capture_validation.validator_profile;
+                receipt.capture_validation.validator_helper_sha256 =
+                    recorded.capture_validation.validator_helper_sha256;
+                receipt.current_owner_inputs.insert(
+                    authority::ROOT_HELPER_OWNER.to_owned(),
+                    receipt.capture_validation.validator_helper_sha256.clone(),
+                );
+            }
+            receipt.to_bytes()?
         } else {
             terminal_authority(context, terminal_cases)?.to_bytes()?
         };
@@ -495,6 +532,16 @@ fn finish(
         };
         if let Some(diagnostics) = paired_diagnostics {
             diagnostics.verify_freshness(owner)?;
+        }
+        if diagnostics
+            && let Some(stored) = stored_terminal.as_deref()
+            && read_pair_input(
+                root,
+                terminal_name,
+                &current_diagnostic_reference(owner)?.sha256,
+            )? != stored
+        {
+            return Err("original diagnostic receipt changed during replay".into());
         }
         publish_terminal(
             root,
@@ -1353,6 +1400,9 @@ impl<'a> CheckedPairDiagnostics<'a> {
     }
 
     fn verify_freshness(&self, owner: &Path) -> Result<()> {
+        if current_diagnostic_reference(owner)? != *self.reference {
+            return Err("original diagnostic reference changed during paired replay".into());
+        }
         let receipt = read_pair_input(
             &self.root,
             authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
@@ -1375,7 +1425,13 @@ impl<'a> CheckedPairDiagnostics<'a> {
         {
             read_pair_input(&self.root, &entry.path, &entry.sha256)?;
         }
-        for (path, digest) in &self.receipt.current_owner_inputs {
+        let validator = authority::CaptureValidation::from_retained(&self.receipt.retained_inputs)?;
+        let mut owner_inputs = self.receipt.current_owner_inputs.clone();
+        owner_inputs.insert(
+            authority::ROOT_HELPER_OWNER.to_owned(),
+            validator.validator_helper_sha256,
+        );
+        for (path, digest) in &owner_inputs {
             read_pair_input(owner, path, digest)?;
         }
         require_current_inputs(owner)?;

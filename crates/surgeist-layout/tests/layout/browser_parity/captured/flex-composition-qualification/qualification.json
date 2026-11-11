@@ -384,7 +384,7 @@
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/flex/fri07_flex_composition.html": "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
     "tests/layout/browser_parity/xml/flex/fri07_flex_composition__border_box_ltr.xml": "09a174bfe03193e014f6680cfa73f097ec4c8e7c0c17868156c3fd8b9854965d",
     "tests/layout/browser_parity/xml/flex/fri07_flex_composition__border_box_rtl.xml": "c9c8461e6b44db290d61228610b7c2e2cc9bf3652bf5537fd5d459a150f503cf",
     "tests/layout/browser_parity/xml/flex/fri07_flex_composition__content_box_ltr.xml": "0d36c79ae01d8c28d85c7407321c3aa7b333dd3a83872b6dbe4656759ba2518f",
@@ -393,7 +393,7 @@
   "capture_validation": {
     "producer_profile": "root-context-flex-composition-v1",
     "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
   }
 }

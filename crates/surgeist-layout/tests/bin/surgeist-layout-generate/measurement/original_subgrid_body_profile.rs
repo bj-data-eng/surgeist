@@ -15,4 +15,5 @@ pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == HELPER_SHA256
         || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
         || digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
+        || digest == crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256
 }

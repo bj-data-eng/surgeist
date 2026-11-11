@@ -653,7 +653,7 @@ fn specialized_terminal_requires_complete_current_and_historical_bindings() {
 
 #[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
-    const VALIDATOR: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
+    const VALIDATOR: &str = crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256;
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(ARTIFACT_ROOT)
@@ -663,7 +663,7 @@ fn current_terminal_requires_distinct_producer_and_validator_authority() {
     terminal["capture_validation"] = json!({
         "producer_profile": "root-context-v4",
         "producer_helper_sha256": HELPER,
-        "validator_profile": "root-context-fixed-orthogonal-v1",
+        "validator_profile": "root-context-computed-margin-v1",
         "validator_helper_sha256": VALIDATOR,
     });
     terminal["current_owner_inputs"]["tests/layout/browser_parity/scripts/gentest/test_helper.js"] =
@@ -1062,8 +1062,8 @@ fn matching_capture_binding_authenticates_inputs_without_a_policy_identity() {
 }
 
 #[test]
-fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_current_owner() {
-    const QUALIFIED: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
+fn computed_margin_validator_preserves_every_qualified_producer_profile_and_current_owner() {
+    const QUALIFIED: &str = crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256;
     assert_eq!(sha256(ROOT_HELPER), QUALIFIED);
     for (producer, profile) in [
         (
@@ -1082,7 +1082,11 @@ fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_cur
             crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256,
             "root-context-script-custody-v1",
         ),
-        (QUALIFIED, "root-context-fixed-orthogonal-v1"),
+        (
+            crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256,
+            "root-context-fixed-orthogonal-v1",
+        ),
+        (QUALIFIED, "root-context-computed-margin-v1"),
     ] {
         let retained = BTreeMap::from([
             (ROOT_HELPER_INPUT.to_owned(), producer.to_owned()),
@@ -1094,7 +1098,7 @@ fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_cur
             serde_json::to_value(validation).unwrap(),
             json!({
                 "producer_profile":profile,"producer_helper_sha256":producer,
-                "validator_profile":"root-context-fixed-orthogonal-v1","validator_helper_sha256":QUALIFIED,
+                "validator_profile":"root-context-computed-margin-v1","validator_helper_sha256":QUALIFIED,
             })
         );
         let owners = current_owner_bindings(
@@ -1113,11 +1117,11 @@ fn fixed_orthogonal_validator_preserves_every_qualified_producer_profile_and_cur
 }
 
 #[test]
-fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_identity() {
+fn computed_margin_validator_updates_schema_only_without_changing_producing_identity() {
     // This pure wire-schema control includes the superseded canonical fixture.
     // It grants no live publication authority and installs no terminal bytes.
-    const QUALIFIED: &str = "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
-    const PRIOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
+    const QUALIFIED: &str = crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256;
+    const PRIOR: &str = crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256;
     let owner = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     for edition in [
         "canonical-box-differences",
@@ -1137,6 +1141,7 @@ fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_ide
         "scriptless-order",
         "grid-order",
         "baseline-math",
+        "fri05-computed-overflow",
     ] {
         let path = owner
             .join("tests/layout/browser_parity/captured")
@@ -1149,7 +1154,7 @@ fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_ide
             .bind_source_provenance()
             .unwrap();
         candidate.capture_validation.validator_profile =
-            RootCaptureProfile::RootContextFlexCompositionV1;
+            RootCaptureProfile::RootContextFixedOrthogonalV1;
         candidate.capture_validation.validator_helper_sha256 = PRIOR.to_owned();
         candidate
             .current_owner_inputs
@@ -1166,7 +1171,7 @@ fn fixed_orthogonal_validator_updates_schema_only_without_changing_producing_ide
             .insert(ROOT_HELPER_OWNER.to_owned(), QUALIFIED.to_owned());
         let mut expected = stale;
         expected["capture_validation"]["validator_profile"] =
-            json!("root-context-fixed-orthogonal-v1");
+            json!("root-context-computed-margin-v1");
         expected["capture_validation"]["validator_helper_sha256"] = json!(QUALIFIED);
         expected["current_owner_inputs"][ROOT_HELPER_OWNER] = json!(QUALIFIED);
         let bytes = candidate.to_bytes().unwrap();

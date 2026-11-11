@@ -296,7 +296,7 @@
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/grid/chrome_issue_325928327.html": "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
     "tests/layout/browser_parity/xml/grid/chrome_issue_325928327__border_box_ltr.xml": "04999a87630d68c415ad80623955241cea11a793197ebae0c7cf791e8f6e9e11",
     "tests/layout/browser_parity/xml/grid/chrome_issue_325928327__border_box_rtl.xml": "f64a3869699348eb7b8aaf8e9d68df678897bb87cdf624d37ae6bafe8511de79",
     "tests/layout/browser_parity/xml/grid/chrome_issue_325928327__content_box_ltr.xml": "c108bcf36de104e4efd97bca6549aeaa8b4e9ebdc859a291ab9ad8c5147c4dc6",
@@ -305,7 +305,7 @@
   "capture_validation": {
     "producer_profile": "root-context-fixed-orthogonal-v1",
     "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
-    "validator_profile": "root-context-fixed-orthogonal-v1",
-    "validator_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7"
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
   }
 }

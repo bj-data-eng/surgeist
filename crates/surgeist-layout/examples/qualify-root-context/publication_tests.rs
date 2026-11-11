@@ -169,6 +169,58 @@ fn read_only_inputs_refuse_missing_changed_or_stale_witnesses_without_repair() {
 }
 
 #[test]
+fn original_diagnostic_check_refuses_a_substituted_known_validator_stamp() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let edition = Edition::GridLanesDiagnostics;
+    let original = owner.join(PARENT).join(edition.name());
+    let staged = Directory::new();
+    let receipt_name = authority::ORIGINAL_DIAGNOSTIC_RECEIPT;
+    let bytes = fs::read_to_string(original.join(receipt_name)).unwrap();
+    let mut receipt = authority::OriginalDiagnosticReceipt::parse(&bytes).unwrap();
+    for relative in receipt
+        .retained_inputs
+        .keys()
+        .chain([&receipt.report.path, &receipt.ownership.path])
+        .chain(receipt.cases.iter().map(|case| &case.case.output.path))
+    {
+        let destination = staged.0.join(relative);
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::copy(original.join(relative), destination).unwrap();
+    }
+    let historical = crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256;
+    receipt.capture_validation.validator_profile =
+        authority::RootCaptureProfile::RootContextScriptCustodyV1;
+    receipt.capture_validation.validator_helper_sha256 = historical.to_owned();
+    receipt.current_owner_inputs.insert(
+        authority::ROOT_HELPER_OWNER.to_owned(),
+        historical.to_owned(),
+    );
+    let substituted = receipt.to_bytes().unwrap();
+    assert_ne!(substituted, bytes.as_bytes());
+    fs::write(staged.0.join(receipt_name), &substituted).unwrap();
+
+    let declaration = fs::read(staged.0.join("corpus.toml")).unwrap();
+    let mut input = DeclarationInput::parse(&declaration).unwrap();
+    input.declaration.select_original_diagnostics().unwrap();
+    let origin = Origin::read(owner, &input.declaration.records, edition).unwrap();
+    let error = finish(
+        owner,
+        &staged.0,
+        &input,
+        &origin,
+        InputAccess::ReadOnly,
+        edition,
+        PublicationInvocation {
+            mode: QualificationMode::CheckGridLanesDiagnostics,
+            output: &mut std::io::sink(),
+        },
+    )
+    .expect_err("a substituted known stamp must not authenticate the diagnostic receipt");
+    assert!(error.to_string().contains(receipt_name), "{error}");
+    assert_eq!(fs::read(staged.0.join(receipt_name)).unwrap(), substituted);
+}
+
+#[test]
 fn complete_input_census_refuses_extra_empty_directories_files_and_missing_inputs() {
     let root = Directory::new();
     let path = RelativePath::new("html/actual-source.html").unwrap();
