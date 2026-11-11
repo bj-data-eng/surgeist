@@ -1254,10 +1254,7 @@ fn first_repeated_tile_origin(
             } else {
                 (delta, tail)
             };
-        let negative_phase = account.coordinate(|| -phase)?;
-        let (left, left_tail) = repeat_sum(clip_origin, negative_phase, account)?;
-        let correction = account.coordinate(|| left_tail - correction)?;
-        account.coordinate(|| left + correction)?
+        repeat_origin_from_phase(clip_origin, phase, correction, account)?
     };
     let mut end = account.coordinate(|| origin + tile_axis)?;
     if account.coordinate(|| end == clip_origin && origin < clip_origin)? {
@@ -1275,6 +1272,41 @@ fn first_repeated_tile_origin(
         ));
     }
     Ok(origin)
+}
+
+fn repeat_origin_from_phase(
+    clip_origin: f64,
+    phase: f64,
+    correction: f64,
+    account: &Account,
+) -> Result<f64> {
+    let negative_phase = account.coordinate(|| -phase)?;
+    let (left, left_tail) = repeat_sum(clip_origin, negative_phase, account)?;
+    if account.coordinate(|| left.is_finite())? {
+        let adjustment = account.coordinate(|| left_tail - correction)?;
+        return account.coordinate(|| left + adjustment);
+    }
+
+    // The two magnitudes in an overflowing subtraction halve exactly.
+    // Find the distance from the overflow midpoint in original units so
+    // even a subnormal phase correction can decide the rounding direction.
+    const HALF_MAX: f64 = f64::MAX * 0.5;
+    const HALF_OVERFLOW: f64 = HALF_MAX.next_up();
+    const MIDPOINT_OFFSET: f64 = (HALF_OVERFLOW - HALF_MAX) * 0.5;
+    let half_clip = account.coordinate(|| clip_origin * 0.5)?;
+    let half_phase = account.coordinate(|| negative_phase * 0.5)?;
+    let (half, tail) = repeat_sum(half_clip, half_phase, account)?;
+    if account.coordinate(|| half != -HALF_OVERFLOW)? {
+        return Ok(left);
+    }
+    let (margin, margin_tail) = repeat_sum(tail, -MIDPOINT_OFFSET, account)?;
+    let margin = account.coordinate(|| margin * 2.0)?;
+    // The phase corrections together are smaller than one ulp at MAX,
+    // so crossing the overflow midpoint can only round to -MAX.
+    if account.coordinate(|| margin > correction || (margin == correction && margin_tail > 0.0))? {
+        return Ok(-f64::MAX);
+    }
+    Ok(left)
 }
 
 fn centered_repeat_remainder(value: f64, period: f64, account: &Account) -> Result<f64> {
