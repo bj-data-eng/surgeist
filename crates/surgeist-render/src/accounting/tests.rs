@@ -4,6 +4,33 @@ mod readback_cleanup;
 mod resolved_reports;
 
 #[test]
+fn color_filter_projection_backing_failure_stays_in_render_accounting() {
+    let resource = RenderResource::RetainedCpuBytes;
+    let mut context = RenderAccountingContext::default();
+    for element_bytes in [1, 2] {
+        let error = context
+            .run(
+                RenderAttemptKind::ColorFilterProjection,
+                RenderPhase::Preparation,
+                |account| {
+                    // A byte count of usize::MAX is representable but cannot
+                    // be allocated as a Vec. Two-byte elements overflow sizing.
+                    if element_bytes == 1 {
+                        account.retained::<u8>(usize::MAX).map(drop)
+                    } else {
+                        account.retained::<u16>(usize::MAX).map(drop)
+                    }
+                },
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some(), "{error:?}");
+        let report = context.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(report.usage().live(resource), 0);
+        assert_eq!(report.usage().peak(resource), 0);
+    }
+}
+
+#[test]
 fn checked_forward_observations_preserve_entry_and_completion_faults() {
     let foreign = Account::for_test();
     let mut account = Account::for_test();
