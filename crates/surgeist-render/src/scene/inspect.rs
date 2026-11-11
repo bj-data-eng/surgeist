@@ -165,6 +165,124 @@ mod tests {
         RenderLimits, RenderWork, Scene, Size,
     };
 
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn deeply_nested_layers_can_be_inspected_on_a_bounded_stack() {
+        use super::Command;
+        use crate::RenderResource;
+
+        std::thread::Builder::new()
+            .name("deep scene inspection".into())
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                const LAYERS: u64 = 8_192;
+                let mut scene = Scene::new();
+                scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                for _ in 0..LAYERS {
+                    let child = scene;
+                    scene = Scene::new();
+                    scene.layer(Layer::new(), |target| *target = child);
+                }
+                let mut context = RenderAccountingContext::default();
+                let summary = scene.inspect(&mut context);
+
+                // Dismantle this single-child fixture iteratively so its
+                // destruction does not exercise the independent drop path.
+                let mut commands = std::mem::take(&mut scene.commands);
+                while let Some(Command::Layer { children, .. }) = commands.pop() {
+                    commands = children;
+                }
+
+                let summary = summary.unwrap();
+                assert_eq!(summary.commands, LAYERS + 1);
+                assert_eq!(summary.layers, LAYERS);
+                assert_eq!(summary.fills, 1);
+                let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+                assert_eq!(usage.work(RenderWork::CommandVisits), LAYERS + 1);
+                assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn pending_siblings_are_admitted_before_inspecting_children() {
+        use super::Command;
+        use crate::{
+            RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason,
+            RenderResource,
+        };
+
+        let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+        let mut scene = Scene::new();
+        scene.layer(Layer::new(), |child| {
+            child.fill(rect, Color::BLACK);
+        });
+        scene.layer(Layer::new(), |_| {});
+        let required = std::mem::size_of::<&[Command]>() as u64;
+        let short = required - 1;
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(short)),
+        );
+        let error = scene.inspect(&mut context).unwrap_err();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(RenderRefusal {
+                phase: RenderPhase::Attempt,
+                quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                current: 0,
+                amount: required,
+                reason: RenderRefusalReason::Limit { limit: short },
+            }))
+        );
+        let report = context.last_attempt().unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::AuthoredCommands), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredLayers), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredFills), 0);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.cleanup_fault(), None);
+
+        let limits = RenderLimits::new()
+            .with_scratch_bytes(required)
+            .with_work_limit(RenderWork::AuthoredCommands, 2)
+            .unwrap();
+        context.set_options(RenderAccountingOptions::new().with_limits(limits));
+        let error = scene.inspect(&mut context).unwrap_err();
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(RenderRefusal {
+                phase: RenderPhase::Attempt,
+                quantity: RenderQuantity::Work(RenderWork::AuthoredCommands),
+                current: 2,
+                amount: 1,
+                reason: RenderRefusalReason::Limit { limit: 2 },
+            }))
+        );
+        let report = context.last_attempt().unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::AuthoredLayers), 1);
+        assert_eq!(usage.work(RenderWork::AuthoredFills), 1);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), required);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.cleanup_fault(), None);
+
+        context.set_options(
+            RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(required)),
+        );
+        let summary = scene.inspect(&mut context).unwrap();
+        assert_eq!(summary.commands, 3);
+        assert_eq!(summary.layers, 2);
+        assert_eq!(summary.fills, 1);
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), required);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    }
+
     #[test]
     fn nested_authored_structure_and_exact_content_are_measured() {
         let first = Image::from_rgba(Size::new(1.0, 1.0), vec![10, 20, 30, 255]).unwrap();
