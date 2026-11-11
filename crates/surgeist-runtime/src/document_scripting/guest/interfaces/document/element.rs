@@ -6,6 +6,8 @@ use surgeist_html::{
     bounded::lexical::validate_custom_element_name_with, vocabulary::KnownHtmlElement,
 };
 
+mod svg;
+
 const ELEMENT: &[u16] = &ascii(b"Element");
 const HTML_ELEMENT: &[u16] = &ascii(b"HTMLElement");
 const HTML_MEDIA_ELEMENT: &[u16] = &ascii(b"HTMLMediaElement");
@@ -48,6 +50,7 @@ pub(super) struct ElementBindings {
     element: RetainedCallbackObject,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
+    svg: svg::SvgBindings,
     _html_backing: GuestBacking,
 }
 
@@ -60,6 +63,7 @@ enum ElementInterface {
     Element,
     Html(&'static str),
     Mathml,
+    Svg(svg::Interface),
 }
 
 #[derive(Clone, Copy)]
@@ -102,6 +106,7 @@ impl ElementBindings {
         let global = scope.global()?;
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
         let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
+        let svg = svg::SvgBindings::install(scope, &global, &constructor, &element, fund)?;
         let (html_constructor, html) =
             install(scope, &global, HTML_ELEMENT, &constructor, &element)?;
         let (media_constructor, media) =
@@ -136,14 +141,8 @@ impl ElementBindings {
                 "HTMLAudioElement" | "HTMLVideoElement" => (&media_constructor, &media),
                 _ => (&html_constructor, &html),
             };
-            let mut name = [0; 32];
-            let units = name
-                .get_mut(..interface.len())
-                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            for (unit, byte) in units.iter_mut().zip(interface.bytes()) {
-                *unit = u16::from(byte);
-            }
-            let (_, prototype) = install(scope, &global, units, parent_constructor, parent)?;
+            let (_, prototype) =
+                install_named(scope, &global, interface, parent_constructor, parent)?;
             let observed = scope.callback_object(&prototype)?;
             classes.push(HtmlPrototype {
                 interface,
@@ -199,6 +198,7 @@ impl ElementBindings {
             element: scope.retain_callback_object(base, fund)?,
             mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
+            svg,
             _html_backing: html_backing,
         })
     }
@@ -212,6 +212,7 @@ impl ElementBindings {
             ElementInterface::Element => return Ok(&self.element),
             ElementInterface::Mathml => return Ok(&self.mathml),
             ElementInterface::Html(interface) => interface,
+            ElementInterface::Svg(interface) => return self.svg.prototype(interface),
         };
         for entry in &self.html {
             events.step()?;
@@ -231,7 +232,10 @@ fn element_interface(
     match name.namespace_uri().map(DocumentString::code_units) {
         Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(name, events)?)),
         Some(MATHML_NAMESPACE) => Ok(ElementInterface::Mathml),
-        Some(SVG_NAMESPACE) => Err(Error::BackendUnavailable.into()),
+        Some(SVG_NAMESPACE) => Ok(ElementInterface::Svg(svg::interface(
+            name.local_name(),
+            events,
+        )?)),
         _ => Ok(ElementInterface::Element),
     }
 }
@@ -309,6 +313,23 @@ fn install<'scope>(
     )?;
     install_interface(scope, global, name, &constructor, &prototype)?;
     Ok((constructor, prototype))
+}
+
+fn install_named<'scope>(
+    scope: &mut Scope<'scope>,
+    global: &Value<'scope>,
+    name: &str,
+    parent_constructor: &Value<'scope>,
+    parent: &Value<'scope>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let mut buffer = [0; 48];
+    let units = buffer
+        .get_mut(..name.len())
+        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+    for (unit, byte) in units.iter_mut().zip(name.bytes()) {
+        *unit = u16::from(byte);
+    }
+    Ok(install(scope, global, units, parent_constructor, parent)?)
 }
 
 impl Capture {
