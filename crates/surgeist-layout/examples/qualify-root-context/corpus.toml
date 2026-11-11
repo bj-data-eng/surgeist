@@ -4760,3 +4760,26 @@ sources = [
   "html/subgrid/subgrid_alignment_002_center_start_item.html",
   "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
 ]
+
+[[records]]
+source = "html/subgrid/subgrid_abspos_relative_rtl_column_3_to_5.html"
+source_sha256 = "2b6237299e4175920e98f6325ae3da048fdafc897e5193f696ac13e4f575a47e"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ea680274a064738b47f4b3998c64db64de38893b9babe3c48b4b0bee10fa702c"
+border_box_rtl = "707dbf0eb118118453686646ed8984ab54ab271726d033ed3d02492b007e5aae"
+content_box_ltr = "17f1e5ac2154cd279a09a948c8ae96a9c0245417ce01d353df1e8d98e0d0c8ab"
+content_box_rtl = "ca0d17a5e07b449ee7c3c9af2d0ce8eeb6fb0d2767b477b8a3fb4841f20cd7d4"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_position = "static"
+root_display = "block"
+root_direction = "ltr"
+root_writing_mode = "horizontal-tb"
+
+[[matching_publications]]
+edition = "original-relative-rtl-subgrid-positioned"
+sources = ["html/subgrid/subgrid_abspos_relative_rtl_column_3_to_5.html"]

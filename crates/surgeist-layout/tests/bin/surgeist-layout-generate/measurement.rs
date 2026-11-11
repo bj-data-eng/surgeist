@@ -24,7 +24,10 @@ use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
     original_grid_axes_profile, original_subgrid_axes_profile,
 };
-use crate::{original_inline_subgrid_profile, original_subgrid_body_profile};
+use crate::{
+    original_inline_subgrid_profile, original_relative_rtl_subgrid_profile,
+    original_subgrid_body_profile,
+};
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +47,7 @@ pub(super) enum BoxObservationRequest {
     OriginalSubgridAxes,
     OriginalSubgridBody,
     OriginalInlineSubgrid,
+    OriginalRelativeRtlSubgrid,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
     VerticalBrFontBand,
@@ -96,6 +100,9 @@ impl BoxObservationRequest {
             }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridAxes.input_bytes() => {
                 Ok(Self::OriginalSubgridAxes)
+            }
+            Some(bytes) if Some(bytes) == Self::OriginalRelativeRtlSubgrid.input_bytes() => {
+                Ok(Self::OriginalRelativeRtlSubgrid)
             }
             Some(bytes) if Some(bytes) == Self::OriginalInlineSubgrid.input_bytes() => {
                 Ok(Self::OriginalInlineSubgrid)
@@ -154,6 +161,10 @@ impl BoxObservationRequest {
                 original_subgrid_axes_profile::SCRIPT_PATH,
                 original_subgrid_axes_profile::SCRIPT,
             )),
+            Self::OriginalRelativeRtlSubgrid => Some((
+                original_relative_rtl_subgrid_profile::SCRIPT_PATH,
+                original_relative_rtl_subgrid_profile::SCRIPT,
+            )),
             Self::OriginalInlineSubgrid => Some((
                 original_inline_subgrid_profile::SCRIPT_PATH,
                 original_inline_subgrid_profile::SCRIPT,
@@ -210,6 +221,9 @@ impl BoxObservationRequest {
             Self::OriginalSubgridAxes => Some(original_subgrid_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::OriginalInlineSubgrid => Some(original_inline_subgrid_profile::REQUEST),
+            Self::OriginalRelativeRtlSubgrid => {
+                Some(original_relative_rtl_subgrid_profile::REQUEST)
+            }
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
             Self::VerticalBrFontBand => Some(vertical_br_font_band_profile::REQUEST),
@@ -833,13 +847,27 @@ pub(super) fn decode(
         )?;
         wire.validate_original_percentage_flex_parent(&context)?;
     }
-    if request == BoxObservationRequest::OriginalSubgridBody {
+    if matches!(
+        request,
+        BoxObservationRequest::OriginalSubgridBody
+            | BoxObservationRequest::OriginalRelativeRtlSubgrid
+    ) {
         context.compatible(
             !root_local_positioned && use_rounding,
             "viewport",
             "original subgrid requires the normal in-flow body frame",
         )?;
-        wire.validate_original_subgrid_body(&context)?;
+        let grid = wire.original_subgrid_body_grid(&context)?;
+        let grid_context = context.child(0);
+        if request == BoxObservationRequest::OriginalRelativeRtlSubgrid {
+            grid.validate_original_relative_rtl_subgrid(&grid_context)?;
+        } else {
+            context.ensure(
+                grid.validate_original_subgrid_boxes(&grid_context)? == 16,
+                "children",
+                "the Grid observation must contain every source box",
+            )?;
+        }
     }
     if prepared_range_frame {
         context.required(wire.prepared_range_frame.as_ref(), "preparedRangeFrame")?;
@@ -892,6 +920,7 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalSubgridAxes
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::OriginalInlineSubgrid
+        | BoxObservationRequest::OriginalRelativeRtlSubgrid
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
         | BoxObservationRequest::VerticalBrFontBand
@@ -2412,10 +2441,10 @@ impl WireNode {
         Ok(())
     }
 
-    fn validate_original_subgrid_body(
+    fn original_subgrid_body_grid(
         &self,
         context: &Context<'_>,
-    ) -> Result<(), MeasurementError> {
+    ) -> Result<&WireNode, MeasurementError> {
         let body = context.required(self.style.as_ref(), "style")?;
         let children = context.required(self.children.as_deref(), "children")?;
         context.compatible(
@@ -2448,10 +2477,37 @@ impl WireNode {
         let geometry =
             context.required(self.world_rounded_layout.as_ref(), "worldRoundedLayout")?;
         geometry.validate_diagnostic(context)?;
-        context.ensure(
-            grid.validate_original_subgrid_boxes(&grid_context)? == 16,
+        Ok(grid)
+    }
+
+    fn validate_original_relative_rtl_subgrid(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        let children = context.required(self.children.as_deref(), "children")?;
+        context.compatible(
+            children.len() == 11,
             "children",
-            "the Grid observation must contain every source box",
+            "original positioned Subgrid requires ten Grid cells and its Subgrid",
+        )?;
+        let subgrid = &children[10];
+        let subgrid_context = context.child(10);
+        let style = subgrid_context.required(subgrid.style.as_ref(), "style")?;
+        let positioned = subgrid_context.required(subgrid.children.as_deref(), "children")?;
+        subgrid_context.compatible(
+            style.position.as_deref() == Some("relative")
+                && style.direction.as_deref() == Some("rtl")
+                && style.display.as_deref() == Some("grid")
+                && positioned.len() == 1,
+            "style",
+            "the authored relative RTL Subgrid must own its single positioned child",
+        )?;
+        let positioned_context = subgrid_context.child(0);
+        let style = positioned_context.required(positioned[0].style.as_ref(), "style")?;
+        positioned_context.compatible(
+            style.position.as_deref() == Some("absolute"),
+            "style.position",
+            "the observed descendant must retain absolute positioning",
         )
     }
 

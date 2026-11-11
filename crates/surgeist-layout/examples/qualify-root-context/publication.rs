@@ -998,7 +998,10 @@ impl Origin {
                     | SpecializedProfile::OriginalFlexAxes
                     | SpecializedProfile::OriginalGridAxes
                     | SpecializedProfile::OriginalSubgridAxes
-            ) | Edition::Matching(crate::original_inline_subgrid_profile::EDITION)
+            ) | Edition::Matching(
+                crate::original_inline_subgrid_profile::EDITION
+                    | authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION
+            )
         ) {
             None
         } else {

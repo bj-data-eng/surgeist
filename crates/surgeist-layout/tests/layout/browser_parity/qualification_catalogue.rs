@@ -534,12 +534,38 @@ pub(crate) fn verify_historical_geometry(
     {
         return Err("historical rounding changed".into());
     }
-    compare_observation_tree(
-        current
+    let current_expectations = current
+        .root_element()
+        .children()
+        .find(|n| n.has_tag_name("expectations"))
+        .ok_or("missing current expectations")?;
+    if source == crate::original_relative_rtl_subgrid_profile::SOURCE {
+        let mut roots = current_expectations
+            .children()
+            .filter(roxmltree::Node::is_element);
+        let body = roots.next().ok_or("missing original Body observation")?;
+        let mut boxes = body.children().filter(roxmltree::Node::is_element);
+        let grid = boxes.next().ok_or("missing original Grid observation")?;
+        if roots.next().is_some() || boxes.next().is_some() || !body.has_tag_name("node") {
+            return Err("original Body must contain its sole Grid observation".into());
+        }
+        let mut original = historical
             .root_element()
             .children()
             .find(|n| n.has_tag_name("expectations"))
-            .ok_or("missing current expectations")?,
+            .ok_or("missing historical expectations")?
+            .children()
+            .filter(roxmltree::Node::is_element);
+        let historical_grid = original
+            .next()
+            .ok_or("missing historical Grid observation")?;
+        if original.next().is_some() {
+            return Err("historical fixture must contain one Grid observation".into());
+        }
+        return compare_observation_tree(grid, historical_grid);
+    }
+    compare_observation_tree(
+        current_expectations,
         historical
             .root_element()
             .children()
