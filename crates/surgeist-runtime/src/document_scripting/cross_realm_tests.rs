@@ -2,8 +2,8 @@ use super::*;
 use crate::{
     DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatcher, DomEventHostError, DomEventListenerOptions, DomEventRegistryLimits,
-    DomEventType, DomHostedRuntimeLimits, DomHostedTaskProgress, DomSessionLimits,
-    DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
+    DomEventStorageLimits, DomEventType, DomHostedRuntimeLimits, DomHostedTaskProgress,
+    DomSessionLimits, DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
     DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
     DomSourceExecutionScope, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
     DomStyleRuntimeLimits,
@@ -37,6 +37,10 @@ fn hosted_session(cancel: &AtomicBool, source_jobs: usize) -> (DomSession, DomHo
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: source_jobs,
                 storage_bytes: 16_000_000,

@@ -917,7 +917,7 @@ impl HostedRuntime {
         if state.dom != dom_owner {
             return Err(DomHostedRuntimeError::Binding);
         }
-        let (h, t, c, g) = state.find_global(target.global, cancel, || charge_source(view))?;
+        let (h, t, c, g) = state.find_global(target.global, cancel, |_| charge_source(view))?;
         state.step(cancel)?;
         charge_source(view)?;
         let HostedState { source, hosts, .. } = &mut *state;

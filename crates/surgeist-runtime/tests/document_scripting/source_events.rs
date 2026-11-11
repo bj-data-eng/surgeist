@@ -113,6 +113,8 @@ fn fixture_with_setup<T>(
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let registration = dispatcher
@@ -262,6 +264,8 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             registrations: 0,
             pending_events: 0,
             nested_dispatches: 0,
+            storage_bytes: 16_000_000,
+            work: 0,
         })
         .unwrap();
         assert!(matches!(
