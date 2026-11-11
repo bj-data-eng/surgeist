@@ -67,12 +67,17 @@ impl DocumentBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let node = scope.object(ObjectPrototype::Object(target_prototype))?;
         let prototype = scope.object(ObjectPrototype::Object(&node))?;
-        let node_constructor = scope.fixed_arity_function(
-            &Callback::new(|scope, _| {
-                Ok(Completion::Throw(
-                    scope.type_error(&ascii(b"Illegal constructor"))?,
-                ))
-            }),
+        let node_constructor = scope.constructor(
+            &ConstructorCallback::bounded(
+                0,
+                // Node rejects construction before selecting any prototype.
+                |_| Err(Error::BackendUnavailable),
+                |scope, _| {
+                    Ok(ConstructorCompletion::Throw(
+                        scope.type_error(&ascii(b"Illegal constructor"))?,
+                    ))
+                },
+            ),
             FunctionMetadata {
                 name: NODE,
                 length: 0,
