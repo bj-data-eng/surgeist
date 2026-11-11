@@ -1176,7 +1176,9 @@ pub(crate) fn capture_binding_from_verified_inputs(
             };
             let helper_matches = full_inputs.get(ROOT_HELPER_INPUT).is_some_and(|digest| {
                 flex_composition::accepts_helper(digest)
-                    || ranges && digest == PREPARED_RANGE_HELPER_SHA256
+                    || ranges
+                        && [PREPARED_RANGE_HELPER_SHA256, COMPUTED_MARGIN_HELPER_SHA256]
+                            .contains(&digest.as_str())
             });
             if case.source != source
                 || request_sha256 != sha256(request)

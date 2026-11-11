@@ -7,4 +7,4 @@ pub(crate) const FIXED_ORTHOGONAL_HELPER_SHA256: &str =
     "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7";
 
 pub(crate) const COMPUTED_MARGIN_HELPER_SHA256: &str =
-    "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89";
+    "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63";

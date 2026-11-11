@@ -4809,7 +4809,7 @@
     "tests/layout/browser_parity/html/grid/fri05_overflow_auto_cross_axis.html": "0f4e92fdaf96f35c8b21ccfbb4759392e2a8bf6500c8ea27c67bcd27b32f70a1",
     "tests/layout/browser_parity/html/grid/fri05_scroll_extent_area_origin.html": "461d1fe686fcab9378d7454b6586fadb4ab8a3912582065b768462bf87e16b1c",
     "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
-    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
     "tests/layout/browser_parity/xml/block/fri05_mixed_axis_clip_margin__border_box_ltr.xml": "c0a0162122620e7052198c5bbafb7dfda31ff6e17224cdf78edd8da0f73056d1",
     "tests/layout/browser_parity/xml/block/fri05_mixed_axis_clip_margin__border_box_rtl.xml": "7f63241bc847b16e851ac4062124744750b861e11507972a3c502ae3792bbf29",
     "tests/layout/browser_parity/xml/block/fri05_mixed_axis_clip_margin__content_box_ltr.xml": "f4baf850028dfba2b8c03d641883de653821f8905edcddc7092e78c03066d5ff",
@@ -4859,6 +4859,6 @@
     "producer_profile": "root-context-fixed-orthogonal-v1",
     "producer_helper_sha256": "457df70ca761f9ac75da41614172928275b54ba5cea5d77f2db67ea42e068ae7",
     "validator_profile": "root-context-computed-margin-v1",
-    "validator_helper_sha256": "e71f291b2f149412554e6ac3fd6fb7d6bd388932ccfa225a336aa25a29bfbd89"
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
   }
 }

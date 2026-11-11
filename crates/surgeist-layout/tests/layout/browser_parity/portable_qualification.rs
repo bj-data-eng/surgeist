@@ -605,52 +605,52 @@ impl AdmittedRegistry {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
-    "137054d275661abdaac0e262a0f22798a022e989bd2e10fd515fcdfebc3621d0";
+    "38882c8082ff30ad035e0460e41d72e04a2142af9e0d4d2fb8ea650760429d03";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "3e6c87aa6461575497dab622e8258dd4ebeb844a0cbfaa6a5adb919403393136";
+    "bbf4da5d75460a35cde9f97fd9f146077631688f3a72260c6d4ee962c5bbd810";
 
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
-    "8a3ea4a284341a25ed10e4181bc002631db821ae7f5f4ba4a907aaf782da1980";
+    "f4a466130c99a38029e14eb17d15fbe5355e9c38585bf76024b59fd70dc165cd";
 
 const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
-    "566d5cd7623f64b874f73034bbea51ce4f4248c1b2e56206b1819bb34bc85bac";
+    "35d31dacd87c4acb96e8e0759834155ec19bb707d32ef80699b5756c6dad6981";
 
 const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
-    "dacacbe660aa1deb40e0562ae25ce0aade731b1edca84b2b2761f3a3180964c0";
+    "da9ef04965e489c3ecfa19388afbad4eb1d37f67a2e024a85b4620a9aa3d2557";
 
 const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
-    "ea30464c1069db952dd4a5da5a2708b68f721f818cd9baec6a641e04eb2953a0";
+    "c9c23df593a48d3dd9531e59e6cf5d259eb59cb655469835ab375bc523cb0f34";
 
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
-    "88662184d32ce1c91d42787b2e9ad4039099e3c0520cb4381bf7ccf418927fb8";
+    "35b2c35dfe4b4023300719ad08c5b45d619b5031531c8b085ab2843520d19339";
 
 const REGISTERED_ORIGINAL_FLEX_PARENT_TERMINAL_SHA256: &str =
-    "f62e6cdc0a502334d35b358015f00711d8f2d4b3e92659d4f800157f2c4cd932";
+    "157d78c22bb9ed255a975a31f0e2d071877326cbd9cb0b37526e044ec8c4e985";
 
 const REGISTERED_ORIGINAL_FLEX_AXES_TERMINAL_SHA256: &str =
-    "a8ab6a194b6987772647699bd023eafcfb193bdac6800127d0a0a2c790fcf383";
+    "c8a2285df0982669f1eb36180438187c0bf1ae27d936db8555c8f050790345af";
 const REGISTERED_ORIGINAL_GRID_AXES_TERMINAL_SHA256: &str =
-    "66ccdeda95c033a7bb1bb8184bf1cc23e80e5a657b3100fb5fbc5129f9ceab39";
+    "542e82a38d4c16f1ba8d28d1ddcc452406738b3bba2e27c9626f40fbf1e12c69";
 const REGISTERED_ORIGINAL_SUBGRID_AXES_TERMINAL_SHA256: &str =
-    "a57441f0515889afe92b7ef743c069c8c25edf7060173ce3c68981a6a44be80b";
+    "d8dc92425e265b9fbf28cf59acdd323311f24a2a19e0b6c66f71193143a0914f";
 const REGISTERED_ORIGINAL_BLOCK_AXES_TERMINAL_SHA256: &str =
-    "afe304a8c36477d07ad6b75ec7f4680094a522a8eb2aa5d00e021ae4f5cd4320";
+    "a1f3349d560df61ac553681140608f509ed1e06b678a0f73fc44061e42633942";
 const REGISTERED_ORIGINAL_PERCENTAGE_FLEX_PARENT_TERMINAL_SHA256: &str =
-    "6bbaac25a4e75c2f946f7fb327fe41e7e31fa6d05e4630dd655293af15592290";
+    "2cfa177fff59ccfdc4e5c62f0196a18ec474c9c2e6f323b198690443b5ea64f0";
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
-    "e4297604d1ec80d4ad3581e99b749fdd56d1992fe3a8bd0380fe96249c043dfb";
+    "5f49ddb8e8a2479e9de8e415bd397a5f2e181a8dda7d42fb66651d67ac1e0387";
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
-    "271bbdc7e9f3af1737fd5710df37afb206c9aa0bbc28502176aaa04ac5705215";
+    "5f850f59dba596fbc1e05bd5e110e55c537f88b49763bd635d74a6d4753a2e46";
 
 const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "3d6c9b470b90fee24fb095b0a9b32b706307d40880e9c06a7722d5c0ecca6411";
+    "2fdfde36f06d9a0c501a68e9edc0b36854d86536fe390e2ba87d0836a2a2454f";
 
 const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "75d51d05fc2501453fde9e492998bb686bc3920d92d9bc5d9af6da12fd191d0d";
+    "0452f816eee7167575693d4a21b49f924fc681b46908e263c6cecc6b0f951b22";
 
 const REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256: &str =
-    "33765cbc2e912b6b83148480853655c68ef21189b183b06f6706abf17855e6d6";
+    "ddcfea5bf7ea485d64c73aa4ea7425c312a6e2771809616563f29c363a29e657";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -664,7 +664,7 @@ pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEditio
 
 // Register only a complete publisher terminal after reviewed capture/check.
 const REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256: &str =
-    "46621079354f7591c94161c607ec0af48730de4d1f89432905cb201d05831d1d";
+    "7e634f9608d3e362ec42670bbca337b389241b4e3c095fb4e216ccdd073d7f2b";
 
 pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -679,11 +679,11 @@ pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdi
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
     (
         "fri05-computed-overflow",
-        "98a947d925c1a416fccd7ff348e3cdf9b2c377297aa44fb329cb86e9e28efe86",
+        "e211f16cd17282ed95765ba578cfc09a3c9a3a1d09de8fede992a14b2ab594fe",
     ),
     (
         authority::FRI06_SUBGRID_EDITION,
-        "f811a8b0cacc8392b47df25baa87c275a5483993879ac8430cc7bb8e6df11bcf",
+        "d2441c9dd6c15eff6e5614ca6e8540676041a1b6d7e27a5b93cd363e5be79d32",
     ),
     (
         authority::GRID_LANES_PAIRED_EDITION,
@@ -691,19 +691,19 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
     ),
     (
         "baseline-math",
-        "15d5871c69f5fa3299baa3460cfe22af70f4f842d0710bbf533b3f07d6b7da82",
+        "3958751ab93bbf1af1a6639f33c859a066a285885847797eaf02460b9236543d",
     ),
     (
         "grid-order",
-        "5d32df8efe0859886891b6f1489bbf13bd2ec9aed85ae49ad0fbb4eb85050361",
+        "84123b6cbeef3e3661d033e3bd035946e54ae0d20c694ae2038ab3daddec1652",
     ),
     (
         "scriptless-order",
-        "d043eab70420b4c3a7dcb4a0b83527c6b90240ef932d8fa19abccc7afdb8fb32",
+        "217143a63d732823090482b5421b3f3271f0d0961e85cd3e79f5b3fb55430a50",
     ),
     (
         "box-controls",
-        "b6370879925b4c1bdd6a6ecd742007026cf3c73b4181959337a2e477f2aedbd6",
+        "047aa92fa87d200e5220ce9e707486187d452f0952475b5a453f68a5775d0d69",
     ),
 ];
 

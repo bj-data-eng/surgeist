@@ -2090,58 +2090,65 @@ function inlineAuthoredMarginHasCalc(style) {
 }
 
 function applyInlineAuthoredMarginDeclarations(edges, style, computedStyle) {
+  const importantEdges = new Set();
   for (const property of styleDeclarationProperties(style)) {
-    applyInlineAuthoredMarginDeclaration(edges, property, styleDeclarationValue(style, property), computedStyle);
+    const important = style.getPropertyPriority?.(property) === "important";
+    const assign = (edge, value) => {
+      if (!important && importantEdges.has(edge)) return;
+      edges[edge] = value;
+      if (important) importantEdges.add(edge);
+    };
+    applyInlineAuthoredMarginDeclaration(assign, property, styleDeclarationValue(style, property), computedStyle);
   }
 }
 
-function applyInlineAuthoredMarginDeclaration(edges, property, value, computedStyle) {
+function applyInlineAuthoredMarginDeclaration(assign, property, value, computedStyle) {
   if (!value.trim()) return;
 
   switch (property) {
     case "margin-top":
-      edges.top = value;
+      assign("top", value);
       return;
     case "margin-right":
-      edges.right = value;
+      assign("right", value);
       return;
     case "margin-bottom":
-      edges.bottom = value;
+      assign("bottom", value);
       return;
     case "margin-left":
-      edges.left = value;
+      assign("left", value);
       return;
     case "margin-block-start":
-      edges[blockStartEdge(computedStyle)] = value;
+      assign(blockStartEdge(computedStyle), value);
       return;
     case "margin-block-end":
-      edges[blockEndEdge(computedStyle)] = value;
+      assign(blockEndEdge(computedStyle), value);
       return;
     case "margin-block": {
       const [start, end = start] = splitCssComponentValues(value);
-      edges[blockStartEdge(computedStyle)] = start;
-      edges[blockEndEdge(computedStyle)] = end;
+      assign(blockStartEdge(computedStyle), start);
+      assign(blockEndEdge(computedStyle), end);
       return;
     }
     case "margin-inline-start":
-      edges[inlineStartEdge(computedStyle)] = value;
+      assign(inlineStartEdge(computedStyle), value);
       return;
     case "margin-inline-end":
-      edges[inlineEndEdge(computedStyle)] = value;
+      assign(inlineEndEdge(computedStyle), value);
       return;
     case "margin-inline": {
       const [start, end = start] = splitCssComponentValues(value);
-      edges[inlineStartEdge(computedStyle)] = start;
-      edges[inlineEndEdge(computedStyle)] = end;
+      assign(inlineStartEdge(computedStyle), start);
+      assign(inlineEndEdge(computedStyle), end);
       return;
     }
     case "margin": {
       const parts = splitCssComponentValues(value);
       const [top, right = top, bottom = top, left = right] = parts;
-      edges.top = top;
-      edges.right = right;
-      edges.bottom = bottom;
-      edges.left = left;
+      assign("top", top);
+      assign("right", right);
+      assign("bottom", bottom);
+      assign("left", left);
       return;
     }
   }
