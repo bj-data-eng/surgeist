@@ -15,7 +15,7 @@ pub(super) struct ListenerMatch<'value, 'scope> {
 impl RegisteredGuestListener {
     pub(super) fn realm(&self) -> Result<RealmAuthority, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => callback
+            RegisteredListenerObject::Retained { callback, .. } => callback
                 .try_borrow()
                 .map_err(|_| Error::RegistryConflict)?
                 .as_ref()
@@ -31,7 +31,7 @@ impl RegisteredGuestListener {
         receiver: &Value<'scope>,
     ) -> Result<Value<'scope>, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => {
+            RegisteredListenerObject::Retained { callback, .. } => {
                 let callback = callback.try_borrow().map_err(|_| Error::RegistryConflict)?;
                 scope.open_callback_object(callback.as_ref().ok_or(Error::RegistryConflict)?)
             }
@@ -43,7 +43,7 @@ impl RegisteredGuestListener {
 
     pub(super) fn release(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => {
+            RegisteredListenerObject::Retained { callback, .. } => {
                 let callback = callback
                     .try_borrow_mut()
                     .map_err(|_| Error::RegistryConflict)?
@@ -63,6 +63,14 @@ impl RegisteredGuestListener {
             }
         }
         Ok(())
+    }
+
+    fn release_after_retirement(&self, process: &mut Process) {
+        if let RegisteredListenerObject::Retained { callback, .. } = &self.object
+            && let Ok(Some(callback)) = callback.try_borrow_mut().map(|mut holder| holder.take())
+        {
+            let _ = process.release_callback_object(callback);
+        }
     }
 }
 
@@ -84,12 +92,17 @@ impl GuestEvents {
         Ok(GuestTargetProjection { native, lifetime })
     }
 
-    pub(in crate::document_scripting) fn reap_retired_targets(&self) {
+    pub(in crate::document_scripting) fn reap_retired_targets(&self, process: &mut Process) {
+        if let Some(public) = &self.public {
+            public.reap_fragments(process, &self.backing.retired_targets);
+        }
         if self.backing.retired_targets.get()
             && let Ok(mut registry) = self.registry.try_borrow_mut()
         {
             self.backing.retired_targets.set(false);
-            registry.reap_guest_target_registrations();
+            registry.reap_guest_target_registrations(|callback| {
+                callback.release_after_retirement(process);
+            });
         }
     }
 
@@ -130,6 +143,7 @@ impl GuestEvents {
         key: ListenerMatch<'_, 'scope>,
         options: DomEventListenerOptions,
         observed: CallbackObject<'scope>,
+        fragment: Option<Rc<interfaces::FragmentLifetime>>,
     ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
         let attachment = owner
             .attachment
@@ -144,7 +158,10 @@ impl GuestEvents {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
             code,
-            object: RegisteredListenerObject::Retained(RefCell::new(Some(object))),
+            object: RegisteredListenerObject::Retained {
+                callback: RefCell::new(Some(object)),
+                fragment,
+            },
             registration_window: attachment.target,
             _backing: backing,
         }));

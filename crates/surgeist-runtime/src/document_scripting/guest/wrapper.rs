@@ -4,7 +4,10 @@ use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject};
 pub(super) enum GuestReceiver {
     Projected(Rc<NativeObject<GuestTargetProjection>>),
     Window(DomHostedGlobalId),
-    Document(DocumentId),
+    Node {
+        node: surgeist_dom::NodeId,
+        fragment: Option<Rc<interfaces::FragmentLifetime>>,
+    },
 }
 
 impl GuestReceiver {
@@ -12,7 +15,7 @@ impl GuestReceiver {
         match self {
             Self::Projected(projection) => projection.payload().native.clone().into(),
             Self::Window(global) => (*global).into(),
-            Self::Document(document) => document.node().into(),
+            Self::Node { node, .. } => (*node).into(),
         }
     }
 }
@@ -25,9 +28,12 @@ pub(super) fn event_receiver<'scope>(
     if let Some(projection) = scope.native_object::<GuestTargetProjection>(receiver)? {
         return Ok(Some(GuestReceiver::Projected(projection)));
     }
-    if let Some(document) = scope.native_object::<interfaces::GuestDocumentProjection>(receiver)? {
-        let id = document.payload().id().ok_or(Error::RegistryConflict)?;
-        return Ok(Some(GuestReceiver::Document(id)));
+    if let Some(node) = scope.native_object::<interfaces::GuestNodeProjection>(receiver)? {
+        let id = node.payload().id().ok_or(Error::RegistryConflict)?;
+        return Ok(Some(GuestReceiver::Node {
+            node: id.node(),
+            fragment: node.payload().fragment_lifetime(),
+        }));
     }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
     let global = scope.global()?;

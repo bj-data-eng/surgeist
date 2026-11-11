@@ -196,6 +196,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
     super::guest::tests::unpublished_window_requires_its_original_bound_registry();
+    super::guest::tests::fragment_custody_survives_collection_and_releases_on_retirement();
+    super::guest::tests::fragment_watch_refusal_preserves_native_state();
     super::guest::tests::refused_first_target_releases_prototype_capture();
     super::guest::tests::refused_projection_releases_native_backing_before_retry();
     super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();

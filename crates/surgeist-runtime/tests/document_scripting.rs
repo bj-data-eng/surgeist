@@ -481,6 +481,7 @@ fn prepare_event_window_with(
                 storage_bytes: 64_000,
                 work: 10_000,
                 pending_exception_reports: 16,
+                node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
                 dispatch: DomEventDispatchLimits {
                     path_items: 4,
                     snapshot_listeners: 16,
@@ -2237,6 +2238,7 @@ fn main() {
             "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
+            "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
@@ -2309,6 +2311,7 @@ fn main() {
     window_timers::window_schedules_and_cancels_after_guest_entry();
     window_document::window_projects_the_live_document_and_node_brands();
     document_fragment::creates_fragments_through_the_canonical_document();
+    document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();

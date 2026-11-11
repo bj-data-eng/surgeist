@@ -20,6 +20,7 @@ use reports::{DirectExceptions, ExceptionRoots};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
 };
+use surgeist_dom::DomNodeRetirementLimits;
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
 #[derive(Clone, Copy, Debug)]
@@ -33,6 +34,8 @@ pub struct DocumentGuestEventLimits {
     pub pending_exception_reports: usize,
     /// Native path, callback, failure and work limits for one advance.
     pub dispatch: DomEventDispatchLimits,
+    /// Canonical DOM storage and work for retained ordinary-node watches.
+    pub node_retirement: DomNodeRetirementLimits,
 }
 
 /// Failure before successful guest dispatch completion.
@@ -361,7 +364,10 @@ struct TracedListener {
 }
 
 enum RegisteredListenerObject {
-    Retained(RefCell<Option<RetainedCallbackObject>>),
+    Retained {
+        callback: RefCell<Option<RetainedCallbackObject>>,
+        fragment: Option<Rc<interfaces::FragmentLifetime>>,
+    },
     Traced(TracedListener),
 }
 
@@ -374,7 +380,12 @@ pub(crate) struct RegisteredGuestListener {
 
 impl RegisteredGuestListener {
     pub(crate) fn target_retired(&self) -> bool {
-        matches!(&self.object, RegisteredListenerObject::Traced(traced) if traced.lifetime.retired.get())
+        match &self.object {
+            RegisteredListenerObject::Traced(traced) => traced.lifetime.retired.get(),
+            RegisteredListenerObject::Retained { fragment, .. } => {
+                fragment.as_ref().is_some_and(|target| target.is_retired())
+            }
+        }
     }
 }
 
@@ -879,7 +890,7 @@ impl DocumentScriptHost {
                 if let Some(registration) = events.find_listener(&owner, scope, key)? {
                     return Ok(registration);
                 }
-                events.register_retained(&owner, scope, key, options, observed)
+                events.register_retained(&owner, scope, key, options, observed, None)
             })())
         })?
     }

@@ -5,7 +5,7 @@ mod listener_methods;
 mod operations;
 
 use super::*;
-pub(super) use document::GuestDocumentProjection;
+pub(super) use document::{FragmentLifetime, GuestNodeProjection};
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
     WellKnownSymbol,
@@ -93,6 +93,10 @@ pub(super) struct PublicEventBindings {
 }
 
 impl PublicEventBindings {
+    pub(super) fn reap_fragments(&self, process: &mut Process, retired: &Cell<bool>) {
+        self.document.reap_fragments(process, retired);
+    }
+
     pub(super) fn install(
         script: &mut UnpublishedScriptEngine,
         owner: &Rc<NativeOwner>,
@@ -102,11 +106,21 @@ impl PublicEventBindings {
             realm: script.authority.identity(),
             document: script.target.document(),
         };
+        let inbox = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .dom()
+            .raw()
+            .node_retirement_inbox(admission.limits.node_retirement, &owner.cancellation)
+            .map_err(DocumentScriptNativeError::from)?;
         script
             .process
             .execution()
             .in_realm(&script.realm, |scope| {
-                Ok(Self::install_in_realm(scope, owner, permit, admission))
+                Ok(Self::install_in_realm(
+                    scope, owner, permit, admission, inbox,
+                ))
             })?
     }
 
@@ -115,6 +129,7 @@ impl PublicEventBindings {
         owner: &Rc<NativeOwner>,
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
+        inbox: surgeist_dom::DomNodeRetirementInbox,
     ) -> Result<Self, DocumentGuestEventError> {
         let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
         let account_bytes = size_of::<Callbacks>()
@@ -322,8 +337,14 @@ impl PublicEventBindings {
             )?;
         }
         let observed = scope.callback_object(&event)?;
-        let document =
-            document::DocumentBindings::install(scope, document_id, &target, &capture, &fund)?;
+        let document = document::DocumentBindings::install(
+            scope,
+            document_id,
+            &target,
+            inbox,
+            &capture,
+            &fund,
+        )?;
         let event = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(&target)?;
         let target = scope.retain_callback_object(observed, fund)?;
