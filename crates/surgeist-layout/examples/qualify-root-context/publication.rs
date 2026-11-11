@@ -1239,7 +1239,6 @@ impl<'a> CheckedPairDiagnostics<'a> {
             return Err("original diagnostic receipt changed during pairing admission".into());
         }
         let receipt = authority::OriginalDiagnosticReceipt::parse(std::str::from_utf8(&before)?)?;
-        authority::verify_grid_lanes_producing_helper(&receipt.retained_inputs)?;
         Ok(Self {
             root,
             reference,

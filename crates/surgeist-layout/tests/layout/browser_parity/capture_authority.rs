@@ -187,7 +187,7 @@ pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     }
 }
 
-pub(crate) fn verify_grid_lanes_producing_helper(inputs: &BTreeMap<String, String>) -> Result<()> {
+fn verify_grid_lanes_producing_helper(inputs: &BTreeMap<String, String>) -> Result<()> {
     if inputs.get(ROOT_HELPER_INPUT).map(String::as_str) != Some(FIXED_ORTHOGONAL_HELPER_SHA256) {
         return Err(changed("source-equivalent Grid Lanes producing helper"));
     }
@@ -1665,6 +1665,7 @@ impl OriginalDiagnosticReceipt {
         {
             return Err(malformed("original diagnostic receipt identity or census"));
         }
+        verify_grid_lanes_producing_helper(&self.retained_inputs)?;
         for binding in [&self.declaration, &self.report, &self.ownership] {
             digest(&binding.sha256)?;
         }

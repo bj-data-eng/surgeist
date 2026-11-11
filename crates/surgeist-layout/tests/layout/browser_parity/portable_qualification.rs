@@ -1565,7 +1565,6 @@ fn admit_matching(
             .and_then(|record| record.source_equivalent_matching())
             .ok_or_else(|| changed("missing paired diagnostic reference"))?;
         let originals = admit_original_diagnostics(owner, &reference.diagnostics.sha256)?;
-        authority::verify_grid_lanes_producing_helper(&originals.freshness.pins)?;
         authority::verify_grid_lanes_shared_inputs(
             &originals.freshness.pins,
             &terminal.retained_inputs,
