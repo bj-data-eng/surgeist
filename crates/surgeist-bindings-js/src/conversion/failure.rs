@@ -12,6 +12,8 @@ pub enum Rule {
     FloatingRange,
     Sequence,
     Dictionary(&'static str),
+    CallbackInterface(&'static str),
+    Interface(&'static str),
     RequiredMember(&'static str),
     RequiredArgument(&'static str),
 }

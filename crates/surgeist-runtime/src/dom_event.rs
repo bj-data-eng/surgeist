@@ -513,6 +513,8 @@ pub struct DomEventHostInvocation {
     key: u64,
     #[cfg(feature = "document-scripting")]
     guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
+    #[cfg(feature = "document-scripting")]
+    once_removed: bool,
     reported: bool,
 }
 impl std::fmt::Debug for DomEventHostInvocation {
@@ -544,6 +546,11 @@ impl DomEventHostInvocation {
     ) -> Option<&crate::document_scripting::guest::RegisteredGuestListener> {
         self.guest.as_deref()
     }
+    #[cfg(feature = "document-scripting")]
+    pub(crate) const fn once_removed(&self) -> bool {
+        self.once_removed
+    }
+
     /// Record ordinary guest completion once. A guest error joins normal
     /// callback failure reporting; later listeners remain eligible. This closes
     /// the active callback scope but runs neither another listener nor a Source
@@ -839,6 +846,34 @@ impl<C> DomEventDispatcher<C> {
             association: RegistryAssociation::Unbound,
         })
     }
+    /// Claim this canonical DOM's listener registry without adding a listener
+    /// or dispatching an Event. A refused claim leaves the dispatcher unbound
+    /// and available for a later attempt. An already-bound dispatcher only
+    /// validates its original authority and does not repeat admission.
+    pub fn bind(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomEventDispatchError> {
+        if let RegistryAssociation::Bound(association) = &self.association {
+            return association.validate(dom.raw()).map_err(Into::into);
+        }
+        self.storage.step(1, cancel)?;
+        let prepared = self.association.prepare(
+            dom.raw_mut(),
+            self.limits.pending_events,
+            &self.storage,
+            cancel,
+        )?;
+        self.association.commit(
+            prepared,
+            &mut self.pending,
+            &mut self.pending_funding,
+            dom.raw_mut(),
+            cancel,
+        )
+    }
+
     /// Add in deterministic order. The target/type/callback identity/capture key
     /// deduplicates; changing `once` on a duplicate does not change the listener.
     /// Load/Error registrations retain a finite canonical recipient lease until
@@ -999,6 +1034,37 @@ impl<C> DomEventDispatcher<C> {
         let slot = self.slots.get(id.slot)?;
         (slot.generation == id.generation).then_some(())?;
         slot.registration.as_ref()
+    }
+    #[cfg(all(test, feature = "document-scripting"))]
+    pub(crate) fn has_registration(&self, id: DomEventRegistrationId) -> bool {
+        self.registration(id).is_some()
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn guest_registration(
+        &self,
+        id: DomEventRegistrationId,
+    ) -> Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>> {
+        let CallbackKind::Guest(listener) = &self.registration(id)?.callback.0 else {
+            return None;
+        };
+        Some(listener.clone())
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn reap_guest_target_registrations(&mut self) {
+        for slot in &mut self.slots {
+            if slot.registration.as_ref().is_some_and(|entry| {
+                matches!(&entry.callback.0, CallbackKind::Guest(listener) if listener.target_retired())
+            }) {
+                slot.registration.take();
+            }
+        }
+    }
+
+    #[cfg(feature = "document-scripting")]
+    pub(crate) fn is_bound(&self) -> bool {
+        matches!(self.association, RegistryAssociation::Bound(_))
     }
     #[cfg(feature = "document-scripting")]
     pub(crate) fn qualify_guest_registry(
@@ -1346,6 +1412,7 @@ impl<C> DomEventDispatcher<C> {
             #[cfg(feature = "document-scripting")]
             guest,
             passive,
+            once,
         })) = result
         {
             let sequence = dispatch.callbacks;
@@ -1353,6 +1420,9 @@ impl<C> DomEventDispatcher<C> {
                 custody.abandon(state);
                 custody.finish_dispatch(state);
                 return Err(error.into());
+            }
+            if once {
+                self.remove_listener(registration);
             }
             *custody.borrow_mut() = Some(dispatch);
             custody.host.set(Some(HostFrame {
@@ -1377,6 +1447,8 @@ impl<C> DomEventDispatcher<C> {
                     key,
                     #[cfg(feature = "document-scripting")]
                     guest,
+                    #[cfg(feature = "document-scripting")]
+                    once_removed: once,
                     reported: false,
                 },
             ));
@@ -1612,11 +1684,14 @@ impl<C> DomEventDispatcher<C> {
                 dispatch.listener += 1;
                 dispatch.callbacks = callbacks;
                 budget.callbacks += 1;
-                if once {
-                    self.remove_listener(id);
-                }
                 let callback = match &callback.0 {
-                    CallbackKind::Native(callback) => callback,
+                    CallbackKind::Native(callback) => {
+                        if once {
+                            self.remove_listener(id);
+                        }
+                        callback
+                    }
+
                     CallbackKind::Host(key) => {
                         return Err(RunStop::HostInvocation {
                             registration: id,
@@ -1625,6 +1700,7 @@ impl<C> DomEventDispatcher<C> {
                             #[cfg(feature = "document-scripting")]
                             guest: None,
                             passive,
+                            once,
                         });
                     }
                     #[cfg(feature = "document-scripting")]
@@ -1635,6 +1711,7 @@ impl<C> DomEventDispatcher<C> {
                             key: callback.code,
                             guest: Some(callback.clone()),
                             passive,
+                            once,
                         });
                     }
                 };
@@ -3005,6 +3082,7 @@ enum RunStop {
         #[cfg(feature = "document-scripting")]
         guest: Option<Rc<crate::document_scripting::guest::RegisteredGuestListener>>,
         passive: bool,
+        once: bool,
     },
     Resource(DomEventResource),
     ParsedSynchronous(DomParsedHtmlStyleNotificationRequirement),

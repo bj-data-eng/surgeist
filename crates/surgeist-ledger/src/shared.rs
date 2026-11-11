@@ -1,6 +1,6 @@
 use crate::{
     Change, Checkpoint, Dimension, Error, IntervalReport, Limits, Operation, PhaseObservation,
-    Report, Scope, Tariffs, Usage, profile::Profile,
+    Report, Scope, ScopeEntry, Tariffs, Usage, profile::Profile,
 };
 use std::{
     ops::AsyncFnOnce,
@@ -29,6 +29,19 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
 }
 
 impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
+    /// Requested Rust backing for a shared operation created with
+    /// [`Operation::with_reserved_scopes`]. Includes the shared mutex body
+    /// and reserved scope entries. Excludes allocator metadata, optional
+    /// profiling, and any separately requested checkpoint storage.
+    pub fn reserved_backing_bytes(max_scopes: usize) -> Option<usize> {
+        if max_scopes == 0 {
+            return None;
+        }
+        size_of::<ScopeEntry<W, R>>()
+            .checked_mul(max_scopes)?
+            .checked_add(size_of::<Mutex<Operation<W, R>>>())
+    }
+
     fn lock(&self) -> MutexGuard<'_, Operation<W, R>> {
         self.operation
             .lock()

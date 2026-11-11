@@ -1,7 +1,9 @@
 use std::cell::Cell;
 use std::rc::{Rc, Weak};
 
-use surgeist_ledger::{Change, Limits, PhaseObservation, ScopeLedger, SharedOperation, Tariffs};
+use surgeist_ledger::{
+    Change, Limits, Operation, PhaseObservation, ScopeLedger, SharedOperation, Tariffs,
+};
 
 use crate::owner::OwnerState;
 use crate::{Error, Scope};
@@ -118,8 +120,41 @@ pub struct ConversionAccount(pub(super) Rc<Account>);
 
 impl ConversionAccount {
     /// Requested allocation body retained by the account's Rc.
-    pub(crate) const fn retained_body_bytes() -> usize {
+    pub const fn retained_body_bytes() -> usize {
         size_of::<Account>()
+    }
+
+    /// Requested backing of a standalone conversion account, including its
+    /// account body, shared Ledger body, and reserved scope storage.
+    pub fn standalone_backing_bytes() -> Result<usize, Error> {
+        SharedOperation::<Work, Resource>::reserved_backing_bytes(1)
+            .and_then(|bytes| bytes.checked_add(Self::retained_body_bytes()))
+            .ok_or(Error::Allocation)
+    }
+
+    /// Create a bounded conversion participant with no enclosing operation.
+    /// Work is cumulative per dimension and resource limits bound live buffers.
+    /// A host accounting for setup storage admits [`Self::standalone_backing_bytes`]
+    /// through the lifetime of this account and its converted values.
+    /// Use [`Self::new`] when binding work belongs to an enclosing Ledger.
+    pub fn standalone(
+        scope: &mut Scope<'_>,
+        work: WorkTable<u64>,
+        resources: ResourceTable<u64>,
+    ) -> Result<Self, Error> {
+        scope.check_active()?;
+        let limits = Limits::new(work, resources);
+        let ledger = Operation::with_reserved_scopes("js-conversion", limits, 1)
+            .map_err(Error::ConversionLedger)?
+            .share();
+        let owner = scope.operations.owner_state();
+        let participant = ledger.root();
+        Ok(Self(Rc::new(Account {
+            owner: Rc::downgrade(&owner),
+            ledger,
+            scope: participant,
+            cleanup: Cell::new(CleanupStatus::default()),
+        })))
     }
 
     pub fn new(

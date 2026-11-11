@@ -1,4 +1,5 @@
-use std::any::Any;
+use std::any::{Any, TypeId};
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use crate::{Error, ObjectPrototype, RetainedCallbackObject, Scope, Value};
@@ -22,6 +23,14 @@ impl<T> NativeObject<T> {
     pub fn payload(&self) -> &T {
         &self.payload
     }
+}
+
+/// Weak identity of one exact native projection. It retains neither the
+/// guest object nor its payload, and cannot reopen it after collection.
+pub struct NativeObjectToken<T> {
+    owner: u64,
+    index: u32,
+    marker: PhantomData<Rc<T>>,
 }
 
 impl<'scope> Scope<'scope> {
@@ -71,6 +80,73 @@ impl<'scope> Scope<'scope> {
             Box::new(holder_backing),
         )?;
         Ok(RetainedCallbackObject::new(holder, realm))
+    }
+
+    /// Observe the exact branded object's weak identity without retaining it.
+    /// An ordinary, proxy, or differently branded object yields `None`.
+    pub fn native_object_token<T: 'static>(
+        &mut self,
+        object: &Value<'scope>,
+    ) -> Result<Option<NativeObjectToken<T>>, Error> {
+        let index = self
+            .operations
+            .native_object_index(&object.root, TypeId::of::<NativeObject<T>>())?;
+        let owner = self.operations.owner_state().id();
+        Ok(index.map(|index| NativeObjectToken {
+            owner,
+            index,
+            marker: PhantomData,
+        }))
+    }
+
+    /// Reopen a live weak projection in its own heap. Collection yields
+    /// `None`. A token from a different heap is refused before backend access.
+    pub fn open_native_object<T: 'static>(
+        &mut self,
+        token: &NativeObjectToken<T>,
+    ) -> Result<Option<Value<'scope>>, Error> {
+        self.check_active()?;
+        if token.owner != self.operations.owner_state().id() {
+            return Err(Error::ForeignOwner);
+        }
+        let root = self
+            .operations
+            .open_native_object(token.index, TypeId::of::<NativeObject<T>>())?;
+        Ok(root.map(|root| self.value(root)))
+    }
+
+    /// Read a private engine-traced object reference from the exact projection.
+    /// Ordinary properties, inherited wrappers and proxies cannot supply it.
+    /// Returns `None` for an empty slot and refuses an incorrect receiver brand.
+    pub fn native_object_reference<T: 'static>(
+        &mut self,
+        object: &Value<'scope>,
+        slot: u32,
+    ) -> Result<Option<Value<'scope>>, Error> {
+        let root = self.operations.native_object_reference(
+            &object.root,
+            TypeId::of::<NativeObject<T>>(),
+            slot,
+        )?;
+        Ok(root.map(|root| self.value(root)))
+    }
+
+    /// Set or clear a private engine-traced object reference. A slot does not
+    /// root the receiver or its reference outside the guest heap. Native
+    /// consumers own slot assignment and admission; guest property changes,
+    /// including freezing the receiver, do not change private slots.
+    pub fn set_native_object_reference<T: 'static>(
+        &mut self,
+        object: &Value<'scope>,
+        slot: u32,
+        reference: Option<&Value<'scope>>,
+    ) -> Result<(), Error> {
+        self.operations.set_native_object_reference(
+            &object.root,
+            TypeId::of::<NativeObject<T>>(),
+            slot,
+            reference.map(|reference| &reference.root),
+        )
     }
 
     /// Resolve only the exact branded object and requested native payload type.

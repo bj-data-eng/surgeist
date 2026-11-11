@@ -1,6 +1,6 @@
 pub(crate) mod v8;
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::rc::Rc;
 
 use crate::callback_object::CallbackObjectIdentity;
@@ -92,6 +92,12 @@ pub(crate) struct DomExceptionProfile {
     pub(crate) account: std::rc::Rc<ConversionAccount>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct DeclaredCallable<'a> {
+    pub(crate) metadata: FunctionMetadata<'a>,
+    pub(crate) maximum_arguments: u32,
+}
+
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
@@ -141,7 +147,7 @@ pub(crate) trait Operations {
     fn function(
         &mut self,
         callback: &Callback,
-        fixed: Option<FunctionMetadata<'_>>,
+        declared: Option<DeclaredCallable<'_>>,
     ) -> Result<Root, Error>;
     fn constructor(
         &mut self,
@@ -177,6 +183,21 @@ pub(crate) trait Operations {
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error>;
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn native_object_index(&mut self, object: &Root, brand: TypeId) -> Result<Option<u32>, Error>;
+    fn open_native_object(&mut self, index: u32, brand: TypeId) -> Result<Option<Root>, Error>;
+    fn native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: TypeId,
+        slot: u32,
+    ) -> Result<Option<Root>, Error>;
+    fn set_native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: TypeId,
+        slot: u32,
+        reference: Option<&Root>,
+    ) -> Result<(), Error>;
     fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;

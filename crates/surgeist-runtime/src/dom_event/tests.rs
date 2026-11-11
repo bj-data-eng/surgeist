@@ -299,6 +299,49 @@ fn complete(outcome: DomEventDispatchOutcome) -> DomEventDispatchReceipt {
     }
 }
 #[test]
+fn explicit_empty_registry_binding_keeps_one_canonical_authority() {
+    let mut owner = ordinary();
+    let mut foreign = ordinary();
+    let mut first: DomEventDispatcher<()> = registry();
+    let mut competing: DomEventDispatcher<()> = registry();
+    let cancel = AtomicBool::new(true);
+    assert!(matches!(
+        first.bind(&mut DomEventDom::borrow(&mut owner.dom), &cancel),
+        Err(DomEventDispatchError::Dom(DomError::Cancelled))
+    ));
+    assert!(first.slots.is_empty());
+    assert_eq!(first.pending.capacity(), 0);
+
+    cancel.store(false, Ordering::Relaxed);
+    first
+        .bind(&mut DomEventDom::borrow(&mut owner.dom), &cancel)
+        .unwrap();
+    assert!(first.slots.is_empty());
+    let pending_capacity = first.pending.capacity();
+    assert!(pending_capacity > 0);
+    first
+        .bind(&mut DomEventDom::borrow(&mut owner.dom), &cancel)
+        .unwrap();
+    assert_eq!(first.pending.capacity(), pending_capacity);
+    assert!(matches!(
+        first.bind(&mut DomEventDom::borrow(&mut foreign.dom), &cancel),
+        Err(DomEventDispatchError::Dom(DomError::ForeignOwner))
+    ));
+    assert!(matches!(
+        competing.bind(&mut DomEventDom::borrow(&mut owner.dom), &cancel),
+        Err(DomEventDispatchError::Dom(
+            DomError::EventRegistryAlreadyBound
+        ))
+    ));
+    assert_eq!(competing.pending.capacity(), 0);
+    drop(first);
+    competing
+        .bind(&mut DomEventDom::borrow(&mut owner.dom), &cancel)
+        .unwrap();
+    assert!(competing.slots.is_empty());
+}
+
+#[test]
 fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing() {
     let mut fixture = ordinary();
     let stamp = fixture.dom.snapshot().stamp();

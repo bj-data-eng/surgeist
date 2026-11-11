@@ -729,12 +729,16 @@ impl Operations for Entered<'_, '_, '_> {
     fn function(
         &mut self,
         callback: &Callback,
-        fixed: Option<FunctionMetadata<'_>>,
+        declared: Option<super::DeclaredCallable<'_>>,
     ) -> Result<Root, Error> {
-        // V8 reports the supplied count as i32. A larger declared length
-        // still captures every supplied argument and remains exact metadata.
-        let prefix = fixed.map(|metadata| i32::try_from(metadata.length).unwrap_or(i32::MAX));
-        self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
+        // V8 reports the supplied count as i32. A larger prefix still
+        // captures every supplied argument while metadata remains exact.
+        let prefix =
+            declared.map(|shape| i32::try_from(shape.maximum_arguments).unwrap_or(i32::MAX));
+        self.native_function(
+            NativeCallback::Callable(callback.clone(), prefix),
+            declared.map(|shape| shape.metadata),
+        )
     }
 
     fn constructor(
@@ -1255,6 +1259,41 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
         self.native_payload(object)
+    }
+
+    fn native_object_index(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+    ) -> Result<Option<u32>, Error> {
+        self.native_index(object, brand)
+    }
+
+    fn open_native_object(
+        &mut self,
+        index: u32,
+        brand: std::any::TypeId,
+    ) -> Result<Option<Root>, Error> {
+        self.open_native_index(index, brand)
+    }
+
+    fn native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+        slot: u32,
+    ) -> Result<Option<Root>, Error> {
+        self.read_native_reference(object, brand, slot)
+    }
+
+    fn set_native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+        slot: u32,
+        reference: Option<&Root>,
+    ) -> Result<(), Error> {
+        self.write_native_reference(object, brand, slot, reference)
     }
 
     fn retain_root_backing(

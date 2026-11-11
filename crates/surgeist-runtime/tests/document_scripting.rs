@@ -445,6 +445,415 @@ fn native_window_relation_work_is_admitted_at_the_callback() {
     assert_eq!(probe(accepted + 5, WRITE), Probe::CallbackRefused);
 }
 
+fn prepare_event_window() -> (DocumentScriptHost, DomHostedTopLevel) {
+    let (mut session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 16,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 128_000,
+        work: 100_000,
+    })
+    .unwrap();
+    registry.bind(&mut session.dom(), &cancellation).unwrap();
+    let mut registry = Some(registry);
+    let host = prepare(session, cancellation)
+        .enable_with_guest_event_registry(
+            top,
+            ALLOW,
+            hooks(&hook()),
+            &mut registry,
+            DocumentGuestEventLimits {
+                storage_bytes: 64_000,
+                work: 10_000,
+                pending_exception_reports: 16,
+                dispatch: DomEventDispatchLimits {
+                    path_items: 4,
+                    snapshot_listeners: 16,
+                    failure_records: 8,
+                    callbacks: 16,
+                    work: 10_000,
+                },
+            },
+        )
+        .unwrap();
+    assert!(registry.is_none());
+    (host, top)
+}
+
+fn native_window_constructs_event_with_exact_type_flags_and_clock() {
+    let (mut host, top) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let native_timestamp = |host: &mut DocumentScriptHost| {
+        host.with_native(|dom, mut hosted, _| {
+            hosted
+                .create_event(dom, top.global(), &[], DomEventInit::default(), &cancel())
+                .unwrap()
+                .time_stamp()
+                .unwrap()
+        })
+        .unwrap()
+    };
+    let before = native_timestamp(&mut host);
+    let script = r#"(() => {
+        try {
+            const event = new Event("A\ud800\0Z\udc00", {
+                bubbles: true, cancelable: true, composed: true,
+            });
+            const empty = new Event("");
+            if (event.type !== "A\ud800\0Z\udc00" || empty.type !== ""
+                || new Event(undefined).type !== "undefined") {
+                return "Event must retain the exact DOMString";
+            }
+            if (!event.bubbles || !event.cancelable || !event.composed || event.isTrusted
+                || empty.bubbles || empty.cancelable || empty.composed) {
+                return "Event must expose its authored and default flags";
+            }
+            if (Object.getPrototypeOf(event) !== Event.prototype
+                || Event.prototype.constructor !== Event
+                || Object.getPrototypeOf(Event.prototype) !== Object.prototype
+                || Event.length !== 1) {
+                return "Event must use its declared interface prototype";
+            }
+            class ExtendedEvent extends Event {}
+            const extended = new ExtendedEvent("extended");
+            if (Object.getPrototypeOf(extended) !== ExtendedEvent.prototype
+                || extended.type !== "extended") {
+                return "Event must use the selected subclass prototype";
+            }
+            for (const call of [() => Event("x"), () => new Event()]) {
+                try {
+                    call();
+                    return "Event must require both construction and a type argument";
+                } catch (error) {
+                    if (!(error instanceof TypeError)) throw error;
+                }
+            }
+            const order = [];
+            const observed = new Event({ toString() { order.push("type"); return "ordered"; } }, {
+                get composed() { order.push("composed"); return true; },
+                get cancelable() { order.push("cancelable"); return false; },
+                get bubbles() { order.push("bubbles"); return true; },
+            });
+            if (order.join() !== "type,bubbles,cancelable,composed"
+                || observed.type !== "ordered" || !observed.bubbles
+                || observed.cancelable || !observed.composed) {
+                return "Event must convert its arguments in declared order";
+            }
+            const original = {};
+            try {
+                new Event("throw", { get cancelable() { throw original; } });
+                return "Event must surface an original conversion exception";
+            } catch (error) {
+                if (error !== original) return "Event changed the conversion exception";
+            }
+            const timestamp = event.timeStamp;
+            return Number.isFinite(timestamp) ? timestamp : "Event timeStamp must be finite";
+        } catch (error) {
+            return `${error.name}: ${error.message}`;
+        }
+    })()"#;
+    let timestamp = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            if scope.kind(&result)? != ValueKind::Number {
+                let failure = String::from_utf16(&scope.to_utf16(&result)?).unwrap();
+                panic!("attached Window Event construction failed: {failure}");
+            }
+            scope.unrestricted_double(&result)
+        })
+        .unwrap();
+    let after = native_timestamp(&mut host);
+    assert!(
+        before <= timestamp && timestamp <= after,
+        "Event timeStamp {timestamp} ms must lie within native observations {before}..={after} ms"
+    );
+}
+
+fn native_window_constructs_distinct_event_targets_with_the_interface_prototype() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        try {
+            const target = new EventTarget();
+            if (target === new EventTarget()
+                || Object.getPrototypeOf(target) !== EventTarget.prototype
+                || EventTarget.prototype.constructor !== EventTarget
+                || Object.getPrototypeOf(EventTarget.prototype) !== Object.prototype
+                || EventTarget.length !== 0) {
+                return "EventTarget must create a distinct instance of its interface";
+            }
+            class ExtendedEventTarget extends EventTarget {}
+            const extended = new ExtendedEventTarget();
+            if (Object.getPrototypeOf(extended) !== ExtendedEventTarget.prototype
+                || Object.getPrototypeOf(ExtendedEventTarget.prototype) !== EventTarget.prototype) {
+                return "EventTarget must use the selected subclass prototype";
+            }
+            try {
+                EventTarget();
+                return "EventTarget must require construction";
+            } catch (error) {
+                if (!(error instanceof TypeError)) throw error;
+            }
+            return "ok";
+        } catch (error) {
+            return `${error.name}: ${error.message}`;
+        }
+    })()"#;
+    let result = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&result).unwrap(),
+        "ok",
+        "attached Window EventTarget construction failed"
+    );
+}
+
+fn native_window_event_observes_its_live_standalone_dispatch() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let initial = r#"(() => {
+        if (Object.keys(EventTarget.prototype).join() !== "addEventListener,removeEventListener,dispatchEvent") {
+            return "EventTarget operations must follow declaration order";
+        }
+        if (Object.getOwnPropertyNames(Event.prototype).join() !==
+            "type,target,srcElement,currentTarget,eventPhase,cancelBubble,bubbles,cancelable,returnValue,defaultPrevented,composed,timeStamp," +
+            "composedPath,stopPropagation,stopImmediatePropagation,preventDefault,initEvent,NONE,CAPTURING_PHASE,AT_TARGET,BUBBLING_PHASE,constructor") {
+            return "Event properties must follow interface definition order";
+        }
+        const target = new EventTarget();
+        const event = new Event("start", { cancelable: true, composed: true });
+        if (event.target !== null || event.srcElement !== null || event.currentTarget !== null) {
+            return "a new Event must have no native targets";
+        }
+        if (event.composedPath().length !== 0 || event.eventPhase !== Event.NONE) {
+            return "a new Event must be outside dispatch";
+        }
+        Object.freeze(event);
+        Object.freeze(target);
+        if (!target.dispatchEvent(event) || event.target !== target || event.srcElement !== target
+            || event.currentTarget !== null || event.composedPath().length !== 0) {
+            return "the original target must survive standalone dispatch";
+        }
+        event.returnValue = false;
+        event.returnValue = true;
+        if (!event.defaultPrevented || event.returnValue || target.dispatchEvent(event)) {
+            return "legacy cancellation must be sticky";
+        }
+        event.stopImmediatePropagation();
+        event.cancelBubble = false;
+        if (!event.cancelBubble) return "legacy propagation must be sticky";
+        event.initEvent("updated", true, true);
+        if (event.initEvent.length !== 1 || event.type !== "updated" || !event.bubbles
+            || !event.cancelable || !event.composed || event.target !== null
+            || event.defaultPrevented || event.cancelBubble) {
+            return "initialization must update the original native Event and clear its old target";
+        }
+        return "ok";
+    })()"#;
+    let observed = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&initial.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&observed).unwrap(), "ok");
+
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = "live".encode_utf16().collect::<Vec<_>>();
+    let event = host
+        .create_guest_event(
+            &permit,
+            &kind,
+            DomEventInit {
+                cancelable: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let object = event.object(scope)?;
+        let receiver = target.object(scope)?;
+        assert!(
+            scope
+                .native_object::<DomStandaloneEventTarget>(&receiver)?
+                .is_none()
+        );
+        assert!(
+            scope.native_object::<NativeDomEvent>(&object)?.is_none(),
+            "a public Event wrapper must not expose its native mutation authority"
+        );
+        assert!(matches!(
+            scope.native_object_reference::<NativeDomEvent>(&object, 0),
+            Err(Error::ExpectedNativeObject)
+        ));
+        Ok(())
+    })
+    .unwrap();
+    let listener = host
+        .in_document(&permit, |scope| {
+            let listener = scope.evaluate(
+                &r#"(function(event) {
+            if (event.target !== this || event.currentTarget !== this || event.srcElement !== this
+                || event.eventPhase !== Event.AT_TARGET || event.composedPath().length !== 1
+                || event.composedPath()[0] !== this) {
+                throw Error("incorrect native event path");
+            }
+            event.initEvent("ignored", true, false);
+            if (event.type !== "live" || event.target !== this || event.bubbles) {
+                throw Error("active initialization changed the Event");
+            }
+            event.stopPropagation();
+            event.preventDefault();
+        })"#
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+            )?;
+            Ok(scope.retain(&listener))
+        })
+        .unwrap();
+    host.add_guest_event_listener(&permit, &target, &kind, &listener, Default::default())
+        .unwrap();
+    let report = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(report.receipt().callbacks(), 1);
+    assert!(report.exceptions().is_empty());
+    assert!(report.receipt().default_prevented());
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let event = event.object(scope)?;
+        let target = target.object(scope)?;
+        scope.set(&global, PropertyKey::String(&"liveEvent".encode_utf16().collect::<Vec<_>>()), &event)?;
+        scope.set(&global, PropertyKey::String(&"liveTarget".encode_utf16().collect::<Vec<_>>()), &target)?;
+        assert_script_number(
+            scope,
+            "Number(liveEvent.target === liveTarget && liveEvent.currentTarget === null && liveEvent.eventPhase === Event.NONE && liveEvent.composedPath().length === 0)",
+            1.0,
+        )
+    }).unwrap();
+    let reset = "host reset".encode_utf16().collect::<Vec<_>>();
+    host.initialize_guest_event(&permit, &event, &reset, true, false)
+        .unwrap();
+    assert_eq!(event.native().event_type().code_units(), reset);
+    assert!(event.native().target().is_none());
+    eval(
+        &mut host,
+        &permit,
+        "Number(liveEvent.type === 'host reset' && liveEvent.target === null && liveEvent.bubbles && !liveEvent.defaultPrevented)",
+        1.0,
+    );
+}
+
+fn native_window_registers_and_removes_guest_event_listeners() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let script = r#"(() => {
+        const target = Object.freeze(new EventTarget());
+        if (typeof target.addEventListener !== "function" || typeof target.removeEventListener !== "function") {
+            return "EventTarget must expose native listener operations";
+        }
+        const order = [];
+        const trace = [];
+        const outer = new Event("nested", { cancelable: true });
+        const first = {
+            get handleEvent() {
+                trace.push("get");
+                return function(event) {
+                    if (this !== first || event !== outer || event.currentTarget !== target) throw 1;
+                    trace.push("once");
+                    if (!target.dispatchEvent(new Event("nested"))) throw 2;
+                };
+            },
+        };
+        function tail(event) {
+            if (this !== target || event.target !== target) throw 3;
+            trace.push(event === outer ? "outer" : "inner");
+            if (event === outer) event.preventDefault();
+        }
+        target.addEventListener("nested", first, {
+            get signal() { order.push("signal"); },
+            get passive() { order.push("passive"); return false; },
+            get once() { order.push("once"); return true; },
+            get capture() { order.push("capture"); return true; },
+        });
+        target.addEventListener("nested", first, true);
+        target.addEventListener("nested", tail, { passive: false });
+        target.removeEventListener("nested", first, { capture: false });
+        if (target.dispatchEvent(outer) || order.join() !== "capture,once,passive,signal"
+            || trace.join() !== "get,once,inner,outer") return "wrong listener selection or option order";
+
+        target.removeEventListener("nested", tail);
+        if (!target.dispatchEvent(new Event("nested")) || trace.length !== 4) {
+            return "exact listener removal must persist";
+        }
+        target.addEventListener("passive", event => event.preventDefault(), { passive: true });
+        if (!target.dispatchEvent(new Event("passive", { cancelable: true }))) {
+            return "passive listener changed native cancellation";
+        }
+        let traps = 0, coercions = 0, invalid = 0;
+        const forged = new Proxy(target, { get() { traps++; }, getPrototypeOf() { traps++; } });
+        for (const action of [
+            () => EventTarget.prototype.addEventListener.call(forged, { toString() { coercions++; } }, tail),
+            () => target.addEventListener({ toString() { coercions++; return "missing"; } }),
+            () => target.addEventListener("invalid", 1),
+            () => target.addEventListener("signal", tail, { signal: {} }),
+        ]) {
+            try { action(); } catch (error) { if (error instanceof TypeError) invalid++; }
+        }
+        if (traps || coercions || invalid !== 4) return "wrong brand or callback conversion";
+        target.addEventListener("absent", null);
+        globalThis.originalListenerError = {};
+        globalThis.listenerTestTarget = target;
+        target.addEventListener("throw", { handleEvent() { throw originalListenerError; } });
+        let later = false;
+        target.addEventListener("throw", () => { later = true; });
+        return target.dispatchEvent(new Event("throw")) && later ? "ok" : "ordinary throw stopped delivery";
+    })()"#;
+    let observed = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&script.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&observed).unwrap(), "ok");
+    let report = host
+        .take_guest_listener_exception(&permit)
+        .unwrap()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        let expected =
+            scope.evaluate(&"originalListenerError".encode_utf16().collect::<Vec<_>>())?;
+        let actual = scope.import(report.exception.value())?;
+        assert!(scope.strict_equals(&expected, &actual)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        host.remove_guest_event_listener(&permit, report.registration)
+            .unwrap()
+    );
+    assert!(
+        !host
+            .remove_guest_event_listener(&permit, report.registration)
+            .unwrap()
+    );
+    eval(
+        &mut host,
+        &permit,
+        "Number(listenerTestTarget.dispatchEvent(new Event('throw')))",
+        1.0,
+    );
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+}
+
 fn native_window_exposes_dom_exception() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -1807,6 +2216,12 @@ fn main() {
                 native_window_relation_refusal_retains_the_first_typed_cause();
                 native_window_relation_work_is_admitted_at_the_callback();
             }
+            "window-event-constructor" => native_window_constructs_event_with_exact_type_flags_and_clock(),
+            "window-event-target-constructor" => {
+                native_window_constructs_distinct_event_targets_with_the_interface_prototype()
+            }
+            "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
+            "window-event-listeners" => native_window_registers_and_removes_guest_event_listeners(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
                 native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
@@ -1868,6 +2283,10 @@ fn main() {
     native_window_relation_custody_and_collision();
     native_window_relation_refusal_retains_the_first_typed_cause();
     native_window_relation_work_is_admitted_at_the_callback();
+    native_window_constructs_event_with_exact_type_flags_and_clock();
+    native_window_constructs_distinct_event_targets_with_the_interface_prototype();
+    native_window_event_observes_its_live_standalone_dispatch();
+    native_window_registers_and_removes_guest_event_listeners();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();

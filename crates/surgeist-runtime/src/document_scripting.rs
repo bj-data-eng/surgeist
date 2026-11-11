@@ -31,7 +31,7 @@ mod projection;
 pub use guest::{
     DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
     DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
-    DocumentGuestListenerException,
+    DocumentGuestEventView, DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;
@@ -330,23 +330,33 @@ impl PreparedDocumentScriptHost {
         policy: HtmlScriptingPolicy,
         hooks: DocumentScriptHooks<'_>,
     ) -> Result<DocumentScriptHost, EnableDocumentScriptFailure> {
-        match self.enable_inner(target, policy, hooks) {
-            Ok(engine) => Ok(DocumentScriptHost {
-                engine: Some(engine),
-                native: self.native,
-                retirement: None,
-                guest_exception_reports: None,
-            }),
+        let result = self
+            .prepare_engine(target, hooks)
+            .and_then(|engine| engine.publish(&self.native, policy));
+        match result {
+            Ok(engine) => Ok(self.into_host(engine, None)),
             Err(error) => Err(EnableDocumentScriptFailure { owner: self, error }),
         }
     }
 
-    fn enable_inner(
+    fn into_host(
+        self,
+        engine: ScriptEngine,
+        guest_exception_reports: Option<Rc<guest::GuestExceptionReports>>,
+    ) -> DocumentScriptHost {
+        DocumentScriptHost {
+            engine: Some(engine),
+            native: self.native,
+            retirement: None,
+            guest_exception_reports,
+        }
+    }
+
+    fn prepare_engine(
         &self,
         target: DomHostedTopLevel,
-        policy: HtmlScriptingPolicy,
         hooks: DocumentScriptHooks<'_>,
-    ) -> Result<ScriptEngine, DocumentScriptError> {
+    ) -> Result<UnpublishedScriptEngine, DocumentScriptError> {
         let owner = &self.native;
         let cancel = &owner.cancellation;
         let hosted = {
@@ -511,10 +521,60 @@ impl PreparedDocumentScriptHost {
             window_event.install(scope)
         })?;
 
+        Ok(UnpublishedScriptEngine {
+            process,
+            realm,
+            target,
+            authority,
+            failures,
+            source_failures,
+            window_event,
+            liveness_backing,
+            retained_bytes: bytes,
+            _hook_backing: hook_backing,
+        })
+    }
+}
+
+struct UnpublishedScriptEngine {
+    process: Process,
+    realm: Realm,
+    target: DomHostedTopLevel,
+    authority: RealmAuthority,
+    failures: FailureSlot,
+    source_failures: SourceFailureSlot,
+    window_event: Rc<window_event::WindowEvent>,
+    liveness_backing: DomHostedRuntimeRetention,
+    retained_bytes: usize,
+    _hook_backing: DomHostedRuntimeRetention,
+}
+
+impl UnpublishedScriptEngine {
+    fn publish(
+        self,
+        owner: &NativeOwner,
+        policy: HtmlScriptingPolicy,
+    ) -> Result<ScriptEngine, DocumentScriptError> {
+        let cancel = &owner.cancellation;
+        let Self {
+            process,
+            realm,
+            target,
+            authority,
+            failures,
+            source_failures,
+            window_event,
+            liveness_backing,
+            retained_bytes,
+            _hook_backing,
+        } = self;
+        // Keep the hook debit alive through engine disposal on refusal.
+        let process = process;
         let mut session = owner
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let hosted = session.hosted_execution();
         let (canonical, registration) = hosted
             .with_script_target(&mut session.dom(), target, cancel, |source, dom| {
                 source.attach_document_script_host(
@@ -548,8 +608,8 @@ impl PreparedDocumentScriptHost {
             realm,
             comments: projection::ProjectedComments::default(),
             creations: CreationRealms::default(),
-            retained_bytes: bytes,
-            _hook_backing: hook_backing,
+            retained_bytes,
+            _hook_backing,
         })
     }
 }
@@ -630,6 +690,9 @@ impl ScriptEngine {
 
     fn finish_projection_cleanup(&mut self, realm: &RealmAuthority) {
         self.comments.drain_retirements(&mut self.process);
+        if let Some(events) = &self.guest_events {
+            events.reap_retired_targets();
+        }
         if realm.check_owner_active().is_err() {
             self.comments.release_all(&mut self.process);
         }
