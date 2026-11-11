@@ -3,7 +3,7 @@ use crate::accounting::{
     Account, AccountedVec, RenderResource, RenderWork, SharedValue, StorageAccount,
 };
 use crate::{
-    Color, Error, Point, Rect, Result,
+    BackendErrorCode, Color, Error, Point, Rect, Result,
     frame::CompositeSourceSpace,
     layer::{BlendMode, LayerComposition, PorterDuffOperator},
     pass::{
@@ -15,8 +15,10 @@ use crate::{
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::image::{Extend, ImageQuality};
 
-const COLOR_FILTER_OPERATION_HEADER_BYTE_LEN: u64 = 16;
-const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: u64 = 32;
+const COLOR_FILTER_OPERATION_HEADER_BYTE_LEN: usize = 16;
+const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: usize = 32;
+type ColorFilterOperationHeader = [u8; COLOR_FILTER_OPERATION_HEADER_BYTE_LEN];
+type ColorFilterOperationRecord = [u8; COLOR_FILTER_OPERATION_RECORD_BYTE_LEN];
 
 /// Exact 32-byte WGSL drop-shadow parameter block.
 ///
@@ -135,23 +137,29 @@ impl ColorFilterOperationBytes {
         // The sole serializer owns a 16-byte header followed by complete
         // 32-byte operation records. Compare their exact bytes, including pads,
         // while admitting each reached operation separately from serialization.
-        let (header, records) = self.bytes.split_at(16);
-        let (other_header, other_records) = other.bytes.split_at(16);
+        let (header, records) = self.wire_parts()?;
+        let (other_header, other_records) = other.wire_parts()?;
         if header != other_header {
             return Ok(false);
         }
-        for (actual, expected) in records
-            .as_chunks::<32>()
-            .0
-            .iter()
-            .zip(other_records.as_chunks::<32>().0)
-        {
+        for (actual, expected) in records.iter().zip(other_records) {
             account.work(RenderWork::FilterOperationVisits, 1)?;
             if actual != expected {
                 return Ok(false);
             }
         }
         Ok(true)
+    }
+
+    fn wire_parts(&self) -> Result<(&ColorFilterOperationHeader, &[ColorFilterOperationRecord])> {
+        let (header, body) = self
+            .bytes
+            .split_first_chunk::<COLOR_FILTER_OPERATION_HEADER_BYTE_LEN>()
+            .ok_or_else(color_filter_wire_partition_error)?;
+        let (records, []) = body.as_chunks::<COLOR_FILTER_OPERATION_RECORD_BYTE_LEN>() else {
+            return Err(color_filter_wire_partition_error());
+        };
+        Ok((header, records))
     }
 
     pub(crate) fn try_from_runtime_operations_with_limits(
@@ -179,15 +187,33 @@ impl ColorFilterOperationBytes {
 
         let mut bytes = AccountedVec::new_in(storage, byte_len, RenderResource::RetainedCpuBytes)?;
         bytes.resize(byte_len, 0)?;
-        serialization_work(storage, observer, RenderWork::SerializedBytes, 16)?;
-        bytes[0..4].copy_from_slice(&operation_count.to_le_bytes());
+        let (header, body) = bytes
+            .split_first_chunk_mut::<COLOR_FILTER_OPERATION_HEADER_BYTE_LEN>()
+            .ok_or_else(color_filter_wire_partition_error)?;
+        let (records, []) = body.as_chunks_mut::<COLOR_FILTER_OPERATION_RECORD_BYTE_LEN>() else {
+            return Err(color_filter_wire_partition_error());
+        };
+        if records.len() != operations.len() {
+            return Err(color_filter_wire_partition_error());
+        }
+        serialization_work(
+            storage,
+            observer,
+            RenderWork::SerializedBytes,
+            COLOR_FILTER_OPERATION_HEADER_BYTE_LEN,
+        )?;
+        header[..4].copy_from_slice(&operation_count.to_le_bytes());
 
-        for (index, operation) in operations.iter().copied().enumerate() {
+        for (slot, operation) in records.iter_mut().zip(operations.iter().copied()) {
             serialization_work(storage, observer, RenderWork::FilterOperationVisits, 1)?;
             let record = serialize_color_filter_operation(operation)?;
-            serialization_work(storage, observer, RenderWork::SerializedBytes, 32)?;
-            let offset = 16 + index * 32;
-            bytes[offset..offset + 32].copy_from_slice(&record);
+            serialization_work(
+                storage,
+                observer,
+                RenderWork::SerializedBytes,
+                COLOR_FILTER_OPERATION_RECORD_BYTE_LEN,
+            )?;
+            *slot = record;
         }
         Ok(Self {
             bytes: SharedValue::from_accounted(bytes, storage)?,
@@ -208,6 +234,13 @@ impl ColorFilterOperationBytes {
         let storage = StorageAccount::Renderer(owner.at(crate::RenderCpuScope::DeviceBacking));
         Self::serialize(&storage, None, operations, limits)
     }
+}
+
+fn color_filter_wire_partition_error() -> Error {
+    Error::new(
+        BackendErrorCode::RenderFailed,
+        "color filter storage must contain one header and complete operation records",
+    )
 }
 
 fn serialization_work(
@@ -236,7 +269,7 @@ fn checked_color_filter_operation_byte_len(
     operation_count: u32,
     limits: ColorFilterOperationBufferLimits,
 ) -> Result<u64> {
-    let records = COLOR_FILTER_OPERATION_RECORD_BYTE_LEN
+    let records = (COLOR_FILTER_OPERATION_RECORD_BYTE_LEN as u64)
         .checked_mul(u64::from(operation_count))
         .ok_or_else(|| {
             color_filter_operation_byte_len_error(
@@ -244,7 +277,7 @@ fn checked_color_filter_operation_byte_len(
                 "must produce a checked u64 record byte length",
             )
         })?;
-    let byte_len = COLOR_FILTER_OPERATION_HEADER_BYTE_LEN
+    let byte_len = (COLOR_FILTER_OPERATION_HEADER_BYTE_LEN as u64)
         .checked_add(records)
         .ok_or_else(|| {
             color_filter_operation_byte_len_error(
@@ -261,7 +294,9 @@ fn checked_color_filter_operation_byte_len(
     Ok(byte_len)
 }
 
-fn serialize_color_filter_operation(operation: RuntimeColorOperation) -> Result<[u8; 32]> {
+fn serialize_color_filter_operation(
+    operation: RuntimeColorOperation,
+) -> Result<ColorFilterOperationRecord> {
     if operation.clamp_boundary()
         != RuntimeColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply
     {
@@ -316,7 +351,7 @@ fn serialize_color_filter_operation(operation: RuntimeColorOperation) -> Result<
         ),
     };
 
-    let mut bytes = [0_u8; 32];
+    let mut bytes = [0_u8; COLOR_FILTER_OPERATION_RECORD_BYTE_LEN];
     bytes[0..4].copy_from_slice(&tag.to_le_bytes());
     bytes[4..8].copy_from_slice(&zero.to_le_bytes());
     bytes[8..12].copy_from_slice(&exponent.to_le_bytes());
