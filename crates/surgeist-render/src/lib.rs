@@ -35,6 +35,7 @@
 mod accounting;
 mod backend;
 mod capability;
+mod color_mapping;
 mod color_reduction;
 mod command;
 mod encode;
@@ -88,6 +89,7 @@ pub use capability::{
     PaintSourceCapabilities, RuntimeCapabilities, ShadowCapabilities, SurfaceCapabilities,
     SymbolicColorPolicy, TransformCoordinateSpaceCapabilities,
 };
+pub use color_mapping::prepare_sdr_srgb_color;
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
     InvalidValue, PrimitiveFamily, PrimitiveOperation, RenderSurfaceAvailability, Result,

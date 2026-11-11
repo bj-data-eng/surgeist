@@ -489,6 +489,7 @@ pub surgeist_render::RenderAttemptKind::ImageRepeat
 pub surgeist_render::RenderAttemptKind::PaintGradient
 pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
+pub surgeist_render::RenderAttemptKind::SdrColor
 pub surgeist_render::RenderAttemptKind::TextLayout
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptStatus
 pub surgeist_render::RenderAttemptStatus::Canceled
@@ -2194,5 +2195,6 @@ pub struct surgeist_render::WebCanvas
 impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_render::prepare_sdr_srgb_color(resolved: surgeist_color::value::Color, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub fn surgeist_render::prepare_text_layout<'a>(layout: &'a surgeist_text::layout::Layout, placement: surgeist_render::Transform, limits: surgeist_render::TextLayoutLimits, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::PreparedTextScene<'a>>
 pub type surgeist_render::Result<T> = core::result::Result<T, surgeist_render::Error>

@@ -195,9 +195,13 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Clip)
             || self.supported_for(RenderAttemptKind::BoxDecoration)
             || self.supported_for(RenderAttemptKind::PaintGradient)
+            || self.supported_for(RenderAttemptKind::SdrColor)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::SdrColor => {
+                matches!(self, Self::PaintVisits | Self::CoordinateVisits)
+            }
             RenderAttemptKind::PaintGradient => {
                 cfg!(feature = "render-paint")
                     && matches!(
@@ -865,6 +869,8 @@ pub enum RenderAttemptKind {
     TextLayout,
     /// Standalone native Paint geometry/used-stop consumption.
     PaintGradient,
+    /// Standalone resolved color preparation for an SDR sRGB destination.
+    SdrColor,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
