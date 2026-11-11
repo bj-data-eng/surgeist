@@ -862,9 +862,23 @@ impl GraphLoweringPassView<'_> {
         graph_build(graph_lowering_pass_kind(self.graph, self.pass, account))
     }
 
-    pub(crate) fn reads(self, account: &Account) -> Result<AccountedVec<GraphLoweringReadBinding>> {
+    /// Converts the kind and derives ordered reads from the same pass metadata.
+    /// A kind conversion failure stops before any read binding is prepared.
+    pub(crate) fn project<T>(
+        self,
+        account: &Account,
+        convert_kind: impl FnOnce(&GraphLoweringPassKind) -> Result<T>,
+    ) -> Result<(T, AccountedVec<GraphLoweringReadBinding>)> {
+        let kind = self.kind(account)?;
+        let converted = convert_kind(&kind)?;
         let account = &account.at(RenderPhase::Lower);
-        graph_build(graph_lowering_read_bindings(self.graph, self.pass, account))
+        let reads = graph_build(graph_lowering_read_bindings(self.pass, &kind, account))?;
+        Ok((converted, reads))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reads(self, account: &Account) -> Result<AccountedVec<GraphLoweringReadBinding>> {
+        self.project(account, |_| Ok(())).map(|(_, reads)| reads)
     }
 
     #[must_use]
@@ -876,6 +890,16 @@ impl GraphLoweringPassView<'_> {
             }
         }
     }
+}
+
+pub(super) fn validate_pass_projection(
+    graph: &GpuRenderGraph,
+    pass: &SemanticGraphPass,
+    account: &Account,
+) -> Result<()> {
+    GraphLoweringPassView { graph, pass }
+        .project(account, |_| Ok(()))
+        .map(drop)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -940,7 +964,7 @@ impl<'graph> GraphLoweringView<'graph> {
     }
 }
 
-pub(super) fn graph_lowering_pass_kind(
+fn graph_lowering_pass_kind(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
 
@@ -1418,13 +1442,11 @@ fn graph_lowering_composite(
     })
 }
 
-pub(super) fn graph_lowering_read_bindings(
-    graph: &GpuRenderGraph,
+fn graph_lowering_read_bindings(
     pass: &SemanticGraphPass,
-
+    kind: &GraphLoweringPassKind,
     account: &Account,
 ) -> GraphBuildResult<AccountedVec<GraphLoweringReadBinding>> {
-    let kind = graph_lowering_pass_kind(graph, pass, account)?;
     let make = |index: usize,
                 role: GraphLoweringReadRole,
                 sampling_filter: GraphLoweringSamplingFilter,
@@ -1513,7 +1535,7 @@ pub(super) fn graph_lowering_read_bindings(
             account.temporary(0)?
         }
         GraphLoweringPassKind::Composite(Some(composite)) => {
-            graph_lowering_composite_read_bindings(pass, &composite, account)?
+            graph_lowering_composite_read_bindings(pass, composite, account)?
         }
         GraphLoweringPassKind::Present => temp_array(
             &[make(

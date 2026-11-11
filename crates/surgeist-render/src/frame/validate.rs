@@ -4,7 +4,7 @@ use super::graph::{
     SemanticPassResult, SemanticResourceId, SemanticResourceProducer, SemanticResourceRole,
     WorkingImageInitialization, graph_build,
 };
-use super::lower::{graph_lowering_pass_kind, graph_lowering_read_bindings};
+use super::lower::validate_pass_projection;
 use crate::accounting::{Account, AccountedVec, RenderWork, StorageContractError};
 
 pub(super) fn validate_semantic_frame_graph(
@@ -160,8 +160,7 @@ pub(super) fn validate_lowering_graph(
     let mut validation = graph_build(LoweringValidationState::begin(graph, account))?;
     for (index, pass) in graph.passes.iter().enumerate() {
         graph_build(validation.validate_pass(index, pass))?;
-        graph_build(graph_lowering_pass_kind(graph, pass, account))?;
-        graph_build(graph_lowering_read_bindings(graph, pass, account))?;
+        validate_pass_projection(graph, pass, account)?;
     }
     graph_build(validation.finish())
 }
