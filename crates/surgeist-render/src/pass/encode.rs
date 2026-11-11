@@ -44,7 +44,7 @@ use super::{
     },
 };
 
-pub(super) fn backdrop_filter_passes<'a>(
+pub(super) fn filter_step_passes<'a>(
     steps: &'a [ExecutableFilterStepFacts],
     account: &'a Account,
 ) -> impl Iterator<Item = Result<RuntimePassId>> + 'a {
@@ -660,15 +660,24 @@ fn backdrop_execution_receipt(
     let Some(outer) = position(backdrop.outer_composite)? else {
         return Ok(BackdropExecutionReceipt::default());
     };
-    let filters = backdrop_filter_passes(&backdrop.filter_steps, account);
-    let mut filters_are_ordered = true;
-    for pass in filters {
-        let pass = pass?;
-        if !position(pass)?.is_some_and(|position| copy < position && position < clear) {
-            filters_are_ordered = false;
-            break;
+    let filters_are_ordered = |steps: &[ExecutableFilterStepFacts], start, end| -> Result<bool> {
+        let Some(passes) = prepared.plan.passes.get(start + 1..end) else {
+            return Ok(false);
+        };
+        let mut passes = passes.iter();
+        for expected in filter_step_passes(steps, account) {
+            let expected = expected?;
+            let Some(pass) = passes.next() else {
+                return Ok(false);
+            };
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if pass.runtime.id != expected {
+                return Ok(false);
+            }
         }
-    }
+        Ok(true)
+    };
+    let backdrop_filters_are_ordered = filters_are_ordered(&backdrop.filter_steps, copy, clear)?;
     let assembled_group = match backdrop.foreground_composite {
         Some(pass) => {
             let Some(foreground) = position(pass)? else {
@@ -678,17 +687,13 @@ fn backdrop_execution_receipt(
         }
         None => backdrop_composite,
     };
-    let group_blur_is_ordered = match backdrop.group_blur {
-        Some(blur) => {
-            let (Some(horizontal), Some(vertical)) =
-                (position(blur.horizontal)?, position(blur.vertical)?)
-            else {
-                return Ok(BackdropExecutionReceipt::default());
-            };
-            assembled_group < horizontal && horizontal < vertical && vertical < outer
-        }
-        None => true,
+    let Some(group_steps) = execution
+        .filter_steps
+        .get(backdrop.group_filter_steps.clone())
+    else {
+        return Ok(BackdropExecutionReceipt::default());
     };
+    let group_filters_are_ordered = filters_are_ordered(group_steps, assembled_group, outer)?;
     let resources = [
         Some(backdrop.completed_parent),
         Some(backdrop.copied),
@@ -696,8 +701,7 @@ fn backdrop_execution_receipt(
         Some(backdrop.completed_group),
         Some(backdrop.result),
         backdrop.foreground,
-        backdrop.group_blur.map(|blur| blur.intermediate),
-        backdrop.group_blur.map(|blur| blur.result),
+        (!group_steps.is_empty()).then_some(backdrop.outer_source),
     ];
     let mut resources_are_distinct = true;
     'resources: for (index, resource) in resources.iter().enumerate() {
@@ -724,12 +728,12 @@ fn backdrop_execution_receipt(
                     .any(|read| read.resource == backdrop.result)
         });
     Ok(BackdropExecutionReceipt {
-        filters_encoded: !backdrop.filter_steps.is_empty() && filters_are_ordered,
+        filters_encoded: !backdrop.filter_steps.is_empty() && backdrop_filters_are_ordered,
         group_order_is_exact: copy < clear
             && clear < backdrop_composite
             && (backdrop.foreground_composite.is_none() || backdrop_composite < assembled_group)
             && assembled_group < outer
-            && group_blur_is_ordered,
+            && group_filters_are_ordered,
         group_resources_are_distinct: resources_are_distinct,
         #[cfg(test)]
         later_sibling_transition_is_exact,
@@ -4548,7 +4552,7 @@ mod repeated_proof_accounting_tests {
                 ]
             ));
             assert_eq!(
-                backdrop_filter_passes(&backdrop.filter_steps, &setup)
+                filter_step_passes(&backdrop.filter_steps, &setup)
                     .try_fold(0usize, |count, pass| pass.map(|_| count + 1))
                     .unwrap(),
                 7
@@ -4585,7 +4589,7 @@ mod repeated_proof_accounting_tests {
                 unreachable!()
             };
             let (result, report) = measure_proof_work(RenderWork::GraphNodeVisits, 1, |account| {
-                backdrop_filter_passes(&backdrop.filter_steps, account)
+                filter_step_passes(&backdrop.filter_steps, account)
                     .next()
                     .transpose()
             });

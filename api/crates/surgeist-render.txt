@@ -1293,6 +1293,7 @@ pub fn surgeist_render::Layer::clip(&self) -> core::option::Option<&surgeist_ren
 pub fn surgeist_render::Layer::clip_input(&self) -> core::option::Option<&surgeist_render::ClipInput>
 pub const fn surgeist_render::Layer::composition(&self) -> surgeist_render::LayerComposition
 pub const fn surgeist_render::Layer::filter(&self) -> core::option::Option<surgeist_render::Filter>
+pub const fn surgeist_render::Layer::filter_list(&self) -> core::option::Option<&surgeist_render::FilterList>
 pub const fn surgeist_render::Layer::is_isolated(&self) -> bool
 pub const fn surgeist_render::Layer::isolated(self) -> Self
 pub fn surgeist_render::Layer::mask(&self) -> core::option::Option<&surgeist_render::Shape>
@@ -1307,6 +1308,7 @@ pub fn surgeist_render::Layer::try_filter(self, filter: surgeist_render::Filter)
 pub fn surgeist_render::Layer::try_mask(self, mask: surgeist_render::Shape) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Layer::with_composition(self, composition: surgeist_render::LayerComposition) -> Self
+pub fn surgeist_render::Layer::with_filter_list(self, filters: surgeist_render::FilterList) -> Self
 pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
 pub const fn surgeist_render::Layer::with_transform(self, transform: surgeist_render::Transform) -> Self
 impl core::default::Default for surgeist_render::Layer

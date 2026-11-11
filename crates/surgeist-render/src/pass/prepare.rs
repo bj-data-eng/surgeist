@@ -34,7 +34,7 @@ use super::super::{
 use super::{
     BackdropPreparableGraph, BaseExecutionFacts, BasePreparableGraph, ColorFilterPreparableGraph,
     CompositionPreparableGraph, CustomSpineEncodingState, ExecutableGraphWorkingFormatRequest,
-    ForegroundBlurPreparableGraph, LoweredGraphPlan, RuntimeBlur, RuntimeComposite,
+    ForegroundFilterPreparableGraph, LoweredGraphPlan, RuntimeBlur, RuntimeComposite,
     RuntimeCompositeKind, RuntimeGraphGeneration, RuntimePass, RuntimePassCacheKeys, RuntimePassId,
     RuntimePassKind, RuntimeReadBinding, RuntimeResourceFormat, RuntimeResourceId,
     RuntimeResourceImport, RuntimeResourceProducer, RuntimeResourceRequest, RuntimeResourceRole,
@@ -771,7 +771,7 @@ pub(crate) enum ExecutableGraphDispatchEligibility {
     ExactBase(BasePreparableGraph),
     ExactComposition(CompositionPreparableGraph),
     ExactBackdrop(BackdropPreparableGraph),
-    ExactForegroundBlur(ForegroundBlurPreparableGraph),
+    ExactForegroundFilters(ForegroundFilterPreparableGraph),
     FuturePasses,
 }
 
@@ -815,22 +815,20 @@ impl ExecutableGraphDispatchEligibility {
         }
     }
 
-    fn try_classify_foreground_blur(
+    fn try_classify_foreground_filters(
         graph: &GpuRenderGraph,
         output_format: Format,
         working_format: ExecutableGraphWorkingFormatRequest,
         capabilities: &DeviceCapabilities,
-        preparable: SpatialFilterPreparableGraph,
+        preparable: ForegroundFilterPreparableGraph,
         account: &Account,
     ) -> Result<Self> {
         if !preparable.proves_closed_filter_facts(account)? {
             return Err(preparation_error(
-                "spatial-filter classification lost its closed pre-allocation facts",
+                "filter classification lost its closed pre-allocation facts",
             ));
         }
-        if !graph.has_foreground_blur()
-            || ForegroundBlurPreparableGraph::qualify(preparable, account)?.is_none()
-        {
+        if !graph.has_foreground_filters() {
             return Ok(Self::FuturePasses);
         }
 
@@ -842,20 +840,28 @@ impl ExecutableGraphDispatchEligibility {
             capabilities,
             account,
         )?;
-        let PrePreparationGraphClassification::ExactSpatialFilter(preparable) =
-            PrePreparationGraphClassification::classify(lowered, account)?
-        else {
-            return Err(preparation_error(
-                "checked foreground blur lowering changed its closed eligibility result",
-            ));
+        let classified = PrePreparationGraphClassification::classify(lowered, account)?;
+        let selected = match (preparable, classified) {
+            (
+                ForegroundFilterPreparableGraph::Color(_),
+                PrePreparationGraphClassification::ExactColorFilter(graph),
+            ) => ForegroundFilterPreparableGraph::Color(graph),
+            (
+                ForegroundFilterPreparableGraph::Spatial(_),
+                PrePreparationGraphClassification::ExactSpatialFilter(graph),
+            ) => ForegroundFilterPreparableGraph::Spatial(graph),
+            _ => {
+                return Err(preparation_error(
+                    "checked foreground filter lowering changed its closed eligibility result",
+                ));
+            }
         };
-        ForegroundBlurPreparableGraph::qualify(preparable, account)?
-            .map(Self::ExactForegroundBlur)
-            .ok_or_else(|| {
-                preparation_error(
-                    "checked foreground blur lowering lost its ordinary Gaussian facts",
-                )
-            })
+        if !selected.proves_closed_filter_facts(account)? {
+            return Err(preparation_error(
+                "checked foreground filter lowering lost its closed pre-allocation facts",
+            ));
+        }
+        Ok(Self::ExactForegroundFilters(selected))
     }
 
     pub(crate) fn try_classify(
@@ -886,22 +892,24 @@ impl ExecutableGraphDispatchEligibility {
                 )
             }
             PrePreparationGraphClassification::ExactSpatialFilter(preparable) => {
-                Self::try_classify_foreground_blur(
+                Self::try_classify_foreground_filters(
                     graph,
                     output_format,
                     working_format,
                     capabilities,
-                    preparable,
+                    ForegroundFilterPreparableGraph::Spatial(preparable),
                     account,
                 )
             }
             PrePreparationGraphClassification::ExactColorFilter(preparable) => {
-                if !preparable.proves_closed_color_facts(account)? {
-                    return Err(preparation_error(
-                        "color-filter classification lost its closed pre-allocation facts",
-                    ));
-                }
-                Ok(Self::FuturePasses)
+                Self::try_classify_foreground_filters(
+                    graph,
+                    output_format,
+                    working_format,
+                    capabilities,
+                    ForegroundFilterPreparableGraph::Color(preparable),
+                    account,
+                )
             }
             PrePreparationGraphClassification::ExactComposition(_) => {
                 let working_format = working_format.resolve(capabilities)?;
@@ -1514,6 +1522,35 @@ impl<'device> PreparedGraph<'device> {
         Ok(prepared)
     }
 
+    pub(crate) fn try_prepare_color_filter(
+        preparable: &ColorFilterPreparableGraph,
+        selected_working_format: WorkingFormat,
+        capabilities: &DeviceCapabilities,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
+        resources: &'device ResourceManager,
+        pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
+    ) -> Result<Self> {
+        let prepared = Self::try_prepare_inner(
+            GraphPreparationSource::ColorFilter {
+                preparable,
+                operation_limits: None,
+            },
+            selected_working_format,
+            capabilities,
+            (device, queue),
+            resources,
+            pass_cache_phase,
+            account,
+        )?;
+        if prepared.color_filter_execution.is_none() {
+            return Err(preparation_error(
+                "color-filter preparation lost its validated closed execution facts",
+            ));
+        }
+        Ok(prepared)
+    }
+
     pub(crate) fn try_prepare_spatial_filter(
         preparable: &SpatialFilterPreparableGraph,
         selected_working_format: WorkingFormat,
@@ -1591,24 +1628,15 @@ impl<'device> PreparedGraph<'device> {
             }
             PrePreparationGraphClassification::ExactColorFilter(preparable) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
-                let prepared = Self::try_prepare_inner(
-                    GraphPreparationSource::ColorFilter {
-                        preparable: &preparable,
-                        operation_limits: None,
-                    },
+                Self::try_prepare_color_filter(
+                    &preparable,
                     selected_working_format,
                     capabilities,
                     (device, queue),
                     resources,
                     pass_cache_phase,
                     account,
-                )?;
-                if prepared.color_filter_execution.is_none() {
-                    return Err(preparation_error(
-                        "color-filter preparation lost its validated closed execution facts",
-                    ));
-                }
-                Ok(prepared)
+                )
             }
             PrePreparationGraphClassification::ExactSpatialFilter(preparable) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;

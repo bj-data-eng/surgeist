@@ -1,6 +1,6 @@
 use super::FrameContext;
-use super::filter::InclusiveFilterKernelSupport;
-use crate::accounting::{Account, RenderPhase, RenderWork};
+use super::filter::foreground_filter_bounds;
+use crate::accounting::{Account, RenderWork};
 use crate::{
     command::{
         NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
@@ -412,7 +412,7 @@ impl SemanticSourceContribution {
             && layer.composition.is_source_over_normal()
             && layer.mask.is_none()
             && layer.backdrop.is_none()
-            && layer.foreground_blur.is_none()
+            && layer.foreground_filters.is_none()
             && (layer.opacity - 1.0).abs() < f32::EPSILON;
         let inverse = destination_to_layer_local_mapping(layer.transform)?;
         let child_parent = if transparent_wrapper && has_bounded_children {
@@ -426,17 +426,17 @@ impl SemanticSourceContribution {
             SemanticSourceBounds::exactly_empty()
         };
         // Ink outside the output can reach it through the filter's halo.
-        let child_domain = match (domain, inverse, layer.foreground_blur) {
-            (_, _, Some(_)) => SemanticContributionDomain::LocalUnbounded,
-            (SemanticContributionDomain::RootOutputBounded(bounds), Some(inverse), None) => {
+        let child_domain = match (domain, inverse, layer.foreground_filters.is_some()) {
+            (_, _, true) => SemanticContributionDomain::LocalUnbounded,
+            (SemanticContributionDomain::RootOutputBounded(bounds), Some(inverse), false) => {
                 SemanticContributionDomain::RootOutputBounded(
                     bounds.try_transform(inverse.affine, "child image domain")?,
                 )
             }
-            (SemanticContributionDomain::RootOutputBounded(bounds), None, None) => {
+            (SemanticContributionDomain::RootOutputBounded(bounds), None, false) => {
                 SemanticContributionDomain::RootOutputBounded(bounds)
             }
-            (SemanticContributionDomain::LocalUnbounded, _, None) => {
+            (SemanticContributionDomain::LocalUnbounded, _, false) => {
                 SemanticContributionDomain::LocalUnbounded
             }
         };
@@ -457,19 +457,19 @@ impl SemanticSourceContribution {
             layer_to_surface,
             account,
         )?;
-        if let Some(blur) = layer.foreground_blur
+        if let Some(filters) = &layer.foreground_filters
             && let Some(bounds) = source_bounds.known_non_empty_extent()
             && let Some(scale) = context.local_raster_scale(layer_to_surface)?
         {
-            let filter_account = account.at(RenderPhase::Filter);
-            source_bounds = account.phase(RenderPhase::Filter, || {
-                filter_account.work(RenderWork::FilterOperationVisits, 1)?;
-                let support = InclusiveFilterKernelSupport::try_new(blur, scale)?;
-                Ok(SemanticSourceBounds::from_parts(
-                    Some(support.inflate(bounds)?),
-                    source_bounds.contains_unresolved_content(),
-                ))
-            })?;
+            source_bounds = SemanticSourceBounds::from_parts(
+                Some(foreground_filter_bounds(
+                    bounds,
+                    scale,
+                    filters.ops(),
+                    account,
+                )?),
+                source_bounds.contains_unresolved_content(),
+            );
         }
         if let Some(clip) = layer.clip.as_ref() {
             source_bounds = source_bounds.try_intersect(

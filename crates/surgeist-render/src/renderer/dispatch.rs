@@ -356,9 +356,9 @@ impl Renderer {
                         &account.storage(),
                     )?))
                 }
-                ExecutableGraphDispatchEligibility::ExactForegroundBlur(preparable) => {
+                ExecutableGraphDispatchEligibility::ExactForegroundFilters(preparable) => {
                     Ok(RendererFrameDispatch::ExactGraph(OwnedBox::new(
-                        ExactSurfaceGraph::ForegroundBlur(preparable),
+                        ExactSurfaceGraph::ForegroundFilters(preparable),
                         &account.storage(),
                     )?))
                 }

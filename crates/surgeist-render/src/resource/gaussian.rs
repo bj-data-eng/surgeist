@@ -195,8 +195,14 @@ fn validate_gaussian_geometry(
     raster_scale: f64,
     support_multiple: f64,
 ) -> Result<(f64, u32)> {
+    if !standard_deviation.is_finite() || standard_deviation < 0.0 {
+        return Err(Error::invalid_value(
+            "Gaussian standard deviation",
+            standard_deviation,
+            "must be finite and non-negative",
+        ));
+    }
     for (field, value) in [
-        ("Gaussian standard deviation", standard_deviation),
         ("Gaussian raster scale", raster_scale),
         ("Gaussian support multiple", support_multiple),
     ] {
@@ -209,11 +215,11 @@ fn validate_gaussian_geometry(
         }
     }
     let device_standard_deviation = standard_deviation * raster_scale;
-    if !device_standard_deviation.is_finite() || device_standard_deviation <= 0.0 {
+    if !device_standard_deviation.is_finite() {
         return Err(Error::invalid_value(
             "Gaussian device standard deviation",
             device_standard_deviation,
-            "must be finite and greater than zero",
+            "must be finite",
         ));
     }
     let support = device_standard_deviation * support_multiple;
@@ -253,11 +259,14 @@ impl NormalizedGaussianWeights {
         let mut positive_weights = account.temporary(weight_count)?;
         for offset in 0..=support_radius {
             account.work(RenderWork::KernelSampleVisits, 1)?;
-            let offset = f64::from(offset);
-            let ratio = offset / device_standard_deviation;
-            positive_weights
-                .append_slot()?
-                .write((-0.5 * ratio * ratio).exp());
+            // Zero device sigma has only the center sample.
+            let weight = if offset == 0 {
+                1.0
+            } else {
+                let ratio = f64::from(offset) / device_standard_deviation;
+                (-0.5 * ratio * ratio).exp()
+            };
+            positive_weights.append_slot()?.write(weight);
         }
         let mut positive_sum = 0.0;
         for weight in positive_weights.iter().skip(1) {

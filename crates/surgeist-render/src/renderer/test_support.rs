@@ -321,7 +321,7 @@ pub(crate) fn unsupported_graph_diagnostic_for_test(
         ExecutableGraphDispatchEligibility::ExactBase(_)
         | ExecutableGraphDispatchEligibility::ExactComposition(_)
         | ExecutableGraphDispatchEligibility::ExactBackdrop(_)
-        | ExecutableGraphDispatchEligibility::ExactForegroundBlur(_) => Ok(None),
+        | ExecutableGraphDispatchEligibility::ExactForegroundFilters(_) => Ok(None),
     }
 }
 

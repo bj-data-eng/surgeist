@@ -1356,7 +1356,7 @@ pub(crate) enum FrameSelectionRequirementObservation {
     BoundedBackdrop,
     BoundedPorterDuff,
     ExplicitIsolation,
-    ForegroundBlur,
+    ForegroundFilters,
 }
 
 #[cfg(test)]
@@ -1524,8 +1524,8 @@ fn observe_graph_frame_plan(graph: &GpuRenderGraph) -> FramePlanObservation {
             GraphSelectionRequirement::ExplicitIsolation => {
                 FrameSelectionRequirementObservation::ExplicitIsolation
             }
-            GraphSelectionRequirement::ForegroundBlur => {
-                FrameSelectionRequirementObservation::ForegroundBlur
+            GraphSelectionRequirement::ForegroundFilters => {
+                FrameSelectionRequirementObservation::ForegroundFilters
             }
         })
         .collect();

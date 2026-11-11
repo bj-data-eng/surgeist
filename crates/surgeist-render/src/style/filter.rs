@@ -22,9 +22,13 @@ pub struct FilterList {
 
 impl FilterList {
     pub(crate) fn try_clone_in(&self, account: &Account) -> Result<(Self, Option<Hold>)> {
-        let Some(ops) = &self.ops else {
+        Self::copy_ops_in(self.ops(), account)
+    }
+
+    pub(crate) fn copy_ops_in(ops: &[FilterOp], account: &Account) -> Result<(Self, Option<Hold>)> {
+        if ops.is_empty() {
             return Ok((Self::none(), None));
-        };
+        }
         let mut copied = account.retained(ops.len())?;
         for operation in ops {
             account.work(RenderWork::FilterOperationVisits, 1)?;

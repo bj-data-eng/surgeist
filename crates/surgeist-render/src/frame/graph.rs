@@ -506,9 +506,9 @@ pub(crate) struct GpuRenderGraph {
 }
 
 impl GpuRenderGraph {
-    pub(crate) fn has_foreground_blur(&self) -> bool {
+    pub(crate) fn has_foreground_filters(&self) -> bool {
         self.selection_requirements
-            .contains(&GraphSelectionRequirement::ForegroundBlur)
+            .contains(&GraphSelectionRequirement::ForegroundFilters)
     }
 }
 
@@ -1781,7 +1781,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             && !layer.explicit_isolation
             && layer.mask.is_none()
             && layer.backdrop.is_none()
-            && layer.foreground_blur.is_none()
+            && layer.foreground_filters.is_none()
             && (layer.opacity - 1.0).abs() < f32::EPSILON
             && layer.composition.is_source_over_normal();
         if is_transparent_wrapper {
@@ -1808,12 +1808,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 .is_some_and(crate::command::RenderLayerMask::annihilates_source);
         // The blur samples its own grid, even when the parent and other layers
         // use the final surface grid for pixel-sensitive drawing.
-        let capture_space = if layer.foreground_blur.is_some() {
+        let capture_space = if layer.foreground_filters.is_some() {
             CaptureBoundsCoordinateSpace::Local
         } else {
             state.capture_space
         };
-        let finite_source = bounded_domain && layer.foreground_blur.is_none();
+        let finite_source = bounded_domain && layer.foreground_filters.is_none();
         let mut source = if source_forced_empty {
             Some(self.declare_transparent_parent(parent.spatial)?.current)
         } else {
@@ -1833,19 +1833,19 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 capture_space.source_space(),
             )?;
         }
-        if let Some(blur) = layer.foreground_blur
+        if let Some(filters) = &layer.foreground_filters
             && let Some(group) = source
             && !source_forced_empty
         {
             source = Some(self.apply_filter_operations(
                 group,
-                &[FilterOp::blur(blur)],
+                filters.ops(),
                 FilterSourceRole::Ordinary,
                 layer_to_surface,
             )?);
         }
         if source.is_none()
-            && layer.foreground_blur.is_some()
+            && layer.foreground_filters.is_some()
             && !layer.composition.transparent_source_preserves_parent()
         {
             source = Some(self.declare_transparent_parent(parent.spatial)?.current);
@@ -2535,7 +2535,7 @@ fn command_is_local_to_capture(
     };
     if layer.mask.is_some()
         || layer.backdrop.is_some()
-        || layer.foreground_blur.is_some()
+        || layer.foreground_filters.is_some()
         || layer.explicit_isolation
         || (!layer.composition.is_source_over() && !layer.composition.is_plus())
     {
