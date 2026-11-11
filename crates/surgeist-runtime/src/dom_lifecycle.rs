@@ -849,6 +849,7 @@ impl HostedRuntime {
         )
     }
 
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn with_script_source_settings<R>(
         &self,
         lease: &mut surgeist_dom::DomSourceLease<'_>,
