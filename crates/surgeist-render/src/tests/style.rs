@@ -336,6 +336,142 @@ fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
 }
 
 #[test]
+fn repeat_planning_admits_a_disjoint_nonrepeated_axis() {
+    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(0.0, 0.0, 4.0, 4.0),
+        Rect::new(8.0, 8.0, 1.0, 1.0),
+    )
+    .unwrap();
+    let plan =
+        ImageRepeatPlan::try_new(BackgroundRepeat::no_repeat(), Capabilities::CURRENT).unwrap();
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, 0);
+    let error = plan.resolve(placement, &mut accounting).unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Repeat,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: 0,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: 0 },
+        },
+    );
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(crate::RenderAccountingOptions::default());
+    let repeat = plan.resolve(placement, &mut accounting).unwrap();
+    assert_eq!(repeat.clip_rect(), Rect::new(0.0, 0.0, 4.0, 4.0));
+    assert!(repeat.tile_rects().is_empty());
+    let usage = accounting
+        .last_attempt()
+        .unwrap()
+        .attempt()
+        .unwrap()
+        .usage();
+    assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
+}
+
+#[test]
+fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
+    use crate::{
+        RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderResource, RenderWork,
+    };
+
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(0.0, 0.0, 1_000_001.0, 1.0),
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+    )
+    .unwrap();
+    let plan =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let cap = 11;
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, cap);
+    let error = plan.resolve(placement, &mut accounting).unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Repeat,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: cap,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: cap },
+        },
+    );
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+    assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
+    assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(crate::RenderAccountingOptions::default());
+    let invalid = plan.resolve(placement, &mut accounting).unwrap_err();
+    assert_eq!(invalid.code(), ErrorCode::InvalidInput);
+    assert_eq!(
+        invalid.invalid_value_diagnostic().map(InvalidValue::field),
+        Some("image repeat tile count")
+    );
+    let report = accounting.last_attempt().unwrap();
+    assert_eq!(report.attempt().unwrap().refusal(), None);
+    assert_style_failure_releases_backing(report);
+}
+
+#[test]
+fn background_repeat_planning_admits_empty_axes_before_publication() {
+    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+
+    let rect = Rect::new(0.0, 0.0, 4.0, 4.0);
+    let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(1.0, 1.0)).unwrap();
+    let layer = StyleImageLayer::try_new(StyleImageSource::resolved(image))
+        .unwrap()
+        .with_position(BackgroundPosition::length(8.0, 8.0).unwrap())
+        .with_repeat(BackgroundRepeat::no_repeat());
+    let stack = BackgroundStack::try_new(None, vec![BackgroundLayer::new(layer)]).unwrap();
+    let input = BackgroundNormalizationInput::try_new(
+        stack,
+        BackgroundAreas::try_new(rect, rect, rect).unwrap(),
+    )
+    .unwrap();
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, 2);
+    let error = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Repeat,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: 2,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: 2 },
+        },
+    );
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::CoordinateVisits), 2);
+    assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
+    assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(crate::RenderAccountingOptions::default());
+    let normalized = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap();
+    assert_eq!(normalized.commands().len(), 1);
+    let NormalizedBackgroundCommandKind::Layer { layer } = normalized.commands()[0].kind() else {
+        panic!("expected the normalized layer");
+    };
+    assert_eq!(layer.repeat().clip_rect(), rect);
+    assert!(layer.repeat().tile_rects().is_empty());
+}
+
+#[test]
 fn image_repeat_plan_rejects_excessive_resolved_tile_count() {
     let placement = ResolvedImagePlacement::from_parts(
         Rect::new(0.0, 0.0, 250.25, 1_000.0),
