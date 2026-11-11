@@ -4,7 +4,7 @@ use crate::dom_event::{
     DomEventTimestampUnavailable, DomStandaloneEventTarget, NativeDomEvent,
 };
 use surgeist_dom::{
-    DocumentId, DomSourceEventClockFailure, DomSourceEventFiring, DomSourceEventTime,
+    DocumentId, DomError, DomSourceEventClockFailure, DomSourceEventFiring, DomSourceEventTime,
     DomSourceLease, DomSourceProgress,
 };
 
@@ -43,6 +43,20 @@ impl EventTargetAssociation {
     }
 }
 
+struct EventLookupError(DomHostedRuntimeError);
+
+impl From<DomError> for EventLookupError {
+    fn from(error: DomError) -> Self {
+        DomHostedError::from(error).into()
+    }
+}
+
+impl From<DomHostedError> for EventLookupError {
+    fn from(error: DomHostedError) -> Self {
+        Self(DomHostedRuntimeError::Dom(error))
+    }
+}
+
 impl HostedState {
     fn event_global(
         &mut self,
@@ -53,8 +67,10 @@ impl HostedState {
         self.qualify(dom)?;
         let document = dom
             .raw()
-            .dispatch_global_document(global, cancel)
-            .map_err(DomHostedRuntimeError::Dom)?;
+            .dispatch_global_document_with(global, cancel, &mut || {
+                self.step(cancel).map_err(EventLookupError)
+            })
+            .map_err(|error| error.0)?;
         Ok(EventTargetAssociation { global, document })
     }
 
@@ -266,8 +282,10 @@ impl HostedRuntime {
             state.qualify(dom)?;
             let global = dom
                 .raw()
-                .dispatch_relevant_global(document.node(), cancel)
-                .map_err(DomHostedRuntimeError::Dom)?
+                .dispatch_document_relevant_global_with(document, cancel, &mut || {
+                    state.step(cancel).map_err(EventLookupError)
+                })
+                .map_err(|error| error.0)?
                 .ok_or(DomEventConstructionError::MissingRelevantGlobal)?;
             let association = EventTargetAssociation { global, document };
             state.sample_event_creation(dom, &association, cancel)?

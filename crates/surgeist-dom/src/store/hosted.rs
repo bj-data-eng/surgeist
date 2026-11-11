@@ -1416,6 +1416,22 @@ impl Dom {
     where
         E: From<DomError> + From<DomHostedError>,
     {
+        self.dispatch_document_relevant_global_with(document, cancel, step)?
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        check_cancel(cancel)?;
+        Ok(())
+    }
+    /// Observe the Document's actual relevant Global, if any, charging the
+    /// caller and the active Source event scope for each association read.
+    pub fn dispatch_document_relevant_global_with<E>(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         let work = self.dispatch_hosted_read_work(cancel)?;
         self.dispatch_relevant_global_current_with(document.node(), &mut || -> Result<(), E> {
             check_cancel(cancel)?;
@@ -1424,10 +1440,7 @@ impl Dom {
                 work.step(cancel)?;
             }
             Ok(())
-        })?
-        .ok_or(DomHostedError::UnsupportedProfile)?;
-        check_cancel(cancel)?;
-        Ok(())
+        })
     }
     /// Current issuer/role-qualified Document of a dispatcher Global endpoint.
     pub fn dispatch_global_document(
