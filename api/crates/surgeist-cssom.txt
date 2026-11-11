@@ -2906,9 +2906,9 @@ impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::append_keyframe_rule(&mut self, id: &surgeist_cssom::CssomRuleId, source: &str) -> core::result::Result<core::option::Option<surgeist_cssom::CssomRuleTicket>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::set_keyframes_name(&mut self, id: &surgeist_cssom::CssomRuleId, value: &str) -> core::result::Result<bool, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
-pub fn surgeist_cssom::CssomBatch::append_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssomBatch::delete_medium(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::CssomBatch::set_media_text(&mut self, id: &surgeist_cssom::CssomMediaListId, source: &str) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::append_medium<'a>(&mut self, id: &surgeist_cssom::CssomMediaListId, source: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::delete_medium<'a>(&mut self, id: &surgeist_cssom::CssomMediaListId, source: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::CssomBatch::set_media_text<'a>(&mut self, id: &surgeist_cssom::CssomMediaListId, source: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomMediaEdit, surgeist_cssom::CssomError>
 impl surgeist_cssom::CssomBatch
 pub fn surgeist_cssom::CssomBatch::apply_declaration(&mut self, prepared: surgeist_cssom::CssomPreparedDeclaration, decisions: &[surgeist_cssom::CssomDeclarationDecision]) -> core::result::Result<surgeist_cssom::CssomDeclarationEditResult, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::CssomBatch::apply_declaration_with_inputs(&mut self, prepared: surgeist_cssom::CssomPreparedDeclaration, decisions: &[surgeist_cssom::CssomDeclarationDecision], current: &[surgeist_cssom::CssomInputVersion]) -> core::result::Result<surgeist_cssom::CssomDeclarationEditResult, surgeist_cssom::CssomError>
@@ -4897,12 +4897,12 @@ pub fn surgeist_cssom::CssomStylesheetReplacementWork::sheet(&self) -> &surgeist
 pub fn surgeist_cssom::CssomStylesheetReplacementWork::token(&self) -> &surgeist_cssom::CssomReplaceToken
 pub struct surgeist_cssom::MediaList
 impl surgeist_cssom::MediaList
-pub fn surgeist_cssom::MediaList::append_medium(&self, store: &mut surgeist_cssom::CssomStore, medium: &str) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::MediaList::delete_medium(&self, store: &mut surgeist_cssom::CssomStore, medium: &str) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::MediaList::append_medium<'a>(&self, store: &mut surgeist_cssom::CssomStore, medium: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::MediaList::delete_medium<'a>(&self, store: &mut surgeist_cssom::CssomStore, medium: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::MediaList::item(&self, store: &surgeist_cssom::CssomStore, index: usize, limits: surgeist_css::serialization::specified_serialization::CssSerializationLimits) -> core::result::Result<core::option::Option<alloc::string::String>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::MediaList::length(&self, store: &surgeist_cssom::CssomStore) -> core::result::Result<usize, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::MediaList::media_text(&self, store: &surgeist_cssom::CssomStore, limits: surgeist_css::serialization::specified_serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_cssom::CssomError>
-pub fn surgeist_cssom::MediaList::set_media_text(&self, store: &mut surgeist_cssom::CssomStore, text: &str) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
+pub fn surgeist_cssom::MediaList::set_media_text<'a>(&self, store: &mut surgeist_cssom::CssomStore, text: impl core::convert::Into<surgeist_cssom::CssomSheetText<'a>>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_cssom::CssomOperationOutcome<()>, surgeist_cssom::CssomError>
 impl surgeist_cssom::MediaList
 pub fn surgeist_cssom::MediaList::capture(&self, snapshot: &surgeist_cssom::CssomSnapshot) -> core::result::Result<surgeist_cssom::CssomCapture<Self>, surgeist_cssom::CssomError>
 pub fn surgeist_cssom::MediaList::id(&self) -> &surgeist_cssom::CssomMediaListId

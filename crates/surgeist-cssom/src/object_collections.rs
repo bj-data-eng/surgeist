@@ -319,39 +319,48 @@ impl MediaList {
     ) -> Result<Option<String>, CssomError> {
         store.snapshot().media_item(self.id(), index, limits)
     }
-    pub fn set_media_text(
+    pub fn set_media_text<'a>(
         &self,
         store: &mut CssomStore,
-        text: &str,
+        text: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<()>, CssomError> {
-        execute(store, |batch| {
+        execute_with_cancellation(store, Some(cancel), |batch| {
             Ok(CssomStagedOperation::new(
                 (),
-                batch.set_media_text(self.id(), text)?.into_diagnostics(),
+                batch
+                    .set_media_text(self.id(), text, cancel)?
+                    .into_diagnostics(),
             ))
         })
     }
-    pub fn append_medium(
+    pub fn append_medium<'a>(
         &self,
         store: &mut CssomStore,
-        medium: &str,
+        medium: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<()>, CssomError> {
-        execute(store, |batch| {
+        execute_with_cancellation(store, Some(cancel), |batch| {
             Ok(CssomStagedOperation::new(
                 (),
-                batch.append_medium(self.id(), medium)?.into_diagnostics(),
+                batch
+                    .append_medium(self.id(), medium, cancel)?
+                    .into_diagnostics(),
             ))
         })
     }
-    pub fn delete_medium(
+    pub fn delete_medium<'a>(
         &self,
         store: &mut CssomStore,
-        medium: &str,
+        medium: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<()>, CssomError> {
-        execute(store, |batch| {
+        execute_with_cancellation(store, Some(cancel), |batch| {
             Ok(CssomStagedOperation::new(
                 (),
-                batch.delete_medium(self.id(), medium)?.into_diagnostics(),
+                batch
+                    .delete_medium(self.id(), medium, cancel)?
+                    .into_diagnostics(),
             ))
         })
     }

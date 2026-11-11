@@ -1447,7 +1447,9 @@ fn sheet_constructor_keeps_exact_media_input_and_copies_a_list_through_cssom_tex
     assert_eq!(copied_source.as_str(), "not all, print");
     assert!(copied_source.original_utf16().is_none());
     assert!(!copied_source.same_snapshot(source));
-    let _ = live.set_media_text(&mut owner, "speech").unwrap();
+    let _ = live
+        .set_media_text(&mut owner, "speech", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(
         copied
             .media_text(&owner, CssSerializationLimits::default())

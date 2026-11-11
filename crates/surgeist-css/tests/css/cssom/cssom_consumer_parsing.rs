@@ -14,6 +14,50 @@ use surgeist_css::rule::{
 use surgeist_css::selector::CssNamespaceContext;
 use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
+#[test]
+fn single_medium_utf16_uses_the_same_recovery_and_original_css_poll() {
+    use std::sync::Arc;
+    use surgeist_css::query::media::CssMediaQuery;
+    use surgeist_css::source::CssUtf16InputLimits;
+
+    let mut units = "/*\r\n".encode_utf16().collect::<Vec<_>>();
+    units.push(0xd800);
+    units.extend("*/ ???".encode_utf16());
+    let raw = Arc::new(units);
+    let parser = CssParser::default();
+    let limits = CssUtf16InputLimits::default();
+    let mut polls = 0;
+    let interrupted = CssMediaQuery::parse_medium_utf16(&parser, raw.clone(), limits, || {
+        polls += 1;
+        if polls == 3 {
+            Err("original poll")
+        } else {
+            Ok(())
+        }
+    })
+    .unwrap_err();
+    assert_eq!(interrupted.into_interruption(), Ok("original poll"));
+    assert_eq!(polls, 3);
+
+    let report =
+        CssMediaQuery::parse_medium_utf16(&parser, raw.clone(), limits, || Ok::<(), ()>(()))
+            .unwrap();
+    let medium = report.syntax().as_ref().unwrap();
+    assert!(medium.is_guaranteed_false());
+    assert_eq!(report.diagnostics().len(), 1);
+    let diagnostic = &report.diagnostics()[0];
+    let source = diagnostic.source().unwrap();
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &raw));
+    assert_eq!(source.as_str(), "/*\n\u{fffd}*/ ???");
+    let at = diagnostic.error().position().byte_offset().value();
+    assert_eq!(source.original_utf16_range(at..at + 3), Some(8..11));
+    let multiple = Arc::new("screen, print".encode_utf16().collect());
+    let report =
+        CssMediaQuery::parse_medium_utf16(&parser, multiple, limits, || Ok::<(), ()>(())).unwrap();
+    assert!(report.syntax().is_none());
+    assert!(report.is_clean());
+}
+
 fn candidate(source: &str) -> CssRuleSyntax {
     CssRuleSyntax::classify(&CssParser::default(), source)
         .into_parts()

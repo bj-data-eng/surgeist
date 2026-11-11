@@ -1,5 +1,5 @@
 //! One-operation publication and explicitly staged object edits.
-use crate::sheet_operations::check_sheet_cancellation;
+use crate::sheet_operations::check_cancellation;
 use crate::*;
 use std::sync::atomic::AtomicBool;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
@@ -130,7 +130,7 @@ pub(crate) fn execute_with_cancellation<T>(
     let staged = stage(&mut batch, operation)?;
     let prepared = store.prepare_commit(batch)?;
     if let Some(cancel) = cancel {
-        check_sheet_cancellation(cancel)?;
+        check_cancellation(cancel)?;
     }
     let (commit, retirement) = prepared.publish();
     drop(retirement);
@@ -166,6 +166,47 @@ crate::objects::for_rule_handles!(no_op_css_text);
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
+
+    #[test]
+    fn media_cancellation_after_actual_staging_discards_the_prepared_commit() {
+        let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
+        let cancel = AtomicBool::new(false);
+        let document = CssomConstructorDocument {
+            version: CssomInputVersion {
+                role: CssomInputRole::Document,
+                identity: "document".into(),
+                revision: 1,
+            },
+            identity: "document".into(),
+            base_location: String::new(),
+        };
+        let sheet = CssStyleSheet::new(&mut store, document, Default::default(), &cancel).unwrap();
+        let media = sheet.value().media(&store).unwrap();
+        let before = store.snapshot();
+        let raw = std::sync::Arc::new("print".encode_utf16().collect::<Vec<_>>());
+        let result = execute_with_cancellation(&mut store, Some(&cancel), |batch| {
+            let edit =
+                batch.append_medium(media.id(), CssomSheetText::Utf16(raw.clone()), &cancel)?;
+            assert!(edit.changed());
+            cancel.store(true, Ordering::Relaxed);
+            Ok(CssomStagedOperation::new((), edit.into_diagnostics()))
+        });
+        assert!(matches!(result, Err(CssomError::Cancelled)));
+        assert!(matches!(
+            store.changes_since(&before),
+            CssomChanges::Unchanged
+        ));
+        assert_eq!(media.length(&store).unwrap(), 0);
+        cancel.store(false, Ordering::Relaxed);
+        let accepted = media
+            .append_medium(&mut store, CssomSheetText::Utf16(raw), &cancel)
+            .unwrap();
+        assert!(matches!(
+            accepted.publication(),
+            CssomPublication::Changed(_)
+        ));
+        assert_eq!(media.length(&store).unwrap(), 1);
+    }
 
     #[test]
     fn sheet_cancellation_after_staging_discards_the_prepared_commit() {

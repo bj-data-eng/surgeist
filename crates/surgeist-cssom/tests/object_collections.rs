@@ -401,7 +401,7 @@ fn per_operation_guards_precede_invalid_syntax_and_untruncated_indices() {
     let _ = opaque
         .media(&owner)
         .unwrap()
-        .set_media_text(&mut owner, "screen")
+        .set_media_text(&mut owner, "screen", &AtomicBool::new(false))
         .unwrap();
 }
 
@@ -412,7 +412,7 @@ fn media_operations_return_unit_recovery_and_canonical_membership() {
     let media = sheet.media(&owner).unwrap();
     let empty = media.capture(&owner.snapshot()).unwrap();
     let result = media
-        .set_media_text(&mut owner, "screen, ???, print")
+        .set_media_text(&mut owner, "screen, ???, print", &AtomicBool::new(false))
         .unwrap();
     let _: &() = result.value();
     assert!(!result.diagnostics().is_empty());
@@ -433,30 +433,36 @@ fn media_operations_return_unit_recovery_and_canonical_membership() {
         None
     );
     assert_eq!(sheet.media(&owner).unwrap(), media);
-    let result = media.append_medium(&mut owner, "SCREEN").unwrap();
+    let result = media
+        .append_medium(&mut owner, "SCREEN", &AtomicBool::new(false))
+        .unwrap();
     assert!(matches!(
         result.publication(),
         CssomPublication::Unchanged { .. }
     ));
     assert_exception(
-        media.delete_medium(&mut owner, "speech"),
+        media.delete_medium(&mut owner, "speech", &AtomicBool::new(false)),
         CssomException::NotFound,
     );
     let revision = owner.snapshot().revision().clone();
     assert!(matches!(
         media
-            .append_medium(&mut owner, "screen, speech")
+            .append_medium(&mut owner, "screen, speech", &AtomicBool::new(false))
             .unwrap()
             .publication(),
         CssomPublication::Unchanged { .. }
     ));
     assert_eq!(owner.snapshot().revision(), &revision);
-    let _ = media.delete_medium(&mut owner, "SCREEN").unwrap();
+    let _ = media
+        .delete_medium(&mut owner, "SCREEN", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(
         media.media_text(&owner, limits()).unwrap(),
         "not all, print"
     );
-    let _ = media.set_media_text(&mut owner, "").unwrap();
+    let _ = media
+        .set_media_text(&mut owner, "", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(media.length(&owner).unwrap(), 0);
     assert_eq!(empty.length().unwrap(), 0);
 }
@@ -485,10 +491,12 @@ fn failed_output_constructor_and_media_mutation_preserve_publication() {
     assert_eq!(owner.snapshot().revision(), before.revision());
     let sheet = construct(&mut owner);
     let media = sheet.media(&owner).unwrap();
-    let _ = media.set_media_text(&mut owner, "screen").unwrap();
+    let _ = media
+        .set_media_text(&mut owner, "screen", &AtomicBool::new(false))
+        .unwrap();
     let before = owner.snapshot();
     assert!(matches!(
-        media.set_media_text(&mut owner, "screen, print"),
+        media.set_media_text(&mut owner, "screen, print", &AtomicBool::new(false)),
         Err(CssomError::Limit { .. })
     ));
     assert_eq!(owner.snapshot().revision(), before.revision());

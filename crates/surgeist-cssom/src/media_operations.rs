@@ -1,11 +1,13 @@
 //! Source MediaList operations over the shared live collection owner.
 use crate::parser_resources::check_resource_diagnostics;
+use crate::sheet_operations::{check_cancellation, sheet_utf16_error, sheet_utf16_limits};
 use crate::*;
+use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 use surgeist_css::serialization::CssSerializationLimits;
-use surgeist_css::source::same_provenance;
-use surgeist_css::{CssParseReport, CssParser};
+use surgeist_css::source::{CssUtf16InputError, CssUtf16Resource, same_provenance};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
 /// A source mutation's disposition and original recovered parser diagnostics.
 /// Publication is reported separately by the enclosing batch commit.
@@ -64,59 +66,102 @@ impl CssomSnapshot {
 impl CssomBatch {
     /// Replaces the contents through CSS-owned list recovery; empty input clears.
     /// No sheet security/modification guard or owner-attribute write is implied.
-    pub fn set_media_text(
+    /// An interruption aborts staging. Composed publishers check the same
+    /// signal at their final publication fence.
+    pub fn set_media_text<'a>(
         &mut self,
         id: &CssomMediaListId,
-        source: &str,
+        source: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomMediaEdit, CssomError> {
-        self.apply(|this| {
-            this.staged.media(id)?;
-            if source.is_empty() {
-                return Ok(CssomMediaEdit {
-                    changed: this.set_media(id, CssMediaQueryList::new(Vec::new()))?,
-                    diagnostics: Vec::new(),
-                });
-            }
-            check_input(source, &this.limits)?;
-            let (value, diagnostics) =
-                recovered(CssMediaQueryList::parse(&CssParser::default(), source))?;
-            value
-                .serialize_cssom(this.limits.css)
-                .map_err(CssomError::Media)?;
+        let edited = self.apply(|this| -> Result<_, CssomError> {
+            let current = this.staged.media(id)?;
+            check_cancellation(cancel)?;
+            let source = source.into();
+            let exact = matches!(&source, CssomSheetText::Utf16(_));
+            let empty = match &source {
+                CssomSheetText::Utf8(source) => source.is_empty(),
+                CssomSheetText::Utf16(source) => source.is_empty(),
+            };
+            let (mut value, diagnostics, work) = if empty {
+                (CssMediaQueryList::new(Vec::new()), Vec::new(), 0)
+            } else {
+                let (value, diagnostics, work) =
+                    parse_media(source, &this.limits, CssParserContext::default(), cancel)?;
+                value
+                    .serialize_cssom(this.limits.css)
+                    .map_err(CssomError::Media)?;
+                (value, diagnostics, work)
+            };
+            let source_changed = if exact {
+                let mut remaining = sheet_utf16_limits(&this.limits)
+                    .max_work
+                    .saturating_sub(work);
+                let changed = exact_source_changed(current, &value, &mut remaining, cancel)?;
+                // Returning to the original exact input reuses its source owner.
+                // The prepared commit can then recognize a net no-op by identity.
+                if changed == Some(true)
+                    && let Some(base) = this.base.media.get(id)
+                    && exact_media_source_differs(Some(current), Some(base))
+                    && exact_source_changed(base, &value, &mut remaining, cancel)? == Some(false)
+                {
+                    value = base.clone();
+                }
+                changed
+            } else {
+                None
+            };
             Ok(CssomMediaEdit {
-                changed: this.set_media(id, value)?,
+                changed: this.replace_media(id, value, false, source_changed)?,
                 diagnostics,
             })
-        })
+        })?;
+        self.finish_cancellable_staging(edited, cancel)
     }
     /// Appends a single recovered query unless its canonical bytes already exist.
-    pub fn append_medium(
+    pub fn append_medium<'a>(
         &mut self,
         id: &CssomMediaListId,
-        source: &str,
+        source: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomMediaEdit, CssomError> {
-        self.edit_medium(id, source, false)
+        self.edit_medium(id, source, false, cancel)
     }
     /// Removes every canonical match; a valid absent candidate is NotFound.
     /// Empty/multiple-query input is a successful no-op.
-    pub fn delete_medium(
+    pub fn delete_medium<'a>(
         &mut self,
         id: &CssomMediaListId,
-        source: &str,
+        source: impl Into<CssomSheetText<'a>>,
+        cancel: &AtomicBool,
     ) -> Result<CssomMediaEdit, CssomError> {
-        self.edit_medium(id, source, true)
+        self.edit_medium(id, source, true, cancel)
     }
-    fn edit_medium(
+    fn edit_medium<'a>(
         &mut self,
         id: &CssomMediaListId,
-        source: &str,
+        source: impl Into<CssomSheetText<'a>>,
         remove: bool,
+        cancel: &AtomicBool,
     ) -> Result<CssomMediaEdit, CssomError> {
-        self.apply(|this| {
-            this.staged.media(id)?;
-            check_input(source, &this.limits)?;
-            let (candidate, diagnostics) =
-                recovered(CssMediaQuery::parse_medium(&CssParser::default(), source))?;
+        let edited = self.apply(|this| {
+            let current = this.staged.media(id)?;
+            check_cancellation(cancel)?;
+            let parser = CssParser::default();
+            let report = match source.into() {
+                CssomSheetText::Utf8(source) => {
+                    check_input(source, &this.limits)?;
+                    CssMediaQuery::parse_medium(&parser, source)
+                }
+                CssomSheetText::Utf16(source) => CssMediaQuery::parse_medium_utf16(
+                    &parser,
+                    source,
+                    sheet_utf16_limits(&this.limits),
+                    || check_cancellation(cancel),
+                )
+                .map_err(sheet_utf16_error)?,
+            };
+            let (candidate, diagnostics) = recovered(report)?;
             let Some(candidate) = candidate else {
                 return Ok(CssomMediaEdit {
                     changed: false,
@@ -126,7 +171,6 @@ impl CssomBatch {
             // CSS owns cumulative source/projection/output accounting for the
             // candidate and every scanned member. No token spelling/evaluation
             // or separately reset pair allowance supplies equality.
-            let current = this.staged.media(id)?;
             let scan_len = current
                 .queries()
                 .len()
@@ -173,7 +217,82 @@ impl CssomBatch {
                 changed: this.set_media(id, CssMediaQueryList::new(selected))?,
                 diagnostics,
             })
-        })
+        })?;
+        self.finish_cancellable_staging(edited, cancel)
+    }
+}
+
+pub(crate) fn parse_media(
+    source: CssomSheetText<'_>,
+    limits: &CssomLimits,
+    context: CssParserContext,
+    cancel: &AtomicBool,
+) -> Result<(CssMediaQueryList, Vec<CssRecoveryDiagnostic>, usize), CssomError> {
+    let parser = CssParser::new(context, Default::default());
+    let (report, work) = match source {
+        CssomSheetText::Utf8(source) => {
+            check_input(source, limits)?;
+            (CssMediaQueryList::parse(&parser, source), 0)
+        }
+        CssomSheetText::Utf16(source) => CssMediaQueryList::parse_utf16_with_work(
+            &parser,
+            source,
+            sheet_utf16_limits(limits),
+            || check_cancellation(cancel),
+        )
+        .map_err(sheet_utf16_error)?,
+    };
+    let (value, diagnostics) = recovered(report)?;
+    Ok((value, diagnostics, work))
+}
+
+fn exact_source_changed(
+    current: &CssMediaQueryList,
+    next: &CssMediaQueryList,
+    remaining_work: &mut usize,
+    cancel: &AtomicBool,
+) -> Result<Option<bool>, CssomError> {
+    let ((current_context, current), (next_context, next)) =
+        match (exact_media_source(current), exact_media_source(next)) {
+            (Some(current), Some(next)) => (current, next),
+            (None, None) => return Ok(None),
+            _ => return Ok(Some(true)),
+        };
+    if current_context != next_context || current.len() != next.len() {
+        return Ok(Some(true));
+    }
+    if !Arc::ptr_eq(current, next) {
+        for (left, right) in current.iter().zip(next.iter()) {
+            check_cancellation(cancel)?;
+            *remaining_work = remaining_work.checked_sub(1).ok_or_else(|| {
+                CssomError::Utf16Input(CssUtf16InputError::limit(CssUtf16Resource::Work))
+            })?;
+            if left != right {
+                return Ok(Some(true));
+            }
+        }
+    }
+    Ok(Some(false))
+}
+
+fn exact_media_source(list: &CssMediaQueryList) -> Option<(CssParserContext, &Arc<Vec<u16>>)> {
+    let parsed = list.parse_source()?;
+    Some((parsed.context(), parsed.source().original_utf16()?))
+}
+
+pub(crate) fn exact_media_source_differs(
+    left: Option<&CssMediaQueryList>,
+    right: Option<&CssMediaQueryList>,
+) -> bool {
+    match (
+        left.and_then(exact_media_source),
+        right.and_then(exact_media_source),
+    ) {
+        (None, None) => false,
+        (Some((left_context, left)), Some((right_context, right))) => {
+            left_context != right_context || !Arc::ptr_eq(left, right)
+        }
+        _ => true,
     }
 }
 
@@ -207,9 +326,20 @@ impl CssomBatch {
         value: CssMediaQueryList,
         retain_input: bool,
     ) -> Result<bool, CssomError> {
+        self.replace_media(id, value, retain_input, None)
+    }
+
+    fn replace_media(
+        &mut self,
+        id: &CssomMediaListId,
+        value: CssMediaQueryList,
+        retain_input: bool,
+        source_changed: Option<bool>,
+    ) -> Result<bool, CssomError> {
         self.apply(|this| {
             this.staged.media(id)?;
-            let changed = !same_provenance(&this.staged.media[id], &value);
+            let changed =
+                source_changed.unwrap_or_else(|| !same_provenance(&this.staged.media[id], &value));
             if !changed && !retain_input {
                 return Ok(false);
             }

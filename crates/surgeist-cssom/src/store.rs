@@ -1112,7 +1112,10 @@ impl CssomBatch {
                 !same_provenance(&self.staged.maps[id].entries, &self.base.maps[id].entries)
             }
             CssomObjectId::MediaList(id) => {
-                !same_provenance(&self.staged.media.get(id), &self.base.media.get(id))
+                let staged = self.staged.media.get(id);
+                let base = self.base.media.get(id);
+                crate::media_operations::exact_media_source_differs(staged, base)
+                    || !same_provenance(&staged, &base)
             }
             CssomObjectId::SheetList(_) => self.staged.sheet_order != self.base.sheet_order,
         })

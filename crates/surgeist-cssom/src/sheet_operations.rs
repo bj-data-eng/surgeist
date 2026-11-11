@@ -1,5 +1,5 @@
 //! Source stylesheet construction, attributes and collection operations.
-use crate::parser_resources::check_resource_diagnostics;
+use crate::media_operations::parse_media;
 use crate::*;
 use std::sync::{
     Arc,
@@ -11,7 +11,7 @@ use surgeist_css::rule::CssSheet;
 use surgeist_css::source::{CssRetainedPayloadError, CssUtf16InputError, CssUtf16InputLimits};
 use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
-pub(crate) fn check_sheet_cancellation(cancel: &AtomicBool) -> Result<(), CssomError> {
+pub(crate) fn check_cancellation(cancel: &AtomicBool) -> Result<(), CssomError> {
     if cancel.load(Ordering::Relaxed) {
         return Err(CssomError::Cancelled);
     }
@@ -33,7 +33,7 @@ pub struct CssomConstructorDocument {
     pub base_location: String,
 }
 
-/// Authored text for stylesheet operations. Native UTF-8 and exact UTF-16
+/// Authored text for stylesheet and MediaList operations. Native UTF-8 and exact UTF-16
 /// each retain their own source coordinates through the same CSS grammar.
 #[derive(Clone, Debug)]
 pub enum CssomSheetText<'a> {
@@ -309,34 +309,29 @@ impl CssomBatch {
                     "constructor document version role",
                 ));
             }
-            let (media, media_diagnostics) = match init.media {
-                CssomInitialMedia::Text(CssomSheetText::Utf8(source)) => {
-                    check_sheet_cancellation(cancel)?;
-                    parse_media(source, &this.limits, this.staged.context.parser_context())?
-                }
-                CssomInitialMedia::Text(CssomSheetText::Utf16(original)) => {
-                    let parser =
-                        CssParser::new(this.staged.context.parser_context(), Default::default());
-                    let report = CssMediaQueryList::parse_utf16(
-                        &parser,
-                        original,
-                        sheet_utf16_limits(&this.limits),
-                        || check_sheet_cancellation(cancel),
-                    )
-                    .map_err(sheet_utf16_error)?;
-                    check_resource_diagnostics(report.diagnostics())?;
-                    report.into_parts()
+            let (media, media_diagnostics, _) = match init.media {
+                CssomInitialMedia::Text(source) => {
+                    if matches!(&source, CssomSheetText::Utf8(_)) {
+                        check_cancellation(cancel)?;
+                    }
+                    parse_media(
+                        source,
+                        &this.limits,
+                        this.staged.context.parser_context(),
+                        cancel,
+                    )?
                 }
                 CssomInitialMedia::List { snapshot, id } => {
                     let list = snapshot.media(id)?;
-                    check_sheet_cancellation(cancel)?;
+                    check_cancellation(cancel)?;
                     let text = list
                         .serialize_cssom(this.limits.css)
                         .map_err(CssomError::Media)?;
                     parse_media(
-                        text.as_css(),
+                        CssomSheetText::Utf8(text.as_css()),
                         &this.limits,
                         this.staged.context.parser_context(),
+                        cancel,
                     )?
                 }
             };
@@ -351,14 +346,14 @@ impl CssomBatch {
                 media_diagnostics,
             })
         })?;
-        self.finish_sheet_staging(construction, cancel)
+        self.finish_cancellable_staging(construction, cancel)
     }
-    pub(crate) fn finish_sheet_staging<T>(
+    pub(crate) fn finish_cancellable_staging<T>(
         &mut self,
         staged: T,
         cancel: &AtomicBool,
     ) -> Result<T, CssomError> {
-        check_sheet_cancellation(cancel).inspect_err(|_| self.poisoned = true)?;
+        check_cancellation(cancel).inspect_err(|_| self.poisoned = true)?;
         Ok(staged)
     }
     /// Publishes the supplied selected host collection; CSSOM does not select a DOM list.
@@ -511,22 +506,6 @@ pub(crate) fn validate_media_report(
         "media parse source unavailable",
         "media parser context mismatch",
     )
-}
-
-fn parse_media(
-    source: &str,
-    limits: &CssomLimits,
-    context: CssParserContext,
-) -> Result<(CssMediaQueryList, Vec<CssRecoveryDiagnostic>), CssomError> {
-    if source.len() > limits.max_input_bytes {
-        return Err(CssomError::Limit {
-            resource: "parse input bytes",
-            maximum: limits.max_input_bytes,
-        });
-    }
-    let report = CssMediaQueryList::parse(&CssParser::new(context, Default::default()), source);
-    check_resource_diagnostics(report.diagnostics())?;
-    Ok(report.into_parts())
 }
 
 impl CssomBatch {

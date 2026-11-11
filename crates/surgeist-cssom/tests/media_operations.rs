@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 //! Public consumer expectations from selected CSSOM §4.4 MediaList algorithms.
 //! The CSS writer's historical modern-value lexical policy remains selected.
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use surgeist_css::CssParser;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::diagnostic::CssRecoveryAction;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
 use surgeist_cssom::*;
 
 fn limits() -> CssSerializationLimits {
@@ -53,6 +56,310 @@ fn unchanged(commit: &CssomCommit) {
     ));
 }
 
+fn source_free_media(store: &mut CssomStore) -> MediaList {
+    let mut edit = batch(store);
+    let ticket = edit
+        .create_typed_sheet(surgeist_css::rule::CssSheet::new(), input())
+        .unwrap();
+    let sheet = store.commit(edit).unwrap().sheet(&ticket).unwrap().clone();
+    store.css_style_sheet(&sheet).unwrap().media(store).unwrap()
+}
+
+fn exact_media(suffix: &str) -> Vec<u16> {
+    let mut units = Vec::with_capacity(64);
+    units.extend("/*\r\n😀".encode_utf16());
+    units.push(0xd800);
+    units.extend("*/".encode_utf16());
+    units.extend(suffix.encode_utf16());
+    units
+}
+
+#[test]
+fn utf16_setter_retains_original_units_and_changes_only_distinct_source_values() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let raw = Arc::new(exact_media(" SCREEN, ???, print"));
+    let changed = media
+        .set_media_text(&mut store, CssomSheetText::Utf16(raw.clone()), &proceed)
+        .unwrap();
+    let first = store.snapshot();
+    let list = first.media(media.id()).unwrap();
+    let source = list.parse_source().unwrap().source();
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &raw));
+    assert_eq!(source.as_str(), "/*\n😀\u{fffd}*/ SCREEN, ???, print");
+    assert_eq!(source.original_utf16_range(2..3), Some(2..4));
+    assert_eq!(source.original_utf16_range(7..10), Some(6..7));
+    assert_eq!(changed.diagnostics().len(), 1);
+    let diagnostic = &changed.diagnostics()[0];
+    assert!(diagnostic.source().unwrap().same_snapshot(source));
+    let at = diagnostic.error().position().byte_offset().value();
+    assert_eq!(source.original_utf16_range(at..at + 3), Some(18..21));
+    assert_eq!(
+        media.media_text(&store, limits()).unwrap(),
+        "screen, not all, print"
+    );
+
+    let equal = Arc::new(raw.as_ref().clone());
+    assert!(!Arc::ptr_eq(&equal, &raw));
+    let same = media
+        .set_media_text(&mut store, CssomSheetText::Utf16(equal), &proceed)
+        .unwrap();
+    assert!(matches!(
+        same.publication(),
+        CssomPublication::Unchanged { .. }
+    ));
+    assert_eq!(store.snapshot().revision(), first.revision());
+    let mut distinct = raw.as_ref().clone();
+    distinct[6] = 0;
+    let distinct = Arc::new(distinct);
+    let changed = media
+        .set_media_text(
+            &mut store,
+            CssomSheetText::Utf16(distinct.clone()),
+            &proceed,
+        )
+        .unwrap();
+    assert!(matches!(
+        changed.publication(),
+        CssomPublication::Changed(_)
+    ));
+    let second = store.snapshot();
+    let actual = second
+        .media(media.id())
+        .unwrap()
+        .parse_source()
+        .unwrap()
+        .source();
+    assert_eq!(actual.as_str(), source.as_str());
+    assert!(Arc::ptr_eq(actual.original_utf16().unwrap(), &distinct));
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &raw));
+
+    let mut edit = batch(&store);
+    assert!(
+        edit.set_media_text(media.id(), CssomSheetText::Utf16(raw.clone()), &proceed)
+            .unwrap()
+            .changed()
+    );
+    let restored = Arc::new(distinct.as_ref().clone());
+    assert!(
+        edit.set_media_text(media.id(), CssomSheetText::Utf16(restored), &proceed)
+            .unwrap()
+            .changed()
+    );
+    unchanged(&store.commit(edit).unwrap());
+    assert_eq!(store.snapshot().revision(), second.revision());
+
+    let comment = Arc::new(exact_media(""));
+    let _ = media
+        .set_media_text(&mut store, CssomSheetText::Utf16(comment.clone()), &proceed)
+        .unwrap();
+    let current = store.snapshot();
+    let empty = current.media(media.id()).unwrap();
+    assert!(empty.queries().is_empty());
+    assert!(Arc::ptr_eq(
+        empty
+            .parse_source()
+            .unwrap()
+            .source()
+            .original_utf16()
+            .unwrap(),
+        &comment
+    ));
+    let cleared = media
+        .set_media_text(
+            &mut store,
+            CssomSheetText::Utf16(Arc::new(Vec::new())),
+            &proceed,
+        )
+        .unwrap();
+    assert!(matches!(
+        cleared.publication(),
+        CssomPublication::Changed(_)
+    ));
+    assert!(
+        store
+            .snapshot()
+            .media(media.id())
+            .unwrap()
+            .parse_source()
+            .is_none()
+    );
+}
+
+#[test]
+fn utf16_single_medium_preserves_canonical_duplicate_recovery_and_removal() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let valid = Arc::new(exact_media(" PRINT"));
+    let _ = media
+        .append_medium(&mut store, CssomSheetText::Utf16(valid.clone()), &proceed)
+        .unwrap();
+    let first = store.snapshot();
+    let member = &first.media(media.id()).unwrap().queries()[0];
+    let CssValueOrigin::Parsed(origin) = member.origin() else {
+        panic!("appended exact query origin");
+    };
+    assert!(Arc::ptr_eq(
+        origin.source().original_utf16().unwrap(),
+        &valid
+    ));
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+    let duplicate = media
+        .append_medium(
+            &mut store,
+            CssomSheetText::Utf16(Arc::new(exact_media(" print"))),
+            &proceed,
+        )
+        .unwrap();
+    assert!(matches!(
+        duplicate.publication(),
+        CssomPublication::Unchanged { .. }
+    ));
+    assert_eq!(store.snapshot().revision(), first.revision());
+
+    let invalid = Arc::new(exact_media(" ???"));
+    let recovered = media
+        .append_medium(&mut store, CssomSheetText::Utf16(invalid.clone()), &proceed)
+        .unwrap();
+    assert_eq!(
+        media.media_text(&store, limits()).unwrap(),
+        "print, not all"
+    );
+    assert_eq!(recovered.diagnostics().len(), 1);
+    assert!(Arc::ptr_eq(
+        recovered.diagnostics()[0]
+            .source()
+            .unwrap()
+            .original_utf16()
+            .unwrap(),
+        &invalid
+    ));
+    let before_delete = store.snapshot();
+    let multiple = CssomSheetText::Utf16(Arc::new(exact_media("print, speech")));
+    let skipped = media.delete_medium(&mut store, multiple, &proceed).unwrap();
+    assert!(matches!(
+        skipped.publication(),
+        CssomPublication::Unchanged { .. }
+    ));
+    let absent = CssomSheetText::Utf16(Arc::new(exact_media("speech")));
+    assert!(matches!(
+        media.delete_medium(&mut store, absent, &proceed),
+        Err(CssomError::Source(CssomException::NotFound))
+    ));
+    assert_eq!(store.snapshot().revision(), before_delete.revision());
+    let removed = media
+        .delete_medium(&mut store, CssomSheetText::Utf16(invalid), &proceed)
+        .unwrap();
+    assert_eq!(removed.diagnostics().len(), 1);
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+}
+
+#[test]
+fn utf16_media_admits_exact_backing_and_cumulative_equal_input_work() {
+    let raw = Arc::new(exact_media("screen"));
+    let (parsed, parse_work) = CssMediaQueryList::parse_utf16_with_work(
+        &CssParser::default(),
+        raw.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<(), std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let backing = parsed
+        .syntax()
+        .parse_source()
+        .unwrap()
+        .source()
+        .storage_usage()
+        .retained_bytes();
+    let proceed = AtomicBool::new(false);
+    let exact_work = parse_work + raw.len();
+    for (maximum, work, backing_fits, comparison_fits) in [
+        (backing - 1, exact_work, false, false),
+        (backing, exact_work - 1, true, false),
+        (backing, exact_work, true, true),
+    ] {
+        let mut limits = CssomLimits {
+            max_retained_source_bytes: maximum,
+            ..Default::default()
+        };
+        limits.sheet_utf16_input.max_input_units = raw.len();
+        limits.sheet_utf16_input.max_work = work;
+        let mut store = CssomStore::new(limits, Default::default()).unwrap();
+        let media = source_free_media(&mut store);
+        let before = store.snapshot();
+        let first = media.set_media_text(&mut store, CssomSheetText::Utf16(raw.clone()), &proceed);
+        if !backing_fits {
+            assert!(
+                matches!(first, Err(CssomError::Limit {
+                resource: "retained parse source bytes", maximum: actual
+            }) if actual == maximum),
+                "{first:?}"
+            );
+            assert_eq!(store.snapshot().revision(), before.revision());
+            continue;
+        }
+        let _ = first.unwrap();
+        let before = store.snapshot();
+        let mut equal = Vec::with_capacity(raw.capacity());
+        equal.extend_from_slice(raw.as_slice());
+        let second =
+            media.set_media_text(&mut store, CssomSheetText::Utf16(Arc::new(equal)), &proceed);
+        if comparison_fits {
+            assert!(matches!(
+                second.unwrap().publication(),
+                CssomPublication::Unchanged { .. }
+            ));
+        } else {
+            assert!(matches!(second, Err(CssomError::Utf16Input(error))
+                if error.exhausted_limit() == Some(CssUtf16Resource::Work)));
+        }
+        assert_eq!(store.snapshot().revision(), before.revision());
+    }
+}
+
+#[test]
+fn utf16_media_refuses_original_input_limit_and_cancellation_without_publication() {
+    let raw = Arc::new(exact_media("screen"));
+    let mut limits = CssomLimits::default();
+    limits.sheet_utf16_input.max_input_units = raw.len() - 1;
+    let mut store = CssomStore::new(limits, Default::default()).unwrap();
+    let media = source_free_media(&mut store);
+    let before = store.snapshot();
+    let original = || CssomSheetText::Utf16(raw.clone());
+    let cancel = AtomicBool::new(true);
+    assert!(matches!(
+        media.set_media_text(&mut store, original(), &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(
+        media.append_medium(&mut store, original(), &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(
+        media.delete_medium(&mut store, original(), &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    let mut foreign = new_store();
+    assert!(matches!(
+        media.delete_medium(&mut foreign, original(), &cancel),
+        Err(CssomError::ForeignOwner)
+    ));
+    let mut edit = batch(&store);
+    assert!(matches!(
+        edit.append_medium(media.id(), original(), &cancel),
+        Err(CssomError::Cancelled)
+    ));
+    assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
+    assert!(
+        matches!(media.append_medium(&mut store, original(), &AtomicBool::new(false)),
+        Err(CssomError::Utf16Input(error)) if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits))
+    );
+    assert_eq!(store.snapshot().revision(), before.revision());
+    assert_eq!(media.length(&store).unwrap(), 0);
+}
+
 #[test]
 fn current_associations_share_stable_media_ids_without_sheet_guards() {
     let mut store = new_store();
@@ -85,7 +392,11 @@ fn current_associations_share_stable_media_ids_without_sheet_guards() {
         (&import_media, "print"),
         (&group_media, "screen"),
     ] {
-        assert!(edit.set_media_text(id, value).unwrap().changed());
+        assert!(
+            edit.set_media_text(id, value, &AtomicBool::new(false))
+                .unwrap()
+                .changed()
+        );
     }
     store.commit(edit).unwrap();
     let after = store.snapshot();
@@ -127,7 +438,9 @@ fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let before = store.snapshot();
     let mut edit = batch(&store);
-    let result = edit.set_media_text(&id, "").unwrap();
+    let result = edit
+        .set_media_text(&id, "", &AtomicBool::new(false))
+        .unwrap();
     assert!(result.changed());
     assert!(result.diagnostics().is_empty());
     store.commit(edit).unwrap();
@@ -139,7 +452,12 @@ fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     );
     assert_eq!(captured_media(&store, &before, &id).length().unwrap(), 1);
     let mut edit = batch(&store);
-    assert!(!edit.set_media_text(&id, "").unwrap().changed());
+    assert!(
+        !edit
+            .set_media_text(&id, "", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
     unchanged(&store.commit(edit).unwrap());
 }
 
@@ -151,7 +469,9 @@ fn recovered_setter_keeps_owned_origins_and_item_null_then_empty_clears() {
     let before = store.snapshot();
     let source = String::from("/* 😀 */ SCREEN, ???, print");
     let mut edit = batch(&store);
-    let result = edit.set_media_text(&id, &source).unwrap();
+    let result = edit
+        .set_media_text(&id, source.as_str(), &AtomicBool::new(false))
+        .unwrap();
     assert!(result.changed());
     assert_eq!(result.diagnostics().len(), 1);
     assert_eq!(
@@ -195,7 +515,11 @@ fn recovered_setter_keeps_owned_origins_and_item_null_then_empty_clears() {
         None
     );
     let mut edit = batch(&store);
-    assert!(edit.set_media_text(&id, "").unwrap().changed());
+    assert!(
+        edit.set_media_text(&id, "", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
     store.commit(edit).unwrap();
     assert_eq!(text(&store, &store.snapshot(), &id), "");
     assert_eq!(
@@ -220,13 +544,17 @@ fn append_ignores_null_and_canonical_duplicates_but_accepts_single_recovered_nev
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "screen").unwrap();
+    edit.set_media_text(&id, "screen", &AtomicBool::new(false))
+        .unwrap();
     store.commit(edit).unwrap();
     let original = store.snapshot();
     for source in ["", "/* empty */", "screen, print", "SCREEN"] {
         let mut edit = batch(&store);
         assert!(
-            !edit.append_medium(&id, source).unwrap().changed(),
+            !edit
+                .append_medium(&id, source, &AtomicBool::new(false))
+                .unwrap()
+                .changed(),
             "{source}"
         );
         unchanged(&store.commit(edit).unwrap());
@@ -236,7 +564,9 @@ fn append_ignores_null_and_canonical_duplicates_but_accepts_single_recovered_nev
         original.media(&id).unwrap()
     );
     let mut edit = batch(&store);
-    let result = edit.append_medium(&id, "???").unwrap();
+    let result = edit
+        .append_medium(&id, "???", &AtomicBool::new(false))
+        .unwrap();
     assert!(result.changed());
     assert_eq!(result.diagnostics().len(), 1);
     store.commit(edit).unwrap();
@@ -245,7 +575,7 @@ fn append_ignores_null_and_canonical_duplicates_but_accepts_single_recovered_nev
     let mut edit = batch(&store);
     assert!(
         !edit
-            .append_medium(&id, "&different-malformed")
+            .append_medium(&id, "&different-malformed", &AtomicBool::new(false))
             .unwrap()
             .changed()
     );
@@ -263,12 +593,25 @@ fn append_uses_case_sensitive_serialized_values_without_query_evaluation() {
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "(future: AbC), (resolution: 96dpi)")
-        .unwrap();
-    assert!(edit.append_medium(&id, "(future: abc)").unwrap().changed());
-    assert!(!edit.append_medium(&id, "(FUTURE: AbC)").unwrap().changed());
+    edit.set_media_text(
+        &id,
+        "(future: AbC), (resolution: 96dpi)",
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert!(
-        edit.append_medium(&id, "(resolution: 1dppx)")
+        edit.append_medium(&id, "(future: abc)", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        !edit
+            .append_medium(&id, "(FUTURE: AbC)", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.append_medium(&id, "(resolution: 1dppx)", &AtomicBool::new(false))
             .unwrap()
             .changed()
     );
@@ -285,30 +628,53 @@ fn delete_removes_all_serialized_matches_and_not_found_aborts_then_retry_succeed
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "screen, PRINT, SCREEN, ???, &bad")
-        .unwrap();
+    edit.set_media_text(
+        &id,
+        "screen, PRINT, SCREEN, ???, &bad",
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     store.commit(edit).unwrap();
     let before = store.snapshot();
     for source in ["", "screen, print"] {
         let mut edit = batch(&store);
-        assert!(!edit.delete_medium(&id, source).unwrap().changed());
+        assert!(
+            !edit
+                .delete_medium(&id, source, &AtomicBool::new(false))
+                .unwrap()
+                .changed()
+        );
         unchanged(&store.commit(edit).unwrap());
     }
     let mut edit = batch(&store);
-    assert!(edit.delete_medium(&id, "SCREEN").unwrap().changed());
-    assert!(edit.delete_medium(&id, "???").unwrap().changed());
+    assert!(
+        edit.delete_medium(&id, "SCREEN", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.delete_medium(&id, "???", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
     store.commit(edit).unwrap();
     assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut edit = batch(&store);
-    edit.append_medium(&id, "speech").unwrap();
+    edit.append_medium(&id, "speech", &AtomicBool::new(false))
+        .unwrap();
     assert!(matches!(
-        edit.delete_medium(&id, "screen"),
+        edit.delete_medium(&id, "screen", &AtomicBool::new(false)),
         Err(CssomError::Source(CssomException::NotFound))
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut retry = batch(&store);
-    assert!(retry.delete_medium(&id, "PRINT").unwrap().changed());
+    assert!(
+        retry
+            .delete_medium(&id, "PRINT", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
     store.commit(retry).unwrap();
     assert_eq!(text(&store, &store.snapshot(), &id), "");
     assert_eq!(
@@ -351,7 +717,9 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
         let before = store.snapshot();
         let mut edit = batch(&store);
-        let Err(CssomError::Media(error)) = edit.append_medium(&id, "SCREEN") else {
+        let Err(CssomError::Media(error)) =
+            edit.append_medium(&id, "SCREEN", &AtomicBool::new(false))
+        else {
             panic!("whole scan must exhaust {css:?}");
         };
         assert!(expected(&error), "{css:?}: {error:?}");
@@ -359,8 +727,15 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         assert_eq!(store.snapshot().revision(), before.revision());
         assert_eq!(text(&store, &store.snapshot(), &id), "screen, print");
         let mut retry = batch(&store);
-        retry.set_media_text(&id, "print").unwrap();
-        assert!(retry.delete_medium(&id, "PRINT").unwrap().changed());
+        retry
+            .set_media_text(&id, "print", &AtomicBool::new(false))
+            .unwrap();
+        assert!(
+            retry
+                .delete_medium(&id, "PRINT", &AtomicBool::new(false))
+                .unwrap()
+                .changed()
+        );
         store.commit(retry).unwrap();
         assert_eq!(text(&store, &store.snapshot(), &id), "");
     }
@@ -379,12 +754,13 @@ fn parser_and_input_resource_failures_never_publish_recovered_empty_state() {
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "screen").unwrap();
+    edit.set_media_text(&id, "screen", &AtomicBool::new(false))
+        .unwrap();
     store.commit(edit).unwrap();
     let before = store.snapshot();
     let mut edit = batch(&store);
     assert!(matches!(
-        edit.set_media_text(&id, "screen, print"),
+        edit.set_media_text(&id, "screen, print", &AtomicBool::new(false)),
         Err(CssomError::Limit {
             resource: "parse input bytes",
             maximum: 6
@@ -397,18 +773,21 @@ fn parser_and_input_resource_failures_never_publish_recovered_empty_state() {
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "print").unwrap();
+    edit.set_media_text(&id, "print", &AtomicBool::new(false))
+        .unwrap();
     store.commit(edit).unwrap();
     let deep = format!("{}color{}", "(".repeat(2000), ")".repeat(2000));
     let mut edit = batch(&store);
     assert!(matches!(
-        edit.set_media_text(&id, &deep),
+        edit.set_media_text(&id, deep.as_str(), &AtomicBool::new(false)),
         Err(CssomError::ParseResource(_))
     ));
     assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
     assert_eq!(text(&store, &store.snapshot(), &id), "print");
     let mut retry = batch(&store);
-    retry.append_medium(&id, "screen").unwrap();
+    retry
+        .append_medium(&id, "screen", &AtomicBool::new(false))
+        .unwrap();
     store.commit(retry).unwrap();
     assert_eq!(text(&store, &store.snapshot(), &id), "print, screen");
 }
@@ -419,7 +798,8 @@ fn snapshot_output_errors_are_typed_and_do_not_change_the_owner() {
     let sheet = create(&mut store, "", input());
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&id, "screen").unwrap();
+    edit.set_media_text(&id, "screen", &AtomicBool::new(false))
+        .unwrap();
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
     for result in [

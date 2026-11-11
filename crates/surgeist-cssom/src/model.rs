@@ -58,7 +58,7 @@ pub struct CssomLimits {
     pub max_entries: usize,
     pub max_string_bytes: usize,
     pub max_input_bytes: usize,
-    /// CSS-owned preparation policy for one exact UTF-16 sheet input.
+    /// Preparation policy for one exact UTF-16 stylesheet or MediaList input.
     pub sheet_utf16_input: CssUtf16InputLimits,
     /// Actual shared parse-source backing retained by this canonical state.
     pub max_retained_source_bytes: usize,
@@ -964,7 +964,7 @@ pub enum CssomError {
     StaleRevision,
     StaleContext,
     StaleReplacement,
-    /// The caller cancelled stylesheet construction or rule insertion.
+    /// The caller cancelled a stylesheet or MediaList operation.
     Cancelled,
     BatchAborted,
     ForeignTicket,
