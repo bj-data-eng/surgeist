@@ -4,8 +4,8 @@ use super::block_units::{
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{
-    Value, ValueError, byte_offset, collect_scope, consume_remaining, drive_block_items,
-    expect_exhausted, fail, from_component, from_here, location, value_failure,
+    Value, ValueError, blank_end, byte_offset, collect_scope, consume_remaining, drive_block_items,
+    expect_exhausted, fail, from_component, from_here, locate_blank, location, value_failure,
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
@@ -337,8 +337,13 @@ impl MarginBodyParser<'_> {
         }
         let property = page_property_name(name, declaration_start)?;
         if property.is_some_and(|property| !is_page_margin_property(property)) {
+            // A property that does not apply here is rejected where its value
+            // begins to hold a token, or after a blank value's trivia.
             return Err(with_property_context(
-                unexpected_at(location_at(snapshot, text.value_start)),
+                unexpected_at(location_at(
+                    snapshot,
+                    text.blank_end().unwrap_or(text.value_start),
+                )),
                 name,
             ));
         }
@@ -711,8 +716,13 @@ impl PageBodyParser<'_> {
         }
         let property = page_property_name(name, declaration_start)?;
         if property.is_some_and(|property| !is_page_margin_property(property)) {
+            // A property that does not apply here is rejected where its value
+            // begins to hold a token, or after a blank value's trivia.
             return Err(with_property_context(
-                unexpected_at(location_at(snapshot, text.value_start)),
+                unexpected_at(location_at(
+                    snapshot,
+                    text.blank_end().unwrap_or(text.value_start),
+                )),
                 name,
             ));
         }
@@ -752,8 +762,9 @@ fn descriptor_value(
     };
     let document = crate::syntax_consumption::source_window_document(snapshot, range.clone())
         .map_err(failed_at)?;
+    let blank = blank_end(&document.root(), &numeric);
     let data = read_descriptor_value(&mut document.root(), kind, &numeric)
-        .map_err(|error| value_failure(&numeric, &error))?;
+        .map_err(|error| locate_blank(value_failure(&numeric, &error), blank))?;
     let components =
         crate::component::values::parse::promote_window(&document).map_err(failed_at)?;
     let origin = crate::source::CssParsedOrigin::covering(snapshot, range);

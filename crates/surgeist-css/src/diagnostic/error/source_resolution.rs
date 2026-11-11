@@ -22,6 +22,10 @@ impl CssError {
         // the last authored token is. A grammar owner that already names its
         // token keeps it; one that names the end of input still yields the
         // last authored token of the value.
+        let value = matches!(
+            self.kind,
+            ErrorKind::InvalidPropertyValue(_) | ErrorKind::InvalidDescriptorValue(_)
+        );
         let end_of_input = matches!(&self.kind, ErrorKind::InvalidDescriptorValue(detail)
             if detail.origin == DiagnosticOrigin::EndOfInput);
         if matches!(&self.kind, ErrorKind::InvalidDescriptorValue(detail)
@@ -46,8 +50,19 @@ impl CssError {
                     self.position = self.position.resolved_near(source, start).into();
                 }
             } else if let Some(slot) = optional_encountered_mut(&mut self.kind) {
+                // The `!` of the `!important` that ends a declaration is its
+                // importance annotation (Syntax 3 section 5.5.6 step 6), not a
+                // token of the value: where only trivia lies between the
+                // declaration's colon and it, the value is blank and the `!`
+                // ends it as a `;` does.
+                let blank_before_annotation = value
+                    && is_importance_annotation(source, start)
+                    && tokens
+                        .previous_token(start)
+                        .is_some_and(|(_, previous)| previous.kind == CssTokenKind::Colon);
                 let ending = ends_input(summary.kind)
-                    || (prelude && summary.kind == CssTokenKind::CurlyBracketBlock);
+                    || (prelude && summary.kind == CssTokenKind::CurlyBracketBlock)
+                    || blank_before_annotation;
                 if !ending {
                     *slot = Some(summary);
                 }
@@ -112,6 +127,28 @@ fn next_authored_token_at(
         ));
     }
     None
+}
+
+/// Whether the token at `start` is the `!` of an `!important` that ends the
+/// value of a declaration: `important` follows it, and then the `;` or `}` that
+/// ends the declaration or the end of the text.
+fn is_importance_annotation(source: &str, start: usize) -> bool {
+    let Some(mut lexer) = lexer_at(source, start) else {
+        return false;
+    };
+    let (mut bang, mut important) = (false, false);
+    while let Some(lexeme) = lexer.next_lexeme() {
+        match lexeme.token() {
+            Token::Whitespace | Token::Comment => {}
+            Token::Delim('!') if !bang => bang = true,
+            Token::Ident(name) if bang && !important && name.eq_ignore_ascii_case("important") => {
+                important = true;
+            }
+            Token::Semicolon | Token::CloseCurly if important => return true,
+            _ => return false,
+        }
+    }
+    important
 }
 
 /// A token that ends a declaration value or rule rather than belonging to it.

@@ -1829,6 +1829,26 @@ impl GrammarFailure {
             location,
         }
     }
+
+    /// A property or descriptor value's grammar rejection (before or after it
+    /// is named for its property or descriptor) where the value holds no
+    /// authored token (only whitespace and comments, or nothing), located at
+    /// `end_of_trivia`: the first position after the value's whitespace and
+    /// comments, where the token or end of input that follows the value
+    /// stands. Any other failure is returned as it is.
+    pub(crate) fn at_blank_value(mut self, end_of_trivia: CssSourcePosition) -> Self {
+        if matches!(
+            self.error.kind,
+            ErrorKind::InvalidPropertyValue(_)
+                | ErrorKind::InvalidDescriptorValue(_)
+                | ErrorKind::UnexpectedToken(_)
+                | ErrorKind::UnexpectedEnd(_)
+        ) {
+            self.error.position = end_of_trivia.into();
+            self.location = end_of_trivia;
+        }
+        self
+    }
 }
 
 /// The lexer reading `text` from `offset`, which reports offsets of `text`
