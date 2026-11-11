@@ -1822,10 +1822,6 @@ pub(crate) enum CaseNaming {
 }
 
 impl CaseNaming {
-    pub(crate) fn is_basename(&self) -> bool {
-        *self == Self::Basename
-    }
-
     pub(crate) fn source_names(self, source: &str) -> Result<(&str, &str)> {
         let family = source
             .strip_prefix("html/")

@@ -81,7 +81,7 @@ pub(crate) struct Record {
     pub(crate) source: RelativePath,
     pub(crate) source_sha256: Sha256Digest,
     pub(crate) source_kind: SourceKind,
-    #[serde(default, skip_serializing_if = "CaseNaming::is_basename")]
+    #[serde(default, skip_serializing_if = "uses_basename")]
     case_identity: CaseNaming,
     pub(crate) expected: ExpectedDisposition,
     #[serde(default)]
@@ -93,6 +93,10 @@ pub(crate) struct Record {
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub(crate) matching_publication: Option<MatchingMembership>,
 }
+fn uses_basename(naming: &CaseNaming) -> bool {
+    *naming == CaseNaming::Basename
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SemanticReference {
