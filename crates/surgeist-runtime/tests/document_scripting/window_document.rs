@@ -297,6 +297,29 @@ pub(super) fn window_resolves_the_inherited_event_target_operations() {
             || Reflect.deleteProperty(names, "0")) {
             return "the Window named-properties layer must preserve standard reflection";
         }
+        for (const key of ["newName", "0", Symbol("name"), "constructor"]) {
+            if (Reflect.set(names, key, 17) || Object.hasOwn(names, key)
+                || Reflect.set({}, key, 17, names) || Object.hasOwn(names, key)) {
+                return "WindowProperties must refuse assignment to its own receiver";
+            }
+            const ordinary = Object.create(names);
+            if (!Reflect.set(names, key, 17, ordinary) || ordinary[key] !== 17
+                || !Object.hasOwn(ordinary, key)) {
+                return "WindowProperties must preserve ordinary receiver assignment";
+            }
+        }
+        for (const key of ["inheritedSetter", "0", Symbol("setter")]) {
+            let received;
+            Object.defineProperty(target, key, {
+                configurable: true,
+                set(value) { received = [this, value]; },
+            });
+            const assigned = Reflect.set(names, key, 42);
+            delete target[key];
+            if (!assigned || !received || received[0] !== names || received[1] !== 42) {
+                return "WindowProperties must invoke an inherited setter with the exact receiver";
+            }
+        }
         for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
             if (Object.hasOwn(window, key) || window[key] !== target[key]) {
                 return "Window must resolve the original inherited EventTarget operations";
