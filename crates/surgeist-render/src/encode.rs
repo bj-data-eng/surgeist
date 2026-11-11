@@ -6,7 +6,7 @@ use super::{
     },
     geometry::{expand_rect, offset_radii},
     paint::PaintKind,
-    vello_engine::scene::{RoundedRectBlur, VelloScene},
+    vello_engine::scene::{RoundedRectBlur, SceneDraws, VelloScene},
     *,
 };
 use crate::accounting::{Account, AccountedVec, DisposalCompletion, Hold, RenderPhase, RenderWork};
@@ -408,7 +408,7 @@ fn encode_fill(
     }
     let brush = render_paint_brush(paint, transform, target_extent, account)?;
     encode_solid_fill(
-        scene,
+        &mut scene.draws(),
         transform,
         shape,
         brush.scene_brush(target_extent),
@@ -419,7 +419,7 @@ fn encode_fill(
 }
 
 fn encode_solid_fill<'a>(
-    scene: &mut VelloScene,
+    scene: &mut SceneDraws<'_>,
     transform: kurbo::Affine,
     shape: &RenderShape,
     brush: impl Into<SceneBrush<'a>>,
@@ -503,7 +503,7 @@ fn encode_stroke(
     }
     let brush = render_paint_brush(paint, transform, target_extent, account)?;
     encode_brush_stroke(
-        scene,
+        &mut scene.draws(),
         transform,
         shape,
         stroke,
@@ -515,7 +515,7 @@ fn encode_stroke(
 }
 
 fn encode_brush_stroke<'a>(
-    scene: &mut VelloScene,
+    scene: &mut SceneDraws<'_>,
     transform: kurbo::Affine,
     shape: &RenderStrokeShape,
     stroke: &RenderStroke,
@@ -645,7 +645,7 @@ fn encode_non_uniform_rounded_shadow(
 ) -> Result<()> {
     if blur == 0.0 {
         encode_solid_fill(
-            scene,
+            &mut scene.draws(),
             transform,
             &RenderShape::RoundedRect { rect, radii },
             peniko::Color::from(color),
@@ -771,7 +771,7 @@ fn with_sampled_image<T>(
     scene: &mut VelloScene,
     image: &Image,
     source_to_device: kurbo::Affine,
-    encode: impl FnOnce(&mut VelloScene, &peniko::ImageBrush, Option<kurbo::Affine>) -> Result<T>,
+    encode: impl FnOnce(&mut SceneDraws<'_>, &peniko::ImageBrush, Option<kurbo::Affine>) -> Result<T>,
     account: &Account,
 ) -> Result<T> {
     scene.import_image(image, account)?;
@@ -784,7 +784,7 @@ fn with_sampled_image<T>(
             account,
         )
     } else {
-        encode(scene, &brush, None)
+        encode(&mut scene.draws(), &brush, None)
     }
 }
 

@@ -46,6 +46,58 @@ pub(crate) struct VelloScene {
     payloads: PayloadCustody,
 }
 
+/// Draw access for callbacks whose appended image patches are tracked by the scene.
+pub(crate) struct SceneDraws<'scene>(&'scene mut VelloScene);
+
+impl SceneDraws<'_> {
+    pub(crate) fn fill<'a>(
+        &mut self,
+        style: Fill,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        shape: &impl kurbo::Shape,
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .fill(style, transform, brush, brush_transform, shape, account)
+    }
+
+    pub(crate) fn fill_elements<'a>(
+        &mut self,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        elements: &[kurbo::PathEl],
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .fill_elements(transform, brush, brush_transform, elements, account)
+    }
+
+    pub(crate) fn stroke<'a>(
+        &mut self,
+        style: &kurbo::Stroke,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        shape: &impl kurbo::Shape,
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .stroke(style, transform, brush, brush_transform, shape, account)
+    }
+
+    pub(crate) fn draw_image<'a>(
+        &mut self,
+        image: impl Into<ImageBrushRef<'a>>,
+        transform: kurbo::Affine,
+        account: &Account,
+    ) -> Result<()> {
+        self.0.draw_image(image, transform, account)
+    }
+}
+
 impl Drop for VelloScene {
     fn drop(&mut self) {
         std::mem::take(&mut self.backing).dispose(std::mem::take(&mut self.encoding));
@@ -104,6 +156,10 @@ impl<'a> QualifiedStroke<'a> {
 }
 
 impl VelloScene {
+    pub(crate) fn draws(&mut self) -> SceneDraws<'_> {
+        SceneDraws(self)
+    }
+
     pub(crate) fn import_image(&mut self, image: &crate::Image, account: &Account) -> Result<()> {
         self.payloads.keep(account.import_image(image)?, account)
     }
@@ -151,17 +207,17 @@ impl VelloScene {
         &mut self,
         image: &crate::Image,
         source_to_device: kurbo::Affine,
-        encode: impl FnOnce(&mut Self, kurbo::Affine) -> Result<T>,
+        encode: impl FnOnce(&mut SceneDraws<'_>, kurbo::Affine) -> Result<T>,
         account: &Account,
     ) -> Result<T> {
         self.import_image(image, account)?;
         if image.data.width == 0 || image.data.height == 0 {
-            return encode(self, kurbo::Affine::IDENTITY);
+            return encode(&mut self.draws(), kurbo::Affine::IDENTITY);
         }
         let expansion =
             super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device, account)?;
         let first_patch = self.encoding.resources.patches.len();
-        let result = encode(self, expansion.compensation())?;
+        let result = encode(&mut self.draws(), expansion.compensation())?;
         self.mark_image_expansion(first_patch, image.data.data.id(), expansion, account)?;
         Ok(result)
     }
@@ -1637,6 +1693,171 @@ mod pixelated_tests {
         assert_eq!(plan.entries.len(), 2);
         assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 1));
         assert_eq!(plan.entries[1].extent(), crate::PhysicalSize::new(4, 4));
+    }
+
+    #[test]
+    fn expansion_mark_rejects_an_out_of_range_suffix_and_preserves_the_prefix() {
+        let account = Account::for_test();
+        let image =
+            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let mut scene = VelloScene::default();
+        scene.import_image(&image, &account).unwrap();
+        scene
+            .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let expansion = super::super::image_atlas::ImageExpansion::try_new(
+            &image.data,
+            kurbo::Affine::scale(2.0),
+            &account,
+        )
+        .unwrap();
+        let source_id = image.data.data.id();
+        let error = scene
+            .mark_image_expansion(2, source_id, expansion, &account)
+            .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image patch suffix starts beyond the recorded patches"
+        );
+        scene
+            .mark_image_expansion(1, source_id, expansion, &account)
+            .unwrap();
+        assert_eq!(scene.encoding.resources.patches.len(), 1);
+        assert!(scene.image_expansions.is_empty());
+    }
+
+    #[test]
+    fn atlas_refuses_a_registered_region_paired_with_an_empty_image() {
+        use super::super::image_atlas::ImageAtlasPlan;
+        use crate::{Image, PhysicalSize, Rect, Size, image::ResolvedImageRegion};
+
+        let account = Account::for_test();
+        let source = Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let empty = Image::from_rgba(Size::new(0.0, 1.0), Vec::<u8>::new()).unwrap();
+        let region =
+            ResolvedImageRegion::try_new(&source, Rect::new(0.0, 0.0, 1.0, 1.0), &account).unwrap();
+        let mut scene = VelloScene::default();
+        scene
+            .draw_image_region(&empty, region, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let error = ImageAtlasPlan::prepare(&scene.encoding, &scene.image_expansions, &account)
+            .err()
+            .expect("a registered region must match its source even when the image is empty");
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas region must match its original source axes"
+        );
+
+        let mut scene = VelloScene::default();
+        scene.import_image(&empty, &account).unwrap();
+        scene
+            .draw_image(
+                &crate::encode::image_brush(&empty),
+                kurbo::Affine::IDENTITY,
+                &account,
+            )
+            .unwrap();
+        scene
+            .draw_image_region(&source, region, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let plan =
+            ImageAtlasPlan::prepare(&scene.encoding, &scene.image_expansions, &account).unwrap();
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].extent(), PhysicalSize::new(1, 1));
+        assert_eq!(plan.encoding.draw_data[1], 0);
+        assert_eq!(plan.encoding.draw_data[4], (1 << 16) | 1);
+    }
+
+    #[test]
+    fn pixelated_callback_error_preserves_its_cause_and_releases_the_draft() {
+        use crate::accounting::{FrameFixture, RendererCpu};
+        use crate::{RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderResource};
+
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let image =
+            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let transform = kurbo::Affine::scale(2.0);
+        // Warm registry backing so the draft's image lease has a stable opening baseline.
+        drop(
+            cpu.at(RenderCpuScope::ImagePayloads)
+                .import_image(&image, None)
+                .unwrap(),
+        );
+        let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account().at(RenderPhase::Encode);
+                account.phase(RenderPhase::Encode, || {
+                    let mut scene = VelloScene::default();
+                    let result = scene.with_pixelated_image(
+                        &image,
+                        transform,
+                        |draws, compensation| {
+                            draws.draw_image(&brush, transform * compensation, &account)?;
+                            Err::<(), _>(Error::new(
+                                BackendErrorCode::RenderFailed,
+                                "sampled draw callback stopped",
+                            ))
+                        },
+                        &account,
+                    );
+                    assert_eq!(scene.encoding.resources.patches.len(), 1);
+                    assert!(scene.image_expansions.is_empty());
+                    result
+                })
+            })
+            .unwrap()
+            .into_parts();
+        assert!(started);
+        assert_eq!(fault, None);
+        assert_eq!(
+            result.unwrap_err().message(),
+            "sampled draw callback stopped"
+        );
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        let usage = report.renderer_cpu().unwrap();
+        for scope in [RenderCpuScope::ImagePayloads, RenderCpuScope::FrameBacking] {
+            let scope = usage.scope_usage(scope);
+            for resource in [
+                RenderResource::RetainedCpuBytes,
+                RenderResource::ScratchCpuBytes,
+            ] {
+                assert_eq!(scope.live(resource), scope.opening_live(resource));
+            }
+        }
+
+        let (result, _, _, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let mut scene = VelloScene::default();
+                scene.with_pixelated_image(
+                    &image,
+                    transform,
+                    |draws, compensation| {
+                        draws.draw_image(&brush, transform * compensation, account)
+                    },
+                    account,
+                )?;
+                let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
+                    &scene.encoding,
+                    &scene.image_expansions,
+                    account,
+                )?;
+                assert_eq!(plan.entries.len(), 1);
+                assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 2));
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        result.unwrap();
     }
 
     #[test]

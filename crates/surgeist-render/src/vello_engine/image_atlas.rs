@@ -10,12 +10,19 @@ use crate::{BackendErrorCode, Error, PhysicalSize, Result};
 
 const PACKED_MAX: u32 = u16::MAX as u32;
 pub(super) const MAX_TEXELS: u64 = PACKED_MAX as u64 * PACKED_MAX as u64;
-/// A validated nearest-neighbor expansion of the image's original pixel grid.
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExpansionSource {
+    Whole(PhysicalSize),
+    Region(ImageWindow),
+}
+
+/// An atlas extent and integer sampling factors qualified for one source grid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ImageExpansion {
     factors: [u32; 2],
     extent: PhysicalSize,
-    window: Option<ImageWindow>,
+    source: ExpansionSource,
 }
 
 impl ImageExpansion {
@@ -31,7 +38,10 @@ impl ImageExpansion {
     }
 
     fn from_factors(image: &ImageData, factors: [u32; 2]) -> Result<Self> {
-        Self::from_source(PhysicalSize::new(image.width, image.height), factors, None)
+        Self::from_source(
+            ExpansionSource::Whole(PhysicalSize::new(image.width, image.height)),
+            factors,
+        )
     }
 
     pub(super) fn for_region(
@@ -45,16 +55,16 @@ impl ImageExpansion {
         } else {
             [1, 1]
         };
-        Self::from_source(window.size(), factors, Some(window))
+        Self::from_source(ExpansionSource::Region(window), factors)
     }
 
-    fn from_source(
-        source: PhysicalSize,
-        factors: [u32; 2],
-        window: Option<ImageWindow>,
-    ) -> Result<Self> {
-        let width = source.width().checked_mul(factors[0]);
-        let height = source.height().checked_mul(factors[1]);
+    fn from_source(source: ExpansionSource, factors: [u32; 2]) -> Result<Self> {
+        let size = match source {
+            ExpansionSource::Whole(size) => size,
+            ExpansionSource::Region(window) => window.size(),
+        };
+        let width = size.width().checked_mul(factors[0]);
+        let height = size.height().checked_mul(factors[1]);
         match (width, height) {
             (Some(width), Some(height))
                 if width != 0
@@ -67,12 +77,36 @@ impl ImageExpansion {
                 Ok(Self {
                     factors,
                     extent: PhysicalSize::new(width, height),
-                    window,
+                    source,
                 })
             }
             _ => Err(failed(
                 "image extent cannot be represented in the Vello image atlas",
             )),
+        }
+    }
+
+    fn require_source_size(self, image: &ImageData) -> Result<()> {
+        let (expected, message) = match self.source {
+            ExpansionSource::Whole(size) => (
+                size,
+                "image atlas expansion does not match source dimensions",
+            ),
+            ExpansionSource::Region(window) => (
+                window.source_size(),
+                "image atlas region must match its original source axes",
+            ),
+        };
+        if expected != PhysicalSize::new(image.width, image.height) {
+            return Err(failed(message));
+        }
+        Ok(())
+    }
+
+    fn window(self) -> Option<ImageWindow> {
+        match self.source {
+            ExpansionSource::Whole(_) => None,
+            ExpansionSource::Region(window) => Some(window),
         }
     }
 
@@ -99,7 +133,7 @@ impl AtlasEntry {
     }
 
     pub(super) fn window(&self) -> Option<ImageWindow> {
-        self.expansion.window
+        self.expansion.window()
     }
 }
 
@@ -134,13 +168,17 @@ impl ImageAtlasPlan {
                 else {
                     continue;
                 };
-                // Empty image brushes are transparent. Keep their draw records, but
-                // allocate no region and never issue a zero-sized texture upload.
+                let registered = expansions.get(draw_data_offset, &account)?;
+                // Unregistered empty brushes are transparent. A registered expansion
+                // must still match the patch's source axes before resolving the draw.
                 if image.width == 0 || image.height == 0 {
+                    if let Some(expansion) = registered {
+                        expansion.require_source_size(image)?;
+                    }
                     bounded::push_record(&mut draws, (*draw_data_offset, None), &account)?;
                     continue;
                 }
-                let expansion = match expansions.get(draw_data_offset, &account)? {
+                let expansion = match registered {
                     Some(expansion) => *expansion,
                     None => ImageExpansion::from_factors(image, [1, 1])?,
                 };
@@ -152,13 +190,7 @@ impl ImageAtlasPlan {
                 {
                     return Err(failed("image atlas requires complete RGBA8 source data"));
                 }
-                if let Some(window) = expansion.window
-                    && window.source_size() != PhysicalSize::new(image.width, image.height)
-                {
-                    return Err(failed(
-                        "image atlas region must match its original source axes",
-                    ));
-                }
+                expansion.require_source_size(image)?;
                 // Blob identity identifies bytes, while dimensions identify their
                 // two-dimensional interpretation. Sampling/alpha flags stay per draw.
                 let identity = (
@@ -166,7 +198,7 @@ impl ImageAtlasPlan {
                     image.width,
                     image.height,
                     expansion.factors,
-                    expansion.window.map(|window| {
+                    expansion.window().map(|window| {
                         (
                             window.first_pixel(),
                             window.size().width(),
@@ -395,6 +427,23 @@ mod tests {
     use crate::accounting::{
         FrameFixture, RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope,
         RenderFrameReport, RenderLimits, RendererCpu,
+    };
+
+    // Source qualification must fit the existing Ledger-backed record footprint.
+    const _: () = {
+        type PreviousExpansion = ([u32; 2], PhysicalSize, Option<ImageWindow>);
+        assert!(std::mem::size_of::<ImageExpansion>() == std::mem::size_of::<PreviousExpansion>());
+        assert!(
+            std::mem::align_of::<ImageExpansion>() == std::mem::align_of::<PreviousExpansion>()
+        );
+        assert!(
+            std::mem::size_of::<(usize, ImageExpansion)>()
+                == std::mem::size_of::<(usize, PreviousExpansion)>()
+        );
+        assert!(
+            std::mem::size_of::<AtlasEntry>()
+                == std::mem::size_of::<(ImageData, [u32; 2], PreviousExpansion)>()
+        );
     };
 
     fn measure_atlas(
@@ -747,6 +796,107 @@ mod tests {
         assert_eq!(plan.entries.len(), 2);
         assert_eq!(plan.encoding.draw_data[1], (2 << 16) | 1);
         assert_eq!(plan.encoding.draw_data[4], (1 << 16) | 2);
+    }
+
+    #[test]
+    fn atlas_refuses_an_expansion_from_different_source_axes() {
+        let horizontal = image();
+        let mut vertical = horizontal.clone();
+        vertical.width = 1;
+        vertical.height = 2;
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&horizontal, 1.0);
+        encoding.encode_image(&vertical, 1.0);
+        let original_words = encoding.draw_data.clone();
+        let mismatched = ImageExpansions::from_records([(
+            3,
+            ImageExpansion::from_factors(&horizontal, [2, 3]).unwrap(),
+        )]);
+
+        let (result, report) = measure_atlas(&encoding, &mismatched, RenderLimits::new());
+        let error = match result {
+            Ok(plan) => panic!(
+                "atlas accepted 1×2 source with a 2×1 expansion: {:?}",
+                plan.entries[1].extent()
+            ),
+            Err(error) => error,
+        };
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas expansion does not match source dimensions"
+        );
+        let attempt = report.attempt().unwrap();
+        assert_eq!(
+            attempt.status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        let usage = attempt.phase_usage(RenderPhase::Atlas);
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 4);
+        assert_eq!(usage.work(RenderWork::EncodingStreamCopies), 10);
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 8);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 2);
+        assert_eq!(usage.work(RenderWork::RasterResourceCopies), 3);
+        assert_eq!(usage.work(RenderWork::UploadBytes), 0);
+        let cpu = report.renderer_cpu().unwrap();
+        for resource in [
+            RenderResource::RetainedCpuBytes,
+            RenderResource::ScratchCpuBytes,
+        ] {
+            assert_eq!(
+                cpu.scope_usage(RenderCpuScope::FrameBacking).live(resource),
+                0
+            );
+        }
+        assert_eq!(encoding.draw_data, original_words);
+        assert_eq!(encoding.resources.patches.len(), 2);
+
+        let (result, report) = measure_atlas(
+            &encoding,
+            &mismatched,
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, 3)
+                .unwrap(),
+        );
+        assert!(result.is_err());
+        assert_work_refusal(&report, RenderWork::ResourceProbes, 3, 1);
+
+        let matching = ImageExpansions::from_records([(
+            3,
+            ImageExpansion::from_factors(&vertical, [2, 3]).unwrap(),
+        )]);
+        let (retry, _) = measure_atlas(&encoding, &matching, RenderLimits::new());
+        let plan = retry.unwrap();
+        assert_eq!(plan.entries[0].extent(), PhysicalSize::new(2, 1));
+        assert_eq!(plan.entries[1].extent(), PhysicalSize::new(2, 6));
+        assert_eq!(plan.encoding.draw_data[1], (2 << 16) | 1);
+        assert_eq!(plan.encoding.draw_data[4], (2 << 16) | 6);
+    }
+
+    #[test]
+    fn atlas_checks_source_format_before_registered_expansion_axes() {
+        let horizontal = image();
+        let expansion = ImageExpansion::from_factors(&horizontal, [2, 3]).unwrap();
+        let mut vertical = horizontal;
+        vertical.width = 1;
+        vertical.height = 2;
+        vertical.format = peniko::ImageFormat::Bgra8;
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&vertical, 1.0);
+        let (result, report) = measure_atlas(
+            &encoding,
+            &ImageExpansions::from_records([(0, expansion)]),
+            RenderLimits::new(),
+        );
+        let error = result.err().expect("the format is unsupported");
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas requires complete RGBA8 source data"
+        );
+        let usage = report.attempt().unwrap().phase_usage(RenderPhase::Atlas);
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 0);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 0);
     }
 
     #[test]
