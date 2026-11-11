@@ -4,11 +4,11 @@ use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
 };
-use crate::original_flex_parent_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::xml::{escape_attr, generate_xml};
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
+use crate::{original_block_axes_profile, original_flex_parent_profile};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -242,6 +242,17 @@ impl LayoutAdapter {
                 "original percentage Flex parent capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::OriginalBlockAxes
+            && !original_block_axes_profile::source_digest(input.fixture().source().as_str())
+                .is_some_and(|expected| {
+                    surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                        == expected
+                })
+        {
+            return Err(AdapterError::Preparation(
+                "original Block axis capture requires its exact source".into(),
+            ));
+        }
         if request == BoxObservationRequest::OriginalSubgridBody
             && (input.fixture().source().as_str() != original_subgrid_body_profile::SOURCE
                 || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
@@ -323,6 +334,7 @@ impl LayoutAdapter {
             BoxObservationRequest::EmptyLineBrFontBand
                 | BoxObservationRequest::OriginalFlexParent
                 | BoxObservationRequest::OriginalPercentageFlexParent
+                | BoxObservationRequest::OriginalBlockAxes
         ) {
             &[]
         } else {
@@ -362,6 +374,10 @@ impl LayoutAdapter {
                 let arguments = serde_json::to_string(&(source, input.base_url(), style))
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalFlexParent(...{arguments})")
+            } else if request == BoxObservationRequest::OriginalBlockAxes {
+                let arguments = serde_json::to_string(&(source, input.base_url(), style))
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalBlockAxes(...{arguments})")
             } else if request == BoxObservationRequest::OriginalSubgridBody {
                 let serialize = |value| {
                     serde_json::to_string(value)
@@ -578,6 +594,22 @@ fn helper_setup_expression(
     {
         return Err(AdapterError::Preparation(
             "root-context source profile does not qualify the captured base stylesheet".into(),
+        ));
+    }
+    if request == BoxObservationRequest::OriginalBlockAxes {
+        let digest = surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes());
+        if !original_block_axes_profile::accepts_helper(digest.as_str()) {
+            return Err(AdapterError::Preparation(
+                "original Block axis capture helper changed".into(),
+            ));
+        }
+        let script = original_block_axes_profile::SCRIPT;
+        let helper = serde_json::to_string(&format!(
+            "{helper}\n globalThis.captureOriginalBlockAxes = ({script});"
+        ))
+        .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+        return Ok(format!(
+            "(() => {{ (0, eval)({helper});\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}; return true; }})()"
         ));
     }
     let flex_parent_script = match request {
