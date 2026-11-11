@@ -1390,6 +1390,65 @@ fn verify_hook_keys(mut host: DocumentScriptHost, child: &[u16], detach: &[u16])
     .unwrap();
 }
 
+fn connected_script_parks_the_original_source_for_live_scripting() {
+    let cancellation = Arc::new(cancel());
+    let (mut session, top) = setup();
+    let document = top.document();
+    let snapshot = session.snapshot();
+    let html = snapshot.node(document.node()).unwrap().children()[0];
+    let body = snapshot.node(html).unwrap().children()[1];
+
+    let mut batch = DomBatch::new();
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let text = batch.create_text(document, "globalThis.scriptRan = true");
+    batch.insert_before(&text, &script, None);
+    let commit = session.dom().apply(batch, &cancellation).unwrap();
+    let script = commit.created(&script).unwrap().unwrap();
+    assert_eq!(session.snapshot().node(script).unwrap().parent(), None);
+
+    let mut host = prepare(session, cancellation.clone())
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(
+        host.observe_scripting(&permit).unwrap().status(),
+        HtmlScriptingStatus::Enabled
+    );
+    let original = host.snapshot().unwrap().stamp();
+    let limits = DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 8);
+    host.with_native(|dom, _, mut source| {
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut |_| None,
+            url: None,
+        };
+        let progress = source.apply(
+            dom,
+            DomSourceEdit::insert_before(script, body, None),
+            limits,
+            &mut services,
+            &cancellation,
+        );
+        assert!(
+            matches!(progress, Ok(DomSourceDriveProgress::Pending { .. })),
+            "connecting a nonempty Script must retain its required live scripting request: {progress:?}"
+        );
+        let operation = dom.pending_source_edit().unwrap().operation();
+        assert_eq!(dom.snapshot().stamp(), original);
+        assert_eq!(dom.snapshot().node(script).unwrap().parent(), None);
+
+        let resumed = source.resume(dom, operation, limits, &mut services, &cancellation);
+        assert!(
+            matches!(resumed, Ok(DomSourceDriveProgress::Pending { .. })),
+            "resuming without a live scripting answer must still request it: {resumed:?}"
+        );
+        assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
+        assert_eq!(dom.snapshot().stamp(), original);
+    })
+    .unwrap();
+}
+
 fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
     let mut refused = 0;
     let mut baseline = limits().hosted.work;
@@ -1455,6 +1514,7 @@ fn main() {
             "conversion-revocation" => source_events::run(),
             "creation-realms" => source_events::run_creation_realms(),
             "hook-utf16-work" => explicit_hook_keys_require_each_authored_utf16_work_unit(),
+            "script-live-read" => connected_script_parks_the_original_source_for_live_scripting(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);
@@ -1476,6 +1536,7 @@ fn main() {
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();
+    connected_script_parks_the_original_source_for_live_scripting();
     failed_enable_preserves_original_owner();
     explicit_hook_keys_require_each_authored_utf16_work_unit();
     let expired_permit = native_read_snapshot_and_explicit_queue();
