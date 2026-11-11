@@ -1238,9 +1238,9 @@ pub enum PrimitiveOperation {
     LayerMask,
     /// Executing an authored alpha-mask source.
     AlphaMaskSourceExecution,
-    /// Executing a resolved image alpha mask.
+    /// Executing resolved image coverage from alpha or luminance.
     ResolvedAlphaMaskExecution,
-    /// Interpreting a mask as luminance.
+    /// Interpreting an authored mask as luminance.
     LuminanceMaskMode,
     /// Composing more than one mask layer.
     MultiLayerMaskComposition,

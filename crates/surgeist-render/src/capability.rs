@@ -1029,13 +1029,15 @@ impl MaskClipCapabilities {
         self.layer_masks
     }
 
-    /// Returns whether resolved image alpha masks execute in the GPU composition graph.
+    /// Returns whether resolved image masks execute in the GPU composition graph.
+    /// This includes [`crate::ResolvedLayerAlphaMask`] and [`crate::ResolvedLayerLuminanceMask`].
     #[must_use]
     pub const fn supports_resolved_alpha_mask_execution(self) -> bool {
         self.resolved_alpha_mask_execution
     }
 
-    /// Returns whether luminance mask mode is supported.
+    /// Returns whether authored luminance mask mode is supported.
+    /// Resolved image masks use [`Self::supports_resolved_alpha_mask_execution`].
     #[must_use]
     pub const fn supports_luminance_mask_mode(self) -> bool {
         self.luminance_mask_mode
