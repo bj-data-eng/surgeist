@@ -2,7 +2,17 @@ use super::*;
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
-    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    attach_public_nodes(session, target, cancellation, node_work, source_work)
+}
+
+fn attach_public_nodes(
+    mut session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+) -> DocumentScriptHost {
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
         registrations: 8,
         pending_events: 2,
@@ -42,6 +52,102 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
             },
         )
         .unwrap()
+}
+
+pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creation_realm() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let element = {
+        let mut batch = DomBatch::new();
+        let element = batch.create_element_ns(origin.document(), Namespace::html(), "div");
+        let commit = session.dom().apply(batch, &cancellation).unwrap();
+        commit.created(&element).unwrap().unwrap()
+    };
+    let mut host = attach_public_nodes(session, target, cancellation.clone(), 1_000, 20_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("globalThis.destination = new Document()"))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let destination = snapshot
+        .nodes()
+        .filter_map(|node| snapshot.node(node).unwrap().as_document())
+        .map(|view| view.id())
+        .find(|document| *document != target.document() && *document != origin.document())
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(element, destination);
+        batch.insert_before(element, destination, None);
+        dom.apply(batch, &cancellation).unwrap();
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot.relevant_global(element).unwrap(),
+        Some(origin.global())
+    );
+    assert_eq!(
+        snapshot.document(destination).unwrap().document_element(),
+        Some(element)
+    );
+
+    let projected = host.in_document(&permit, |scope| {
+        let wrapper = scope.evaluate(&units("globalThis.adopted = destination.documentElement"))?;
+        let realm = scope
+            .callback_object(&wrapper)?
+            .associated_realm()
+            .identity();
+        assert_ne!(realm, scope.realm_authority()?.identity());
+        assert_guest(
+            scope,
+            "adopted === destination.documentElement && adopted.localName === 'div' && \
+             adopted.ownerDocument === destination && adopted.getRootNode() === destination",
+        )?;
+        Ok((realm, scope.retain(&wrapper)))
+    });
+    let (realm, wrapper) = match projected {
+        Ok(projection) => projection,
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "registered origin could not expose the adopted root: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("registered origin could not expose the adopted root: {error:?}"),
+    };
+    let engine = host.engine.as_mut().unwrap();
+    let original = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    engine.process.execution().in_realm(original, |scope| {
+        assert_eq!(scope.realm_authority()?.identity(), realm);
+        let global = scope.global()?;
+        let wrapper = scope.import(&wrapper)?;
+        scope.set(&global, PropertyKey::String(&units("adopted")), &wrapper)?;
+        assert_guest(
+            scope,
+            "Object.getPrototypeOf(adopted) === HTMLDivElement.prototype && \
+             adopted instanceof Node && adopted instanceof Element && adopted instanceof EventTarget",
+        )
+    }).unwrap();
 }
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
