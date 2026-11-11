@@ -82,6 +82,35 @@ impl<'scope> Scope<'scope> {
         Ok(RetainedCallbackObject::new(holder, realm))
     }
 
+    /// Project a typed native object in the retained prototype's actual
+    /// creation realm, including from a callback entered in another realm.
+    /// The prototype must belong to this engine owner. Admission funds the
+    /// payload and persistent holder before the new object is published.
+    pub fn project_retained_native_object_in_prototype_realm<
+        T: 'static,
+        Storage: 'static,
+        E: From<Error>,
+    >(
+        &mut self,
+        prototype: &RetainedCallbackObject,
+        payload: T,
+        mut admit: impl FnMut(usize) -> Result<Storage, E>,
+    ) -> Result<RetainedCallbackObject, E> {
+        let realm = prototype.associated_realm().clone();
+        let prototype = self.open_callback_object(prototype)?;
+        let projection = admit(self.native_projection_bytes::<T, Storage>()?)?;
+        let holder_backing = admit(self.callback_object_bytes::<Storage>()?)?;
+        let holder = self
+            .operations
+            .project_retained_native_object_in_prototype_realm(
+                &prototype.root,
+                realm.key,
+                Rc::new(NativeObject::new(payload, projection)),
+                Box::new(holder_backing),
+            )?;
+        Ok(RetainedCallbackObject::new(holder, realm))
+    }
+
     /// Observe the exact branded object's weak identity without retaining it.
     /// An ordinary, proxy, or differently branded object yields `None`.
     pub fn native_object_token<T: 'static>(

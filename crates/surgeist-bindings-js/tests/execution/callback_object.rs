@@ -83,6 +83,148 @@ fn price(scope: &mut Scope<'_>, root: &Root) -> Result<u64, Error> {
     Ok(price.unwrap())
 }
 
+pub(super) fn native_projection_uses_the_retained_prototype_realm(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let origin = execution.create_realm()?;
+    let receiver = execution.create_realm()?;
+    let prototype = Rc::new(execution.in_realm(&origin, |scope| {
+        let value = scope.object(ObjectPrototype::Default)?;
+        let observed = scope.callback_object(&value)?;
+        scope.retain_callback_object(observed, |_| Ok::<(), Error>(()))
+    })?);
+    let origin_id = prototype.associated_realm().identity();
+    let receiving_id =
+        execution.in_realm(&receiver, |scope| Ok(scope.realm_authority()?.identity()))?;
+    assert_ne!(origin_id, receiving_id);
+
+    let result = Rc::new(RefCell::new(None));
+    let target = result.clone();
+    let selected = prototype.clone();
+    execution.in_realm(&receiver, |scope| {
+        let project = scope.function(&Callback::new(move |scope, _| {
+            assert_eq!(scope.realm_authority()?.identity(), receiving_id);
+            let discovery = account(u64::MAX);
+            let mut prices = Vec::new();
+            let refused = scope.project_retained_native_object_in_prototype_realm(
+                &selected,
+                42_u32,
+                |bytes| {
+                    prices.push(u64::try_from(bytes).unwrap());
+                    if prices.len() == 2 {
+                        return Err(Error::Allocation);
+                    }
+                    Backing::admit(&discovery, bytes)
+                },
+            );
+            assert!(matches!(refused, Err(Error::Allocation)));
+            assert_eq!(live(&discovery), 0);
+            let exact = prices.iter().sum::<u64>();
+            let short = account(exact - 1);
+            assert!(matches!(
+                scope.project_retained_native_object_in_prototype_realm(
+                    &selected,
+                    42_u32,
+                    |bytes| Backing::admit(&short, bytes)
+                ),
+                Err(Error::ConversionLedger(_))
+            ));
+            assert_eq!(live(&short), 0);
+            let charged = account(exact);
+            let holder = scope.project_retained_native_object_in_prototype_realm(
+                &selected,
+                42_u32,
+                |bytes| Backing::admit(&charged, bytes),
+            )?;
+            assert_eq!(holder.associated_realm().identity(), origin_id);
+            assert_eq!(scope.realm_authority()?.identity(), receiving_id);
+            assert_eq!(live(&charged), exact);
+            target.replace(Some((holder, charged, prices[0])));
+            Ok(Completion::Undefined)
+        }))?;
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        scope.call(&project, &undefined, &[])?;
+        Ok(())
+    })?;
+
+    let (holder, charged, payload_bytes) = result.take().unwrap();
+    let opened_in_receiver = execution.in_realm(&receiver, |scope| {
+        let value = scope.open_callback_object(&holder)?;
+        assert_eq!(
+            scope.callback_object(&value)?.associated_realm().identity(),
+            origin_id
+        );
+        assert_eq!(*scope.native_object::<u32>(&value)?.unwrap().payload(), 42);
+        let prototype = scope.open_callback_object(&prototype)?;
+        let check = scope.evaluate(&units(
+            "(object, proto) => Object.getPrototypeOf(object) === proto",
+        ))?;
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let retained = scope.retain(&value);
+        let result = scope.call(&check, &undefined, &[value, prototype])?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&result, &yes)?);
+        Ok(retained)
+    })?;
+    execution.in_realm(&origin, |scope| {
+        let value = scope.open_callback_object(&holder)?;
+        let receiving = scope.import(&opened_in_receiver)?;
+        assert!(scope.strict_equals(&value, &receiving)?);
+        Ok(())
+    })?;
+    drop((origin, opened_in_receiver));
+    execution.in_realm(&receiver, |scope| {
+        let still_admitted =
+            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
+                Ok::<(), Error>(())
+            })?;
+        let projected = scope.open_callback_object(&still_admitted)?;
+        assert_eq!(
+            scope
+                .callback_object(&projected)?
+                .associated_realm()
+                .identity(),
+            origin_id
+        );
+        scope.release_callback_object(still_admitted)?;
+        scope.release_callback_object(holder)?;
+        assert_eq!(live(&charged), payload_bytes);
+        Ok(())
+    })?;
+    evaluate(&mut execution, &receiver, "gc()")?;
+    execution.memory_pressure();
+    assert_eq!(live(&charged), 0);
+    Ok(())
+}
+
+pub(super) fn native_projection_refuses_foreign_prototype_before_admission() -> Result<(), Error> {
+    let prototype = {
+        let mut owner = Process::bootstrap(EngineKind::V8)?;
+        let mut execution = owner.execution();
+        let realm = execution.create_realm()?;
+        execution.in_realm(&realm, |scope| {
+            let value = scope.object(ObjectPrototype::Default)?;
+            let observed = scope.callback_object(&value)?;
+            scope.retain_callback_object(observed, |_| Ok::<(), Error>(()))
+        })?
+    };
+    let mut owner = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = owner.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let mut attempts = 0;
+        let result =
+            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
+                attempts += 1;
+                Ok::<(), Error>(())
+            });
+        assert!(matches!(result, Err(Error::ForeignOwner)));
+        assert_eq!(attempts, 0);
+        Ok(())
+    })
+}
+
 pub(super) fn associated_realm_and_exact_custody(process: &mut Process) -> Result<(), Error> {
     let mut execution = process.execution();
     let a = execution.create_realm()?;

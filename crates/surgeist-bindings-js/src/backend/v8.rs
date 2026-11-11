@@ -1268,6 +1268,16 @@ impl Operations for Entered<'_, '_, '_> {
         self.project_pinned_payload(prototype, payload, backing)
     }
 
+    fn project_retained_native_object_in_prototype_realm(
+        &mut self,
+        prototype: &Root,
+        realm: RealmKey,
+        payload: Rc<dyn std::any::Any>,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        self.project_pinned_payload_in_prototype_realm(prototype, realm, payload, backing)
+    }
+
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn std::any::Any>>, Error> {
         self.native_payload(object)
     }

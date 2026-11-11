@@ -577,6 +577,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
     fixed_arity_captures_only_the_selected_prefix()?;
     native_projection_custody_tracks_the_exact_guest_object()?;
+    crate::callback_object::retired_prototype_refuses_before_native_allocation()?;
     native_references_follow_only_guest_reachability()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;

@@ -5,8 +5,9 @@ use std::ops::Bound::{Excluded, Unbounded};
 use std::rc::Rc;
 
 use crate::callback_object::CallbackObjectIdentity;
-use crate::{Error, ExceptionPhase, Root};
+use crate::{Error, ExceptionPhase, RealmKey, Root};
 
+use super::callback_object::creation_context;
 use super::{Entered, ObjectPrototype, Roots, prototype_value};
 
 struct Entry {
@@ -25,6 +26,54 @@ struct PreparedObject {
     index: u32,
     root: Root,
     entry: Rc<Entry>,
+}
+
+fn prepare_payload(
+    scope: &mut v8::PinScope<'_, '_>,
+    roots: &Roots,
+    realm: RealmKey,
+    prototype: ObjectPrototype<'_>,
+    payload: Rc<dyn Any>,
+) -> Result<PreparedObject, Error> {
+    let bank = &roots.native_objects;
+    let index = bank
+        .next
+        .get()
+        .checked_add(1)
+        .ok_or(Error::IdentityExhausted)?;
+    bank.next.set(index);
+    let template = v8::ObjectTemplate::new(scope);
+    if !template.set_internal_field_count(2) {
+        return Err(Error::BackendUnavailable);
+    }
+    let object = template
+        .new_instance(scope)
+        .ok_or(Error::BackendUnavailable)?;
+    let prototype = prototype_value(scope, roots, prototype)?;
+    let identity = v8::Integer::new_from_unsigned(scope, index);
+    let references = v8::Object::new(scope);
+    let null = v8::null(scope);
+    if references.set_prototype(scope, null.into()) != Some(true)
+        || object.set_prototype(scope, prototype) != Some(true)
+        || !object.set_internal_field(0, identity.into())
+        || !object.set_internal_field(1, references.into())
+    {
+        return Err(Error::BackendUnavailable);
+    }
+    let root = roots.retain(scope, realm, object.into())?;
+    let retired = Rc::new(Cell::new(false));
+    let signal = retired.clone();
+    let object =
+        v8::Weak::with_guaranteed_finalizer(scope, object, Box::new(move || signal.set(true)));
+    Ok(PreparedObject {
+        index,
+        root,
+        entry: Rc::new(Entry {
+            object,
+            retired,
+            payload,
+        }),
+    })
 }
 
 #[derive(Default)]
@@ -92,7 +141,42 @@ impl Entered<'_, '_, '_> {
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error> {
         let prepared = self.prepare_payload(prototype, payload)?;
-        let holder = self.pin_callback_object(&prepared.root, self.realm, backing)?;
+        self.pin_prepared_payload(prepared, self.realm, backing)
+    }
+
+    pub(super) fn project_pinned_payload_in_prototype_realm(
+        &mut self,
+        prototype: &Root,
+        expected_realm: RealmKey,
+        payload: Rc<dyn Any>,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        let prepared = self.attempt(ExceptionPhase::Prototype, |scope, roots, _, _| {
+            let object = v8::Local::<v8::Object>::try_from(roots.local(scope, prototype)?)
+                .map_err(|_| Error::ExpectedObject)?;
+            let (context, realm) = creation_context(scope, roots, object)?;
+            if realm != expected_realm {
+                return Err(Error::CallbackRealmUnavailable);
+            }
+            let scope = &mut v8::ContextScope::new(scope, context);
+            prepare_payload(
+                scope,
+                roots,
+                realm,
+                ObjectPrototype::Object(prototype),
+                payload,
+            )
+        })?;
+        self.pin_prepared_payload(prepared, expected_realm, backing)
+    }
+
+    fn pin_prepared_payload(
+        &mut self,
+        prepared: PreparedObject,
+        realm: RealmKey,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        let holder = self.pin_callback_object(&prepared.root, realm, backing)?;
         let roots = &self.roots;
         match roots.native_objects.entries.try_borrow_mut() {
             Ok(mut entries) => {
@@ -115,48 +199,7 @@ impl Entered<'_, '_, '_> {
         payload: Rc<dyn Any>,
     ) -> Result<PreparedObject, Error> {
         self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
-            let bank = &roots.native_objects;
-            let index = bank
-                .next
-                .get()
-                .checked_add(1)
-                .ok_or(Error::IdentityExhausted)?;
-            bank.next.set(index);
-            let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(2) {
-                return Err(Error::BackendUnavailable);
-            }
-            let object = template
-                .new_instance(scope)
-                .ok_or(Error::BackendUnavailable)?;
-            let prototype = prototype_value(scope, roots, prototype)?;
-            let identity = v8::Integer::new_from_unsigned(scope, index);
-            let references = v8::Object::new(scope);
-            let null = v8::null(scope);
-            if references.set_prototype(scope, null.into()) != Some(true)
-                || object.set_prototype(scope, prototype) != Some(true)
-                || !object.set_internal_field(0, identity.into())
-                || !object.set_internal_field(1, references.into())
-            {
-                return Err(Error::BackendUnavailable);
-            }
-            let root = roots.retain(scope, realm, object.into())?;
-            let retired = Rc::new(Cell::new(false));
-            let signal = retired.clone();
-            let object = v8::Weak::with_guaranteed_finalizer(
-                scope,
-                object,
-                Box::new(move || signal.set(true)),
-            );
-            Ok(PreparedObject {
-                index,
-                root,
-                entry: Rc::new(Entry {
-                    object,
-                    retired,
-                    payload,
-                }),
-            })
+            prepare_payload(scope, roots, realm, prototype, payload)
         })
     }
 

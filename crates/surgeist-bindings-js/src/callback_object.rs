@@ -139,3 +139,28 @@ impl Process {
         self.engine.release_callback_object(&callback.holder)
     }
 }
+
+#[cfg(test)]
+pub(crate) fn retired_prototype_refuses_before_native_allocation() -> Result<(), Error> {
+    use crate::{EngineKind, ObjectPrototype};
+
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let value = scope.object(ObjectPrototype::Default)?;
+        let observed = scope.callback_object(&value)?;
+        let prototype = scope.retain_callback_object(observed, |_| Ok::<(), Error>(()))?;
+        // A private alias makes the retired backend entry observable.
+        let stale = RetainedCallbackObject::new(prototype.holder.clone(), prototype.realm.clone());
+        scope.release_callback_object(prototype)?;
+        let mut admitted = false;
+        let result = scope.project_retained_native_object_in_prototype_realm(&stale, (), |_| {
+            admitted = true;
+            Ok::<(), Error>(())
+        });
+        assert!(matches!(result, Err(Error::ExpiredIdentity)));
+        assert!(!admitted);
+        Ok(())
+    })
+}

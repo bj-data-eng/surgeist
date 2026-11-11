@@ -1638,6 +1638,9 @@ fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
         "testNewPaths",
         &Callback::new(move |scope, _| {
             let object = scope.object(ObjectPrototype::Null)?;
+            let observed_prototype = scope.callback_object(&object)?;
+            let prototype =
+                scope.retain_callback_object(observed_prototype, |_| Ok::<(), Error>(()))?;
             let value = scope.primitive(Primitive::Undefined)?;
             let values = [scope.primitive(Primitive::Null)?];
             let _failure = scope.evaluate(&units("try { failNewPaths() } catch (_) {}"));
@@ -1685,6 +1688,13 @@ fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
                 scope.intrinsic(Intrinsic::ArrayValues),
                 Err(Error::IntegerOutOfRange)
             ));
+            let mut admitted = false;
+            let projected =
+                scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
+                    admitted = true;
+                    Ok::<(), Error>(())
+                });
+            count += usize::from(matches!(projected, Err(Error::IntegerOutOfRange)) && !admitted);
             observed.set(count);
             Ok(Completion::Undefined)
         }),
@@ -1693,7 +1703,7 @@ fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
         evaluate(&mut execution, &realm, "testNewPaths()"),
         Err(Error::IntegerOutOfRange)
     ));
-    assert_eq!(checks.get(), 8);
+    assert_eq!(checks.get(), 9);
     Ok(())
 }
 
@@ -2377,6 +2387,11 @@ fn main() -> Result<(), Error> {
         drop(process);
         return callback_object::terminal_cleanup();
     }
+    if std::env::args().nth(1).as_deref() == Some("native-creation-realm") {
+        callback_object::native_projection_uses_the_retained_prototype_realm(&mut process)?;
+        drop(process);
+        return callback_object::native_projection_refuses_foreign_prototype_before_admission();
+    }
     if std::env::args().nth(1).as_deref() == Some("dom-exception-cross-realm") {
         let drops =
             dom_exception::profile_survives_guest_global_replacement_and_cross_realm_construction(
@@ -2423,6 +2438,7 @@ fn main() -> Result<(), Error> {
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
     managed_holder_preserves_object_and_creation_realm_until_release(&mut process)?;
     callback_object::associated_realm_and_exact_custody(&mut process)?;
+    callback_object::native_projection_uses_the_retained_prototype_realm(&mut process)?;
     callback_object::proxy_objects_use_their_own_associated_realm(&mut process)?;
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
     declared_callable_length_is_exact_and_only_captures_supplied_prefix(&mut process)?;
@@ -2486,6 +2502,7 @@ fn main() -> Result<(), Error> {
     host::direct_failure_returns_validate_owner()?;
     host::rejected_failure_drop_stays_in_callback_guard()?;
     callback_object::terminal_cleanup()?;
+    callback_object::native_projection_refuses_foreign_prototype_before_admission()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"
     );

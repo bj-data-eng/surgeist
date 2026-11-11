@@ -74,7 +74,7 @@ impl CallbackObjects {
     }
 }
 
-fn creation_context<'s>(
+pub(super) fn creation_context<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     roots: &Roots,
     object: v8::Local<'s, v8::Object>,
