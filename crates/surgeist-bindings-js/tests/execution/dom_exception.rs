@@ -1,10 +1,12 @@
-use super::{evaluate, units};
+use super::{DropReceipt, evaluate, units};
+use std::{cell::Cell, rc::Rc};
 use surgeist_bindings_js::dom_exception::{self, DomExceptionLimits, DomExceptionName};
 use surgeist_bindings_js::{Callback, Completion, Error, Process, PropertyKey};
 
 pub(super) fn profile_survives_guest_global_replacement_and_cross_realm_construction(
     process: &mut Process,
-) -> Result<(), Error> {
+) -> Result<Rc<Cell<usize>>, Error> {
+    let drops = Rc::new(Cell::new(0));
     let mut execution = process.execution();
     let a = execution.create_realm()?;
     let b = execution.create_realm()?;
@@ -44,7 +46,7 @@ pub(super) fn profile_survives_guest_global_replacement_and_cross_realm_construc
             Err(Error::DomExceptionUnavailable)
         ));
         scope.evaluate(&units("delete globalThis.DOMException"))?;
-        dom_exception::install(scope, limits, ())?;
+        dom_exception::install(scope, limits, DropReceipt(drops.clone()))?;
         let constructor = scope.evaluate(&units("DOMException"))?;
         let prototype = scope.evaluate(&units("DOMException.prototype"))?;
         scope.evaluate(&units(
@@ -119,5 +121,6 @@ pub(super) fn profile_survives_guest_global_replacement_and_cross_realm_construc
         )?,
         units("true")
     );
-    Ok(())
+    assert_eq!(drops.get(), 0, "the live profile lost its backing");
+    Ok(drops)
 }

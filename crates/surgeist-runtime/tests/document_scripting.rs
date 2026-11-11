@@ -206,6 +206,23 @@ fn native_window_exposes_dom_exception() {
         })())"#,
         1.0,
     );
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            class Derived extends DOMException {
+                constructor(message) { super(message, "InvalidStateError"); }
+            }
+            const exception = new Derived("derived");
+            const name = Object.getOwnPropertyDescriptor(DOMException.prototype, "name").get;
+            return exception instanceof Derived
+                && exception instanceof DOMException && exception instanceof Error
+                && Object.getPrototypeOf(exception) === Derived.prototype
+                && Error.isError(exception) && name.call(exception) === "InvalidStateError"
+                && exception.message === "derived" && exception.code === 11;
+        })())"#,
+        1.0,
+    );
 }
 
 fn native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion() {
