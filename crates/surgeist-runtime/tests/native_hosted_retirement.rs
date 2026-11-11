@@ -358,6 +358,209 @@ fn queue_details(
     (target, details, queued)
 }
 
+#[test]
+fn adopted_hosted_details_keeps_its_original_creation_time_across_dispatch_resume() {
+    struct Observation {
+        event: NativeDomEvent,
+        creation: Option<DomEventCreationObservation>,
+        current_target: Option<DomEventTarget>,
+        phase: DomEventPhase,
+        path: Vec<DomEventTarget>,
+    }
+    struct Context {
+        element_tasks: DomElementTaskRuntime,
+        seen: Vec<Observation>,
+    }
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+            &mut self.element_tasks
+        }
+    }
+
+    let mut session = session();
+    let original = create_top(&mut session);
+    let destination = create_top(&mut session);
+    let original_body = body(&session, original.document());
+    let destination_body = body(&session, destination.document());
+    let (target, details, queued) = queue_details(&mut session, original.document(), original_body);
+    let association = queued.queue_association().unwrap();
+    assert_eq!(association.document(), original.document());
+    assert_eq!(association.global(), original.global());
+    assert_ne!(original.global(), destination.global());
+
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    batch.insert_before(target, destination_body, None);
+    session.dom().apply(batch, &cancel()).unwrap();
+    let snapshot = session.snapshot();
+    let adopted = snapshot.node(target).unwrap();
+    assert_eq!(adopted.owner_document(), Some(destination.document()));
+    assert_eq!(adopted.parent(), Some(destination_body));
+    assert_eq!(
+        snapshot.relevant_global(target).unwrap(),
+        Some(original.global())
+    );
+    let destination_root = snapshot
+        .document(destination.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+
+    let mut hosted = session.hosted_execution();
+    let original_settings = hosted
+        .settings(&session.dom(), original.global(), &cancel())
+        .unwrap();
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 16,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let observe = DomEventCallback::new(|_, _, context: &mut Context, event| {
+        context.seen.push(Observation {
+            event: event.clone(),
+            creation: event.creation().copied(),
+            current_target: event.current_target(),
+            phase: event.phase(),
+            path: event.composed_path().collect(),
+        });
+        Ok(())
+    });
+    for (node, capture) in [(destination.document().node(), true), (target, false)] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                node,
+                DomEventType::TOGGLE,
+                observe.clone(),
+                DomEventListenerOptions {
+                    capture,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+    }
+    let mut context = Context {
+        element_tasks: details,
+        seen: Vec::new(),
+    };
+    let mut clock_bracket = |session: &mut DomSession| {
+        hosted
+            .create_event(
+                &mut session.dom(),
+                original.global(),
+                &[],
+                DomEventInit::default(),
+                &cancel(),
+            )
+            .unwrap()
+            .creation()
+            .unwrap()
+            .occurrence_microseconds()
+    };
+    let before_first_run = clock_bracket(&mut session);
+    let source = DomElementTaskSourceKind::DomManipulation;
+    let source_limits =
+        DomSourceLimits::new(16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64);
+    let run = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: DomEventDispatchLimits {
+                callbacks: 1,
+                ..dispatch_limits()
+            },
+            source: source_limits,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(
+        run,
+        DomElementTaskProgress::Retained {
+            task,
+            dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+            displaced_owner: None,
+        } if task == queued
+    ));
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(
+        context.element_tasks.pending_task(source, 0).unwrap(),
+        Some(queued)
+    );
+    let before_resume = clock_bracket(&mut session);
+
+    let DomElementTaskProgress::Complete { task, receipt, .. } = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: dispatch_limits(),
+            source: source_limits,
+        },
+        &cancel(),
+    )
+    .unwrap() else {
+        panic!("original queued Details dispatch must complete");
+    };
+    assert_eq!(task, queued);
+    assert_eq!(receipt.original_target(), target.into());
+    assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
+    assert_eq!(receipt.callbacks(), 2);
+    assert!(receipt.failures().is_empty());
+    assert_eq!(context.element_tasks.pending_task(source, 0).unwrap(), None);
+    let [first, second] = context.seen.as_slice() else {
+        panic!("expected exactly the capture and target callbacks");
+    };
+    assert_eq!(
+        first.current_target,
+        Some(destination.document().node().into())
+    );
+    assert_eq!(first.phase, DomEventPhase::Capturing);
+    assert_eq!(second.current_target, Some(target.into()));
+    assert_eq!(second.phase, DomEventPhase::AtTarget);
+    let path = [
+        target.into(),
+        destination_body.into(),
+        destination_root.into(),
+        destination.document().node().into(),
+        destination.global().into(),
+    ];
+    assert_eq!(first.path, path);
+    assert_eq!(second.path, path);
+    assert!(first.event.is_trusted());
+    assert!(second.event.is_trusted());
+    let creation = first
+        .creation
+        .expect("hosted Details firing must carry its original creation Global and clock");
+    assert_eq!(second.creation, Some(creation));
+    assert_eq!(first.event.creation(), Some(&creation));
+    assert_eq!(second.event.creation(), Some(&creation));
+    assert_eq!(creation.global(), original.global());
+    assert_eq!(creation.clock_source(), original_settings.clock_source());
+    assert_eq!(
+        creation.time_origin_microseconds(),
+        original_settings.time_origin_microseconds()
+    );
+    let occurrence = creation.occurrence_microseconds();
+    assert!((before_first_run..=before_resume).contains(&occurrence));
+    assert_eq!(occurrence % 100, 0);
+    assert_eq!(first.event.time_stamp(), second.event.time_stamp());
+    assert_eq!(
+        first.event.time_stamp(),
+        Ok(
+            (i128::from(occurrence) - i128::from(original_settings.time_origin_microseconds()))
+                as f64
+                / 1000.0
+        )
+    );
+}
+
 fn reentry_registry(
     session: &mut DomSession,
     target: NodeId,
