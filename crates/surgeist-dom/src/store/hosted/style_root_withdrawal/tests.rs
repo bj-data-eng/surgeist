@@ -1142,6 +1142,15 @@ fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
 
 #[test]
 fn published_style_acknowledges_sheet_after_svg_refusal() {
+    check_published_style_after_svg_refusal(false);
+}
+
+#[test]
+fn published_style_retains_acknowledgment_through_svg_close_refusals() {
+    check_published_style_after_svg_refusal(true);
+}
+
+fn check_published_style_after_svg_refusal(retry_close: bool) {
     use crate::{DomDocumentScriptingFacts, DomSourceScriptStep, DomStyleInlineCspObservation};
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
@@ -1270,8 +1279,70 @@ fn published_style_acknowledges_sheet_after_svg_refusal() {
     drop(registration);
     dom.release_document_script_registration(&binding);
     assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let limits = if retry_close {
+        let spent = dom.changes_since(before.stamp()).unwrap().changes().len();
+        let with_outputs = |outputs| {
+            let limits = source_limits();
+            DomSourceLimits::new(
+                limits.retained_bytes(),
+                limits.retained_string_code_units(),
+                limits.work(),
+                limits.phase_publications(),
+                outputs,
+                limits.published_native_identities(),
+                limits.nested_operations(),
+            )
+        };
+        let status = dom.pending_source_edit().unwrap();
+        let mut lease = dom
+            .resume_source_edit(read.operation(), with_outputs(spent + 1), &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::SourceOutputLimit)
+        ));
+        drop(lease);
+        let cleanup = dom.pending_source_edit().unwrap();
+        assert_eq!(cleanup.operation(), read.operation());
+        assert_eq!(cleanup.phase(), crate::DomSourcePhase::PendingCleanup);
+        assert_eq!(
+            cleanup.cleanup_cause(),
+            Some(crate::DomSourceCleanupCause::SvgScriptProcessingUnavailable)
+        );
+        assert_eq!(cleanup.published_phases(), status.published_phases());
+        assert!(cleanup.spent_work() > status.spent_work());
+        let unchanged = dom.snapshot();
+        assert_eq!(unchanged.stamp(), prefix.stamp());
+        assert_eq!(
+            unchanged.incomplete_source_operation(),
+            Some(read.operation())
+        );
+        assert_eq!(
+            unchanged.node(style).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        check_prefix(&unchanged);
+        assert_eq!(root.snapshot().unwrap().revision(), applied.revision());
+        let enough = with_outputs(spent + 2);
+        let mut lease = dom
+            .resume_source_edit(read.operation(), enough, &cancel)
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&AtomicBool::new(true)),
+            Err(DomError::Cancelled)
+        ));
+        drop(lease);
+        let cancelled = dom.pending_source_edit().unwrap();
+        assert_eq!(cancelled.operation(), cleanup.operation());
+        assert_eq!(cancelled.cleanup_cause(), cleanup.cleanup_cause());
+        assert_eq!(cancelled.published_phases(), cleanup.published_phases());
+        assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+        enough
+    } else {
+        source_limits()
+    };
     let mut lease = dom
-        .resume_source_edit(read.operation(), source_limits(), &cancel)
+        .resume_source_edit(read.operation(), limits, &cancel)
         .unwrap();
     let refused = lease.advance(&cancel);
     assert!(
@@ -1302,6 +1373,14 @@ fn published_style_acknowledges_sheet_after_svg_refusal() {
     assert_eq!(association.id(), &sheet);
     assert_eq!(association.revision(), applied.revision());
     assert_eq!(association.root(), document.node());
+    assert_eq!(association.association(), notification.association());
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [
+            crate::DomChange::ElementState(style),
+            crate::DomChange::SourceOperation
+        ],
+    );
     assert!(matches!(
         dom.finish_style_notification(
             &mut notification,

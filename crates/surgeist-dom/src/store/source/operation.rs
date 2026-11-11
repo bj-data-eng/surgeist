@@ -1889,7 +1889,7 @@ impl DomSourceLease<'_> {
             .ok_or(DomError::InvalidSourceOperation)?;
         op.custody_bytes = custody;
         op.custody_units = custody_units;
-        let result = self.advance_operation(&mut op, execution, cancel);
+        let result = self.advance_operation(&mut op, execution, locked.as_deref(), cancel);
         if self.complete
             || matches!(
                 &result,
@@ -1910,6 +1910,7 @@ impl DomSourceLease<'_> {
         &mut self,
         op: &mut Operation,
         execution: &mut Execution<'_>,
+        locked_cssom: Option<&surgeist_cssom::CssomStore>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
         op.prepare_meta_execution(execution, cancel)?;
@@ -2026,6 +2027,11 @@ impl DomSourceLease<'_> {
                 ));
             }
             if op.failure.is_some() && op.request_close.is_none() {
+                if op.failure == Some(DomSourceCleanupCause::SvgScriptProcessingUnavailable) {
+                    return self
+                        .finish_svg_failure(op, locked_cssom, cancel)
+                        .map_err(Into::into);
+                }
                 return self.finish_source_failure(op, cancel).map_err(Into::into);
             }
             if op.request_close.is_some()
@@ -2520,11 +2526,13 @@ impl DomSourceLease<'_> {
                         && op.script_parked
                         && op.draft.pending_script().is_none()
                     {
-                        if op.can_close_svg_failure(self.dom) {
+                        if op.can_close_svg_failure(self.dom, locked_cssom) {
                             op.remember_failure(
                                 DomSourceCleanupCause::SvgScriptProcessingUnavailable,
                             );
-                            return self.finish_source_failure(op, cancel).map_err(Into::into);
+                            return self
+                                .finish_svg_failure(op, locked_cssom, cancel)
+                                .map_err(Into::into);
                         }
                         if !op.published && !op.event_exposed {
                             // The real settings reply has been consumed. Allow
@@ -3207,32 +3215,14 @@ impl Operation {
             Receipt::Cssom {
                 revision, sheet, ..
             } => {
-                let mut state = self.draft.style_state_mut(frame.key, cancel)?;
-                if matches!(
-                    request.action,
-                    DomStyleAction::OwnerAttributes | DomStyleAction::SetDisabled(_)
-                ) {
-                    let associated = state.sheet.as_mut().ok_or(DomError::StyleReceiptMismatch)?;
-                    associated.revision = revision.clone();
-                } else if let Some(id) = sheet {
-                    let association = request.association.ok_or(DomError::StyleReceiptMismatch)?;
-                    if state.next_association.checked_add(1) != Some(association.serial) {
-                        return Err(DomError::StyleReceiptMismatch);
-                    }
-                    state.next_association = association.serial;
-                    state.sheet = Some(DomStyleSheet {
-                        id: id.clone(),
-                        revision: revision.clone(),
-                        root: request.cssom_root().ok_or(DomError::StyleReceiptMismatch)?,
-                        association: DomStyleAssociationId {
-                            element: request.source.element,
-                            serial: state.next_association,
-                        },
-                    });
-                } else {
-                    state.sheet = None;
-                }
-                state.commit(cancel)?;
+                stage_cssom_acknowledgment(
+                    &mut self.draft,
+                    frame.key,
+                    request,
+                    revision,
+                    sheet.as_ref(),
+                    cancel,
+                )?;
                 Reply::Applied
             }
         };
@@ -3244,6 +3234,42 @@ impl Operation {
         self.restore_external_receipt(true);
         Ok(())
     }
+}
+
+fn stage_cssom_acknowledgment(
+    draft: &mut Draft,
+    key: Key,
+    request: &DomStyleRequest,
+    revision: &surgeist_cssom::CssomRevision,
+    sheet: Option<&surgeist_cssom::CssomSheetId>,
+    cancel: &AtomicBool,
+) -> Result<(), DomError> {
+    let mut state = draft.style_state_mut(key, cancel)?;
+    if matches!(
+        request.action,
+        DomStyleAction::OwnerAttributes | DomStyleAction::SetDisabled(_)
+    ) {
+        let associated = state.sheet.as_mut().ok_or(DomError::StyleReceiptMismatch)?;
+        associated.revision = revision.clone();
+    } else if let Some(id) = sheet {
+        let association = request.association.ok_or(DomError::StyleReceiptMismatch)?;
+        if state.next_association.checked_add(1) != Some(association.serial) {
+            return Err(DomError::StyleReceiptMismatch);
+        }
+        state.next_association = association.serial;
+        state.sheet = Some(DomStyleSheet {
+            id: id.clone(),
+            revision: revision.clone(),
+            root: request.cssom_root().ok_or(DomError::StyleReceiptMismatch)?,
+            association: DomStyleAssociationId {
+                element: request.source.element,
+                serial: state.next_association,
+            },
+        });
+    } else {
+        state.sheet = None;
+    }
+    state.commit(cancel)
 }
 
 struct SelectRoot {
