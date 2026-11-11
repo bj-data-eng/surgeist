@@ -1500,7 +1500,7 @@ fn html_script_in_present_native_context_stops_at_explicit_disabled_scripting() 
         surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
     );
     assert_eq!(
-        environment.scripting(),
+        snapshot.document(top.document()).unwrap().scripting(),
         surgeist_html_semantics::HtmlScriptingStatus::Disabled
     );
     // HTML877d prepare-the-script steps9,15,16 precede the explicit step18

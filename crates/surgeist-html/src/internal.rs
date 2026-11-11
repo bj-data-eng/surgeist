@@ -8,5 +8,6 @@ pub(crate) mod elements;
 pub(crate) mod focus;
 pub(crate) mod microsyntax;
 pub(crate) mod parsing;
+pub(crate) mod scripting;
 pub(crate) mod security;
 pub(crate) mod values;

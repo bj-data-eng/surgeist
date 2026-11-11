@@ -123,6 +123,7 @@ pub mod elements;
 pub mod focus;
 pub mod microsyntax;
 pub mod parsing;
+pub mod scripting;
 pub mod security;
 pub mod values;
 pub mod vocabulary;

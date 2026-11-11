@@ -203,6 +203,7 @@ pub enum DomHostedError {
     StaleBasis,
     IncompleteOperation,
     UnsupportedProfile,
+    ScriptingDisabled,
     PendingDocumentObligations,
     CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspIssuerBusy,
@@ -2045,5 +2046,113 @@ impl SourceObservation {
         self.shared
             .upgrade()
             .map_or(0, |shared| shared.runtime_bytes.load(Ordering::Relaxed))
+    }
+}
+
+/// Association published by the canonical hosted issuer for one live Document.
+/// Runtime must separately authenticate its engine and policy before observing it.
+#[derive(Debug)]
+pub struct DomDocumentScriptBinding {
+    pub(crate) source: DomHostedSourceId,
+    pub(crate) host: DomHostedHostId,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) document: crate::DocumentId,
+    pub(crate) generation: std::num::NonZeroU64,
+}
+
+impl DomDocumentScriptBinding {
+    pub(crate) fn key(&self) -> ScriptRegistrationKey {
+        ScriptRegistrationKey {
+            document: self.document,
+            generation: self.generation,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ScriptRegistrationKey {
+    pub(crate) document: crate::DocumentId,
+    pub(crate) generation: std::num::NonZeroU64,
+}
+
+/// Owns the lifetime of the engine registered for the canonical Document.
+/// Drop this before disposing of the engine. The original registration can
+/// also close when its canonical navigable begins retirement.
+#[derive(Debug)]
+pub struct DomDocumentScriptRegistration(pub(crate) Arc<ScriptRegistration>);
+
+impl DomDocumentScriptRegistration {
+    /// Retained target body to admit before publishing the attachment.
+    pub const fn storage_bytes() -> usize {
+        size_of::<ScriptRegistration>()
+    }
+
+    /// Whether the original canonical attachment remains available.
+    pub fn is_active(&self) -> bool {
+        self.0.is_active()
+    }
+}
+
+impl Drop for DomDocumentScriptRegistration {
+    fn drop(&mut self) {
+        let _ = self.0.end.set(ScriptRegistrationEnd::EngineDisposed);
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ScriptRegistrationEnd {
+    EngineDisposed,
+    NativeRetired,
+}
+
+#[derive(Debug)]
+pub(crate) struct ScriptRegistration {
+    pub(crate) key: ScriptRegistrationKey,
+    pub(crate) global: DomHostedGlobalId,
+    pub(crate) navigable: DomHostedNavigableId,
+    pub(crate) end: std::sync::OnceLock<ScriptRegistrationEnd>,
+    pub(crate) _backing: DomHostedRuntimeRetention,
+}
+
+impl ScriptRegistration {
+    pub(crate) fn is_active(&self) -> bool {
+        self.end.get().is_none()
+    }
+}
+
+pub(crate) struct CanonicalScriptRegistration(pub(crate) Arc<ScriptRegistration>);
+
+impl Drop for CanonicalScriptRegistration {
+    fn drop(&mut self) {
+        let _ = self.0.end.set(ScriptRegistrationEnd::NativeRetired);
+    }
+}
+
+/// Current settings facts supplied by the trusted scripting adapter.
+/// DOM independently qualifies the native association and sandbox.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDocumentScriptingFacts {
+    pub engine: surgeist_html::scripting::HtmlScriptingEngine,
+    pub policy: surgeist_html::scripting::HtmlScriptingPolicy,
+}
+
+/// Immutable scripting fact for one canonical Document revision and captured
+/// engine registration.
+/// This observation cannot grant execution or keep a script owner alive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomDocumentScriptingObservation {
+    pub(crate) basis: crate::DomDocumentStamp,
+    pub(crate) registration: ScriptRegistrationKey,
+    pub(crate) status: surgeist_html_semantics::HtmlScriptingStatus,
+}
+
+impl DomDocumentScriptingObservation {
+    /// The structural basis. Joining an observation to a snapshot also
+    /// requires that snapshot's exact captured scripting registration.
+    pub const fn basis(self) -> crate::DomDocumentStamp {
+        self.basis
+    }
+    pub const fn status(self) -> surgeist_html_semantics::HtmlScriptingStatus {
+        self.status
     }
 }

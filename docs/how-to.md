@@ -76,6 +76,14 @@ stale diagnostics identify them as `surgeist-render [render-text]` and
 `surgeist-render [render-paint]`. Generation with `--crate surgeist-render` and
 selection with `--all` include all three artifacts.
 
+Use `--check --crate surgeist-runtime` to check its default native API and
+optional document scripting API. The companion
+`surgeist-runtime.document-scripting.txt` artifact uses
+`--no-default-features --features document-scripting` and is identified as
+`surgeist-runtime [document-scripting]`. Supply the qualified native archive as
+described in the [bindings verification guide](../crates/surgeist-bindings-js/README.md#verification)
+when checking or refreshing both profiles.
+
 ### Check The API Tool
 
 API-tool commands use its separate workspace. The environment also limits nested
@@ -97,6 +105,7 @@ nested output; retain offline mode and one build job for nested rustdoc commands
 ```sh
 env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
 env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::render_adapter_audits_use_only_requested_features_and_report_missing_artifacts -- --ignored --exact
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::runtime_audits_keep_document_scripting_separate_from_default -- --ignored --exact
 ```
 
 ## Refresh Audits After An Authorized Source Change

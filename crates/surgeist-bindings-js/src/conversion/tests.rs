@@ -604,6 +604,9 @@ fn nested_custody_preserves_selected_exception() -> TestResult {
 }
 
 pub(crate) fn run() -> TestResult {
+    foreign_native_error_is_refused_during_cleanup()?;
+    selected_native_error_survives_local_cleanup(false)?;
+    selected_native_error_survives_local_cleanup(true)?;
     for callback in [false, true] {
         for inside_run in [false, true] {
             selected_guest_and_late_cleanup(callback, inside_run)?;
@@ -620,5 +623,91 @@ pub(crate) fn run() -> TestResult {
     selected_resolver_failure_survives_cleanup()?;
     value_drops_before_its_charge()?;
     expired_release_fault_does_not_touch_the_next_owner()?;
+    Ok(())
+}
+
+fn foreign_native_error_is_refused_during_cleanup() -> TestResult {
+    let foreign = {
+        let mut previous = Process::bootstrap(EngineKind::V8)?;
+        let realm = previous.execution().create_realm()?;
+        let authority = previous
+            .execution()
+            .in_realm(&realm, |scope| scope.realm_authority())?;
+        let slot = crate::HostFailureSlot::new(&authority, ())?;
+        let failure = slot
+            .record(u8::try_from(256_u16).expect_err("native range refusal"))
+            .expect("unused slot");
+        Error::HostFailure(failure)
+    };
+    let (mut process, realm, _ledger, account) = setup()?;
+    let result = process.execution().in_realm(&realm, |scope| {
+        let input = scope.string(&units("ticket"))?;
+        let retained = account.run(scope, |cx| cx.value(&types::DOM_STRING, &input))?;
+        sabotage_release(&account);
+        drop(retained);
+        Err::<(), _>(foreign)
+    });
+    assert!(matches!(result, Err(Error::ForeignOwner)), "{result:?}");
+    assert_cleanup(&account);
+    assert!(matches!(
+        process.execution().in_realm(&realm, |_| Ok(())),
+        Err(Error::ForeignOwner)
+    ));
+    Ok(())
+}
+
+fn selected_native_error_survives_local_cleanup(observe_cleanup: bool) -> TestResult {
+    use std::num::TryFromIntError;
+
+    fn native_ticket(_input: Converted<crate::DomString>) -> Result<u8, TryFromIntError> {
+        u8::try_from(256_u16)
+    }
+
+    let (mut process, realm, _ledger, account) = setup()?;
+    let authority = process
+        .execution()
+        .in_realm(&realm, |scope| scope.realm_authority())?;
+    let slot = crate::HostFailureSlot::new(&authority, ())?;
+    let conversion = account.clone();
+    let body = Callback::new(move |scope, _| {
+        let input = scope.string(&units("ticket"))?;
+        let retained = conversion.run(scope, |cx| cx.value(&types::DOM_STRING, &input))?;
+        sabotage_release(&conversion);
+        // Returning the native cause also drops its converted input. The
+        // pending release fault must not choose the result of this callback.
+        let cause = native_ticket(retained).expect_err("native ticket range");
+        if observe_cleanup {
+            assert!(matches!(
+                scope.check_active(),
+                Err(Error::ConversionCleanup(_))
+            ));
+        }
+        let failure = match slot.record(cause) {
+            Ok(failure) => failure,
+            Err(crate::RecordFailure::Inactive { error, .. }) => return Err(error),
+            Err(crate::RecordFailure::Occupied { .. }) => panic!("unused failure slot"),
+        };
+        let error = scope.refuse_host(&failure);
+        assert!(matches!(scope.check_active(), Err(Error::HostFailure(_))));
+        Err(error)
+    });
+    let result = process.execution().in_realm(&realm, |scope| {
+        let function = scope.function(&body)?;
+        let receiver = scope.primitive(crate::Primitive::Undefined)?;
+        scope.call(&function, &receiver, &[]).map(|_| ())
+    });
+    let Err(Error::HostFailure(failure)) = result else {
+        panic!("the selected native cause must survive cleanup: {result:?}");
+    };
+    assert!(failure.cause::<TryFromIntError>().is_some());
+    assert_cleanup(&account);
+    assert_eq!(
+        process.conversion_cleanup_status(),
+        account.cleanup_status()
+    );
+    assert!(matches!(
+        process.execution().in_realm(&realm, |_| Ok(())),
+        Err(Error::HostFailure(_))
+    ));
     Ok(())
 }

@@ -26,6 +26,7 @@ pub struct DomSnapshot {
     pub(crate) owner: DomOwnerId,
     pub(crate) revision: DomRevision,
     pub(crate) state: Arc<State>,
+    pub(crate) script_registration: Option<crate::hosted::ScriptRegistrationKey>,
 }
 
 impl DomSnapshot {
@@ -104,6 +105,21 @@ pub struct DomDocument<'a> {
 }
 
 impl<'a> DomDocument<'a> {
+    /// Scripting fact available from the captured native profile. A captured
+    /// engine registration needs its own qualified policy observation.
+    pub fn scripting(self) -> surgeist_html_semantics::HtmlScriptingStatus {
+        use surgeist_html_semantics::HtmlScriptingStatus;
+        if self
+            .snapshot
+            .script_registration
+            .is_some_and(|registration| registration.document == self.id)
+        {
+            HtmlScriptingStatus::Unavailable
+        } else {
+            HtmlScriptingStatus::Disabled
+        }
+    }
+
     /// The retained designation at this exact Document revision. Native fresh
     /// construction establishes known null, as does transferred original
     /// controlled HTML constructor proof. Imported history without a producer

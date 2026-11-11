@@ -86,6 +86,7 @@ enum ApiProfile {
     CssCorpus,
     RenderText,
     RenderPaint,
+    DocumentScripting,
 }
 
 impl ApiTarget {
@@ -129,12 +130,22 @@ impl ApiTarget {
         }
     }
 
+    fn document_scripting(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-runtime".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::DocumentScripting,
+        }
+    }
+
     fn audit_name(&self) -> String {
         match self.profile {
             ApiProfile::Default => self.name.clone(),
             ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
             ApiProfile::RenderText => format!("{} [render-text]", self.name),
             ApiProfile::RenderPaint => format!("{} [render-paint]", self.name),
+            ApiProfile::DocumentScripting => format!("{} [document-scripting]", self.name),
         }
     }
 
@@ -208,6 +219,12 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 crate_targets.push(ApiTarget::render_paint(
                     path.clone(),
                     root.join("api/crates/surgeist-render.render-paint.txt"),
+                ));
+            }
+            if name == "surgeist-runtime" {
+                crate_targets.push(ApiTarget::document_scripting(
+                    path.clone(),
+                    root.join("api/crates/surgeist-runtime.document-scripting.txt"),
                 ));
             }
             crate_targets.push(ApiTarget::new(name, path, artifact));
@@ -319,6 +336,9 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
         ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
         ApiProfile::RenderText => builder.no_default_features(true).features(["render-text"]),
         ApiProfile::RenderPaint => builder.no_default_features(true).features(["render-paint"]),
+        ApiProfile::DocumentScripting => builder
+            .no_default_features(true)
+            .features(["document-scripting"]),
     };
     let rustdoc_json = builder
         .build()
@@ -875,6 +895,79 @@ mod tests {
             "check must not recreate the missing audit"
         );
         assert_eq!(std::fs::read_to_string(&text_path).unwrap(), text_artifact);
+    }
+
+    #[test]
+    #[ignore = "runs pinned nightly rustdoc on an isolated feature fixture; select explicitly with offline Cargo and one build job"]
+    fn runtime_audits_keep_document_scripting_separate_from_default() {
+        let fixture = TempFixture::new("surgeist-api-runtime-rustdoc");
+        fixture.file(
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/surgeist-runtime\"]\nresolver = \"2\"\n",
+        );
+        fixture.file(
+            "crates/surgeist-runtime/Cargo.toml",
+            concat!(
+                "[package]\nname = \"surgeist-runtime\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+                "[features]\ndefault = [\"native-default\"]\nnative-default = []\n",
+                "document-scripting = []\nunrequested = []\n",
+            ),
+        );
+        fixture.file(
+            "crates/surgeist-runtime/src/lib.rs",
+            concat!(
+                "#![forbid(unsafe_code)]\n",
+                "pub struct NativeSession;\n",
+                "#[cfg(feature = \"native-default\")]\npub struct DefaultOnly;\n",
+                "#[cfg(feature = \"document-scripting\")]\npub struct ScriptHost;\n",
+                "#[cfg(feature = \"unrequested\")]\npub struct UnrequestedOnly;\n",
+            ),
+        );
+
+        run(fixture.path(), ["generator", "--crate", "surgeist-runtime"]).unwrap();
+
+        let default_path = fixture.path().join("api/crates/surgeist-runtime.txt");
+        let script_path = fixture
+            .path()
+            .join("api/crates/surgeist-runtime.document-scripting.txt");
+        let default_api = std::fs::read_to_string(&default_path).unwrap();
+        assert!(
+            script_path.is_file(),
+            "Runtime selection must generate its document scripting audit"
+        );
+        let script_api = std::fs::read_to_string(&script_path).unwrap();
+        assert!(default_api.starts_with("# surgeist-runtime public API\n"));
+        assert!(script_api.starts_with("# surgeist-runtime [document-scripting] public API\n"));
+        for api in [&default_api, &script_api] {
+            assert!(api
+                .lines()
+                .any(|line| line == "pub struct surgeist_runtime::NativeSession"));
+            assert!(!api.contains("UnrequestedOnly"));
+        }
+        assert!(default_api
+            .lines()
+            .any(|line| line == "pub struct surgeist_runtime::DefaultOnly"));
+        assert!(!default_api.contains("ScriptHost"));
+        assert!(script_api
+            .lines()
+            .any(|line| line == "pub struct surgeist_runtime::ScriptHost"));
+        assert!(!script_api.contains("DefaultOnly"));
+
+        std::fs::remove_file(&script_path).unwrap();
+        let error = run(
+            fixture.path(),
+            ["generator", "--check", "--crate", "surgeist-runtime"],
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stale API artifacts: surgeist-runtime [document-scripting]"
+        );
+        assert!(
+            !script_path.exists(),
+            "check must not recreate the missing audit"
+        );
+        assert_eq!(std::fs::read_to_string(default_path).unwrap(), default_api);
     }
 
     #[test]

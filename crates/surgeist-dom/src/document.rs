@@ -221,6 +221,9 @@ struct NoAssociatedMetaThemeConsumer;
 pub struct DomDocumentEnvironment {
     input: DomNativeInputPlatform,
     pub(crate) hosted: Option<Arc<crate::hosted::DocumentAssociation>>,
+    // Last actual attachment publication. Current engine provision is sampled
+    // separately, so stopping cannot change historical metadata.
+    script_host_generation: Option<std::num::NonZeroU64>,
 }
 
 /// Native-owner qualification, independent of browsing-context or scripting
@@ -294,6 +297,7 @@ impl DomDocumentEnvironment {
         Self {
             input,
             hosted: None,
+            script_host_generation: None,
         }
     }
     pub const fn input_platform(&self) -> DomNativeInputPlatform {
@@ -319,11 +323,6 @@ impl DomDocumentEnvironment {
     pub const fn has_ever_had_navigable(&self) -> bool {
         self.hosted.is_some()
     }
-    /// The admitted native execution owner supplies no scripting engine. This
-    /// qualification is independent of the actual browsing-context association.
-    pub const fn scripting(&self) -> surgeist_html_semantics::HtmlScriptingStatus {
-        surgeist_html_semantics::HtmlScriptingStatus::Disabled
-    }
 }
 
 impl DomDocumentMetadata {
@@ -347,6 +346,7 @@ impl DomDocumentMetadata {
             DomDocumentEnvironment {
                 input,
                 hosted: Some(association),
+                script_host_generation: None,
             },
             false,
             &mut |text| {
@@ -713,10 +713,22 @@ impl DomDocumentMetadata {
             .as_ref()
             .map(|association| association.policy)
     }
+    pub(crate) fn publish_script_host(&mut self, generation: std::num::NonZeroU64) {
+        self.environment.script_host_generation = Some(generation);
+    }
+    pub(crate) fn script_host_generation(&self) -> Option<std::num::NonZeroU64> {
+        self.environment.script_host_generation
+    }
     pub(crate) fn set_hosted_association(
         &mut self,
         association: Arc<crate::hosted::DocumentAssociation>,
     ) {
+        if matches!(
+            association.phase,
+            crate::hosted::DocumentPhase::Retired { .. }
+        ) {
+            self.environment.script_host_generation = None;
+        }
         self.environment.hosted = Some(association);
     }
     /// Actual processing history. `None` denotes unavailable imported

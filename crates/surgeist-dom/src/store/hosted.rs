@@ -7,8 +7,8 @@ pub(in crate::store) mod operations;
 pub(in crate::store) mod queue;
 pub(super) mod style_root_withdrawal;
 use super::*;
-use crate::DomOpaqueOrigin;
 use crate::hosted::*;
+use crate::{DomOpaqueOrigin, DomSourceEventRequest};
 use operations::OperationResult;
 
 // Backing fields precede their debit, including on every failed formation.
@@ -1952,5 +1952,248 @@ impl DomHostedSource {
                 document,
             },
         })
+    }
+}
+
+impl DomHostedSource {
+    fn script_document<'dom>(
+        &self,
+        dom: &'dom Dom,
+        host: DomHostedHostId,
+        global: DomHostedGlobalId,
+        document: DocumentId,
+        cancel: &AtomicBool,
+    ) -> Result<&'dom DomDocumentMetadata, DomHostedError> {
+        check_cancel(cancel)?;
+        dom.validate_hosted_source(self)?;
+        dom.require_source_idle()?;
+        if dom.global_document(global)? != document {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        self.script_document_metadata(dom, host, document)
+    }
+
+    fn script_document_metadata<'dom>(
+        &self,
+        dom: &'dom Dom,
+        host: DomHostedHostId,
+        document: DocumentId,
+    ) -> Result<&'dom DomDocumentMetadata, DomHostedError> {
+        let node = dom.state.node(dom.owner, document.node())?;
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        if association.host != host {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        association.source.validate_issuer(self.id())?;
+        Ok(metadata)
+    }
+
+    /// Publish one exact engine registration for this canonical owner.
+    /// The trusted adapter supplies established engine and hook custody and
+    /// the already admitted registration backing. Failure publishes nothing.
+    pub fn attach_document_script_host(
+        &self,
+        dom: &mut Dom,
+        global: DomHostedGlobalId,
+        document: DocumentId,
+        facts: DomDocumentScriptingFacts,
+        backing: DomHostedRuntimeRetention,
+        cancel: &AtomicBool,
+    ) -> Result<(DomDocumentScriptBinding, DomDocumentScriptRegistration), DomHostedError> {
+        use surgeist_html_semantics::HtmlScriptingStatus;
+        check_cancel(cancel)?;
+        dom.validate_hosted_source(self)?;
+        dom.require_source_idle()?;
+        if dom.active_script_registration().is_some() {
+            return Err(DomHostedError::WrongPhase);
+        }
+        if dom.global_document(global)? != document {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let DomNodeKind::Document(metadata) = dom.state.node(dom.owner, document.node())?.kind()
+        else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        association.source.validate_issuer(self.id())?;
+        let DocumentPhase::InitialEntry { navigable, .. } = association.phase else {
+            return Err(DomHostedError::StaleIdentity);
+        };
+        let current = dom.hosted_navigable(navigable)?;
+        if current.parent().is_some() || current.is_retiring() || current.global() != global {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        if document_script_status(metadata, Some(facts))? != HtmlScriptingStatus::Enabled {
+            return Err(DomHostedError::ScriptingDisabled);
+        }
+        if !backing.shared.ptr_eq(&Arc::downgrade(&self.shared)) {
+            return Err(DomHostedError::ForeignSource);
+        }
+        if backing.bytes < DomDocumentScriptRegistration::storage_bytes() {
+            return Err(DomHostedError::RepresentationExhausted);
+        }
+        let generation = dom
+            .revision
+            .0
+            .checked_add(1)
+            .and_then(std::num::NonZeroU64::new)
+            .ok_or(DomError::RevisionExhausted)?;
+        let binding = DomDocumentScriptBinding {
+            source: self.id(),
+            host: association.host,
+            global,
+            document,
+            generation,
+        };
+        let registration = Arc::new(ScriptRegistration {
+            key: binding.key(),
+            global,
+            navigable,
+            end: std::sync::OnceLock::new(),
+            _backing: backing,
+        });
+        let canonical = CanonicalScriptRegistration(registration.clone());
+        let engine = DomDocumentScriptRegistration(registration);
+        let mut draft = Draft::new(dom, DomBatch::new().owner, cancel)?;
+        let mut metadata = draft.document_metadata_mut(Key::Existing(document.node()), cancel)?;
+        metadata.publish_script_host(generation);
+        metadata.commit(cancel)?;
+        let prepared = draft.finish(dom, cancel)?;
+        dom.publish(prepared, cancel)?;
+        dom.script_registration = Some(canonical);
+        Ok((binding, engine))
+    }
+
+    /// Observe scripting for the current complete canonical revision. Runtime
+    /// authenticates the actual live engine before each observation.
+    pub fn observe_document_scripting(
+        &self,
+        dom: &Dom,
+        binding: &DomDocumentScriptBinding,
+        facts: Option<DomDocumentScriptingFacts>,
+        cancel: &AtomicBool,
+    ) -> Result<DomDocumentScriptingObservation, DomHostedError> {
+        if binding.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        let metadata =
+            self.script_document(dom, binding.host, binding.global, binding.document, cancel)?;
+        let snapshot = dom.snapshot();
+        if snapshot.script_registration != Some(binding.key())
+            || metadata.script_host_generation() != Some(binding.generation)
+        {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let status = document_script_status(metadata, facts)?;
+        Ok(DomDocumentScriptingObservation {
+            basis: snapshot.document(binding.document)?.stamp(),
+            registration: binding.key(),
+            status,
+        })
+    }
+
+    /// Qualify the current settings of this attached Document while a native
+    /// dispatcher holds its actual Source scope. The result is for immediate
+    /// use and does not attest a complete historical capture.
+    pub fn document_scripting_during_dispatch(
+        &self,
+        dom: &Dom,
+        binding: &DomDocumentScriptBinding,
+        request: &DomSourceEventRequest,
+        facts: DomDocumentScriptingFacts,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_html_semantics::HtmlScriptingStatus, DomHostedError> {
+        if binding.source != self.id() {
+            return Err(DomHostedError::ForeignSource);
+        }
+        dom.validate_hosted_source(self)?;
+        if dom.active_script_registration() != Some(binding.key()) {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        if dom.pending_source_edit().map(|status| status.operation()) != Some(request.operation()) {
+            return Err(DomError::InvalidSourceEvent.into());
+        }
+        let work = dom
+            .dispatch_hosted_read_work(cancel)?
+            .filter(|work| Arc::ptr_eq(work, &request.work))
+            .ok_or(DomError::InvalidSourceEvent)?;
+        if dom.dispatch_global_document_current_with(binding.global, &mut || {
+            work.step(cancel).map_err(DomHostedError::from)
+        })? != binding.document
+            || !dom.dispatch_document_fully_active(binding.document, cancel)?
+        {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let metadata = self.script_document_metadata(dom, binding.host, binding.document)?;
+        document_script_status(metadata, Some(facts))
+    }
+}
+
+impl Dom {
+    pub(in crate::store) fn active_script_registration(&self) -> Option<ScriptRegistrationKey> {
+        self.script_registration
+            .as_ref()
+            .filter(|slot| slot.0.is_active())
+            .map(|slot| slot.0.key)
+    }
+
+    /// Release the exact closed registration after engine disposal. A parked
+    /// Source retains its own funded reference and its original continuation.
+    pub fn release_document_script_registration(&mut self, binding: &DomDocumentScriptBinding) {
+        if self
+            .script_registration
+            .as_ref()
+            .is_some_and(|slot| slot.0.key == binding.key() && !slot.0.is_active())
+        {
+            self.script_registration.take();
+        }
+    }
+
+    pub(in crate::store) fn retire_script_registration(&self, creation: DomHostedCreation) {
+        if let Some(slot) = self.script_registration.as_ref()
+            && slot.0.key.document == creation.document
+            && slot.0.global == creation.global
+            && slot.0.navigable == creation.navigable
+        {
+            let _ = slot.0.end.set(ScriptRegistrationEnd::NativeRetired);
+        }
+    }
+}
+
+fn document_script_status(
+    metadata: &DomDocumentMetadata,
+    facts: Option<DomDocumentScriptingFacts>,
+) -> Result<surgeist_html_semantics::HtmlScriptingStatus, DomHostedError> {
+    use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
+    use surgeist_html_semantics::HtmlScriptingStatus;
+    let browsing_context = metadata.document_environment().browsing_context();
+    if browsing_context == HtmlBrowsingContextPresence::Absent {
+        return Ok(HtmlScriptingStatus::Disabled);
+    }
+    let Some(facts) = facts else {
+        return Ok(HtmlScriptingStatus::Unavailable);
+    };
+    let inputs = metadata
+        .hosted_inputs
+        .as_ref()
+        .ok_or(DomHostedError::UnsupportedProfile)?;
+    if facts
+        .policy
+        .document_enabled(facts.engine, &inputs.0.active_sandbox, browsing_context)
+    {
+        Ok(HtmlScriptingStatus::Enabled)
+    } else {
+        Ok(HtmlScriptingStatus::Disabled)
     }
 }

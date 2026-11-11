@@ -232,6 +232,26 @@ association readiness.
 The [hosted Style custody withdrawal](docs/explanation.md#hosted-style-custody-withdrawal)
 front joins an idle bound root to its original hosted destruction Cleanup.
 
+The optional `document-scripting` feature attaches a bindings process and realm
+to an authenticated native top-level Document. The host-defined child-count
+callable reads the original Session's current DOM. Entry releases native loans
+before running guest code and leaves queued jobs for an explicit checked
+checkpoint. Stop disposes of the queue and returns custody of the native Session,
+including any original pending native work. It closes the canonical engine
+registration before V8 teardown. A fresh recovered snapshot reports scripting
+Disabled, even when cancellation prevents other native work.
+The default Runtime uses the native no-script profile. A live owner can sample
+scripting for the current DOM revision; historical captures preserve the sampled
+fact with their exact snapshot and captured registration. A stopped snapshot
+rejects the former live observation at the same structural revision. Historical
+snapshots retain that observation. A Source event can select an external guest
+listener through the original dispatcher and transfer the actual invocation to
+the script owner. Guest execution releases native loans, can detach an explicitly
+delegated Document comment through nested Source work, and retains any exact guest
+exception for the native report. The original dispatcher then continues delivery
+and the caller resumes the same Source operation. Standard DOM wrappers and
+parser execution belong to their own contributions.
+
 ## Start
 
 From a prepared checkout with the [prerequisites](docs/getting-started.md#prerequisites),

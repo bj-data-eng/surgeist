@@ -357,8 +357,7 @@ impl HostedRuntime {
             .clusters[c]
             .agent
             .globals[g];
-        native.settings.document = Some(request.document());
-        native.settings.ready = true;
+        native.settings.make_active(request.document());
         if children[index].publication.is_none() {
             children[index].publication = Some(
                 source

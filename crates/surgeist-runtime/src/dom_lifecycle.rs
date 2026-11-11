@@ -778,6 +778,106 @@ impl HostedRuntime {
     }
 }
 
+#[cfg(feature = "document-scripting")]
+impl HostedRuntime {
+    pub(crate) fn with_script_target<R>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
+    ) -> Result<R, DomHostedRuntimeError> {
+        self.with_script_settings(dom, target, None, cancel, |source, dom| {
+            let canonical = dom
+                .raw()
+                .hosted_navigable(target.navigable)
+                .map_err(DomHostedRuntimeError::Dom)?;
+            if canonical.parent().is_some()
+                || canonical.is_retiring()
+                || canonical.host() != target.host
+                || canonical.browsing_context() != target.context
+                || canonical.global() != target.global
+                || canonical.active_entry() != target.entry
+                || canonical.current_entry() != target.entry
+                || canonical.active_document() != Some(target.document)
+            {
+                return Err(DomHostedRuntimeError::Inactive);
+            }
+            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
+        })
+    }
+
+    pub(crate) fn with_script_settings<R>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        event: Option<&surgeist_dom::DomSourceEventRequest>,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(
+            &DomHostedSource,
+            &mut DomEventDom<'_>,
+        ) -> Result<R, DomHostedRuntimeError>,
+    ) -> Result<R, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let charge_source = || match event {
+            Some(event) => dom
+                .raw()
+                .source_event_step(event, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into())),
+            None => Ok(()),
+        };
+        let (h, t, c, g) = state.find_global(target.global, cancel, charge_source)?;
+        state.step(cancel)?;
+        charge_source()?;
+        let HostedState { source, hosts, .. } = &mut *state;
+        let host = hosts.get_mut(h).ok_or(DomHostedRuntimeError::Protocol)?;
+        let top = host
+            .top_levels
+            .get_mut(t)
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        let group = top.group.as_mut().ok_or(DomHostedRuntimeError::Protocol)?;
+        let global = group
+            .clusters
+            .get_mut(c)
+            .and_then(|cluster| cluster.agent.globals.get_mut(g))
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        if host.id != target.host
+            || top
+                .top
+                .as_ref()
+                .is_none_or(|top| top.id != target.navigable)
+            || group.context != target.context
+            || !global.settings.ready
+            || global.settings.document != Some(target.document)
+        {
+            return Err(DomHostedRuntimeError::Inactive);
+        }
+        use_target(source, dom)
+    }
+
+    pub(crate) fn retain_script_payload(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        bytes: usize,
+        cancel: &AtomicBool,
+    ) -> Result<surgeist_dom::DomHostedRuntimeRetention, DomHostedRuntimeError> {
+        let owner = self.state()?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        state.step(cancel)?;
+        state
+            .source
+            .retain_runtime_payload(dom.raw_mut(), bytes, cancel)
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+    }
+}
+
 impl HostedRuntime {
     /// Read actual settings joined to the current canonical Document.
     pub fn settings(
@@ -1370,8 +1470,7 @@ fn drive_creation(
                 }
                 // Actual settings/BC indirection now select this Document;
                 // readiness is set only after canonical Document creation.
-                native.settings.document = Some(request.document());
-                native.settings.ready = true;
+                native.settings.make_active(request.document());
                 if creation.publication.is_none() {
                     creation.publication = Some(
                         source

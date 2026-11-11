@@ -84,6 +84,13 @@ pub(super) struct Settings {
     pub top_level_origin: DomOpaqueOrigin,
 }
 
+impl Settings {
+    pub(super) fn make_active(&mut self, document: DocumentId) {
+        self.document = Some(document);
+        self.ready = true;
+    }
+}
+
 pub(super) struct Top {
     pub id: DomHostedNavigableId,
     pub closing: bool,

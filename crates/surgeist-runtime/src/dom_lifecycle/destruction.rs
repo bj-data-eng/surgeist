@@ -316,10 +316,12 @@ impl HostedRuntime {
             let (h, t) = state.find_top(navigable, cancel)?;
             state.reserve_invocation(cancel)?;
             state.step(cancel)?;
-            let permission = dom
-                .raw_mut()
-                .begin_hosted_top_level_destruction(&mut state.source, navigable, cancel)
-                .map_err(DomHostedRuntimeError::Dom)?;
+            let permission = dom.raw_mut().begin_hosted_top_level_destruction(
+                &mut state.source,
+                navigable,
+                cancel,
+            );
+            let permission = permission.map_err(DomHostedRuntimeError::Dom)?;
             state.retain_invocation(permission);
             state.hosts[h].top_levels[t]
                 .top

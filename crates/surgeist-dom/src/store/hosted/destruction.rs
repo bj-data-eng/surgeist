@@ -1027,6 +1027,7 @@ impl Dom {
                         )?;
                         dom.publish_hosted(prepared, cancel)?;
                         permit.commit();
+                        dom.retire_script_registration(creation);
                         row.retiring_reserved = false;
                         row.request.request.key.phase = next;
                     }
