@@ -129,6 +129,39 @@ fn character_nodes(host: &DocumentScriptHost, document: DocumentId) -> Vec<NodeI
         .collect()
 }
 
+pub(super) fn rejects_missing_arguments_before_coercion() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number((globalThis.arityText = new Text('x')).length === 1)",
+        1.0,
+    );
+    let before = host.snapshot().unwrap().stamp();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            let coercions = 0;
+            const sentinel = {};
+            const input = { valueOf() { ++coercions; throw sentinel; } };
+            for (const [method, args] of [
+                ["substringData", [input]], ["insertData", [input]],
+                ["deleteData", [input]], ["replaceData", [input, 0]]
+            ]) {
+                let failure;
+                try { arityText[method](...args); }
+                catch (error) { failure = error; }
+                if (!(failure instanceof TypeError)) return false;
+            }
+            return coercions === 0 && arityText.data === "x";
+        })())"#,
+        1.0,
+    );
+    assert_eq!(host.snapshot().unwrap().stamp(), before);
+}
+
 pub(super) fn edits_canonical_character_data_and_live_ranges() {
     let (mut host, top) = prepare_event_window();
     let permit = host.permit().unwrap();

@@ -2259,6 +2259,7 @@ fn main() {
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
             "character-data-creation" => text_comment::creates_canonical_text_and_comments(),
             "character-data-mutation" => text_comment::edits_canonical_character_data_and_live_ranges(),
+            "character-data-arity" => text_comment::rejects_missing_arguments_before_coercion(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
@@ -2335,6 +2336,7 @@ fn main() {
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
     text_comment::creates_canonical_text_and_comments();
     text_comment::edits_canonical_character_data_and_live_ranges();
+    text_comment::rejects_missing_arguments_before_coercion();
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
