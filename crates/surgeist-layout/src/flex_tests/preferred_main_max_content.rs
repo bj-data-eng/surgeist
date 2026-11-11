@@ -1,7 +1,6 @@
 //! Preferred intrinsic inline sizing uses Flex contributions before Normal contents.
 use super::*;
 use crate::test_support::readback::{self, Phase};
-use crate::test_support::requests::NativeRootFrameOf;
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -156,11 +155,12 @@ fn percentage_tree<S: LayoutScalar>(
         justify_content: Some(AlignContent::Start),
         ..NodeInputOf::default()
     };
-    let root = style(
+    let mut root = style(
         Display::Flex,
         PreferredSizeOf::MAX_CONTENT,
         PreferredSizeOf::MAX_CONTENT,
     );
+    root.position = Position::Absolute;
     let mut grid = style(
         Display::Grid,
         PreferredSizeOf::percent(n(1.0)),
@@ -189,19 +189,23 @@ fn percentage_ratio<S: LayoutScalar>() {
     for direction in [Direction::Ltr, Direction::Rtl] {
         for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
             let tree = percentage_tree::<S>(direction, box_sizing);
-            let frame = NativeRootFrameOf::new(
-                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                Size::splat(Some(NonNegativeFiniteOf::new(n(800.0)).unwrap())),
-                OrthogonalFallbackOf::new(
-                    Size::splat(Some(NonNegativeFiniteOf::new(n(800.0)).unwrap())),
-                    NearestScrollportOf::Absent,
-                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
-                ),
+            let containing = Size::new(
+                NonNegativeFiniteOf::new(n(800.0)).unwrap(),
+                NonNegativeFiniteOf::new(n(600.0)).unwrap(),
             );
-            let root_request = frame.request(Size::splat(AxisSizingRequestOf::new(
-                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(n(800.0)).unwrap()),
-                SizingOperation::Normal,
-            )));
+            let fallback = OrthogonalFallbackOf::new(
+                containing.map(Some),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            );
+            let context = RootLocalPositionedContextOf::horizontal_auto_insets(
+                containing,
+                Direction::Ltr,
+                S::ZERO,
+                fallback,
+            )
+            .unwrap();
+            let root_request = LayoutRootRequestOf::positioned_root_local(context).unwrap();
             let batch = compute_layout(&tree, 0, root_request).unwrap_or_else(|error| {
                 panic!("original percentage Grid {direction:?}/{box_sizing:?}: {error:?}")
             });
@@ -348,41 +352,78 @@ fn percentage_request_phases<S: LayoutScalar>() {
             });
         assert_eq!(output.size, Size::splat(n(40.0)));
         assert_eq!(tree.inputs(0).first(), Some(&input));
-        let grid = tree.inputs(1).last().expect("actual Grid query");
+        let grid_queries = tree.inputs(1);
+        let (discovery_operation, discovery_space) = match operation {
+            SizingOperation::Normal => (SizingOperation::MaxContent, AvailableSpaceOf::Indefinite),
+            formal => (formal, AvailableSpaceOf::Definite(frame.width.unwrap())),
+        };
+        let discover = grid_queries
+            .iter()
+            .position(|query| {
+                let inline = query.sizing_request().axes().width;
+                query.run_mode() == RunMode::ComputeSize
+                    && query.sizing_mode() == SizingMode::ContentSize
+                    && inline.operation() == discovery_operation
+                    && inline.space() == discovery_space
+                    && query.known().width.is_none()
+                    && query.parent().width.is_none()
+            })
+            .unwrap_or_else(|| {
+                panic!("{operation:?}/{run_mode:?}: no contribution query in {grid_queries:?}")
+            });
         if operation == SizingOperation::Normal {
-            assert_eq!(
-                grid.sizing_request().axes().width.operation(),
-                SizingOperation::Normal
-            );
-            assert_eq!(
-                grid.parent().width,
-                Some(n(40.0)),
-                "accepted Normal inline basis"
+            let complete = grid_queries
+                .iter()
+                .position(|query| {
+                    let inline = query.sizing_request().axes().width;
+                    query.sizing_mode() == SizingMode::InherentSize
+                        && inline.operation() == SizingOperation::Normal
+                        && inline.space()
+                            == AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(n(40.0)).unwrap(),
+                            )
+                        && query.parent().width == Some(n(40.0))
+                })
+                .unwrap_or_else(|| {
+                    panic!("{run_mode:?}: no Normal contents query in {grid_queries:?}")
+                });
+            assert!(
+                discover < complete,
+                "Normal completion follows intrinsic discovery"
             );
         } else {
-            assert_eq!(
-                grid.parent().width,
-                None,
-                "formal measurement cannot donate its finite result as a parent basis"
+            assert!(
+                grid_queries
+                    .iter()
+                    .all(|query| query.parent().width.is_none()),
+                "formal measurement cannot donate a finite result as a parent basis"
             );
         }
-        assert_eq!(
-            grid.parent().height,
-            None,
+        assert!(
+            grid_queries
+                .iter()
+                .all(|query| query.parent().height.is_none()),
             "content-derived Flex height remains indefinite"
         );
+        if run_mode == RunMode::ComputeSize {
+            for node in 0..4 {
+                assert_eq!(tree.layout(node), None, "size query cannot stage geometry");
+            }
+        }
+        assert_eq!(
+            output.scroll_geometry.is_some(),
+            run_mode == RunMode::PerformLayout
+        );
         for node in 0..4 {
-            assert_eq!(
-                tree.layout(node).is_some(),
-                run_mode == RunMode::PerformLayout
-            );
             assert_eq!(
                 tree.final_layout(node),
                 None,
                 "internal computation cannot finalize publication"
             );
         }
-        eprintln!("qualified {operation:?}/{sizing_mode:?}/{run_mode:?} with Grid query {grid:?}");
+        eprintln!(
+            "qualified {operation:?}/{sizing_mode:?}/{run_mode:?}, contribution query {discover}"
+        );
     }
 }
 
@@ -392,21 +433,25 @@ fn preferred_main_max_content_keeps_intrinsic_measurement_and_normal_contents_se
     percentage_request_phases::<f64>();
 }
 
-fn nonautomatic_preferred_sizes<S: LayoutScalar>() {
-    let tree = PublicLayoutTreeOf::<S>::new()
+fn own_ratio_tree<S: LayoutScalar>(block: PreferredSizeOf<S>) -> PublicLayoutTreeOf<S> {
+    PublicLayoutTreeOf::<S>::new()
         .children(0, [1])
         .children(1, [])
         .style(
             0,
             NodeInputOf {
                 display: Display::Flex,
-                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(n(10.0))),
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, block),
                 aspect_ratio: AspectRatioOf::new(n(2.0)),
                 ..NodeInputOf::default()
             },
         )
         .style(1, NodeInputOf::default())
-        .measure(1, Size::new(n(65.0), n(10.0)));
+        .measure(1, Size::new(n(65.0), n(10.0)))
+}
+
+fn nonautomatic_preferred_sizes<S: LayoutScalar>() {
+    let tree = own_ratio_tree::<S>(PreferredSizeOf::px(n(10.0)));
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None))
         .expect("the ratio does not replace either nonautomatic preferred size");
@@ -422,4 +467,21 @@ fn nonautomatic_preferred_sizes<S: LayoutScalar>() {
 fn preferred_main_max_content_is_not_backfilled_from_the_cross_size_and_ratio() {
     nonautomatic_preferred_sizes::<f32>();
     nonautomatic_preferred_sizes::<f64>();
+}
+
+#[test]
+fn preferred_main_max_content_preserves_unresolved_own_ratio_cross_refusal() {
+    let tree = own_ratio_tree::<f64>(PreferredSizeOf::AUTO);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let error = compute_layout(&tree, 0, request(flow, Some(300.0), None))
+        .expect_err("ratio-dependent automatic cross sizing requires its own settlement");
+    assert!(
+        matches!(error.kind(), LayoutErrorKindOf::UnsupportedCapability(
+        LayoutUnsupportedCapability::SizingBehavior(behavior)
+    ) if behavior.property() == SizingProperty::Preferred
+        && behavior.behavior() == SizingBehavior::MaxContent
+        && behavior.algorithm() == SizingAlgorithm::Flex
+        && behavior.axis() == PhysicalAxis::Horizontal),
+        "{error:?}"
+    );
 }
