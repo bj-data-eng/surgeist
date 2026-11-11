@@ -55,6 +55,85 @@ fn lifetime_probes(manager: &ResourceManager) -> u64 {
 }
 
 #[test]
+fn absent_selected_entry_preserves_custody_and_real_removal_evicts_its_exact_bytes() {
+    let manager = two_idle_entries();
+    let mut guard = lock_state(&manager.state);
+    let state = &mut *guard;
+    let generation = state.generation.clone();
+    let identities: Vec<_> = state.entries.keys().copied().collect();
+    let vello_before = generation.class_usage(GenerationClass::CacheVello).unwrap();
+    let effects_before = generation
+        .class_usage(GenerationClass::CacheEffects)
+        .unwrap();
+    let probes_before = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+    let missing = ResourceIdentity(u64::MAX);
+
+    assert_eq!(
+        ResourceManagerState::remove_selected_entry(&generation, &mut state.entries, missing),
+        Err(ResourceAccountingFault::SelectedResourceMissing { resource: missing })
+    );
+    assert_eq!(
+        state.entries.keys().copied().collect::<Vec<_>>(),
+        identities
+    );
+    assert_eq!(state.accounting_fault, None);
+    assert_eq!(generation.cache_bytes().unwrap(), 8);
+    assert_eq!(generation.registered_cache_bytes().unwrap(), 8);
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 8);
+    for (class, before) in [
+        (GenerationClass::CacheVello, &vello_before),
+        (GenerationClass::CacheEffects, &effects_before),
+    ] {
+        let after = generation.class_usage(class).unwrap();
+        for work in [
+            RenderWork::ResourceEvictions,
+            RenderWork::ResourceLeaseReturns,
+            RenderWork::ResourceProbes,
+        ] {
+            assert_eq!(after.work(work), before.work(work));
+        }
+    }
+
+    assert_eq!(
+        ResourceManagerState::remove_selected_entry(&generation, &mut state.entries, identities[0]),
+        Ok(4)
+    );
+    assert_eq!(
+        state.entries.keys().copied().collect::<Vec<_>>(),
+        vec![identities[1]]
+    );
+    assert_eq!(generation.cache_bytes().unwrap(), 4);
+    assert_eq!(generation.registered_cache_bytes().unwrap(), 4);
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 4);
+    let vello_after = generation.class_usage(GenerationClass::CacheVello).unwrap();
+    assert_eq!(
+        vello_after.work(RenderWork::ResourceEvictions)
+            - vello_before.work(RenderWork::ResourceEvictions),
+        1
+    );
+    assert_eq!(
+        vello_after.work(RenderWork::ResourceLeaseReturns),
+        vello_before.work(RenderWork::ResourceLeaseReturns)
+    );
+    let effects_after = generation
+        .class_usage(GenerationClass::CacheEffects)
+        .unwrap();
+    for work in [
+        RenderWork::ResourceEvictions,
+        RenderWork::ResourceLeaseReturns,
+        RenderWork::ResourceProbes,
+    ] {
+        assert_eq!(effects_after.work(work), effects_before.work(work));
+    }
+    assert_eq!(
+        generation.cache_work(RenderWork::ResourceProbes).unwrap(),
+        probes_before
+    );
+    assert_eq!(state.accounting_fault, None);
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
 fn registry_frame_audit_refuses_the_first_unadmitted_entry_and_retries_without_mutation() {
     let manager = two_idle_entries();
     let before = registry_facts(&manager);

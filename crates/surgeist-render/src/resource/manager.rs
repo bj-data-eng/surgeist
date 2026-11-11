@@ -138,6 +138,9 @@ impl ResourceAllocationPreflight {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ResourceAccountingFault {
+    SelectedResourceMissing {
+        resource: ResourceIdentity,
+    },
     RetainedByteUnderflow {
         retained_bytes: u64,
         discarded_entry_bytes: u64,
@@ -289,6 +292,20 @@ impl ResourceManagerState {
     pub(super) fn fail_accounting<T>(&mut self, fault: ResourceAccountingFault) -> Result<T> {
         self.record_accounting_fault(fault);
         Err(Self::accounting_fault_error())
+    }
+
+    pub(super) fn remove_selected_entry(
+        generation: &Generation,
+        entries: &mut BTreeMap<ResourceIdentity, ResourceEntry>,
+        identity: ResourceIdentity,
+    ) -> std::result::Result<u64, ResourceAccountingFault> {
+        let entry = entries
+            .remove(&identity)
+            .ok_or(ResourceAccountingFault::SelectedResourceMissing { resource: identity })?;
+        let removed_bytes = entry.byte_len;
+        generation.eviction(entry.key.generation_class());
+        drop(entry);
+        Ok(removed_bytes)
     }
 
     pub(super) fn checked_registered_entry_bytes(
@@ -449,12 +466,12 @@ impl ResourceManagerState {
         }
         for &(_, identity) in scratch.indices.iter() {
             self.generation.probe_cache(None)?;
-            let removed = self
-                .entries
-                .remove(&identity)
-                .expect("selected idle atlas remains registered");
-            self.generation.eviction(removed.key.generation_class());
-            drop(removed);
+            if let Err(fault) =
+                Self::remove_selected_entry(&self.generation, &mut self.entries, identity)
+            {
+                scratch.indices.clear();
+                return self.fail_accounting(fault);
+            }
         }
         scratch.indices.clear();
         self.ensure_accounting_exact(None)
