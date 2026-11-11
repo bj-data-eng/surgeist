@@ -908,9 +908,9 @@ impl RasterTargetIntent {
 /// drops the unpublished result. The 16-sample factory's private intermediate and
 /// inherited infallible allocation are part of this narrow dependency boundary.
 fn mask_lut(variant: FineRasterVariant, account: &Account) -> Result<AccountedVec<u8>> {
-    let (count, sample_visits) = match variant {
-        FineRasterVariant::Msaa8 => (1024, 1024 * 8),
-        FineRasterVariant::Msaa16 => (8192, 4096 * 16),
+    let (count, sample_visits, make_lut): (usize, usize, fn() -> Vec<u8>) = match variant {
+        FineRasterVariant::Msaa8 => (1024, 1024 * 8, make_mask_lut),
+        FineRasterVariant::Msaa16 => (8192, 4096 * 16, make_mask_lut_16),
         FineRasterVariant::Area => {
             return Err(Error::new(
                 crate::BackendErrorCode::RenderFailed,
@@ -922,11 +922,7 @@ fn mask_lut(variant: FineRasterVariant, account: &Account) -> Result<AccountedVe
     account.preview(RenderResource::RetainedCpuBytes, count)?;
     let values = account.phase(RenderPhase::Kernel, || {
         account.work(RenderWork::KernelSampleVisits, sample_visits)?;
-        Ok(match variant {
-            FineRasterVariant::Msaa8 => make_mask_lut(),
-            FineRasterVariant::Msaa16 => make_mask_lut_16(),
-            FineRasterVariant::Area => unreachable!(),
-        })
+        Ok(make_lut())
     })?;
     if values.len() != count {
         return Err(Error::new(
