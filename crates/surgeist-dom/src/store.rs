@@ -71,7 +71,8 @@ mod name_registry;
 mod navigable;
 mod node_retirement;
 pub use node_retirement::{
-    DomNodeRetirementInbox, DomNodeRetirementNotice, DomNodeRetirementWatch,
+    DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
+    DomNodeRetirementWatch,
 };
 #[cfg(test)]
 mod oracle_tests;
@@ -177,6 +178,8 @@ pub enum DomResource {
     InlineStyleScratch,
     /// Inline operation and sparse qualification work.
     InlineStyleWork,
+    /// Canonical custody union at ordinary node-retirement admission.
+    NodeRetirementCanonicalBytes,
     SourceRetainedBytes,
     SourceRetainedUnits,
     /// Directly owned name records, index capacity and operation receipts.
@@ -310,6 +313,10 @@ pub enum DomError {
     ForeignOwner,
     StaleNode,
     NodeRetirementAlreadyWatched,
+    /// Ordinary watch or inbox preparation exceeded its work allowance.
+    NodeRetirementWorkLimit {
+        limit: u64,
+    },
     ForeignBatch,
     UnavailableCreation,
     WrongNodeKind,
@@ -1276,6 +1283,15 @@ impl PartialEq for State {
 }
 impl State {
     pub(crate) fn node(&self, owner: DomOwnerId, id: NodeId) -> Result<&Node, DomError> {
+        self.node_with(owner, id, &mut || Ok(()))
+    }
+
+    fn node_with(
+        &self,
+        owner: DomOwnerId,
+        id: NodeId,
+        step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<&Node, DomError> {
         #[cfg(test)]
         if scale_metrics::ENABLED {
             scale_metrics::record(scale_metrics::Event::CanonicalRecordRead);
@@ -1285,7 +1301,7 @@ impl State {
             return Err(DomError::ForeignOwner);
         }
         self.slots
-            .get(id.slot)
+            .get_with(id.slot, step)?
             .filter(|s| s.generation == id.generation)
             .and_then(|s| s.node.as_ref())
             .ok_or(DomError::StaleNode)

@@ -1,14 +1,81 @@
 //! One-shot native node retirement notices for retained host objects.
 
+use std::cell::Cell;
 use std::sync::{Mutex, MutexGuard};
 
 use super::*;
-use crate::{DomSourceEventPayloadRetention, DomSourceEventRequest, DomSourceEventRetention};
+use crate::{DomSourceEventRequest, DomSourceEventRetention};
+
+use custody::{Debit, Usage};
+
+/// Admission for one ordinary retirement operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomNodeRetirementLimits {
+    canonical_bytes: usize,
+    work: u64,
+}
+
+impl DomNodeRetirementLimits {
+    /// Set the maximum prospective bytes in the original DOM custody ledger
+    /// and the work allowance for this call. An armed watch also reserves
+    /// bounded administrative disarm work from this allowance.
+    pub const fn new(canonical_bytes: usize, work: u64) -> Self {
+        Self {
+            canonical_bytes,
+            work,
+        }
+    }
+}
+
+struct OrdinaryAdmission<'a> {
+    dom: &'a Dom,
+    limits: DomNodeRetirementLimits,
+    remaining: Cell<u64>,
+    cancel: &'a AtomicBool,
+}
+
+impl<'a> OrdinaryAdmission<'a> {
+    fn new(dom: &'a Dom, limits: DomNodeRetirementLimits, cancel: &'a AtomicBool) -> Self {
+        Self {
+            dom,
+            limits,
+            remaining: Cell::new(limits.work),
+            cancel,
+        }
+    }
+
+    fn admit_work(&self, steps: u64) -> Result<(), DomError> {
+        check_cancel(self.cancel)?;
+        let remaining =
+            self.remaining
+                .get()
+                .checked_sub(steps)
+                .ok_or(DomError::NodeRetirementWorkLimit {
+                    limit: self.limits.work,
+                })?;
+        self.remaining.set(remaining);
+        Ok(())
+    }
+
+    fn retain(&self, bytes: usize) -> Result<Debit, DomError> {
+        self.dom
+            .custody_registry
+            .ledger()
+            .retain(Usage::new(bytes, 0), |next| {
+                self.admit_work(1)?;
+                admit(
+                    next.bytes(),
+                    self.limits.canonical_bytes,
+                    DomResource::NodeRetirementCanonicalBytes,
+                )
+            })
+    }
+}
 
 struct Queue {
     open: bool,
     head: Option<Box<Notice>>,
-    _backing: DomSourceEventPayloadRetention,
+    _backing: Debit,
 }
 
 /// Destination for affine retirement notices funded by the canonical owner.
@@ -44,7 +111,7 @@ struct Notice {
     node: NodeId,
     custody_key: usize,
     next: Option<Box<Notice>>,
-    _backing: DomSourceEventPayloadRetention,
+    _backing: Debit,
 }
 
 impl DomNodeRetirementNotice {
@@ -60,7 +127,7 @@ impl DomNodeRetirementNotice {
 struct Armed {
     notice: Box<Notice>,
     queue: Arc<Mutex<Queue>>,
-    backing: DomSourceEventPayloadRetention,
+    backing: Debit,
 }
 
 enum Row {
@@ -71,7 +138,7 @@ enum Row {
 struct Branch {
     bit: usize,
     children: [Option<Row>; 2],
-    _backing: DomSourceEventPayloadRetention,
+    _backing: Debit,
 }
 
 fn side(slot: usize, bit: usize) -> usize {
@@ -160,7 +227,7 @@ impl Row {
 
 pub(super) struct Index {
     armed: Mutex<Option<Row>>,
-    _backing: DomSourceEventPayloadRetention,
+    _backing: Debit,
 }
 
 pub(super) struct PublicationPlan {
@@ -244,7 +311,12 @@ impl Index {
                 mut notice,
                 queue,
                 backing,
-            } = *armed;
+            } = {
+                // Free the moved-out leaf before releasing its storage debit
+                // and before waiting on the independently drained inbox.
+                let leaf = armed;
+                *leaf
+            };
             drop(backing);
             let mut queue = lock(&queue);
             if queue.open {
@@ -255,9 +327,29 @@ impl Index {
     }
 }
 
+enum Funding<'a> {
+    Source(&'a Dom, &'a DomSourceEventRequest),
+    Ordinary(OrdinaryAdmission<'a>),
+}
+
+enum Reserved {
+    Source(DomSourceEventRetention),
+    Ordinary(Debit),
+}
+
+impl Reserved {
+    fn take(&mut self, bytes: usize) -> Result<Debit, DomError> {
+        match self {
+            Self::Source(retained) => retained
+                .split_payload(bytes, 0)
+                .map(|part| part.into_debit()),
+            Self::Ordinary(retained) => retained.split(Usage::new(bytes, 0)),
+        }
+    }
+}
+
 struct WatchAdmission<'a> {
-    dom: &'a Dom,
-    request: &'a DomSourceEventRequest,
+    funding: Funding<'a>,
     inbox: &'a DomNodeRetirementInbox,
     node: NodeId,
     custody_key: usize,
@@ -266,24 +358,33 @@ struct WatchAdmission<'a> {
 
 impl WatchAdmission<'_> {
     fn step(&self) -> Result<(), DomError> {
-        self.dom.source_event_step(self.request, self.cancel)
+        match &self.funding {
+            Funding::Source(dom, request) => dom.source_event_step(request, self.cancel),
+            Funding::Ordinary(admission) => admission.admit_work(1),
+        }
     }
 
-    fn form(&self, extra: usize) -> Result<(Box<Armed>, DomSourceEventRetention), DomError> {
+    fn form(&self, extra: usize) -> Result<(Box<Armed>, Reserved), DomError> {
         let leaf = size_of::<Armed>();
         let notice = size_of::<Notice>();
-        let mut retained = self.dom.retain_source_event_payload(
-            self.request,
-            leaf + notice + extra,
-            0,
-            self.cancel,
-        )?;
-        let backing = retained.split_payload(leaf, 0)?;
+        let bytes = leaf + notice + extra;
+        let mut retained = match &self.funding {
+            Funding::Source(dom, request) => {
+                Reserved::Source(dom.retain_source_event_payload(request, bytes, 0, self.cancel)?)
+            }
+            Funding::Ordinary(admission) => {
+                // The path can grow after arming. Reserve the upper bound for
+                // descent, unwind and leaf removal before publishing the row.
+                admission.admit_work(2 * u64::from(usize::BITS) + 1)?;
+                Reserved::Ordinary(admission.retain(bytes)?)
+            }
+        };
+        let backing = retained.take(leaf)?;
         let notice = Box::new(Notice {
             node: self.node,
             custody_key: self.custody_key,
             next: None,
-            _backing: retained.split_payload(notice, 0)?,
+            _backing: retained.take(notice)?,
         });
         let armed = Box::new(Armed {
             notice,
@@ -301,7 +402,7 @@ impl WatchAdmission<'_> {
             Some(Box::new(Branch {
                 bit,
                 children: [None, None],
-                _backing: retained.split_payload(branch_bytes, 0)?,
+                _backing: retained.take(branch_bytes)?,
             }))
         } else {
             None
@@ -332,15 +433,24 @@ impl Dom {
         let bytes = size_of::<Mutex<Queue>>();
         let backing = self
             .retain_source_event_payload(request, bytes, 0, cancel)?
-            .split_payload(bytes, 0)?;
-        Ok(DomNodeRetirementInbox {
-            owner: self.owner,
-            queue: Arc::new(Mutex::new(Queue {
-                open: true,
-                head: None,
-                _backing: backing,
-            })),
-        })
+            .split_payload(bytes, 0)?
+            .into_debit();
+        Ok(retirement_inbox(self.owner, backing))
+    }
+
+    /// Admit an inbox for ordinary exact-generation retirement notices.
+    /// The original DOM owns its backing and may later publish into it.
+    pub fn node_retirement_inbox(
+        &self,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementInbox, DomError> {
+        self.require_source_idle()?;
+        let admission = OrdinaryAdmission::new(self, limits, cancel);
+        admission.admit_work(1)?;
+        let backing = admission.retain(size_of::<Mutex<Queue>>())?;
+        check_cancel(cancel)?;
+        Ok(retirement_inbox(self.owner, backing))
     }
 
     /// Admit an exact-generation watch under the original Source event before
@@ -361,41 +471,101 @@ impl Dom {
         self.source_event_step(request, cancel)?;
         self.state.node(self.owner, node)?;
         let admission = WatchAdmission {
-            dom: self,
-            request,
+            funding: Funding::Source(self, request),
             inbox,
             node,
             custody_key,
             cancel,
         };
-        let index = if let Some(index) = &self.node_retirements {
-            let mut root = lock(&index.armed);
-            if let Some(row) = root.as_mut() {
-                if let Some(bit) = row.arm_below(&admission)? {
-                    admission.splice(&mut root, Some(bit))?;
-                }
-            } else {
-                admission.splice(&mut root, None)?;
-            }
-            index.clone()
-        } else {
-            admission.step()?;
-            let header = size_of::<Index>();
-            let (armed, mut retained) = admission.form(header)?;
-            let backing = retained.split_payload(header, 0)?;
-            drop(retained);
-            let index = Arc::new(Index {
-                armed: Mutex::new(Some(Row::Leaf(armed))),
-                _backing: backing,
-            });
-            check_cancel(cancel)?;
-            self.node_retirements = Some(index.clone());
-            index
+        let index = arm(self.node_retirements.as_ref(), &admission)?;
+        Ok(self.finish_watch(index, node, custody_key))
+    }
+
+    /// Watch the exact live generation during an ordinary DOM operation.
+    /// Detachment and adoption preserve the watch. Only committed destruction
+    /// publishes the original key to the original inbox.
+    pub fn watch_node_retirement(
+        &mut self,
+        node: NodeId,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomNodeRetirementWatch, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        self.require_source_idle()?;
+        let ordinary = OrdinaryAdmission::new(self, limits, cancel);
+        ordinary.admit_work(1)?;
+        self.state
+            .node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
+        let admission = WatchAdmission {
+            funding: Funding::Ordinary(ordinary),
+            inbox,
+            node,
+            custody_key,
+            cancel,
         };
-        Ok(DomNodeRetirementWatch {
+        let index = arm(self.node_retirements.as_ref(), &admission)?;
+        Ok(self.finish_watch(index, node, custody_key))
+    }
+
+    fn finish_watch(
+        &mut self,
+        index: Arc<Index>,
+        node: NodeId,
+        custody_key: usize,
+    ) -> DomNodeRetirementWatch {
+        if self.node_retirements.is_none() {
+            self.node_retirements = Some(index.clone());
+        }
+        DomNodeRetirementWatch {
             index,
             node,
             custody_key,
-        })
+        }
     }
 }
+
+fn retirement_inbox(owner: DomOwnerId, backing: Debit) -> DomNodeRetirementInbox {
+    DomNodeRetirementInbox {
+        owner,
+        queue: Arc::new(Mutex::new(Queue {
+            open: true,
+            head: None,
+            _backing: backing,
+        })),
+    }
+}
+
+fn arm(
+    current: Option<&Arc<Index>>,
+    admission: &WatchAdmission<'_>,
+) -> Result<Arc<Index>, DomError> {
+    if let Some(index) = current {
+        let mut root = lock(&index.armed);
+        if let Some(row) = root.as_mut() {
+            if let Some(bit) = row.arm_below(admission)? {
+                admission.splice(&mut root, Some(bit))?;
+            }
+        } else {
+            admission.splice(&mut root, None)?;
+        }
+        return Ok(index.clone());
+    }
+    admission.step()?;
+    let header = size_of::<Index>();
+    let (armed, mut retained) = admission.form(header)?;
+    let backing = retained.take(header)?;
+    drop(retained);
+    let index = Arc::new(Index {
+        armed: Mutex::new(Some(Row::Leaf(armed))),
+        _backing: backing,
+    });
+    check_cancel(admission.cancel)?;
+    Ok(index)
+}
+
+#[cfg(test)]
+mod tests;
