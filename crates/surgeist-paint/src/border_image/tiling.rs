@@ -742,6 +742,25 @@ mod tests {
     }
 
     #[test]
+    fn tiling_space_keeps_equal_outer_gaps_at_a_large_tile_count() {
+        let input = center_only(4_503_599_627_370_478.0, 0.875);
+        let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
+        let outcome = resolve_border_image_tiling(
+            &geometry(input),
+            repeat,
+            options(PaintLimits::unlimited()),
+        );
+        if let Ok(plan) = outcome.result {
+            let axis = plan.regions()[1][1].unwrap().axes().width;
+            let count = axis.count().unwrap().get();
+            assert_eq!(count, 5_146_971_002_709_117);
+            // This exact tile count leaves 5/8 CSS px for all the gaps.
+            let trailing = (-(count as f64)).mul_add(axis.gap(), 0.625);
+            assert!((trailing - axis.gap()).abs() <= axis.gap() * f64::EPSILON);
+        }
+    }
+
+    #[test]
     fn tiling_reports_refusal_prefix_and_releases_a_provisional_plan() {
         use BorderImageRepeat::{Repeat, Space};
         let geometry = geometry(request());
