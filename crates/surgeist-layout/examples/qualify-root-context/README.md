@@ -286,6 +286,25 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-wrapping-world-corner-differences
 ~~~
 
+## Original fixed-width Flex parent qualification
+
+This edition captures the actual absolute Flex parent, its sole Grid child
+and the two Ahem text leaves in three original Grid fixtures. Each fixture
+has four direction and box-sizing variants. The capture verifies the original
+stylesheet and its embedded Ahem WOFF2. Historical correspondence compares the
+Grid-local subtree, and Native replay compares the whole parent tree with the
+signed Grid offset.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/grid/grid_available_space_smaller_than_min_content.html
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-flex-parent-qualification
+~~~
+
+The first command captures one original with the cached browser. The second
+replays the [fixed edition](../../tests/layout/browser_parity/captured/original-flex-parent-qualification/).
+The publisher `--publish-original-flex-parent-qualification` requires an
+absent edition directory and the verified original source import.
+
 ## Original subgrid body qualification
 
 This edition authenticates the original subgrid gap fixture and its inline
