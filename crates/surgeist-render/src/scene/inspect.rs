@@ -53,11 +53,20 @@ fn inspect_body(commands: &[Command], account: &Account) -> Result<SceneSummary>
 }
 
 fn walk<'a>(
-    commands: &'a [Command],
+    mut commands: &'a [Command],
     account: &Account,
     images: &mut AccountedVec<&'a Image>,
 ) -> Result<()> {
-    for command in commands {
+    let mut pending = account.temporary(0)?;
+    loop {
+        let Some((command, siblings)) = commands.split_first() else {
+            let Some(siblings) = pending.pop() else {
+                return Ok(());
+            };
+            commands = siblings;
+            continue;
+        };
+        commands = siblings;
         account.work(RenderWork::CommandVisits, 1)?;
         account.work(RenderWork::AuthoredCommands, 1)?;
         match command {
@@ -109,11 +118,20 @@ fn walk<'a>(
             }
             Command::Layer { children, .. } => {
                 account.work(RenderWork::AuthoredLayers, 1)?;
-                walk(children, account, images)?;
+                if !children.is_empty() {
+                    // Only suspend a nonempty continuation. A single-child
+                    // chain uses the current slice without scratch backing.
+                    if !siblings.is_empty() {
+                        if pending.len() == pending.capacity() {
+                            pending.grow(pending.capacity().max(1))?;
+                        }
+                        pending.push(siblings)?;
+                    }
+                    commands = children;
+                }
             }
         }
     }
-    Ok(())
 }
 
 fn paint_image<'a>(
@@ -176,30 +194,46 @@ mod tests {
             .stack_size(256 * 1024)
             .spawn(|| {
                 const LAYERS: u64 = 8_192;
-                let mut scene = Scene::new();
-                scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-                for _ in 0..LAYERS {
-                    let child = scene;
-                    scene = Scene::new();
-                    scene.layer(Layer::new(), |target| *target = child);
-                }
-                let mut context = RenderAccountingContext::default();
-                let summary = scene.inspect(&mut context);
+                let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+                for with_siblings in [false, true] {
+                    let mut scene = Scene::new();
+                    scene.fill(rect, Color::BLACK);
+                    for _ in 0..LAYERS {
+                        let child = scene;
+                        scene = Scene::new();
+                        scene.layer(Layer::new(), |target| *target = child);
+                        if with_siblings {
+                            scene.fill(rect, Color::BLACK);
+                        }
+                    }
+                    let mut context = RenderAccountingContext::default();
+                    let summary = scene.inspect(&mut context);
 
-                // Dismantle this single-child fixture iteratively so its
-                // destruction does not exercise the independent drop path.
-                let mut commands = std::mem::take(&mut scene.commands);
-                while let Some(Command::Layer { children, .. }) = commands.pop() {
-                    commands = children;
-                }
+                    // Each layer is first in its sequence. Drop the leaf
+                    // siblings before moving to the next child sequence.
+                    let mut commands = std::mem::take(&mut scene.commands);
+                    while let Some(command) = commands.pop() {
+                        if let Command::Layer { children, .. } = command {
+                            commands = children;
+                        }
+                    }
 
-                let summary = summary.unwrap();
-                assert_eq!(summary.commands, LAYERS + 1);
-                assert_eq!(summary.layers, LAYERS);
-                assert_eq!(summary.fills, 1);
-                let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
-                assert_eq!(usage.work(RenderWork::CommandVisits), LAYERS + 1);
-                assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+                    let fills = 1 + u64::from(with_siblings) * LAYERS;
+                    let summary = summary.unwrap();
+                    assert_eq!(summary.commands, LAYERS + fills);
+                    assert_eq!(summary.layers, LAYERS);
+                    assert_eq!(summary.fills, fills);
+                    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
+                    assert_eq!(usage.work(RenderWork::CommandVisits), LAYERS + fills);
+                    let peak = usage.peak(RenderResource::ScratchCpuBytes);
+                    if with_siblings {
+                        assert!(peak >= LAYERS * std::mem::size_of::<&[Command]>() as u64);
+                        assert!(usage.work(RenderWork::StorageRelocations) < 2 * LAYERS);
+                    } else {
+                        assert_eq!(peak, 0);
+                    }
+                    assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+                }
             })
             .unwrap()
             .join()
