@@ -76,15 +76,7 @@ pub fn install<H: StylesheetHost>(
     sheet_members::<H>(scope, &sheet.1, &css_sheet.1)?;
     list_members::<Rules<H>>(scope, &rules.1)?;
     list_members::<Media<H>>(scope, &media.1)?;
-    attribute(
-        scope,
-        &media.1,
-        &MEDIA_TEXT,
-        &ascii(b"get mediaText"),
-        media_text::<H>,
-        None,
-    )?;
-    method(scope, &media.1, &ascii(b"toString"), 0, 0, media_text::<H>)?;
+    media::members::<H>(scope, &media.1)?;
     rule_members::<H>(scope, &rule.1)?;
     let entries = [sheet, css_sheet, rules, media, rule];
     let prototypes = entries.each_ref().map(|(_, prototype)| &prototype.root);
@@ -121,18 +113,18 @@ fn interface<'scope, H: StylesheetHost>(
     let prototype = scope.object(parent.map_or(ObjectPrototype::Default, |pair| {
         ObjectPrototype::Object(&pair.1)
     }))?;
-    let body = ConstructorCallback::with_argument_limit(
-        Some(if state.is_some() {
-            declarations::CAPTURED_OPTIONS
-        } else {
-            0
-        }),
-        move |scope| kind.prototype(scope),
-        move |scope, arguments| match &state {
-            Some(state) => state.construct(scope, arguments),
-            None => Err(type_error(scope)),
-        },
-    );
+    let body = match state {
+        Some(state) => ConstructorCallback::with_argument_limit(
+            Some(declarations::CAPTURED_OPTIONS),
+            |scope| Interface::CssSheet.prototype(scope),
+            move |scope, arguments| state.construct(scope, arguments),
+        ),
+        None => ConstructorCallback::with_argument_limit(
+            Some(0),
+            |_| Err(Error::BackendUnavailable),
+            |scope, _| Err(type_error(scope)),
+        ),
+    };
     let constructor = scope.constructor(
         &body,
         FunctionMetadata {
@@ -196,22 +188,16 @@ fn data<'scope>(
     )
 }
 
-type Member =
-    for<'scope> fn(&mut Scope<'scope>, Arguments<'scope>) -> Result<Completion<'scope>, Error>;
-
-fn method<'scope>(
+pub(super) fn method<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     key: &[u16],
     length: u32,
     capture: u32,
-    member: Member,
+    member: Callback,
 ) -> Result<(), Error> {
-    let function = scope.bounded_function(
-        &Callback::new(member),
-        FunctionMetadata { name: key, length },
-        capture,
-    )?;
+    let function =
+        scope.bounded_function(&member, FunctionMetadata { name: key, length }, capture)?;
     data(
         scope,
         prototype,
@@ -223,20 +209,17 @@ fn method<'scope>(
     )
 }
 
-fn attribute<'scope>(
+pub(super) fn attribute<'scope>(
     scope: &mut Scope<'scope>,
     prototype: &Value<'scope>,
     key: &[u16],
     name: &[u16],
-    get: Member,
-    setter: Option<(&[u16], Member)>,
+    get: Callback,
+    setter: Option<(&[u16], Callback)>,
 ) -> Result<(), Error> {
-    let get =
-        scope.fixed_arity_function(&Callback::new(get), FunctionMetadata { name, length: 0 })?;
+    let get = scope.fixed_arity_function(&get, FunctionMetadata { name, length: 0 })?;
     let set = setter
-        .map(|(name, set)| {
-            scope.fixed_arity_function(&Callback::new(set), FunctionMetadata { name, length: 1 })
-        })
+        .map(|(name, set)| scope.fixed_arity_function(&set, FunctionMetadata { name, length: 1 }))
         .transpose()?;
     scope.define_property(
         prototype,
@@ -259,10 +242,17 @@ fn list_members<'scope, L: indexed::List>(
         prototype,
         &LENGTH,
         &ascii(b"get length"),
-        indexed::length::<L>,
+        Callback::new(indexed::length::<L>),
         None,
     )?;
-    method(scope, prototype, &ITEM, 1, 1, indexed::item::<L>)?;
+    method(
+        scope,
+        prototype,
+        &ITEM,
+        1,
+        1,
+        Callback::new(indexed::item::<L>),
+    )?;
     let iterator = scope.well_known_symbol(WellKnownSymbol::Iterator)?;
     let values = scope.intrinsic(Intrinsic::ArrayValues)?;
     data(
@@ -286,7 +276,15 @@ fn sheet_members<'scope, H: StylesheetHost>(
         sheet,
         &TYPE,
         &ascii(b"get type"),
-        sheet_type::<H>,
+        Callback::new(sheet_type::<H>),
+        None,
+    )?;
+    attribute(
+        scope,
+        sheet,
+        &ascii(b"href"),
+        &ascii(b"get href"),
+        Callback::new(sheet_href::<H>),
         None,
     )?;
     attribute(
@@ -294,25 +292,39 @@ fn sheet_members<'scope, H: StylesheetHost>(
         sheet,
         DISABLED,
         &ascii(b"get disabled"),
-        disabled::<H>,
-        Some((&ascii(b"set disabled"), set_disabled::<H>)),
+        Callback::new(disabled::<H>),
+        Some((&ascii(b"set disabled"), Callback::new(set_disabled::<H>))),
     )?;
     attribute(
         scope,
         sheet,
         MEDIA,
         &ascii(b"get media"),
-        media::<H>,
-        Some((&ascii(b"set media"), forward_media::<H>)),
+        Callback::new(media::<H>),
+        Some((&ascii(b"set media"), Callback::new(forward_media::<H>))),
     )?;
     for (key, name) in [
         (CSS_RULES.as_slice(), &ascii(b"get cssRules")[..]),
         (&ascii(b"rules")[..], &ascii(b"get rules")[..]),
     ] {
-        attribute(scope, css_sheet, key, name, rules::<H>, None)?;
+        attribute(scope, css_sheet, key, name, Callback::new(rules::<H>), None)?;
     }
-    method(scope, css_sheet, &ascii(b"insertRule"), 1, 2, insert::<H>)?;
-    method(scope, css_sheet, &ascii(b"deleteRule"), 1, 1, delete::<H>)
+    method(
+        scope,
+        css_sheet,
+        &ascii(b"insertRule"),
+        1,
+        2,
+        Callback::new(insert::<H>),
+    )?;
+    method(
+        scope,
+        css_sheet,
+        &ascii(b"deleteRule"),
+        1,
+        1,
+        Callback::new(delete::<H>),
+    )
 }
 
 fn sheet_type<'scope, H: StylesheetHost>(
@@ -323,6 +335,18 @@ fn sheet_type<'scope, H: StylesheetHost>(
     let sheet = view.sheet.capture(scope)?;
     let text = view.sheet.result(scope, sheet.r#type())?;
     Ok(Completion::Return(js_text(scope, &view.sheet.realm, text)?))
+}
+
+fn sheet_href<'scope, H: StylesheetHost>(
+    scope: &mut Scope<'scope>,
+    args: Arguments<'scope>,
+) -> Result<Completion<'scope>, Error> {
+    let view = brand::<SheetView<H>>(scope, args.receiver())?;
+    let sheet = view.sheet.capture(scope)?;
+    match view.sheet.result(scope, sheet.href())? {
+        Some(href) => Ok(Completion::Return(js_text(scope, &view.sheet.realm, href)?)),
+        None => nullable(scope),
+    }
 }
 
 fn disabled<'scope, H: StylesheetHost>(
@@ -406,22 +430,6 @@ fn forward_media<'scope, H: StylesheetHost>(
     }
 }
 
-fn media_text<'scope, H: StylesheetHost>(
-    scope: &mut Scope<'scope>,
-    args: Arguments<'scope>,
-) -> Result<Completion<'scope>, Error> {
-    let state = brand::<Media<H>>(scope, args.receiver())?;
-    let media = state.capture(scope)?;
-    let text = state
-        .sheet
-        .result(scope, media.media_text(CssSerializationLimits::default()))?;
-    Ok(Completion::Return(js_text(
-        scope,
-        &state.sheet.realm,
-        &text,
-    )?))
-}
-
 fn insert<'scope, H: StylesheetHost>(
     scope: &mut Scope<'scope>,
     args: Arguments<'scope>,
@@ -477,7 +485,7 @@ fn rule_members<'scope, H: StylesheetHost>(
         rule,
         &TYPE,
         &ascii(b"get type"),
-        rule_type::<H>,
+        Callback::new(rule_type::<H>),
         None,
     )?;
     attribute(
@@ -485,8 +493,8 @@ fn rule_members<'scope, H: StylesheetHost>(
         rule,
         &CSS_TEXT,
         &ascii(b"get cssText"),
-        rule_text::<H>,
-        None,
+        Callback::new(rule_text::<H>),
+        Some((&ascii(b"set cssText"), Callback::new(set_rule_text::<H>))),
     )
 }
 
@@ -524,4 +532,17 @@ fn rule_text<'scope, H: StylesheetHost>(
         &state.sheet.realm,
         &text,
     )?))
+}
+
+fn set_rule_text<'scope, H: StylesheetHost>(
+    scope: &mut Scope<'scope>,
+    args: Arguments<'scope>,
+) -> Result<Completion<'scope>, Error> {
+    let state = brand::<Rule<H>>(scope, args.receiver())?;
+    let undefined = scope.primitive(Primitive::Undefined)?;
+    let input = args.get(0).unwrap_or(&undefined);
+    state.sheet.realm.account.run(scope, |conversion| {
+        conversion.value(&types::DOM_STRING, input)
+    })?;
+    Ok(Completion::Undefined)
 }

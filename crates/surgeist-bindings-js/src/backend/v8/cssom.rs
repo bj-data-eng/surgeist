@@ -124,11 +124,13 @@ pub(super) fn project<'s>(
     Ok(Projection { realm, id })
 }
 
+type Projected<'s> = (v8::Local<'s, v8::Object>, Rc<dyn std::any::Any>);
+
 pub(super) fn projection<'s>(
     scope: &v8::PinScope<'s, '_>,
     roots: &Roots,
     object: v8::Local<'s, v8::Value>,
-) -> Result<Option<(v8::Local<'s, v8::Object>, Rc<dyn std::any::Any>)>, Error> {
+) -> Result<Option<Projected<'s>>, Error> {
     let Some(carrier) = carrier(scope, object) else {
         return Ok(None);
     };
@@ -273,37 +275,34 @@ pub(super) fn fallback<'s>(
     let count = arguments.len();
     let mut values = values::<4>(scope, roots, arguments)?;
     let arguments = values.get_mut(..count).ok_or(Error::TooManyArguments)?;
-    match trap {
-        IndexedTrap::Define => {
-            let descriptor = arguments.get_mut(2).ok_or(Error::BackendUnavailable)?;
-            let input = v8::Local::<v8::Object>::try_from(*descriptor)
-                .map_err(|_| Error::BackendUnavailable)?;
-            let null = v8::null(scope);
-            let output = v8::Object::with_prototype_and_properties(scope, null.into(), &[], &[]);
-            for field in [
-                "value",
-                "writable",
-                "get",
-                "set",
-                "enumerable",
-                "configurable",
-            ] {
-                let key = v8::String::new(scope, field).ok_or(Error::BackendUnavailable)?;
-                if input
-                    .has_own_property(scope, key.into())
-                    .ok_or(Error::BackendUnavailable)?
-                {
-                    let value = input
-                        .get(scope, key.into())
-                        .ok_or(Error::BackendUnavailable)?;
-                    if output.create_data_property(scope, key.into(), value) != Some(true) {
-                        return Err(Error::BackendUnavailable);
-                    }
+    if let IndexedTrap::Define = trap {
+        let descriptor = arguments.get_mut(2).ok_or(Error::BackendUnavailable)?;
+        let input = v8::Local::<v8::Object>::try_from(*descriptor)
+            .map_err(|_| Error::BackendUnavailable)?;
+        let null = v8::null(scope);
+        let output = v8::Object::with_prototype_and_properties(scope, null.into(), &[], &[]);
+        for field in [
+            "value",
+            "writable",
+            "get",
+            "set",
+            "enumerable",
+            "configurable",
+        ] {
+            let key = v8::String::new(scope, field).ok_or(Error::BackendUnavailable)?;
+            if input
+                .has_own_property(scope, key.into())
+                .ok_or(Error::BackendUnavailable)?
+            {
+                let value = input
+                    .get(scope, key.into())
+                    .ok_or(Error::BackendUnavailable)?;
+                if output.create_data_property(scope, key.into(), value) != Some(true) {
+                    return Err(Error::BackendUnavailable);
                 }
             }
-            *descriptor = output.into();
         }
-        _ => (),
+        *descriptor = output.into();
     }
     reflection(scope, intrinsics, trap, arguments)
 }

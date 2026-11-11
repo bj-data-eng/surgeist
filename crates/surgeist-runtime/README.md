@@ -235,7 +235,7 @@ front joins an idle bound root to its original hosted destruction Cleanup.
 The optional `document-scripting` feature attaches a bindings process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
 Runtime installs `window`, `self`, `parent`, `opener`, `length`, `CSS`, and
-`DOMException` on the realm's global object. For this native no-opener top-level, the first
+`DOMException`, and the constructed stylesheet interfaces on the realm's global object. For this native no-opener top-level, the first
 three getters return the same WindowProxy and the `opener` getter returns
 `null`. The relation accessors qualify the receiving Window against the
 current native attachment. The `length` getter reads DOM's current count of
@@ -247,6 +247,10 @@ guest value.
 The `DOMException` constructor uses
 `surgeist_bindings_js::dom_exception::DomExceptionLimits` for its DOMString
 conversions. A conflicting host hook name refuses attachment.
+`new CSSStyleSheet()` uses the current Document's native CSSOM owner or creates
+its first owner under the same custody. A live `CSSRuleList` or `MediaList`
+retains access to that producer. Rule edits and media mutations publish
+through the actual CSSOM store.
 The host-defined child-count callable reads the original Session's current DOM.
 Entry releases native loans before running guest code and leaves queued jobs for
 an explicit checked

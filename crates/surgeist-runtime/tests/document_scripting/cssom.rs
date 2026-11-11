@@ -6,6 +6,8 @@ pub(super) fn run() {
     reuse_native_owner();
     indexed_properties_and_rule_custody();
     constructor_and_mutation_order();
+    media_mutations_and_branched_copy();
+    constructor_admission_rolls_back_before_publication();
 }
 
 fn reuse_native_owner() {
@@ -69,6 +71,9 @@ fn indexed_properties_and_rule_custody() {
             if (spread[1] !== b) return 244;
             if (!(a instanceof CSSRule)) return 25;
             if (a.type !== 1) return 26;
+            let ruleTextWrites = 0;
+            a.cssText = {toString() { ruleTextWrites++; return 'article {}'; }};
+            if (ruleTextWrites !== 1 || a.cssText !== 'a { }') return 27;
 
             const symbols = [Symbol('left'), Symbol('right')];
             for (const key of ['x', '01', '-0', '4294967295', ...symbols]) {
@@ -173,7 +178,7 @@ fn constructor_and_mutation_order() {
             }, marker], target);
             const copied = sheet.media;
             if (log.join(',') !== 'baseURL,baseURL string,disabled,media,prototype'
-                || Object.getPrototypeOf(sheet) !== targetPrototype || !sheet.disabled
+                || Object.getPrototypeOf(sheet) !== targetPrototype || !sheet.disabled || sheet.href !== 'about:blank'
                 || copied === source || copied.mediaText !== 'screen' || sheet.media !== copied
                 || copied[0] !== 'screen' || copied.item(1) !== null
                 || copied.toString() !== 'screen') return false;
@@ -220,6 +225,188 @@ fn constructor_and_mutation_order() {
         assert_eq!(owner.snapshot().unwrap().revision().value(), 3);
     })
     .unwrap();
+}
+
+fn media_mutations_and_branched_copy() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_contract(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+        const sheet = new CSSStyleSheet({media: 'screen'});
+        const media = sheet.media;
+        const text = Object.getOwnPropertyDescriptor(MediaList.prototype, 'mediaText');
+        const forwarded = Object.getOwnPropertyDescriptor(StyleSheet.prototype, 'media');
+        if (text.get.name !== 'get mediaText' || text.set.name !== 'set mediaText'
+            || text.set.length !== 1 || !text.enumerable || !text.configurable
+            || forwarded.set.name !== 'set media' || forwarded.set.length !== 1
+            || !forwarded.enumerable || !forwarded.configurable
+            || MediaList.prototype.appendMedium.length !== 1
+            || MediaList.prototype.deleteMedium.length !== 1) return 2;
+        let coerced = 0;
+        sheet.media = {toString() { coerced++; return 'print, screen'; }};
+        if (coerced !== 1 || media !== sheet.media || media.mediaText !== 'print, screen'
+            || [...media].join(',') !== 'print,screen' || media.item(1) !== 'screen') return 3;
+        media.appendMedium('speech');
+        media.deleteMedium('print');
+        if (media.mediaText !== 'screen, speech' || media[1] !== 'speech') return 4;
+        try { media.deleteMedium('print'); return 5; }
+        catch (error) {
+            if (Object.getPrototypeOf(error) !== DOMException.prototype || error.name !== 'NotFoundError') return 6;
+        }
+        media.appendMedium('print, screen');
+        if (media.mediaText !== 'screen, speech') return 7;
+        sheet.media = null;
+        if (media.mediaText !== '' || media.length !== 0 || media[0] !== undefined || media.item(0) !== null) return 8;
+
+        media[Symbol.toPrimitive] = () => { throw new Error('the genuine MediaList was coerced'); };
+        const proto = CSSStyleSheet.prototype;
+        const target = new Proxy(function Target() {}, {
+            get(object, key, receiver) {
+                if (key !== 'prototype') return Reflect.get(object, key, receiver);
+                media.mediaText = 'print';
+                return proto;
+            }
+        });
+        const copy = Reflect.construct(CSSStyleSheet, [{media}], target).media;
+        media.mediaText = 'screen';
+        if (copy === media || copy.mediaText !== 'print' || media.mediaText !== 'screen') return 9;
+
+        let looked = 0;
+        const marker = {};
+        Object.defineProperty(sheet, 'media', {configurable: true, get() { looked++; throw marker; }});
+        try { forwarded.set.call(sheet, 'print'); return 10; }
+        catch (error) { if (error !== marker || looked !== 1) return 11; }
+        const rejected = Object.freeze({mediaText: 'fixed'});
+        Object.defineProperty(sheet, 'media', {value: rejected, configurable: true});
+        forwarded.set.call(sheet, 'print');
+        if (rejected.mediaText !== 'fixed') return 12;
+        return true;
+    })())"#,
+    );
+    host.with_native(|dom, _, _| {
+        let owner = dom
+            .style_cssom_root(top.document().node())
+            .unwrap()
+            .unwrap();
+        assert_eq!(owner.snapshot().unwrap().revision().value(), 8);
+    })
+    .unwrap();
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Admission {
+    BeforeAttachment,
+    Storage,
+    Work,
+    Published,
+}
+
+fn constructor_admission_rolls_back_before_publication() {
+    let exact_storage = exact_limit(STORAGE, |bytes| {
+        constructor_admission(bytes, limits().hosted.work)
+    });
+    assert_eq!(
+        constructor_admission(exact_storage - 1, limits().hosted.work),
+        Admission::Storage
+    );
+
+    let upper = usize::try_from(limits().hosted.work).unwrap();
+    let exact_work = exact_limit(upper, |work| constructor_admission(STORAGE, work as u64));
+    assert_eq!(
+        constructor_admission(STORAGE, (exact_work - 1) as u64),
+        Admission::Work
+    );
+}
+
+fn exact_limit(upper: usize, trial: impl Fn(usize) -> Admission) -> usize {
+    assert_eq!(trial(upper), Admission::Published);
+    let mut success = upper;
+    let mut refused = 0;
+    while success - refused > 1 {
+        let middle = refused + (success - refused) / 2;
+        if trial(middle) == Admission::Published {
+            success = middle;
+        } else {
+            refused = middle;
+        }
+    }
+    assert_eq!(trial(success), Admission::Published);
+    success
+}
+
+fn constructor_admission(storage: usize, work: u64) -> Admission {
+    use std::error::Error as _;
+
+    let (mut session, top) = setup();
+    let mut policy = limits().hosted;
+    policy.work = work;
+    if session
+        .hosted_execution()
+        .set_limits(&mut session.dom(), policy, &cancel())
+        .is_err()
+    {
+        return Admission::BeforeAttachment;
+    }
+    let Ok(prepared) = PreparedDocumentScriptHost::prepare(session, storage, Arc::new(cancel()))
+    else {
+        return Admission::BeforeAttachment;
+    };
+    let Ok(mut host) = prepared.enable(top, ALLOW, hooks(&hook())) else {
+        return Admission::BeforeAttachment;
+    };
+    let permit = host.permit().unwrap();
+    let result = host.in_document(&permit, |scope| {
+        let script = "void new CSSStyleSheet({media:'screen'})"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        scope.evaluate(&script)?;
+        Ok(())
+    });
+    let revision = host
+        .with_native(|dom, _, _| {
+            dom.style_cssom_root(top.document().node())
+                .unwrap()
+                .map(|owner| owner.snapshot().unwrap().revision().value())
+        })
+        .unwrap();
+    match result {
+        Ok(()) => {
+            assert_eq!(revision, Some(1));
+            Admission::Published
+        }
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => {
+            assert_eq!(revision, None);
+            let mut source = failure.source();
+            while let Some(error) = source {
+                if matches!(
+                    error.downcast_ref::<DocumentScriptNativeError>(),
+                    Some(DocumentScriptNativeError::StorageLimit)
+                ) {
+                    return Admission::Storage;
+                }
+                if matches!(
+                    error.downcast_ref::<DomHostedRuntimeError>(),
+                    Some(DomHostedRuntimeError::Admission)
+                ) {
+                    return Admission::Work;
+                }
+                source = error.source();
+            }
+            panic!("unexpected construction refusal {:?}", failure.source());
+        }
+        Err(DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
+            DomHostedRuntimeError::Admission,
+        ))) => {
+            assert_eq!(revision, None);
+            Admission::BeforeAttachment
+        }
+        other => panic!("unexpected construction result {other:?}"),
+    }
 }
 
 fn assert_contract(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &str) {

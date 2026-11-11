@@ -8,8 +8,8 @@ use std::sync::Arc;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::{
     CssRule, CssRuleList, CssStyleSheet, CssomCapture, CssomError, CssomException,
-    CssomInitialMedia, CssomRuleFormatLimits, CssomRuleId, CssomSheetId, CssomSheetInit,
-    CssomSheetText, CssomSnapshot, MediaList,
+    CssomInitialMedia, CssomMediaListId, CssomRuleFormatLimits, CssomRuleId, CssomSheetId,
+    CssomSheetInit, CssomSheetText, CssomSnapshot, MediaList,
 };
 use surgeist_ledger::{Limits, Operation, Tariffs};
 
@@ -27,15 +27,21 @@ use crate::{
 pub(crate) mod declarations;
 mod indexed;
 mod interface;
+mod media;
 
 pub use interface::{install, installation_storage_bytes};
+pub use media::MediaEdit;
 
 const fn ascii<const N: usize>(bytes: &[u8; N]) -> [u16; N] {
     let mut result = [0; N];
-    let mut i = 0;
-    while i < N {
-        result[i] = bytes[i] as u16;
-        i += 1;
+    let mut input: &[u8] = bytes;
+    let mut output: &mut [u16] = &mut result;
+    while let (Some((byte, rest)), Some((unit, tail))) =
+        (input.split_first(), output.split_first_mut())
+    {
+        *unit = *byte as u16;
+        input = rest;
+        output = tail;
     }
     result
 }
@@ -45,6 +51,8 @@ const MEDIA_TEXT: [u16; 9] = ascii(b"mediaText");
 
 /// Canonical Window stylesheet authority. A receipt keeps the exact published
 /// native CSSOM owner live while its stylesheet, rules or media are reachable.
+/// Host methods must finish without running guest code. A refused operation
+/// may create a typed guest exception in the entered scope.
 pub trait StylesheetHost: 'static {
     /// Original native publication receipt.
     type Sheet: 'static;
@@ -81,6 +89,15 @@ pub trait StylesheetHost: 'static {
         scope: &mut Scope<'_>,
         sheet: &Self::Sheet,
         disabled: bool,
+    ) -> Result<(), Error>;
+    /// Edit the exact media list in the original live store.
+    fn edit_media(
+        &self,
+        scope: &mut Scope<'_>,
+        sheet: &Self::Sheet,
+        media: &CssomMediaListId,
+        edit: MediaEdit,
+        text: Arc<Vec<u16>>,
     ) -> Result<(), Error>;
     /// Preserve an original non-source CSSOM failure in native custody.
     fn refuse(&self, scope: &mut Scope<'_>, error: CssomError) -> Error;
@@ -135,7 +152,10 @@ impl<H: StylesheetHost> Sheet<H> {
     fn capture(&self, scope: &mut Scope<'_>) -> Result<CssomCapture<CssStyleSheet>, Error> {
         let receipt = self.receipt()?;
         let snapshot = self.realm.host.snapshot(scope, receipt)?;
-        self.result(scope, snapshot.capture_style_sheet(H::sheet_id(receipt)))
+        self.result(
+            scope,
+            snapshot.capture_css_style_sheet(H::sheet_id(receipt)),
+        )
     }
 
     fn result<T>(&self, scope: &mut Scope<'_>, value: Result<T, CssomError>) -> Result<T, Error> {
