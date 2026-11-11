@@ -3,13 +3,10 @@ use crate::parser_resources::check_resource_diagnostics;
 use crate::sheet_operations::{check_cancellation, sheet_utf16_error, sheet_utf16_limits};
 use crate::*;
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_css::component::CssValueOrigin;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 use surgeist_css::serialization::CssSerializationLimits;
-use surgeist_css::source::{
-    CssParsedOrigin, CssUtf16InputError, CssUtf16Resource, same_provenance,
-};
+use surgeist_css::source::{CssUtf16InputError, CssUtf16Resource, same_provenance};
 use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
 /// A source mutation's disposition and original recovered parser diagnostics.
@@ -115,7 +112,13 @@ impl CssomBatch {
                 None
             };
             Ok(CssomMediaEdit {
-                changed: this.replace_media(id, value, false, source_changed)?,
+                changed: this.replace_media(
+                    id,
+                    value,
+                    false,
+                    source_changed,
+                    MediaReplacement::Explicit,
+                )?,
                 diagnostics,
             })
         })?;
@@ -154,7 +157,7 @@ impl CssomBatch {
             let (report, work) = match source.into() {
                 CssomSheetText::Utf8(source) => {
                     check_input(source, &this.limits)?;
-                    (CssMediaQuery::parse_medium(&parser, source), 0)
+                    (CssMediaQuery::parse_medium(&parser, source), None)
                 }
                 CssomSheetText::Utf16(source) => CssMediaQuery::parse_medium_utf16_with_work(
                     &parser,
@@ -162,6 +165,7 @@ impl CssomBatch {
                     sheet_utf16_limits(&this.limits),
                     || check_cancellation(cancel),
                 )
+                .map(|(report, work)| (report, Some(work)))
                 .map_err(sheet_utf16_error)?,
             };
             let (candidate, diagnostics) = recovered(report)?;
@@ -217,11 +221,12 @@ impl CssomBatch {
                 // A previous edit can remove a base member, and later deletes
                 // can shift this append into any earlier position. Reuse a
                 // matching original now while this append owns work and polling.
-                if let Some(base) = this
-                    .base
-                    .media
-                    .get(id)
-                    .filter(|base| !std::ptr::eq(*base, current))
+                if let Some(work) = work
+                    && let Some(base) = this
+                        .base
+                        .media
+                        .get(id)
+                        .filter(|base| !std::ptr::eq(*base, current))
                     && let Some(original) = retained_base_member(
                         base,
                         &candidate,
@@ -235,8 +240,23 @@ impl CssomBatch {
                 }
                 selected.push(candidate);
             }
+            let value = if let Some(base) = this.base.media.get(id)
+                && exact_media_source(base).is_some()
+                && !this.explicit_media_replacements.contains(id)
+                && base.same_retained_members(&selected)
+            {
+                base.clone()
+            } else {
+                CssMediaQueryList::new(selected)
+            };
             Ok(CssomMediaEdit {
-                changed: this.set_media(id, CssMediaQueryList::new(selected))?,
+                changed: this.replace_media(
+                    id,
+                    value,
+                    false,
+                    None,
+                    MediaReplacement::MemberEdit,
+                )?,
                 diagnostics,
             })
         })?;
@@ -315,28 +335,16 @@ fn same_exact_units(
     Ok(true)
 }
 
-fn exact_member_origin(query: &CssMediaQuery) -> Option<(&CssParsedOrigin, &Arc<Vec<u16>>)> {
-    let CssValueOrigin::Parsed(origin) = query.origin() else {
-        return None;
-    };
-    Some((origin, origin.source().original_utf16()?))
-}
-
 fn retained_base_member<'a>(
     base: &'a CssMediaQueryList,
     candidate: &CssMediaQuery,
     mut remaining_work: usize,
     cancel: &AtomicBool,
 ) -> Result<Option<&'a CssMediaQuery>, CssomError> {
-    let Some((origin, input)) = exact_member_origin(candidate) else {
-        return Ok(None);
-    };
     for member in base.queries() {
         charge_comparison(&mut remaining_work, cancel)?;
-        if let Some((previous, previous_input)) = exact_member_origin(member)
-            && previous.span() == origin.span()
-            && same_exact_units(previous_input, input, &mut remaining_work, cancel)?
-            && same_provenance(member, candidate)
+        if member
+            .same_exact_provenance(candidate, || charge_comparison(&mut remaining_work, cancel))?
         {
             return Ok(Some(member));
         }
@@ -379,6 +387,11 @@ fn recovered<T>(report: CssParseReport<T>) -> Result<(T, Vec<CssRecoveryDiagnost
     Ok(report.into_parts())
 }
 
+enum MediaReplacement {
+    Explicit,
+    MemberEdit,
+}
+
 impl CssomBatch {
     /// Product typed media replacement uses the existing checked Media Queries carrier.
     pub fn set_media(
@@ -395,7 +408,7 @@ impl CssomBatch {
         value: CssMediaQueryList,
         retain_input: bool,
     ) -> Result<bool, CssomError> {
-        self.replace_media(id, value, retain_input, None)
+        self.replace_media(id, value, retain_input, None, MediaReplacement::Explicit)
     }
 
     fn replace_media(
@@ -404,11 +417,37 @@ impl CssomBatch {
         value: CssMediaQueryList,
         retain_input: bool,
         source_changed: Option<bool>,
+        replacement: MediaReplacement,
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
-            this.staged.media(id)?;
-            let changed =
-                source_changed.unwrap_or_else(|| !same_provenance(&this.staged.media[id], &value));
+            let current = this.staged.media(id)?;
+            let changed = source_changed.unwrap_or_else(|| !same_provenance(current, &value));
+            if matches!(replacement, MediaReplacement::Explicit)
+                && let Some(base) = this.base.media.get(id)
+                && exact_media_source(base).is_some()
+            {
+                // At most one barrier per admitted base media object. An
+                // explicit clear also ends a pending member-only restoration
+                // when the staged list was already empty.
+                let retained = if changed || retain_input {
+                    &value
+                } else {
+                    current
+                };
+                if exact_media_source_differs(Some(retained), Some(base)) {
+                    if !this.explicit_media_replacements.contains(id) {
+                        this.explicit_media_replacements
+                            .try_reserve(1)
+                            .map_err(|_| CssomError::Limit {
+                                resource: "media source replacements",
+                                maximum: this.limits.max_objects,
+                            })?;
+                        this.explicit_media_replacements.insert(id.clone());
+                    }
+                } else {
+                    this.explicit_media_replacements.remove(id);
+                }
+            }
             if !changed && !retain_input {
                 return Ok(false);
             }

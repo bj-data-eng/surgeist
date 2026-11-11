@@ -55,10 +55,17 @@ impl CssMediaQueryList {
         &self.queries
     }
 
-    /// Compares the members and commas with their provenance, additionally
-    /// checking each exact UTF16 member's original allocation by identity.
-    /// This reads no original units. Independently supplied equal input can
-    /// reuse its established allocation after a caller's bounded comparison.
+    /// Checks whether these ordered members retain the same syntax, spans
+    /// and source snapshots. Commas and list-level source are excluded.
+    #[must_use]
+    pub fn same_retained_members(&self, members: &[CssMediaQuery]) -> bool {
+        crate::source::provenance::same_provenance_by_source_identity(self.queries(), members)
+    }
+
+    /// Compares the members and commas with their provenance. Members with
+    /// exact UTF16 root origins compare every source by snapshot identity.
+    /// Independently supplied equal input can reuse its established member
+    /// after a caller's bounded comparison.
     /// The separately retained list parse source is outside this comparison.
     #[must_use]
     pub fn same_member_provenance(&self, other: &Self) -> bool {
@@ -68,14 +75,11 @@ impl CssMediaQueryList {
                 .iter()
                 .zip(&other.queries)
                 .all(|(left, right)| {
-                    let left_source = exact_member_source(left);
-                    let right_source = exact_member_source(right);
-                    let same_original = match (left_source, right_source) {
-                        (None, None) => true,
-                        (Some(left), Some(right)) => std::sync::Arc::ptr_eq(left, right),
-                        _ => false,
-                    };
-                    same_original && crate::source::same_provenance(left, right)
+                    if has_exact_member_source(left) || has_exact_member_source(right) {
+                        crate::source::provenance::same_provenance_by_source_identity(left, right)
+                    } else {
+                        crate::source::same_provenance(left, right)
+                    }
                 })
             && crate::source::same_provenance(&self.comma_origins, &other.comma_origins)
     }
@@ -89,10 +93,76 @@ impl CssMediaQueryList {
     }
 }
 
-fn exact_member_source(query: &CssMediaQuery) -> Option<&std::sync::Arc<Vec<u16>>> {
-    match query.origin() {
-        CssValueOrigin::Parsed(origin) => origin.source().original_utf16(),
-        _ => None,
+fn has_exact_member_source(query: &CssMediaQuery) -> bool {
+    matches!(query.origin(), CssValueOrigin::Parsed(origin) if origin.source().original_utf16().is_some())
+}
+
+#[cfg(test)]
+mod exact_provenance_tests {
+    use super::*;
+    use crate::source::position::SNAPSHOT_TEXT_BYTES_COMPARED;
+    use crate::source::{CssUtf16InputLimits, same_provenance};
+    use std::cell::Cell;
+    use std::convert::Infallible;
+    use std::sync::Arc;
+
+    #[test]
+    fn qualified_exact_members_do_not_reread_normalized_root_or_unrelated_nested_sources() {
+        let mut units = "/*".encode_utf16().collect::<Vec<_>>();
+        units.extend(std::iter::repeat_n(0xd800, 512));
+        units.extend("*/print and ((width > 12px) or (height < 24px))".encode_utf16());
+        let parse = || {
+            CssMediaQuery::parse_medium_utf16(
+                &crate::CssParser::default(),
+                Arc::new(units.clone()),
+                CssUtf16InputLimits::default(),
+                || Ok::<_, Infallible>(()),
+            )
+            .unwrap()
+            .into_parts()
+            .0
+            .unwrap()
+        };
+        let first = parse();
+        let second = parse();
+        let third = parse();
+        let (CssMediaQuery::Typed(mut mixed), CssMediaQuery::Typed(third)) =
+            (second.clone(), third)
+        else {
+            panic!("expected typed print queries");
+        };
+        assert!(third.condition.is_some());
+        mixed.condition = third.condition;
+        let mixed = CssMediaQuery::Typed(mixed);
+
+        SNAPSHOT_TEXT_BYTES_COMPARED.set(0);
+        assert!(same_provenance(&first, &mixed));
+        assert!(SNAPSHOT_TEXT_BYTES_COMPARED.with(Cell::get) > units.len());
+
+        for (candidate, expected) in [(&second, true), (&mixed, false)] {
+            SNAPSHOT_TEXT_BYTES_COMPARED.set(0);
+            let mut charged = 0;
+            let same = first
+                .same_exact_provenance(candidate, || {
+                    charged += 1;
+                    Ok::<_, Infallible>(())
+                })
+                .unwrap();
+            assert_eq!(same, expected);
+            assert_eq!(charged, units.len());
+            assert_eq!(SNAPSHOT_TEXT_BYTES_COMPARED.with(Cell::get), 0);
+        }
+
+        SNAPSHOT_TEXT_BYTES_COMPARED.set(0);
+        assert!(same_provenance(&first, &mixed));
+        assert!(SNAPSHOT_TEXT_BYTES_COMPARED.with(Cell::get) > units.len());
+
+        SNAPSHOT_TEXT_BYTES_COMPARED.set(0);
+        let second = CssMediaQueryList::new(vec![second]);
+        let mixed = CssMediaQueryList::new(vec![mixed]);
+        assert!(second.same_member_provenance(&second.clone()));
+        assert!(!second.same_member_provenance(&mixed));
+        assert_eq!(SNAPSHOT_TEXT_BYTES_COMPARED.with(Cell::get), 0);
     }
 }
 
@@ -124,6 +194,36 @@ impl CssMediaQuery {
             Self::Typed(v) => v.origin(),
             Self::Never(v) => v.origin(),
         }
+    }
+
+    /// Compares two parsed members and their provenance after qualifying the
+    /// exact UTF16 at their root origins. Calls `charge_unit` before reading
+    /// each pair of original units from distinct backing allocations.
+    /// Nested origins must share a snapshot or refer to the qualified pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first caller refusal from `charge_unit`.
+    pub fn same_exact_provenance<E>(
+        &self,
+        other: &Self,
+        charge_unit: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let (CssValueOrigin::Parsed(left), CssValueOrigin::Parsed(right)) =
+            (self.origin(), other.origin())
+        else {
+            return Ok(false);
+        };
+        if left.span() != right.span() {
+            return Ok(false);
+        }
+        crate::source::provenance::same_provenance_in_exact_sources(
+            self,
+            left.source(),
+            other,
+            right.source(),
+            charge_unit,
+        )
     }
 
     /// Returns whether this member is the parser-owned guaranteed-false recovery sentinel.

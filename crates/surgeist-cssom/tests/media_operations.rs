@@ -410,6 +410,103 @@ fn utf16_batch_restores_member_origins_when_later_deletes_shift_appended_indices
 }
 
 #[test]
+fn explicit_empty_text_keeps_the_list_source_cleared_after_a_member_is_restored() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let exact = Arc::new(exact_media("print"));
+    let _ = media
+        .set_media_text(&mut store, CssomSheetText::Utf16(exact.clone()), &proceed)
+        .unwrap();
+    let before = store.snapshot();
+    let mut edit = batch(&store);
+    assert!(
+        edit.delete_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        !edit
+            .set_media_text(media.id(), "", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.append_medium(media.id(), CssomSheetText::Utf16(exact), &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(matches!(
+        store.commit(edit).unwrap().publication(),
+        CssomPublication::Changed(_)
+    ));
+    let after = store.snapshot();
+    assert_ne!(after.revision(), before.revision());
+    assert!(before.media(media.id()).unwrap().parse_source().is_some());
+    assert!(after.media(media.id()).unwrap().parse_source().is_none());
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+}
+
+#[test]
+fn explicit_exact_text_never_restores_the_old_source_with_equal_normalization() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let units = exact_media("print");
+    let mut replacement = units.clone();
+    replacement[6] = 0;
+    let replacement = Arc::new(replacement);
+    let _ = media
+        .set_media_text(&mut store, CssomSheetText::Utf16(Arc::new(units)), &proceed)
+        .unwrap();
+    let before = store.snapshot();
+    let mut edit = batch(&store);
+    assert!(
+        edit.set_media_text(
+            media.id(),
+            CssomSheetText::Utf16(replacement.clone()),
+            &proceed
+        )
+        .unwrap()
+        .changed()
+    );
+    assert!(
+        edit.append_medium(media.id(), "screen", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.delete_medium(media.id(), "screen", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(matches!(
+        store.commit(edit).unwrap().publication(),
+        CssomPublication::Changed(_)
+    ));
+    let after = store.snapshot();
+    assert_ne!(after.revision(), before.revision());
+    let list = after.media(media.id()).unwrap();
+    if let Some(parsed) = list.parse_source() {
+        assert!(Arc::ptr_eq(
+            parsed.source().original_utf16().unwrap(),
+            &replacement
+        ));
+    }
+    let [member] = list.queries() else {
+        panic!("expected one print member");
+    };
+    let CssValueOrigin::Parsed(origin) = member.origin() else {
+        panic!("expected an authored print member");
+    };
+    assert!(Arc::ptr_eq(
+        origin.source().original_utf16().unwrap(),
+        &replacement
+    ));
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+}
+
+#[test]
 fn utf16_media_admits_exact_backing_and_cumulative_equal_input_work() {
     let raw = Arc::new(exact_media("screen"));
     let (parsed, parse_work) = CssMediaQueryList::parse_utf16_with_work(

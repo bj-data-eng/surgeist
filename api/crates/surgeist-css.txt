@@ -3772,6 +3772,7 @@ impl surgeist_css::query::media::CssMediaQuery
 pub const fn surgeist_css::query::media::CssMediaQuery::is_guaranteed_false(&self) -> bool
 pub const fn surgeist_css::query::media::CssMediaQuery::origin(&self) -> &surgeist_css::component::CssValueOrigin
 pub const fn surgeist_css::query::media::CssMediaQuery::position(&self) -> core::option::Option<surgeist_css::source::CssSourcePosition>
+pub fn surgeist_css::query::media::CssMediaQuery::same_exact_provenance<E>(&self, other: &Self, charge_unit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 impl surgeist_css::query::media::CssMediaQuery
 pub fn surgeist_css::query::media::CssMediaQuery::parse(parser: &surgeist_css::CssParser, source: impl core::convert::AsRef<str>) -> surgeist_css::CssParseReport<surgeist_css::query::media::CssMediaQuery>
 pub fn surgeist_css::query::media::CssMediaQuery::parse_medium(parser: &surgeist_css::CssParser, source: impl core::convert::AsRef<str>) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::query::media::CssMediaQuery>>
@@ -3911,6 +3912,7 @@ pub fn surgeist_css::query::media::CssMediaQueryList::new(queries: alloc::vec::V
 pub const fn surgeist_css::query::media::CssMediaQueryList::parse_source(&self) -> core::option::Option<&surgeist_css::source::CssParseSource>
 pub fn surgeist_css::query::media::CssMediaQueryList::queries(&self) -> &[surgeist_css::query::media::CssMediaQuery]
 pub fn surgeist_css::query::media::CssMediaQueryList::same_member_provenance(&self, other: &Self) -> bool
+pub fn surgeist_css::query::media::CssMediaQueryList::same_retained_members(&self, members: &[surgeist_css::query::media::CssMediaQuery]) -> bool
 impl surgeist_css::query::media::CssMediaQueryList
 pub fn surgeist_css::query::media::CssMediaQueryList::parse(parser: &surgeist_css::CssParser, source: impl core::convert::AsRef<str>) -> surgeist_css::CssParseReport<surgeist_css::query::media::CssMediaQueryList>
 pub fn surgeist_css::query::media::CssMediaQueryList::parse_utf16<E>(parser: &surgeist_css::CssParser, original: alloc::sync::Arc<alloc::vec::Vec<u16>>, limits: surgeist_css::source::CssUtf16InputLimits, poll: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_css::CssParseReport<surgeist_css::query::media::CssMediaQueryList>, surgeist_css::source::CssUtf16InputError<E>>

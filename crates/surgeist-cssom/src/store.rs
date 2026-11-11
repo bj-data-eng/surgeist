@@ -4,7 +4,7 @@ use crate::{
     *,
 };
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     sync::Arc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -98,6 +98,7 @@ impl CssomStore {
             declaration_changes: Vec::new(),
             counter_changes: Vec::new(),
             owner_updates: Vec::new(),
+            explicit_media_replacements: HashSet::new(),
             pending_preparations: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -262,6 +263,7 @@ pub struct CssomBatch {
     pub(crate) declaration_changes: Vec<CssomBlockId>,
     pub(crate) counter_changes: Vec<CssomBlockId>,
     pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_budget::DeclarationBudget)>,
+    pub(crate) explicit_media_replacements: HashSet<CssomMediaListId>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
