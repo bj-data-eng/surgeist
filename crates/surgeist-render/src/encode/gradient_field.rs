@@ -132,43 +132,51 @@ pub(super) enum LinearSampling {
     HorizontalDistanceRepeat { phase: f32 },
 }
 
+pub(super) enum NativeGlyphField {
+    Linear(LinearSampling),
+    Radial {
+        radii: (f32, f32),
+        reference: RadialReference,
+    },
+}
+
 pub(super) fn native_glyph_transform(
-    brush_transform: BrushTransform,
+    local: kurbo::Affine,
+    reference_device: kurbo::Affine,
+    comparison_only: bool,
     paint_to_device: kurbo::Affine,
-    radial_radii: Option<(f32, f32)>,
     target_extent: PhysicalSize,
-    sampling: LinearSampling,
+    field: NativeGlyphField,
     account: &Account,
 ) -> Result<vello_encoding::Transform> {
-    let local = narrow_transform(brush_transform.local, account)?;
+    let local = narrow_transform(local, account)?;
     let shape = narrow_transform(paint_to_device, account)?;
     // GlyphRun's resolver composes already-narrowed transforms. Neither factor
     // is inverted independently for the paint, so check the actual product.
     let composed = native_product(shape, local, account)?;
-    if let Some(radii) = radial_radii {
-        qualify_radial(
-            brush_transform.reference_device,
+    match field {
+        NativeGlyphField::Radial { radii, reference } => qualify_radial(
+            reference_device,
             composed,
             radii,
-            brush_transform
-                .radial
-                .expect("radial reference accompanies native radii"),
+            reference,
             target_extent,
-            brush_transform.comparison_only,
+            comparison_only,
             account,
-        )?;
-    } else {
-        if !check_native_linear(composed, account)? {
-            return Err(invalid_geometry("rounded-zero native glyph period"));
+        )?,
+        NativeGlyphField::Linear(sampling) => {
+            if !check_native_linear(composed, account)? {
+                return Err(invalid_geometry("rounded-zero native glyph period"));
+            }
+            qualify_linear_sampling(
+                reference_device,
+                composed,
+                target_extent,
+                comparison_only,
+                sampling,
+                account,
+            )?;
         }
-        qualify_linear_sampling(
-            brush_transform.reference_device,
-            composed,
-            target_extent,
-            brush_transform.comparison_only,
-            sampling,
-            account,
-        )?;
     }
     Ok(local)
 }

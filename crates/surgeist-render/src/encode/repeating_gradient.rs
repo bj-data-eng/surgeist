@@ -622,16 +622,12 @@ mod tests {
         assert_eq!(intended_phase, 0.0);
         assert_eq!(narrowed_phase - intended_phase, 1.0 / 16.0);
         let error = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device,
-                radial: None,
-                comparison_only: false,
-            },
+            local,
+            reference_device,
+            false,
             output,
-            None,
             PhysicalSize::new(32, 32),
-            LinearSampling::Direct,
+            NativeGlyphField::Linear(LinearSampling::Direct),
             &Account::for_test(),
         )
         .expect_err("native glyph factors must preserve the intended linear origin");
@@ -678,11 +674,12 @@ mod tests {
             [16.0, 0.0, 0.0, 16.0, 0.0, 0.0]
         );
         let local = native_glyph_transform(
-            paired,
+            paired.local,
+            paired.reference_device,
+            paired.comparison_only,
             output,
-            None,
             PhysicalSize::new(32, 32),
-            LinearSampling::Direct,
+            NativeGlyphField::Linear(LinearSampling::Direct),
             &account,
         )
         .unwrap();
@@ -704,13 +701,15 @@ mod tests {
         let brush = prepare(&gradient, transform, &account).unwrap();
         let local = brush.transform().unwrap();
         let outline = vello_encoding::Transform::from_kurbo(&(transform * local));
+        let brush_transform = brush.transform.unwrap();
         let glyph = vello_encoding::Transform::from_kurbo(&transform)
             * native_glyph_transform(
-                brush.transform.unwrap(),
+                brush_transform.local,
+                brush_transform.reference_device,
+                brush_transform.comparison_only,
                 transform,
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &account,
             )
             .unwrap();
@@ -1027,20 +1026,19 @@ mod tests {
         let local = kurbo::Affine::new([16.0, 0.0, 0.0, 16.0, center, 0.0]);
         let output = kurbo::Affine::translate((-center, 0.0));
         let native_local = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device: output * local,
-                radial: Some(RadialReference {
+            local,
+            output * local,
+            false,
+            output,
+            PhysicalSize::new(2, 2),
+            NativeGlyphField::Radial {
+                radii: (0.0, 1.0),
+                reference: RadialReference {
                     start: 0.0,
                     end: 1.0,
                     delta: 1.0,
-                }),
-                comparison_only: false,
+                },
             },
-            output,
-            Some((0.0, 1.0)),
-            PhysicalSize::new(2, 2),
-            LinearSampling::Direct,
             &Account::for_test(),
         )
         .unwrap();
@@ -1085,20 +1083,19 @@ mod tests {
         assert_eq!(ideal_phase_at_origin - native_phase_at_origin, 1.0 / 16.0);
         assert!(ideal_phase_at_origin - native_phase_at_origin > 1.0 / 511.0);
         let error = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device: ideal_device,
-                radial: Some(RadialReference {
+            local,
+            ideal_device,
+            false,
+            output,
+            PhysicalSize::new(2, 2),
+            NativeGlyphField::Radial {
+                radii: (0.0, 1.0),
+                reference: RadialReference {
                     start: 0.0,
                     end: 1.0,
                     delta: 1.0,
-                }),
-                comparison_only: false,
+                },
             },
-            output,
-            Some((0.0, 1.0)),
-            PhysicalSize::new(2, 2),
-            LinearSampling::Direct,
             &account,
         )
         .expect_err("glyph qualification must compare the actual narrowed composition");
@@ -1349,32 +1346,24 @@ mod tests {
         // Glyph paint inverts the composed native map, not either factor.
         assert!(
             native_glyph_transform(
-                BrushTransform {
-                    local: kurbo::Affine::scale(1.0e20),
-                    reference_device: kurbo::Affine::scale(1.0e-19) * kurbo::Affine::scale(1.0e20),
-                    radial: None,
-                    comparison_only: false,
-                },
+                kurbo::Affine::scale(1.0e20),
+                kurbo::Affine::scale(1.0e-19) * kurbo::Affine::scale(1.0e20),
+                false,
                 kurbo::Affine::scale(1.0e-19),
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &Account::for_test(),
             )
             .is_ok()
         );
         assert!(
             native_glyph_transform(
-                BrushTransform {
-                    local: kurbo::Affine::scale(1.0e50),
-                    reference_device: kurbo::Affine::scale(1.0e-49) * kurbo::Affine::scale(1.0e50),
-                    radial: None,
-                    comparison_only: false,
-                },
+                kurbo::Affine::scale(1.0e50),
+                kurbo::Affine::scale(1.0e-49) * kurbo::Affine::scale(1.0e50),
+                false,
                 kurbo::Affine::scale(1.0e-49),
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &Account::for_test(),
             )
             .is_err()
