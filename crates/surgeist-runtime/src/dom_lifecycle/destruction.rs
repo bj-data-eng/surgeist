@@ -316,10 +316,37 @@ impl HostedRuntime {
             let (h, t) = state.find_top(navigable, cancel)?;
             state.reserve_invocation(cancel)?;
             state.step(cancel)?;
-            let permission = dom
-                .raw_mut()
-                .begin_hosted_top_level_destruction(&mut state.source, navigable, cancel)
-                .map_err(DomHostedRuntimeError::Dom)?;
+            let permission = dom.raw_mut().begin_hosted_top_level_destruction(
+                &mut state.source,
+                navigable,
+                cancel,
+            );
+            #[cfg(feature = "document-scripting")]
+            if let Some(attachment) = state
+                .hosts
+                .get(h)
+                .and_then(|host| host.top_levels.get(t))
+                .and_then(|top| top.group.as_ref())
+                .and_then(records::Group::global)
+                .and_then(|global| global.settings.script_attachment.as_ref())
+            {
+                // Canonical retiring publication can succeed before later
+                // cleanup preparation refuses. Observe that exact known role
+                // before returning either result, without budget/cancel scans.
+                let lost = match dom.raw().hosted_navigable(navigable) {
+                    Ok(current) => current.is_retiring(),
+                    Err(
+                        DomHostedError::StaleIdentity
+                        | DomHostedError::SourceExpired
+                        | DomHostedError::SourcePoisoned,
+                    ) => true,
+                    Err(_) => false,
+                };
+                if lost {
+                    attachment.revoke();
+                }
+            }
+            let permission = permission.map_err(DomHostedRuntimeError::Dom)?;
             state.retain_invocation(permission);
             state.hosts[h].top_levels[t]
                 .top

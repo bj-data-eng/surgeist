@@ -315,6 +315,8 @@ impl HostedRuntime {
                     navigation_start: sample,
                     document: None,
                     ready: false,
+                    #[cfg(feature = "document-scripting")]
+                    script_attachment: None,
                     creation_url: request.creation_url().clone(),
                     top_level_creation_url: request.top_level_creation_url().clone(),
                     top_level_origin: request.top_level_origin().clone(),
@@ -357,8 +359,7 @@ impl HostedRuntime {
             .clusters[c]
             .agent
             .globals[g];
-        native.settings.document = Some(request.document());
-        native.settings.ready = true;
+        native.settings.make_active(request.document());
         if children[index].publication.is_none() {
             children[index].publication = Some(
                 source

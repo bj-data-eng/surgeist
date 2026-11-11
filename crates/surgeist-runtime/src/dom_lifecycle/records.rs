@@ -76,12 +76,74 @@ pub(super) struct Settings {
     pub navigation_start: clock::CoarsenedSample,
     pub document: Option<DocumentId>,
     pub ready: bool,
+    #[cfg(feature = "document-scripting")]
+    pub script_attachment: Option<ScriptAttachmentOwner>,
     // Sampled from the original canonical ExecutionRequest before native
     // Settings construction. Current base/origin/policy still read the actual
     // associated Document rather than these historical creation inputs.
     pub creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
     pub top_level_creation_url: surgeist_html_semantics::HtmlBaseUrlRecord,
     pub top_level_origin: DomOpaqueOrigin,
+}
+
+impl Settings {
+    pub(super) fn make_active(&mut self, document: DocumentId) {
+        #[cfg(feature = "document-scripting")]
+        if self.document != Some(document) {
+            self.script_attachment.take();
+        }
+        self.document = Some(document);
+        self.ready = true;
+    }
+}
+
+/// The actual native settings producer alone closes this attachment. Observers
+/// retain funded liveness storage, without retaining any native execution owner.
+#[cfg(feature = "document-scripting")]
+pub(crate) struct ScriptAttachmentOwner(Rc<ScriptAttachmentState>);
+
+#[cfg(feature = "document-scripting")]
+pub(crate) struct ScriptAttachmentObserver(Rc<ScriptAttachmentState>);
+
+#[cfg(feature = "document-scripting")]
+struct ScriptAttachmentState {
+    active: std::cell::Cell<bool>,
+    _backing: surgeist_dom::DomHostedRuntimeRetention,
+}
+
+#[cfg(feature = "document-scripting")]
+impl ScriptAttachmentOwner {
+    pub(crate) const fn storage_bytes() -> usize {
+        std::mem::size_of::<ScriptAttachmentState>()
+    }
+
+    pub(crate) fn new(
+        backing: surgeist_dom::DomHostedRuntimeRetention,
+    ) -> (Self, ScriptAttachmentObserver) {
+        let state = Rc::new(ScriptAttachmentState {
+            active: std::cell::Cell::new(true),
+            _backing: backing,
+        });
+        (Self(state.clone()), ScriptAttachmentObserver(state))
+    }
+
+    pub(super) fn revoke(&self) {
+        self.0.active.set(false);
+    }
+}
+
+#[cfg(feature = "document-scripting")]
+impl Drop for ScriptAttachmentOwner {
+    fn drop(&mut self) {
+        self.revoke();
+    }
+}
+
+#[cfg(feature = "document-scripting")]
+impl ScriptAttachmentObserver {
+    pub(crate) fn is_active(&self) -> bool {
+        self.0.active.get()
+    }
 }
 
 pub(super) struct Top {

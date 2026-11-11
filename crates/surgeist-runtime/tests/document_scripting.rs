@@ -456,6 +456,86 @@ fn assert_immediate_retirement(host: &DocumentScriptHost, queued_calls: &Arc<Ato
     );
 }
 
+fn retirement_refusals_follow_actual_canonical_publication() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let attempt = |host: &mut DocumentScriptHost, operations| {
+        host.with_native(|dom, mut hosted, _| {
+            let cancellation = cancel();
+            let mut hosted_limits = limits().hosted;
+            let canonical = hosted_limits.canonical;
+            let records = canonical.records();
+            hosted_limits.canonical = DomHostedLimits::new(
+                DomHostedRecordLimits::new(
+                    records.hosts(),
+                    records.browsing_contexts(),
+                    records.navigables(),
+                    records.entries(),
+                    records.globals(),
+                    operations,
+                    records.registries(),
+                ),
+                canonical.retained_bytes(),
+                canonical.scratch_bytes(),
+                canonical.work(),
+            );
+            hosted
+                .set_limits(dom, hosted_limits, &cancellation)
+                .unwrap();
+            hosted.destroy_top_level(dom, top.navigable(), &cancellation)
+        })
+        .unwrap()
+    };
+
+    let before = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, before.clone());
+    // Zero operation identities refuses the initial invocation itself.
+    assert_eq!(
+        attempt(&mut host, 0).unwrap_err(),
+        DomHostedRuntimeError::Dom(DomHostedError::Limit {
+            resource: DomHostedResource::Operations,
+            limit: 0,
+        })
+    );
+    assert!(host.permit().is_ok());
+    assert_eq!(before.load(Ordering::Relaxed), 0);
+    assert!(matches!(
+        Process::bootstrap(EngineKind::V8),
+        Err(Error::OwnerAlreadyActive)
+    ));
+    host.checkpoint().unwrap();
+    assert_eq!(before.load(Ordering::Relaxed), 1);
+
+    let after = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, after.clone());
+    // One identity admits the invocation and its canonical retiring mark,
+    // but refuses issuance of the distinct cleanup operation identity.
+    assert_eq!(
+        attempt(&mut host, 1).unwrap_err(),
+        DomHostedRuntimeError::Dom(DomHostedError::Limit {
+            resource: DomHostedResource::Operations,
+            limit: 1,
+        })
+    );
+    assert!(
+        host.snapshot()
+            .unwrap()
+            .hosted_navigable(top.navigable())
+            .unwrap()
+            .is_retiring()
+    );
+    assert_immediate_retirement(&host, &after);
+    host.with_native(|dom, mut hosted, _| {
+        hosted.set_limits(dom, limits().hosted, &cancel()).unwrap();
+        destroy_native_top(dom, hosted, top);
+    })
+    .unwrap();
+    let _session = host.stop().into_session().unwrap();
+}
+
 fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -562,6 +642,7 @@ fn main() {
             }
             "retirement-after-refusal" => native_refusal_stays_typed_and_sticky(),
             "retirement-unwind" => retirement_unwind_disposes_the_revoked_guest_owner(),
+            "retirement-admission" => retirement_refusals_follow_actual_canonical_publication(),
             _ => panic!("unknown scripting scenario: {scenario}"),
         }
         return;
@@ -570,6 +651,7 @@ fn main() {
     let expired_permit = native_read_snapshot_and_explicit_queue();
     real_retirement_revokes_and_abandons(&expired_permit);
     retirement_unwind_disposes_the_revoked_guest_owner();
+    retirement_refusals_follow_actual_canonical_publication();
     native_refusal_stays_typed_and_sticky();
     source_events::run();
 }

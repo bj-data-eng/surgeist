@@ -380,8 +380,16 @@ pub(super) fn detach_callback(
             let message = b"Number required".map(u16::from);
             return Ok(Completion::Throw(scope.type_error(&message)?));
         };
-        let number = scope.unrestricted_double(value)?;
+        let converted = scope.unrestricted_double(value);
         scope.check_active()?;
+        let number = match converted {
+            Ok(number) => number,
+            Err(error @ Error::Exception(_)) => {
+                finish_detach_conversion(scope, &native, attachment, active, false)?;
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
         finish_detach_conversion(
             scope,
             &native,

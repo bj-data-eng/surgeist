@@ -19,6 +19,7 @@ use surgeist_dom::{
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
+use crate::dom_lifecycle::{ScriptAttachmentObserver, ScriptAttachmentOwner};
 use crate::{
     DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, DomSourceRuntime,
     HostedRuntime,
@@ -134,6 +135,7 @@ struct Attachment {
     policy: HtmlScriptingPolicy,
     failures: FailureSlot,
     source_failures: SourceFailureSlot,
+    liveness: ScriptAttachmentObserver,
 }
 
 struct NativeOwner {
@@ -290,6 +292,7 @@ impl PreparedDocumentScriptHost {
             Ok(engine) => Ok(DocumentScriptHost {
                 engine: Some(engine),
                 native: self.native,
+                retirement: None,
             }),
             Err(error) => Err(EnableDocumentScriptFailure { owner: self, error }),
         }
@@ -331,15 +334,17 @@ impl PreparedDocumentScriptHost {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let failure_bytes = FailureSlot::storage_bytes();
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
+        let liveness_bytes = ScriptAttachmentOwner::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
             .and_then(|bytes| bytes.checked_add(source_failure_bytes))
+            .and_then(|bytes| bytes.checked_add(liveness_bytes))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
-        let (hook_backing, failure_backing, source_failure_backing) = {
+        let (hook_backing, failure_backing, source_failure_backing, liveness_backing) = {
             let mut session = owner
                 .session
                 .try_borrow_mut()
@@ -354,10 +359,14 @@ impl PreparedDocumentScriptHost {
             let source_failure = hosted
                 .retain_script_payload(&mut dom, source_failure_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
-            (hook, failure, source_failure)
+            let liveness = hosted
+                .retain_script_payload(&mut dom, liveness_bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            (hook, failure, source_failure, liveness)
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
+        let (native_liveness, liveness) = ScriptAttachmentOwner::new(liveness_backing);
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -387,19 +396,25 @@ impl PreparedDocumentScriptHost {
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let canonical = hosted
-            .with_script_target(&mut session.dom(), target, cancel, |source, dom| {
-                source.attach_document_script_host(
-                    dom.raw_mut(),
-                    target.host(),
-                    target.global(),
-                    target.document(),
-                    DomDocumentScriptingFacts {
-                        engine: HtmlScriptingEngine::Supported,
-                        policy,
-                    },
-                    cancel,
-                )
-            })
+            .attach_script_target(
+                &mut session.dom(),
+                target,
+                cancel,
+                native_liveness,
+                |source, dom| {
+                    source.attach_document_script_host(
+                        dom.raw_mut(),
+                        target.host(),
+                        target.global(),
+                        target.document(),
+                        DomDocumentScriptingFacts {
+                            engine: HtmlScriptingEngine::Supported,
+                            policy,
+                        },
+                        cancel,
+                    )
+                },
+            )
             .map_err(DocumentScriptNativeError::from)?;
         // Only this unpublished owner can initialize the cell; it is consumed
         // on success, and no guest operation can run during publication.
@@ -410,6 +425,7 @@ impl PreparedDocumentScriptHost {
             policy,
             failures,
             source_failures,
+            liveness,
         });
         Ok(ScriptEngine {
             process,
@@ -442,10 +458,24 @@ struct ScriptEngine {
     _hook_backing: DomHostedRuntimeRetention,
 }
 
+enum ScriptRetirement {
+    NativeInactive,
+    BindingsFailure(Error),
+}
+
 /// An attached original native owner and the separately owned script process.
 pub struct DocumentScriptHost {
     engine: Option<ScriptEngine>,
     native: Rc<NativeOwner>,
+    retirement: Option<ScriptRetirement>,
+}
+
+struct NativeLoanExit<'a>(&'a mut DocumentScriptHost);
+
+impl Drop for NativeLoanExit<'_> {
+    fn drop(&mut self) {
+        self.0.dispose_retired_engine();
+    }
 }
 
 impl fmt::Debug for DocumentScriptHost {
@@ -469,10 +499,30 @@ impl DocumentScriptHost {
         if self.engine.is_none() {
             return Err(DocumentScriptNativeError::Revoked);
         }
-        self.native
+        let attachment = self
+            .native
             .attachment
             .get()
-            .ok_or(DocumentScriptNativeError::Revoked)
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if !attachment.liveness.is_active() {
+            return Err(DocumentScriptNativeError::Revoked);
+        }
+        Ok(attachment)
+    }
+
+    fn dispose_retired_engine(&mut self) {
+        if self.engine.is_some()
+            && let Some(attachment) = self.native.attachment.get()
+            && !attachment.liveness.is_active()
+        {
+            // Preserve the original terminal bindings result before its weak
+            // owner expires. Dropping the Process abandons jobs without entry.
+            self.retirement = Some(match attachment.realm.check_owner_active() {
+                Ok(()) => ScriptRetirement::NativeInactive,
+                Err(error) => ScriptRetirement::BindingsFailure(error),
+            });
+            drop(self.engine.take());
+        }
     }
 
     fn check_permit(&self, permit: &DocumentScriptPermit) -> Result<(), DocumentScriptNativeError> {
@@ -547,6 +597,15 @@ impl DocumentScriptHost {
     /// after synchronous native obligations settle. The engine does not
     /// surface rejected promises through this checkpoint.
     pub fn checkpoint(&mut self) -> Result<(), DocumentScriptError> {
+        self.dispose_retired_engine();
+        if let Some(retirement) = &self.retirement {
+            return Err(match retirement {
+                ScriptRetirement::BindingsFailure(error) => error.clone().into(),
+                ScriptRetirement::NativeInactive => {
+                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Inactive).into()
+                }
+            });
+        }
         self.observe()?;
         let engine = self
             .engine
@@ -566,12 +625,17 @@ impl DocumentScriptHost {
     }
 
     /// Lend the original canonical view and its matching lifecycle and Source
-    /// permissions to the Rust host. The script process stays with this owner.
+    /// permissions to the Rust host. On exit, native retirement disposes of
+    /// the script process without a checkpoint and preserves the action result.
     pub fn with_native<T>(
         &mut self,
         action: impl FnOnce(&mut DomEventDom<'_>, HostedRuntime, DomSourceRuntime) -> T,
     ) -> Result<T, DocumentScriptNativeError> {
-        let mut session = self
+        // The Session loan and DOM view must end before Process disposal,
+        // including if caller code unwinds after canonical retirement.
+        let exit = NativeLoanExit(self);
+        let mut session = exit
+            .0
             .native
             .session
             .try_borrow_mut()
