@@ -43,7 +43,9 @@ Consumers depend directly on the owner they use. No HTML result is a live DOM.
 semantic operands without prescribing their storage. HTML construction values
 implement these traits; another owner can supply immutable names and attributes
 without constructing an HTML attribute array. Attribute slices preserve their
-original order. The traits supply no validation, atom identity, tree facts or
+original order. `HtmlAttributesInput::get` returns the attribute at an index by
+value, as a view that borrows its name and value from the collection or from a
+field it holds. The traits supply no validation, atom identity, tree facts or
 custody, and do not normalize UTF-16, prefixes or raw values.
 
 Name getters remain lazy: controlled classification admits its namespace or

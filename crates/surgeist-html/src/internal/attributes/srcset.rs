@@ -929,7 +929,7 @@ impl Role {
 fn attribute<'a, A: crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized>(
     attributes: &'a A,
     name: &str,
-) -> Option<&'a A::Attribute> {
+) -> Option<A::Attribute<'a>> {
     find_attribute(attributes, &Namespace::none(), &DocumentString::from(name))
 }
 
@@ -1000,7 +1000,7 @@ impl HtmlValueInterpreter {
         self.srcset(
             role,
             element,
-            attribute(context.attributes(), name),
+            attribute(context.attributes(), name).as_ref(),
             Some(context),
         )
     }
@@ -1264,7 +1264,7 @@ fn allows_auto_sizes(
     attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
 ) -> Result<bool, HtmlValueAdmissionError> {
     // Reuse the existing enum owner; no CSS sizes evaluation is required here.
-    let loading = interpreter.loading(name, attribute(attributes, "loading"))?;
+    let loading = interpreter.loading(name, attribute(attributes, "loading").as_ref())?;
     if loading.intrinsic() != Some(&HtmlLoading::Lazy) {
         return Ok(false);
     }

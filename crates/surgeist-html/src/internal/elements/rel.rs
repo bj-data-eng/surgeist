@@ -5,7 +5,7 @@ use crate::internal::microsyntax::tokens::{
     ascii_case_insensitive_unit, ascii_lowercase, declared_keyword, is_ascii_whitespace,
 };
 pub(crate) mod controlled;
-use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
+use crate::internal::values::semantic_input::{attributes_iter, find_attribute, view_value};
 use crate::{
     internal::attributes::link_destination::HtmlLinkDestination, internal::values::DocumentString,
     internal::values::interpretation::HtmlValueInterpretationError,
@@ -1065,31 +1065,34 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
     ) -> Result<HtmlRelReport, HtmlValueInterpretationError> {
-        let get = |name: &str| {
-            attributes_iter(attributes)
-                .find(|a| {
-                    a.name().namespace_uri().is_none()
-                        && a.name()
-                            .local_name()
-                            .code_units()
-                            .iter()
-                            .copied()
-                            .eq(name.bytes().map(u16::from))
-                })
-                .map(HtmlAttributeInput::value)
-        };
+        // The `as` value is admitted before any other attribute is read. A view lends `value`
+        // only while the view is held, so each selected slot keeps its view.
         let as_name = crate::vocabulary::KnownHtmlAttribute::As.qualified_name();
         let as_attribute = find_attribute(attributes, as_name.namespace(), as_name.local_name());
-        self.admit_attribute_raw(as_attribute.map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(view_value(&as_attribute))?;
+        let get = |name: &str| {
+            attributes_iter(attributes).find(|a| {
+                a.name().namespace_uri().is_none()
+                    && a.name()
+                        .local_name()
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq(name.bytes().map(u16::from))
+            })
+        };
+        let (rel, rev, href) = (get("rel"), get("rev"), get("href"));
+        let (imagesrcset, itemprop) = (get("imagesrcset"), get("itemprop"));
+        let (title, type_hint) = (get("title"), get("type"));
         let mut input = HtmlRelInputs {
             role: None,
-            rel: get("rel"),
-            rev: get("rev"),
-            href: get("href"),
-            imagesrcset: get("imagesrcset"),
-            itemprop: get("itemprop"),
-            title: get("title"),
-            type_hint: get("type"),
+            rel: view_value(&rel),
+            rev: view_value(&rev),
+            href: view_value(&href),
+            imagesrcset: view_value(&imagesrcset),
+            itemprop: view_value(&itemprop),
+            title: view_value(&title),
+            type_hint: view_value(&type_hint),
             as_destination: None,
         };
         for raw in [
@@ -1104,7 +1107,10 @@ impl HtmlValueInterpreter {
             self.admit_attribute_raw(raw)?;
         }
         input.role = HtmlRelRole::from_element(element);
-        input.as_destination = self.link_as(element, as_attribute)?.intrinsic().copied();
+        input.as_destination = self
+            .link_as(element, as_attribute.as_ref())?
+            .intrinsic()
+            .copied();
         controlled::HtmlRelInterpretation::new(input).run_unmetered()
     }
 }

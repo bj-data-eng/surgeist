@@ -270,12 +270,12 @@ impl HtmlValueInterpreter {
         let raw = find_attribute(attributes, name.namespace(), name.local_name());
         let name = KnownHtmlAttribute::Rel.qualified_name();
         let rel = find_attribute(attributes, name.namespace(), name.local_name());
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        self.admit_attribute_raw(rel.map(HtmlAttributeInput::value))?;
-        let attribute = self.link_as(element, raw)?;
+        self.admit_attribute_raw(raw.as_ref().map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(rel.as_ref().map(HtmlAttributeInput::value))?;
+        let attribute = self.link_as(element, raw.as_ref())?;
         let mut result = HtmlLinkDestinationReport {
             attribute,
-            rel: rel.map(capture_attribute),
+            rel: rel.as_ref().map(capture_attribute),
             preload_author: HtmlLinkDestinationContextAuthorState::Unapplied,
             modulepreload_author: HtmlLinkDestinationContextAuthorState::Unapplied,
             other_rel_author: HtmlLinkDestinationContextAuthorState::Unapplied,
@@ -286,7 +286,8 @@ impl HtmlValueInterpreter {
             return Ok(result);
         }
         let has = |keyword| {
-            rel.is_some_and(|rel| crate::internal::elements::rel::contains(rel.value(), keyword))
+            rel.as_ref()
+                .is_some_and(|rel| crate::internal::elements::rel::contains(rel.value(), keyword))
         };
         let preload = has(crate::internal::elements::rel::HtmlRelKeyword::Preload);
         let modulepreload = has(crate::internal::elements::rel::HtmlRelKeyword::ModulePreload);

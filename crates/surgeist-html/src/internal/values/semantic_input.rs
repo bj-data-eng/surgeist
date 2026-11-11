@@ -30,19 +30,36 @@ pub trait HtmlAttributeInput {
     fn value(&self) -> &DocumentString;
 }
 
+impl<T: HtmlAttributeInput + ?Sized> HtmlAttributeInput for &T {
+    type Name = T::Name;
+    fn name(&self) -> &Self::Name {
+        (**self).name()
+    }
+    fn value(&self) -> &DocumentString {
+        (**self).value()
+    }
+}
+
 /// Borrowed attributes in their original producer order.
 ///
-/// `get` returns the unchanged attribute at every index below `len`. This
-/// boundary neither proves nor repeats validation: callers retain their
+/// `get` returns, by value, a view of the unchanged attribute at every index
+/// below `len`. A view's `name` and `value` borrow from the collection or from
+/// a field the view holds; they are never a copy of the code units, and a
+/// collection that stores whole attributes lends them without cloning. A view
+/// need not be `Clone` or `Copy`. Because `value` borrows from the view, a
+/// caller that needs a value after dropping the view keeps the view.
+/// This boundary neither proves nor repeats validation: callers retain their
 /// original construction or capture qualification, including expanded-name
 /// uniqueness. It does not deduplicate, sort or copy the collection.
 pub trait HtmlAttributesInput {
-    /// The element type of the collection.
-    type Attribute: HtmlAttributeInput;
+    /// The view of one attribute, which borrows from the collection.
+    type Attribute<'a>: HtmlAttributeInput
+    where
+        Self: 'a;
     /// The number of attributes, which bounds the valid indices for `get`.
     fn len(&self) -> usize;
     /// The attribute at a zero-based index in producer order; `None` for an index at or past `len`.
-    fn get(&self, index: usize) -> Option<&Self::Attribute>;
+    fn get(&self, index: usize) -> Option<Self::Attribute<'_>>;
     /// Whether the collection has no attributes (`len() == 0`).
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -72,7 +89,10 @@ impl HtmlAttributeInput for Attribute {
 }
 
 impl<A: HtmlAttributeInput> HtmlAttributesInput for [A] {
-    type Attribute = A;
+    type Attribute<'a>
+        = &'a A
+    where
+        A: 'a;
     fn len(&self) -> usize {
         self.len()
     }
@@ -82,7 +102,7 @@ impl<A: HtmlAttributeInput> HtmlAttributesInput for [A] {
 }
 
 impl HtmlAttributesInput for OrderedAttributes {
-    type Attribute = Attribute;
+    type Attribute<'a> = &'a Attribute;
     fn len(&self) -> usize {
         self.len()
     }
@@ -105,9 +125,14 @@ pub(crate) fn capture_attribute(raw: &(impl HtmlAttributeInput + ?Sized)) -> Att
     Attribute::new(capture_name(raw.name()), raw.value().clone())
 }
 
+/// The value of a view that a caller keeps in a local, borrowed from that local.
+pub(crate) fn view_value<A: HtmlAttributeInput>(view: &Option<A>) -> Option<&DocumentString> {
+    view.as_ref().map(HtmlAttributeInput::value)
+}
+
 pub(crate) fn attributes_iter<A: HtmlAttributesInput + ?Sized>(
     attributes: &A,
-) -> impl Iterator<Item = &A::Attribute> {
+) -> impl Iterator<Item = A::Attribute<'_>> {
     (0..attributes.len()).filter_map(|index| attributes.get(index))
 }
 
@@ -115,7 +140,7 @@ pub(crate) fn find_attribute<'a, A: HtmlAttributesInput + ?Sized>(
     attributes: &'a A,
     namespace: &Namespace,
     local: &DocumentString,
-) -> Option<&'a A::Attribute> {
+) -> Option<A::Attribute<'a>> {
     attributes_iter(attributes).find(|attribute| {
         let name = attribute.name();
         name.namespace_uri() == namespace.uri() && name.local_name() == local

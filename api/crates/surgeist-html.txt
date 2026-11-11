@@ -3811,7 +3811,7 @@ pub fn surgeist_html::construction::HtmlAttributes<'a>::iter(self) -> impl core:
 pub fn surgeist_html::construction::HtmlAttributes<'a>::len(self) -> usize
 pub fn surgeist_html::construction::HtmlAttributes<'a>::to_ordered(self) -> surgeist_html::values::OrderedAttributes
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::construction::HtmlAttributes<'_>
-pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute = surgeist_html::values::Attribute
+pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = &'a surgeist_html::values::Attribute
 pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html::construction::HtmlAttributes<'_>::len(&self) -> usize
 pub struct surgeist_html::construction::HtmlAuthoredProcessingInstruction
@@ -6676,7 +6676,7 @@ pub fn surgeist_html::values::OrderedAttributes::shared_attributes(&self) -> &al
 impl core::convert::From<surgeist_html::values::OrderedAttributes> for surgeist_html::bounded::values::HtmlValidatedAttributes
 pub fn surgeist_html::bounded::values::HtmlValidatedAttributes::from(value: surgeist_html::values::OrderedAttributes) -> Self
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::values::OrderedAttributes
-pub type surgeist_html::values::OrderedAttributes::Attribute = surgeist_html::values::Attribute
+pub type surgeist_html::values::OrderedAttributes::Attribute<'a> = &'a surgeist_html::values::Attribute
 pub fn surgeist_html::values::OrderedAttributes::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html::values::OrderedAttributes::len(&self) -> usize
 pub struct surgeist_html::values::QualifiedName
@@ -6725,21 +6725,25 @@ impl surgeist_html::values::HtmlAttributeInput for surgeist_html::values::Attrib
 pub type surgeist_html::values::Attribute::Name = surgeist_html::values::QualifiedName
 pub fn surgeist_html::values::Attribute::name(&self) -> &Self::Name
 pub fn surgeist_html::values::Attribute::value(&self) -> &surgeist_html::values::DocumentString
+impl<T: surgeist_html::values::HtmlAttributeInput + ?core::marker::Sized> surgeist_html::values::HtmlAttributeInput for &T
+pub type &T::Name = <T as surgeist_html::values::HtmlAttributeInput>::Name
+pub fn &T::name(&self) -> &Self::Name
+pub fn &T::value(&self) -> &surgeist_html::values::DocumentString
 pub trait surgeist_html::values::HtmlAttributesInput
-pub type surgeist_html::values::HtmlAttributesInput::Attribute: surgeist_html::values::HtmlAttributeInput
-pub fn surgeist_html::values::HtmlAttributesInput::get(&self, index: usize) -> core::option::Option<&Self::Attribute>
+pub type surgeist_html::values::HtmlAttributesInput::Attribute<'a> where Self: 'a: surgeist_html::values::HtmlAttributeInput
+pub fn surgeist_html::values::HtmlAttributesInput::get(&self, index: usize) -> core::option::Option<Self::Attribute>
 pub fn surgeist_html::values::HtmlAttributesInput::is_empty(&self) -> bool
 pub fn surgeist_html::values::HtmlAttributesInput::len(&self) -> usize
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::construction::HtmlAttributes<'_>
-pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute = surgeist_html::values::Attribute
+pub type surgeist_html::construction::HtmlAttributes<'_>::Attribute<'a> where Self: 'a = &'a surgeist_html::values::Attribute
 pub fn surgeist_html::construction::HtmlAttributes<'_>::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html::construction::HtmlAttributes<'_>::len(&self) -> usize
 impl surgeist_html::values::HtmlAttributesInput for surgeist_html::values::OrderedAttributes
-pub type surgeist_html::values::OrderedAttributes::Attribute = surgeist_html::values::Attribute
+pub type surgeist_html::values::OrderedAttributes::Attribute<'a> = &'a surgeist_html::values::Attribute
 pub fn surgeist_html::values::OrderedAttributes::get(&self, index: usize) -> core::option::Option<&surgeist_html::values::Attribute>
 pub fn surgeist_html::values::OrderedAttributes::len(&self) -> usize
 impl<A: surgeist_html::values::HtmlAttributeInput> surgeist_html::values::HtmlAttributesInput for [A]
-pub type [A]::Attribute = A
+pub type [A]::Attribute<'a> where A: 'a = &'a A
 pub fn [A]::get(&self, index: usize) -> core::option::Option<&A>
 pub fn [A]::len(&self) -> usize
 pub trait surgeist_html::values::HtmlNameInput

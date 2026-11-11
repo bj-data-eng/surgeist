@@ -252,15 +252,15 @@ impl HtmlValueInterpreter {
             &Namespace::none(),
             &DocumentString::from("language"),
         );
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        self.admit_attribute_raw(language.map(HtmlAttributeInput::value))?;
-        let content = self.script_type(element, raw)?;
+        self.admit_attribute_raw(raw.as_ref().map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(language.as_ref().map(HtmlAttributeInput::value))?;
+        let content = self.script_type(element, raw.as_ref())?;
         let classification = if content.applicability != HtmlAttributeApplicability::Applicable {
             HtmlScriptTypeClassification::Unapplied
         } else {
             HtmlScriptTypeCursor::preparation(
-                raw.map(HtmlAttributeInput::value),
-                language.map(HtmlAttributeInput::value),
+                raw.as_ref().map(HtmlAttributeInput::value),
+                language.as_ref().map(HtmlAttributeInput::value),
             )
             .finish_ordinary()
             .map_or(
@@ -270,7 +270,7 @@ impl HtmlValueInterpreter {
         };
         Ok(HtmlScriptTypePreparationReport {
             content,
-            language: language.map(capture_attribute),
+            language: language.as_ref().map(capture_attribute),
             classification,
         })
     }
