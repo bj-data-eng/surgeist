@@ -180,6 +180,36 @@ fn publish_style_sheet(
     (sheet, notification)
 }
 
+#[test]
+fn exact_document_load_stops_before_looking_up_the_expired_global() {
+    use crate::{DomEventParentQuery, DomEventTarget, DomEventType};
+
+    let (dom, source, document) = constructor();
+    let node = document.node();
+    let parent = |kind| {
+        dom.dispatch_event_parent(
+            &dom.snapshot(),
+            DomEventParentQuery::new(node, node, node, kind),
+            &cancel(),
+            &mut || Ok::<(), DomHostedError>(()),
+        )
+        .map(|step| step.parent())
+    };
+    let global = dom.relevant_global(node).unwrap().unwrap();
+    assert_eq!(
+        parent(DomEventType::Error).unwrap(),
+        Some(DomEventTarget::Global(global)),
+    );
+
+    drop(source);
+
+    assert_eq!(
+        parent(DomEventType::Error),
+        Err(DomHostedError::SourceExpired)
+    );
+    assert_eq!(parent(DomEventType::Load), Ok(None));
+}
+
 fn style_resource(
     dom: &mut Dom,
     document: DocumentId,
