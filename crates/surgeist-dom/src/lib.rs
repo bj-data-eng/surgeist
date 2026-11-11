@@ -307,7 +307,7 @@ pub use store::source::operation::dialog_queue::{
 pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits,
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch, DomResource, DomUsage,
+    DomNodeRetirementWatch, DomResource, DomUsage, DomWatchedCreation,
 };
 pub use surgeist_html::{
     construction::{

@@ -72,7 +72,7 @@ mod navigable;
 mod node_retirement;
 pub use node_retirement::{
     DomNodeRetirementInbox, DomNodeRetirementLimits, DomNodeRetirementNotice,
-    DomNodeRetirementWatch,
+    DomNodeRetirementWatch, DomWatchedCreation,
 };
 #[cfg(test)]
 mod oracle_tests;
@@ -1186,13 +1186,7 @@ impl DomCommit {
     }
     /// None means the batch destroyed its own unpublished creation.
     pub fn created(&self, ticket: &CreatedNode) -> Result<Option<NodeId>, DomError> {
-        if !Arc::ptr_eq(&ticket.owner, &self.owner) {
-            return Err(DomError::ForeignBatch);
-        }
-        self.created
-            .get(ticket.index)
-            .copied()
-            .ok_or(DomError::UnavailableCreation)
+        resolve_created_node(&self.owner, &self.created, ticket)
     }
     pub fn document(&self, ticket: &CreatedNode) -> Result<DocumentId, DomError> {
         let id = self.created(ticket)?.ok_or(DomError::UnavailableCreation)?;
@@ -1201,6 +1195,20 @@ impl DomCommit {
         }
         Ok(DocumentId(id))
     }
+}
+
+fn resolve_created_node(
+    owner: &Arc<BatchIdentity>,
+    created: &[Option<NodeId>],
+    ticket: &CreatedNode,
+) -> Result<Option<NodeId>, DomError> {
+    if !Arc::ptr_eq(&ticket.owner, owner) {
+        return Err(DomError::ForeignBatch);
+    }
+    created
+        .get(ticket.index)
+        .copied()
+        .ok_or(DomError::UnavailableCreation)
 }
 
 pub(crate) use canonical::Node;

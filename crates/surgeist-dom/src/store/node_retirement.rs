@@ -124,6 +124,25 @@ impl DomNodeRetirementNotice {
     }
 }
 
+/// A canonical batch publication and the watch of one node it created.
+pub struct DomWatchedCreation {
+    commit: DomCommit,
+    node: NodeId,
+    watch: DomNodeRetirementWatch,
+}
+
+impl DomWatchedCreation {
+    /// The exact newly published generation.
+    pub const fn node(&self) -> NodeId {
+        self.node
+    }
+
+    /// Transfer the publication receipt, created node and affine watch.
+    pub fn into_parts(self) -> (DomCommit, NodeId, DomNodeRetirementWatch) {
+        (self.commit, self.node, self.watch)
+    }
+}
+
 struct Armed {
     notice: Box<Notice>,
     queue: Arc<Mutex<Queue>>,
@@ -496,10 +515,71 @@ impl Dom {
             return Err(DomError::ForeignOwner);
         }
         self.require_source_idle()?;
+        let index =
+            self.arm_ordinary_watch(&self.state, node, inbox, custody_key, limits, cancel)?;
+        Ok(self.finish_watch(index, node, custody_key))
+    }
+
+    /// Apply an ordinary batch and arm a retirement watch for one of its
+    /// newly created nodes at the same publication boundary. The ticket must
+    /// belong to the batch and remain live in its resulting state. A refusal
+    /// leaves both the canonical state and the retirement index unchanged.
+    pub fn apply_with_node_retirement_watch(
+        &mut self,
+        batch: DomBatch,
+        ticket: &CreatedNode,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomWatchedCreation, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        self.require_source_idle()?;
+        let result = (|| {
+            let prepared = self.prepare(batch, cancel)?;
+            let node = resolve_created_node(&prepared.owner, &prepared.created, ticket)?
+                .ok_or(DomError::UnavailableCreation)?;
+            let mut publication = self.prepare_publication(prepared, cancel)?;
+            publication.close_ordinary_sharing(cancel)?;
+            let index = self.arm_ordinary_watch(
+                &publication.state,
+                node,
+                inbox,
+                custody_key,
+                limits,
+                cancel,
+            )?;
+            // Index insertion ends admission. Publication cannot refuse.
+            let watch = self.finish_watch(index, node, custody_key);
+            let commit = self.publish_prepared(publication);
+            Ok(DomWatchedCreation {
+                commit,
+                node,
+                watch,
+            })
+        })();
+        if result.is_err() {
+            // Abandoned staged frontiers have dropped. Release their registry
+            // tickets before returning the caller's original refusal.
+            self.custody_registry.reconcile_releases();
+        }
+        result
+    }
+
+    fn arm_ordinary_watch(
+        &self,
+        state: &State,
+        node: NodeId,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<Arc<Index>, DomError> {
         let ordinary = OrdinaryAdmission::new(self, limits, cancel);
         ordinary.admit_work(1)?;
-        self.state
-            .node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
+        state.node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
         let admission = WatchAdmission {
             funding: Funding::Ordinary(ordinary),
             inbox,
@@ -507,8 +587,7 @@ impl Dom {
             custody_key,
             cancel,
         };
-        let index = arm(self.node_retirements.as_ref(), &admission)?;
-        Ok(self.finish_watch(index, node, custody_key))
+        arm(self.node_retirements.as_ref(), &admission)
     }
 
     fn finish_watch(
