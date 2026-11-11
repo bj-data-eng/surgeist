@@ -1033,6 +1033,54 @@ mod hint_model_tests {
     }
 
     #[test]
+    fn field_stop_validation_preserves_diagnostic_priority() {
+        let center = Point::new(0.0, 0.0);
+        let descending = vec![stop(1.0, Some(2.0)), stop(0.0, None)];
+        for error in [
+            Gradient::try_linear(center, center, descending.clone()).unwrap_err(),
+            RepeatingGradient::try_linear(center, center, descending).unwrap_err(),
+        ] {
+            assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+            let diagnostic = error.invalid_value_diagnostic().unwrap();
+            assert_eq!(diagnostic.field(), "gradient stop position");
+            assert_eq!(diagnostic.value(), "0");
+            assert_eq!(diagnostic.invariant(), "must be nondecreasing");
+        }
+
+        let early_hint = vec![stop(0.0, Some(2.0)), stop(1.0, None), stop(0.0, None)];
+        let error = RepeatingGradient::try_linear(center, center, early_hint).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::GradientHint);
+        assert_eq!(
+            error.gradient_hint_diagnostic(),
+            Some(&GradientHintError::HintOutsideInterval { stop_index: 0 })
+        );
+
+        let trailing = vec![stop(-f64::MAX, None), stop(f64::MAX, Some(f64::MAX))];
+        let error = RepeatingGradient::try_linear(center, center, trailing).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::GradientHint);
+        assert_eq!(
+            error.gradient_hint_diagnostic(),
+            Some(&GradientHintError::TrailingHint { stop_index: 1 })
+        );
+        let overflow = vec![stop(-f64::MAX, None), stop(f64::MAX, None)];
+        let error = RepeatingGradient::try_linear(center, center, overflow).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+        let diagnostic = error.invalid_value_diagnostic().unwrap();
+        assert_eq!(diagnostic.field(), "repeating gradient span");
+        assert_eq!(diagnostic.value(), "inf");
+        assert_eq!(diagnostic.invariant(), "must be finite and non-negative");
+
+        for (radius, field) in [
+            (0.0, "repeating radial gradient horizontal radius"),
+            (1.0, "gradient stops"),
+        ] {
+            let error = RepeatingGradient::try_radial(center, radius, 1.0, vec![]).unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+            assert_eq!(error.invalid_value_diagnostic().unwrap().field(), field);
+        }
+    }
+
+    #[test]
     fn sweep_reports_its_first_hint_before_an_unrelated_range_error() {
         let p = Point::new(0.0, 0.0);
         let error = Gradient::try_sweep(

@@ -1388,6 +1388,92 @@ mod tests {
     }
 
     #[test]
+    fn repeating_average_keeps_its_exact_scalar_and_stop_prefixes() {
+        use crate::RenderRefusalReason;
+
+        let uniform = linear(vec![
+            stop(7.0, color(1.0, 0.0, 0.0, 1.0)),
+            stop(7.0, color(1.0, 1.0, 1.0, 1.0)),
+            stop(7.0, color(0.0, 0.0, 1.0, 1.0)),
+        ]);
+        let weighted =
+            RepeatingGradient::try_radial(Point::new(0.0, 0.0), 1.0, 0.0, weighted_stops())
+                .unwrap();
+        let cases = [
+            (
+                uniform,
+                // Four endpoint/span actions, two denominator actions,
+                // three weighted colors at 20 each and 12 finish actions.
+                [
+                    (4, 2, Some(1)),
+                    (5, 2, Some(1)),
+                    (6, 3, Some(4)),
+                    (78, 5, None),
+                ],
+                color(0.75, 0.5, 0.75, 1.0),
+            ),
+            (
+                weighted,
+                // Seven actions before reduction, 12 for the first color
+                // and position, two segments at 27 each and 12 to finish.
+                [
+                    (7, 3, Some(4)),
+                    (18, 3, Some(1)),
+                    (19, 4, Some(4)),
+                    (85, 5, None),
+                ],
+                color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0),
+            ),
+        ];
+        for (gradient, attempts, expected) in cases {
+            for (limit, stop_visits, next_amount) in attempts {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let result =
+                    context.run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        prepare(&gradient, kurbo::Affine::IDENTITY, account)
+                    });
+                let report = context.last_attempt().unwrap();
+                assert_eq!(report.cleanup_fault(), None);
+                let attempt = report.attempt().unwrap();
+                if let Some(amount) = next_amount {
+                    let error = result.err().expect("the next scalar admission must refuse");
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                    assert_eq!(
+                        refusal.quantity(),
+                        RenderQuantity::Work(RenderWork::CoordinateVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, amount));
+                    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+                    assert_eq!(
+                        error.accounting_diagnostic(),
+                        Some(RenderAccountingError::Refused(refusal))
+                    );
+                } else {
+                    assert_eq!(solid(&result.unwrap()), peniko::Color::from(expected));
+                    assert_eq!(attempt.refusal(), None);
+                }
+                let usage = attempt.usage();
+                assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
+                assert_eq!(usage.work(RenderWork::GradientStopVisits), stop_visits);
+                assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+                for resource in [
+                    RenderResource::ScratchCpuBytes,
+                    RenderResource::RetainedCpuBytes,
+                ] {
+                    assert_eq!(usage.live(resource), 0);
+                    assert_eq!(usage.peak(resource), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn average_preparation_charges_real_stop_walks_without_unused_stop_backing() {
         let gradient = linear(weighted_stops());
         let mut context = RenderAccountingContext::new(RenderAccountingOptions::new());
