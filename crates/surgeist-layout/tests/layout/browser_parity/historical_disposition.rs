@@ -58,6 +58,7 @@ struct HistoricalReport {
 }
 
 pub(super) struct HistoricalInputs {
+    declaration: serde_json::Value,
     report: HistoricalReport,
     manifest_sha256: String,
     report_sha256: String,
@@ -68,6 +69,17 @@ impl HistoricalInputs {
         let manifest_sha256 = sha256(&read_file(root, MANIFEST)?);
         let report = read_file(root, REPORT)?;
         let report_sha256 = sha256(&report);
+        let declaration = read_file(root, ACCOUNTING)?;
+        let declaration = std::str::from_utf8(&declaration).map_err(|error| error.to_string())?;
+        let declaration = unique_json(declaration).map_err(|error| error.to_string())?;
+        // Both verdicts use this sealed inventory. Only the qualified verdict
+        // interprets the historical disposition or prepared Text entries.
+        if declaration["schema_version"].as_u64() != Some(1)
+            || declaration["manifest_sha256"].as_str() != Some(manifest_sha256.as_str())
+            || declaration["report_sha256"].as_str() != Some(report_sha256.as_str())
+        {
+            return Err("historical inventory manifest or report identity changed".into());
+        }
         let report: HistoricalReport =
             serde_json::from_slice(&report).map_err(|error| error.to_string())?;
         if report.metadata.schema_version != 4
@@ -92,6 +104,7 @@ impl HistoricalInputs {
             }
         }
         Ok(Self {
+            declaration,
             report,
             manifest_sha256,
             report_sha256,
@@ -193,11 +206,8 @@ impl HistoricalAccounting {
         inputs: HistoricalInputs,
         registry: &AdmittedRegistry,
     ) -> Result<Self, String> {
-        let declaration = read_file(root, ACCOUNTING)?;
-        let declaration = std::str::from_utf8(&declaration).map_err(|error| error.to_string())?;
         let declaration: DispositionDeclaration =
-            serde_json::from_value(unique_json(declaration).map_err(|error| error.to_string())?)
-                .map_err(|error| error.to_string())?;
+            serde_json::from_value(inputs.declaration).map_err(|error| error.to_string())?;
         if declaration.schema_version != 1
             || inputs.manifest_sha256 != declaration.manifest_sha256
             || inputs.report_sha256 != declaration.report_sha256
