@@ -7,11 +7,12 @@ use super::{
     },
     graph::{
         BlurInput, GpuRenderGraph, GraphBuildResult, GraphGeneration, GraphValidationError,
-        SemanticClipCoverage, SemanticCompositeKind, SemanticCompositePlan, SemanticFilterStepPlan,
-        SemanticGraphPass, SemanticGraphResource, SemanticImportKind, SemanticImportPlan,
-        SemanticPassId, SemanticPassIntent, SemanticPassResult, SemanticResourceDescriptor,
-        SemanticResourceId, SemanticResourceProducer, SemanticResourceRole, SemanticVelloSpan,
-        SemanticVelloSpanScope, WorkingImageInitialization, graph_build,
+        PassIndex, SemanticClipCoverage, SemanticCompositeKind, SemanticCompositePlan,
+        SemanticFilterStepPlan, SemanticGraphPass, SemanticGraphResource, SemanticImportKind,
+        SemanticImportPlan, SemanticPassId, SemanticPassIntent, SemanticPassResult,
+        SemanticResourceDescriptor, SemanticResourceId, SemanticResourceProducer,
+        SemanticResourceRole, SemanticVelloSpan, SemanticVelloSpanScope,
+        WorkingImageInitialization, graph_build,
     },
     validate::LoweringValidationState,
 };
@@ -260,10 +261,63 @@ pub(crate) enum GraphLoweringImportView<'graph> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringResourceView<'graph> {
     resource: &'graph SemanticGraphResource,
-    import: Option<&'graph SemanticImportPlan>,
+    binding: GraphLoweringResourceBinding<'graph>,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
+enum GraphLoweringResourceBinding<'graph> {
+    Pass {
+        last_use: PassIndex,
+        producer: PassIndex,
+    },
+    Imported {
+        // Keep the tag and last-use index together before the borrowed upload.
+        last_use: PassIndex,
+        import: GraphLoweringImportView<'graph>,
+    },
 }
 
 impl<'graph> GraphLoweringResourceView<'graph> {
+    fn try_from_validated(
+        resource: &'graph SemanticGraphResource,
+        import: Option<&'graph SemanticImportPlan>,
+    ) -> GraphBuildResult<Self> {
+        let producer = resource
+            .producer
+            .ok_or(GraphValidationError::ResourceWithoutProducer(resource.id))?;
+        let last_use = resource
+            .releasable_after
+            .ok_or(GraphValidationError::UnscheduledReads {
+                resource: resource.id,
+                remaining: 0,
+            })?
+            .index;
+        // Validation has matched both pass identities to this resource's
+        // generation, so the binding only needs to carry their indices.
+        let binding = match (producer, import) {
+            (SemanticResourceProducer::Pass(producer), None) => {
+                GraphLoweringResourceBinding::Pass {
+                    last_use,
+                    producer: producer.index,
+                }
+            }
+            (SemanticResourceProducer::Imported, Some(import)) => {
+                let SemanticImportKind::ResolvedAlphaMask { upload } = &import.kind;
+                GraphLoweringResourceBinding::Imported {
+                    last_use,
+                    import: GraphLoweringImportView::ResolvedAlphaMask(upload),
+                }
+            }
+            _ => return Err(GraphValidationError::InvalidImportedResourceRole),
+        };
+        Ok(Self { resource, binding })
+    }
+
+    const fn pass_id(self, index: PassIndex) -> GraphLoweringPassId {
+        GraphLoweringPassId::from_semantic(SemanticPassId::new(self.resource.id.generation, index))
+    }
+
     #[must_use]
     pub(crate) const fn id(self) -> GraphLoweringResourceId {
         GraphLoweringResourceId::from_semantic(self.resource.id)
@@ -280,13 +334,14 @@ impl<'graph> GraphLoweringResourceView<'graph> {
     }
 
     #[must_use]
-    pub(crate) fn producer(self) -> GraphLoweringResourceProducer {
-        match self.resource.producer {
-            Some(SemanticResourceProducer::Imported) => GraphLoweringResourceProducer::Imported,
-            Some(SemanticResourceProducer::Pass(pass)) => {
-                GraphLoweringResourceProducer::Pass(GraphLoweringPassId::from_semantic(pass))
+    pub(crate) const fn producer(self) -> GraphLoweringResourceProducer {
+        match self.binding {
+            GraphLoweringResourceBinding::Imported { .. } => {
+                GraphLoweringResourceProducer::Imported
             }
-            None => unreachable!("validated lowering resources always have a producer"),
+            GraphLoweringResourceBinding::Pass { producer, .. } => {
+                GraphLoweringResourceProducer::Pass(self.pass_id(producer))
+            }
         }
     }
 
@@ -296,20 +351,18 @@ impl<'graph> GraphLoweringResourceView<'graph> {
     }
 
     #[must_use]
-    pub(crate) fn last_use(self) -> GraphLoweringPassId {
-        match self.resource.releasable_after {
-            Some(pass) => GraphLoweringPassId::from_semantic(pass),
-            None => unreachable!("validated lowering resources always have a last use"),
-        }
+    pub(crate) const fn last_use(self) -> GraphLoweringPassId {
+        let (GraphLoweringResourceBinding::Pass { last_use, .. }
+        | GraphLoweringResourceBinding::Imported { last_use, .. }) = self.binding;
+        self.pass_id(last_use)
     }
 
     #[must_use]
-    pub(crate) fn import(self) -> Option<GraphLoweringImportView<'graph>> {
-        self.import.map(|import| match &import.kind {
-            SemanticImportKind::ResolvedAlphaMask { upload } => {
-                GraphLoweringImportView::ResolvedAlphaMask(upload)
-            }
-        })
+    pub(crate) const fn import(self) -> Option<GraphLoweringImportView<'graph>> {
+        match self.binding {
+            GraphLoweringResourceBinding::Pass { .. } => None,
+            GraphLoweringResourceBinding::Imported { import, .. } => Some(import),
+        }
     }
 }
 
@@ -823,7 +876,7 @@ impl GraphLoweringPassView<'_> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringView<'graph> {
-    pub(super) graph: &'graph GpuRenderGraph,
+    graph: &'graph GpuRenderGraph,
 }
 
 impl<'graph> GraphLoweringView<'graph> {
@@ -858,9 +911,10 @@ impl<'graph> GraphLoweringView<'graph> {
                     break;
                 }
             }
-            result
-                .append_slot()?
-                .write(GraphLoweringResourceView { resource, import });
+            let resource_view = graph_build(GraphLoweringResourceView::try_from_validated(
+                resource, import,
+            ))?;
+            result.append_slot()?.write(resource_view);
         }
         Ok(result)
     }
