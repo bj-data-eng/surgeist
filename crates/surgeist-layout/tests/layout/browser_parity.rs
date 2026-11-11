@@ -280,17 +280,11 @@ fn manifest_active_output_paths() -> BTreeSet<PathBuf> {
     fri08_c05_inputs_prospective_paths(&corpus, active_sources)
 }
 
-#[test]
-fn fri08_manifest_plain_box_predecessors_replay_registered_geometry() {
+fn assert_active_manifest_originals_match(sources: &[&str]) {
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml");
-    let sources = [
-        "grid/fri08_auto_fit_occupied_track_collapse",
-        "subgrid/subgrid_overflow_hidden_does_not_prohibit",
-        "subgrid/subgrid_standalone_axis_column_autoflow",
-    ];
     let active = manifest_active_output_paths();
     let originals: Vec<_> = sources
-        .into_iter()
+        .iter()
         .flat_map(|source| {
             crate::fixture_variants::fixture_cases()
                 .into_iter()
@@ -298,11 +292,38 @@ fn fri08_manifest_plain_box_predecessors_replay_registered_geometry() {
         })
         .map(|relative| corpus.join(relative))
         .collect();
-    assert_eq!(originals.len(), 12);
+    assert_eq!(originals.len(), sources.len() * 4);
     for original in &originals {
         assert!(active.contains(original), "{}", original.display());
     }
     assert_registered_originals_match(&originals);
+}
+
+#[test]
+fn fri08_manifest_plain_box_predecessors_replay_registered_geometry() {
+    let sources = [
+        "grid/fri08_auto_fit_occupied_track_collapse",
+        "subgrid/subgrid_overflow_hidden_does_not_prohibit",
+        "subgrid/subgrid_standalone_axis_column_autoflow",
+    ];
+    assert_active_manifest_originals_match(&sources);
+}
+
+#[test]
+fn fri08_manifest_remaining_plain_boxes_replay_registered_geometry() {
+    let sources = [
+        "grid/fri08_auto_placement_span_after_occupied",
+        "grid/fri08_explicit_overlap_no_implicit_growth",
+        "grid/fri08_fit_content_flex_composition",
+        "grid/fri08_template_areas_explicit_tracks",
+        "grid/fri08_stretch_minmax_auto",
+        "grid/fri08_duplicate_line_name_token",
+        "grid/fri08_grid_composition",
+        "grid-lanes/fri08_nested_indefinite_subgrid",
+        "grid-lanes/grid_lanes_item_containing_block_content_width",
+        "subgrid/fri08_standalone_intrinsic_composition",
+    ];
+    assert_active_manifest_originals_match(&sources);
 }
 
 #[test]
