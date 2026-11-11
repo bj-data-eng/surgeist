@@ -3160,6 +3160,298 @@ fn same_resource_set(
 }
 
 #[cfg(test)]
+mod layer_composite_read_tests {
+    use super::*;
+    use crate::{
+        BlendMode, Capabilities, Image, ImageId, ImageQuality, Layer, Rect,
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
+        RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
+        RenderRefusalReason, ResolvedLayerAlphaMask, Scene, Size,
+        backend::DeviceCapabilities,
+        frame::{FrameContext, FramePlan},
+    };
+
+    fn authored_plan(clip: bool, mask: bool) -> (LoweredGraphPlan, Option<ImageId>) {
+        let account = Account::for_test();
+        let mut layer = Layer::new().isolated().blend(BlendMode::Multiply);
+        let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+        if clip {
+            layer = layer.try_clip(bounds.into()).unwrap();
+        }
+        let mut mask_id = None;
+        if mask {
+            let image = Image::from_rgba(
+                Size::new(2.0, 1.0),
+                vec![255, 255, 255, 128, 255, 255, 255, 255],
+            )
+            .unwrap()
+            .quality(ImageQuality::Low);
+            mask_id = Some(image.id());
+            layer = layer
+                .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(image, bounds).unwrap());
+        }
+        let mut scene = Scene::new();
+        scene.layer(layer, |child| {
+            child.fill(bounds, Color::BLACK);
+        });
+        let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+        let context =
+            FrameContext::try_new(Size::new(4.0, 3.0), 1.0, Antialiasing::Area, Color::BLACK)
+                .unwrap();
+        let FramePlan::GpuGraph(graph) = commands.plan_for(context, &account).unwrap() else {
+            panic!("the isolated multiply layer must use the GPU graph");
+        };
+        let plan = LoweredGraphPlan::try_lower_validated_graph(
+            &graph,
+            WorkingFormat::HighPrecision,
+            Format::Rgba8,
+            &DeviceCapabilities::from_test_facts(true, true, 4096),
+            &account,
+        )
+        .unwrap();
+        (plan, mask_id)
+    }
+
+    fn layer_pass(plan: &LoweredGraphPlan) -> &RuntimePass {
+        plan.passes
+            .iter()
+            .find(|pass| {
+                matches!(
+                    &pass.kind,
+                    RuntimePassKind::Composite(Some(RuntimeComposite {
+                        kind: RuntimeCompositeKind::Layer { .. },
+                        ..
+                    }))
+                )
+            })
+            .unwrap()
+    }
+
+    fn resource_result(pass: &RuntimePass) -> RuntimeResourceId {
+        let RuntimeResultBinding::Resource(resource) = pass.result else {
+            panic!("the fixture pass must produce a resource");
+        };
+        resource
+    }
+
+    #[test]
+    fn layer_composite_reads_preserve_four_authored_shapes_and_results() {
+        use RuntimeReadRole::{AlphaMask, ClipCoverage, CompositeParent, CompositeSource};
+        use RuntimeSamplingEdge::{ClampToExtent, TransparentBlack};
+        use RuntimeSamplingFilter::{Linear, Nearest};
+
+        for (clip, mask) in [(false, false), (true, false), (false, true), (true, true)] {
+            let (plan, mask_id) = authored_plan(clip, mask);
+            let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+                .unwrap()
+                .unwrap();
+            let plan = &closed.lowered;
+            let pass = layer_pass(plan);
+            let [layer] = closed.facts.layer_compositions.as_slice() else {
+                panic!("one authored layer must close as one layer composite");
+            };
+            let source = plan
+                .passes
+                .iter()
+                .find(|pass| {
+                    matches!(
+                        &pass.kind,
+                        RuntimePassKind::Composite(Some(RuntimeComposite {
+                            kind: RuntimeCompositeKind::SpanSourceOver,
+                            ..
+                        }))
+                    )
+                })
+                .map(resource_result)
+                .unwrap();
+            let coverage = plan
+                .passes
+                .iter()
+                .find(|pass| {
+                    matches!(
+                        &pass.kind,
+                        RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(_)))
+                    )
+                })
+                .map(resource_result);
+            assert_eq!(coverage.is_some(), clip);
+            let imported = plan.resources.iter().find_map(|resource| {
+                let Some(RuntimeResourceImport::ResolvedAlphaMask(upload)) = &resource.import
+                else {
+                    return None;
+                };
+                assert_eq!(Some(upload.image().id()), mask_id);
+                assert_eq!(upload.physical_size(), PhysicalSize::new(2, 1));
+                assert_eq!(resource.producer, RuntimeResourceProducer::Imported);
+                Some(resource.id)
+            });
+            assert_eq!(imported.is_some(), mask);
+            let root = plan.root_working_image;
+            let mut expected = vec![
+                (CompositeParent, root, Linear, ClampToExtent),
+                (CompositeSource, source, Linear, TransparentBlack),
+            ];
+            if let Some(id) = coverage {
+                expected.push((ClipCoverage, id, Linear, TransparentBlack));
+            }
+            if let Some(id) = imported {
+                expected.push((AlphaMask, id, Nearest, ClampToExtent));
+            }
+            let observed: Vec<_> = pass
+                .reads
+                .iter()
+                .map(|read| {
+                    (
+                        read.role,
+                        read.resource,
+                        read.sampling_filter,
+                        read.sampling_edge,
+                    )
+                })
+                .collect();
+            assert_eq!(observed, expected, "clip {clip}, mask {mask}");
+
+            let resource = |id| {
+                plan.resources
+                    .iter()
+                    .find(|resource| resource.id == id)
+                    .unwrap()
+            };
+            assert_eq!(pass.releases.len(), expected.len());
+            for (_, id, _, _) in expected {
+                assert!(pass.releases.contains(&id));
+                assert_eq!(resource(id).expected_reads, 1);
+                assert_eq!(resource(id).last_use, pass.id);
+            }
+            let result = resource_result(pass);
+            assert_eq!(layer.pass, pass.id);
+            assert_eq!(
+                (layer.parent, layer.source, layer.result),
+                (root, source, result)
+            );
+            assert_eq!(
+                (layer.clip_coverage, layer.alpha_mask),
+                (coverage, imported)
+            );
+            assert_eq!(resource(result).role, RuntimeResourceRole::CompositeResult);
+            assert_eq!(
+                resource(result).producer,
+                RuntimeResourceProducer::Pass(pass.id)
+            );
+            assert_eq!(
+                resource(result).format,
+                RuntimeResourceFormat::Working(WorkingFormat::HighPrecision)
+            );
+            assert_eq!(resource(result).spatial, resource(root).spatial);
+            assert_eq!(
+                resource(result).spatial.device_extent(),
+                PhysicalSize::new(4, 3)
+            );
+
+            let present = plan.passes.last().unwrap();
+            assert_eq!(present.id, plan.final_present);
+            assert!(matches!(present.kind, RuntimePassKind::Present));
+            assert_eq!(present.result, RuntimeResultBinding::Output(Format::Rgba8));
+            assert_eq!(resource(result).last_use, present.id);
+            assert_eq!(present.reads.len(), 1);
+            assert_eq!(present.reads[0].role, RuntimeReadRole::FinalWorkingImage);
+            assert_eq!(present.reads[0].resource, result);
+        }
+    }
+
+    #[test]
+    fn layer_composite_read_budgets_reach_coverage_before_mask() {
+        use RenderWork::{GraphEdgeVisits, ResourceProbes};
+
+        let (plan, _) = authored_plan(true, true);
+        let pass = layer_pass(&plan);
+        let RuntimeResourceProducer::Pass(producer) = plan.resources[0].producer else {
+            panic!("the root has a producer pass");
+        };
+        let parent = ExecutableCompositionContext {
+            current: plan.root_working_image,
+            producer,
+            contains_captured_source: false,
+        };
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == pass.reads[1].resource)
+            .unwrap();
+        // The eight declaration-order IDs give four root probes, two coverage
+        // probes and three result probes before the optional reads. Coverage
+        // needs two more probes; the imported mask needs three. The first five
+        // edges check three dependencies and the two mandatory reads.
+        for (work, limit, edges, probes, succeeds) in [
+            (GraphEdgeVisits, 5, 5, 11, false),
+            (GraphEdgeVisits, 6, 6, 14, false),
+            (ResourceProbes, 11, 6, 11, false),
+            (GraphEdgeVisits, 7, 7, 14, true),
+        ] {
+            let setup = Account::for_test();
+            let proof = ProofContext::new(&setup);
+            let maps = ClosedGraphMaps::try_new(&plan, &proof).unwrap();
+            let ProofMap { entries, live, .. } = maps.resource_by_id;
+            let options = RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap())
+                .with_profile(RenderProfile::Detailed {
+                    timing: false,
+                    event_limit: 32,
+                    filter: RenderPhaseFilter::Phase(RenderPhase::Lower),
+                });
+            let mut accounting = RenderAccountingContext::new(options);
+            let result = accounting.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                let proof = ProofContext::new(account);
+                // Reuse the real graph resource map. The fresh budget applies
+                // to composite validation after the map is established.
+                let resources = ProofMap {
+                    entries,
+                    live,
+                    proof: &proof,
+                };
+                let layer = validate_closed_composite(
+                    pass,
+                    parent,
+                    source,
+                    &resources,
+                    plan.working_format,
+                    true,
+                );
+                proof.finish()?;
+                Ok(layer.flatten().map(|layer| layer.result))
+            });
+            let attempt = accounting.last_attempt().unwrap().attempt().unwrap();
+            let usage = attempt.phase_usage(RenderPhase::Lower);
+            assert_eq!(usage.work(GraphEdgeVisits), edges, "{work:?} cap {limit}");
+            assert_eq!(usage.work(ResourceProbes), probes, "{work:?} cap {limit}");
+            if succeeds {
+                assert_eq!(result.unwrap(), Some(resource_result(pass)));
+                assert_eq!(attempt.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(attempt.refusal(), None);
+            } else {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+                assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+                assert_eq!(
+                    result.unwrap_err().accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+                assert!(attempt.events().any(|event| matches!(
+                    event,
+                    RenderEvent::Refused {
+                        phase: RenderPhase::Lower,
+                        ..
+                    }
+                )));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod repeated_proof_accounting_tests {
     use super::*;
     use crate::pass::test_support::{
@@ -4350,14 +4642,20 @@ fn validate_closed_layer_composite(
     {
         return None;
     }
-    let expected_read_count = 2usize
-        .checked_add(usize::from(layer.clip_coverage.is_some()))?
-        .checked_add(usize::from(alpha_mask.is_some()))?;
-    if pass.reads.len() != expected_read_count {
-        return None;
+    match (layer.clip_coverage, alpha_mask, pass.reads.as_slice()) {
+        (None, None, [_, _]) => {}
+        (Some(coverage), None, [_, _, coverage_read]) => {
+            validate_closed_clip_coverage(pass.id, resources, coverage, coverage_read)?;
+        }
+        (None, Some(mask), [_, _, mask_read]) => {
+            validate_closed_alpha_mask(pass.id, resources, mask, mask_read)?;
+        }
+        (Some(coverage), Some(mask), [_, _, coverage_read, mask_read]) => {
+            validate_closed_clip_coverage(pass.id, resources, coverage, coverage_read)?;
+            validate_closed_alpha_mask(pass.id, resources, mask, mask_read)?;
+        }
+        _ => return None,
     }
-    let next_read = validate_closed_clip_coverage(pass, resources, layer.clip_coverage, 2)?;
-    validate_closed_alpha_mask(pass, resources, alpha_mask, next_read)?;
     Some(Some(ExecutableLayerCompositionFacts {
         pass: pass.id,
         parent: parent.current,
@@ -4392,17 +4690,14 @@ fn closed_composite_source_is_valid(
 }
 
 fn validate_closed_clip_coverage(
-    pass: &RuntimePass,
+    pass: RuntimePassId,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
-    clip_coverage: Option<RuntimeResourceId>,
-    next_read: usize,
-) -> Option<usize> {
-    let Some(coverage) = clip_coverage else {
-        return Some(next_read);
-    };
+    coverage: RuntimeResourceId,
+    read: &RuntimeReadBinding,
+) -> Option<()> {
     let coverage_resource = resources.get(&coverage).copied()?;
     if !runtime_read_has_exact_facts(
-        &pass.reads[next_read],
+        read,
         RuntimeReadRole::ClipCoverage,
         coverage_resource,
         RuntimeSamplingFilter::Linear,
@@ -4413,22 +4708,19 @@ fn validate_closed_clip_coverage(
         || !matches!(coverage_resource.producer, RuntimeResourceProducer::Pass(_))
         || coverage_resource.import.is_some()
         || coverage_resource.expected_reads != 1
-        || coverage_resource.last_use != pass.id
+        || coverage_resource.last_use != pass
     {
         return None;
     }
-    next_read.checked_add(1)
+    Some(())
 }
 
 fn validate_closed_alpha_mask(
-    pass: &RuntimePass,
+    pass: RuntimePassId,
     resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
-    alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
-    next_read: usize,
+    mask: RuntimeResolvedAlphaMaskComposition,
+    read: &RuntimeReadBinding,
 ) -> Option<()> {
-    let Some(mask) = alpha_mask else {
-        return Some(());
-    };
     let mask_resource = resources.get(&mask.resource()).copied()?;
     let Some(RuntimeResourceImport::ResolvedAlphaMask(upload)) = &mask_resource.import else {
         return None;
@@ -4440,7 +4732,7 @@ fn validate_closed_alpha_mask(
         | ShaderMaskQualityKey::Pixelated => RuntimeSamplingFilter::Linear,
     };
     (runtime_read_has_exact_facts(
-        &pass.reads[next_read],
+        read,
         RuntimeReadRole::AlphaMask,
         mask_resource,
         mask_filter,
@@ -4460,7 +4752,7 @@ fn validate_closed_alpha_mask(
         && RuntimeMaskTexelCenterFacts::try_new(mask.image_dimensions()).ok()
             == Some(mask.texel_center_facts())
         && mask_resource.expected_reads != 0
-        && mask_resource.last_use >= pass.id)
+        && mask_resource.last_use >= pass)
         .then_some(())
 }
 
