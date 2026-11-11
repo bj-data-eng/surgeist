@@ -347,6 +347,28 @@ impl Draft {
             .ok_or(DomError::RepresentationExhausted)?;
         Ok(())
     }
+    /// Account for the settings request in the rollback-only command scan.
+    /// A Script can finish locally after a disabled answer. Scan the possible
+    /// successors without supplying that answer to the HTML cursor.
+    pub(in crate::store) fn headroom_script_settings(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<bool, DomError> {
+        if self.source_headroom.is_none() {
+            return Ok(false);
+        }
+        self.source_step(cancel)?;
+        let scan = self
+            .source_headroom
+            .as_mut()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        scan.invocations = scan
+            .invocations
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(true)
+    }
+
     pub(in crate::store) fn headroom_external_hook(
         &mut self,
         cancel: &AtomicBool,

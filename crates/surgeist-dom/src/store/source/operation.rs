@@ -23,6 +23,7 @@ mod request_close;
 mod scope;
 #[cfg(test)]
 mod scope_tests;
+mod script;
 mod show_modal;
 mod watcher;
 use super::Invocation;
@@ -87,6 +88,7 @@ pub(in crate::store) struct Operation {
     started: bool,
     published: bool,
     event_exposed: bool,
+    script_parked: bool,
     event_work: std::sync::Weak<crate::source::event::EventWork>,
     event_custody: Option<Arc<formation::EventWorkCustody>>,
     dialog_queue: Option<crate::DomElementTaskId>,
@@ -159,6 +161,7 @@ impl Drop for DomSourceLease<'_> {
             && self.dom.source_operation.as_ref().is_some_and(|o| {
                 !o.published
                     && !o.event_exposed
+                    && !o.script_parked
                     && o.draft.compound_failure().is_none()
                     && o.observation().is_none()
                     && o.meta_policy.is_none()
@@ -365,6 +368,7 @@ impl Dom {
             started: false,
             published: false,
             event_exposed: false,
+            script_parked: false,
             event_work: std::sync::Weak::new(),
             event_custody: None,
             dialog_queue: None,
@@ -673,6 +677,8 @@ impl Operation {
             parent: None,
             phase: if self.failure.is_some() || self.draft.compound_failure().is_some() {
                 crate::DomSourcePhase::PendingCleanup
+            } else if self.draft.pending_script().is_some() {
+                crate::DomSourcePhase::ScriptPreparation
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::DomSourcePhase::FullscreenExitHandoff
             } else if self.draft.pending_autofocus().is_some() {
@@ -1998,6 +2004,13 @@ impl DomSourceLease<'_> {
                 request.clone(),
             )));
         }
+        if op.draft.pending_script().is_some() {
+            op.refresh_admission(cancel)?;
+            let request = op.issue_script_request(cancel)?;
+            return Ok(DomSourceProgress::Request(DomSourceRequest::Script(
+                request,
+            )));
+        }
         if op.draft.fullscreen_exit.is_some() {
             op.refresh_admission(cancel)?;
             let request = op.fullscreen_handoff_request(self.dom, cancel)?;
@@ -2129,6 +2142,15 @@ impl DomSourceLease<'_> {
                 }
             })();
             match result {
+                Err(DomError::ScriptPreparationRequired) => {
+                    op.started = true;
+                    op.script_parked = true;
+                    drop(checkpoint);
+                    let request = op.issue_script_request(cancel)?;
+                    return Ok(DomSourceProgress::Request(DomSourceRequest::Script(
+                        request,
+                    )));
+                }
                 Err(DomError::FullscreenExitHandoffRequired) => {
                     if !op.command_admitted {
                         checkpoint.restore(&mut op.draft);
@@ -3335,6 +3357,7 @@ impl Dom {
                 started: false,
                 published: false,
                 event_exposed: false,
+                script_parked: false,
                 event_work: std::sync::Weak::new(),
                 event_custody: None,
                 dialog_queue: None,
@@ -6612,6 +6635,7 @@ pub(in crate::store) mod accounting_tests {
                         | DomSourceRequest::FocusDelegate(_)
                         | DomSourceRequest::DesignMode(_)
                         | DomSourceRequest::FullscreenExitHandoff(_)
+                        | DomSourceRequest::Script(_)
                         | DomSourceRequest::AutofocusInsertion(_),
                     )) => {
                         panic!("Slot assignment fixture has no eventful Dialog operation")

@@ -4124,6 +4124,9 @@ mod tests {
                     DomSourceProgress::Request(surgeist_dom::DomSourceRequest::DesignMode(_)) => {
                         panic!("Style fixture cannot request a designMode service")
                     }
+                    DomSourceProgress::Request(surgeist_dom::DomSourceRequest::Script(_)) => {
+                        panic!("Style fixture cannot request Script settings")
+                    }
                     DomSourceProgress::Request(
                         surgeist_dom::DomSourceRequest::FullscreenExitHandoff(_),
                     ) => {

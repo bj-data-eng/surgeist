@@ -2104,6 +2104,37 @@ impl DomHostedSource {
         })
     }
 
+    pub(in crate::store) fn script_window_settings(
+        &self,
+        dom: &Dom,
+        binding: &DomDocumentScriptBinding,
+        global: DomHostedGlobalId,
+        facts: DomDocumentScriptingFacts,
+        mut step: impl FnMut() -> Result<(), DomHostedError>,
+    ) -> Result<bool, DomHostedError> {
+        if binding.source != self.id() || binding.global != global {
+            return Err(DomHostedError::ForeignSource);
+        }
+        dom.validate_hosted_source(self)?;
+        if dom.active_script_registration() != Some(binding.key())
+            || dom.dispatch_global_document_current_with(global, &mut step)? != binding.document
+        {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        step()?;
+        let metadata = self.script_document_metadata(dom, binding.host, binding.document)?;
+        if metadata.script_host_generation() != Some(binding.generation) {
+            return Err(DomHostedError::StaleIdentity);
+        }
+        let inputs = metadata
+            .hosted_inputs
+            .as_ref()
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        Ok(facts
+            .policy
+            .window_settings_enabled(facts.engine, &inputs.0.active_sandbox))
+    }
+
     /// Qualify the current settings of this attached Document while a native
     /// dispatcher holds its actual Source scope. The result is for immediate
     /// use and does not attest a complete historical capture.

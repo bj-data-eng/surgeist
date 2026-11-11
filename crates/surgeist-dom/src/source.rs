@@ -115,6 +115,8 @@ pub enum DomSourcePhase {
     DesignModeService,
     /// Exact step8 scheduling join, before any invocation prefix is published.
     FullscreenExitHandoff,
+    /// Original HTML Script preparation is parked in the private segment.
+    ScriptPreparation,
     /// Actual original invocation cleanup remains after a native failure.
     PendingCleanup,
 }
@@ -173,7 +175,72 @@ pub enum DomSourceRequest {
     AutofocusInsertion(DomSourceAutofocusInsertionRequest),
     CloseWatcher(DomSourceCloseWatcherRequest),
     DesignMode(DomSourceDesignModeRequest),
+    Script(DomSourceScriptRequest),
 }
+
+/// Actual reached boundary of an original native HTML Script preparation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DomSourceScriptStep {
+    /// Read scripting settings for the Script's own relevant Global.
+    ReadScripting,
+    /// The live answer enabled scripting. Executable preparation is unavailable.
+    ExecutablePreparation,
+}
+
+/// Immutable request for one exact original preparation occurrence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceScriptRequest {
+    pub(crate) operation: DomSourceOperationId,
+    pub(crate) occurrence: watcher::HookOccurrence,
+    pub(crate) basis: crate::DomStamp,
+    pub(crate) subject: Option<NodeId>,
+    pub(crate) node_document: Option<crate::DocumentId>,
+    pub(crate) relevant_global: Option<crate::DomHostedGlobalId>,
+    pub(crate) step: DomSourceScriptStep,
+}
+
+impl DomSourceScriptRequest {
+    pub const fn operation(self) -> DomSourceOperationId {
+        self.operation
+    }
+    pub const fn basis(self) -> crate::DomStamp {
+        self.basis
+    }
+    /// A private staged creation has no published Node identity yet.
+    pub const fn subject(self) -> Option<NodeId> {
+        self.subject
+    }
+    pub const fn node_document(self) -> Option<crate::DocumentId> {
+        self.node_document
+    }
+    /// Creation provenance. Adoption does not substitute the node Document's Global.
+    pub const fn relevant_global(self) -> Option<crate::DomHostedGlobalId> {
+        self.relevant_global
+    }
+    pub const fn step(self) -> DomSourceScriptStep {
+        self.step
+    }
+}
+
+/// Live settings sampled by the trusted issuer for one exact Script request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSourceScriptSettings {
+    pub(crate) request: DomSourceScriptRequest,
+    pub(crate) enabled: bool,
+}
+
+impl DomSourceScriptSettings {
+    /// The exact original read for which the observation was established.
+    pub const fn request(self) -> DomSourceScriptRequest {
+        self.request
+    }
+
+    /// Whether the original relevant Window settings permit scripting.
+    pub const fn enabled(self) -> bool {
+        self.enabled
+    }
+}
+
 /// The final identity produced by one completed creation operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceOutput {

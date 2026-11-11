@@ -6172,6 +6172,7 @@ pub surgeist_html::scripting::HtmlScriptingPolicy::automation_allows: bool
 pub surgeist_html::scripting::HtmlScriptingPolicy::user_allows: bool
 impl surgeist_html::scripting::HtmlScriptingPolicy
 pub fn surgeist_html::scripting::HtmlScriptingPolicy::document_enabled(self, engine: surgeist_html::scripting::HtmlScriptingEngine, active_sandbox: &surgeist_html::attributes::sandbox::HtmlSandboxFlags, browsing_context: surgeist_html::security::nonce::HtmlBrowsingContextPresence) -> bool
+pub fn surgeist_html::scripting::HtmlScriptingPolicy::window_settings_enabled(self, engine: surgeist_html::scripting::HtmlScriptingEngine, active_sandbox: &surgeist_html::attributes::sandbox::HtmlSandboxFlags) -> bool
 pub mod surgeist_html::security
 pub mod surgeist_html::security::csp
 pub enum surgeist_html::security::csp::HtmlCspAssociationCause

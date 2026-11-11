@@ -7,11 +7,20 @@ Native Script preparation and SVG processing use different source rules. Their r
 Native HTML Script has a checked `DomNode::as_html_script()` view over its real
 canonical flags, optional type, parser/preparation Document identities and shared
 Uninitialized result/null-ready state. Fresh native creation has null documents,
-force-async true and other flags false. The native no-engine profile establishes
-scripting Disabled, independently of XML/HTML class. Preparation
-still stores recognized type, already-started and actual preparation document
-before that source return. No fetch, compilation, error result, ready callback
-or JavaScript execution is manufactured.
+force-async true and other flags false. An absent browsing context for the
+current node Document independently disables scripting. With a browsing
+context, the Script uses its own relevant Global's settings, including after
+adoption into a different Document. Preparation stores the recognized type,
+already-started flag and actual preparation Document before this decision.
+
+A native Source edit that needs a live settings fact returns the exact
+`DomSourceRequest::Script` occurrence while retaining its private preparation
+cursor and later effects. The host samples its original relevant Global against
+that request. A disabled answer completes the HTML-owned disabled path. An
+enabled answer advances the same occurrence to `ExecutablePreparation`, which
+remains pending. An atomic batch that needs the live fact refuses before
+publication. Explicit Source cancellation can discard a wholly private
+segment. An earlier publication keeps its original mandatory tail pending.
 
 Script source hooks run at each actual operation: async Added, connected nonnull
 src writes (including redundant values), parent children-changed after insertion/

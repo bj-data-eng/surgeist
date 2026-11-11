@@ -18,6 +18,8 @@ use surgeist_html::scripting::HtmlScriptingPolicy;
 use surgeist_html_semantics::{HtmlCaptureLimits, HtmlCapturedNodeKind, HtmlScriptingStatus};
 use surgeist_runtime::{document_scripting::*, *};
 
+#[path = "document_scripting/script_preparation.rs"]
+mod script_preparation;
 #[path = "document_scripting/source_events.rs"]
 mod source_events;
 
@@ -1515,6 +1517,7 @@ fn main() {
             "creation-realms" => source_events::run_creation_realms(),
             "hook-utf16-work" => explicit_hook_keys_require_each_authored_utf16_work_unit(),
             "script-live-read" => connected_script_parks_the_original_source_for_live_scripting(),
+            "script-preparation" => script_preparation::run(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);
@@ -1549,4 +1552,5 @@ fn main() {
     native_refusal_stays_typed_and_sticky();
     source_events::run();
     source_events::run_creation_realms();
+    script_preparation::run();
 }

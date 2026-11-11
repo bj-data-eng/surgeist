@@ -800,6 +800,64 @@ impl DocumentScriptHost {
         self.observe()
     }
 
+    /// Sample and submit the exact pending Script's relevant settings. A
+    /// request for a different Global remains pending and returns None.
+    /// Resuming the original Source exposes its next requirement.
+    pub fn service_script_settings(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        request: surgeist_dom::DomSourceScriptRequest,
+        limits: surgeist_dom::DomSourceLimits,
+    ) -> Result<Option<surgeist_dom::DomSourceScriptSettings>, DocumentScriptError> {
+        self.check_permit(permit)?;
+        let attachment = self.attachment()?;
+        attachment.realm.check_owner_active()?;
+        let cancel = &self.native.cancellation;
+        let mut session = self
+            .native
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let mut lease = dom
+            .resume_source_edit(request.operation(), limits, cancel)
+            .map_err(DocumentScriptNativeError::from)?;
+        lease
+            .source_script_step(request, cancel)
+            .map_err(DocumentScriptNativeError::from)?;
+        if request.relevant_global() != Some(attachment.target.global()) {
+            return Ok(None);
+        }
+        let settings = hosted
+            .with_script_source_settings(
+                &mut lease,
+                attachment.target,
+                request,
+                cancel,
+                |source, lease| {
+                    let settings = lease
+                        .observe_script_settings(
+                            request,
+                            source,
+                            &attachment.canonical,
+                            DomDocumentScriptingFacts {
+                                engine: HtmlScriptingEngine::Supported,
+                                policy: attachment.policy,
+                            },
+                            cancel,
+                        )
+                        .map_err(DomHostedRuntimeError::Dom)?;
+                    lease
+                        .accept_script_settings(settings, cancel)
+                        .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+                    Ok(settings)
+                },
+            )
+            .map_err(DocumentScriptNativeError::from)?;
+        Ok(Some(settings))
+    }
+
     /// Run guest work in the actual attached realm without a native Session
     /// loan. This entry performs no implicit microtask checkpoint.
     pub fn in_document<T>(

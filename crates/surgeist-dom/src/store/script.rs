@@ -3,7 +3,7 @@ use super::*;
 use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::bounded::script::{
     HtmlScriptPreparationAction as Action, HtmlScriptPreparationCursor,
-    HtmlScriptPreparationReply as Reply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
+    HtmlScriptPreparationReply as Reply, HtmlScriptTypeCursor,
 };
 use surgeist_ledger::{Change, Charge};
 
@@ -11,8 +11,8 @@ use surgeist_ledger::{Change, Charge};
 /// credits they describe. DOM admits the raw strings before the hooks, so the borrowed kernel's
 /// work is finite in those operands; there is no hidden allocation or copied table.
 struct TypeWork<'a> {
+    draft: &'a Draft,
     cancel: &'a AtomicBool,
-    work: u64,
 }
 
 impl Charge<HtmlWork, HtmlResource> for TypeWork<'_> {
@@ -24,10 +24,9 @@ impl Charge<HtmlWork, HtmlResource> for TypeWork<'_> {
             let Change::Work(_, amount) = *change else {
                 return Err(DomError::HtmlChargeProtocol);
             };
-            self.work = self
-                .work
-                .checked_add(amount)
-                .ok_or(DomError::RepresentationExhausted)?;
+            for _ in 0..amount {
+                self.draft.source_step(self.cancel)?;
+            }
         }
         Ok(())
     }
@@ -52,7 +51,28 @@ fn attribute_name_is(name: &crate::DomQualifiedName, selected: &str) -> bool {
             .eq(selected.encode_utf16())
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct Frame {
+    pub(super) node: Key,
+    pub(super) cursor: HtmlScriptPreparationCursor,
+    saved_document: Option<Key>,
+    pub(super) boundary: Option<Boundary>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum Boundary {
+    Settings(Option<u64>),
+    Executable(u64),
+}
+
 impl Draft {
+    pub(super) fn pending_script(&self) -> Option<Frame> {
+        match self.effects.last()?.effect {
+            select::Effect::Script(frame) if frame.boundary.is_some() => Some(frame),
+            _ => None,
+        }
+    }
+
     fn script_attribute(
         &self,
         node: Key,
@@ -63,7 +83,7 @@ impl Draft {
             unreachable!("actual Script family requires Element")
         };
         for attribute in element.language().attributes().iter() {
-            check_cancel(cancel)?;
+            self.source_step(cancel)?;
             if attribute_name_is(attribute.name(), selected) {
                 return Ok(Some(attribute.value()));
             }
@@ -82,33 +102,38 @@ impl Draft {
         // canonical type cursor owns its meaning; this is only an exact lookup.
         let language = self.script_attribute(node, "language", cancel)?;
         let mut cursor = HtmlScriptTypeCursor::preparation(explicit, language);
-        let mut work = TypeWork { cancel, work: 0 };
+        let mut work = TypeWork {
+            draft: self,
+            cancel,
+        };
         while cursor.result().is_none() {
             cursor.advance(&mut work)?;
         }
         Ok(cursor.result().expect("completed actual type cursor"))
     }
 
-    fn prepare_html_script(
+    pub(super) fn script_effect(
         &mut self,
-        node: Key,
+        mut frame: Frame,
         cancel: &AtomicBool,
-    ) -> Result<HtmlScriptPreparationResult, DomError> {
-        let mut state = self.node(node)?.script().expect("actual HTML Script");
-        let mut cursor = HtmlScriptPreparationCursor::new();
-        let mut saved_document = None;
+    ) -> Result<(), DomError> {
+        let node = frame.node;
+        let mut state = self
+            .node(node)?
+            .script()
+            .ok_or(DomError::InvalidSourceOperation)?;
         loop {
-            check_cancel(cancel)?;
-            let reply = match cursor.action() {
+            self.source_step(cancel)?;
+            let reply = match frame.cursor.action() {
                 Action::ReadAlreadyStarted => Reply::AlreadyStarted(state.flags.already_started()),
                 Action::SaveAndClearParserDocument => {
-                    saved_document = state.parser_document.take();
+                    frame.saved_document = state.parser_document.take();
                     {
                         let mut fields = self.script_fields_mut(node, cancel)?;
                         (*fields) = Some(state);
                         fields.commit(cancel)
                     }?;
-                    Reply::ParserDocumentSaved(saved_document.is_some())
+                    Reply::ParserDocumentSaved(frame.saved_document.is_some())
                 }
                 Action::ReadAsyncPresence => Reply::AsyncPresent(
                     self.script_attribute(node, KnownHtmlAttribute::Async.local_name(), cancel)?
@@ -126,7 +151,7 @@ impl Draft {
                 Action::ReadChildTextEmpty => {
                     let mut empty = true;
                     for child in self.node(node)?.children().iter() {
-                        check_cancel(cancel)?;
+                        self.source_step(cancel)?;
                         if let transaction::KindRead::Text(text) = &self.node(child)?.kind()
                             && !text.is_empty()
                         {
@@ -152,7 +177,7 @@ impl Draft {
                     Reply::Applied
                 }
                 Action::RestoreParserDocument => {
-                    state.parser_document = saved_document.take();
+                    state.parser_document = frame.saved_document.take();
                     state.flags.parser_document_restored();
                     {
                         let mut fields = self.script_fields_mut(node, cancel)?;
@@ -183,20 +208,89 @@ impl Draft {
                     Reply::DocumentsEqual(state.parser_document == state.preparation_document)
                 }
                 Action::RequireDisabledScripting => {
-                    let document = self.node(node)?.document();
-                    match self.document_scripting(document) {
-                        surgeist_html_semantics::HtmlScriptingStatus::Disabled => Reply::Disabled,
-                        surgeist_html_semantics::HtmlScriptingStatus::Enabled => Reply::Enabled,
-                        surgeist_html_semantics::HtmlScriptingStatus::Unavailable => {
-                            Reply::Unavailable
+                    if !self.script_scripting_disabled(node, cancel)? {
+                        if self.headroom_script_settings(cancel)? {
+                            return Ok(());
                         }
+                        if self.source_limits.is_some() {
+                            frame.boundary = Some(Boundary::Settings(None));
+                            self.push_effect(
+                                select::Effect::Script(frame),
+                                self.effect_scoped,
+                                cancel,
+                            )?;
+                        }
+                        return Err(DomError::ScriptPreparationRequired);
                     }
+                    Reply::Disabled
                 }
-                Action::Complete(result) => return Ok(result),
+                Action::Complete(_) => return Ok(()),
             };
             check_cancel(cancel)?;
-            cursor.reply(reply).map_err(|_| DomError::NotSupported)?;
+            frame
+                .cursor
+                .reply(reply)
+                .map_err(|_| DomError::InvalidSourceOperation)?;
         }
+    }
+
+    fn script_scripting_disabled(&self, node: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
+        use crate::hosted::{DocumentPhase, ScriptRegistrationEnd};
+        use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
+        let script = self.node(node)?;
+        let document = self.document_metadata(script.document())?;
+        if document.document_environment().browsing_context() == HtmlBrowsingContextPresence::Absent
+        {
+            return Ok(true);
+        }
+        let (Some(global), Some(globals)) = (script.relevant_global(), &self.hosted_globals) else {
+            return Ok(false);
+        };
+        let origin = match globals.document_with(global, &mut || {
+            self.source_step(cancel)
+                .map_err(crate::DomHostedError::from)
+        }) {
+            Ok(document) => document,
+            Err(crate::DomHostedError::StaleIdentity) => return Ok(false),
+            Err(crate::DomHostedError::Dom(error)) => return Err(error),
+            Err(_) => return Err(DomError::HostedSourceUnavailable),
+        };
+        let metadata = self.document_metadata(Key::Existing(origin.node()))?;
+        let environment = metadata.document_environment();
+        let Some(association) = environment.hosted.as_ref() else {
+            return Ok(false);
+        };
+        if association.global != global || association.validate_live().is_err() {
+            return Ok(false);
+        }
+        let (DocumentPhase::InitialEntry { navigable, .. }, Some(history)) =
+            (association.phase, self.hosted_history.as_ref())
+        else {
+            return Ok(false);
+        };
+        let current = match history.navigable_with(navigable, || {
+            self.source_step(cancel)
+                .map_err(crate::DomHostedError::from)
+        }) {
+            Ok(current) => current,
+            Err(crate::DomHostedError::StaleIdentity) => return Ok(false),
+            Err(crate::DomHostedError::Dom(error)) => return Err(error),
+            Err(_) => return Err(DomError::HostedSourceUnavailable),
+        };
+        if current.global != global || current.retiring || current.retired {
+            return Ok(false);
+        }
+        if let Some(registration) = &self.script_registration
+            && registration.global == global
+        {
+            return Ok(registration.key.document == origin
+                && metadata.script_host_generation() == Some(registration.key.generation)
+                && matches!(
+                    registration.end.get(),
+                    Some(ScriptRegistrationEnd::EngineDisposed)
+                ));
+        }
+        Ok(true)
     }
 
     pub(super) fn script_post_connection(
@@ -207,7 +301,16 @@ impl Draft {
         if let Some(state) = self.node(node)?.script()
             && state.parser_document.is_none()
         {
-            self.prepare_html_script(node, cancel)?;
+            self.push_effect(
+                select::Effect::Script(Frame {
+                    node,
+                    cursor: HtmlScriptPreparationCursor::new(),
+                    saved_document: None,
+                    boundary: None,
+                }),
+                self.effect_scoped,
+                cancel,
+            )?;
         }
         Ok(())
     }
@@ -218,9 +321,9 @@ impl Draft {
         old_present: bool,
         removed: bool,
         cancel: &AtomicBool,
-    ) -> Result<(), DomError> {
+    ) -> Result<bool, DomError> {
         if self.node(node)?.script().is_none() {
-            return Ok(());
+            return Ok(false);
         }
         check_cancel(cancel)?;
         if !removed
@@ -237,13 +340,13 @@ impl Draft {
                 fields.commit(cancel)
             }?;
         }
-        if !removed
+        Ok(!removed
             && attribute_name_is(name, KnownHtmlAttribute::Src.local_name())
-            && self.shadow_connected(node, cancel)?
-        {
-            self.script_post_connection(node, cancel)?;
-        }
-        Ok(())
+            && self
+                .node(node)?
+                .script()
+                .is_some_and(|script| script.parser_document.is_none())
+            && self.shadow_connected(node, cancel)?)
     }
     pub(super) fn script_removing_node(
         &self,
@@ -260,20 +363,6 @@ impl Draft {
             }
         }
         Ok(())
-    }
-}
-
-impl Draft {
-    fn document_scripting(&self, document: Key) -> surgeist_html_semantics::HtmlScriptingStatus {
-        use surgeist_html_semantics::HtmlScriptingStatus;
-        match (&self.script_registration, document) {
-            (Some(registration), Key::Existing(document))
-                if registration.key.document.node() == document && registration.is_active() =>
-            {
-                HtmlScriptingStatus::Unavailable
-            }
-            _ => HtmlScriptingStatus::Disabled,
-        }
     }
 }
 

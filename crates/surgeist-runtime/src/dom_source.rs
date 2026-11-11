@@ -71,6 +71,8 @@ pub enum DomSourceUnavailable {
     AutofocusInsertion(surgeist_html::focus::HtmlAutofocusInsertionAction),
     /// The original Style owner needs this precise external input or resource.
     Style(DomStyleUnavailable),
+    /// The original HTML Script preparation awaits this precise service.
+    Script(surgeist_dom::DomSourceScriptStep),
     /// A reached URL stage has no qualified observation yet.
     Url(surgeist_dom::DomSourceUrlStage),
 }
@@ -287,6 +289,21 @@ impl DomSourceRuntime {
             events,
         }
     }
+    /// Explicitly cancel the original parked Script preparation. Resume the
+    /// same operation to finish cancellation or its already-published tail.
+    pub fn cancel_script_preparation(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomSourceRuntimeError> {
+        self.prepare(dom, cancel)?;
+        dom.resume_source_edit(operation, limits, cancel)?
+            .cancel_script_preparation(cancel)?;
+        Ok(())
+    }
+
     /// Dispatch exactly the issued event and accept its actual receipt. This
     /// does not advance the remaining Source tail; use ordinary `resume` next.
     pub fn service_event<C>(
@@ -901,6 +918,12 @@ impl DomSourceRuntime {
                     return Ok(DomSourceDriveProgress::Pending {
                         request: DomSourceRequest::FocusDelegate(request),
                         reason,
+                    });
+                }
+                DomSourceProgress::Request(DomSourceRequest::Script(request)) => {
+                    return Ok(DomSourceDriveProgress::Pending {
+                        reason: DomSourceUnavailable::Script(request.step()),
+                        request: DomSourceRequest::Script(request),
                     });
                 }
                 DomSourceProgress::Request(DomSourceRequest::DesignMode(request)) => {

@@ -833,21 +833,66 @@ impl HostedRuntime {
             &mut DomEventDom<'_>,
         ) -> Result<R, DomHostedRuntimeError>,
     ) -> Result<R, DomHostedRuntimeError> {
+        self.with_script_settings_view(
+            dom.owner(),
+            dom,
+            target,
+            cancel,
+            |dom| match event {
+                Some(event) => dom
+                    .raw()
+                    .source_event_step(event, cancel)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into())),
+                None => Ok(()),
+            },
+            use_target,
+        )
+    }
+
+    pub(crate) fn with_script_source_settings<R>(
+        &self,
+        lease: &mut surgeist_dom::DomSourceLease<'_>,
+        target: DomHostedTopLevel,
+        request: surgeist_dom::DomSourceScriptRequest,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(
+            &DomHostedSource,
+            &mut surgeist_dom::DomSourceLease<'_>,
+        ) -> Result<R, DomHostedRuntimeError>,
+    ) -> Result<R, DomHostedRuntimeError> {
+        self.with_script_settings_view(
+            lease.snapshot().owner(),
+            lease,
+            target,
+            cancel,
+            |lease| {
+                lease
+                    .source_script_step(request, cancel)
+                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+            },
+            use_target,
+        )
+    }
+
+    fn with_script_settings_view<R, T>(
+        &self,
+        dom_owner: DomOwnerId,
+        view: &mut T,
+        target: DomHostedTopLevel,
+        cancel: &AtomicBool,
+        charge_source: impl Fn(&T) -> Result<(), DomHostedRuntimeError>,
+        use_target: impl FnOnce(&DomHostedSource, &mut T) -> Result<R, DomHostedRuntimeError>,
+    ) -> Result<R, DomHostedRuntimeError> {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        state.qualify(dom)?;
-        let charge_source = || match event {
-            Some(event) => dom
-                .raw()
-                .source_event_step(event, cancel)
-                .map_err(|error| DomHostedRuntimeError::Dom(error.into())),
-            None => Ok(()),
-        };
-        let (h, t, c, g) = state.find_global(target.global, cancel, charge_source)?;
+        if state.dom != dom_owner {
+            return Err(DomHostedRuntimeError::Binding);
+        }
+        let (h, t, c, g) = state.find_global(target.global, cancel, || charge_source(view))?;
         state.step(cancel)?;
-        charge_source()?;
+        charge_source(view)?;
         let HostedState { source, hosts, .. } = &mut *state;
         let host = hosts.get_mut(h).ok_or(DomHostedRuntimeError::Protocol)?;
         let top = host
@@ -871,7 +916,7 @@ impl HostedRuntime {
         {
             return Err(DomHostedRuntimeError::Inactive);
         }
-        use_target(source, dom)
+        use_target(source, view)
     }
 
     #[cfg(feature = "document-scripting")]
