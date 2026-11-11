@@ -77,6 +77,13 @@ impl Layer {
         self
     }
 
+    /// Installs a validated luminance image mask, replacing the previous mask.
+    #[must_use]
+    pub fn with_resolved_luminance_mask(mut self, mask: ResolvedLayerLuminanceMask) -> Self {
+        self.mask = Some(LayerMask::ResolvedLuminance(mask));
+        self
+    }
+
     /// Returns this layer with a validated foreground blur filter, replacing any prior filter.
     ///
     /// Rendering applies the blur to the completed child group before the layer's
@@ -189,11 +196,11 @@ impl Layer {
     }
 
     #[must_use]
-    /// Returns the authored shape mask, excluding resolved alpha masks.
+    /// Returns the authored shape mask.
     pub fn mask(&self) -> Option<&Shape> {
         match &self.mask {
             Some(LayerMask::AuthoredShape(mask)) => Some(mask),
-            Some(LayerMask::ResolvedAlpha(_)) | None => None,
+            Some(LayerMask::ResolvedAlpha(_) | LayerMask::ResolvedLuminance(_)) | None => None,
         }
     }
 
@@ -202,6 +209,29 @@ impl Layer {
     pub fn resolved_alpha_mask(&self) -> Option<&ResolvedLayerAlphaMask> {
         match &self.mask {
             Some(LayerMask::ResolvedAlpha(mask)) => Some(mask),
+            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedLuminance(_)) | None => None,
+        }
+    }
+
+    /// Returns the resolved luminance image mask, if present.
+    #[must_use]
+    pub fn resolved_luminance_mask(&self) -> Option<&ResolvedLayerLuminanceMask> {
+        match &self.mask {
+            Some(LayerMask::ResolvedLuminance(mask)) => Some(mask),
+            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedAlpha(_)) | None => None,
+        }
+    }
+
+    pub(crate) fn resolved_image_mask(&self) -> Option<(&Image, Rect, MaskValue)> {
+        match &self.mask {
+            Some(LayerMask::ResolvedAlpha(mask)) => {
+                Some((mask.image(), mask.bounds(), MaskValue::Alpha))
+            }
+            Some(LayerMask::ResolvedLuminance(mask)) => Some((
+                mask.image(),
+                mask.bounds(),
+                MaskValue::Luminance(mask.color_space()),
+            )),
             Some(LayerMask::AuthoredShape(_)) | None => None,
         }
     }
@@ -266,6 +296,13 @@ pub(crate) enum LayerFilter {
 pub(crate) enum LayerMask {
     AuthoredShape(Shape),
     ResolvedAlpha(ResolvedLayerAlphaMask),
+    ResolvedLuminance(ResolvedLayerLuminanceMask),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MaskValue {
+    Alpha,
+    Luminance(MaskLuminanceSpace),
 }
 
 /// A resolved image alpha channel mapped across finite positive layer-local logical bounds.
@@ -302,6 +339,56 @@ impl ResolvedLayerAlphaMask {
     #[must_use]
     pub const fn bounds(&self) -> Rect {
         self.bounds
+    }
+}
+
+/// The calculation domain for luminance of straight sRGB mask texels.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MaskLuminanceSpace {
+    /// Compute luminance from the encoded sRGB components.
+    Srgb,
+    /// Decode the sRGB components before computing luminance.
+    LinearSrgb,
+}
+
+/// A straight sRGB RGBA8 image used as layer-local luminance coverage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResolvedLayerLuminanceMask {
+    image: Image,
+    bounds: Rect,
+    color_space: MaskLuminanceSpace,
+}
+
+impl ResolvedLayerLuminanceMask {
+    /// Creates a mask with finite positive layer-local bounds.
+    pub fn try_new(image: Image, bounds: Rect, color_space: MaskLuminanceSpace) -> Result<Self> {
+        validate_point(bounds.origin(), "resolved layer luminance mask bounds")?;
+        validate_positive_f64(bounds.width(), "resolved layer luminance mask bounds width")?;
+        validate_positive_f64(
+            bounds.height(),
+            "resolved layer luminance mask bounds height",
+        )?;
+        validate_point(bounds.max(), "resolved layer luminance mask bounds maximum")?;
+        Ok(Self {
+            image,
+            bounds,
+            color_space,
+        })
+    }
+
+    #[must_use]
+    pub const fn image(&self) -> &Image {
+        &self.image
+    }
+
+    #[must_use]
+    pub const fn bounds(&self) -> Rect {
+        self.bounds
+    }
+
+    #[must_use]
+    pub const fn color_space(&self) -> MaskLuminanceSpace {
+        self.color_space
     }
 }
 

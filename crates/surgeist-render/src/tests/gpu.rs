@@ -11925,6 +11925,77 @@ fn renderer_public_dispatch_validates_direct_and_masked_composition_routes() {
 }
 
 #[test]
+fn gpu_luminance_mask_uses_selected_transfer_and_straight_rgba() {
+    use crate::{MaskLuminanceSpace, ResolvedLayerLuminanceMask};
+
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let size = Size::new(6.0, 1.0);
+    let bounds = Rect::new(0.0, 0.0, 6.0, 1.0);
+    let image = Image::from_rgba(
+        size,
+        vec![
+            255, 0, 0, 128, 0, 255, 0, 255, 0, 0, 255, 255, 128, 128, 128, 255, 255, 255, 255, 0,
+            10, 10, 10, 255,
+        ],
+    )
+    .unwrap()
+    .quality(ImageQuality::Low);
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+
+    for (mode, expected) in [
+        (None, [128, 255, 255, 255, 0, 255]),
+        (Some(MaskLuminanceSpace::Srgb), [27, 182, 18, 128, 0, 10]),
+        (
+            Some(MaskLuminanceSpace::LinearSrgb),
+            [27, 182, 18, 55, 0, 1],
+        ),
+    ] {
+        let layer = match mode {
+            Some(space) => Layer::new().with_resolved_luminance_mask(
+                ResolvedLayerLuminanceMask::try_new(image.clone(), bounds, space).unwrap(),
+            ),
+            None => Layer::new().with_resolved_alpha_mask(
+                ResolvedLayerAlphaMask::try_new(image.clone(), bounds).unwrap(),
+            ),
+        };
+        let mut scene = Scene::new();
+        scene.layer(layer, |scene| {
+            scene.fill(bounds, Color::BLACK);
+        });
+        let stats =
+            pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        for (x, expected) in (0..6).zip(expected) {
+            let actual = pixel_alpha(&output, x, 0);
+            assert!(
+                actual.abs_diff(expected) <= 1,
+                "{mode:?} x={x}: {actual} vs {expected}"
+            );
+        }
+    }
+
+    // Transparent white and opaque black both contribute zero coverage.
+    // Interpolating straight RGBA first would produce nonzero coverage between them.
+    let mask_image = Image::from_rgba(Size::new(2.0, 1.0), vec![255, 255, 255, 0, 0, 0, 0, 255])
+        .unwrap()
+        .quality(ImageQuality::Medium);
+    let size = Size::new(3.0, 1.0);
+    let bounds = Rect::new(0.0, 0.0, 3.0, 1.0);
+    let mask =
+        ResolvedLayerLuminanceMask::try_new(mask_image, bounds, MaskLuminanceSpace::Srgb).unwrap();
+    let mut scene = Scene::new();
+    scene.layer(Layer::new().with_resolved_luminance_mask(mask), |scene| {
+        scene.fill(bounds, Color::BLACK);
+    });
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_alpha(&output, 1, 0), 0);
+}
+
+#[test]
 fn gpu_mask_render_preserves_single_transaction_generation() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("materialized-mask transaction coverage requires a renderer");

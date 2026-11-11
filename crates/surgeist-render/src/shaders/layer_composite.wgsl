@@ -14,7 +14,7 @@ struct CompositeParameters {
     blend: u32,
     mask_quality: u32,
     mask_extend: u32,
-    // Clip presence, mask presence, source coordinate space, operator code.
+    // Clip presence, mask value mode, source coordinate space, operator code.
     presence: vec4<u32>,
 }
 
@@ -147,7 +147,18 @@ fn mask_alpha_tap(coordinate: vec2<i32>) -> f32 {
         extend_mask_index(coordinate.x, dimensions.x),
         extend_mask_index(coordinate.y, dimensions.y),
     );
-    return textureLoad(alpha_mask_texture, extended, 0).a;
+    let texel = textureLoad(alpha_mask_texture, extended, 0);
+    let mode = parameters.presence.y;
+    if (mode == 1u) {
+        return texel.a;
+    }
+    var rgb = texel.rgb;
+    if (mode == 3u) {
+        let linear_low = rgb / 12.92;
+        let linear_high = pow((rgb + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
+        rgb = select(linear_high, linear_low, rgb <= vec3<f32>(0.04045));
+    }
+    return dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * texel.a;
 }
 
 fn mitchell_netravali(distance_value: f32) -> f32 {

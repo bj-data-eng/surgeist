@@ -438,6 +438,7 @@ pub(super) struct SemanticResolvedAlphaMaskComposition {
     pub(super) quality: ImageQuality,
     pub(super) rendering: Option<ImageRendering>,
     pub(super) extend: Extend,
+    pub(super) value: crate::layer::MaskValue,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1869,6 +1870,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         quality: mask.upload().quality(),
                         rendering: mask.upload().rendering_hint(),
                         extend: mask.upload().extend(),
+                        value: mask.value(),
                     },
                     imported,
                 ))
