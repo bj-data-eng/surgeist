@@ -248,6 +248,47 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         ),
         Err(error) => panic!("inherited EventTarget dispatch refused: {error:?}"),
     }
+    let native_destination = host
+        .with_native(|dom, hosted, _| {
+            let context = hosted
+                .with_current_top_level(dom, target, &cancellation, |source, dom| {
+                    source
+                        .document_constructor_context(dom.raw(), target.global(), &cancellation)
+                        .map_err(DomHostedRuntimeError::Dom)
+                })
+                .unwrap();
+            let mut batch = DomBatch::new();
+            let document = batch.construct_document(context);
+            batch.adopt(element, &document);
+            batch.insert_before(element, &document, None);
+            dom.apply(batch, &cancellation)
+                .unwrap()
+                .document(&document)
+                .unwrap()
+        })
+        .unwrap();
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(element)
+            .unwrap()
+            .owner_document(),
+        Some(native_destination),
+    );
+    assert!(rust_inbox.take().is_none());
+    host.in_document(&permit, |scope| {
+        let document = scope.evaluate(&units("adopted.ownerDocument"))?;
+        let actual = scope.callback_object(&document)?.associated_realm().identity();
+        assert_eq!(
+            actual, scope.realm_authority()?.identity(),
+            "a Document first exposed from an origin callback belongs to its own registered realm",
+        );
+        assert_guest(
+            scope,
+            "adopted.ownerDocument instanceof Document && adopted.getRootNode() === adopted.ownerDocument \
+             && adopted.ownerDocument.documentElement === adopted",
+        )
+    }).unwrap();
     host.with_native(|dom, _, _| {
         let mut destroy = DomBatch::new();
         destroy.detach(element);
