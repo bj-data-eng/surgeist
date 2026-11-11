@@ -47,35 +47,62 @@ impl Operation {
             && self.meta_receipt.is_none()
             && self.draft.method.is_none()
             && self.draft.compound_failure().is_none()
-            && self
-                .svg_failure_style()
-                .is_ok_and(|style| style.is_none() || locked_cssom.is_some())
+            && self.svg_failure_style().is_ok_and(|style| {
+                !matches!(style, Some(StyleAcknowledgment::Cssom(_))) || locked_cssom.is_some()
+            })
     }
 
     fn svg_failure_style(&self) -> Result<Option<StyleAcknowledgment<'_>>, DomError> {
-        match (&self.request, &self.receipt, &self.owner_binding) {
-            (None, None, None) => Ok(None),
+        let Some(request) = &self.request else {
+            return if self.receipt.is_none() && self.owner_binding.is_none() {
+                Ok(None)
+            } else {
+                Err(DomError::StyleReceiptMismatch)
+            };
+        };
+        if request.source().operation() != self.id {
+            return Err(DomError::StyleReceiptMismatch);
+        }
+        let (revision, effect) = match (request.action(), &self.receipt, &self.owner_binding) {
             (
-                Some(request),
+                DomStyleAction::Update(Action::CheckInlineCsp),
+                Some(Receipt::Inline {
+                    observation,
+                    applied: true,
+                    ..
+                }),
+                None,
+            ) if !observation.allowed && matches_inline_csp_source(request, observation) => {
+                return Ok(Some(StyleAcknowledgment::CspDenied));
+            }
+            (
+                DomStyleAction::Update(Action::CreateSheet),
                 Some(Receipt::Cssom {
                     revision,
                     sheet: Some(sheet),
                     applied: true,
                 }),
                 Some(binding),
-            ) if request.action() == DomStyleAction::Update(Action::CreateSheet)
-                && request.source().operation() == self.id
-                && binding.matches(request) =>
-            {
-                Ok(Some(StyleAcknowledgment {
-                    request,
+            ) if binding.matches(request) => (revision, CssomEffect::Created { sheet, binding }),
+            (
+                DomStyleAction::Update(Action::RemoveAssociatedSheet),
+                Some(Receipt::Cssom {
                     revision,
-                    sheet,
-                    binding,
-                }))
-            }
-            _ => Err(DomError::StyleReceiptMismatch),
-        }
+                    sheet: None,
+                    applied: true,
+                }),
+                None,
+            ) => (
+                revision,
+                CssomEffect::Removed(request.sheet().ok_or(DomError::StyleReceiptMismatch)?),
+            ),
+            _ => return Err(DomError::StyleReceiptMismatch),
+        };
+        Ok(Some(StyleAcknowledgment::Cssom(CssomAcknowledgment {
+            request,
+            revision,
+            effect,
+        })))
     }
 
     pub(super) fn remember_failure(&mut self, cause: DomSourceCleanupCause) {
@@ -85,14 +112,26 @@ impl Operation {
     }
 }
 
-struct StyleAcknowledgment<'a> {
-    request: &'a DomStyleRequest,
-    revision: &'a surgeist_cssom::CssomRevision,
-    sheet: &'a surgeist_cssom::CssomSheetId,
-    binding: &'a DomStyleCssomOwnerBinding,
+enum StyleAcknowledgment<'a> {
+    CspDenied,
+    Cssom(CssomAcknowledgment<'a>),
 }
 
-impl StyleAcknowledgment<'_> {
+enum CssomEffect<'a> {
+    Created {
+        sheet: &'a surgeist_cssom::CssomSheetId,
+        binding: &'a DomStyleCssomOwnerBinding,
+    },
+    Removed(&'a DomStyleSheet),
+}
+
+struct CssomAcknowledgment<'a> {
+    request: &'a DomStyleRequest,
+    revision: &'a surgeist_cssom::CssomRevision,
+    effect: CssomEffect<'a>,
+}
+
+impl CssomAcknowledgment<'_> {
     fn stage(
         self,
         dom: &Dom,
@@ -105,21 +144,11 @@ impl StyleAcknowledgment<'_> {
 
         original.source_step(cancel)?;
         let snapshot = store.snapshot();
-        let sheet = snapshot
-            .sheet(self.sheet)
-            .map_err(|_| DomError::StyleReceiptMismatch)?;
-        if snapshot.revision() != self.revision
-            || sheet.inputs().owner.as_deref() != Some(self.binding.owner())
-            || &sheet.inputs().version != self.binding.version()
-        {
+        if snapshot.revision() != self.revision {
             return Err(DomError::StyleReceiptMismatch);
         }
         let source = self.request.source();
         let key = Key::Existing(source.element());
-        let association = self
-            .request
-            .association()
-            .ok_or(DomError::StyleReceiptMismatch)?;
         let canonical = dom.state.node(dom.owner, source.element())?;
         let DomNodeKind::Element(element) = canonical.kind() else {
             return Err(DomError::StyleReceiptMismatch);
@@ -128,8 +157,6 @@ impl StyleAcknowledgment<'_> {
             .style_state()
             .ok_or(DomError::StyleReceiptMismatch)?;
         if canonical.document() != source.document()
-            || style.sheet.is_some()
-            || association.element() != source.element()
             || OrderView::state(&dom.state, dom.owner)
                 .root(key, Mode::Ordinary, &mut || original.source_step(cancel))?
                 != Key::Existing(source.root())
@@ -141,26 +168,47 @@ impl StyleAcknowledgment<'_> {
         let transaction::KindRead::Element(element) = staged.kind() else {
             return Err(DomError::StyleReceiptMismatch);
         };
-        let sheet = element
+        let staged_style = element
             .language()
             .style_state()
-            .and_then(|style| style.sheet.as_ref())
             .ok_or(DomError::StyleReceiptMismatch)?;
-        if sheet.id() != self.sheet
-            || sheet.revision() != self.revision
-            || sheet.root() != source.root()
-            || sheet.association() != association
-        {
-            return Err(DomError::StyleReceiptMismatch);
-        }
-        stage_cssom_acknowledgment(
-            clean,
-            key,
-            self.request,
-            self.revision,
-            Some(self.sheet),
-            cancel,
-        )
+        let sheet = match self.effect {
+            CssomEffect::Created { sheet, binding } => {
+                let actual = snapshot
+                    .sheet(sheet)
+                    .map_err(|_| DomError::StyleReceiptMismatch)?;
+                let associated = staged_style
+                    .sheet
+                    .as_ref()
+                    .ok_or(DomError::StyleReceiptMismatch)?;
+                if style.sheet.is_some()
+                    || actual.inputs().owner.as_deref() != Some(binding.owner())
+                    || &actual.inputs().version != binding.version()
+                    || associated.id() != sheet
+                    || associated.revision() != self.revision
+                    || associated.root() != source.root()
+                    || Some(associated.association()) != self.request.association()
+                    || associated.association().element() != source.element()
+                {
+                    return Err(DomError::StyleReceiptMismatch);
+                }
+                Some(sheet)
+            }
+            CssomEffect::Removed(old) => {
+                // The detached Style's ordinary root is the source root
+                // checked above. The locked producer is its old sheet root.
+                qualify_cssom_removal(&snapshot, old)?;
+                if style.sheet.as_ref() != Some(old)
+                    || old.association().element() != source.element()
+                    || staged_style.sheet.is_some()
+                    || staged_style.next_association != style.next_association
+                {
+                    return Err(DomError::StyleReceiptMismatch);
+                }
+                None
+            }
+        };
+        stage_cssom_acknowledgment(clean, key, self.request, self.revision, sheet, cancel)
     }
 }
 
@@ -192,10 +240,10 @@ impl DomSourceLease<'_> {
         if !op.can_close_svg_failure(self.dom, locked_cssom) {
             return Err(DomError::InvalidSourceOperation);
         }
-        // Only the already accepted CSSOM creation, if any, crosses the
+        // Only the already accepted CSSOM acknowledgment, if any, crosses the
         // closing fence. The Script and rejected suffix remain private.
         let mut clean = Draft::new_source_failure_close(self.dom, &op.draft, cancel)?;
-        if let Some(style) = op.svg_failure_style()? {
+        if let Some(StyleAcknowledgment::Cssom(style)) = op.svg_failure_style()? {
             let store = locked_cssom.ok_or(DomError::StyleReceiptMismatch)?;
             style.stage(self.dom, &op.draft, &mut clean, store, cancel)?;
         }

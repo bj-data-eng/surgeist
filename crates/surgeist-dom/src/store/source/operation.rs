@@ -2741,15 +2741,7 @@ impl DomSourceLease<'_> {
         let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
         if expected.action != DomStyleAction::Update(Action::CheckInlineCsp)
             || !Arc::ptr_eq(&expected.source, &request.source)
-            || observation.source.operation != request.source.operation
-            || observation.source.ordinal != request.source.ordinal
-            || observation.source.stamp != request.source.stamp
-            || observation.source.element != request.source.element
-            || !Arc::ptr_eq(&observation.source.text, &request.source.text)
-            || !observation
-                .source
-                .nonce
-                .shares_storage_with(&request.source.nonce)
+            || !matches_inline_csp_source(request, observation)
             || op.receipt.is_some()
         {
             return Err(DomError::StyleFactsMismatch);
@@ -3108,15 +3100,7 @@ impl DomSourceLease<'_> {
                     .sheet
                     .as_ref()
                     .ok_or(DomError::StyleReceiptMismatch)?;
-                let actual = snapshot
-                    .sheet(&old.id)
-                    .map_err(|_| DomError::StyleReceiptMismatch)?;
-                if actual.inputs().owner.is_some()
-                    || actual.owner_rule().is_some()
-                    || snapshot.sheets().contains(&old.id)
-                {
-                    return Err(DomError::StyleReceiptMismatch);
-                }
+                qualify_cssom_removal(snapshot, old)?;
                 None
             }
             DomStyleAction::SetDisabled(disabled) => {
@@ -3234,6 +3218,34 @@ impl Operation {
         self.restore_external_receipt(true);
         Ok(())
     }
+}
+
+fn matches_inline_csp_source(
+    request: &DomStyleRequest,
+    observation: &DomStyleInlineCspObservation,
+) -> bool {
+    observation.source.operation == request.source.operation
+        && observation.source.ordinal == request.source.ordinal
+        && observation.source.stamp == request.source.stamp
+        && observation.source.element == request.source.element
+        && Arc::ptr_eq(&observation.source.text, &request.source.text)
+        && observation
+            .source
+            .nonce
+            .shares_storage_with(&request.source.nonce)
+}
+
+fn qualify_cssom_removal(snapshot: &CssomSnapshot, old: &DomStyleSheet) -> Result<(), DomError> {
+    let actual = snapshot
+        .sheet(old.id())
+        .map_err(|_| DomError::StyleReceiptMismatch)?;
+    if actual.inputs().owner.is_some()
+        || actual.owner_rule().is_some()
+        || snapshot.sheets().contains(old.id())
+    {
+        return Err(DomError::StyleReceiptMismatch);
+    }
+    Ok(())
 }
 
 fn stage_cssom_acknowledgment(
