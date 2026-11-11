@@ -80,7 +80,7 @@ pub(crate) fn encode_vello_clip_coverage_scene(
             push_vello_clip(
                 &mut scene,
                 clip,
-                clip_coverage_transform(clip, *transform, initial_transform)?,
+                clip_coverage_transform(clip, *transform, initial_transform, &account)?,
                 &account,
             )?;
         }
@@ -108,12 +108,17 @@ fn clip_coverage_transform(
     clip: &RenderClip,
     transform: Transform,
     initial_transform: Transform,
+    account: &Account,
 ) -> Result<Transform> {
-    clip.coordinate_space()
-        .map(|coordinate_space| coordinate_space.transform())
-        .unwrap_or_else(Transform::identity)
-        .then(transform)?
-        .then(initial_transform)
+    let compose = |source: Transform, destination: Transform| {
+        let product = affine_product(destination.into(), source.into(), account)?;
+        Transform::try_new_in(product.as_coeffs(), account)
+    };
+    let clip_transform = clip
+        .coordinate_space()
+        .map_or(Transform::IDENTITY, CoordinateSpaceTag::transform);
+    let clip_in_parent = compose(clip_transform, transform)?;
+    compose(clip_in_parent, initial_transform)
 }
 
 fn exact_fit_clip_circle(
@@ -350,7 +355,7 @@ fn encode_vello_commands(
                 account,
             )?,
             RenderCommand::Layer { layer, children } => {
-                let layer_transform = transform * kurbo::Affine::from(layer.transform);
+                let layer_transform = affine_product(transform, layer.transform.into(), account)?;
                 if layer.isolation != LayerIsolation::None {
                     encode_layer_start(scene, layer, layer_transform, account)?;
                     encode_vello_commands(
@@ -842,19 +847,16 @@ fn encode_layer_start(
     account: &Account,
 ) -> Result<()> {
     let default_clip = RenderClipGeometry::Rect(Rect::new(-1.0e9, -1.0e9, 2.0e9, 2.0e9));
-    let (clip, clip_transform) = layer
-        .clip
-        .as_ref()
-        .map(|clip| {
-            let clip_transform = clip
-                .coordinate_space()
-                .map(|coordinate_space| {
-                    transform * kurbo::Affine::from(coordinate_space.transform())
-                })
-                .unwrap_or(transform);
+    let (clip, clip_transform) = match &layer.clip {
+        Some(clip) => {
+            let clip_transform = match clip.coordinate_space() {
+                Some(space) => affine_product(transform, space.transform().into(), account)?,
+                None => transform,
+            };
             (clip.geometry(), clip_transform)
-        })
-        .unwrap_or((&default_clip, transform));
+        }
+        None => (&default_clip, transform),
+    };
     match clip {
         RenderClipGeometry::Rect(rect) => push_vello_layer(
             scene,
@@ -1813,6 +1815,43 @@ mod layer_transform_accounting_tests {
             &Account::for_test(),
         )
         .unwrap();
+    }
+    #[test]
+    fn clip_capture_keeps_the_first_nonfinite_coefficient_error() {
+        use crate::accounting::RenderAttemptKind;
+
+        let (commands, layer_transform, _) = tagged_layer_commands();
+        let Some(RenderCommand::Layer { layer, .. }) = commands.iter().next() else {
+            panic!("expected one normalized layer");
+        };
+        let elements = [(layer.clip.as_ref().unwrap().clone(), layer_transform)];
+        let initial_transform = Transform::scale(f64::MAX, 1.0).unwrap();
+        let mut context = RenderAccountingContext::new(RenderAccountingOptions::new());
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                encode_vello_clip_coverage_scene(
+                    &elements,
+                    initial_transform,
+                    PhysicalSize::new(8, 4),
+                    account,
+                )
+                .map(drop)
+            })
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        let diagnostic = error.invalid_value_diagnostic().unwrap();
+        assert_eq!(diagnostic.field(), "transform");
+        assert_eq!(diagnostic.value(), "inf");
+        let usage = context
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .phase_usage(RenderPhase::Encode);
+        // The first composition and its checks complete. The second
+        // composition refuses at its first finite check.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 38 + 32 + 1);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
     }
 }
 
