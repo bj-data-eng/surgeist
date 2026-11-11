@@ -8,7 +8,9 @@ use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::xml::{escape_attr, generate_xml};
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
-use crate::{original_block_axes_profile, original_flex_parent_profile};
+use crate::{
+    original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
+};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -242,15 +244,12 @@ impl LayoutAdapter {
                 "original percentage Flex parent capture requires its exact source".into(),
             ));
         }
-        if request == BoxObservationRequest::OriginalBlockAxes
-            && !original_block_axes_profile::source_digest(input.fixture().source().as_str())
-                .is_some_and(|expected| {
-                    surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
-                        == expected
-                })
+        if let Some(capture) = original_axis_capture(request)
+            && (capture.source_digest)(input.fixture().source().as_str())
+                != Some(surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str())
         {
             return Err(AdapterError::Preparation(
-                "original Block axis capture requires its exact source".into(),
+                "original axis capture requires its exact source".into(),
             ));
         }
         if request == BoxObservationRequest::OriginalSubgridBody
@@ -335,6 +334,7 @@ impl LayoutAdapter {
                 | BoxObservationRequest::OriginalFlexParent
                 | BoxObservationRequest::OriginalPercentageFlexParent
                 | BoxObservationRequest::OriginalBlockAxes
+                | BoxObservationRequest::OriginalFlexAxes
         ) {
             &[]
         } else {
@@ -374,10 +374,10 @@ impl LayoutAdapter {
                 let arguments = serde_json::to_string(&(source, input.base_url(), style))
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalFlexParent(...{arguments})")
-            } else if request == BoxObservationRequest::OriginalBlockAxes {
+            } else if let Some(capture) = original_axis_capture(request) {
                 let arguments = serde_json::to_string(&(source, input.base_url(), style))
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
-                format!("globalThis.captureOriginalBlockAxes(...{arguments})")
+                format!("globalThis.{}(...{arguments})", capture.function)
             } else if request == BoxObservationRequest::OriginalSubgridBody {
                 let serialize = |value| {
                     serde_json::to_string(value)
@@ -579,6 +579,31 @@ fn resolve_reference(source: &RelativePath, reference: &str) -> Result<RelativeP
     RelativePath::new(path.to_string_lossy().replace('\\', "/")).map_err(|error| error.to_string())
 }
 
+struct AxisCapture {
+    function: &'static str,
+    script: &'static str,
+    source_digest: fn(&str) -> Option<&'static str>,
+    accepts_helper: fn(&str) -> bool,
+}
+
+fn original_axis_capture(request: BoxObservationRequest) -> Option<AxisCapture> {
+    match request {
+        BoxObservationRequest::OriginalBlockAxes => Some(AxisCapture {
+            function: "captureOriginalBlockAxes",
+            script: original_block_axes_profile::SCRIPT,
+            source_digest: original_block_axes_profile::source_digest,
+            accepts_helper: original_block_axes_profile::accepts_helper,
+        }),
+        BoxObservationRequest::OriginalFlexAxes => Some(AxisCapture {
+            function: "captureOriginalFlexAxes",
+            script: original_flex_axes_profile::SCRIPT,
+            source_digest: original_flex_axes_profile::source_digest,
+            accepts_helper: original_flex_axes_profile::accepts_helper,
+        }),
+        _ => None,
+    }
+}
+
 fn helper_setup_expression(
     helper: &str,
     bytes: &[u8],
@@ -596,16 +621,16 @@ fn helper_setup_expression(
             "root-context source profile does not qualify the captured base stylesheet".into(),
         ));
     }
-    if request == BoxObservationRequest::OriginalBlockAxes {
+    if let Some(capture) = original_axis_capture(request) {
         let digest = surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes());
-        if !original_block_axes_profile::accepts_helper(digest.as_str()) {
+        if !(capture.accepts_helper)(digest.as_str()) {
             return Err(AdapterError::Preparation(
-                "original Block axis capture helper changed".into(),
+                "original axis capture helper changed".into(),
             ));
         }
-        let script = original_block_axes_profile::SCRIPT;
         let helper = serde_json::to_string(&format!(
-            "{helper}\n globalThis.captureOriginalBlockAxes = ({script});"
+            "{helper}\n globalThis.{} = ({});",
+            capture.function, capture.script
         ))
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
         return Ok(format!(
