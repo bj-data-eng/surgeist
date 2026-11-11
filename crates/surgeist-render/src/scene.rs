@@ -207,23 +207,7 @@ impl Scene {
     }
 
     fn append_mask_coverage(&mut self, source: &ResolvedMaskSource, operator: PorterDuffOperator) {
-        let layer = Layer::new().with_composition(LayerComposition::normal_porter_duff(operator));
-        let (layer, bounds) = match source {
-            ResolvedMaskSource::Transparent => (layer, None),
-            ResolvedMaskSource::Alpha(mask) => (
-                layer.with_resolved_alpha_mask(mask.clone()),
-                Some(mask.bounds()),
-            ),
-            ResolvedMaskSource::Luminance(mask) => (
-                layer.with_resolved_luminance_mask(mask.clone()),
-                Some(mask.bounds()),
-            ),
-        };
-        self.layer(layer, |scene| {
-            if let Some(bounds) = bounds {
-                scene.fill(bounds, Color::BLACK);
-            }
-        });
+        self.layer(Layer::mask_coverage(source, operator), |_| {});
     }
 
     /// Builds children under a logical transform layer.

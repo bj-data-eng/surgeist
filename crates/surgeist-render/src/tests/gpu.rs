@@ -11995,11 +11995,14 @@ fn gpu_resolved_mask_stack_composites_coverage_bottom_up_in_isolation() {
                 .unwrap();
         let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
         for (x, expected) in (0..3).zip(expected) {
-            let actual = pixel_alpha(&output, x, 0);
+            let [r, g, b, actual] = pixel_rgba(&output, x, 0);
             assert!(
                 actual.abs_diff(expected) <= 2,
                 "{masks:?} x={x}: {actual} vs {expected}"
             );
+            if expected != 0 {
+                assert_eq!([r, g, b], [255; 3], "target color at x={x}");
+            }
         }
         assert_eq!(&output.rgba()[12..16], &[0, 0, 0, 255]);
         // A zero-coverage result may be simplified before route selection.

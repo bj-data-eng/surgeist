@@ -668,6 +668,7 @@ fn runtime_composite(
                             mask.extend(),
                         ),
                         mask.value(),
+                        mask.application(),
                     )
                 })
                 .transpose()?;

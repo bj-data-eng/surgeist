@@ -439,6 +439,7 @@ pub(super) struct SemanticResolvedAlphaMaskComposition {
     pub(super) rendering: Option<ImageRendering>,
     pub(super) extend: Extend,
     pub(super) value: crate::layer::MaskValue,
+    pub(super) application: crate::layer::MaskApplication,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1819,7 +1820,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             state.capture_space
         };
         let finite_source = bounded_domain && layer.foreground_filters.is_none();
-        let mut source = if source_forced_empty {
+        let source_is_coverage = layer
+            .mask
+            .as_ref()
+            .is_some_and(RenderLayerMask::supplies_coverage);
+        // The compositor requires a source binding even when mask sampling supplies the source.
+        let mut source = if source_forced_empty || source_is_coverage {
             Some(self.declare_transparent_parent(parent.spatial)?.current)
         } else {
             self.plan_layer_source(
@@ -1871,6 +1877,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         rendering: mask.upload().rendering_hint(),
                         extend: mask.upload().extend(),
                         value: mask.value(),
+                        application: mask.application(),
                     },
                     imported,
                 ))
@@ -1885,7 +1892,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             SemanticCompositeKind::Layer {
                 transform: layer_transform,
                 destination_to_layer_local,
-                source_space: if source_forced_empty {
+                source_space: if source_forced_empty || source_is_coverage {
                     state.capture_space.source_space()
                 } else {
                     capture_space.source_space()

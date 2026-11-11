@@ -73,15 +73,38 @@ impl Layer {
     /// any previously installed authored or resolved mask.
     #[must_use]
     pub fn with_resolved_alpha_mask(mut self, alpha_mask: ResolvedLayerAlphaMask) -> Self {
-        self.mask = Some(LayerMask::ResolvedAlpha(alpha_mask));
+        self.mask = Some(LayerMask::ResolvedAlpha(
+            alpha_mask,
+            MaskApplication::Attenuate,
+        ));
         self
     }
 
     /// Installs a validated luminance image mask, replacing the previous mask.
     #[must_use]
     pub fn with_resolved_luminance_mask(mut self, mask: ResolvedLayerLuminanceMask) -> Self {
-        self.mask = Some(LayerMask::ResolvedLuminance(mask));
+        self.mask = Some(LayerMask::ResolvedLuminance(
+            mask,
+            MaskApplication::Attenuate,
+        ));
         self
+    }
+
+    pub(crate) fn mask_coverage(source: &ResolvedMaskSource, operator: PorterDuffOperator) -> Self {
+        let mut layer =
+            Self::new().with_composition(LayerComposition::normal_porter_duff(operator));
+        layer.mask = match source {
+            ResolvedMaskSource::Transparent => None,
+            ResolvedMaskSource::Alpha(mask) => Some(LayerMask::ResolvedAlpha(
+                mask.clone(),
+                MaskApplication::CoverageSource,
+            )),
+            ResolvedMaskSource::Luminance(mask) => Some(LayerMask::ResolvedLuminance(
+                mask.clone(),
+                MaskApplication::CoverageSource,
+            )),
+        };
+        layer
     }
 
     /// Returns this layer with a validated foreground blur filter, replacing any prior filter.
@@ -200,7 +223,7 @@ impl Layer {
     pub fn mask(&self) -> Option<&Shape> {
         match &self.mask {
             Some(LayerMask::AuthoredShape(mask)) => Some(mask),
-            Some(LayerMask::ResolvedAlpha(_) | LayerMask::ResolvedLuminance(_)) | None => None,
+            Some(LayerMask::ResolvedAlpha(..) | LayerMask::ResolvedLuminance(..)) | None => None,
         }
     }
 
@@ -208,8 +231,8 @@ impl Layer {
     /// Returns the resolved image alpha mask, excluding authored shape masks.
     pub fn resolved_alpha_mask(&self) -> Option<&ResolvedLayerAlphaMask> {
         match &self.mask {
-            Some(LayerMask::ResolvedAlpha(mask)) => Some(mask),
-            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedLuminance(_)) | None => None,
+            Some(LayerMask::ResolvedAlpha(mask, _)) => Some(mask),
+            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedLuminance(..)) | None => None,
         }
     }
 
@@ -217,20 +240,21 @@ impl Layer {
     #[must_use]
     pub fn resolved_luminance_mask(&self) -> Option<&ResolvedLayerLuminanceMask> {
         match &self.mask {
-            Some(LayerMask::ResolvedLuminance(mask)) => Some(mask),
-            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedAlpha(_)) | None => None,
+            Some(LayerMask::ResolvedLuminance(mask, _)) => Some(mask),
+            Some(LayerMask::AuthoredShape(_) | LayerMask::ResolvedAlpha(..)) | None => None,
         }
     }
 
-    pub(crate) fn resolved_image_mask(&self) -> Option<(&Image, Rect, MaskValue)> {
+    pub(crate) fn resolved_image_mask(&self) -> Option<(&Image, Rect, MaskValue, MaskApplication)> {
         match &self.mask {
-            Some(LayerMask::ResolvedAlpha(mask)) => {
-                Some((mask.image(), mask.bounds(), MaskValue::Alpha))
+            Some(LayerMask::ResolvedAlpha(mask, application)) => {
+                Some((mask.image(), mask.bounds(), MaskValue::Alpha, *application))
             }
-            Some(LayerMask::ResolvedLuminance(mask)) => Some((
+            Some(LayerMask::ResolvedLuminance(mask, application)) => Some((
                 mask.image(),
                 mask.bounds(),
                 MaskValue::Luminance(mask.color_space()),
+                *application,
             )),
             Some(LayerMask::AuthoredShape(_)) | None => None,
         }
@@ -295,8 +319,14 @@ pub(crate) enum LayerFilter {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum LayerMask {
     AuthoredShape(Shape),
-    ResolvedAlpha(ResolvedLayerAlphaMask),
-    ResolvedLuminance(ResolvedLayerLuminanceMask),
+    ResolvedAlpha(ResolvedLayerAlphaMask, MaskApplication),
+    ResolvedLuminance(ResolvedLayerLuminanceMask, MaskApplication),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MaskApplication {
+    Attenuate,
+    CoverageSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

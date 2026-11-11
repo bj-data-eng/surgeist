@@ -449,7 +449,10 @@ impl SemanticSourceContribution {
             layer_to_surface,
             account,
         )?;
-        let mut source_bounds = children.current_parent;
+        let mut source_bounds = match layer.mask.as_ref().filter(|mask| mask.supplies_coverage()) {
+            Some(mask) => SemanticSourceBounds::try_from_rect(mask.bounds())?,
+            None => children.current_parent,
+        };
         source_bounds = Self::include_backdrop_contribution(
             source_bounds,
             current_parent,

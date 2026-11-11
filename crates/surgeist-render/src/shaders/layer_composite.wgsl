@@ -14,7 +14,7 @@ struct CompositeParameters {
     blend: u32,
     mask_quality: u32,
     mask_extend: u32,
-    // Clip presence, mask value mode, source coordinate space, operator code.
+    // Clip presence, mask value and application bits, source coordinate space, operator code.
     presence: vec4<u32>,
 }
 
@@ -148,7 +148,7 @@ fn mask_alpha_tap(coordinate: vec2<i32>) -> f32 {
         extend_mask_index(coordinate.y, dimensions.y),
     );
     let texel = textureLoad(alpha_mask_texture, extended, 0);
-    let mode = parameters.presence.y;
+    let mode = parameters.presence.y & 3u;
     if (mode == 1u) {
         return texel.a;
     }
@@ -249,9 +249,16 @@ fn source_with_clip(destination_position: vec2<f32>) -> vec4<f32> {
     );
 }
 
+fn masked_source_color(destination_position: vec2<f32>) -> vec4<f32> {
+    if ((parameters.presence.y & 4u) != 0u) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    return sample_source(destination_position);
+}
+
 fn source_with_mask(destination_position: vec2<f32>) -> vec4<f32> {
     return attenuate_source(
-        sample_source(destination_position),
+        masked_source_color(destination_position),
         sample_mask_alpha(destination_position),
     );
 }
@@ -259,7 +266,7 @@ fn source_with_mask(destination_position: vec2<f32>) -> vec4<f32> {
 fn source_with_clip_mask(destination_position: vec2<f32>) -> vec4<f32> {
     let clip_alpha = sample_clip_alpha(destination_position);
     let mask_alpha = sample_mask_alpha(destination_position);
-    return attenuate_source(sample_source(destination_position), clip_alpha * mask_alpha);
+    return attenuate_source(masked_source_color(destination_position), clip_alpha * mask_alpha);
 }
 
 fn safe_straight_rgb(premultiplied: vec4<f32>) -> vec3<f32> {
