@@ -74,6 +74,7 @@ impl ResourceEntries {
         if self.vacant != 0 {
             cpu.at(RenderCpuScope::Cleanup)
                 .maintenance_phase(|| Self::compact(records, &mut self.vacant));
+            cpu.ensure_healthy()?;
         }
         records.grow(capacity - records.len())
     }

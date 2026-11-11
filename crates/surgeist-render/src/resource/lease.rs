@@ -546,6 +546,7 @@ impl ResourceManagerState {
         token: ResourceLeaseToken,
     ) -> Result<()> {
         self.validate_lease(manager_identity, frame, &token, None)?;
+        let cpu_was_healthy = self.cpu.ensure_healthy().is_ok();
         let generation_health_before = self.generation.ensure_healthy();
         let retained_before = self.generation.registered_cache_bytes()?;
         self.generation.probe_cache(None)?;
@@ -561,7 +562,11 @@ impl ResourceManagerState {
             return Ok(());
         }
         generation_health_before?;
-        self.accounting_after_removal(retained_before, removed_bytes)
+        self.accounting_after_removal(retained_before, removed_bytes)?;
+        if cpu_was_healthy {
+            self.cpu.ensure_healthy()?;
+        }
+        Ok(())
     }
 
     fn return_entry_to_idle(
