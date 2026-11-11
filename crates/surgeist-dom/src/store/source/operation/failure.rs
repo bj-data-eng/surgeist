@@ -84,15 +84,17 @@ impl Operation {
                     revision,
                     sheet: Some(sheet),
                     applied: true,
+                    ..
                 }),
                 Some(binding),
-            ) if binding.matches(request) => (revision, CssomEffect::Created { sheet, binding }),
+            ) if binding.matches(request) => (revision, CssomEffect::Created(sheet)),
             (
                 DomStyleAction::Update(Action::RemoveAssociatedSheet),
                 Some(Receipt::Cssom {
                     revision,
                     sheet: None,
                     applied: true,
+                    ..
                 }),
                 None,
             ) => (
@@ -121,10 +123,7 @@ enum StyleAcknowledgment<'a> {
 }
 
 enum CssomEffect<'a> {
-    Created {
-        sheet: &'a surgeist_cssom::CssomSheetId,
-        binding: &'a DomStyleCssomOwnerBinding,
-    },
+    Created(&'a surgeist_cssom::CssomSheetId),
     Removed(&'a DomStyleSheet),
 }
 
@@ -140,16 +139,11 @@ impl CssomAcknowledgment<'_> {
         dom: &Dom,
         original: &Draft,
         clean: &mut Draft,
-        store: &surgeist_cssom::CssomStore,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         use transaction::ordered_members::{Mode, OrderView};
 
         original.source_step(cancel)?;
-        let snapshot = store.snapshot();
-        if snapshot.revision() != self.revision {
-            return Err(DomError::StyleReceiptMismatch);
-        }
         let source = self.request.source();
         let key = Key::Existing(source.element());
         let canonical = dom.state.node(dom.owner, source.element())?;
@@ -176,17 +170,12 @@ impl CssomAcknowledgment<'_> {
             .style_state()
             .ok_or(DomError::StyleReceiptMismatch)?;
         let sheet = match self.effect {
-            CssomEffect::Created { sheet, binding } => {
-                let actual = snapshot
-                    .sheet(sheet)
-                    .map_err(|_| DomError::StyleReceiptMismatch)?;
+            CssomEffect::Created(sheet) => {
                 let associated = staged_style
                     .sheet
                     .as_ref()
                     .ok_or(DomError::StyleReceiptMismatch)?;
                 if style.sheet.is_some()
-                    || actual.inputs().owner.as_deref() != Some(binding.owner())
-                    || &actual.inputs().version != binding.version()
                     || associated.id() != sheet
                     || associated.revision() != self.revision
                     || associated.root() != source.root()
@@ -198,9 +187,6 @@ impl CssomAcknowledgment<'_> {
                 Some(sheet)
             }
             CssomEffect::Removed(old) => {
-                // The detached Style's ordinary root is the source root
-                // checked above. The locked producer is its old sheet root.
-                qualify_cssom_removal(&snapshot, old)?;
                 if style.sheet.as_ref() != Some(old)
                     || old.association().element() != source.element()
                     || staged_style.sheet.is_some()
@@ -243,12 +229,11 @@ impl DomSourceLease<'_> {
         if !op.can_close_svg_failure(self.dom, locked_cssom) {
             return Err(DomError::InvalidSourceOperation);
         }
-        // Only the already accepted CSSOM acknowledgment, if any, crosses the
-        // closing fence. The Script and rejected suffix remain private.
+        // The producer effect was qualified under the still-held receipt lock.
+        // Only its acknowledgment crosses the fence. The suffix stays private.
         let mut clean = Draft::new_source_failure_close(self.dom, &op.draft, cancel)?;
         if let Some(StyleAcknowledgment::Cssom(style)) = op.svg_failure_style()? {
-            let store = locked_cssom.ok_or(DomError::StyleReceiptMismatch)?;
-            style.stage(self.dom, &op.draft, &mut clean, store, cancel)?;
+            style.stage(self.dom, &op.draft, &mut clean, cancel)?;
         }
         let rejected = std::mem::replace(&mut op.draft, dialog::OperationDraft::Segment(clean));
         if let Err(error) = op.publication(self.dom, false, PublicationTarget::None, None, cancel) {

@@ -637,12 +637,26 @@ struct ReceiptLoan<'caps> {
     _charge: crate::store::meta_atomic::SourceGraphCharge,
 }
 impl DomSourceLease<'_> {
-    fn meta_receipt(&self) -> Option<(&Receipt, &DomStyleRequest)> {
+    fn meta_receipt(
+        &self,
+    ) -> Option<(
+        &Receipt,
+        &DomStyleRequest,
+        Option<&DomStyleCssomOwnerBinding>,
+    )> {
         let operation = self.dom.source_operation.as_ref()?;
         if let Some(saved) = &operation.meta_receipt {
-            Some((&saved.receipt, saved.request.as_ref()?))
+            Some((
+                &saved.receipt,
+                saved.request.as_ref()?,
+                saved.binding.as_ref(),
+            ))
         } else {
-            Some((operation.receipt.as_ref()?, operation.request.as_ref()?))
+            Some((
+                operation.receipt.as_ref()?,
+                operation.request.as_ref()?,
+                operation.owner_binding.as_ref(),
+            ))
         }
     }
     #[expect(
@@ -656,7 +670,7 @@ impl DomSourceLease<'_> {
         limits: DomMetaAtomicLimits,
         cancel: &AtomicBool,
     ) -> Result<Option<ReceiptLoan<'caps>>, DomMetaAtomicError> {
-        let Some((Receipt::Cssom { revision, .. }, request)) = self.meta_receipt() else {
+        let Some((receipt @ Receipt::Cssom { .. }, request, binding)) = self.meta_receipt() else {
             return Ok(None);
         };
         let root = request.cssom_root().ok_or(DomError::StyleReceiptMismatch)?;
@@ -706,9 +720,9 @@ impl DomSourceLease<'_> {
             }
         })?;
         let snapshot = guard.snapshot();
-        if snapshot.revision() != revision {
-            return Err(DomError::StyleReceiptMismatch.into());
-        }
+        operation.qualify_retained_cssom_receipt(receipt, request, binding, &snapshot, || {
+            envelope.step(cancel)
+        })?;
         Ok(Some(ReceiptLoan {
             root,
             guard: Some(guard),

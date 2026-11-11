@@ -155,6 +155,11 @@ fn publish_style_sheet(
     .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("direct-style".into());
+    if create.source().root_kind() == crate::DomStyleRootKind::Document
+        && let Some(title) = create.source().title()
+    {
+        inputs.title = Arc::new(title.code_units().to_vec());
+    }
     let mut batch = root
         .batch(CssomEditGuard::from_snapshot(&root.snapshot().unwrap()))
         .unwrap();
@@ -1159,10 +1164,16 @@ fn published_style_closes_after_an_independent_cssom_commit() {
     check_published_style_after_svg_refusal(StyleClose::RetryAfterCssomCommit);
 }
 
+#[test]
+fn parked_style_refuses_a_changed_initial_disabled_effect() {
+    check_published_style_after_svg_refusal(StyleClose::ChangedEffect);
+}
+
 enum StyleClose {
     Complete,
     Retry,
     RetryAfterCssomCommit,
+    ChangedEffect,
 }
 
 fn check_published_style_after_svg_refusal(scenario: StyleClose) {
@@ -1188,6 +1199,9 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     let detached = batch.create_html_document(document, None);
     let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
     let style = batch.create_element_ns(document, Namespace::html(), "style");
+    if matches!(scenario, StyleClose::ChangedEffect) {
+        batch.set_attribute(&style, "title", "preferred");
+    }
     let css = batch.create_text(document, "div { color: red }");
     batch.insert_before(&css, &style, None);
     let script = batch.create_element_ns(document, Namespace::html(), "script");
@@ -1319,6 +1333,54 @@ fn check_published_style_after_svg_refusal(scenario: StyleClose) {
         assert_eq!(producer.sheets(), applied.sheets());
         assert_eq!(dom.snapshot().stamp(), prefix.stamp());
         producer
+    } else if matches!(scenario, StyleClose::ChangedEffect) {
+        let mut batch = root.batch(CssomEditGuard::from_snapshot(&applied)).unwrap();
+        assert!(batch.set_disabled(&sheet, true).unwrap());
+        root.commit(&mut Some(batch)).unwrap();
+        let changed = root.snapshot().unwrap();
+        assert_ne!(changed.revision(), applied.revision());
+        assert_eq!(changed.sheets(), applied.sheets());
+        assert!(changed.sheet(&sheet).unwrap().inputs().disabled);
+        {
+            let mut lease = dom
+                .resume_source_edit(read.operation(), source_limits(), &cancel)
+                .unwrap();
+            assert!(matches!(
+                lease.advance(&cancel),
+                Err(DomError::StyleReceiptMismatch)
+            ));
+            let limits =
+                crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
+            let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+            assert!(matches!(
+                hold.prepare(&[&root], None, &cancel),
+                Err(crate::DomMetaAtomicError::Dom(
+                    DomError::StyleReceiptMismatch
+                ))
+            ));
+        }
+        assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+        let mut batch = root.batch(CssomEditGuard::from_snapshot(&changed)).unwrap();
+        assert!(batch.set_disabled(&sheet, false).unwrap());
+        root.commit(&mut Some(batch)).unwrap();
+        let restored = root.snapshot().unwrap();
+        let mut lease = dom
+            .resume_source_edit(read.operation(), source_limits(), &cancel)
+            .unwrap();
+        let limits =
+            crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
+        let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+        let caps = [&root];
+        let crate::DomMetaSourceStep::Progress(progress) =
+            hold.prepare(&caps, None, &cancel).unwrap()
+        else {
+            panic!("the exact restored effect must leave the original Script read parked");
+        };
+        assert!(matches!(
+            progress.into_parts(),
+            (DomSourceProgress::Request(DomSourceRequest::Script(again)), None) if again == read
+        ));
+        restored
     } else {
         applied.clone()
     };

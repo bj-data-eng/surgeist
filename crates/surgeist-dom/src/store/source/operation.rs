@@ -145,8 +145,14 @@ enum Receipt {
     Cssom {
         revision: surgeist_cssom::CssomRevision,
         sheet: Option<surgeist_cssom::CssomSheetId>,
+        creation: Option<AcceptedCssomCreation>,
         applied: bool,
     },
+}
+#[derive(PartialEq, Eq)]
+struct AcceptedCssomCreation {
+    disabled: bool,
+    owner_rule: Option<surgeist_cssom::CssomRuleId>,
 }
 /// Execution permission for exactly one DOM-owned source operation. Drop parks
 /// a published operation; it never runs cleanup or discards its mandatory tail.
@@ -1875,10 +1881,14 @@ impl DomSourceLease<'_> {
                 .source_operation
                 .as_ref()
                 .ok_or(DomError::InvalidSourceOperation)?;
-            if let Some(Receipt::Cssom { revision, .. }) = &op.receipt
-                && store.snapshot().revision() != revision
-            {
-                return Err(DomError::StyleReceiptMismatch.into());
+            if let Some(receipt) = &op.receipt {
+                op.qualify_retained_cssom_receipt(
+                    receipt,
+                    op.request.as_ref().ok_or(DomError::StyleProtocol)?,
+                    op.owner_binding.as_ref(),
+                    &store.snapshot(),
+                    || op.draft.source_step(cancel),
+                )?;
             }
         }
         let custody = self.dom.source_owner_custody_bytes()?;
@@ -2991,8 +3001,8 @@ impl DomSourceLease<'_> {
             });
         }
         let validated = self.validate_cssom_publication(request, &commit, &snapshot, ticket);
-        let sheet = match validated {
-            Ok(sheet) => sheet,
+        let (sheet, creation) = match validated {
+            Ok(effect) => effect,
             Err(error) => {
                 return Err(DomStyleCssomPublicationRejection {
                     error,
@@ -3020,6 +3030,7 @@ impl DomSourceLease<'_> {
         op.receipt = Some(Receipt::Cssom {
             revision: snapshot.revision().clone(),
             sheet,
+            creation,
             applied: false,
         });
         Ok(token)
@@ -3030,7 +3041,13 @@ impl DomSourceLease<'_> {
         commit: &CssomCommit,
         snapshot: &CssomSnapshot,
         ticket: Option<&CssomSheetTicket>,
-    ) -> Result<Option<surgeist_cssom::CssomSheetId>, DomError> {
+    ) -> Result<
+        (
+            Option<surgeist_cssom::CssomSheetId>,
+            Option<AcceptedCssomCreation>,
+        ),
+        DomError,
+    > {
         let op = self.dom.source_operation.as_ref().expect("live lease");
         let expected = op.request.as_ref().ok_or(DomError::StyleProtocol)?;
         if !Arc::ptr_eq(&expected.source, &request.source)
@@ -3047,57 +3064,20 @@ impl DomSourceLease<'_> {
         if Some(from) != expected.cssom.as_ref() || to != snapshot.revision() {
             return Err(DomError::StyleReceiptMismatch);
         }
-        let sheet = match expected.action {
+        let (sheet, creation) = match expected.action {
             DomStyleAction::Update(Action::CreateSheet) => {
                 expected.association.ok_or(DomError::StyleReceiptMismatch)?;
                 let id = commit
                     .sheet(ticket.ok_or(DomError::StyleReceiptMismatch)?)
                     .map_err(|_| DomError::StyleReceiptMismatch)?;
-                let actual = snapshot
-                    .sheet(id)
-                    .map_err(|_| DomError::StyleReceiptMismatch)?;
-                let binding = op
-                    .owner_binding
-                    .as_ref()
-                    .filter(|b| b.matches(expected))
-                    .ok_or(DomError::StyleReceiptMismatch)?;
-                let title = expected.source.sheet_title();
-                if actual.inputs().owner.as_deref() != Some(binding.owner())
-                    || &actual.inputs().version != binding.version()
-                    || actual.inputs().title.as_slice() != title
-                    // An untitled ordinary inline sheet has no preferred-set
-                    // selection that could set its initially-unset flag.
-                    || (title.is_empty() && actual.inputs().disabled)
-                    || actual.inputs().base_url.is_some()
-                    || actual.inputs().location.is_some()
-                    || actual.inputs().constructor_document.is_some()
-                    || !expected.source.matches_media(snapshot, actual.media())
-                    || actual.inputs().constructed
-                    || !actual.inputs().origin_clean
-                    || actual.inputs().alternate
-                    || actual.inputs().disallow_modification
-                    || !actual
-                        .authored()
-                        .parse_source()
-                        .and_then(|p| p.source().original_utf16())
-                        .is_some_and(|s| s.as_slice() == expected.source.text.as_slice())
-                {
-                    return Err(DomError::StyleReceiptMismatch);
-                }
-                if snapshot.sheets().len() != expected.sheet_order().len()
-                    || !snapshot.sheets().iter().zip(expected.sheet_order()).all(
-                        |(actual, selected)| {
-                            actual
-                                == match selected {
-                                    DomStyleSheetPlacement::Existing(existing) => existing,
-                                    DomStyleSheetPlacement::ThisStyle => id,
-                                }
-                        },
-                    )
-                {
-                    return Err(DomError::StyleReceiptMismatch);
-                }
-                Some(id.clone())
+                let creation = qualify_cssom_creation(
+                    snapshot,
+                    expected,
+                    op.owner_binding.as_ref(),
+                    id,
+                    None,
+                )?;
+                (Some(id.clone()), Some(creation))
             }
             DomStyleAction::Update(Action::RemoveAssociatedSheet) => {
                 let old = expected
@@ -3105,7 +3085,7 @@ impl DomSourceLease<'_> {
                     .as_ref()
                     .ok_or(DomError::StyleReceiptMismatch)?;
                 qualify_cssom_removal(snapshot, old)?;
-                None
+                (None, None)
             }
             DomStyleAction::SetDisabled(disabled) => {
                 let old = expected
@@ -3118,7 +3098,7 @@ impl DomSourceLease<'_> {
                 if actual.inputs().disabled != disabled || ticket.is_some() {
                     return Err(DomError::StyleReceiptMismatch);
                 }
-                Some(old.id.clone())
+                (Some(old.id.clone()), None)
             }
             DomStyleAction::OwnerAttributes => {
                 let old = expected
@@ -3143,14 +3123,60 @@ impl DomSourceLease<'_> {
                 {
                     return Err(DomError::StyleReceiptMismatch);
                 }
-                Some(old.id.clone())
+                (Some(old.id.clone()), None)
             }
             _ => return Err(DomError::StyleReceiptMismatch),
         };
-        Ok(sheet)
+        Ok((sheet, creation))
     }
 }
 impl Operation {
+    fn qualify_retained_cssom_receipt(
+        &self,
+        receipt: &Receipt,
+        request: &DomStyleRequest,
+        binding: Option<&DomStyleCssomOwnerBinding>,
+        snapshot: &CssomSnapshot,
+        mut step: impl FnMut() -> Result<(), DomError>,
+    ) -> Result<(), DomError> {
+        let Receipt::Cssom {
+            revision,
+            sheet,
+            creation,
+            applied,
+        } = receipt
+        else {
+            return Err(DomError::StyleReceiptMismatch);
+        };
+        if snapshot.revision() == revision {
+            return Ok(());
+        }
+        // The original producer reply stays historical. A parked Script can
+        // outlive unrelated CSSOM publications once its earlier reply applied.
+        if !self.script_parked || !applied || snapshot.owner() != revision.owner() {
+            return Err(DomError::StyleReceiptMismatch);
+        }
+        step()?;
+        match (request.action(), sheet, creation) {
+            (DomStyleAction::Update(Action::CreateSheet), Some(id), Some(creation)) => {
+                if qualify_cssom_creation(snapshot, request, binding, id, Some(&mut step))?
+                    != *creation
+                {
+                    return Err(DomError::StyleReceiptMismatch);
+                }
+                Ok(())
+            }
+            (DomStyleAction::Update(Action::RemoveAssociatedSheet), None, None) => {
+                let old = request.sheet().ok_or(DomError::StyleReceiptMismatch)?;
+                for _ in snapshot.sheets() {
+                    step()?;
+                }
+                qualify_cssom_removal(snapshot, old)
+            }
+            _ => Err(DomError::StyleReceiptMismatch),
+        }
+    }
+
     fn apply_receipt(&mut self, cancel: &AtomicBool) -> Result<(), DomError> {
         if matches!(self.receipt, Some(Receipt::CloseWatcher { .. })) {
             return self.apply_close_watcher_receipt(cancel);
@@ -3222,6 +3248,75 @@ impl Operation {
         self.restore_external_receipt(true);
         Ok(())
     }
+}
+
+fn qualify_cssom_creation(
+    snapshot: &CssomSnapshot,
+    request: &DomStyleRequest,
+    binding: Option<&DomStyleCssomOwnerBinding>,
+    id: &surgeist_cssom::CssomSheetId,
+    work: Option<&mut dyn FnMut() -> Result<(), DomError>>,
+) -> Result<AcceptedCssomCreation, DomError> {
+    let actual = snapshot
+        .sheet(id)
+        .map_err(|_| DomError::StyleReceiptMismatch)?;
+    let binding = binding
+        .filter(|binding| binding.matches(request))
+        .ok_or(DomError::StyleReceiptMismatch)?;
+    let source = &request.source;
+    let title = source.sheet_title();
+    if let Some(step) = work {
+        // Bound every variable-length comparison by its original input length.
+        for length in [
+            binding.owner().len(),
+            binding.version().identity.len(),
+            title.len(),
+            source.media.as_ref().map_or(0, DocumentString::len),
+            source.text.len(),
+            request.sheet_order().len(),
+        ] {
+            for _ in 0..length {
+                step()?;
+            }
+        }
+    }
+    if actual.inputs().owner.as_deref() != Some(binding.owner())
+        || &actual.inputs().version != binding.version()
+        || actual.inputs().title.as_slice() != title
+        // Untitled ordinary inline sheets start with disabled unset.
+        || (title.is_empty() && actual.inputs().disabled)
+        || actual.inputs().base_url.is_some()
+        || actual.inputs().location.is_some()
+        || actual.inputs().constructor_document.is_some()
+        || !source.matches_media(snapshot, actual.media())
+        || actual.inputs().constructed
+        || !actual.inputs().origin_clean
+        || actual.inputs().alternate
+        || actual.inputs().disallow_modification
+        || !actual
+            .authored()
+            .parse_source()
+            .and_then(|parse| parse.source().original_utf16())
+            .is_some_and(|text| text.as_slice() == source.text.as_slice())
+        || snapshot.sheets().len() != request.sheet_order().len()
+        || !snapshot
+            .sheets()
+            .iter()
+            .zip(request.sheet_order())
+            .all(|(actual, selected)| {
+                actual
+                    == match selected {
+                        DomStyleSheetPlacement::Existing(existing) => existing,
+                        DomStyleSheetPlacement::ThisStyle => id,
+                    }
+            })
+    {
+        return Err(DomError::StyleReceiptMismatch);
+    }
+    Ok(AcceptedCssomCreation {
+        disabled: actual.inputs().disabled,
+        owner_rule: actual.owner_rule().cloned(),
+    })
 }
 
 fn matches_inline_csp_source(
