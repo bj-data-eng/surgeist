@@ -714,6 +714,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "9b1831ef0bebd3a49eacf3d78df17be19bfa801ec474f944c002410d446c1181",
     ),
     (
+        authority::FRI08_GRID_LANES_TEXT_EDITION,
+        "426059670d4f98340ef48a06501480052805c7dbee5f11f3c6c18097b6fc9f0d",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),
@@ -1773,6 +1777,7 @@ fn admit_matching(
             case.category(),
             authority::MatchingCategory::Fri07IntrinsicFlexText
                 | authority::MatchingCategory::Fri08WrappedSubgrid
+                | authority::MatchingCategory::Fri08GridLanesText
         ) {
             let source = read_pinned(
                 root,

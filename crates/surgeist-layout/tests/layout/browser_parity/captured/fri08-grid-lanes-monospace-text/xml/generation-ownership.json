@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "d27446a662d2dd0ce26ca42e8dd41289ab6a6eb6407daaf99068f60cfc58e702",
+    "xml/grid-lanes/grid_lanes_max_content_container_sizing__border_box_ltr.xml": "d08883fbad30a1097e1ab887d2a1d507f29c58cf2c00b7a249faa9c6a7d447cb",
+    "xml/grid-lanes/grid_lanes_max_content_container_sizing__border_box_rtl.xml": "b51aa9534fb2fdfa5114bbfbe0318bb658b43cf1bdd769f22a33ee6aac977864",
+    "xml/grid-lanes/grid_lanes_max_content_container_sizing__content_box_ltr.xml": "abe2072910820e25c6192805aed1cf51e3ab033cce800f299dc155c28fac4c4b",
+    "xml/grid-lanes/grid_lanes_max_content_container_sizing__content_box_rtl.xml": "c74ea9fcf2760c83cec5db97003d9c1e5b18c2948021e7ab690a798cef24702c",
+    "xml/grid-lanes/grid_lanes_min_content_container_sizing__border_box_ltr.xml": "d14904f9b9da918f7bd91d1c9ba7951eb1f844c0ed8331d35f9f8435a90edf15",
+    "xml/grid-lanes/grid_lanes_min_content_container_sizing__border_box_rtl.xml": "b66d5d71b1e40deb3665e17d354d9ac04a70045524986014423ece77edc7fc01",
+    "xml/grid-lanes/grid_lanes_min_content_container_sizing__content_box_ltr.xml": "874a5c54b978058b8c1a45283864c353d2bca983f1bf8e70596f541666501154",
+    "xml/grid-lanes/grid_lanes_min_content_container_sizing__content_box_rtl.xml": "1c86ca1860832b296b3335dd89cdb919fa608029f7a4bfe6389f3f7129d65a8f"
+  }
+}

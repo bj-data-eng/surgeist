@@ -1319,6 +1319,7 @@ enum FlexTextCensus {
     None,
     Direct,
     Nested,
+    MeasuredNested,
 }
 
 fn source_census(
@@ -1338,7 +1339,7 @@ fn source_census(
         let flex_label = match flex_text {
             FlexTextCensus::None => false,
             FlexTextCensus::Direct => path != "/",
-            FlexTextCensus::Nested => path[1..].contains('/'),
+            FlexTextCensus::Nested | FlexTextCensus::MeasuredNested => path[1..].contains('/'),
         };
         let role_matches = if flex_label {
             node.kind == NodeKind::Text && node.text.is_some() && node.children.is_empty()
@@ -1388,7 +1389,7 @@ fn source_census(
                 }
             })
             .collect();
-        if flex_label {
+        if flex_label && !matches!(flex_text, FlexTextCensus::MeasuredNested) {
             let wrapper = format!("{path}/0");
             let leaf = format!("{wrapper}/0");
             out.extend([
@@ -1446,6 +1447,26 @@ pub(crate) fn compare_matching_capture(
     match category {
         MatchingCategory::Geometry | MatchingCategory::OriginalInlineSubgrid => {
             return compare_matching_geometry(golden);
+        }
+        MatchingCategory::Fri08GridLanesText => {
+            if crate::fri08_grid_lanes_text_profile::source_digest(source).is_none()
+                || !golden
+                    .flex_content_text
+                    .as_ref()
+                    .is_some_and(super::flex_content_text::Proof::is_grid_lanes_text)
+                || !matches!(
+                    golden.viewport.root_context,
+                    super::RootContext::Qualified(
+                        super::root_context::QualifiedRootContext::AbsoluteRootLocal { .. }
+                    )
+                )
+                || golden.has_element_scroll_sizes()
+                || golden.has_prepared_range_frame()
+                || golden.measured_leaf.is_some()
+            {
+                return Err(unsupported("/", "original Grid Lanes text sizing profile"));
+            }
+            return compare_matching_boxes(golden, FlexTextCensus::MeasuredNested);
         }
         MatchingCategory::Fri08WrappedSubgrid => {
             if crate::fri08_wrapped_subgrid_profile::source_digest(source).is_none() {

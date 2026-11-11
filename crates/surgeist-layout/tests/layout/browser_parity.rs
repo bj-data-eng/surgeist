@@ -337,16 +337,9 @@ fn fri08_manifest_wrapped_text_subgrid_siblings_replay_registered_geometry() {
 
 #[test]
 fn manifest_active_outputs_match_layout() {
-    let mut paths = manifest_active_output_paths().into_iter();
-    let first = paths
-        .next()
-        .expect("manifest should declare at least one selected active parity source");
-    for path in std::iter::once(first).chain(paths) {
-        let golden = support::Golden::parse_file(&path)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", path.display()));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", path.display()));
-    }
+    let originals: Vec<_> = manifest_active_output_paths().into_iter().collect();
+    assert_eq!(originals.len(), 68);
+    assert_registered_originals_match(&originals);
 }
 
 fn fri07_c04_fixture_input_xml(name: &str, root_width: &str, first_width: &str) -> String {

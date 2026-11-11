@@ -1,6 +1,7 @@
 //! Layout fixture semantics supplied to the generic browser engine.
 
 use crate::fri07_intrinsic_flex_profile as intrinsic_flex;
+use crate::fri08_grid_lanes_text_profile as grid_lanes_text;
 use crate::fri08_wrapped_subgrid_profile as wrapped_subgrid;
 use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
@@ -235,6 +236,14 @@ impl LayoutAdapter {
                 "intrinsic Flex Text capture requires its exact original source".into(),
             ));
         }
+        if request == BoxObservationRequest::Fri08GridLanesText
+            && grid_lanes_text::source_digest(input.fixture().source().as_str())
+                != Some(surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str())
+        {
+            return Err(AdapterError::Preparation(
+                "Grid Lanes text sizing requires one of its exact original sources".into(),
+            ));
+        }
         if request == BoxObservationRequest::Fri08WrappedSubgrid
             && wrapped_subgrid::source_digest(input.fixture().source().as_str())
                 != Some(surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str())
@@ -433,7 +442,11 @@ impl LayoutAdapter {
                 let bytes = serde_json::to_string(font_bytes)
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalPreparedAtomicPercentage({bytes})")
-            } else if request == BoxObservationRequest::HorizontalBrFontBand {
+            } else if matches!(
+                request,
+                BoxObservationRequest::HorizontalBrFontBand
+                    | BoxObservationRequest::Fri08GridLanesText
+            ) {
                 format!("({script})()")
             } else if request == BoxObservationRequest::VerticalBrFontBand {
                 let source = serde_json::to_string(source)

@@ -55,6 +55,8 @@ mod flex_text_projection;
 pub(crate) mod grid_lanes_native_pair;
 #[path = "grid_lanes_source_delta.rs"]
 mod grid_lanes_source_delta;
+#[path = "grid_lanes_text.rs"]
+mod grid_lanes_text;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 #[path = "original_flex_parent.rs"]
@@ -124,7 +126,7 @@ impl Golden {
             .is_some_and(flex_content_text::Proof::is_intrinsic)
     }
 
-    /// Bind the retained source and capture report before admitting prepared Flex text.
+    /// Bind the retained source and capture report before admitting Flex text evidence.
     pub fn parse_with_flex_content_text(
         xml: &str,
         report: &str,
@@ -507,6 +509,8 @@ fn compare_captured_with_projection(
     if let Some(proof) = &golden.flex_content_text {
         if proof.is_wrapped_subgrid() {
             wrapped_subgrid_text::install(&mut tree, golden, proof)?;
+        } else if proof.is_grid_lanes_text() {
+            grid_lanes_text::install(&mut tree, golden, proof)?;
         } else {
             flex_content_text::lower(&mut tree, golden, proof)?;
         }
@@ -523,7 +527,7 @@ fn compare_captured_with_projection(
     if let Some(proof) = &golden.flex_content_text {
         if proof.is_wrapped_subgrid() {
             wrapped_subgrid_text::verify(&tree, proof)?;
-        } else {
+        } else if !proof.is_grid_lanes_text() {
             tree.flex_projection = Some(flex_text_projection::validate(&tree, &batch)?);
             flex_content_text::verify_word_ranges(&tree, &batch, proof)?;
         }
@@ -2788,6 +2792,7 @@ struct TestTree {
     flex_text: Vec<flex_content_text::LoweredOccurrence>,
     flex_projection: Option<flex_text_projection::ValidatedProjection>,
     wrapped_subgrid_text: Option<std::rc::Rc<std::cell::RefCell<wrapped_subgrid_text::Measurer>>>,
+    grid_lanes_text: std::collections::BTreeMap<usize, crate::fri08_grid_lanes_text_profile::Sizes>,
     replaced_image: Option<(usize, layout::Size)>,
 }
 
@@ -3246,6 +3251,9 @@ impl TestTree {
         input: layout::LeafMeasureInput,
         text: &str,
     ) -> Result<layout::Size, Error> {
+        if let Some(sizes) = self.grid_lanes_text.get(&node) {
+            return grid_lanes_text::measure(*sizes, input);
+        }
         if let Some(measurer) = &self.wrapped_subgrid_text {
             return measurer.borrow_mut().measure(text, input);
         }
@@ -9254,6 +9262,7 @@ mod tests {
             flex_text: Vec::new(),
             flex_projection: None,
             wrapped_subgrid_text: None,
+            grid_lanes_text: Default::default(),
             replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
@@ -9360,6 +9369,7 @@ mod tests {
             flex_text: Vec::new(),
             flex_projection: None,
             wrapped_subgrid_text: None,
+            grid_lanes_text: Default::default(),
             replaced_image: None,
             nodes: vec![
                 node(
@@ -12326,6 +12336,7 @@ mod tests {
             flex_text: Vec::new(),
             flex_projection: None,
             wrapped_subgrid_text: None,
+            grid_lanes_text: Default::default(),
             replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),

@@ -121,6 +121,12 @@ stylesheet's [Ahem WOFF2](../../../../surgeist-font/tests/fixtures/ahem-original
 and the hidden leaves' client and scroll extents. Native Grid sizing uses
 prepared Text measurements at the widths requested by Layout.
 
+The [FRI08 intrinsic Grid Lanes edition](captured/fri08-grid-lanes-monospace-text/qualification.json)
+covers the eight monospace variants. Standalone browser probes record the
+intrinsic widths and the wrap boundary for each authored text occurrence.
+Native replay uses those measurements to size the original Grid Lanes
+and Flex boxes. The complete manifest test replays all 68 active variants.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
