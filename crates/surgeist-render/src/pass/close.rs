@@ -441,6 +441,7 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) completed_parent: RuntimeResourceId,
     pub(super) copied: RuntimeResourceId,
     pub(super) foreground: Option<RuntimeResourceId>,
+    filter_start: usize,
     pub(super) filter_steps: SharedValue<Vec<ExecutableFilterStepFacts>>,
     pub(super) filtered: RuntimeResourceId,
     pub(super) group_clear: RuntimePassId,
@@ -448,6 +449,15 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) foreground_composite: Option<RuntimePassId>,
     pub(super) outer_composite: RuntimePassId,
     pub(super) completed_group: RuntimeResourceId,
+    pub(super) group_blur: Option<ExecutableBackdropGroupBlurFacts>,
+    pub(super) result: RuntimeResourceId,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ExecutableBackdropGroupBlurFacts {
+    pub(super) horizontal: RuntimePassId,
+    pub(super) vertical: RuntimePassId,
+    pub(super) intermediate: RuntimeResourceId,
     pub(super) result: RuntimeResourceId,
 }
 
@@ -628,6 +638,31 @@ impl ClosedExecutableGraphFacts {
 }
 
 impl ExecutableBackdropFacts {
+    fn proves_filter_partition(
+        &self,
+        steps: &[ExecutableFilterStepFacts],
+        account: &Account,
+    ) -> Result<bool> {
+        let Some((before, remaining)) = steps.split_at_checked(self.filter_start) else {
+            return Ok(false);
+        };
+        let Some((backdrop, after)) = remaining.split_at_checked(self.filter_steps.len()) else {
+            return Ok(false);
+        };
+        if !filter_steps_match(&self.filter_steps, backdrop, account)? {
+            return Ok(false);
+        }
+        // The closed visitor accepts only transparent-edge RGBA pairs as
+        // ordinary blur. Color runs and shadows belong to the backdrop slice.
+        for step in before.iter().chain(after) {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            if !matches!(step, ExecutableFilterStepFacts::Blur { .. }) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan, proof: &ProofContext<'_>) -> bool {
         let pass = |id| proof_passes(plan, proof).find(|candidate| candidate.id == id);
         let Some(copy) = pass(self.copy) else {
@@ -636,6 +671,26 @@ impl ExecutableBackdropFacts {
         let foreground_is_distinct = self
             .foreground
             .is_none_or(|foreground| foreground != self.copied && foreground != self.filtered);
+        let group_source = match self.group_blur {
+            Some(blur) => {
+                let (Some(horizontal), Some(vertical)) =
+                    (pass(blur.horizontal), pass(blur.vertical))
+                else {
+                    return false;
+                };
+                if !proof_read(horizontal, 0, proof)
+                    .is_some_and(|read| read.resource == self.completed_group)
+                    || horizontal.result != RuntimeResultBinding::Resource(blur.intermediate)
+                    || !proof_read(vertical, 0, proof)
+                        .is_some_and(|read| read.resource == blur.intermediate)
+                    || vertical.result != RuntimeResultBinding::Resource(blur.result)
+                {
+                    return false;
+                }
+                blur.result
+            }
+            None => self.completed_group,
+        };
         matches!(copy.kind, RuntimePassKind::CopyBackdrop)
             && copy.reads.len() == 1
             && proof_read(copy, 0, proof).is_some_and(|read| read.resource == self.completed_parent)
@@ -653,7 +708,12 @@ impl ExecutableBackdropFacts {
             && self
                 .foreground_composite
                 .is_none_or(|id| pass(id).is_some())
-            && pass(self.outer_composite).is_some()
+            && pass(self.outer_composite).is_some_and(|outer| {
+                proof_read(outer, 0, proof)
+                    .is_some_and(|read| read.resource == self.completed_parent)
+                    && proof_read(outer, 1, proof).is_some_and(|read| read.resource == group_source)
+                    && outer.result == RuntimeResultBinding::Resource(self.result)
+            })
             && self.completed_group != self.completed_parent
             && self.result != self.completed_group
             && foreground_is_distinct
@@ -1254,7 +1314,7 @@ impl BackdropPreparableGraph {
         let [backdrop] = closed.facts.backdrops.as_slice() else {
             return Ok(Err(closed));
         };
-        if !filter_steps_match(&backdrop.filter_steps, &closed.facts.filter_steps, account)? {
+        if !backdrop.proves_filter_partition(&closed.facts.filter_steps, account)? {
             return Ok(Err(closed));
         }
         Ok(Ok(Self { closed }))
@@ -1264,14 +1324,13 @@ impl BackdropPreparableGraph {
         let [backdrop] = self.closed.facts.backdrops.as_slice() else {
             return Ok(false);
         };
-        Ok(filter_steps_match(
-            &backdrop.filter_steps,
-            &self.closed.facts.filter_steps,
-            account,
-        )? && self
-            .closed
-            .facts
-            .proves_exact_facts_for(&self.closed.lowered, account)?)
+        Ok(
+            backdrop.proves_filter_partition(&self.closed.facts.filter_steps, account)?
+                && self
+                    .closed
+                    .facts
+                    .proves_exact_facts_for(&self.closed.lowered, account)?,
+        )
     }
 
     pub(crate) fn working_format(&self) -> WorkingFormat {
@@ -2217,7 +2276,21 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             None => None,
         };
         let completed_group = *self.contexts.last()?;
-        let outer_composite = self.visit_backdrop_outer_composite(parent, completed_group)?;
+        let next = self.pass_at(self.cursor)?;
+        let group_blur = if let RuntimePassKind::BlurHorizontal(Some(blur)) = &next.kind {
+            self.visit_blur(next, blur)?;
+            let blur = self.blurs.last()?;
+            Some(ExecutableBackdropGroupBlurFacts {
+                horizontal: blur.horizontal,
+                vertical: blur.vertical,
+                intermediate: blur.intermediate,
+                result: blur.result,
+            })
+        } else {
+            None
+        };
+        let outer_source = *self.contexts.last()?;
+        let outer_composite = self.visit_backdrop_outer_composite(parent, outer_source)?;
         let result = self.contexts.first()?.current;
         self.proof
             .capture_storage_write(self.backdrops.push(ExecutableBackdropFacts {
@@ -2225,6 +2298,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 completed_parent: parent.current,
                 copied,
                 foreground: foreground.map(|context| context.current),
+                filter_start,
                 filter_steps,
                 filtered: filtered.current,
                 group_clear: group_clear.id,
@@ -2232,6 +2306,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 foreground_composite,
                 outer_composite,
                 completed_group: completed_group.current,
+                group_blur,
                 result,
             }))?;
         Some(())

@@ -4253,20 +4253,6 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
             bounded_backdrop_diagnostic_backdrop_layer_for_test(),
             |_| {},
         );
-    let mut mixed = Scene::new();
-    mixed
-        .layer(
-            Layer::new()
-                .try_filter(Filter::try_blur(0.5).unwrap())
-                .unwrap(),
-            |scene| {
-                scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
-            },
-        )
-        .layer(
-            bounded_backdrop_diagnostic_backdrop_layer_for_test(),
-            |_| {},
-        );
     let ready = renderer
         .default_ready_device_state_borrow_for_test()
         .expect("bounded-backdrop broad diagnostic coverage requires a ready device");
@@ -4277,7 +4263,6 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
     let transformed =
         pollster::block_on(renderer.render(surface, &transformed, Parameters::default()));
     let repeated = pollster::block_on(renderer.render(surface, &repeated, Parameters::default()));
-    let mixed = pollster::block_on(renderer.render(surface, &mixed, Parameters::default()));
     let root = BackdropFilterInput::try_root_backdrop(
         single_filter_list_for_test(FilterOp::blur(FilterBlur::try_new(0.5).unwrap()))[0].clone(),
         None,
@@ -4305,9 +4290,6 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
             .as_ref()
             .is_err_and(|error| error.unsupported_primitive() == Some(broad))
         && repeated
-            .as_ref()
-            .is_err_and(|error| error.unsupported_primitive() == Some(broad))
-        && mixed
             .as_ref()
             .is_err_and(|error| error.unsupported_primitive() == Some(broad))
         && root
@@ -4465,6 +4447,198 @@ fn bounded_backdrop_frame_matches_for_test(
             frame.result.working_format,
             tolerance,
         )
+}
+
+#[test]
+fn foreground_backdrop_reads_the_blurred_predecessor_in_scene_order() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(16.0, 9.0), 1.0)).unwrap();
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    let backdrop = BackdropFilterInput::try_new(
+        color_filter_list([ColorFilterOp::Invert(
+            UnitFilterAmount::try_new(1.0).unwrap(),
+        )]),
+        BackdropCaptureBounds::try_new(Rect::new(2.0, 2.0, 6.0, 5.0)).unwrap(),
+        None,
+    )
+    .unwrap();
+    let mut scene = Scene::new();
+    scene
+        .layer(blur.clone(), |scene| {
+            scene.fill(
+                Rect::new(4.0, 4.0, 1.0, 1.0),
+                Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap(),
+            );
+        })
+        .layer(Layer::new().try_backdrop_filter(backdrop).unwrap(), |_| {})
+        .layer(blur, |scene| {
+            scene.fill(
+                Rect::new(12.0, 4.0, 1.0, 1.0),
+                Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+            );
+        });
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    let stats = pollster::block_on(renderer.render(&mut surface, &scene, params))
+        .expect("a bounded backdrop should read earlier foreground blur in the same frame");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    // A sigma-one impulse contributes about 41 at its center and 25 one
+    // texel away. The backdrop inverts those already-composited channels.
+    for (x, expected) in [(4, 214_u8), (5, 230)] {
+        let [r, g, b, a] = pixel_rgba(&output, x, 4);
+        assert!(
+            [r, g, b]
+                .into_iter()
+                .all(|value| value.abs_diff(expected) <= 3)
+        );
+        assert_eq!(a, 255);
+    }
+    let [r, g, b, a] = pixel_rgba(&output, 12, 4);
+    assert!((39..=43).contains(&r));
+    assert_eq!([g, b, a], [0, 0, 255]);
+}
+
+#[test]
+fn foreground_backdrop_same_layer_blurs_the_clipped_backdrop_and_child_group() {
+    assert_foreground_backdrop_group_pixels(color_filter_list([ColorFilterOp::Invert(
+        UnitFilterAmount::try_new(1.0).unwrap(),
+    )]));
+}
+
+#[test]
+fn foreground_backdrop_mirror_sampling_stays_inside_the_backdrop_stage() {
+    // The mirrored blur preserves the uniform white capture before the
+    // ordinary Gaussian sees the clipped backdrop and red child.
+    assert_foreground_backdrop_group_pixels(
+        FilterList::try_ops(vec![
+            FilterOp::invert(UnitFilterAmount::try_new(1.0).unwrap()),
+            FilterOp::blur(FilterBlur::try_new(1.25).unwrap()),
+        ])
+        .unwrap(),
+    );
+}
+
+fn assert_foreground_backdrop_group_pixels(filters: FilterList) {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let backdrop = BackdropFilterInput::try_new(
+        filters,
+        BackdropCaptureBounds::try_new(Rect::new(2.0, 2.0, 5.0, 5.0)).unwrap(),
+        Some(ClipInput::try_shape(Shape::rect(Rect::new(3.0, 3.0, 3.0, 3.0))).unwrap()),
+    )
+    .unwrap();
+    let mask = Image::from_rgba(Size::new(1.0, 1.0), vec![255, 255, 255, 128]).unwrap();
+    let layer = Layer::new()
+        .try_backdrop_filter(backdrop)
+        .unwrap()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap()
+        .try_clip(Shape::rect(Rect::new(4.0, 3.0, 3.0, 3.0)))
+        .unwrap()
+        .with_resolved_alpha_mask(
+            ResolvedLayerAlphaMask::try_new(mask, Rect::new(0.0, 0.0, 9.0, 9.0)).unwrap(),
+        )
+        .try_opacity(0.5)
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(layer, |scene| {
+        scene.fill(
+            Rect::new(4.0, 4.0, 1.0, 1.0),
+            Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+        );
+    });
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    pollster::block_on(renderer.render(&mut surface, &scene, params))
+        .expect("foreground blur should consume the combined backdrop and child group");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    // The center receives about 199 from the blurred 3x3 white square, and
+    // the red child replaces about 41 of its green and blue. Mask and opacity
+    // together contribute about one quarter. The halo crosses the inner clip
+    // at x=6 and the outer clip removes x=3 after filtering.
+    for (x, expected) in [
+        (3, [0_u8, 0, 0, 255]),
+        (4, [50, 40, 40, 255]),
+        (6, [17, 15, 15, 255]),
+    ] {
+        let actual = pixel_rgba(&output, x, 4);
+        assert!(
+            actual
+                .into_iter()
+                .zip(expected)
+                .all(|(a, e)| a.abs_diff(e) <= 3),
+            "pixel at x={x}: {actual:?}"
+        );
+    }
+}
+
+#[test]
+fn foreground_backdrop_kernel_refusal_preserves_publication_and_allows_retry() {
+    use crate::{
+        RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity, RenderWork,
+    };
+
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::KernelSampleVisits, 0)
+        .unwrap();
+    let options =
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(7.0, 7.0), 1.0)).unwrap();
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    let initial = pollster::block_on(renderer.render(&mut surface, &Scene::new(), params)).unwrap();
+    let before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    let scene = |sigma| {
+        let bounds = BackdropCaptureBounds::try_new(Rect::new(2.0, 2.0, 3.0, 3.0)).unwrap();
+        let invert = color_filter_list([ColorFilterOp::Invert(
+            UnitFilterAmount::try_new(1.0).unwrap(),
+        )]);
+        let backdrop = BackdropFilterInput::try_new(invert, bounds, None).unwrap();
+        let layer = Layer::new()
+            .try_backdrop_filter(backdrop)
+            .unwrap()
+            .try_filter(Filter::try_blur(sigma).unwrap())
+            .unwrap();
+        let mut scene = Scene::new();
+        scene.layer(layer, |_| {});
+        scene
+    };
+    assert!(pollster::block_on(renderer.render(&mut surface, &scene(1.0), params)).is_err());
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    let refusal = report.attempt().unwrap().refusal().unwrap();
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::KernelSampleVisits)
+    );
+    assert_eq!((refusal.current(), refusal.amount()), (0, 1));
+    assert_eq!(renderer.stats(), initial);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+
+    let stats = pollster::block_on(renderer.render(&mut surface, &scene(0.0), params)).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_rgba(&output, 3, 3), [255; 4]);
+    assert_eq!(pixel_rgba(&output, 1, 3), [0, 0, 0, 255]);
 }
 
 #[test]

@@ -613,10 +613,13 @@ for the finite operation domain of destructive operators.
 
 `FilterCapabilities::supports_layer_filters` and
 `OffscreenPipelineCapabilities::supports_layer_filter_execution` report
-this foreground blur route. A frame that requires both foreground blur and
-active backdrop execution returns the typed `BroadBackdropExecution`
-diagnostic. Authored shape masks and filtered image paints have their
-separate typed capability boundaries.
+this foreground blur route. A frame may also use one bounded,
+untransformed, top-level backdrop filter. It samples the completed prior
+parent, including any earlier foreground blur. When a single layer has both
+effects, its foreground blur consumes the group formed by the clipped
+backdrop and the children before the outer layer effects. Nested,
+transformed, and repeated backdrop requests return the typed
+`BroadBackdropExecution` diagnostic.
 
 ## Image sampling
 
