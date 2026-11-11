@@ -672,13 +672,12 @@ the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
 
-The [CSSOM §2.1 common idioms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms)
-are available in the `serialization` module as `serialize_css_identifier`,
+The `serialization` module exposes `serialize_css_identifier`,
 `serialize_css_string`, `serialize_css_comma_separated_list`, and
-`serialize_css_whitespace_separated_list`, each taking `CssSerializationLimits`.
-Identifier and string functions borrow
-arbitrary decoded text, reuse the shared escaping writer, and replace NUL with
-U+FFFD; an empty identifier emits empty text and an empty string emits `""`.
+`serialize_css_whitespace_separated_list` under `CssSerializationLimits`.
+`serialize_css_identifier` follows the CSS Syntax 3 identifier round trip.
+The identifier and string functions borrow decoded UTF-8 text and replace NUL
+with U+FFFD. An empty identifier emits empty text and an empty string emits `""`.
 List functions borrow already serialized item slices and preserve every item
 byte, including empty items and NUL, inserting only `, ` or one space between
 items. Empty lists emit empty text. They do not parse, trim, or escape items.
@@ -686,6 +685,11 @@ One primitive or list container charges one input and projection node; every
 list item charges one more of each, even if empty. Limits count actual output
 bytes and failures return no partial string or input mutation. These common
 operations leave strict `CssIdent` and property-list admission unchanged.
+
+`serialize_cssom_identifier` implements the [selected CSSOM §2.1 identifier
+serialization](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#serialize-an-identifier)
+over exact UTF-16. Non-ASCII units, including isolated surrogates, pass through
+literally. `CssomIdentifierLimits` bounds input units and encoded output bytes.
 
 ## Raw single rules
 
@@ -7891,7 +7895,7 @@ case while excluding CSS-wide keywords, `default`, and the local `normal`,
 unknown names; they acquire no scheme semantics. Parsed `only` may precede or
 follow the complete list, but cannot repeat or occur inside it. Canonical
 specified output places it last and escapes custom names through the shared
-CSSOM identifier writer. The media preference enum remains a separate domain.
+CSS Syntax identifier writer. The media preference enum remains a separate domain.
 
 `CssForcedColorAdjust` retains exactly `Auto`, `None`, or `PreserveParentColor`.
 The last hint behaves like `none`, except that in forced colors mode, if `color`

@@ -115,17 +115,94 @@ pub fn identifier<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
     let lone_hyphen = value == "-";
     let leading_hyphen = value.starts_with('-');
     for (index, point) in value.chars().enumerate() {
-        let digit_here_is_invalid =
-            lexical::is_digit(point) && (index == 0 || (index == 1 && leading_hyphen));
-        if digit_here_is_invalid {
-            hex_escape(point, out)?;
-        } else if index == 0 && lone_hyphen {
-            out.write_str("\\-")?;
-        } else {
-            name_point(point, out)?;
+        match identifier_action(
+            u32::from(point),
+            index,
+            leading_hyphen,
+            lone_hyphen,
+            lexical::is_ident_code_point(point),
+        ) {
+            IdentifierAction::Replacement => out.write_char('\u{fffd}')?,
+            IdentifierAction::Hex => hex_escape(point, out)?,
+            IdentifierAction::Literal => out.write_char(point)?,
+            IdentifierAction::Backslash => {
+                out.write_char('\\')?;
+                out.write_char(point)?;
+            }
         }
     }
     Ok(())
+}
+
+enum IdentifierAction {
+    Replacement,
+    Hex,
+    Literal,
+    Backslash,
+}
+
+fn identifier_action(
+    point: u32,
+    index: usize,
+    leading_hyphen: bool,
+    lone_hyphen: bool,
+    literal: bool,
+) -> IdentifierAction {
+    match point {
+        0 => IdentifierAction::Replacement,
+        0x01..=0x1f | 0x7f => IdentifierAction::Hex,
+        0x30..=0x39 if index == 0 || (index == 1 && leading_hyphen) => IdentifierAction::Hex,
+        0x2d if lone_hyphen => IdentifierAction::Backslash,
+        _ if literal => IdentifierAction::Literal,
+        _ if point <= 0x7f => IdentifierAction::Backslash,
+        _ => IdentifierAction::Hex,
+    }
+}
+
+/// Emits the CSSOM 1 §2.1 identifier serialization of a DOMString.
+/// Non-ASCII UTF-16 units pass through, including paired and isolated surrogates.
+/// `emit` receives one nonempty fragment per input unit, in order.
+///
+/// # Errors
+/// Returns the first failure from `emit` and stops reading the input.
+pub fn cssom_identifier<E>(
+    value: &[u16],
+    mut emit: impl FnMut(&[u16]) -> Result<(), E>,
+) -> Result<(), E> {
+    const HYPHEN: u16 = 0x2d;
+    const BACKSLASH: u16 = 0x5c;
+    const SPACE: u16 = 0x20;
+
+    let lone_hyphen = value == [HYPHEN];
+    let leading_hyphen = value.starts_with(&[HYPHEN]);
+    for (index, &unit) in value.iter().enumerate() {
+        let point = u32::from(unit);
+        let literal =
+            point >= 0x80 || char::from_u32(point).is_some_and(lexical::is_ident_code_point);
+        match identifier_action(point, index, leading_hyphen, lone_hyphen, literal) {
+            IdentifierAction::Replacement => emit(&[0xfffd])?,
+            IdentifierAction::Hex if unit < 0x10 => emit(&[BACKSLASH, hex_digit(unit), SPACE])?,
+            IdentifierAction::Hex => {
+                emit(&[
+                    BACKSLASH,
+                    hex_digit(unit >> 4),
+                    hex_digit(unit & 0xf),
+                    SPACE,
+                ])?;
+            }
+            IdentifierAction::Literal => emit(&[unit])?,
+            IdentifierAction::Backslash => emit(&[BACKSLASH, unit])?,
+        }
+    }
+    Ok(())
+}
+
+fn hex_digit(nibble: u16) -> u16 {
+    if nibble < 10 {
+        u16::from(b'0') + nibble
+    } else {
+        u16::from(b'a') + (nibble - 10)
+    }
 }
 
 /// Writes `value` as a quoted string (CSSOM 1 section 2.1, "serialize a

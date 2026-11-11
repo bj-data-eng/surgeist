@@ -518,6 +518,7 @@ impl<W: core::fmt::Write> surgeist_css_parser::serialize::Writer<W>
 pub fn surgeist_css_parser::serialize::Writer<W>::into_inner(self) -> W
 pub const fn surgeist_css_parser::serialize::Writer<W>::new(out: W) -> Self
 pub fn surgeist_css_parser::serialize::Writer<W>::token(&mut self, token: surgeist_css_parser::Token<'_>) -> core::fmt::Result
+pub fn surgeist_css_parser::serialize::cssom_identifier<E>(value: &[u16], emit: impl core::ops::function::FnMut(&[u16]) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub fn surgeist_css_parser::serialize::identifier<W: core::fmt::Write + ?core::marker::Sized>(value: &str, out: &mut W) -> core::fmt::Result
 pub fn surgeist_css_parser::serialize::list<P, W: core::fmt::Write>(document: &surgeist_css_parser::Document<'_, P>, list: surgeist_css_parser::document::ListId, out: W) -> core::fmt::Result
 pub const fn surgeist_css_parser::serialize::needs_separator(previous: surgeist_css_parser::serialize::Adjacency, next: surgeist_css_parser::serialize::Adjacency) -> bool

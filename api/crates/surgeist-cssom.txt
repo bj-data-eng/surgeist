@@ -3,7 +3,7 @@
 
 pub mod surgeist_cssom
 pub mod surgeist_cssom::css
-pub fn surgeist_cssom::css::escape(value: &str, limits: surgeist_css::serialization::specified_serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::specified_serialization::CssSerializationError>
+pub fn surgeist_cssom::css::escape(value: &[u16], limits: surgeist_css::serialization::common_serialization::CssomIdentifierLimits) -> core::result::Result<alloc::vec::Vec<u16>, surgeist_css::serialization::specified_serialization::CssSerializationError>
 pub enum surgeist_cssom::CapturedCustomMediaQuery
 pub surgeist_cssom::CapturedCustomMediaQuery::Boolean(bool)
 pub surgeist_cssom::CapturedCustomMediaQuery::MediaList(surgeist_cssom::CssomCapture<surgeist_cssom::MediaList>)

@@ -6026,6 +6026,7 @@ pub const fn surgeist_css::serialization::CssSerializationError::is_byte_limit(&
 pub const fn surgeist_css::serialization::CssSerializationError::is_capacity_overflow(&self) -> bool
 pub const fn surgeist_css::serialization::CssSerializationError::is_depth_limit(&self) -> bool
 pub const fn surgeist_css::serialization::CssSerializationError::is_input_node_limit(&self) -> bool
+pub const fn surgeist_css::serialization::CssSerializationError::is_input_unit_limit(&self) -> bool
 pub const fn surgeist_css::serialization::CssSerializationError::is_namespace_binding_unavailable(&self) -> bool
 pub const fn surgeist_css::serialization::CssSerializationError::is_projection_node_limit(&self) -> bool
 pub const fn surgeist_css::serialization::CssSerializationError::is_resource_limit(&self) -> bool
@@ -6059,10 +6060,16 @@ pub const fn surgeist_css::serialization::CssSerializationLimits::max_projection
 pub const fn surgeist_css::serialization::CssSerializationLimits::new(max_input_nodes: usize, max_projection_nodes: usize, max_css_bytes: usize) -> Self
 impl core::default::Default for surgeist_css::serialization::CssSerializationLimits
 pub fn surgeist_css::serialization::CssSerializationLimits::default() -> Self
+pub struct surgeist_css::serialization::CssomIdentifierLimits
+impl surgeist_css::serialization::CssomIdentifierLimits
+pub const fn surgeist_css::serialization::CssomIdentifierLimits::new(max_input_units: usize, max_output_bytes: usize) -> Self
+impl core::default::Default for surgeist_css::serialization::CssomIdentifierLimits
+pub fn surgeist_css::serialization::CssomIdentifierLimits::default() -> Self
 pub fn surgeist_css::serialization::serialize_css_comma_separated_list(items: &[&str], limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::serialization::serialize_css_identifier(value: &str, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::serialization::serialize_css_string(value: &str, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::serialization::serialize_css_whitespace_separated_list(items: &[&str], limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
+pub fn surgeist_css::serialization::serialize_cssom_identifier(value: &[u16], limits: surgeist_css::serialization::CssomIdentifierLimits) -> core::result::Result<alloc::vec::Vec<u16>, surgeist_css::serialization::CssSerializationError>
 pub mod surgeist_css::source
 pub enum surgeist_css::source::CssSourceRetentionAction
 pub surgeist_css::source::CssSourceRetentionAction::Scratch

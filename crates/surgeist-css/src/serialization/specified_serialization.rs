@@ -57,6 +57,7 @@ impl Default for CssSerializationLimits {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CssSpecifiedValueSerializationErrorKind {
     InputNodeLimit,
+    InputUnitLimit,
     ProjectionNodeLimit,
     ByteLimit,
     /// The explicitly depth-bounded graph operation exceeded structural depth.
@@ -172,6 +173,8 @@ impl CssSerializationError {
     crate::diagnostic::error::kind_predicates! { kind;
         /// Returns whether the input node limit was exceeded.
         is_input_node_limit => CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+        /// Returns whether the UTF-16 input unit limit was exceeded.
+        is_input_unit_limit => CssSpecifiedValueSerializationErrorKind::InputUnitLimit,
         /// Returns whether the projection node limit was exceeded.
         is_projection_node_limit => CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
         /// Returns whether the CSS byte limit was exceeded.
@@ -191,9 +194,10 @@ impl CssSerializationError {
         /// binding.
         is_namespace_binding_unavailable =>
             CssSpecifiedValueSerializationErrorKind::NamespaceBindingUnavailable,
-        /// Returns whether a resource limit refused the serialization: the input node,
+        /// Returns whether a resource limit refused the serialization: an input,
         /// projection node or byte limit, or a capacity overflow.
         is_resource_limit => CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            | CssSpecifiedValueSerializationErrorKind::InputUnitLimit
             | CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             | CssSpecifiedValueSerializationErrorKind::ByteLimit
             | CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
@@ -234,6 +238,9 @@ impl fmt::Display for CssSerializationError {
         formatter.write_str(match self.kind {
             CssSpecifiedValueSerializationErrorKind::InputNodeLimit => {
                 "specified-value input node limit exceeded"
+            }
+            CssSpecifiedValueSerializationErrorKind::InputUnitLimit => {
+                "CSS identifier input unit limit exceeded"
             }
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit => {
                 "specified-value projection node limit exceeded"

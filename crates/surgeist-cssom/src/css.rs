@@ -1,24 +1,20 @@
-//! Rust CSS namespace. Identifier escaping belongs to the CSS syntax owner;
-//! this front preserves its cumulative resource limits and typed failures.
+//! Rust CSS namespace over the bounded CSSOM serialization operations.
 
-use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::serialization::{CssSerializationError, CssomIdentifierLimits};
 
-/// Escapes `value` as a CSS identifier, as CSSOM's `CSS.escape()` does.
+/// Serializes a DOMString as an identifier for CSSOM's `CSS.escape()`.
 ///
-/// Every code point that is not an ident code point of CSS Syntax 3 §4.2 is
-/// escaped, so for non-ASCII code points this is stricter than CSSOM §2.1,
-/// which writes every code point from U+0080 as itself; for example U+00A0
-/// becomes `\a0 `. Empty text escapes to empty text and NUL becomes U+FFFD.
-/// The identifier grammar of a property is not checked. `limits` bounds the
-/// work and the UTF-8 output length.
+/// The input and output are exact UTF-16 code units. NUL becomes U+FFFD.
+/// Non-ASCII code units, including isolated surrogates, pass through unchanged.
+/// `limits` bounds the input extent and encoded output bytes.
 ///
 /// # Errors
 ///
-/// Returns [`CssSerializationError`] when a limit is exhausted; no partial
-/// text is returned.
+/// Returns [`CssSerializationError`] when a limit or allocation refuses the
+/// operation. A failure returns no text.
 pub fn escape(
-    value: &str,
-    limits: CssSerializationLimits,
-) -> Result<String, CssSerializationError> {
-    surgeist_css::serialization::serialize_css_identifier(value, limits)
+    value: &[u16],
+    limits: CssomIdentifierLimits,
+) -> Result<Vec<u16>, CssSerializationError> {
+    surgeist_css::serialization::serialize_cssom_identifier(value, limits)
 }
