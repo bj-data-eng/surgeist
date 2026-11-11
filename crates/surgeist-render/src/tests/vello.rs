@@ -4905,6 +4905,79 @@ fn direct_vello_pixels_match_characterization_cases() {
 }
 
 #[test]
+fn direct_vello_binding_limit_preserves_exact_encoder_work_and_publication() {
+    use crate::{
+        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
+        RenderPhase, RenderQuantity, RenderRefusalReason, RenderWork,
+    };
+
+    // One solid rectangle takes the small path scan, no clip dispatches and
+    // Fine Area. Binding visits by schedule are 3+4, 2+6+3+7, 8+6,
+    // 2+6+4+9+3+6, and 8.
+    let mut scene = Scene::new();
+    scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    let parameters = Parameters::default();
+    for limit in [77, 76] {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ShaderBindingVisits, limit)
+            .unwrap();
+        let options = Options::default()
+            .with_antialiasing(Antialiasing::Area)
+            .with_accounting(RenderAccountingOptions::new().with_limits(limits));
+        let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+
+        if limit == 77 {
+            let stats = pollster::block_on(renderer.render(&mut surface, &scene, parameters))
+                .expect("77 binding visits admit the complete direct raster pass");
+            assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+            let report = renderer.last_attempt().unwrap();
+            let attempt = report.attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+            assert_eq!(attempt.refusal(), None);
+            assert_eq!(attempt.usage().work(RenderWork::ShaderBindingVisits), 77);
+            assert_eq!(attempt.usage().work(RenderWork::Submissions), 1);
+            assert_eq!(report.cleanup_fault(), None);
+        } else {
+            let stats =
+                pollster::block_on(renderer.render(&mut surface, &Scene::new(), parameters))
+                    .expect("the empty scene establishes an earlier publication");
+            let publication = surface.headless_publication_count_for_test();
+            let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            let error = pollster::block_on(renderer.render(&mut surface, &scene, parameters))
+                .expect_err("the last Fine Area binding exceeds 76 visits");
+            assert_eq!(error.code(), ErrorCode::Accounting);
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected a typed binding limit refusal: {error:?}");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+            );
+            assert_eq!(refusal.current(), 76);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 76 });
+            let report = renderer.last_attempt().unwrap();
+            let attempt = report.attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            assert_eq!(attempt.refusal(), Some(refusal));
+            assert_eq!(attempt.usage().work(RenderWork::ShaderBindingVisits), 76);
+            assert_eq!(attempt.usage().work(RenderWork::Submissions), 0);
+            assert_eq!(report.cleanup_fault(), None);
+            assert_eq!(renderer.stats(), stats);
+            assert_eq!(surface.headless_publication_count_for_test(), publication);
+            assert_eq!(
+                pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+                pixels
+            );
+        }
+    }
+}
+
+#[test]
 fn direct_render_submits_one_transaction_owned_raster_pass() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("production submission coverage requires a renderer");
