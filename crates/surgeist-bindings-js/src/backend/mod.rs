@@ -1,6 +1,6 @@
 pub(crate) mod v8;
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::rc::Rc;
 
 use crate::callback_object::CallbackObjectIdentity;
@@ -177,6 +177,19 @@ pub(crate) trait Operations {
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error>;
     fn native_object(&mut self, object: &Root) -> Result<Option<Rc<dyn Any>>, Error>;
+    fn native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: TypeId,
+        slot: u32,
+    ) -> Result<Option<Root>, Error>;
+    fn set_native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: TypeId,
+        slot: u32,
+        reference: Option<&Root>,
+    ) -> Result<(), Error>;
     fn retain_root_backing(&mut self, root: &Root, backing: Box<dyn Any>) -> Result<(), Error>;
     fn managed_object(&mut self) -> Result<Root, Error>;
     fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;

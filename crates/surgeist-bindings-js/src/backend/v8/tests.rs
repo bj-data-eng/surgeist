@@ -577,6 +577,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
     fixed_arity_captures_only_the_selected_prefix()?;
     native_projection_custody_tracks_the_exact_guest_object()?;
+    native_references_follow_only_guest_reachability()?;
     cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
     crate::conversion::tests::run()?;
     Ok(())
@@ -628,6 +629,94 @@ fn native_projection_custody_tracks_the_exact_guest_object() -> TestResult {
     assert!(payload.upgrade().is_some());
     assert!(funded.upgrade().is_some());
     drop(lease);
+    assert!(payload.upgrade().is_none());
+    assert!(funded.upgrade().is_none());
+    Ok(())
+}
+
+fn native_references_follow_only_guest_reachability() -> TestResult {
+    use crate::{ObjectPrototype, PropertyKey, Scope, ValueKind};
+
+    let mut host = Host::new(Observations::default())?;
+    let owner = Rc::new(17_u32);
+    let funding = Rc::new(());
+    let payload = Rc::downgrade(&owner);
+    let funded = Rc::downgrade(&funding);
+    let key = b"traceNative".map(u16::from);
+    let slot = 3;
+    host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        let object = scope
+            .project_native_object(ObjectPrototype::Default, owner, |_| Ok::<_, Error>(funding))?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&key), &object)?;
+        let callback = scope.evaluate(
+            &"(() => { const target = Object.freeze(traceNative); return () => target; })()"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )?;
+        assert!(
+            scope
+                .native_object_reference::<Rc<u32>>(&object, slot)?
+                .is_none()
+        );
+        scope.set_native_object_reference::<Rc<u32>>(&object, slot, Some(&callback))?;
+        let stored = scope
+            .native_object_reference::<Rc<u32>>(&object, slot)?
+            .unwrap();
+        assert!(scope.strict_equals(&stored, &callback)?);
+
+        let wrong = scope.evaluate(
+            &"new Proxy(traceNative, {})"
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+        )?;
+        assert!(matches!(
+            scope.native_object_reference::<Rc<u32>>(&wrong, slot),
+            Err(Error::ExpectedNativeObject)
+        ));
+        assert!(matches!(
+            scope.native_object_reference::<u32>(&object, slot),
+            Err(Error::ExpectedNativeObject)
+        ));
+        let public_slot = scope.evaluate(&"traceNative[3]".encode_utf16().collect::<Vec<_>>())?;
+        assert_eq!(scope.kind(&public_slot)?, ValueKind::Undefined);
+        scope.set_native_object_reference::<Rc<u32>>(&object, slot, None)?;
+        assert!(
+            scope
+                .native_object_reference::<Rc<u32>>(&object, slot)?
+                .is_none()
+        );
+        scope.set_native_object_reference::<Rc<u32>>(&object, slot, Some(&callback))
+    })?;
+
+    host.engine.reap();
+    host.collect()?;
+    host.engine.reap();
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 1);
+    host.engine.with_context(&host.realm, |entered| {
+        let mut scope = Scope {
+            operations: entered,
+            invariant: std::marker::PhantomData,
+        };
+        let global = scope.global()?;
+        let object = scope.get(&global, PropertyKey::String(&key))?;
+        let callback = scope
+            .native_object_reference::<Rc<u32>>(&object, slot)?
+            .unwrap();
+        let returned = scope.call(&callback, &object, &[])?;
+        assert!(scope.strict_equals(&returned, &object)?);
+        Ok::<_, Error>(())
+    })?;
+
+    host.eval("delete globalThis.traceNative")?;
+    host.engine.reap();
+    host.collect()?;
+    host.engine.reap();
+    assert_eq!(host.engine.roots.native_objects.entries_count(), 0);
     assert!(payload.upgrade().is_none());
     assert!(funded.upgrade().is_none());
     Ok(())

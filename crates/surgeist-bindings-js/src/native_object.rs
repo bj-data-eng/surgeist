@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::rc::Rc;
 
 use crate::{Error, ObjectPrototype, RetainedCallbackObject, Scope, Value};
@@ -71,6 +71,40 @@ impl<'scope> Scope<'scope> {
             Box::new(holder_backing),
         )?;
         Ok(RetainedCallbackObject::new(holder, realm))
+    }
+
+    /// Read a private engine-traced object reference from the exact projection.
+    /// Ordinary properties, inherited wrappers and proxies cannot supply it.
+    /// Returns `None` for an empty slot and refuses an incorrect receiver brand.
+    pub fn native_object_reference<T: 'static>(
+        &mut self,
+        object: &Value<'scope>,
+        slot: u32,
+    ) -> Result<Option<Value<'scope>>, Error> {
+        let root = self.operations.native_object_reference(
+            &object.root,
+            TypeId::of::<NativeObject<T>>(),
+            slot,
+        )?;
+        Ok(root.map(|root| self.value(root)))
+    }
+
+    /// Set or clear a private engine-traced object reference. A slot does not
+    /// root the receiver or its reference outside the guest heap. Native
+    /// consumers own slot assignment and admission; guest property changes,
+    /// including freezing the receiver, do not change private slots.
+    pub fn set_native_object_reference<T: 'static>(
+        &mut self,
+        object: &Value<'scope>,
+        slot: u32,
+        reference: Option<&Value<'scope>>,
+    ) -> Result<(), Error> {
+        self.operations.set_native_object_reference(
+            &object.root,
+            TypeId::of::<NativeObject<T>>(),
+            slot,
+            reference.map(|reference| &reference.root),
+        )
     }
 
     /// Resolve only the exact branded object and requested native payload type.

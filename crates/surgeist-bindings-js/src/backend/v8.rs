@@ -1257,6 +1257,25 @@ impl Operations for Entered<'_, '_, '_> {
         self.native_payload(object)
     }
 
+    fn native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+        slot: u32,
+    ) -> Result<Option<Root>, Error> {
+        self.read_native_reference(object, brand, slot)
+    }
+
+    fn set_native_object_reference(
+        &mut self,
+        object: &Root,
+        brand: std::any::TypeId,
+        slot: u32,
+        reference: Option<&Root>,
+    ) -> Result<(), Error> {
+        self.write_native_reference(object, brand, slot, reference)
+    }
+
     fn retain_root_backing(
         &mut self,
         root: &Root,

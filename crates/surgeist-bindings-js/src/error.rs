@@ -78,6 +78,8 @@ pub enum Error {
     ExpectedAccessor,
     /// This operation requires an object or function, respectively.
     ExpectedObject,
+    /// This operation requires an exact native object of the requested type.
+    ExpectedNativeObject,
     ExpectedFunction,
     /// This object has no supported associated engine creation Realm.
     CallbackRealmUnavailable,
@@ -125,6 +127,7 @@ impl fmt::Display for Error {
             Self::ExpectedAccessor => "an accessor must be callable or undefined",
             Self::TooManyArguments => "the argument list exceeds the backend limit",
             Self::ExpectedObject => "an object is required",
+            Self::ExpectedNativeObject => "the exact native object is required",
             Self::ExpectedFunction => "a callable function is required",
             Self::CallbackRealmUnavailable => {
                 "the callback object's associated realm is unavailable"
