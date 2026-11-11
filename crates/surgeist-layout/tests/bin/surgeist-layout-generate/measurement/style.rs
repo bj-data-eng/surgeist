@@ -1803,6 +1803,24 @@ impl Style {
             && matches!(self.flex_direction.as_deref(), None | Some("row"))
             && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 10.0)
     }
+    pub(super) fn has_grid_lanes_text_style(&self, width: &str) -> bool {
+        self.font_family.as_deref() == Some("monospace")
+            && matches!(self.flex_direction.as_deref(), None | Some("row"))
+            && matches!(&self.font_size, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(size)) }) if *size == 15.0)
+            && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(size)) }) if *size == 15.0)
+            && self
+                .size
+                .as_ref()
+                .and_then(|size| size.width.as_ref())
+                .is_some_and(|size| {
+                    size.value.is_none()
+                        && matches!(
+                            (size.unit, width),
+                            (Unit::MinContent, "min-content") | (Unit::MaxContent, "max-content")
+                        )
+                })
+    }
+
     pub(super) fn has_intrinsic_flex_text_style(&self, item: usize) -> bool {
         let unit = match item {
             0 => Unit::MinContent,

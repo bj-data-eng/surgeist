@@ -5013,3 +5013,10 @@ sources = [
   "html/subgrid/subgrid_sibling_overflow_footer_second_matches_first.html",
   "html/subgrid/subgrid_sibling_overflow_footer_third_matches_first.html",
 ]
+
+[[matching_publications]]
+edition = "fri08-grid-lanes-monospace-text"
+sources = [
+  "html/grid-lanes/grid_lanes_min_content_container_sizing.html",
+  "html/grid-lanes/grid_lanes_max_content_container_sizing.html",
+]

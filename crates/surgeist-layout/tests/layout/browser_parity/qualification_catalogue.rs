@@ -385,6 +385,11 @@ impl Declaration {
             {
                 return Err("wrapped Subgrid matching requires both sources".into());
             }
+            if category == MatchingCategory::Fri08GridLanesText
+                && members.len() != crate::fri08_grid_lanes_text_profile::SOURCES.len()
+            {
+                return Err("Grid Lanes text sizing requires both sources".into());
+            }
             if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }

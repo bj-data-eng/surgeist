@@ -6,6 +6,7 @@ use super::{
     prepared_range_qualification,
 };
 use crate::fri07_intrinsic_flex_profile as intrinsic_flex;
+use crate::fri08_grid_lanes_text_profile as grid_lanes_text;
 use crate::fri08_wrapped_subgrid_profile as wrapped_subgrid;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
@@ -310,6 +311,10 @@ pub(crate) fn current_owner_bindings(
                     "fri08_wrapped_subgrid_request.json",
                     wrapped_subgrid::REQUEST,
                 ),
+                (
+                    "fri08_grid_lanes_text_request.json",
+                    grid_lanes_text::REQUEST,
+                ),
                 ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
                 (
                     "prepared_atomic_percentage_request.json",
@@ -359,6 +364,8 @@ pub(crate) fn current_owner_bindings(
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
+        } else if name == grid_lanes_text::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/fri08_grid_lanes_text.js".to_owned()
         } else if name == wrapped_subgrid::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/fri08_wrapped_subgrid.js".to_owned()
         } else if name == intrinsic_flex::SCRIPT_PATH {
@@ -790,6 +797,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "inline Subgrid proof requires its observation request",
         ));
     }
+    if observation_request != FRI08_GRID_LANES_TEXT_EDITION
+        && full_inputs.contains_key(grid_lanes_text::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "Grid Lanes text sizing proof requires its observation request",
+        ));
+    }
     if observation_request != FRI08_WRAPPED_SUBGRID_EDITION
         && full_inputs.contains_key(wrapped_subgrid::SCRIPT_PATH)
     {
@@ -874,25 +888,35 @@ pub(crate) fn capture_binding_from_verified_inputs(
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
         }
-        (FRI07_INTRINSIC_FLEX_EDITION | FRI08_WRAPPED_SUBGRID_EDITION, Some(request_sha256)) => {
-            let (source_matches, request, inputs, profile) =
-                if observation_request == FRI07_INTRINSIC_FLEX_EDITION {
-                    (
-                        case.source == intrinsic_flex::SOURCE
-                            && artifact.source_sha256 == intrinsic_flex::SOURCE_SHA256,
-                        intrinsic_flex::REQUEST,
-                        flex_content_text::INTRINSIC_CAPTURE_INPUTS,
-                        intrinsic_flex::PROFILE,
-                    )
-                } else {
-                    (
-                        wrapped_subgrid::source_digest(&case.source)
-                            == Some(artifact.source_sha256.as_str()),
-                        wrapped_subgrid::REQUEST,
-                        flex_content_text::WRAPPED_SUBGRID_CAPTURE_INPUTS,
-                        wrapped_subgrid::PROFILE,
-                    )
-                };
+        (
+            FRI07_INTRINSIC_FLEX_EDITION
+            | FRI08_WRAPPED_SUBGRID_EDITION
+            | FRI08_GRID_LANES_TEXT_EDITION,
+            Some(request_sha256),
+        ) => {
+            let (source_matches, request, inputs, profile) = match observation_request {
+                FRI07_INTRINSIC_FLEX_EDITION => (
+                    case.source == intrinsic_flex::SOURCE
+                        && artifact.source_sha256 == intrinsic_flex::SOURCE_SHA256,
+                    intrinsic_flex::REQUEST,
+                    flex_content_text::INTRINSIC_CAPTURE_INPUTS,
+                    intrinsic_flex::PROFILE,
+                ),
+                FRI08_WRAPPED_SUBGRID_EDITION => (
+                    wrapped_subgrid::source_digest(&case.source)
+                        == Some(artifact.source_sha256.as_str()),
+                    wrapped_subgrid::REQUEST,
+                    flex_content_text::WRAPPED_SUBGRID_CAPTURE_INPUTS,
+                    wrapped_subgrid::PROFILE,
+                ),
+                _ => (
+                    grid_lanes_text::source_digest(&case.source)
+                        == Some(artifact.source_sha256.as_str()),
+                    grid_lanes_text::REQUEST,
+                    flex_content_text::GRID_LANES_TEXT_CAPTURE_INPUTS,
+                    grid_lanes_text::PROFILE,
+                ),
+            };
             if !source_matches
                 || request_sha256 != sha256(request)
                 || MatchingCategory::for_edition(observation_request)
@@ -906,7 +930,7 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
             {
-                return Err(changed("original prepared text source or capture request"));
+                return Err(changed("original text source or capture request"));
             }
             for (name, bytes) in inputs {
                 if name != OBSERVATION_REQUEST
@@ -1887,11 +1911,16 @@ pub(crate) fn matching_metadata_is_valid(
             }
             _ => false,
         },
-        MatchingCategory::Fri08WrappedSubgrid => {
-            wrapped_subgrid::source_digest(source).is_some()
+        MatchingCategory::Fri08WrappedSubgrid | MatchingCategory::Fri08GridLanesText => {
+            let (source_matches, display) = if category == MatchingCategory::Fri08WrappedSubgrid {
+                (wrapped_subgrid::source_digest(source).is_some(), "grid")
+            } else {
+                (grid_lanes_text::source_digest(source).is_some(), "block")
+            };
+            source_matches
                 && kind == SourceKind::Original
                 && metadata["context"] == "absolute-local"
-                && metadata["hypothetical_display"] == "grid"
+                && metadata["hypothetical_display"] == display
                 && metadata["containing_direction"] == "ltr"
                 && metadata["hypothetical_direction"] == "ltr"
                 && metadata["root_direction"] == "variant"
@@ -1959,6 +1988,7 @@ pub(crate) const ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION: &str =
 pub(crate) const FRI06_SUBGRID_EDITION: &str = "fri06-subgrid-representatives";
 pub(crate) const FRI07_INTRINSIC_FLEX_EDITION: &str = "fri07-intrinsic-flex-text";
 pub(crate) const FRI08_WRAPPED_SUBGRID_EDITION: &str = "fri08-wrapped-subgrid-text";
+pub(crate) const FRI08_GRID_LANES_TEXT_EDITION: &str = "fri08-grid-lanes-monospace-text";
 pub(crate) const FRI06_SUBGRID_SOURCES: [&str; 3] = [
     "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html",
     "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
@@ -2036,6 +2066,7 @@ pub(crate) enum MatchingCategory {
     Fri06Subgrid,
     Fri07IntrinsicFlexText,
     Fri08WrappedSubgrid,
+    Fri08GridLanesText,
     OriginalInlineSubgrid,
     OriginalRelativeRtlSubgrid,
 }
@@ -2046,6 +2077,7 @@ impl MatchingCategory {
             FRI06_SUBGRID_EDITION => Self::Fri06Subgrid,
             FRI07_INTRINSIC_FLEX_EDITION => Self::Fri07IntrinsicFlexText,
             FRI08_WRAPPED_SUBGRID_EDITION => Self::Fri08WrappedSubgrid,
+            FRI08_GRID_LANES_TEXT_EDITION => Self::Fri08GridLanesText,
             inline_subgrid::EDITION => Self::OriginalInlineSubgrid,
             ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION => Self::OriginalRelativeRtlSubgrid,
             _ => Self::Geometry,
@@ -2058,6 +2090,7 @@ impl MatchingCategory {
             Self::Fri06Subgrid => FRI06_SUBGRID_EDITION,
             Self::Fri07IntrinsicFlexText => FRI07_INTRINSIC_FLEX_EDITION,
             Self::Fri08WrappedSubgrid => FRI08_WRAPPED_SUBGRID_EDITION,
+            Self::Fri08GridLanesText => FRI08_GRID_LANES_TEXT_EDITION,
             Self::OriginalInlineSubgrid => inline_subgrid::EDITION,
             Self::OriginalRelativeRtlSubgrid => ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
         }
@@ -2070,6 +2103,7 @@ impl MatchingCategory {
         match self {
             Self::Fri07IntrinsicFlexText
             | Self::Fri08WrappedSubgrid
+            | Self::Fri08GridLanesText
             | Self::OriginalInlineSubgrid
             | Self::OriginalRelativeRtlSubgrid => {
                 inputs.get(OBSERVATION_REQUEST).map(String::as_str)

@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use super::{Attributes, Context, LayoutInput, MeasurementError, MeasurementErrorKind, WireNode};
 use crate::fri07_intrinsic_flex_profile as intrinsic;
+use crate::fri08_grid_lanes_text_profile as grid_lanes;
 use crate::fri08_wrapped_subgrid_profile as wrapped;
 
 #[derive(Deserialize)]
@@ -299,6 +300,95 @@ impl WireWrappedSubgrid {
             rows,
         })
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct WireGridLanesText {
+    row: usize,
+    item: usize,
+    direction: String,
+    source_units: Vec<u16>,
+    sizes: grid_lanes::Sizes,
+}
+
+pub(super) fn validate_grid_lanes(
+    witnesses: &[WireGridLanesText],
+    root: &WireNode,
+    context: &Context<'_>,
+) -> Result<FlexContentText, MeasurementError> {
+    const FIELD: &str = "fri08GridLanesText";
+    let style = context.required(root.style.as_ref(), "style")?;
+    let groups = context.required(root.children.as_deref(), "children")?;
+    context.compatible(
+        root.layout_input == LayoutInput::Box
+            && root.tag_name.as_deref() == Some("div")
+            && style.display.as_deref() == Some("block")
+            && style.writing_mode() == "horizontal-tb"
+            && root.text_content.is_none()
+            && groups.len() == grid_lanes::WIDTHS.len()
+            && witnesses.len() == groups.len() * grid_lanes::LABELS.len(),
+        FIELD,
+        "original Grid Lanes text census changed",
+    )?;
+    let mut rows = Vec::with_capacity(witnesses.len());
+    for (row, (group, width)) in groups.iter().zip(grid_lanes::WIDTHS).enumerate() {
+        let group_context = context.child(row);
+        let style = group_context.required(group.style.as_ref(), "style")?;
+        let children = group_context.required(group.children.as_deref(), "children")?;
+        group_context.compatible(
+            group.layout_input == LayoutInput::Box
+                && group.tag_name.as_deref() == Some("div")
+                && style.display.as_deref() == Some("grid-lanes")
+                && style.has_grid_lanes_text_style(width)
+                && group.text_content.is_none()
+                && children.len() == grid_lanes::LABELS.len(),
+            FIELD,
+            "original Grid Lanes sizing group changed",
+        )?;
+        for (item, (node, label)) in children.iter().zip(grid_lanes::LABELS).enumerate() {
+            let item_context = group_context.child(item);
+            let style = item_context.required(node.style.as_ref(), "style")?;
+            let witness = &witnesses[row * grid_lanes::LABELS.len() + item];
+            item_context.compatible(
+                (witness.row, witness.item) == (row, item)
+                    && matches!(witness.direction.as_str(), "ltr" | "rtl")
+                    && style.direction.as_deref() == Some(witness.direction.as_str())
+                    && style.display.as_deref() == Some("flex")
+                    && style.writing_mode() == "horizontal-tb"
+                    && style.has_grid_lanes_text_style(width)
+                    && node.layout_input == LayoutInput::Box
+                    && node.tag_name.as_deref() == Some("div")
+                    && node.children.as_ref().is_some_and(Vec::is_empty)
+                    && node.text_content.as_deref() == Some(label)
+                    && label
+                        .encode_utf16()
+                        .eq(witness.source_units.iter().copied()),
+                FIELD,
+                "original Flex text changed",
+            )?;
+            if !witness.sizes.valid() {
+                return Err(item_context.error(
+                    FIELD,
+                    MeasurementErrorKind::ContradictoryFields,
+                    format!("independent text sizing changed: {:?}", witness.sizes),
+                ));
+            }
+            let sizes = serde_json::to_string(&witness.sizes).map_err(|error| {
+                item_context.error(FIELD, MeasurementErrorKind::InvalidValue, error.to_string())
+            })?;
+            rows.push(vec![
+                ("row", row.to_string()),
+                ("item", item.to_string()),
+                ("direction", witness.direction.clone()),
+                ("sizes", sizes),
+            ]);
+        }
+    }
+    Ok(FlexContentText {
+        attrs: vec![("profile", grid_lanes::PROFILE.into())],
+        rows,
+    })
 }
 
 fn subgrid_children<'a>(

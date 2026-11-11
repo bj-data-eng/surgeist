@@ -249,6 +249,11 @@ impl QualificationMode {
             | Self::DeriveExact(PublishedEdition::FlexText) => {
                 BoxObservationRequest::FlexContentText
             }
+            Self::PublishMatching(capture_authority::FRI08_GRID_LANES_TEXT_EDITION)
+            | Self::CheckPublishedMatching(capture_authority::FRI08_GRID_LANES_TEXT_EDITION)
+            | Self::DeriveMatching(capture_authority::FRI08_GRID_LANES_TEXT_EDITION) => {
+                BoxObservationRequest::Fri08GridLanesText
+            }
             Self::PublishMatching(capture_authority::FRI08_WRAPPED_SUBGRID_EDITION)
             | Self::CheckPublishedMatching(capture_authority::FRI08_WRAPPED_SUBGRID_EDITION)
             | Self::DeriveMatching(capture_authority::FRI08_WRAPPED_SUBGRID_EDITION) => {
@@ -1378,6 +1383,7 @@ fn validate_corpus(
         BoxObservationRequest::FlexContentText
             | BoxObservationRequest::Fri07IntrinsicFlexText
             | BoxObservationRequest::Fri08WrappedSubgrid
+            | BoxObservationRequest::Fri08GridLanesText
             | BoxObservationRequest::FlexComposition
             | BoxObservationRequest::PreparedAtomicPercentage
     ) {
@@ -2715,7 +2721,8 @@ fn parse_capture_golden(
     let parse = match observation {
         BoxObservationRequest::FlexContentText
         | BoxObservationRequest::Fri07IntrinsicFlexText
-        | BoxObservationRequest::Fri08WrappedSubgrid => Golden::parse_with_flex_content_text,
+        | BoxObservationRequest::Fri08WrappedSubgrid
+        | BoxObservationRequest::Fri08GridLanesText => Golden::parse_with_flex_content_text,
         BoxObservationRequest::PreparedAtomicPercentage => {
             Golden::parse_with_prepared_atomic_percentage
         }

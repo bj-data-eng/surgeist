@@ -7,6 +7,7 @@ use super::{
 use surgeist_text as text;
 
 use crate::fri07_intrinsic_flex_profile as intrinsic;
+use crate::fri08_grid_lanes_text_profile as grid_lanes;
 use crate::fri08_wrapped_subgrid_profile as wrapped;
 
 pub(super) const PROFILE: &str = "ahem-10px-flex-direct-text";
@@ -20,6 +21,11 @@ pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
     ("observation-request.json", REQUEST),
     (SCRIPT_PATH, SCRIPT),
+];
+pub(super) const GRID_LANES_TEXT_CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
+    ("scripts/gentest/test_base_style.css", STYLESHEET),
+    ("observation-request.json", grid_lanes::REQUEST),
+    (grid_lanes::SCRIPT_PATH, grid_lanes::SCRIPT.as_bytes()),
 ];
 pub(super) const WRAPPED_SUBGRID_CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
@@ -46,6 +52,12 @@ impl Proof {
             .is_some_and(|occurrence| matches!(occurrence.path, SourcePath::SubgridLeaf { .. }))
     }
 
+    pub(super) fn is_grid_lanes_text(&self) -> bool {
+        self.occurrences
+            .first()
+            .is_some_and(|occurrence| matches!(occurrence.path, SourcePath::GridLanesItem { .. }))
+    }
+
     pub(super) fn matches_source(&self, golden: &Golden) -> bool {
         golden.root == *self.source && golden.viewport == self.viewport
     }
@@ -67,12 +79,14 @@ pub(super) struct SourceOccurrence {
     pub(super) direction: layout::Direction,
     pub(super) words: Vec<intrinsic::WordRange>,
     pub(super) clip: Option<[u32; 4]>,
+    pub(super) sizes: Option<grid_lanes::Sizes>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SourcePath {
     Child(usize),
     RowItem { row: usize, item: usize },
+    GridLanesItem { row: usize, item: usize },
     SubgridLeaf { card: usize, item: usize },
 }
 
@@ -80,7 +94,9 @@ impl std::fmt::Display for SourcePath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Child(index) => write!(f, "/{index}"),
-            Self::RowItem { row, item } => write!(f, "/{row}/{item}"),
+            Self::RowItem { row, item } | Self::GridLanesItem { row, item } => {
+                write!(f, "/{row}/{item}")
+            }
             Self::SubgridLeaf { card, item: 0 } => write!(f, "/{card}/0"),
             Self::SubgridLeaf { card, item: 1 } => write!(f, "/{card}/1/0"),
             Self::SubgridLeaf { card, item } => write!(f, "/{card}/invalid-{item}"),
@@ -92,7 +108,9 @@ impl SourcePath {
     pub(super) fn locate(self, tree: &TestTree) -> Option<(usize, usize, usize)> {
         let (parent, index) = match self {
             Self::Child(index) => (0, index),
-            Self::RowItem { row, item } => (*tree.nodes.first()?.children.get(row)?, item),
+            Self::RowItem { row, item } | Self::GridLanesItem { row, item } => {
+                (*tree.nodes.first()?.children.get(row)?, item)
+            }
             Self::SubgridLeaf { card, item } => {
                 let card = *tree.nodes.first()?.children.get(card)?;
                 match item {
@@ -140,21 +158,37 @@ pub(super) fn bind(
         Some(PROFILE) => CAPTURE_INPUTS,
         Some(intrinsic::PROFILE) => INTRINSIC_CAPTURE_INPUTS,
         Some(wrapped::PROFILE) => WRAPPED_SUBGRID_CAPTURE_INPUTS,
+        Some(grid_lanes::PROFILE) => GRID_LANES_TEXT_CAPTURE_INPUTS,
         _ => return Err(invalid("unsupported Flex Text profile")),
     };
     let direct = profile == Some(PROFILE);
     let wrapped_subgrid = profile == Some(wrapped::PROFILE);
     let intrinsic = profile == Some(intrinsic::PROFILE);
+    let measured_grid_lanes = profile == Some(grid_lanes::PROFILE);
+    let root_display = if measured_grid_lanes {
+        "block"
+    } else if wrapped_subgrid {
+        "grid"
+    } else {
+        "flex"
+    };
+    let valid_font = if measured_grid_lanes {
+        proof.attributes().len() == 1
+    } else {
+        proof.attributes().len() == 2
+            && proof.attribute("font-resource-sha256")
+                == Some(pinned_font::AHEM_STYLESHEET_WOFF2_SHA256)
+            && capture_authority::sha256(pinned_font::AHEM_STYLESHEET_WOFF2)
+                == pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+    };
     if proofs.next().is_some()
         || proof.parent() != Some(root)
         || root.attribute("measurement-version") != Some("4")
         || root.attribute("observation-frame") != Some("root-border-local")
-        || proof.attributes().len() != 2
-        || proof.attribute("font-resource-sha256")
-            != Some(pinned_font::AHEM_STYLESHEET_WOFF2_SHA256)
+        || !valid_font
         || !golden.use_rounding
         || golden.has_element_scroll_sizes() != direct
-        || golden.root.style.get("display") != Some(if wrapped_subgrid { "grid" } else { "flex" })
+        || golden.root.style.get("display") != Some(root_display)
         || golden.root.text.is_some()
     {
         return Err(invalid("unsupported occurrence proof or root profile"));
@@ -180,9 +214,10 @@ pub(super) fn bind(
         || (wrapped_subgrid
             && wrapped::source_digest(source_path)
                 != Some(capture_authority::sha256(source_bytes).as_str()))
+        || (measured_grid_lanes
+            && grid_lanes::source_digest(source_path)
+                != Some(capture_authority::sha256(source_bytes).as_str()))
         || capture_authority::sha256(STYLESHEET) != pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
-        || capture_authority::sha256(pinned_font::AHEM_STYLESHEET_WOFF2)
-            != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
         || inputs
             .into_iter()
             .chain([(source_path, source_bytes)])
@@ -215,7 +250,9 @@ pub(super) fn bind(
     {
         return Err(invalid("capture source or output binding changed"));
     }
-    let occurrences = if wrapped_subgrid {
+    let occurrences = if measured_grid_lanes {
+        bind_grid_lanes_occurrences(golden, proof)?
+    } else if wrapped_subgrid {
         bind_wrapped_occurrences(golden, proof)?
     } else if intrinsic {
         bind_intrinsic_occurrences(golden, proof)?
@@ -269,6 +306,7 @@ fn bind_direct_occurrences(
                 direction: occurrence_direction(direction)?,
                 words: Vec::new(),
                 clip: None,
+                sizes: None,
             })
         })
         .collect()
@@ -355,6 +393,7 @@ fn bind_intrinsic_occurrences(
                 direction: occurrence_direction(direction)?,
                 words,
                 clip: None,
+                sizes: None,
             });
         }
     }
@@ -438,11 +477,85 @@ fn bind_wrapped_occurrences(
                 direction,
                 words,
                 clip,
+                sizes: None,
             });
         }
     }
     if rows.next().is_some() {
         return Err(invalid("extra wrapped Text occurrence"));
+    }
+    Ok(occurrences)
+}
+
+fn bind_grid_lanes_occurrences(
+    golden: &Golden,
+    proof: roxmltree::Node<'_, '_>,
+) -> Result<Vec<SourceOccurrence>, Error> {
+    if golden.root.children.len() != grid_lanes::WIDTHS.len() {
+        return Err(invalid("unexpected Grid Lanes text group census"));
+    }
+    let mut rows = proof.children().filter(roxmltree::Node::is_element);
+    let mut occurrences = Vec::new();
+    for (row, (group, width)) in golden
+        .root
+        .children
+        .iter()
+        .zip(grid_lanes::WIDTHS)
+        .enumerate()
+    {
+        if group.style.get("source-tag") != Some("div")
+            || group.style.get("display") != Some("grid-lanes")
+            || group.style.get("grid-template-rows") != Some("auto auto auto")
+            || group.style.get("width") != Some(width)
+            || group.text.is_some()
+            || group.children.len() != grid_lanes::LABELS.len()
+        {
+            return Err(invalid("original Grid Lanes sizing group changed"));
+        }
+        for (item, (node, label)) in group.children.iter().zip(grid_lanes::LABELS).enumerate() {
+            let witness = rows
+                .next()
+                .ok_or_else(|| invalid("missing Grid Lanes text measurement"))?;
+            let direction = occurrence_direction(witness.attribute("direction"))?;
+            let sizes: grid_lanes::Sizes = serde_json::from_str(
+                witness
+                    .attribute("sizes")
+                    .ok_or_else(|| invalid("missing standalone sizes"))?,
+            )
+            .map_err(invalid)?;
+            if !witness.has_tag_name("occurrence")
+                || witness.attributes().len() != 4
+                || witness.children().next().is_some()
+                || witness.attribute("row") != Some(row.to_string().as_str())
+                || witness.attribute("item") != Some(item.to_string().as_str())
+                || node.style.get("source-tag") != Some("div")
+                || node.style.get("display") != Some("flex")
+                || node.style.get("direction") != witness.attribute("direction")
+                || node.style.get("font-family") != Some("monospace")
+                || node.style.get("font-size") != Some("15px")
+                || node.style.get("line-height") != Some("15px")
+                || node.style.get("writing-mode").unwrap_or("horizontal-tb") != "horizontal-tb"
+                || node.style.get("width") != Some(width)
+                || node.text.as_deref() != Some(label)
+                || !node.children.is_empty()
+                || node.prepared.is_some()
+                || !sizes.valid()
+            {
+                return Err(invalid(
+                    "original monospace leaf or standalone sizing changed",
+                ));
+            }
+            occurrences.push(SourceOccurrence {
+                path: SourcePath::GridLanesItem { row, item },
+                direction,
+                words: Vec::new(),
+                clip: None,
+                sizes: Some(sizes),
+            });
+        }
+    }
+    if rows.next().is_some() {
+        return Err(invalid("extra Grid Lanes text measurement"));
     }
     Ok(occurrences)
 }
@@ -527,6 +640,7 @@ pub(super) fn prepare_label(
 
 pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Result<(), Error> {
     if proof.is_wrapped_subgrid()
+        || proof.is_grid_lanes_text()
         || golden.root != *proof.source
         || golden.viewport != proof.viewport
     {
@@ -762,6 +876,7 @@ mod tests {
                         direction: layout::Direction::Ltr,
                         words: Vec::new(),
                         clip: None,
+                        sizes: None,
                     })
                 })
                 .collect(),

@@ -16,6 +16,8 @@ mod envelope;
 mod fixture_variants;
 #[path = "surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
 mod fri07_intrinsic_flex_profile;
+#[path = "surgeist-layout-generate/measurement/fri08_grid_lanes_text_profile.rs"]
+mod fri08_grid_lanes_text_profile;
 #[path = "surgeist-layout-generate/measurement/fri08_wrapped_subgrid_profile.rs"]
 mod fri08_wrapped_subgrid_profile;
 #[path = "../layout/browser_parity/grid_alignment_reference.rs"]
