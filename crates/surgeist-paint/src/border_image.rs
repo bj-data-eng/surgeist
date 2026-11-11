@@ -1,12 +1,14 @@
 use crate::{
     PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
-    accounting::{OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
 use std::cmp::Ordering;
 use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
+mod mask;
 mod tiling;
+pub use mask::{MaskBorderOutcome, MaskBorderPlan, resolve_mask_border_in_area};
 pub use tiling::{
     BorderImageAxisPattern, BorderImageAxisPlacement, BorderImageRepeat, BorderImageTileRegion,
     BorderImageTiling, BorderImageTilingOutcome, resolve_border_image_tiling,
@@ -226,11 +228,7 @@ pub fn resolve_border_image_in_area(
         options,
         OperationKind::BorderImage,
         PaintPhase::BorderImageGeometry,
-        Some(|work: &mut GeometryWork<'_, '_, '_>| {
-            validate_source(work, request.source)?;
-            validate_slices(work, request.slices)?;
-            validate_widths(work, request.widths)
-        }),
+        Some(|work: &mut GeometryWork<'_, '_, '_>| validate_partition(work, request)),
         |work| resolve_geometry(work, request, |_| Ok(area)),
     );
     BorderImageOutcome { result, report }
@@ -277,6 +275,32 @@ fn run<T>(
     validate: Option<impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>>,
     resolve: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<T, PaintError>,
 ) -> (Result<T, PaintError>, Option<PaintReport>) {
+    run_stages(
+        options,
+        kind,
+        [geometry_phase],
+        validate,
+        |meter, [scope]| in_geometry(meter, scope, resolve),
+    )
+}
+
+fn in_geometry<T>(
+    meter: &mut Meter,
+    scope: Scope,
+    resolve: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<T, PaintError>,
+) -> Result<T, PaintError> {
+    meter
+        .with_phase(scope, |phase| resolve(&mut GeometryWork { phase, scope }))
+        .map_err(setup_error)?
+}
+
+fn run_stages<T, const N: usize>(
+    options: PaintOptions,
+    kind: OperationKind,
+    geometry_phases: [PaintPhase; N],
+    validate: Option<impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>>,
+    resolve: impl FnOnce(&mut Meter, [Scope; N]) -> Result<T, PaintError>,
+) -> (Result<T, PaintError>, Option<PaintReport>) {
     let mut meter = match options.operation(kind) {
         Ok(meter) => meter,
         Err(error) => return (Err(error), None),
@@ -294,15 +318,22 @@ fn run<T>(
                 )
             })
             .transpose()?;
-        let mut scopes = [root; 3];
-        for (slot, phase) in
-            scopes
-                .iter_mut()
-                .zip([geometry_phase, PaintPhase::Publication, PaintPhase::Cleanup])
-        {
+        let mut scopes = [root; N];
+        for (slot, phase) in scopes.iter_mut().zip(geometry_phases) {
             *slot = meter.child(root, phase, Limits::unlimited(), Tariffs::identity())?;
         }
-        let [geometry, publication, cleanup] = scopes;
+        let publication = meter.child(
+            root,
+            PaintPhase::Publication,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
+        let cleanup = meter.child(
+            root,
+            PaintPhase::Cleanup,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
         let mut retained = false;
         let result = (|| {
             if let (Some(validation), Some(validate)) = (validation, validate) {
@@ -315,14 +346,7 @@ fn run<T>(
                     })
                     .map_err(setup_error)??;
             }
-            let result = meter
-                .with_phase(geometry, |phase| {
-                    resolve(&mut GeometryWork {
-                        phase,
-                        scope: geometry,
-                    })
-                })
-                .map_err(setup_error)??;
+            let result = resolve(&mut meter, scopes)?;
             meter
                 .with_phase(publication, |phase| {
                     apply(
@@ -352,6 +376,15 @@ fn run<T>(
         result.and_then(|value| release.map(|()| value))
     })();
     finish(meter, result)
+}
+
+fn validate_partition(
+    work: &mut GeometryWork<'_, '_, '_>,
+    request: BorderImagePartitionRequest,
+) -> Result<(), PaintError> {
+    validate_source(work, request.source)?;
+    validate_slices(work, request.slices)?;
+    validate_widths(work, request.widths)
 }
 
 fn validate_box(

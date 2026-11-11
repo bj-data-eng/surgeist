@@ -130,7 +130,7 @@ pub fn resolve_border_image_tiling(
     BorderImageTilingOutcome { result, report }
 }
 
-fn resolve(
+pub(super) fn resolve(
     work: &mut GeometryWork<'_, '_, '_>,
     geometry: &BorderImageGeometry,
     repeat: Size<BorderImageRepeat>,

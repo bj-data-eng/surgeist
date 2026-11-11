@@ -22,8 +22,8 @@ pub use border_image::{
     BorderImageOutset, BorderImagePartitionRequest, BorderImageRect, BorderImageRegion,
     BorderImageRepeat, BorderImageRequest, BorderImageSlice, BorderImageSource,
     BorderImageTileRegion, BorderImageTiling, BorderImageTilingOutcome, BorderImageWidth,
-    resolve_border_image, resolve_border_image_area, resolve_border_image_in_area,
-    resolve_border_image_tiling,
+    MaskBorderOutcome, MaskBorderPlan, resolve_border_image, resolve_border_image_area,
+    resolve_border_image_in_area, resolve_border_image_tiling, resolve_mask_border_in_area,
 };
 pub use gradient::{
     GradientGeometryError, LinearGradientDirection, LinearGradientLine, LinearGradientOutcome,

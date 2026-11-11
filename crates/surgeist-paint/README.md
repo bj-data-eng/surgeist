@@ -21,6 +21,8 @@ needs sizing, use `resolve_border_image_area` to obtain the default sizing
 extent and pass the resolved area to `resolve_border_image_in_area`.
 `resolve_border_image_tiling` uses those partitions to plan clipped corner,
 edge, and center tiles.
+For mask borders, `resolve_mask_border_in_area` plans image tiles and any
+opaque center in one operation. See [mask-border coverage](docs/reference.md#mask-border-coverage).
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.

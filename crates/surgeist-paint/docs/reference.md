@@ -8,6 +8,7 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
 | `resolve_border_image_area`, `BorderImageArea`, `resolve_border_image_in_area` | Compute the outset area before source sizing and reuse it for partitioning. |
 | `resolve_border_image_tiling`, `BorderImageTiling` | Scale and position tiles from the admitted nine-slice geometry. |
+| `resolve_mask_border_in_area`, `MaskBorderPlan` | Plan coverage tiles and the opaque center for an admitted mask-border source and area. |
 | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
 | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
 | `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
@@ -113,6 +114,17 @@ sizing, resource eligibility, composited order, and concrete draw lowering
 use their respective owners.
 
 [CSS Backgrounds and Borders Level 3, drawing the border image](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-image-process)
+
+## Mask-border coverage
+
+Resolve the outset area before default source sizing. Pass that same
+`BorderImageArea` and the admitted source to `resolve_mask_border_in_area`.
+It uses the border-image partition and tile rules in one Ledger operation.
+With `fill`, the plan uses the center image tiles. Without `fill`, a
+nonempty destination center contributes full mask coverage. The caller owns
+source eligibility, mask-channel interpretation, and scene lowering.
+
+[CSS Masking Level 1, mask-border slicing](https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask-border-slice)
 
 ## Zero-height gradient colors
 
