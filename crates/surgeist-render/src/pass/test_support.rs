@@ -8,7 +8,7 @@ use super::close::{
 };
 use super::close::{ExecutableFilterStepFacts, preparation_error};
 use super::encode::{
-    CustomSpineEncodingSummary, PendingGraphEncoding, backdrop_filter_passes,
+    CustomSpineEncodingSummary, PendingGraphEncoding, filter_step_passes,
     vello_capture_raster_parameters,
 };
 use super::lower::{
@@ -3060,6 +3060,14 @@ impl ColorFilterPreparableGraph {
 
 #[cfg(test)]
 impl SpatialFilterPreparableGraph {
+    pub(crate) fn working_format(&self) -> WorkingFormat {
+        self.closed.facts.working_format
+    }
+
+    pub(crate) fn output_format(&self) -> Format {
+        self.closed.facts.output_format
+    }
+
     pub(crate) fn first_filter_spatial_for_test(
         &self,
     ) -> Option<(
@@ -4705,7 +4713,7 @@ fn backdrop_graph_observation(
         .collect::<BTreeMap<_, _>>();
     let copy_position = *positions.get(&backdrop.copy)?;
     let filter_passes = || {
-        backdrop_filter_passes(&backdrop.filter_steps, &account)
+        filter_step_passes(&backdrop.filter_steps, &account)
             .map(|pass| pass.expect("fixture filter expansion accounting"))
     };
     let backdrop_position = *positions.get(&backdrop.backdrop_composite)?;
@@ -5902,35 +5910,6 @@ pub(crate) use super::encode::EncodedCaptureRawFact as EncodedVelloCaptureObserv
 
 #[cfg(test)]
 impl<'device> PreparedGraph<'device> {
-    pub(crate) fn try_prepare_color_filter(
-        preparable: ColorFilterPreparableGraph,
-        capabilities: &DeviceCapabilities,
-        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
-        resources: &'device ResourceManager,
-        pass_cache_phase: (&'device DevicePassCache, bool),
-        account: &Account,
-    ) -> Result<Self> {
-        let selected_working_format = preparable.working_format();
-        let prepared = Self::try_prepare_inner(
-            GraphPreparationSource::ColorFilter {
-                preparable: &preparable,
-                operation_limits: None,
-            },
-            selected_working_format,
-            capabilities,
-            (device, queue),
-            resources,
-            pass_cache_phase,
-            account,
-        )?;
-        if prepared.color_filter_execution.is_none() {
-            return Err(preparation_error(
-                "color-filter preparation lost its validated closed execution facts",
-            ));
-        }
-        Ok(prepared)
-    }
-
     pub(crate) fn try_prepare_color_filter_with_operation_limits_for_test(
         lowered: LoweredGraphPlan,
         policy: EffectQualityPolicy,

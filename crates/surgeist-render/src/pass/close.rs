@@ -3,7 +3,7 @@ use crate::accounting::{
 };
 use std::{
     cell::{Cell, RefCell},
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Range},
 };
 
 use super::lower::{
@@ -449,15 +449,8 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) foreground_composite: Option<RuntimePassId>,
     pub(super) outer_composite: RuntimePassId,
     pub(super) completed_group: RuntimeResourceId,
-    pub(super) group_blur: Option<ExecutableBackdropGroupBlurFacts>,
-    pub(super) result: RuntimeResourceId,
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct ExecutableBackdropGroupBlurFacts {
-    pub(super) horizontal: RuntimePassId,
-    pub(super) vertical: RuntimePassId,
-    pub(super) intermediate: RuntimeResourceId,
+    pub(super) group_filter_steps: Range<usize>,
+    pub(super) outer_source: RuntimeResourceId,
     pub(super) result: RuntimeResourceId,
 }
 
@@ -474,6 +467,23 @@ pub(super) enum ExecutableFilterStepFacts {
         colorize: RuntimePassId,
         merge: RuntimePassId,
     },
+}
+
+impl ExecutableFilterStepFacts {
+    fn first_pass(self) -> RuntimePassId {
+        match self {
+            Self::Color(pass) => pass,
+            Self::Blur { horizontal, .. } | Self::DropShadow { horizontal, .. } => horizontal,
+        }
+    }
+
+    fn last_pass(self) -> RuntimePassId {
+        match self {
+            Self::Color(pass) => pass,
+            Self::Blur { vertical, .. } => vertical,
+            Self::DropShadow { merge, .. } => merge,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -623,7 +633,7 @@ impl ClosedExecutableGraphFacts {
             let filter_order_is_exact =
                 filter_step_order_is_exact(plan, &self.filter_steps, &proof);
             let backdrops_are_exact = proof_nodes(&self.backdrops, &proof)
-                .all(|backdrop| backdrop.proves_exact_facts_for(plan, &proof));
+                .all(|backdrop| backdrop.proves_exact_facts_for(plan, &self.filter_steps, &proof));
             captures_are_exact
                 && layers_are_exact
                 && color_filters_are_exact
@@ -643,27 +653,25 @@ impl ExecutableBackdropFacts {
         steps: &[ExecutableFilterStepFacts],
         account: &Account,
     ) -> Result<bool> {
-        let Some((before, remaining)) = steps.split_at_checked(self.filter_start) else {
+        let Some(backdrop_end) = self.filter_start.checked_add(self.filter_steps.len()) else {
             return Ok(false);
         };
-        let Some((backdrop, after)) = remaining.split_at_checked(self.filter_steps.len()) else {
+        let Some(backdrop) = steps.get(self.filter_start..backdrop_end) else {
             return Ok(false);
         };
-        if !filter_steps_match(&self.filter_steps, backdrop, account)? {
-            return Ok(false);
-        }
-        // The closed visitor accepts only transparent-edge RGBA pairs as
-        // ordinary blur. Color runs and shadows belong to the backdrop slice.
-        for step in before.iter().chain(after) {
-            account.work(RenderWork::GraphNodeVisits, 1)?;
-            if !matches!(step, ExecutableFilterStepFacts::Blur { .. }) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        // The closed visitor alone records the mirror-sampling interval.
+        // Every other spatial step consumes the ordinary transparent-edge path.
+        Ok(self.group_filter_steps.start == backdrop_end
+            && steps.get(self.group_filter_steps.clone()).is_some()
+            && filter_steps_match(&self.filter_steps, backdrop, account)?)
     }
 
-    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan, proof: &ProofContext<'_>) -> bool {
+    fn proves_exact_facts_for(
+        &self,
+        plan: &LoweredGraphPlan,
+        steps: &[ExecutableFilterStepFacts],
+        proof: &ProofContext<'_>,
+    ) -> bool {
         let pass = |id| proof_passes(plan, proof).find(|candidate| candidate.id == id);
         let Some(copy) = pass(self.copy) else {
             return false;
@@ -671,25 +679,22 @@ impl ExecutableBackdropFacts {
         let foreground_is_distinct = self
             .foreground
             .is_none_or(|foreground| foreground != self.copied && foreground != self.filtered);
-        let group_source = match self.group_blur {
-            Some(blur) => {
-                let (Some(horizontal), Some(vertical)) =
-                    (pass(blur.horizontal), pass(blur.vertical))
-                else {
-                    return false;
-                };
-                if !proof_read(horizontal, 0, proof)
-                    .is_some_and(|read| read.resource == self.completed_group)
-                    || horizontal.result != RuntimeResultBinding::Resource(blur.intermediate)
-                    || !proof_read(vertical, 0, proof)
-                        .is_some_and(|read| read.resource == blur.intermediate)
-                    || vertical.result != RuntimeResultBinding::Resource(blur.result)
-                {
-                    return false;
-                }
-                blur.result
+        let Some(group_steps) = steps.get(self.group_filter_steps.clone()) else {
+            return false;
+        };
+        let group_source_is_exact = match (group_steps.first(), group_steps.last()) {
+            (Some(first), Some(last)) => {
+                proof.work(
+                    RenderWork::GraphNodeVisits,
+                    if group_steps.len() == 1 { 1 } else { 2 },
+                ) && pass(first.first_pass()).is_some_and(|first| {
+                    proof_read(first, 0, proof)
+                        .is_some_and(|read| read.resource == self.completed_group)
+                }) && pass(last.last_pass()).is_some_and(|last| {
+                    last.result == RuntimeResultBinding::Resource(self.outer_source)
+                })
             }
-            None => self.completed_group,
+            _ => self.outer_source == self.completed_group,
         };
         matches!(copy.kind, RuntimePassKind::CopyBackdrop)
             && copy.reads.len() == 1
@@ -704,14 +709,21 @@ impl ExecutableBackdropFacts {
                     } if color == Color::TRANSPARENT
                 )
             })
-            && pass(self.backdrop_composite).is_some()
-            && self
-                .foreground_composite
-                .is_none_or(|id| pass(id).is_some())
+            && pass(self.backdrop_composite).is_some_and(|backdrop| {
+                self.foreground_composite.is_some()
+                    || backdrop.result == RuntimeResultBinding::Resource(self.completed_group)
+            })
+            && self.foreground_composite.is_none_or(|id| {
+                pass(id).is_some_and(|foreground| {
+                    foreground.result == RuntimeResultBinding::Resource(self.completed_group)
+                })
+            })
+            && group_source_is_exact
             && pass(self.outer_composite).is_some_and(|outer| {
                 proof_read(outer, 0, proof)
                     .is_some_and(|read| read.resource == self.completed_parent)
-                    && proof_read(outer, 1, proof).is_some_and(|read| read.resource == group_source)
+                    && proof_read(outer, 1, proof)
+                        .is_some_and(|read| read.resource == self.outer_source)
                     && outer.result == RuntimeResultBinding::Resource(self.result)
             })
             && self.completed_group != self.completed_parent
@@ -1247,58 +1259,60 @@ impl SpatialFilterPreparableGraph {
                 .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
 
-    pub(crate) fn working_format(&self) -> WorkingFormat {
-        self.closed.facts.working_format
-    }
-
-    pub(crate) fn output_format(&self) -> Format {
-        self.closed.facts.output_format
-    }
-
+    #[cfg(test)]
     pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
-        for resource in &self.closed.lowered.resources {
-            account.work(RenderWork::ResourceProbes, 1)?;
-            if resource.id == self.closed.lowered.root_working_image {
-                return Ok(resource.spatial.device_extent);
-            }
-        }
-        Err(preparation_error(
-            "the spatial-filter root output resource is missing",
-        ))
+        foreground_output_extent(&self.closed, account)
     }
 }
 
-/// Exact ordinary Gaussian pairs may execute with the closed layer composition.
+/// The exact closed execution family selected for an authored foreground list.
 #[must_use]
-pub(crate) struct ForegroundBlurPreparableGraph(SpatialFilterPreparableGraph);
+pub(crate) enum ForegroundFilterPreparableGraph {
+    Color(ColorFilterPreparableGraph),
+    Spatial(SpatialFilterPreparableGraph),
+}
 
-impl ForegroundBlurPreparableGraph {
-    pub(super) fn qualify(
-        graph: SpatialFilterPreparableGraph,
-        account: &Account,
-    ) -> Result<Option<Self>> {
-        let facts = &graph.closed.facts;
-        if facts.blurs.is_empty()
-            || !facts.color_filters.is_empty()
-            || !facts.drop_shadows.is_empty()
-            || !facts.backdrops.is_empty()
-        {
-            return Ok(None);
+impl ForegroundFilterPreparableGraph {
+    fn closed(&self) -> &ClosedExecutableGraph {
+        match self {
+            Self::Color(graph) => &graph.closed,
+            Self::Spatial(graph) => &graph.closed,
         }
-        for blur in &facts.blurs {
-            account.work(RenderWork::GraphNodeVisits, 1)?;
-            if blur.blur.input != RuntimeBlurInput::Rgba
-                || blur.blur.edge != RuntimeSamplingEdge::TransparentBlack
-            {
-                return Ok(None);
-            }
-        }
-        Ok(Some(Self(graph)))
     }
 
-    pub(crate) fn spatial_filter(&self) -> &SpatialFilterPreparableGraph {
-        &self.0
+    pub(super) fn proves_closed_filter_facts(&self, account: &Account) -> Result<bool> {
+        match self {
+            Self::Color(graph) => graph.proves_closed_color_facts(account),
+            Self::Spatial(graph) => graph.proves_closed_filter_facts(account),
+        }
     }
+
+    pub(crate) fn working_format(&self) -> WorkingFormat {
+        self.closed().facts.working_format
+    }
+
+    pub(crate) fn output_format(&self) -> Format {
+        self.closed().facts.output_format
+    }
+
+    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
+        foreground_output_extent(self.closed(), account)
+    }
+}
+
+fn foreground_output_extent(
+    closed: &ClosedExecutableGraph,
+    account: &Account,
+) -> Result<PhysicalSize> {
+    for resource in &closed.lowered.resources {
+        account.work(RenderWork::ResourceProbes, 1)?;
+        if resource.id == closed.lowered.root_working_image {
+            return Ok(resource.spatial.device_extent);
+        }
+    }
+    Err(preparation_error(
+        "the foreground-filter root output resource is missing",
+    ))
 }
 
 #[must_use]
@@ -1855,18 +1869,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimePassKind::VelloCapture(Some(work)) if work.clip_coverage().is_some() => {
                 self.visit_clip_coverage_capture(pass)
             }
-            RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
-            RuntimePassKind::BlurHorizontal(Some(blur))
-                if blur.axis == RuntimeBlurAxis::Horizontal
-                    && blur.input == RuntimeBlurInput::Rgba =>
-            {
-                self.visit_blur(pass, blur)
-            }
-            RuntimePassKind::BlurHorizontal(Some(blur))
-                if blur.axis == RuntimeBlurAxis::Horizontal
-                    && blur.input == RuntimeBlurInput::SourceAlpha =>
-            {
-                self.visit_drop_shadow(pass, blur)
+            RuntimePassKind::ColorFilter(Some(_)) | RuntimePassKind::BlurHorizontal(Some(_)) => {
+                self.visit_ordinary_filter(pass)
             }
             RuntimePassKind::CopyBackdrop => self.visit_backdrop(pass),
             RuntimePassKind::Composite(Some(composite))
@@ -2156,6 +2160,17 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         self.advance(1)
     }
 
+    fn visit_ordinary_filter(&mut self, pass: &RuntimePass) -> Option<()> {
+        match &pass.kind {
+            RuntimePassKind::ColorFilter(Some(filter)) => self.visit_color_filter(pass, filter),
+            RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
+                RuntimeBlurInput::Rgba => self.visit_blur(pass, blur),
+                RuntimeBlurInput::SourceAlpha => self.visit_drop_shadow(pass, blur),
+            },
+            _ => None,
+        }
+    }
+
     fn visit_blur(&mut self, horizontal: &RuntimePass, blur: &RuntimeBlur) -> Option<()> {
         self.visit_blur_with_edge(horizontal, blur, RuntimeSamplingEdge::TransparentBlack)
     }
@@ -2276,19 +2291,18 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             None => None,
         };
         let completed_group = *self.contexts.last()?;
-        let next = self.pass_at(self.cursor)?;
-        let group_blur = if let RuntimePassKind::BlurHorizontal(Some(blur)) = &next.kind {
-            self.visit_blur(next, blur)?;
-            let blur = self.blurs.last()?;
-            Some(ExecutableBackdropGroupBlurFacts {
-                horizontal: blur.horizontal,
-                vertical: blur.vertical,
-                intermediate: blur.intermediate,
-                result: blur.result,
-            })
-        } else {
-            None
-        };
+        let group_filter_start = self.filter_steps.len();
+        loop {
+            let pass = self.pass_at(self.cursor)?;
+            if !matches!(
+                pass.kind,
+                RuntimePassKind::ColorFilter(Some(_)) | RuntimePassKind::BlurHorizontal(Some(_))
+            ) {
+                break;
+            }
+            self.visit_ordinary_filter(pass)?;
+        }
+        let group_filter_steps = group_filter_start..self.filter_steps.len();
         let outer_source = *self.contexts.last()?;
         let outer_composite = self.visit_backdrop_outer_composite(parent, outer_source)?;
         let result = self.contexts.first()?.current;
@@ -2306,7 +2320,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 foreground_composite,
                 outer_composite,
                 completed_group: completed_group.current,
-                group_blur,
+                group_filter_steps,
+                outer_source: outer_source.current,
                 result,
             }))?;
         Some(())
@@ -2342,10 +2357,11 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             RuntimeResourceRole::BackdropCopy,
             RuntimeResourceFormat::Working(self.plan.working_format),
             RuntimeResourceProducer::Pass(copy.id),
-        ) || resource.expected_reads != 1
-        {
+        ) {
             return None;
         }
+        // The first filter proves the copy's reads and final release. A
+        // drop shadow retains it for both alpha extraction and source-over.
         self.expected_resources.insert(copied);
         Some(copied)
     }
@@ -2823,13 +2839,14 @@ fn validate_closed_color_filter(
         RuntimeResourceRole::FilterIntermediate,
         RuntimeResourceFormat::Working(working_format),
         RuntimeResourceProducer::Pass(pass.id),
-    ) || result_resource.expected_reads != 1
-        || source.spatial != result_resource.spatial
+    ) || source.spatial != result_resource.spatial
         || filter.spatial.source != source.spatial
         || filter.spatial.result != result_resource.spatial
     {
         return None;
     }
+    // The next stage proves the result's read count and last use, including
+    // the two reads required when a drop shadow consumes this color result.
     Some(ExecutableColorFilterFacts {
         pass: pass.id,
         source: source.id,

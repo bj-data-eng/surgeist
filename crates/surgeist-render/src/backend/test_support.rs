@@ -160,7 +160,8 @@ impl Backend {
         })?;
         let prepared = match graph {
             ExactSurfaceGraph::ColorFilter(preparable) => PreparedGraph::try_prepare_color_filter(
-                preparable,
+                &preparable,
+                selected_working_format,
                 &capabilities,
                 (&ready.device, &ready.queue),
                 &ready.resources,

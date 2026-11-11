@@ -1,5 +1,6 @@
 use super::{
-    BackdropFilterInput, ClipInput, Error, Image, Paint, Point, Rect, Result, Shape, Transform,
+    BackdropFilterInput, ClipInput, Error, FilterList, Image, Paint, Point, Rect, Result, Shape,
+    Transform,
     style::validate_clip_input,
     validation::{
         validate_filter, validate_finite_f64, validate_non_negative_f64, validate_paint,
@@ -22,7 +23,7 @@ pub struct Layer {
     composition: LayerComposition,
     isolated: bool,
     mask: Option<LayerMask>,
-    filter: Option<Filter>,
+    filter: Option<LayerFilter>,
     backdrop_filter: Option<Box<BackdropFilterInput>>,
 }
 
@@ -86,8 +87,20 @@ impl Layer {
     /// Rendering requires the standard deviation to be in `0..=256` logical units.
     pub fn try_filter(mut self, filter: Filter) -> Result<Self> {
         validate_filter(filter)?;
-        self.filter = Some(filter);
+        self.filter = Some(LayerFilter::Blur(filter));
         Ok(self)
+    }
+
+    /// Installs an ordered foreground filter list on the completed child group.
+    ///
+    /// Each operation consumes the previous result in layer-local coordinates.
+    /// The layer's clip, alpha mask, opacity, and composition apply afterward.
+    /// This replaces the previous foreground filter. `FilterList::none()`
+    /// clears it.
+    #[must_use]
+    pub fn with_filter_list(mut self, filters: FilterList) -> Self {
+        self.filter = (!filters.is_none()).then_some(LayerFilter::List(filters));
+        self
     }
 
     /// Returns this layer with the supplied validated backdrop-filter input.
@@ -194,9 +207,25 @@ impl Layer {
     }
 
     #[must_use]
-    /// Returns the foreground blur filter, if present.
+    /// Returns the foreground blur supplied through `try_filter`, if present.
     pub const fn filter(&self) -> Option<Filter> {
-        self.filter
+        match &self.filter {
+            Some(LayerFilter::Blur(filter)) => Some(*filter),
+            Some(LayerFilter::List(_)) | None => None,
+        }
+    }
+
+    #[must_use]
+    /// Returns the foreground list supplied through `with_filter_list`, if present.
+    pub const fn filter_list(&self) -> Option<&FilterList> {
+        match &self.filter {
+            Some(LayerFilter::List(filters)) => Some(filters),
+            Some(LayerFilter::Blur(_)) | None => None,
+        }
+    }
+
+    pub(crate) const fn foreground_filter(&self) -> Option<&LayerFilter> {
+        self.filter.as_ref()
     }
 
     #[must_use]
@@ -225,6 +254,12 @@ impl Layer {
     pub const fn blend_mode(&self) -> BlendMode {
         self.composition.blend_mode()
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum LayerFilter {
+    Blur(Filter),
+    List(FilterList),
 }
 
 #[derive(Clone, Debug, PartialEq)]

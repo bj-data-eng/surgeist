@@ -146,7 +146,7 @@ enum GraphSelectionRequirement {
     BoundedBackdrop,
     BoundedPorterDuff,
     ExplicitIsolation,
-    ForegroundBlur,
+    ForegroundFilters,
 }
 
 impl FramePlan {
@@ -241,10 +241,10 @@ fn collect_graph_selection_requirements(
         {
             requirements.push(GraphSelectionRequirement::ResolvedAlphaMask)?;
         }
-        if layer.foreground_blur.is_some()
-            && !requirements.contains(&GraphSelectionRequirement::ForegroundBlur)
+        if layer.foreground_filters.is_some()
+            && !requirements.contains(&GraphSelectionRequirement::ForegroundFilters)
         {
-            requirements.push(GraphSelectionRequirement::ForegroundBlur)?;
+            requirements.push(GraphSelectionRequirement::ForegroundFilters)?;
         }
         collect_graph_selection_requirements(children, requirements, account)?;
     }

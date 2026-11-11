@@ -15,8 +15,8 @@ use crate::{
         AlgorithmColorFilterRun, AlgorithmFilterPlan, AlgorithmFilterStep,
         CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS,
     },
-    geometry::Transform,
-    style::{FilterBlur, FilterDropShadow, FilterOp},
+    geometry::{Point, Transform},
+    style::{FilterBlur, FilterDropShadow, FilterOp, FilterOpKind},
 };
 
 impl FrameContext {
@@ -78,17 +78,8 @@ impl FrameContext {
                     AlgorithmFilterStep::DropShadow(shadow) => {
                         let support =
                             InclusiveFilterKernelSupport::try_new(shadow.blur(), raster_scale)?;
-                        let shadow_bounds = source_bounds
-                            .try_inflate_uniform(
-                                support.logical_radius,
-                                "filter drop-shadow alpha bounds",
-                            )?
-                            .try_translate(
-                                shadow.offset(),
-                                "filter drop-shadow offset alpha bounds",
-                            )?;
-                        let result_bounds = source_bounds
-                            .try_union(shadow_bounds, "filter drop-shadow result bounds")?;
+                        let result_bounds =
+                            support.include_shadow(source_bounds, shadow.offset())?;
                         let edge_policy = match source_role {
                             FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
                             FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
@@ -148,6 +139,38 @@ impl FrameContext {
             )),
         }
     }
+}
+
+pub(super) fn foreground_filter_bounds(
+    mut bounds: NonEmptyLogicalBounds,
+    scale: RasterScale,
+    operations: &[FilterOp],
+    account: &Account,
+) -> Result<NonEmptyLogicalBounds> {
+    let account = account.at(RenderPhase::Filter);
+    account.phase(RenderPhase::Filter, || {
+        for operation in operations {
+            account.work(RenderWork::FilterOperationVisits, 1)?;
+            bounds = match operation.kind() {
+                FilterOpKind::Blur(blur) => {
+                    InclusiveFilterKernelSupport::try_new(*blur, scale)?.inflate(bounds)?
+                }
+                FilterOpKind::DropShadow(shadow) => {
+                    InclusiveFilterKernelSupport::try_new(shadow.blur(), scale)?
+                        .include_shadow(bounds, shadow.offset())?
+                }
+                FilterOpKind::Brightness(_)
+                | FilterOpKind::Contrast(_)
+                | FilterOpKind::Grayscale(_)
+                | FilterOpKind::HueRotate(_)
+                | FilterOpKind::Invert(_)
+                | FilterOpKind::Opacity(_)
+                | FilterOpKind::Saturate(_)
+                | FilterOpKind::Sepia(_) => bounds,
+            };
+        }
+        Ok(bounds)
+    })
 }
 
 impl SemanticSourceContribution {
@@ -329,6 +352,17 @@ impl InclusiveFilterKernelSupport {
 
     pub(super) fn inflate(self, bounds: NonEmptyLogicalBounds) -> Result<NonEmptyLogicalBounds> {
         bounds.try_inflate_uniform(self.logical_radius, "filter blur result bounds")
+    }
+
+    fn include_shadow(
+        self,
+        bounds: NonEmptyLogicalBounds,
+        offset: Point,
+    ) -> Result<NonEmptyLogicalBounds> {
+        let shadow = bounds
+            .try_inflate_uniform(self.logical_radius, "filter drop-shadow alpha bounds")?
+            .try_translate(offset, "filter drop-shadow offset alpha bounds")?;
+        bounds.try_union(shadow, "filter drop-shadow result bounds")
     }
 }
 

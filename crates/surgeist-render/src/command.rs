@@ -4,10 +4,11 @@ use super::{
     frame::{FrameContext, FramePlan, LogicalBounds},
     geometry::offset_radii,
     image::ResolvedMaskUploadDescriptor,
+    layer::LayerFilter,
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
-    style::{ClipGeometryKind, FilterBlur, FilterList},
+    style::{ClipGeometryKind, FilterBlur, FilterList, FilterOp},
     validation::*,
     *,
 };
@@ -207,7 +208,7 @@ pub(crate) struct NormalizedLayer {
     pub(crate) composition: LayerComposition,
     pub(crate) explicit_isolation: bool,
     pub(crate) mask: Option<RenderLayerMask>,
-    pub(crate) foreground_blur: Option<FilterBlur>,
+    pub(crate) foreground_filters: Option<SharedValue<FilterList>>,
     pub(crate) backdrop: Option<SharedValue<RenderBackdropCapture>>,
     pub(crate) isolation: LayerIsolation,
     pub(crate) pass_plan: LayerPassPlan,
@@ -430,7 +431,7 @@ impl LayerPassPlan {
                 bounds,
             ));
         }
-        if layer.filter().is_some() {
+        if layer.foreground_filter().is_some() {
             capabilities.ensure_supported(UnsupportedPrimitive::new(
                 PrimitiveFamily::OffscreenPipeline,
                 PrimitiveOperation::LayerFilterExecution,
@@ -1128,16 +1129,22 @@ impl NormalizedLayer {
         capabilities: Capabilities,
         account: &Account,
     ) -> Result<Self> {
-        let foreground_blur = layer
-            .filter()
-            .map(|filter| {
-                capabilities.ensure_supported(UnsupportedPrimitive::new(
-                    PrimitiveFamily::Filters,
-                    PrimitiveOperation::LayerFilter,
-                ))?;
-                FilterBlur::try_new(filter.blur_radius())
-            })
-            .transpose()?;
+        let foreground_filters = if let Some(filter) = layer.foreground_filter() {
+            capabilities.ensure_supported(UnsupportedPrimitive::new(
+                PrimitiveFamily::Filters,
+                PrimitiveOperation::LayerFilter,
+            ))?;
+            let (filters, hold) = match filter {
+                LayerFilter::Blur(filter) => {
+                    let operation = FilterOp::blur(FilterBlur::try_new(filter.blur_radius())?);
+                    FilterList::copy_ops_in(std::slice::from_ref(&operation), account)?
+                }
+                LayerFilter::List(filters) => filters.try_clone_in(account)?,
+            };
+            Some(shared(filters, hold, None, account)?)
+        } else {
+            None
+        };
         let clip = layer
             .clip_input()
             .map(|clip| RenderClip::from_input_in(clip, capabilities, account))
@@ -1159,7 +1166,7 @@ impl NormalizedLayer {
             composition: layer.composition(),
             explicit_isolation: layer.is_isolated(),
             mask,
-            foreground_blur,
+            foreground_filters,
             backdrop,
             isolation: pass_plan.isolation(),
             pass_plan,

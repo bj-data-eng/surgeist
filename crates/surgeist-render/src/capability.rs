@@ -956,7 +956,7 @@ pub struct FilterCapabilities {
 }
 
 impl FilterCapabilities {
-    /// Returns whether the authored foreground Gaussian blur is supported.
+    /// Returns whether authored foreground CSS filter functions are supported.
     #[must_use]
     pub const fn supports_layer_filters(self) -> bool {
         self.layer_filters
@@ -1316,7 +1316,7 @@ impl OffscreenPipelineCapabilities {
         self.mask_execution
     }
 
-    /// Returns whether authored foreground Gaussian blur executes through the GPU graph.
+    /// Returns whether authored foreground CSS filter lists execute through the GPU graph.
     #[must_use]
     pub const fn supports_layer_filter_execution(self) -> bool {
         self.layer_filter_execution

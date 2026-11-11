@@ -4986,6 +4986,272 @@ fn resolved_alpha_masks_leave_luminance_to_authored_mask_diagnostics() {
 }
 
 #[test]
+fn foreground_filter_list_executes_color_clamps_in_authored_order() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(4.0, 4.0), 1.0)).unwrap();
+    let double = FilterOp::brightness(FilterAmount::try_new(2.0).unwrap());
+    let half = FilterOp::brightness(FilterAmount::try_new(0.5).unwrap());
+    let source = Color::try_rgba(0.8, 0.0, 0.0, 1.0).unwrap();
+    for (operations, expected) in [
+        (vec![double.clone(), half.clone()], 128_u8),
+        (vec![half, double], 204),
+    ] {
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new().with_filter_list(FilterList::try_ops(operations).unwrap()),
+            |scene| {
+                scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), source);
+            },
+        );
+        let stats =
+            pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        let [r, g, b, a] = pixel_rgba(&output, 2, 2);
+        assert!(r.abs_diff(expected) <= 1, "red channel was {r}");
+        assert_eq!([g, b, a], [0, 0, 255]);
+    }
+
+    let layer = Layer::new()
+        .with_filter_list(
+            FilterList::try_ops(vec![FilterOp::invert(
+                UnitFilterAmount::try_new(1.0).unwrap(),
+            )])
+            .unwrap(),
+        )
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    assert!(layer.filter().is_some() && layer.filter_list().is_none());
+    let layer = layer.with_filter_list(FilterList::none());
+    assert!(layer.filter().is_none() && layer.filter_list().is_none());
+    let mut scene = Scene::new();
+    scene.layer(layer, |scene| {
+        scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), source);
+    });
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+}
+
+#[test]
+fn foreground_filter_list_preserves_mixed_filter_order_and_zero_sigma_shadow() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let opacity = FilterOp::opacity(UnitFilterAmount::try_new(0.5).unwrap());
+    let shadow = FilterOp::drop_shadow(
+        FilterDropShadow::try_new(
+            Point::new(0.0, 0.0),
+            FilterBlur::try_new(0.0).unwrap(),
+            Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap(),
+        )
+        .unwrap(),
+    );
+    let blur = FilterOp::blur(FilterBlur::try_new(1.0).unwrap());
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    for (operations, expected_green) in [
+        (vec![opacity.clone(), shadow.clone(), blur.clone()], 10_u8),
+        (vec![shadow, blur, opacity], 0),
+    ] {
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new().with_filter_list(FilterList::try_ops(operations).unwrap()),
+            |scene| {
+                scene.fill(
+                    Rect::new(4.0, 4.0, 1.0, 1.0),
+                    Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+                );
+            },
+        );
+        pollster::block_on(renderer.render(&mut surface, &scene, params)).unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        // The Gaussian center weight is about .159. Opacity before the shadow
+        // leaves .25 green at the source; opacity afterward leaves no green.
+        let [r, g, b, a] = pixel_rgba(&output, 4, 4);
+        assert!(
+            r.abs_diff(20) <= 2 && g.abs_diff(expected_green) <= 2,
+            "{r}, {g}"
+        );
+        assert_eq!([b, a], [0, 255]);
+    }
+}
+
+#[test]
+fn foreground_filter_list_keeps_a_shadow_from_off_surface_ink_until_outer_clip() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(7.0, 7.0), 1.0)).unwrap();
+    let shadow = FilterOp::drop_shadow(
+        FilterDropShadow::try_new(
+            Point::new(4.0, -1.0),
+            FilterBlur::try_new(0.0).unwrap(),
+            Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
+        )
+        .unwrap(),
+    );
+    let layer = Layer::new()
+        .with_filter_list(FilterList::try_ops(vec![shadow]).unwrap())
+        .try_clip(Shape::rect(Rect::new(2.0, 3.0, 1.0, 1.0)))
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(layer, |scene| {
+        scene.fill(Rect::new(-2.0, 4.0, 1.0, 1.0), Color::BLACK);
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_rgba(&output, 2, 3), [0, 0, 255, 255]);
+    assert_eq!(pixel_alpha(&output, 1, 3), 0);
+}
+
+#[test]
+fn foreground_filter_list_consumes_the_completed_bounded_backdrop_group() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 9.0), 1.0)).unwrap();
+    let backdrop = BackdropFilterInput::try_new(
+        color_filter_list([ColorFilterOp::Invert(
+            UnitFilterAmount::try_new(1.0).unwrap(),
+        )]),
+        BackdropCaptureBounds::try_new(Rect::new(3.0, 3.0, 3.0, 3.0)).unwrap(),
+        None,
+    )
+    .unwrap();
+    let filters = FilterList::try_ops(vec![
+        FilterOp::brightness(FilterAmount::try_new(0.5).unwrap()),
+        FilterOp::blur(FilterBlur::try_new(1.0).unwrap()),
+        FilterOp::drop_shadow(
+            FilterDropShadow::try_new(
+                Point::new(4.0, 0.0),
+                FilterBlur::try_new(0.0).unwrap(),
+                Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
+            )
+            .unwrap(),
+        ),
+    ])
+    .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new()
+            .try_backdrop_filter(backdrop)
+            .unwrap()
+            .with_filter_list(filters),
+        |_| {},
+    );
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    pollster::block_on(renderer.render(&mut surface, &scene, params)).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    // A Gaussian with sigma one retains about .78 alpha at the center of a
+    // 3×3 square. Its dimmed foreground is about 99, and its offset blue
+    // shadow is about 198 where only the last source tap overlaps it.
+    let [red, green, _, alpha] = pixel_rgba(&output, 4, 4);
+    assert!(red.abs_diff(99) <= 3 && green.abs_diff(99) <= 3);
+    assert_eq!(alpha, 255);
+    let [r, g, b, a] = pixel_rgba(&output, 8, 4);
+    assert!(r <= 2 && g <= 2 && b.abs_diff(198) <= 3, "{r}, {g}, {b}");
+    assert_eq!(a, 255);
+}
+
+#[test]
+fn foreground_filter_list_can_follow_a_backdrop_chain_starting_with_drop_shadow() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let shadow = FilterOp::drop_shadow(
+        FilterDropShadow::try_new(
+            Point::new(1.0, 0.0),
+            FilterBlur::try_new(0.0).unwrap(),
+            Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
+        )
+        .unwrap(),
+    );
+    let backdrop = BackdropFilterInput::try_new(
+        FilterList::try_ops(vec![shadow]).unwrap(),
+        BackdropCaptureBounds::try_new(Rect::new(3.0, 3.0, 3.0, 3.0)).unwrap(),
+        None,
+    )
+    .unwrap();
+    let layer = Layer::new()
+        .try_backdrop_filter(backdrop)
+        .unwrap()
+        .with_filter_list(color_filter_list([ColorFilterOp::Invert(
+            UnitFilterAmount::try_new(1.0).unwrap(),
+        )]));
+    let mut scene = Scene::new();
+    scene.layer(layer, |_| {});
+    let params = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    pollster::block_on(renderer.render(&mut surface, &scene, params)).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_rgba(&output, 4, 4), [255; 4]);
+    // Only the unoccluded blue shadow occupies the column beside the capture.
+    assert_eq!(pixel_rgba(&output, 6, 4), [255, 255, 0, 255]);
+    assert_eq!(pixel_rgba(&output, 7, 4), [0, 0, 0, 255]);
+}
+
+#[test]
+fn foreground_filter_list_ledger_refusal_keeps_the_published_frame() {
+    use crate::{RenderAccountingOptions, RenderLimits, RenderQuantity, RenderWork};
+
+    let options = Options::default().with_accounting(
+        RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::KernelSampleVisits, 0)
+                .unwrap(),
+        ),
+    );
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(7.0, 7.0), 1.0)).unwrap();
+    let base = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    let before = pollster::block_on(renderer.render(&mut surface, &Scene::new(), base)).unwrap();
+    let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    let scene = |operations| {
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new().with_filter_list(FilterList::try_ops(operations).unwrap()),
+            |scene| {
+                scene.fill(Rect::new(2.0, 2.0, 1.0, 1.0), Color::BLACK);
+            },
+        );
+        scene
+    };
+    let invert = FilterOp::invert(UnitFilterAmount::try_new(1.0).unwrap());
+    let blur = FilterOp::blur(FilterBlur::try_new(1.0).unwrap());
+    let failed = scene(vec![invert.clone(), blur]);
+    assert!(pollster::block_on(renderer.render(&mut surface, &failed, base)).is_err());
+    let report = renderer.last_attempt().unwrap();
+    let refusal = report.attempt().unwrap().refusal().unwrap();
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::KernelSampleVisits)
+    );
+    assert_eq!((refusal.current(), refusal.amount()), (0, 1));
+    assert_eq!(renderer.stats(), before);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        pixels
+    );
+
+    let retry = scene(vec![invert]);
+    pollster::block_on(renderer.render(&mut surface, &retry, base)).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_rgba(&output, 2, 2), [255; 4]);
+}
+
+#[test]
 fn foreground_layer_blur_filters_group_before_clip_mask_and_opacity() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =

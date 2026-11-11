@@ -34,7 +34,7 @@ Every successfully published frame reports exactly one `Stats::route`:
   pass for an effect-free scene.
 - `RenderRoute::GpuGraph` uses crate-owned WGPU image and composite passes for
   resolved image alpha masks, supported blend and composition, foreground
-  Gaussian blur, and bounded backdrop filter lists.
+  filter lists, and bounded backdrop filter lists.
 
 Both routes remain GPU-only. There is no production CPU fallback, CPU effect
 retry, implicit readback, or Vello-atlas re-entry for graph results. CPU pixel
@@ -42,12 +42,12 @@ algorithms exist as test-only quality oracles. Unsupported inputs or missing
 device and surface capabilities produce typed errors instead of a different
 pixel execution path.
 
-A foreground blur captures the completed child group on a layer-local
+A foreground filter list captures the completed child group on a layer-local
 grid. The full transform determines raster density, and the layer
 composite maps the filtered source into its parent. The filter can draw
 from child ink outside the eventual layer clip when its kernel reaches
 visible pixels. The clip, alpha mask, opacity, and composition act on the
-filtered group. The [foreground blur reference](reference.md#foreground-layer-blur)
+filtered group. The [foreground filter reference](reference.md#foreground-layer-filters)
 describes the input range and supported combinations.
 
 Layer blending operates on straight color components while storage and

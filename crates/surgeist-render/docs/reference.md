@@ -594,7 +594,14 @@ normative conflict. Root-backdrop and broad backdrop-policy boundaries remain
 separate. Ledger owns actual graph work, resource custody and optional timings;
 refusal preserves the previous complete pixels and successful statistics.
 
-## Foreground layer blur
+## Foreground layer filters
+
+`Layer::with_filter_list` installs a validated `FilterList` in authored
+order, replacing the previous foreground effect. `FilterList::none()`
+clears the effect. Each function takes the previous function's result.
+The color functions operate in numeric sRGB with a clamp between
+operations. Gaussian blur and drop shadow expand the affected bounds
+using layer-local units and signed shadow offsets.
 
 `Layer::try_filter(Filter::try_blur(sigma)?)` applies one scalar Gaussian
 standard deviation in layer-local logical units. The authored constructor
@@ -605,18 +612,19 @@ to the resulting work and allocations.
 Render captures the layer's completed children over transparent black.
 Positive sigma uses horizontal and vertical RGBA Gaussian passes with
 transparent-black sampling outside the input. The output includes the
-filter halo wherever it can contribute to the parent. Sigma that is zero
-on the device grid still groups the children and skips both Gaussian passes.
+filter halo wherever it can contribute to the parent. A blur with zero
+device sigma still groups the children and skips both Gaussian passes.
+A drop shadow with zero device sigma samples the unblurred source alpha.
 Layer clipping, resolved alpha masking, opacity, and composition apply to the
 group output. See the [layer composition contract](#layer-composition-and-isolation)
 for the finite operation domain of destructive operators.
 
 `FilterCapabilities::supports_layer_filters` and
 `OffscreenPipelineCapabilities::supports_layer_filter_execution` report
-this foreground blur route. A frame may also use one bounded,
+these foreground functions. A frame may also use one bounded,
 untransformed, top-level backdrop filter. It samples the completed prior
-parent, including any earlier foreground blur. When a single layer has both
-effects, its foreground blur consumes the group formed by the clipped
+parent, including earlier foreground filter results. When a single layer
+has both effects, its foreground list consumes the group formed by the clipped
 backdrop and the children before the outer layer effects. Nested,
 transformed, and repeated backdrop requests return the typed
 `BroadBackdropExecution` diagnostic.

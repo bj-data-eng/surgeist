@@ -7,7 +7,7 @@ use super::{Backend, DeviceSlotIdentity, create_headless_texture};
 use crate::accounting::{Account, Generation, GpuObjectKind, OwnedBox, OwnedGpu, RenderPhase};
 
 use crate::pass::{
-    BasePreparableGraph, CompositionPreparableGraph, ForegroundBlurPreparableGraph,
+    BasePreparableGraph, CompositionPreparableGraph, ForegroundFilterPreparableGraph,
     GraphExternalOutputView, PreparedGraph,
 };
 use crate::resource::{FrameCleanup, WorkingFormat};
@@ -59,7 +59,7 @@ pub(crate) enum ExactSurfaceGraph {
     Base(BasePreparableGraph),
     Composition(CompositionPreparableGraph),
     Backdrop(crate::pass::BackdropPreparableGraph),
-    ForegroundBlur(ForegroundBlurPreparableGraph),
+    ForegroundFilters(ForegroundFilterPreparableGraph),
 }
 
 #[cfg(test)]
@@ -93,7 +93,7 @@ impl ExactSurfaceGraph {
             Self::Base(preparable) => preparable.working_format(),
             Self::Composition(preparable) => preparable.working_format(),
             Self::Backdrop(preparable) => preparable.working_format(),
-            Self::ForegroundBlur(preparable) => preparable.spatial_filter().working_format(),
+            Self::ForegroundFilters(preparable) => preparable.working_format(),
         }
     }
 
@@ -102,7 +102,7 @@ impl ExactSurfaceGraph {
             Self::Base(preparable) => preparable.output_format(),
             Self::Composition(preparable) => preparable.output_format(),
             Self::Backdrop(preparable) => preparable.output_format(),
-            Self::ForegroundBlur(preparable) => preparable.spatial_filter().output_format(),
+            Self::ForegroundFilters(preparable) => preparable.output_format(),
         }
     }
 
@@ -111,9 +111,7 @@ impl ExactSurfaceGraph {
             Self::Base(preparable) => preparable.output_extent(account).map(Some),
             Self::Composition(_) => Ok(None),
             Self::Backdrop(preparable) => preparable.output_extent(account).map(Some),
-            Self::ForegroundBlur(preparable) => {
-                preparable.spatial_filter().output_extent(account).map(Some)
-            }
+            Self::ForegroundFilters(preparable) => preparable.output_extent(account).map(Some),
         }
     }
 }
@@ -443,9 +441,9 @@ impl Backend {
                 (&ready.pass_cache, true),
                 account,
             ),
-            ExactSurfaceGraph::ForegroundBlur(preparable) => {
-                PreparedGraph::try_prepare_spatial_filter(
-                    preparable.spatial_filter(),
+            ExactSurfaceGraph::ForegroundFilters(ForegroundFilterPreparableGraph::Color(graph)) => {
+                PreparedGraph::try_prepare_color_filter(
+                    graph,
                     selected_working_format,
                     &capabilities,
                     (&ready.device, &ready.queue),
@@ -454,6 +452,17 @@ impl Backend {
                     account,
                 )
             }
+            ExactSurfaceGraph::ForegroundFilters(ForegroundFilterPreparableGraph::Spatial(
+                graph,
+            )) => PreparedGraph::try_prepare_spatial_filter(
+                graph,
+                selected_working_format,
+                &capabilities,
+                (&ready.device, &ready.queue),
+                &ready.resources,
+                (&ready.pass_cache, true),
+                account,
+            ),
         }?
         .with_vello_engine(&ready.engine);
         Ok(prepared)
