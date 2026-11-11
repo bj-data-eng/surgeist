@@ -154,6 +154,13 @@ impl GpuRenderGraph {
 }
 
 impl GpuRenderGraph {
+    pub(crate) fn filter_step_pass_backing_for_test(&self) -> Vec<(usize, usize)> {
+        self.filter_steps
+            .iter()
+            .map(|step| (step.passes.len(), step.passes.capacity()))
+            .collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn forced_capture_observations_for_test(
         &self,
