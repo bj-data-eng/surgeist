@@ -120,7 +120,7 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         },
         &cancel,
     );
-    if let Some(error) = context.error {
+    if let Some(error) = context.error.take() {
         return Err(Box::new(error));
     }
     let _ = outer?;
@@ -130,18 +130,16 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         "unexpected child entry: {:?}",
         context.unexpected
     );
-    let child = context.event.expect("real callback started its child");
-    let mut empty = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 0,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })?;
+    let child = context
+        .event
+        .take()
+        .expect("real callback started its child");
     assert!(matches!(
         session.source_execution().service_event(
             &mut session.dom(),
             &child,
-            &mut empty,
-            &mut (),
+            &mut registry,
+            &mut context,
             DomSourceEventServiceLimits {
                 source: child_limits(),
                 dispatch: dispatch_limits()

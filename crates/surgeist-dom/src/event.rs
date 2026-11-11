@@ -1,6 +1,49 @@
 //! Positive native event recipients and shared event-parent observations.
 use crate::{DomError, DomHostedGlobalId, DomResource, NodeId};
 
+/// Affine association of the one live listener-registry owner with a canonical
+/// DOM. This capability owns no callbacks or tree and cannot be cloned. Dropping
+/// it permits a fresh owner; it transfers no registrations or dispatch progress.
+pub struct DomEventRegistryAssociation {
+    pub(crate) binding: std::sync::Arc<RegistryBinding>,
+    pub(crate) body: crate::store::custody::SharedDebit,
+    pub(crate) payload: crate::store::custody::Debit,
+}
+pub(crate) struct RegistryBinding {
+    pub(crate) owner: crate::DomOwnerId,
+}
+/// Admitted, unpublished registry storage. Drop discards preparation without
+/// claiming the canonical listener list. Keep represented buffers alive with
+/// this funding capability until they are freed or publication succeeds.
+#[derive(Debug)]
+pub struct DomEventRegistryPreparation(pub(crate) DomEventRegistryAssociation);
+pub(crate) struct RegistryObservation {
+    pub(crate) binding: std::sync::Weak<RegistryBinding>,
+    pub(crate) _body: crate::store::custody::SharedDebit,
+}
+impl std::fmt::Debug for DomEventRegistryAssociation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomEventRegistryAssociation")
+            .field("owner", &self.binding.owner)
+            .finish_non_exhaustive()
+    }
+}
+impl DomEventRegistryAssociation {
+    /// Exact canonical owner; this scalar observation grants no execution.
+    pub fn owner(&self) -> crate::DomOwnerId {
+        self.binding.owner
+    }
+    /// Fixed producer-owned payload, excluding opaque allocator metadata.
+    pub const fn binding_payload_bytes() -> usize {
+        std::mem::size_of::<RegistryBinding>()
+            + crate::store::custody::SharedDebit::administration_usage().bytes()
+    }
+    /// Actual binding body and admitted registry control backing.
+    pub fn retained_bytes(&self) -> usize {
+        self.body.usage().bytes() + self.payload.usage().bytes()
+    }
+}
+
 /// One actual Node or Global event endpoint. An identity retains no tree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomEventTarget {

@@ -761,6 +761,50 @@ fn movable_external_payload_drop_and_formed_growth_conserve_the_original_live_de
 }
 
 #[test]
+fn detached_event_payload_transfers_only_its_original_ledger_extent() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, _executor, _, first, _) = fixture();
+    let event = request(&mut dom, first);
+    let ledger = dom.custody_registry.ledger().clone();
+    let baseline = ledger.total();
+    let units = 16;
+    let bytes = size_of::<Vec<u16>>() + units * size_of::<u16>();
+    let mut receipt = dom
+        .retain_source_event_payload(&event, bytes, units, &cancel)
+        .unwrap();
+    let mut backing = Vec::<u16>::new();
+    backing.try_reserve_exact(units).unwrap();
+    assert_eq!(backing.capacity(), units);
+    let charged = baseline
+        .checked_add(custody::Usage::new(bytes, units))
+        .unwrap();
+    assert_eq!(ledger.total(), charged);
+    let work = event.work.work.load(Ordering::Relaxed);
+    for (too_many_bytes, too_many_units) in [(bytes + 1, units), (bytes, units + 1)] {
+        assert!(matches!(
+            receipt.split_payload(too_many_bytes, too_many_units),
+            Err(DomError::RepresentationExhausted)
+        ));
+        assert_eq!(ledger.total(), charged);
+        assert_eq!(event.work.bytes.load(Ordering::Relaxed), bytes);
+        assert_eq!(event.work.units.load(Ordering::Relaxed), units);
+    }
+    let payload = receipt.split_payload(bytes, units).unwrap();
+    drop(receipt);
+    assert_eq!(ledger.total(), charged);
+    assert_eq!(event.work.work.load(Ordering::Relaxed), work);
+    assert_eq!(event.work.bytes.load(Ordering::Relaxed), 0);
+    assert_eq!(event.work.units.load(Ordering::Relaxed), 0);
+    drop(backing);
+    drop(payload);
+    assert_eq!(ledger.total(), baseline);
+    assert_eq!(
+        dom.pending_source_edit().unwrap().operation(),
+        event.operation()
+    );
+}
+
+#[test]
 fn legacy_details_transfer_refuses_during_observation_and_preserves_the_actual_intention() {
     let cancel = AtomicBool::new(false);
     let (mut dom, executor, document, first, _) = fixture();

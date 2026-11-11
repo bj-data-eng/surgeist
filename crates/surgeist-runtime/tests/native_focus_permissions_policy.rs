@@ -194,10 +194,33 @@ fn dialog(session: &mut DomSession, document: DocumentId) -> NodeId {
 }
 fn drive(
     session: &mut DomSession,
+    subject: NodeId,
     edit: DomSourceEdit,
     cancelable: bool,
     calls: &mut Vec<bool>,
 ) -> DomSourceDriveProgress {
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 4,
+        pending_events: 4,
+        nested_dispatches: 4,
+    })
+    .unwrap();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(move |_, _, calls: &mut Vec<bool>, event| {
+                assert_eq!(event.cancelable(), cancelable);
+                calls.push(event.cancelable());
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
     let event = match session
         .source_execution()
         .apply(
@@ -220,30 +243,9 @@ fn drive(
         } => event,
         other => panic!("real Dialog method must first fire beforetoggle: {other:?}"),
     };
+    assert_eq!(event.subject(), subject);
     assert_eq!(event.cancelable(), cancelable);
     assert_eq!(event.toggle_event().unwrap().source(), None);
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 4,
-        pending_events: 4,
-        nested_dispatches: 4,
-    })
-    .unwrap();
-    registry
-        .add_listener(
-            &mut session.dom(),
-            event.subject(),
-            DomEventType::BeforeToggle,
-            DomEventCallback::new(move |_, _, calls: &mut Vec<bool>, event| {
-                assert_eq!(event.cancelable(), cancelable);
-                calls.push(event.cancelable());
-                Ok(())
-            }),
-            DomEventListenerOptions {
-                capture: false,
-                once: true,
-            },
-        )
-        .unwrap();
     match session
         .source_execution()
         .service_event(
@@ -503,6 +505,7 @@ fn enabled_permission_keeps_positive_focusing_pending_even_without_any_activatio
     let mut calls = Vec::new();
     let progress = drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -544,6 +547,7 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
     let mut calls = Vec::new();
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -576,6 +580,7 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
     );
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::close_dialog(subject, None),
         false,
         &mut calls,
@@ -605,6 +610,7 @@ fn real_denied_modal_close_and_reshow_keep_pending_raw_membership_without_readdi
     assert_eq!(close_task.dialog_close().unwrap().id().target(), subject);
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -706,6 +712,7 @@ fn enabled_autofocus_preserves_actual_focusing_wait_and_completes_same_origin_ta
         let mut calls = Vec::new();
         let progress = drive(
             &mut session,
+            subject,
             DomSourceEdit::show_modal_dialog(subject),
             true,
             &mut calls,
@@ -811,28 +818,6 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
         assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
     }
     let before = session.snapshot();
-    let event = match session
-        .source_execution()
-        .apply(
-            &mut session.dom(),
-            DomSourceEdit::show_modal_dialog(subject),
-            source_limits(),
-            &mut DomSourceServices {
-                meta: None,
-                execution_scope: None,
-                style_policy: &mut |_| None,
-                url: None,
-            },
-            &cancel(),
-        )
-        .unwrap()
-    {
-        DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Event(event),
-            ..
-        } => event,
-        other => panic!("actual beforetoggle required: {other:?}"),
-    };
     struct Context {
         source: DomSourceRuntime,
         calls: usize,
@@ -877,6 +862,28 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             },
         )
         .unwrap();
+    let event = match session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_modal_dialog(subject),
+            source_limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(event),
+            ..
+        } => event,
+        other => panic!("actual beforetoggle required: {other:?}"),
+    };
     match session
         .source_execution()
         .service_event(
@@ -1078,6 +1085,7 @@ fn enabled_cross_origin_inert_autofocus_dialog_completes_show_modal() {
     // The real child/top origin mismatch then returns before autofocus writes.
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -1207,6 +1215,7 @@ fn enabled_same_origin_inert_autofocus_dialog_completes_its_autofocus_tail() {
     // SetAutofocusProcessed, then the original ShowModal must return.
     let done = match drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -1399,6 +1408,7 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
     // actual same-origin top Document permits the existing autofocus tail.
     let progress = drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,

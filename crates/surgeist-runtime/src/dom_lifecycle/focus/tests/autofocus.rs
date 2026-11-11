@@ -326,28 +326,6 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
             )
         };
         let policy = bounded(EXACT_OUTPUTS - usize::from(short));
-        let before = match session
-            .source_execution()
-            .apply(
-                &mut session.dom(),
-                DomSourceEdit::show_modal_dialog(subject),
-                policy,
-                &mut DomSourceServices {
-                    meta: None,
-                    execution_scope: None,
-                    style_policy: &mut |_| None,
-                    url: None,
-                },
-                &cancel,
-            )
-            .unwrap()
-        {
-            DomSourceDriveProgress::Pending {
-                request: DomSourceRequest::Event(event),
-                ..
-            } => event,
-            other => panic!("actual beforetoggle must precede QueueToggle preadmission: {other:?}"),
-        };
         let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
             registrations: 1,
             pending_events: 1,
@@ -370,6 +348,28 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 },
             )
             .unwrap();
+        let before = match session
+            .source_execution()
+            .apply(
+                &mut session.dom(),
+                DomSourceEdit::show_modal_dialog(subject),
+                policy,
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+        {
+            DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::Event(event),
+                ..
+            } => event,
+            other => panic!("actual beforetoggle must precede QueueToggle preadmission: {other:?}"),
+        };
         let mut calls = 0;
         match session
             .source_execution()

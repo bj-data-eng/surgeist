@@ -157,9 +157,9 @@ fn dispatch_hosted(kind: DomEventType) {
         }
     }
     let event = if kind == DomEventType::Error {
-        NativeDomEvent::style_error(target)
+        NativeDomEvent::style_error(target, test_event_backing())
     } else {
-        NativeDomEvent::style_load(target)
+        NativeDomEvent::style_load(target, test_event_backing())
     };
     assert!(!event.bubbles());
     let mut seen = Vec::new();

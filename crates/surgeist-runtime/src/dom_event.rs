@@ -326,14 +326,11 @@ pub struct DomEventDispatchReceipt {
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
     default_prevented: bool,
-    element_task_payload: Option<crate::element_tasks::TaskPayload>,
+    funding: Option<DispatchFunding>,
 }
 impl DomEventDispatchReceipt {
-    pub(crate) fn release_element_task_retention(&mut self) {
-        self.element_task_payload.take();
-    }
-    pub(crate) fn retained_backing_bytes(&self) -> usize {
-        self.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
+    pub(crate) fn release_producer_retention(&mut self) {
+        self.funding.take();
     }
     /// Original exact target, independent of later retirement/reparenting.
     pub fn original_target(&self) -> NodeId {
@@ -462,7 +459,7 @@ pub struct DomEventHostError {
 /// Dropping an unreported token abandons delivery without a completion receipt.
 pub struct DomEventHostInvocation {
     event: NativeDomEvent,
-    custody: std::rc::Weak<EventContinuation>,
+    custody: ContinuationObservation,
     sequence: usize,
     registration: DomEventRegistrationId,
     key: u64,
@@ -528,17 +525,15 @@ impl DomEventHostInvocation {
         if self.event.0.status.get() == Status::Abandoned {
             return Err(DomEventDispatchError::Abandoned);
         }
-        {
-            let dispatch = custody
-                .dispatch
-                .try_borrow()
-                .map_err(|_| DomEventDispatchError::AlreadyDispatching)?;
-            let dispatch = dispatch
-                .as_ref()
-                .ok_or(DomEventDispatchError::WrongContinuation)?;
-            if !Rc::ptr_eq(&dispatch._reservation.0, &dispatcher.owner) {
-                return Err(DomEventDispatchError::WrongContinuation);
-            }
+        let mut parked = custody
+            .dispatch
+            .try_borrow_mut()
+            .map_err(|_| DomEventDispatchError::AlreadyDispatching)?;
+        let dispatch = parked
+            .as_ref()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        if !Rc::ptr_eq(&dispatch._reservation.0, &dispatcher.owner) {
+            return Err(DomEventDispatchError::WrongContinuation);
         }
         let mut frame = custody
             .host
@@ -552,12 +547,20 @@ impl DomEventHostInvocation {
             custody.host.set(Some(frame));
             return Err(DomEventDispatchError::AlreadyCompleted);
         }
-        frame.result = Some(result);
         frame.scope.take();
         frame.running.take();
-        custody.host.set(Some(frame));
         self.event.clear_invocation();
-        self.event.0.status.set(Status::Retained);
+        match result {
+            HostResult::Returned(result) => {
+                frame.result = Some(result);
+                custody.host.set(Some(frame));
+                self.event.0.status.set(Status::Retained);
+            }
+            HostResult::Refused(error) => {
+                self.event.0.status.set(Status::HostRefused(error));
+                drop(parked.take());
+            }
+        }
         self.reported = true;
         Ok(())
     }
@@ -614,7 +617,7 @@ struct HostFrame {
     sequence: usize,
     registration: DomEventRegistrationId,
     current_target: DomEventTarget,
-    result: Option<HostResult>,
+    result: Option<Result<(), DomEventCallbackError>>,
     running: Option<RunningReservation>,
     scope: Option<surgeist_dom::DomSourceEventDispatchGuard>,
 }
@@ -648,6 +651,79 @@ impl Drop for RunningReservation {
         self.0.running.set(self.0.running.get() - 1);
     }
 }
+enum RegistryAssociation {
+    Unbound,
+    Bound(surgeist_dom::DomEventRegistryAssociation),
+}
+struct PreparedRegistry {
+    // Backing is released before its provisional canonical debit.
+    pending: Vec<ContinuationObservation>,
+    association: surgeist_dom::DomEventRegistryPreparation,
+}
+impl RegistryAssociation {
+    fn validate(&self, dom: &Dom) -> Result<(), DomEventDispatchError> {
+        match self {
+            Self::Unbound => Ok(()),
+            Self::Bound(association) => association.validate(dom).map_err(Into::into),
+        }
+    }
+    fn prepare(
+        &self,
+        dom: &mut Dom,
+        pending_events: usize,
+        cancel: &AtomicBool,
+    ) -> Result<Option<PreparedRegistry>, DomEventDispatchError> {
+        match self {
+            Self::Unbound => {
+                let bytes = pending_events
+                    .checked_mul(std::mem::size_of::<ContinuationObservation>())
+                    .ok_or(DomEventDispatchError::Admission(
+                        DomEventResource::Allocation,
+                    ))?;
+                let association = dom.prepare_event_registry(bytes, cancel)?;
+                let mut pending = Vec::new();
+                pending
+                    .try_reserve_exact(pending_events)
+                    .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+                if pending.capacity() != pending_events {
+                    return Err(DomEventDispatchError::Admission(
+                        DomEventResource::PendingEvents,
+                    ));
+                }
+                Ok(Some(PreparedRegistry {
+                    pending,
+                    association,
+                }))
+            }
+            Self::Bound(_) => Ok(None),
+        }
+    }
+    fn commit(
+        &mut self,
+        prepared: Option<PreparedRegistry>,
+        pending: &mut Vec<ContinuationObservation>,
+        dom: &mut Dom,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomEventDispatchError> {
+        if let Some(prepared) = prepared {
+            let PreparedRegistry {
+                pending: backing,
+                association,
+            } = prepared;
+            let association = match association.commit(dom, cancel) {
+                Ok(association) => association,
+                Err((error, preparation)) => {
+                    drop(backing);
+                    drop(preparation);
+                    return Err(error.into());
+                }
+            };
+            *pending = backing;
+            *self = Self::Bound(association);
+        }
+        Ok(())
+    }
+}
 /// Runtime's one native listener registry and path/invocation owner.
 /// `C` is the application's actual mutable composition state, e.g. its CSSOM
 /// and Style coordinator; the dispatcher does not own those family semantics.
@@ -656,9 +732,16 @@ pub struct DomEventDispatcher<C> {
     limits: DomEventRegistryLimits,
     slots: Vec<Slot<C>>,
     next_order: u64,
+    pending: Vec<ContinuationObservation>,
+    // Drops after the actual callback list. Dispatch reservations hold no lease:
+    // abandoning this dispatcher withdraws its canonical association immediately.
+    association: RegistryAssociation,
 }
 impl<C> DomEventDispatcher<C> {
-    /// Establish a distinct finite registry. Zero bounds intentionally admit no work.
+    /// Establish an empty unbound registry. Its first accepted registration or
+    /// dispatch associates it irreversibly with the canonical DOM's one live
+    /// listener owner. A second live owner cannot select a parallel listener list.
+    /// Zero bounds intentionally admit no work.
     pub fn new(limits: DomEventRegistryLimits) -> Result<Self, DomEventDispatchError> {
         let id = NEXT_REGISTRY
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
@@ -672,6 +755,8 @@ impl<C> DomEventDispatcher<C> {
             limits,
             slots: Vec::new(),
             next_order: 0,
+            pending: Vec::new(),
+            association: RegistryAssociation::Unbound,
         })
     }
     /// Add in deterministic order. The target/type/callback identity/capture key
@@ -686,6 +771,7 @@ impl<C> DomEventDispatcher<C> {
         callback: DomEventCallback<C>,
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DomEventDispatchError> {
+        self.association.validate(dom.raw())?;
         let target = target.into();
         match target {
             DomEventTarget::Node(node) => {
@@ -743,14 +829,20 @@ impl<C> DomEventDispatcher<C> {
                 .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
         }
         // Every fallible Runtime preparation precedes acquiring the canonical
-        // registration. Duplicates returned above retain their original lease.
+        // registration. A refused first registration drops its provisional
+        // association; duplicates retain their original association and lease.
         let synchronous = AtomicBool::new(false);
+        let association =
+            self.association
+                .prepare(dom.raw_mut(), self.limits.pending_events, &synchronous)?;
         let recipient = dom.raw_mut().retain_event_recipient(
             target,
             event_type,
             options.capture,
             &synchronous,
         )?;
+        self.association
+            .commit(association, &mut self.pending, dom.raw_mut(), &synchronous)?;
         let slot = if let Some(slot) = reusable {
             slot
         } else {
@@ -796,31 +888,48 @@ impl<C> DomEventDispatcher<C> {
         (slot.generation == id.generation).then_some(())?;
         slot.registration.as_ref()
     }
-    /// Begin a fresh source event. Exact live target and the entire path are
-    /// validated/admitted before any callback is entered.
-    pub(crate) fn dispatch(
+    pub(crate) fn deliver(
         &mut self,
         dom: &mut Dom,
         context: &mut C,
         event: &NativeDomEvent,
-        limits: DomEventDispatchLimits,
-        cancel: &AtomicBool,
+        call: DispatchCall<'_>,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
-        self.dispatch_with_host(dom, context, event, limits, cancel, false)
+        if event.has_started() {
+            self.continue_dispatch(dom, context, event, call)
+        } else {
+            self.start_dispatch(dom, context, event, call)
+        }
     }
-    pub(crate) fn dispatch_with_host(
+
+    pub(crate) fn qualify_terminal_error(
+        &self,
+        dom: &Dom,
+        error: DomEventDispatchError,
+    ) -> DomEventDispatchError {
+        self.association.validate(dom).err().unwrap_or(error)
+    }
+
+    /// Validate and admit the entire path before the first callback.
+    fn start_dispatch(
         &mut self,
         dom: &mut Dom,
         context: &mut C,
         event: &NativeDomEvent,
-        limits: DomEventDispatchLimits,
-        cancel: &AtomicBool,
-        host: bool,
+        call: DispatchCall<'_>,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        let DispatchCall {
+            limits,
+            cancel,
+            host,
+            mut funding,
+        } = call;
+        self.association.validate(dom)?;
         match event.0.status.get() {
             Status::Ready => (),
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
             Status::Abandoned => return Err(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             _ => return Err(DomEventDispatchError::AlreadyDispatching),
         }
         self.admit_running()?;
@@ -846,6 +955,12 @@ impl<C> DomEventDispatcher<C> {
         })? {
             return Err(DomEventDispatchError::ParsedSynchronousPending { requirement });
         }
+        if matches!(self.association, RegistryAssociation::Unbound) {
+            budget.tick().map_err(DomEventDispatchError::Admission)?;
+        }
+        let association = self
+            .association
+            .prepare(dom, self.limits.pending_events, cancel)?;
         let mut path = build_path(
             dom,
             &snapshot,
@@ -887,7 +1002,6 @@ impl<C> DomEventDispatcher<C> {
             .register_dispatch_custody(&invocation_nodes, &AtomicBool::new(false))
             .map_err(DomEventDispatchError::Dom)?;
         drop(invocation_nodes);
-        self.owner.pending.set(self.owner.pending.get() + 1);
         let path_bytes = std::mem::size_of::<EventPath>()
             .checked_add(
                 path.capacity()
@@ -899,25 +1013,14 @@ impl<C> DomEventDispatcher<C> {
             .ok_or(DomEventDispatchError::Admission(
                 DomEventResource::Allocation,
             ))?;
-        let path_retained = event
-            .0
-            .continuation
-            .upgrade()
-            .ok_or(DomEventDispatchError::Abandoned)?
-            .element_task_payload
-            .borrow_mut()
-            .as_mut()
-            .map(|retained| {
-                retained
-                    .split(path_bytes, path_bytes)
-                    .expect("pre-admitted actual path capacity")
-            });
+        let path_funding = funding.split_path(path_bytes)?;
+        self.owner.pending.set(self.owner.pending.get() + 1);
         let mut dispatch = Dispatch {
             association_custody,
             _reservation: PendingReservation(self.owner.clone()),
             path: Rc::new(EventPath {
                 items: path,
-                _manipulation: path_retained,
+                _funding: path_funding,
             }),
             invoke: 0,
             snapshot: None,
@@ -925,39 +1028,70 @@ impl<C> DomEventDispatcher<C> {
             callbacks: 0,
             failures: Vec::new(),
             clear_target,
+            funding,
         };
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
+        dispatch.retain_running_funding(limits)?;
+        // Only active original invocations remain indexed. This index is
+        // bounded by pending_events and its backing was admitted with the
+        // registry association. Reserve its next entry before execution.
+        let mut pending = 0;
+        while pending < self.pending.len() {
+            budget.tick().map_err(DomEventDispatchError::Admission)?;
+            if self.pending[pending]
+                .upgrade()
+                .and_then(|custody| custody.event())
+                .is_some_and(|event| !event.0.status.get().is_terminal())
+            {
+                pending += 1;
+            } else {
+                self.pending.swap_remove(pending);
+            }
+        }
+        let capacity = association
+            .as_ref()
+            .map_or(self.pending.capacity(), |prepared| {
+                prepared.pending.capacity()
+            });
+        if pending >= capacity {
+            return Err(DomEventDispatchError::Admission(
+                DomEventResource::PendingEvents,
+            ));
+        }
+        let _custody = event
+            .0
+            .continuation
+            .upgrade()
+            .ok_or(DomEventDispatchError::Abandoned)?;
+        self.association
+            .commit(association, &mut self.pending, dom, cancel)?;
+        self.pending.push(event.0.continuation.clone());
         self.execute(dom, context, event, dispatch, budget, host)
     }
-    /// Continue exactly where admission stopped. No already-delivered listener
-    /// is called again, even after detach, adoption, retirement or callback failure.
-    pub(crate) fn resume(
+    /// Continue exactly where admission stopped, without entering a delivered listener again.
+    fn continue_dispatch(
         &mut self,
         dom: &mut Dom,
         context: &mut C,
         event: &NativeDomEvent,
-        limits: DomEventDispatchLimits,
-        cancel: &AtomicBool,
+        call: DispatchCall<'_>,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
-        self.resume_with_host(dom, context, event, limits, cancel, false)
-    }
-    pub(crate) fn resume_with_host(
-        &mut self,
-        dom: &mut Dom,
-        context: &mut C,
-        event: &NativeDomEvent,
-        limits: DomEventDispatchLimits,
-        cancel: &AtomicBool,
-        host: bool,
-    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        let DispatchCall {
+            limits,
+            cancel,
+            host,
+            funding,
+        } = call;
+        self.association.validate(dom)?;
         match event.0.status.get() {
             Status::Running | Status::HostPending => {
                 return Err(DomEventDispatchError::AlreadyDispatching);
             }
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
             Status::Abandoned => return Err(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             Status::Ready => return Err(DomEventDispatchError::WrongContinuation),
             Status::Retained => (),
         }
@@ -996,30 +1130,34 @@ impl<C> DomEventDispatcher<C> {
                 Err(_) => unreachable!("frontier scan only returns admission failures"),
             }
         }
-        dispatch
-            .prepare_failure_bank(&mut budget)
-            .map_err(DomEventDispatchError::Admission)?;
+        // The parked receipt still covers the old banks. The newly admitted
+        // margin stays live during replacement and the next callback sequence.
+        dispatch.funding.absorb(funding)?;
+        if let Err(error) = dispatch.prepare_failure_bank(&mut budget) {
+            dispatch.release_unused_funding();
+            return Err(DomEventDispatchError::Admission(error));
+        }
         if let Some(frame) = custody.host.take() {
             match frame.result {
-                Some(HostResult::Returned(Err(error))) => {
+                Some(Err(error)) => {
                     dispatch.failures.push(DomEventListenerFailure {
                         registration: frame.registration,
                         current_target: frame.current_target,
                         kind: DomEventListenerFailureKind::Reported(error),
                     });
                 }
-                Some(HostResult::Returned(Ok(()))) => (),
-                Some(HostResult::Refused(error)) => {
-                    custody.host.set(Some(frame));
-                    return Err(DomEventDispatchError::HostRefused(error));
-                }
+                Some(Ok(())) => (),
                 None => {
                     custody.host.set(Some(frame));
+                    dispatch.release_unused_funding();
                     return Err(DomEventDispatchError::AlreadyDispatching);
                 }
             }
         }
-        let dispatch = state.take().expect("checked continuation");
+        dispatch.retain_running_funding(limits)?;
+        let dispatch = state
+            .take()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
         drop(state);
         self.execute(dom, context, event, dispatch, budget, host)
     }
@@ -1059,6 +1197,10 @@ impl<C> DomEventDispatcher<C> {
         })) = result
         {
             let sequence = dispatch.callbacks;
+            if let Err(error) = dispatch.settle_funding() {
+                event.abandon();
+                return Err(error.into());
+            }
             *custody.borrow_mut() = Some(dispatch);
             custody.host.set(Some(HostFrame {
                 sequence,
@@ -1068,12 +1210,11 @@ impl<C> DomEventDispatcher<C> {
                 running: Some(running),
                 scope: None,
             }));
-            custody.settle_element_task();
             event.0.status.set(Status::HostPending);
             return Ok(DomEventDispatchOutcome::HostInvocation(
                 DomEventHostInvocation {
                     event: event.clone(),
-                    custody: Rc::downgrade(&custody),
+                    custody: event.0.continuation.clone(),
                     sequence,
                     registration,
                     key,
@@ -1093,34 +1234,33 @@ impl<C> DomEventDispatcher<C> {
                 }
                 event.0.stop.set(false);
                 event.0.immediate.set(false);
-                event.0.status.set(Status::Complete);
                 let failure_bytes =
                     dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>();
-                let element_task_payload =
-                    custody
-                        .element_task_payload
-                        .borrow_mut()
-                        .as_mut()
-                        .map(|retained| {
-                            retained
-                                .split(failure_bytes, failure_bytes)
-                                .expect("pre-admitted actual failure backing")
-                        });
+                let funding = match dispatch.funding.split(failure_bytes, failure_bytes) {
+                    Ok(funding) => funding,
+                    Err(error) => {
+                        event.abandon();
+                        return Err(error.into());
+                    }
+                };
+                event.0.status.set(Status::Complete);
                 let receipt = DomEventDispatchReceipt {
                     target: event.0.original,
                     event_type: event.0.event_type(),
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
                     default_prevented: event.default_prevented(),
-                    element_task_payload,
+                    funding: Some(funding),
                 };
                 drop(dispatch);
-                custody.settle_element_task();
                 Ok(DomEventDispatchOutcome::Complete(receipt))
             }
             other => {
+                if let Err(error) = dispatch.settle_funding() {
+                    event.abandon();
+                    return Err(error.into());
+                }
                 *custody.borrow_mut() = Some(dispatch);
-                custody.settle_element_task();
                 event.0.status.set(Status::Retained);
                 Ok(match other {
                     Ok(Err(RunStop::Resource(resource))) => {
@@ -1325,14 +1465,45 @@ impl<C> DomEventDispatcher<C> {
     }
 }
 
+impl<C> Drop for DomEventDispatcher<C> {
+    fn drop(&mut self) {
+        for entry in &self.pending {
+            if let Some(custody) = entry.upgrade() {
+                if let Some(event) = custody.event()
+                    && !event.0.status.get().is_terminal()
+                {
+                    event.abandon();
+                }
+                // No host call retains a mutable continuation loan. Withdraw
+                // its real Source reentry guard before releasing dispatch state.
+                custody.host.take();
+                if let Ok(mut slot) = custody.dispatch.try_borrow_mut() {
+                    // Its receipts drop with the actual backing. A dispatch
+                    // running on the stack still owns its own funding.
+                    drop(slot.take());
+                }
+            }
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Status {
     Abandoned,
     Ready,
     Running,
     HostPending,
+    HostRefused(DomEventHostError),
     Retained,
     Complete,
+}
+
+impl Status {
+    fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Complete | Self::Abandoned | Self::HostRefused(_)
+        )
+    }
 }
 /// Immutable ToggleEvent data projected from the actual HTML producer states.
 /// No public constructor or arbitrary state/source injection is offered.
@@ -1381,8 +1552,7 @@ struct Event {
     immediate: Cell<bool>,
     canceled: Cell<bool>,
     path: Cell<Option<Rc<EventPath>>>,
-    continuation: std::rc::Weak<EventContinuation>,
-    element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
+    continuation: ContinuationObservation,
 }
 impl Event {
     fn event_type(&self) -> DomEventType {
@@ -1399,86 +1569,429 @@ impl Event {
 /// A shared native event identity. Clones refer to the same event and cannot
 /// redispatch it while running/retained or obtain a second completion receipt.
 #[derive(Clone)]
-pub struct NativeDomEvent(Rc<Event>);
-/// The actual closed source task owns active dispatch custody. Observation
-/// clones hold only a Weak reference and cannot extend its admission lifetime.
+pub struct NativeDomEvent(Rc<Event>, Rc<BodyCustody>);
+/// Accounting only. No event, continuation, guard or execution authority is
+/// reachable through a receipt. Each actual allocation has one shared receipt.
+struct BodyCustody {
+    _storage: BodyStorage,
+}
+enum BodyStorage {
+    Element {
+        _retained: crate::element_tasks::TaskPayload,
+    },
+    Source {
+        _retained: surgeist_dom::DomSourceEventRetention,
+        _extent: BodyExtent,
+    },
+    Style {
+        _extent: BodyExtent,
+    },
+    #[cfg(test)]
+    Fixture,
+}
+struct BodyExtent {
+    live: Rc<Cell<usize>>,
+    bytes: usize,
+}
+impl BodyExtent {
+    fn new(live: &Rc<Cell<usize>>, bytes: usize) -> Self {
+        // The producer checked and admitted this exact extra extent before
+        // construction. Keeping the counter grants no owner access.
+        live.set(live.get() + bytes);
+        Self {
+            live: live.clone(),
+            bytes,
+        }
+    }
+}
+impl Drop for BodyExtent {
+    fn drop(&mut self) {
+        self.live.set(self.live.get() - self.bytes);
+    }
+}
+
+/// Accounting-only funding from the original producer. This owns no event,
+/// dispatcher, callback, Source execution permission or task row.
+pub(crate) struct DispatchFunding(Funding);
+
+enum Funding {
+    Element(crate::element_tasks::TaskPayload),
+    Source {
+        extent: BodyExtent,
+        retained: surgeist_dom::DomSourceEventRetention,
+        source_bytes: usize,
+    },
+    Style(BodyExtent),
+    #[cfg(test)]
+    Fixture,
+}
+
+enum PathFunding {
+    Element {
+        _retained: crate::element_tasks::TaskPayload,
+    },
+    Source {
+        _extent: BodyExtent,
+        _retained: surgeist_dom::DomSourceEventPayloadRetention,
+    },
+    Style {
+        _extent: BodyExtent,
+    },
+    #[cfg(test)]
+    Fixture,
+}
+
+impl DispatchFunding {
+    pub(crate) fn element(retained: crate::element_tasks::TaskPayload) -> Self {
+        Self(Funding::Element(retained))
+    }
+
+    pub(crate) fn source(
+        live: &Rc<Cell<usize>>,
+        retained: surgeist_dom::DomSourceEventRetention,
+        formation: DispatchFormation,
+    ) -> Self {
+        Self(Funding::Source {
+            extent: BodyExtent::new(live, formation.full),
+            retained,
+            source_bytes: formation.source,
+        })
+    }
+
+    pub(crate) fn style(live: &Rc<Cell<usize>>, bytes: usize) -> Self {
+        Self(Funding::Style(BodyExtent::new(live, bytes)))
+    }
+
+    fn split_path(&mut self, bytes: usize) -> Result<PathFunding, DomError> {
+        Ok(match &mut self.0 {
+            Funding::Element(retained) => PathFunding::Element {
+                _retained: retained.split(bytes, bytes).map_err(task_funding_error)?,
+            },
+            Funding::Source {
+                extent,
+                retained,
+                source_bytes,
+            } => {
+                let remainder = extent
+                    .bytes
+                    .checked_sub(bytes)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let remaining_source = source_bytes
+                    .checked_sub(bytes)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let path = retained.split_payload(bytes, 0)?;
+                *source_bytes = remaining_source;
+                PathFunding::Source {
+                    _extent: extent.transfer(bytes, remainder),
+                    _retained: path,
+                }
+            }
+            Funding::Style(extent) => {
+                let remainder = extent
+                    .bytes
+                    .checked_sub(bytes)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                PathFunding::Style {
+                    _extent: extent.transfer(bytes, remainder),
+                }
+            }
+            #[cfg(test)]
+            Funding::Fixture => PathFunding::Fixture,
+        })
+    }
+
+    fn split(&mut self, full: usize, source: usize) -> Result<Self, DomError> {
+        match &mut self.0 {
+            Funding::Element(retained) => retained
+                .split(full, source)
+                .map(Self::element)
+                .map_err(task_funding_error),
+            Funding::Source {
+                extent,
+                retained,
+                source_bytes,
+            } => {
+                let remainder = extent
+                    .bytes
+                    .checked_sub(full)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let remaining_source = source_bytes
+                    .checked_sub(source)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                let retained = retained.split(source, 0)?;
+                *source_bytes = remaining_source;
+                Ok(Self(Funding::Source {
+                    extent: extent.transfer(full, remainder),
+                    retained,
+                    source_bytes: source,
+                }))
+            }
+            Funding::Style(extent) => {
+                let remainder = extent
+                    .bytes
+                    .checked_sub(full)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                Ok(Self(Funding::Style(extent.transfer(full, remainder))))
+            }
+            #[cfg(test)]
+            Funding::Fixture => Ok(Self(Funding::Fixture)),
+        }
+    }
+
+    fn absorb(&mut self, other: Self) -> Result<(), DomError> {
+        match (&mut self.0, other.0) {
+            (Funding::Element(retained), Funding::Element(other)) => {
+                retained.absorb(other).map_err(task_funding_error)
+            }
+            (
+                Funding::Source {
+                    extent,
+                    retained,
+                    source_bytes,
+                },
+                Funding::Source {
+                    extent: mut incoming,
+                    retained: other,
+                    source_bytes: incoming_source,
+                },
+            ) => {
+                let total = extent.join_bytes(&incoming)?;
+                let source_total = source_bytes
+                    .checked_add(incoming_source)
+                    .ok_or(DomError::RepresentationExhausted)?;
+                retained.absorb(other)?;
+                *source_bytes = source_total;
+                extent.bytes = total;
+                incoming.bytes = 0;
+                Ok(())
+            }
+            (Funding::Style(extent), Funding::Style(mut incoming)) => {
+                extent.bytes = extent.join_bytes(&incoming)?;
+                incoming.bytes = 0;
+                Ok(())
+            }
+            #[cfg(test)]
+            (Funding::Fixture, Funding::Fixture) => Ok(()),
+            _ => Err(DomError::ForeignOwner),
+        }
+    }
+
+    fn shrink(&mut self, full: usize, source: usize) -> Result<(), DomError> {
+        let (old_full, old_source) = match &mut self.0 {
+            Funding::Element(retained) => (retained.full(), retained.source()),
+            Funding::Source {
+                extent,
+                source_bytes,
+                ..
+            } => (extent.bytes, *source_bytes),
+            Funding::Style(extent) => (extent.bytes, source),
+            #[cfg(test)]
+            Funding::Fixture => return Ok(()),
+        };
+        let extra = old_full
+            .checked_sub(full)
+            .ok_or(DomError::RepresentationExhausted)?;
+        let extra_source = old_source
+            .checked_sub(source)
+            .ok_or(DomError::RepresentationExhausted)?;
+        drop(self.split(extra, extra_source)?);
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for DispatchFunding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DispatchFunding").finish_non_exhaustive()
+    }
+}
+
+impl BodyExtent {
+    fn transfer(&mut self, bytes: usize, remainder: usize) -> Self {
+        self.bytes = remainder;
+        Self {
+            live: self.live.clone(),
+            bytes,
+        }
+    }
+
+    fn join_bytes(&self, other: &Self) -> Result<usize, DomError> {
+        if !Rc::ptr_eq(&self.live, &other.live) {
+            return Err(DomError::ForeignOwner);
+        }
+        self.bytes
+            .checked_add(other.bytes)
+            .ok_or(DomError::RepresentationExhausted)
+    }
+}
+
+fn task_funding_error(error: crate::DomElementTaskRuntimeError) -> DomError {
+    match error {
+        crate::DomElementTaskRuntimeError::Dom(error) => error,
+        crate::DomElementTaskRuntimeError::Binding => DomError::ForeignOwner,
+        _ => DomError::RepresentationExhausted,
+    }
+}
+pub(crate) struct EventBodyCustody {
+    event: Rc<BodyCustody>,
+    continuation: Rc<BodyCustody>,
+}
+impl EventBodyCustody {
+    fn event_bytes() -> usize {
+        std::mem::size_of::<Event>() + std::mem::size_of::<BodyCustody>()
+    }
+    fn continuation_bytes() -> usize {
+        std::mem::size_of::<EventContinuation>() + std::mem::size_of::<BodyCustody>()
+    }
+    pub(crate) fn element(
+        retained: &mut crate::element_tasks::TaskPayload,
+    ) -> Result<Self, crate::DomElementTaskRuntimeError> {
+        let event = retained.split(Self::event_bytes(), Self::event_bytes())?;
+        let continuation =
+            retained.split(Self::continuation_bytes(), Self::continuation_bytes())?;
+        Ok(Self {
+            event: Rc::new(BodyCustody {
+                _storage: BodyStorage::Element { _retained: event },
+            }),
+            continuation: Rc::new(BodyCustody {
+                _storage: BodyStorage::Element {
+                    _retained: continuation,
+                },
+            }),
+        })
+    }
+    pub(crate) fn source(
+        retained: &mut surgeist_dom::DomSourceEventRetention,
+        live: &Rc<Cell<usize>>,
+    ) -> Result<Self, DomError> {
+        let event = retained.split(Self::event_bytes(), 0)?;
+        let continuation = retained.split(Self::continuation_bytes(), 0)?;
+        Ok(Self {
+            event: Rc::new(BodyCustody {
+                _storage: BodyStorage::Source {
+                    _retained: event,
+                    _extent: BodyExtent::new(live, Self::event_bytes()),
+                },
+            }),
+            continuation: Rc::new(BodyCustody {
+                _storage: BodyStorage::Source {
+                    _retained: continuation,
+                    _extent: BodyExtent::new(live, Self::continuation_bytes()),
+                },
+            }),
+        })
+    }
+    pub(crate) fn style(live: &Rc<Cell<usize>>) -> Self {
+        Self {
+            event: Rc::new(BodyCustody {
+                _storage: BodyStorage::Style {
+                    _extent: BodyExtent::new(live, Self::event_bytes()),
+                },
+            }),
+            continuation: Rc::new(BodyCustody {
+                _storage: BodyStorage::Style {
+                    _extent: BodyExtent::new(live, Self::continuation_bytes()),
+                },
+            }),
+        }
+    }
+}
+#[cfg(test)]
+fn test_event_backing() -> EventBodyCustody {
+    // Kernel fixtures supply host-formed inputs. Real producer/accounting
+    // regressions obtain their receipts through Source, tasks or Style.
+    EventBodyCustody {
+        event: Rc::new(BodyCustody {
+            _storage: BodyStorage::Fixture,
+        }),
+        continuation: Rc::new(BodyCustody {
+            _storage: BodyStorage::Fixture,
+        }),
+    }
+}
+/// Body charge follows the weak allocation observation, never its authority.
+#[derive(Clone)]
+struct ContinuationObservation {
+    value: std::rc::Weak<EventContinuation>,
+    _body: Rc<BodyCustody>,
+}
+impl ContinuationObservation {
+    fn upgrade(&self) -> Option<Rc<EventContinuation>> {
+        self.value.upgrade()
+    }
+}
+struct EventObservation {
+    value: std::rc::Weak<Event>,
+    body: Rc<BodyCustody>,
+}
+/// The actual source task owns active dispatch custody. Observation clones
+/// retain fixed backing charges through weak continuation observations; the
+/// active frame, guards and reservations end with this owner.
 pub(crate) struct NativeDomEventOwner {
     event: NativeDomEvent,
     // Sole persistent strong custody; active private jobs upgrade temporarily.
     _custody: Rc<EventContinuation>,
+    _body: Rc<BodyCustody>,
 }
+/// Additional funding needed while the original parked backing stays live.
+#[derive(Clone, Copy)]
 pub(crate) struct DispatchFormation {
     pub(crate) source: usize,
     pub(crate) full: usize,
 }
+pub(crate) struct DispatchCall<'a> {
+    pub(crate) limits: DomEventDispatchLimits,
+    pub(crate) cancel: &'a AtomicBool,
+    pub(crate) host: bool,
+    pub(crate) funding: DispatchFunding,
+}
+
+fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
+    std::mem::size_of::<Vec<DomEventRegistrationId>>().checked_add(
+        limits
+            .snapshot_listeners
+            .checked_mul(std::mem::size_of::<DomEventRegistrationId>())?,
+    )
+}
+
 impl NativeDomEventOwner {
-    fn new(original: NodeId, data: EventData) -> Self {
+    fn new(original: NodeId, data: EventData, backing: EventBodyCustody) -> Self {
         let custody = Rc::new(EventContinuation {
+            event: Cell::new(None),
             dispatch: RefCell::new(None),
             host: Cell::new(None),
-            element_task_payload: RefCell::new(None),
         });
-        let event = NativeDomEvent(Rc::new(Event {
-            original,
-            data,
-            status: Cell::new(Status::Ready),
-            target: Cell::new(None),
-            current: Cell::new(None),
-            phase: Cell::new(DomEventPhase::None),
-            stop: Cell::new(false),
-            immediate: Cell::new(false),
-            canceled: Cell::new(false),
-            path: Cell::new(None),
-            continuation: Rc::downgrade(&custody),
-            element_task_payload: RefCell::new(None),
+        let event = NativeDomEvent(
+            Rc::new(Event {
+                original,
+                data,
+                status: Cell::new(Status::Ready),
+                target: Cell::new(None),
+                current: Cell::new(None),
+                phase: Cell::new(DomEventPhase::None),
+                stop: Cell::new(false),
+                immediate: Cell::new(false),
+                canceled: Cell::new(false),
+                path: Cell::new(None),
+                continuation: ContinuationObservation {
+                    value: Rc::downgrade(&custody),
+                    _body: backing.continuation.clone(),
+                },
+            }),
+            backing.event,
+        );
+        custody.event.set(Some(EventObservation {
+            value: Rc::downgrade(&event.0),
+            body: event.1.clone(),
         }));
         Self {
             event,
             _custody: custody,
+            _body: backing.continuation,
         }
     }
 
-    pub(crate) fn settle_element_task(&self) {
-        self._custody.settle_element_task();
-    }
-    pub(crate) fn retain_element_task(&self, mut retained: crate::element_tasks::TaskPayload) {
-        if self.event.0.element_task_payload.borrow().is_none() {
-            let bytes = std::mem::size_of::<Event>();
-            *self.event.0.element_task_payload.borrow_mut() = Some(
-                retained
-                    .split(bytes, bytes)
-                    .expect("pre-admitted actual event body"),
-            );
-        }
-        let mut continuation = self._custody.element_task_payload.borrow_mut();
-        if let Some(existing) = continuation.as_mut() {
-            existing.absorb(retained).expect("same original task owner");
-        } else {
-            *continuation = Some(retained);
-        }
-    }
-    pub(crate) fn element_task_extent(&self) -> (usize, usize) {
-        let mut full = 0;
-        let mut source = 0;
-        for retained in [
-            self.event.0.element_task_payload.borrow(),
-            self._custody.element_task_payload.borrow(),
-        ] {
-            if let Some(retained) = retained.as_ref() {
-                full += retained.full();
-                source += retained.source();
-            }
-        }
-        if let Some(dispatch) = self._custody.borrow().as_ref()
-            && let Some(retained) = &dispatch.path._manipulation
-        {
-            full += retained.full();
-            source += retained.source();
-        }
-        (full, source)
-    }
     pub(crate) fn initial_payload_bytes() -> Option<usize> {
-        std::mem::size_of::<Event>().checked_add(std::mem::size_of::<EventContinuation>())
+        EventBodyCustody::event_bytes().checked_add(EventBodyCustody::continuation_bytes())
     }
     pub(crate) fn fresh_dispatch_formation(
         limits: DomEventDispatchLimits,
@@ -1495,23 +2008,14 @@ impl NativeDomEventOwner {
         limits: DomEventDispatchLimits,
         retained: Option<&Dispatch>,
     ) -> Option<DispatchFormation> {
-        let fixed = Self::initial_payload_bytes()?;
-        let new_snapshot = std::mem::size_of::<Vec<DomEventRegistrationId>>().checked_add(
-            limits
-                .snapshot_listeners
-                .checked_mul(std::mem::size_of::<DomEventRegistrationId>())?,
-        )?;
+        let new_snapshot = snapshot_formation_bytes(limits)?;
         let new_failures = limits
             .failure_records
             .checked_mul(std::mem::size_of::<DomEventListenerFailure>())?;
         let (source, scope) = if let Some(dispatch) = retained {
-            let path = std::mem::size_of_val(dispatch.path.as_ref()).checked_add(
-                dispatch
-                    .path
-                    .capacity()
-                    .checked_mul(std::mem::size_of::<PathItem>())?,
-            )?;
-            let base = fixed.checked_add(path)?;
+            // The frozen path, scope and both old banks are already funded.
+            // Count the full replacement while the old failure bank survives,
+            // then only the additional peak across later listener snapshots.
             let old_snapshot = dispatch.snapshot.as_ref().map_or(Some(0), |snapshot| {
                 snapshot
                     .capacity()
@@ -1521,35 +2025,22 @@ impl NativeDomEventOwner {
                 .failures
                 .capacity()
                 .checked_mul(std::mem::size_of::<DomEventListenerFailure>())?;
-            // A raised policy prepares a real replacement while the old bank
-            // and actual retained snapshot are still owned. Commit drops the
-            // old backing before any subsequent listener can run.
-            let replacement = if limits.failure_records > dispatch.failures.capacity() {
-                old_failures
-                    .checked_add(new_failures)?
-                    .checked_add(std::mem::size_of::<Vec<DomEventListenerFailure>>())?
+            let replacement = if new_failures > old_failures {
+                new_failures.checked_add(std::mem::size_of::<Vec<DomEventListenerFailure>>())?
             } else {
-                old_failures
+                0
             };
-            let preparation = base.checked_add(old_snapshot)?.checked_add(replacement)?;
-            // Later invocation snapshots form from empty after the previous
-            // one drops; its candidate descriptor is distinct from the inline
-            // dispatch slot. A lowered path bound never replaces frozen path.
-            let run = base
-                .checked_add(old_snapshot.max(new_snapshot))?
-                .checked_add(old_failures.max(new_failures))?;
-            (
-                preparation.max(run),
-                dispatch.association_custody.retained_bytes(),
-            )
+            let run = new_snapshot
+                .saturating_sub(old_snapshot)
+                .checked_add(new_failures.saturating_sub(old_failures))?;
+            (replacement.max(run), 0)
         } else {
             let backing = limits
                 .path_items
                 .checked_mul(std::mem::size_of::<PathItem>())?;
             // Path and exact-node gather are independent formation owners; the
             // gather drops before the path moves into its shared EventPath.
-            let path_formation = fixed
-                .checked_add(std::mem::size_of::<Vec<PathItem>>())?
+            let path_formation = std::mem::size_of::<Vec<PathItem>>()
                 .checked_add(backing)?
                 .checked_add(std::mem::size_of::<Vec<NodeId>>())?
                 .checked_add(
@@ -1557,9 +2048,7 @@ impl NativeDomEventOwner {
                         .path_items
                         .checked_mul(std::mem::size_of::<NodeId>())?,
                 )?;
-            let base = fixed
-                .checked_add(std::mem::size_of::<EventPath>())?
-                .checked_add(backing)?;
+            let base = std::mem::size_of::<EventPath>().checked_add(backing)?;
             let failure_formation = base
                 .checked_add(std::mem::size_of::<Vec<DomEventListenerFailure>>())?
                 .checked_add(new_failures)?;
@@ -1574,6 +2063,7 @@ impl NativeDomEventOwner {
             full: source.checked_add(scope)?,
         })
     }
+    #[cfg(test)]
     pub(crate) fn retained_payload_bytes(&self) -> Option<usize> {
         let own = self.retained_source_payload_bytes()?;
         own.checked_add(
@@ -1584,7 +2074,8 @@ impl NativeDomEventOwner {
         )
     }
     /// Actual caller payload only; canonical Source custody body is separate.
-    pub(crate) fn retained_source_payload_bytes(&self) -> Option<usize> {
+    #[cfg(test)]
+    fn retained_source_payload_bytes(&self) -> Option<usize> {
         // Private observation only; no user code runs under this borrow.
         let mut bytes = Self::initial_payload_bytes()?;
         if let Some(dispatch) = self._custody.borrow().as_ref() {
@@ -1619,7 +2110,7 @@ pub(crate) fn manipulation_observation_layout(
 ) -> (usize, usize) {
     // Read the actual independently retained allocation owners, not any
     // task/source admission counter or producer maximum reservation.
-    let event = std::mem::size_of_val(event.0.as_ref());
+    let event = std::mem::size_of_val(event.0.as_ref()) + std::mem::size_of_val(event.1.as_ref());
     let path = path.path.as_ref().map_or(0, |path| {
         std::mem::size_of_val(path.as_ref())
             + path.items.capacity() * std::mem::size_of::<PathItem>()
@@ -1664,13 +2155,23 @@ impl NativeDomEvent {
     pub(crate) fn has_started(&self) -> bool {
         self.0.status.get() != Status::Ready
     }
+    pub(crate) fn has_active_dispatch(&self) -> bool {
+        matches!(self.0.status.get(), Status::Running | Status::HostPending)
+    }
+    pub(crate) fn terminal_dispatch_error(&self) -> Option<DomEventDispatchError> {
+        match self.0.status.get() {
+            Status::Abandoned => Some(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => Some(DomEventDispatchError::HostRefused(error)),
+            _ => None,
+        }
+    }
     /// Construct the load event for an actual owning Style completion operation.
-    pub(crate) fn style_load(target: NodeId) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::StyleLoad)
+    pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::StyleLoad, backing)
     }
     /// Construct the error event for an actual owning Style completion operation.
-    pub(crate) fn style_error(target: NodeId) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::StyleError)
+    pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::StyleError, backing)
     }
     /// The actual Details task owner supplies its exact queued/coalesced data.
     /// The selected HTML firing clause supplies no source Element. Equal states
@@ -1678,6 +2179,7 @@ impl NativeDomEvent {
     pub(crate) fn details_toggle(
         target: NodeId,
         payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
+        backing: EventBodyCustody,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(
             target,
@@ -1685,15 +2187,20 @@ impl NativeDomEvent {
                 old_state: payload.old_state().as_str(),
                 new_state: payload.new_state().as_str(),
             }),
+            backing,
         )
     }
 
-    pub(crate) fn dialog_cancel(target: NodeId, cancelable: bool) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::DialogCancel { cancelable })
+    pub(crate) fn dialog_cancel(
+        target: NodeId,
+        cancelable: bool,
+        backing: EventBodyCustody,
+    ) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::DialogCancel { cancelable }, backing)
     }
 
-    pub(crate) fn dialog_close(target: NodeId) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::DialogClose)
+    pub(crate) fn dialog_close(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
+        NativeDomEventOwner::new(target, EventData::DialogClose, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.
@@ -1701,6 +2208,7 @@ impl NativeDomEvent {
         target: NodeId,
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
+        backing: EventBodyCustody,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(
             target,
@@ -1708,6 +2216,7 @@ impl NativeDomEvent {
                 old_state: old.as_str(),
                 new_state: new.as_str(),
             }),
+            backing,
         )
     }
 
@@ -1718,6 +2227,7 @@ impl NativeDomEvent {
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
         cancelable: bool,
+        backing: EventBodyCustody,
     ) -> NativeDomEventOwner {
         NativeDomEventOwner::new(
             target,
@@ -1728,6 +2238,7 @@ impl NativeDomEvent {
                 },
                 cancelable,
             },
+            backing,
         )
     }
 
@@ -1898,7 +2409,7 @@ struct PathItem {
 struct EventPath {
     items: Vec<PathItem>,
     // Shared independently by composed_path iterators after Event/Task release.
-    _manipulation: Option<crate::element_tasks::TaskPayload>,
+    _funding: PathFunding,
 }
 impl std::ops::Deref for EventPath {
     type Target = Vec<PathItem>;
@@ -1907,10 +2418,9 @@ impl std::ops::Deref for EventPath {
     }
 }
 struct EventContinuation {
+    event: Cell<Option<EventObservation>>,
     dispatch: RefCell<Option<Dispatch>>,
     host: Cell<Option<HostFrame>>,
-    // Declared after the actual dispatch so its allocations drop first.
-    element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
 }
 impl std::ops::Deref for EventContinuation {
     type Target = RefCell<Option<Dispatch>>;
@@ -1919,23 +2429,16 @@ impl std::ops::Deref for EventContinuation {
     }
 }
 impl EventContinuation {
-    fn settle_element_task(&self) {
-        let dispatch = self.dispatch.borrow();
-        let own = std::mem::size_of::<Self>()
-            + dispatch.as_ref().map_or(0, |dispatch| {
-                dispatch.snapshot.as_ref().map_or(0, |snapshot| {
-                    snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
-                }) + dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
-            });
-        let full = own
-            + dispatch
-                .as_ref()
-                .map_or(0, |dispatch| dispatch.association_custody.retained_bytes());
-        if let Some(retained) = self.element_task_payload.borrow_mut().as_mut() {
-            retained
-                .shrink(full, own)
-                .expect("actual continuation within pre-admitted maximum");
-        }
+    fn event(&self) -> Option<NativeDomEvent> {
+        let observation = self.event.take();
+        let event = observation.as_ref().and_then(|entry| {
+            entry
+                .value
+                .upgrade()
+                .map(|event| NativeDomEvent(event, entry.body.clone()))
+        });
+        self.event.set(observation);
+        event
     }
 }
 struct Dispatch {
@@ -1948,8 +2451,52 @@ struct Dispatch {
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
     clear_target: bool,
+    // Declared after the banks and scope so their backing drops first.
+    funding: DispatchFunding,
 }
 impl Dispatch {
+    fn snapshot_backing_bytes(&self) -> usize {
+        self.snapshot.as_ref().map_or(0, |snapshot| {
+            snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
+        })
+    }
+
+    fn failure_backing_bytes(&self) -> usize {
+        self.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
+    }
+
+    fn retain_running_funding(&mut self, limits: DomEventDispatchLimits) -> Result<(), DomError> {
+        // Path gathering and old/new failure replacement have ended. Keep the
+        // live banks and the peak for the next snapshot across callback reentry.
+        let snapshot = snapshot_formation_bytes(limits).ok_or(DomError::RepresentationExhausted)?;
+        let source = snapshot
+            .max(self.snapshot_backing_bytes())
+            .checked_add(self.failure_backing_bytes())
+            .ok_or(DomError::RepresentationExhausted)?;
+        self.retain_funding(source)
+    }
+
+    fn settle_funding(&mut self) -> Result<(), DomError> {
+        let source = self
+            .snapshot_backing_bytes()
+            .checked_add(self.failure_backing_bytes())
+            .ok_or(DomError::RepresentationExhausted)?;
+        self.retain_funding(source)
+    }
+
+    fn retain_funding(&mut self, source: usize) -> Result<(), DomError> {
+        let full = source
+            .checked_add(self.association_custody.retained_bytes())
+            .ok_or(DomError::RepresentationExhausted)?;
+        self.funding.shrink(full, source)
+    }
+
+    fn release_unused_funding(&mut self) {
+        // Preserve the first refusal. A failed shrink leaves the original
+        // funding intact, so no surviving allocation becomes uncharged.
+        let _ = self.settle_funding();
+    }
+
     fn prepare_failure_bank(&mut self, budget: &mut Budget<'_>) -> Result<(), DomEventResource> {
         let requested = budget.limits.failure_records;
         if requested <= self.failures.capacity() {

@@ -176,6 +176,7 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
         )
         .unwrap();
     let stamp = session.snapshot().stamp();
+    let event_storage = session.state.borrow().body_bytes.get();
     for _ in 0..2 {
         assert!(
             matches!(DomStyleRuntime::run_networking(&mut session.dom(),&mut dispatcher,&mut events,
@@ -190,7 +191,7 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
     let state = session.state.borrow();
     let actual = state.completions[0].task();
     assert!(!actual.running);
-    assert_eq!(actual.dispatch_reserved, 0);
+    assert_eq!(state.body_bytes.get(), event_storage);
     assert!(matches!(actual.delivery, Delivery::NotStarted));
     assert_eq!(
         actual.cursor.action(),

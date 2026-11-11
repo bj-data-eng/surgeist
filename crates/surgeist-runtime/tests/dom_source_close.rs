@@ -1199,18 +1199,6 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
 
     // Use the accepted negative-focus Show route: dispatch begins in live A,
     // then one actual target callback adopts the closed receiver into inactive B.
-    let show = match apply(&mut session, DomSourceEdit::show_dialog(subject)) {
-        DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Event(request),
-            reason: DomSourceUnavailable::Event,
-        } => request,
-        other => panic!("actual Show beforetoggle is required: {other:?}"),
-    };
-    assert!(show.cancelable());
-    let show_event = show.toggle_event().unwrap();
-    assert_eq!(show_event.old_state(), HtmlDialogState::Closed);
-    assert_eq!(show_event.new_state(), HtmlDialogState::Open);
-    assert_eq!(show_event.source(), None);
     let mut show_registry = dispatcher();
     show_registry
         .add_listener(
@@ -1228,6 +1216,18 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
             DomEventListenerOptions::default(),
         )
         .unwrap();
+    let show = match apply(&mut session, DomSourceEdit::show_dialog(subject)) {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(request),
+            reason: DomSourceUnavailable::Event,
+        } => request,
+        other => panic!("actual Show beforetoggle is required: {other:?}"),
+    };
+    assert!(show.cancelable());
+    let show_event = show.toggle_event().unwrap();
+    assert_eq!(show_event.old_state(), HtmlDialogState::Closed);
+    assert_eq!(show_event.new_state(), HtmlDialogState::Open);
+    assert_eq!(show_event.source(), None);
     let mut adoption = Adoption {
         calls: 0,
         path: Vec::new(),
@@ -1254,6 +1254,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
     let done = complete(resume(&mut session, show.operation()).unwrap());
     assert_eq!(done.operation(), show.operation());
     drop(done);
+    drop(show_registry);
     let shown = session.snapshot();
     assert_eq!(
         shown.node(subject).unwrap().attribute(&"open".into()),
@@ -1621,6 +1622,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             None
         );
         assert!(session.dom().pending_source_edit().is_none());
+        drop(method_listeners);
         let mut context = CloseRetirementContext {
             owner: session.element_task_execution(),
             started_retirement,

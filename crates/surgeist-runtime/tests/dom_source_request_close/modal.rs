@@ -30,15 +30,6 @@ fn shown_and_initial_toggle_delivered(
             DomSourceEdit::set_attribute(subject, name, ""),
         )));
     }
-    let before = pending_event(
-        apply(session, DomSourceEdit::show_modal_dialog(subject)),
-        DomSourceEventKind::BeforeToggle,
-    );
-    assert!(before.cancelable());
-    let payload = before.toggle_event().unwrap();
-    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
-    assert_eq!(payload.new_state(), HtmlDialogState::Open);
-    assert_eq!(payload.source(), None);
     let mut registry = dispatcher::<usize>();
     let once = registry
         .add_listener(
@@ -56,6 +47,15 @@ fn shown_and_initial_toggle_delivered(
             },
         )
         .unwrap();
+    let before = pending_event(
+        apply(session, DomSourceEdit::show_modal_dialog(subject)),
+        DomSourceEventKind::BeforeToggle,
+    );
+    assert!(before.cancelable());
+    let payload = before.toggle_event().unwrap();
+    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
+    assert_eq!(payload.new_state(), HtmlDialogState::Open);
+    assert_eq!(payload.source(), None);
     let mut calls = 0;
     let receipt = service(session, &before, &mut registry, &mut calls);
     assert_eq!(receipt.callbacks(), 1);
@@ -96,6 +96,7 @@ fn shown_and_initial_toggle_delivered(
     assert_eq!(task.queue_association().unwrap().document(), top.document());
     assert_eq!(task.queue_association().unwrap().global(), top.global());
     assert_eq!(dialog.toggle_task_tracker().unwrap().task(), task.id());
+    drop(registry);
     let mut context = QueueContext {
         tasks: session.element_task_execution(),
         delivered: Vec::new(),
@@ -386,6 +387,7 @@ fn canceled_modal_request_keeps_layer_then_uncanceled_request_closes_with_real_p
         .unwrap();
     assert!(history.candidates().is_empty());
     assert!(history.processed());
+    drop(registry);
     deliver_closed_tasks(&mut session, top, subject);
     teardown(session, top);
 }
@@ -410,9 +412,14 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
             .unwrap()
             .close_watcher();
         let mut context = mutation_context(&session, Mutation::Reenter, false);
-        let mut registry = mutation_registry(&mut session, subject);
+        let mut registry = Some(mutation_registry(&mut session, subject));
         let request = start_request(&mut session, subject, Some("outer modal request".into()));
-        let receipt = service(&mut session, &request, &mut registry, &mut context);
+        let receipt = service(
+            &mut session,
+            &request,
+            registry.as_mut().unwrap(),
+            &mut context,
+        );
         assert_eq!(receipt.callbacks(), 1);
         assert!(!receipt.default_prevented());
         assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
@@ -455,6 +462,7 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
             );
             // A later independent standard request forces the same watcher
             // enabled and actually dispatches Cancel, proving guard reset.
+            drop(registry.take());
             let mut fresh = dispatcher::<()>();
             let cleanup = start_request(
                 &mut session,
@@ -480,7 +488,7 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
             finish_nested_close(
                 &mut session,
                 request.operation(),
-                &mut registry,
+                registry.as_mut().unwrap(),
                 &mut context,
             );
             assert_surviving_reset(&session, subject, None);
@@ -505,6 +513,7 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
         assert_surviving_reset(&session, subject, None);
         layer(&shown, top.document(), subject, false);
         assert!(shown.node(subject).unwrap().as_dialog().unwrap().is_modal());
+        drop(registry);
         deliver_closed_tasks(&mut session, top, subject);
         teardown(session, top);
     }

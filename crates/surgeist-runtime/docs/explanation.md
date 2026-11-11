@@ -207,6 +207,34 @@ The durable job preserves the actual event, dispatch permit and completion recei
 across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
 
+`DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
+accepted registration or dispatch claims the canonical DOM's one registry
+association; another dispatcher cannot select a parallel Node or Global list,
+even when it proposes no listeners. The association is irreversible for that
+dispatcher. A foreign owner is refused on registration, dispatch and resume.
+First admission prepares unpublished DOM custody and the bounded continuation
+index before allocation. Only successful recipient/dispatch preflight publishes
+the canonical weak association; refusal frees the index before its funding guard.
+Publication rechecks the current owner, Source entry and storage allowance.
+The callback-free DOM body has one shared debit, including its own accounting
+metadata, across strong and weak observations. The index's debit remains affine
+and separate. The existing
+fixed Runtime owner is caller-owned formation. Snapshots carry no registry
+authority. Dropping the dispatcher closes pending host reentry, clears active
+event observations and releases reservations without issuing a receipt or
+running the original Source tail. A fresh owner receives no old registrations
+or continuations. Fixed Event and continuation bodies likewise retain one
+accounting-only receipt through every strong or weak observer, including host
+tokens and the reverse Event observation. Queued element tasks, synchronous
+Source jobs and Style notifications transfer their own admitted body storage;
+these receipts hold no dispatch, callback, guard or reservation. Withdrawing
+authority therefore closes live work immediately while physically retained
+backing stays charged until its last observation drops. The original accounting
+counters include their own retained targets. The element task counter carries
+its separate DOM Source debit through its final shared reference, independent of
+task State. Arbitrary Event construction and signal integration remain separate
+capabilities.
+
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;
 cloning a callback preserves its identity, while two callback objects with equal
@@ -236,8 +264,9 @@ can continue. Foreign completion leaves the original token and scope untouched;
 repeat completion is rejected even after a registration slot has been reused.
 
 Use `invocation.refuse(&dispatcher, error)` for host refusal. The event
-retains this first host failure and cannot issue a successful receipt or run
-later listeners; it is separate from guest exception reporting. Dropping an
+retains this first host failure even after its dispatcher is gone. Refusal
+releases the parked dispatch and prevents a successful receipt or later listeners.
+This outcome is separate from guest exception reporting. Dropping an
 unreported token terminally abandons event delivery, clears active observation
 and closes Source reentry without attesting success. Its original unacknowledged
 Source tail remains pending. Graceful Session shutdown returns the whole pending

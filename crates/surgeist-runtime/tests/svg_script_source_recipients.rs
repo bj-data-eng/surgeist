@@ -285,7 +285,6 @@ fn parked_style_source_refuses_new_svg_recipients_without_resetting_the_original
 }
 
 struct Reentry {
-    recipients: DomEventDispatcher<()>,
     registrations: Vec<DomEventRegistrationId>,
     callbacks: usize,
     refused: usize,
@@ -308,17 +307,16 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
             &mut session.dom(),
             dialog,
             DomEventType::BeforeToggle,
-            DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
+            DomEventCallback::new(move |dom, listeners, context: &mut Reentry, event| {
                 context.callbacks += 1;
                 event.prevent_default();
                 for event_type in [DomEventType::Load, DomEventType::Error] {
-                    let id = context
-                        .recipients
+                    let id = listeners
                         .add_listener(
                             dom,
                             script,
                             event_type,
-                            DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
+                            DomEventCallback::new(|_, _, _: &mut Reentry, _| Ok(())),
                             DomEventListenerOptions::default(),
                         )
                         .unwrap();
@@ -382,7 +380,6 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
         surgeist_html::elements::dialog::HtmlDialogState::Open
     );
     let mut context = Reentry {
-        recipients: dispatcher(),
         registrations: Vec::new(),
         callbacks: 0,
         refused: 0,
@@ -443,8 +440,8 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
     assert_detached_script(&old, script, document);
     assert_detached_script(&session.snapshot(), script, document);
     for id in context.registrations.drain(..) {
-        assert!(context.recipients.remove_listener(id));
-        assert!(!context.recipients.remove_listener(id));
+        assert!(listeners.remove_listener(id));
+        assert!(!listeners.remove_listener(id));
     }
     assert!(
         source

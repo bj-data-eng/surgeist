@@ -4,6 +4,150 @@ use super::*;
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
 
+impl<C> DomEventDispatcher<C> {
+    fn dispatch(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.start_dispatch(
+            dom,
+            context,
+            event,
+            DispatchCall {
+                limits,
+                cancel,
+                host: false,
+                funding: DispatchFunding(Funding::Fixture),
+            },
+        )
+    }
+
+    fn resume(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.continue_dispatch(
+            dom,
+            context,
+            event,
+            DispatchCall {
+                limits,
+                cancel,
+                host: false,
+                funding: DispatchFunding(Funding::Fixture),
+            },
+        )
+    }
+
+    pub(crate) fn inspect_pending_index_bytes(&self) -> usize {
+        self.pending.capacity() * std::mem::size_of::<ContinuationObservation>()
+    }
+
+    /// Test-only raw backing observation. Empty and actively removed entries
+    /// retain no body; an expired nonempty Weak still retains its target area.
+    pub(crate) fn inspect_retired_continuation_storage(&self) -> (usize, usize) {
+        let body = self
+            .pending
+            .iter()
+            .filter(|entry| {
+                entry.value.strong_count() == 0 && !entry.value.ptr_eq(&std::rc::Weak::new())
+            })
+            .count()
+            * (std::mem::size_of::<EventContinuation>() + std::mem::size_of::<BodyCustody>());
+        let association = match &self.association {
+            RegistryAssociation::Unbound => 0,
+            RegistryAssociation::Bound(association) => association.retained_bytes(),
+        };
+        (body, association)
+    }
+}
+impl NativeDomEvent {
+    pub(crate) fn inspect_continuation_body_bytes(&self) -> usize {
+        std::mem::size_of::<EventContinuation>()
+            + std::mem::size_of_val(self.0.continuation._body.as_ref())
+    }
+
+    pub(crate) fn inspect_retained_dispatch_banks(&self) -> (usize, usize, usize) {
+        let custody = self.0.continuation.upgrade().unwrap();
+        let retained = custody.dispatch.borrow();
+        let dispatch = retained.as_ref().unwrap();
+        assert!(matches!(
+            dispatch.failures.as_slice(),
+            [DomEventListenerFailure {
+                kind: DomEventListenerFailureKind::Reported(DomEventCallbackError { code: 91 }),
+                ..
+            }]
+        ));
+        let snapshot = dispatch.snapshot.as_ref().unwrap();
+        (
+            snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>(),
+            dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>(),
+            dispatch.association_custody.retained_bytes(),
+        )
+    }
+
+    pub(crate) fn inspect_fixed_body_storage(&self) -> (Rc<Cell<usize>>, usize, usize) {
+        let live = match &self.1._storage {
+            BodyStorage::Source { _extent, .. } | BodyStorage::Style { _extent } => {
+                _extent.live.clone()
+            }
+            _ => panic!("actual Source or Style producer receipt"),
+        };
+        (
+            live,
+            std::mem::size_of_val(self.0.as_ref()) + std::mem::size_of_val(self.1.as_ref()),
+            self.inspect_continuation_body_bytes(),
+        )
+    }
+
+    pub(crate) fn inspect_active_dispatch_bytes(&self) -> usize {
+        let custody = self.0.continuation.upgrade().unwrap();
+        let retained = custody.dispatch.borrow();
+        let dispatch = retained.as_ref().unwrap();
+        let (_, path) = manipulation_observation_layout(self, &self.composed_path());
+        let snapshot = dispatch.snapshot.as_ref().unwrap();
+        path + snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
+            + dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
+            + dispatch.association_custody.retained_bytes()
+    }
+}
+
+impl NativeDomEventOwner {
+    pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
+        let mut source = EventBodyCustody::event_bytes() + EventBodyCustody::continuation_bytes();
+        if let Some(dispatch) = self._custody.borrow().as_ref() {
+            let Funding::Element(retained) = &dispatch.funding.0 else {
+                panic!("actual Element dispatch receipt")
+            };
+            let PathFunding::Element { _retained: path } = &dispatch.path._funding else {
+                panic!("actual Element path receipt")
+            };
+            source += retained.source() + path.source();
+        }
+        source
+    }
+}
+
+impl DomEventComposedPath {
+    pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
+        let PathFunding::Element {
+            _retained: retained,
+        } = &self.path.as_ref().unwrap()._funding
+        else {
+            panic!("actual Element path receipt")
+        };
+        retained.source()
+    }
+}
+
 fn limits() -> DomEventDispatchLimits {
     DomEventDispatchLimits {
         path_items: 64,
@@ -78,6 +222,71 @@ fn complete(outcome: DomEventDispatchOutcome) -> DomEventDispatchReceipt {
         other => panic!("expected actual completion: {other:?}"),
     }
 }
+#[test]
+fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing() {
+    let mut fixture = ordinary();
+    let stamp = fixture.dom.snapshot().stamp();
+    fixture
+        .dom
+        .set_limits(
+            fixture
+                .dom
+                .limits()
+                .with_event_recipients(surgeist_dom::DomEventRecipientLimits::default()),
+        )
+        .unwrap();
+    let mut dispatcher: DomEventDispatcher<()> = registry();
+    assert!(matches!(
+        dispatcher.add_listener(
+            &mut DomEventDom::borrow(&mut fixture.dom),
+            fixture.target,
+            DomEventType::Load,
+            DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
+            DomEventListenerOptions::default(),
+        ),
+        Err(DomEventDispatchError::Dom(DomError::ResourceLimit {
+            resource: surgeist_dom::DomResource::EventRecipients,
+            limit: 0
+        }))
+    ));
+    assert!(matches!(
+        dispatcher.association,
+        RegistryAssociation::Unbound
+    ));
+    assert_eq!(dispatcher.pending.capacity(), 0);
+    assert_eq!(fixture.dom.snapshot().stamp(), stamp);
+    let claim = fixture
+        .dom
+        .prepare_event_registry(0, &AtomicBool::new(false))
+        .unwrap()
+        .commit(&mut fixture.dom, &AtomicBool::new(false))
+        .unwrap();
+    claim.validate(&fixture.dom).unwrap();
+    assert!(matches!(
+        dispatcher.add_listener(
+            &mut DomEventDom::borrow(&mut fixture.dom),
+            fixture.target,
+            DomEventType::Toggle,
+            DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
+            DomEventListenerOptions::default(),
+        ),
+        Err(DomEventDispatchError::Dom(
+            DomError::EventRegistryAlreadyBound
+        ))
+    ));
+    drop(claim);
+    let accepted = dispatcher
+        .add_listener(
+            &mut DomEventDom::borrow(&mut fixture.dom),
+            fixture.target,
+            DomEventType::Toggle,
+            DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    assert!(dispatcher.remove_listener(accepted));
+    assert_eq!(fixture.dom.snapshot().stamp(), stamp);
+}
 #[derive(Debug, Eq, PartialEq)]
 struct Observation {
     current: NodeId,
@@ -125,9 +334,9 @@ fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
             }
         }
         let event = if kind == DomEventType::Load {
-            NativeDomEvent::style_load(f.target)
+            NativeDomEvent::style_load(f.target, test_event_backing())
         } else {
-            NativeDomEvent::style_error(f.target)
+            NativeDomEvent::style_error(f.target, test_event_backing())
         };
         let receipt = complete(
             listeners
@@ -241,7 +450,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
                 .dispatch(
                     &mut f.dom,
                     &mut count,
-                    &NativeDomEvent::style_load(f.target),
+                    &NativeDomEvent::style_load(f.target, test_event_backing()),
                     limits(),
                     &AtomicBool::new(false),
                 )
@@ -328,7 +537,7 @@ fn additions_are_snapshotted_at_each_invoke_and_not_at_dispatch_start() {
             .dispatch(
                 &mut f.dom,
                 &mut log,
-                &NativeDomEvent::style_load(f.target),
+                &NativeDomEvent::style_load(f.target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -394,7 +603,7 @@ fn removed_snapshot_entry_is_skipped_even_when_its_slot_is_reused() {
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -406,7 +615,7 @@ fn removed_snapshot_entry_is_skipped_even_when_its_slot_is_reused() {
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -445,7 +654,7 @@ fn once_is_removed_before_nested_dispatch_and_same_event_redispatch_is_rejected(
                         .dispatch(
                             dom.raw_mut(),
                             c,
-                            &NativeDomEvent::style_load(target),
+                            &NativeDomEvent::style_load(target, test_event_backing()),
                             limits(),
                             &AtomicBool::new(false),
                         )
@@ -477,7 +686,7 @@ fn once_is_removed_before_nested_dispatch_and_same_event_redispatch_is_rejected(
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -533,7 +742,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                 .dispatch(
                     &mut f.dom,
                     &mut c,
-                    &NativeDomEvent::style_load(f.target),
+                    &NativeDomEvent::style_load(f.target, test_event_backing()),
                     limits(),
                     &AtomicBool::new(false),
                 )
@@ -580,7 +789,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(f.target),
+                &NativeDomEvent::style_load(f.target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -621,7 +830,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
                         .dispatch(
                             dom.raw_mut(),
                             c,
-                            &NativeDomEvent::style_load(target),
+                            &NativeDomEvent::style_load(target, test_event_backing()),
                             limits(),
                             &AtomicBool::new(false),
                         )
@@ -664,7 +873,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -741,7 +950,7 @@ fn noncomposed_shadow_origin_stops_at_its_first_target_root_in_both_modes_and_cl
                 )
                 .unwrap();
         }
-        let event = NativeDomEvent::style_load(f.inside);
+        let event = NativeDomEvent::style_load(f.inside, test_event_backing());
         let mut c = Vec::new();
         complete(
             listeners
@@ -803,7 +1012,7 @@ fn slotted_light_origin_crosses_shadow_host_and_closed_composed_path_hides_only_
                 .unwrap();
         }
         let mut c = Vec::new();
-        let event = NativeDomEvent::style_error(f.light);
+        let event = NativeDomEvent::style_error(f.light, test_event_backing());
         complete(
             listeners
                 .dispatch(
@@ -895,7 +1104,7 @@ fn stored_assignment_not_fresh_slot_query_controls_event_path() {
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(f.light),
+                &NativeDomEvent::style_load(f.light, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -922,9 +1131,9 @@ fn document_load_and_error_stop_at_actual_native_no_browsing_context_boundary() 
             )
             .unwrap();
         let event = if kind == DomEventType::Load {
-            NativeDomEvent::style_load(f.document.node())
+            NativeDomEvent::style_load(f.document.node(), test_event_backing())
         } else {
-            NativeDomEvent::style_error(f.document.node())
+            NativeDomEvent::style_error(f.document.node(), test_event_backing())
         };
         let mut c = Vec::new();
         complete(
@@ -998,7 +1207,7 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let receipt = complete(
         listeners
             .dispatch(
@@ -1046,7 +1255,7 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
             .dispatch(
                 &mut f.dom,
                 &mut (),
-                &NativeDomEvent::style_load(f.target),
+                &NativeDomEvent::style_load(f.target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -1071,7 +1280,7 @@ fn admission_before_delivery_preserves_event_and_after_delivery_resumes_without_
             )
             .unwrap();
     }
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let mut c = Vec::new();
     assert!(matches!(
         listeners.dispatch(
@@ -1172,7 +1381,7 @@ fn retained_current_snapshot_continues_after_stop_propagation_and_does_not_repla
         )
         .unwrap();
     let mut c = Vec::new();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     assert!(matches!(
         listeners
             .dispatch(
@@ -1222,7 +1431,7 @@ fn per_invoke_snapshot_and_failure_output_admission_are_retained_before_callback
                 DomEventListenerOptions::default(),
             )
             .unwrap();
-        let event = NativeDomEvent::style_load(f.target);
+        let event = NativeDomEvent::style_load(f.target, test_event_backing());
         let low = match resource {
             DomEventResource::SnapshotListeners => DomEventDispatchLimits {
                 snapshot_listeners: 0,
@@ -1299,7 +1508,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
                     listeners.dispatch(
                         dom.raw_mut(),
                         count,
-                        &NativeDomEvent::style_error(target),
+                        &NativeDomEvent::style_error(target, test_event_backing()),
                         limits(),
                         &AtomicBool::new(false)
                     ),
@@ -1312,7 +1521,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(target);
+    let event = NativeDomEvent::style_load(target, test_event_backing());
     let mut count = 0;
     assert!(matches!(
         listeners
@@ -1333,7 +1542,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
         listeners.dispatch(
             &mut f.dom,
             &mut count,
-            &NativeDomEvent::style_error(target),
+            &NativeDomEvent::style_error(target, test_event_backing()),
             limits(),
             &AtomicBool::new(false)
         ),
@@ -1367,7 +1576,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
             .dispatch(
                 &mut f.dom,
                 &mut count,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -1443,7 +1652,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
             .dispatch(
                 &mut f.dom,
                 &mut c,
-                &NativeDomEvent::style_load(target),
+                &NativeDomEvent::style_load(target, test_event_backing()),
                 limits(),
                 &AtomicBool::new(false),
             )
@@ -1464,7 +1673,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
         listeners.dispatch(
             &mut f.dom,
             &mut c,
-            &NativeDomEvent::style_load(target),
+            &NativeDomEvent::style_load(target, test_event_backing()),
             limits(),
             &AtomicBool::new(false)
         ),
@@ -1546,7 +1755,7 @@ fn incomplete_source_before_dispatch_refuses_delivery_then_same_ready_event_can_
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let operation = park_real_style_tail(&mut f.dom, f.document);
     let mut count = 0;
     assert!(matches!(
@@ -1610,7 +1819,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let mut c = Vec::new();
     let DomEventDispatchOutcome::RetainedSourceOperation(operation) = listeners
         .dispatch(
@@ -1664,7 +1873,7 @@ fn unfinished_hook_tail_after_last_listener_retains_event_cleanup_and_receipt() 
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let mut count = 0;
     let DomEventDispatchOutcome::RetainedSourceOperation(operation) = listeners
         .dispatch(
@@ -1713,7 +1922,7 @@ fn failure_output_after_delivered_callback_is_retained_then_completed_without_re
             )
             .unwrap();
     }
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let mut c = Vec::new();
     assert!(matches!(
         listeners
@@ -1768,7 +1977,7 @@ fn finite_work_exhaustion_after_callback_keeps_exact_next_listener_without_repla
     // independent of the implementation's current work threshold.
     let mut found_partial = false;
     for work in 0..256 {
-        let event = NativeDomEvent::style_load(f.target);
+        let event = NativeDomEvent::style_load(f.target, test_event_backing());
         let mut c = Vec::new();
         let outcome = listeners.dispatch(
             &mut f.dom,
@@ -1840,7 +2049,7 @@ fn panic_payload_cleanup_unwind_retains_next_listener_and_unstrands_running_guar
         )
         .unwrap();
     let mut c = Vec::new();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     assert!(matches!(
         listeners
             .dispatch(
@@ -1891,7 +2100,7 @@ fn retained_dispatch_refuses_foreign_canonical_owner_without_losing_progress() {
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    let event = NativeDomEvent::style_load(f.target);
+    let event = NativeDomEvent::style_load(f.target, test_event_backing());
     let mut count = 0;
     assert!(matches!(
         listeners
@@ -1955,7 +2164,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
                 b.set_attribute(target, "capture-delivered", "yes");
                 apply(dom.raw_mut(), b);
                 c.original = Some(std::mem::replace(listeners, registry()));
-                listeners
+                let refused = listeners
                     .add_listener(
                         dom,
                         target,
@@ -1969,7 +2178,11 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
                         }),
                         DomEventListenerOptions::default(),
                     )
-                    .unwrap();
+                    .unwrap_err();
+                assert_eq!(
+                    refused,
+                    DomEventDispatchError::Dom(DomError::EventRegistryAlreadyBound)
+                );
                 Ok(())
             }),
             DomEventListenerOptions {
@@ -1997,7 +2210,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
         original: None,
         calls: Vec::new(),
     };
-    let event = NativeDomEvent::style_load(target);
+    let event = NativeDomEvent::style_load(target, test_event_backing());
     let outcome = listeners
         .dispatch(
             &mut f.dom,

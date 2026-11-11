@@ -145,6 +145,258 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
     })
     .unwrap()
 }
+
+#[test]
+fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, subject) = fixture(session_limits());
+    let (mut foreign, foreign_subject) = fixture(session_limits());
+    let mut first = dispatcher();
+    let mut other = dispatcher();
+    let callback = DomEventCallback::new(move |dom, _, calls: &mut Vec<NodeId>, event| {
+        calls.push(event.current_target().unwrap().node().unwrap());
+        let mut batch = DomBatch::new();
+        batch.set_attribute(subject, "data-original-owner", "delivered");
+        dom.apply(batch, &AtomicBool::new(false)).unwrap();
+        event.prevent_default();
+        Ok(())
+    });
+    let id = first
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            callback.clone(),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let alias = subject;
+    assert_eq!(
+        first
+            .add_listener(
+                &mut session.dom(),
+                alias,
+                DomEventType::BeforeToggle,
+                callback.clone(),
+                DomEventListenerOptions {
+                    capture: false,
+                    once: true
+                }
+            )
+            .unwrap(),
+        id
+    );
+    assert_eq!(
+        other
+            .add_listener(
+                &mut session.dom(),
+                subject,
+                DomEventType::BeforeToggle,
+                callback,
+                DomEventListenerOptions::default()
+            )
+            .unwrap_err(),
+        DomEventDispatchError::Dom(DomError::EventRegistryAlreadyBound)
+    );
+    assert_eq!(
+        first
+            .add_listener(
+                &mut foreign.dom(),
+                foreign_subject,
+                DomEventType::BeforeToggle,
+                DomEventCallback::new(|_, _, _: &mut Vec<NodeId>, _| Ok(())),
+                DomEventListenerOptions::default()
+            )
+            .unwrap_err(),
+        DomEventDispatchError::Dom(DomError::ForeignOwner)
+    );
+    // The refused foreign call did not associate the other canonical owner.
+    other
+        .add_listener(
+            &mut foreign.dom(),
+            foreign_subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut Vec<NodeId>, event| {
+                calls.push(event.current_target().unwrap().node().unwrap());
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let event = request(&mut session, subject);
+    let mut empty = dispatcher::<Vec<NodeId>>();
+    assert!(matches!(
+        session.source_execution().service_event(
+            &mut session.dom(),
+            &event,
+            &mut empty,
+            &mut Vec::new(),
+            service_limits(),
+            &cancel
+        ),
+        Err(DomSourceRuntimeError::SourceEvent(
+            DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Dom(
+                DomError::EventRegistryAlreadyBound
+            ))
+        ))
+    ));
+    let mut calls = Vec::new();
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &event,
+                &mut first,
+                &mut calls,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(receipt.default_prevented());
+    assert_eq!(calls, [subject]);
+    assert_eq!(
+        session
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .attribute(&"data-original-owner".into()),
+        Some(&"delivered".into())
+    );
+    assert!(first.remove_listener(id));
+    assert!(!first.remove_listener(id));
+    assert!(matches!(
+        resume(&mut session, event.operation()),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    drop(first);
+    // The empty candidate can now own a fresh list, with no transferred rows.
+    let fresh = request(&mut session, subject);
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &fresh,
+                &mut empty,
+                &mut calls,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 0);
+    assert_eq!(calls, [subject]);
+    assert!(!empty.remove_listener(id));
+    let foreign_event = request(&mut foreign, foreign_subject);
+    let mut foreign_calls = Vec::new();
+    let receipt = serviced(
+        foreign
+            .source_execution()
+            .service_event(
+                &mut foreign.dom(),
+                &foreign_event,
+                &mut other,
+                &mut foreign_calls,
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 1);
+    assert_eq!(foreign_calls, [foreign_subject]);
+}
+
+#[test]
+fn failed_first_registration_and_path_admission_leave_registry_claim_available() {
+    let cancel = AtomicBool::new(false);
+    let (mut session, subject) = fixture(session_limits());
+    let mut no_slots = DomEventDispatcher::<()>::new(DomEventRegistryLimits {
+        registrations: 0,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap();
+    assert_eq!(
+        no_slots
+            .add_listener(
+                &mut session.dom(),
+                subject,
+                DomEventType::BeforeToggle,
+                DomEventCallback::new(|_, _, _, _| Ok(())),
+                DomEventListenerOptions::default()
+            )
+            .unwrap_err(),
+        DomEventDispatchError::Admission(DomEventResource::Registrations)
+    );
+    let mut rejected = dispatcher::<()>();
+    // Load recipient allowance is intentionally zero in this canonical fixture.
+    assert!(matches!(
+        rejected.add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::Load,
+            DomEventCallback::new(|_, _, _, _| Ok(())),
+            DomEventListenerOptions::default()
+        ),
+        Err(DomEventDispatchError::Dom(DomError::ResourceLimit {
+            resource: DomResource::EventRecipients,
+            limit: 0
+        }))
+    ));
+    let event = request(&mut session, subject);
+    assert!(matches!(
+        session.source_execution().service_event(
+            &mut session.dom(),
+            &event,
+            &mut rejected,
+            &mut (),
+            DomSourceEventServiceLimits {
+                dispatch: DomEventDispatchLimits {
+                    path_items: 0,
+                    ..dispatch_limits()
+                },
+                ..service_limits()
+            },
+            &cancel
+        ),
+        Err(DomSourceRuntimeError::SourceEvent(
+            DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Admission(
+                DomEventResource::PathItems
+            ))
+        ))
+    ));
+    let mut accepted = dispatcher::<()>();
+    let receipt = serviced(
+        session
+            .source_execution()
+            .service_event(
+                &mut session.dom(),
+                &event,
+                &mut accepted,
+                &mut (),
+                service_limits(),
+                &cancel,
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 0);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    assert!(
+        session
+            .snapshot()
+            .node(subject)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
+    assert!(session.dom().pending_source_edit().is_some());
+}
 fn serviced(progress: DomSourceEventServiceProgress) -> DomEventDispatchReceipt {
     match progress {
         DomSourceEventServiceProgress::Serviced { receipt } => receipt,

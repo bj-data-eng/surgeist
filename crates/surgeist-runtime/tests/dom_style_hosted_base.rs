@@ -136,17 +136,13 @@ impl DomStyleEventContext for Notifications {
         &mut self.styles
     }
 }
-fn deliver_load(session: &mut DomSession, style: NodeId) {
-    let mut context = Notifications {
-        styles: session.style_execution(),
-        delivered: Vec::new(),
-    };
-    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 1,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })
-    .unwrap();
+fn deliver_load(
+    session: &mut DomSession,
+    style: NodeId,
+    dispatcher: &mut DomEventDispatcher<Notifications>,
+    context: &mut Notifications,
+) {
+    let previous = context.delivered.len();
     let once = dispatcher
         .add_listener(
             &mut session.dom(),
@@ -172,31 +168,20 @@ fn deliver_load(session: &mut DomSession, style: NodeId) {
         callbacks: 8,
         work: 100_000,
     };
-    let result = DomStyleRuntime::run_networking(
-        &mut session.dom(),
-        &mut dispatcher,
-        &mut context,
-        policy,
-        &cancel(),
-    )
-    .unwrap();
+    let result =
+        DomStyleRuntime::run_networking(&mut session.dom(), dispatcher, context, policy, &cancel())
+            .unwrap();
     let DomStyleNetworkingProgress::Complete { receipt, .. } = result else {
         panic!("real parsed sheet must deliver its Load: {result:?}")
     };
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
     assert!(!receipt.default_prevented());
-    assert_eq!(context.delivered, [style]);
+    assert_eq!(context.delivered[previous..], [style]);
     assert!(!dispatcher.remove_listener(once));
     assert!(matches!(
-        DomStyleRuntime::run_networking(
-            &mut session.dom(),
-            &mut dispatcher,
-            &mut context,
-            policy,
-            &cancel()
-        )
-        .unwrap(),
+        DomStyleRuntime::run_networking(&mut session.dom(), dispatcher, context, policy, &cancel())
+            .unwrap(),
         DomStyleNetworkingProgress::Empty
     ));
 }
@@ -454,7 +439,17 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
             .is_none()
     );
     assert!(cssom_before.sheets().is_empty());
-    deliver_load(&mut session, style);
+    let mut context = Notifications {
+        styles: session.style_execution(),
+        delivered: Vec::new(),
+    };
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap();
+    deliver_load(&mut session, style, &mut dispatcher, &mut context);
     let removed = session
         .source_execution()
         .apply(

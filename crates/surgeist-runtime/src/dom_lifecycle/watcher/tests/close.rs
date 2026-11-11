@@ -32,6 +32,21 @@ fn close_at_removal() -> (
         .close_watcher()
         .unwrap();
     let source = session.source_execution();
+    let mut listeners = dispatcher();
+    listeners
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut usize, event| {
+                *calls += 1;
+                event.prevent_default();
+                assert!(!event.default_prevented());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
     let event = {
         let mut dom = session.dom();
         let mut lease = dom
@@ -52,21 +67,6 @@ fn close_at_removal() -> (
         assert!(!event.cancelable());
         event
     };
-    let mut listeners = dispatcher();
-    listeners
-        .add_listener(
-            &mut session.dom(),
-            subject,
-            DomEventType::BeforeToggle,
-            DomEventCallback::new(|_, _, calls: &mut usize, event| {
-                *calls += 1;
-                event.prevent_default();
-                assert!(!event.default_prevented());
-                Ok(())
-            }),
-            DomEventListenerOptions::default(),
-        )
-        .unwrap();
     let mut calls = 0;
     let outcome = source
         .service_event(

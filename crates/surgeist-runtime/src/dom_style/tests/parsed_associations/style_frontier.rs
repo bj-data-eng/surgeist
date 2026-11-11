@@ -79,6 +79,7 @@ fn accepted_original_execution_survives_command_drop_and_blocks_other_document_t
         calls: Vec::new(),
     };
     let stamp = session.snapshot().stamp();
+    let event_storage = session.state.borrow().body_bytes.get();
     for _ in 0..2 {
         let outcome = DomStyleRuntime::run_networking(
             &mut session.dom(),
@@ -101,7 +102,7 @@ fn accepted_original_execution_survives_command_drop_and_blocks_other_document_t
         let retained = state.completions[0].task();
         assert_eq!(retained.id(), task);
         assert!(!retained.running);
-        assert_eq!(retained.dispatch_reserved, 0);
+        assert_eq!(state.body_bytes.get(), event_storage);
         assert!(matches!(retained.delivery, Delivery::NotStarted));
         assert_eq!(
             retained.cursor.action(),

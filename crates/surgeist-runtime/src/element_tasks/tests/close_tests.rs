@@ -194,7 +194,7 @@ fn final_candidate_peak() -> usize {
     // with two-entry plan/output banks, a one-entry tracker bank and their
     // real Intake owner. Dialog tasks do not append a Details tracker record.
     size_of::<RefCell<ElementTaskState>>()
-        + size_of::<Cell<usize>>()
+        + size_of::<TaskPayloadCounterTarget>()
         + size_of::<surgeist_dom::DomElementTaskSource>()
         + surgeist_dom::DomElementTaskSource::binding_payload_bytes()
         + size_of::<Intake>()

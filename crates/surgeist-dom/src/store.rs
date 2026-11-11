@@ -257,6 +257,10 @@ pub enum DomError {
     HostedCompositionRequired,
     /// A custody capability, target, or occurrence does not match this owner.
     InvalidDispatchCustody,
+    /// A live listener-registry owner is already associated with this DOM.
+    EventRegistryAlreadyBound,
+    /// The supplied association is not this DOM's current registry owner.
+    InvalidEventRegistry,
     /// The finite independent custody-processing allowance was exhausted.
     DispatchCustodyWorkLimit {
         limit: u64,
@@ -1287,6 +1291,7 @@ pub struct Dom {
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
     dispatch_custody: dispatch::CustodyBank,
     event_recipients: Option<Arc<event::Owner>>,
+    event_registry: Option<crate::event::RegistryObservation>,
     owner: DomOwnerId,
     revision: DomRevision,
     limits: DomLimits,
@@ -1383,6 +1388,7 @@ impl Dom {
             next_fullscreen_exit: 1,
             dispatch_custody: dispatch::CustodyBank::default(),
             event_recipients: None,
+            event_registry: None,
             inline_styles: None,
             element_tasks: None,
             owner,

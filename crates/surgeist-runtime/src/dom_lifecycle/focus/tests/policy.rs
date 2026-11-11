@@ -81,6 +81,27 @@ fn parked_live(denied: bool) -> LiveCase {
         .relevant_global(subject)
         .unwrap()
         .unwrap();
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut usize, _| {
+                *calls += 1;
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
     let event = match session
         .source_execution()
         .apply(
@@ -103,27 +124,6 @@ fn parked_live(denied: bool) -> LiveCase {
         } => event,
         other => panic!("actual ShowModal must dispatch: {other:?}"),
     };
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 1,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })
-    .unwrap();
-    registry
-        .add_listener(
-            &mut session.dom(),
-            subject,
-            DomEventType::BeforeToggle,
-            DomEventCallback::new(|_, _, calls: &mut usize, _| {
-                *calls += 1;
-                Ok(())
-            }),
-            DomEventListenerOptions {
-                capture: false,
-                once: true,
-            },
-        )
-        .unwrap();
     let mut calls = 0;
     let receipt = session
         .source_execution()
@@ -589,6 +589,28 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
     // distinct post-watcher Document pending-removal change, and Source close
     // (5). No changed return-value row or other receiver contributes here.
     const EXACT_OUTPUTS: usize = 2 + 5;
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+    })
+    .unwrap();
+    registry
+        .add_listener(
+            &mut case.session.dom(),
+            case.subject,
+            DomEventType::BeforeToggle,
+            DomEventCallback::new(|_, _, calls: &mut usize, event| {
+                assert!(!event.cancelable());
+                *calls += 1;
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                capture: false,
+                once: true,
+            },
+        )
+        .unwrap();
     let before = match case
         .session
         .source_execution()
@@ -613,28 +635,6 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
         other => panic!("real Close beforetoggle required: {other:?}"),
     };
     assert!(!before.cancelable());
-    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
-        registrations: 1,
-        pending_events: 1,
-        nested_dispatches: 1,
-    })
-    .unwrap();
-    registry
-        .add_listener(
-            &mut case.session.dom(),
-            case.subject,
-            DomEventType::BeforeToggle,
-            DomEventCallback::new(|_, _, calls: &mut usize, event| {
-                assert!(!event.cancelable());
-                *calls += 1;
-                Ok(())
-            }),
-            DomEventListenerOptions {
-                capture: false,
-                once: true,
-            },
-        )
-        .unwrap();
     match case
         .session
         .source_execution()

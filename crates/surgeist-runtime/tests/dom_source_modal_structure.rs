@@ -127,34 +127,6 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
     let scope = session
         .source_execution_scope(top.host(), &cancel())
         .unwrap();
-    let request = match session
-        .source_execution()
-        .apply(
-            &mut session.dom(),
-            DomSourceEdit::show_modal_dialog(subject),
-            source_limits(),
-            &mut DomSourceServices {
-                meta: None,
-                execution_scope: Some(&scope),
-                style_policy: &mut |_| None,
-                url: None,
-            },
-            &cancel(),
-        )
-        .unwrap()
-    {
-        DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Event(request),
-            reason: DomSourceUnavailable::Event,
-        } => request,
-        other => panic!("active connected ShowModal must fire actual beforetoggle: {other:?}"),
-    };
-    assert_eq!(request.subject(), subject);
-    assert!(request.cancelable());
-    let payload = request.toggle_event().unwrap();
-    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
-    assert_eq!(payload.new_state(), HtmlDialogState::Open);
-    assert_eq!(payload.source(), None);
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 4,
         pending_events: 4,
@@ -183,6 +155,34 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             },
         )
         .unwrap();
+    let request = match session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_modal_dialog(subject),
+            source_limits(),
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: Some(&scope),
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(request),
+            reason: DomSourceUnavailable::Event,
+        } => request,
+        other => panic!("active connected ShowModal must fire actual beforetoggle: {other:?}"),
+    };
+    assert_eq!(request.subject(), subject);
+    assert!(request.cancelable());
+    let payload = request.toggle_event().unwrap();
+    assert_eq!(payload.old_state(), HtmlDialogState::Closed);
+    assert_eq!(payload.new_state(), HtmlDialogState::Open);
+    assert_eq!(payload.source(), None);
     let mut calls = 0;
     match session
         .source_execution()

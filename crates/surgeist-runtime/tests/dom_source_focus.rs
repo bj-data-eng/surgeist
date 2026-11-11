@@ -153,13 +153,21 @@ fn dispatch(session: &mut DomSession, request: &DomSourceEventRequest) -> DomEve
         nested_dispatches: 4,
     })
     .unwrap();
+    dispatch_with(session, request, &mut registry, &mut ())
+}
+fn dispatch_with<C>(
+    session: &mut DomSession,
+    request: &DomSourceEventRequest,
+    registry: &mut DomEventDispatcher<C>,
+    context: &mut C,
+) -> DomEventDispatchReceipt {
     match session
         .source_execution()
         .service_event(
             &mut session.dom(),
             request,
-            &mut registry,
-            &mut (),
+            registry,
+            context,
             DomSourceEventServiceLimits {
                 source: limits(),
                 dispatch: DomEventDispatchLimits {
@@ -444,7 +452,6 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
         let snapshot = session.snapshot();
         let html = snapshot.node(second.document().node()).unwrap().children()[0];
         let destination = snapshot.node(html).unwrap().children()[1];
-        let event = start(&mut session, subject, None);
         let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
             registrations: 4,
             pending_events: 4,
@@ -465,6 +472,7 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
                 DomEventListenerOptions::default(),
             )
             .unwrap();
+        let event = start(&mut session, subject, None);
         let mut context = Context { adopted: None };
         let serviced = session
             .source_execution()
@@ -609,7 +617,6 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
                 .source_execution_scope(host, &AtomicBool::new(false))
                 .unwrap()
         });
-        let outer = start(&mut session, parent, Some(&parent_scope));
         let mut context = Context {
             source: session.source_execution(),
             scope,
@@ -647,6 +654,7 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
                 DomEventListenerOptions::default(),
             )
             .unwrap();
+        let outer = start(&mut session, parent, Some(&parent_scope));
         let result = session
             .source_execution()
             .service_event(
@@ -682,7 +690,8 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
             panic!("actual child beforetoggle required")
         };
         assert_eq!(inner.parent_operation(), Some(outer.operation()));
-        dispatch(&mut session, &inner);
+        let receipt = dispatch_with(&mut session, &inner, &mut registry, &mut context);
+        assert_eq!(receipt.callbacks(), 0);
         let progress = resume(&mut session, inner.operation(), None).unwrap();
         if child_headless == Some(true) {
             pending_focusing(progress, HtmlDialogFocusingAction::ReadAllowFocus);

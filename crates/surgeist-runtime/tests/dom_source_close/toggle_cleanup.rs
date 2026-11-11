@@ -50,6 +50,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
         let request = start_close(&mut session, subject, None);
         finish_close(&mut session, &request, &mut before, &mut method);
         assert_eq!(method.before.len(), 1);
+        drop(before);
         let tasks = session.element_task_execution();
         let task = tasks
             .pending_task(DomElementTaskSourceKind::DomManipulation, 0)
@@ -281,6 +282,7 @@ fn toggle_retired_before_dispatch_is_skipped_without_postdispatch_result_or_call
     let mut before = listeners(&mut session, subject, body);
     let request = start_close(&mut session, subject, None);
     finish_close(&mut session, &request, &mut before, &mut method);
+    drop(before);
     let tasks = session.element_task_execution();
     let task = tasks
         .pending_task(DomElementTaskSourceKind::DomManipulation, 0)

@@ -4,6 +4,7 @@ use crate::{DomEventRecipient, DomEventRecipientLimits, DomEventTarget, DomEvent
 use source::formation::Formation;
 use std::{cell::Cell, sync::Mutex};
 
+mod registry;
 #[cfg(test)]
 mod tests;
 mod topology;
