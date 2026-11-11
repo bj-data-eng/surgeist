@@ -4024,11 +4024,8 @@ impl<'device> PreparedGraph<'device> {
         let composite_parameters = request.composite_parameters.as_ref().ok_or_else(|| {
             preparation_error("the composition layer composite has no prepared parameter bytes")
         })?;
-        let expected_parameters = CompositeParameterBytes::try_from_runtime_layer(
-            parameters,
-            target_spatial,
-            Some(account),
-        )?;
+        let expected_parameters =
+            CompositeParameterBytes::try_from_runtime_layer(parameters, target_spatial, account)?;
         if composite_parameters != &expected_parameters {
             return Err(preparation_error(
                 "the composition layer composite parameter bytes changed after preparation",

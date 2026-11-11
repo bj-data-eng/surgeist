@@ -376,6 +376,76 @@ fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_spa
 }
 
 #[test]
+fn pixelated_outline_paint_preserves_native_and_prepared_glyph_pixels() {
+    use crate::{FontRef, ImageRendering, TextRun, TextRunBounds};
+
+    let font = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
+    let glyphs = [
+        TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.8, 1.0).unwrap(),
+        TextGlyph::try_new(AHEM_GLYPH_X, 2.0, 0.8, 1.0).unwrap(),
+    ];
+    let outline = font
+        .prepare_glyph_run(
+            &TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap(),
+            &glyphs,
+            GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
+    let image = Image::from_rgba(
+        Size::new(3.0, 1.0),
+        vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255],
+    )
+    .unwrap()
+    .rendering(ImageRendering::Pixelated);
+    let paint = TextPaint::try_fill(image.into()).unwrap();
+    let transform = Transform::try_new([2.0, 0.0, 0.0, 1.0, 1.0, 0.0]).unwrap();
+    let mut native = Scene::new();
+    native.text_run(
+        TextRun::try_new(
+            FontRef::new(1_u64).with_data(font),
+            1.0,
+            transform,
+            paint.clone(),
+            &glyphs,
+            TextRunBounds::unspecified(),
+        )
+        .unwrap(),
+    );
+    let mut prepared = Scene::new();
+    prepared.prepared_glyph_run(outline, transform, paint);
+
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(8.0, 1.0), 1.0)).unwrap();
+    for scene in [native, prepared] {
+        let stats =
+            pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+                .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        for x in [0, 3, 4, 7] {
+            assert!(pixel_rgba(&output, x, 0)[3] <= 2, "unexpected ink at {x}");
+        }
+        for (x, expected) in [(1, [255, 0, 0, 255]), (5, [0, 0, 255, 255])] {
+            let actual = pixel_rgba(&output, x, 0);
+            assert!(
+                actual
+                    .into_iter()
+                    .zip(expected)
+                    .all(|(a, b)| a.abs_diff(b) <= 2),
+                "pixel {x}: {actual:?} != {expected:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
     let outlines: Vec<_> = [overlapping_outline(), overlapping_composite_outline()]
         .into_iter()

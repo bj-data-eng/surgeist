@@ -181,11 +181,8 @@ pub(super) fn prepared_pass_composite_parameters(
                 .get(&result, account)?
                 .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
                 .spatial;
-            let bytes = CompositeParameterBytes::try_from_runtime_layer(
-                parameters,
-                destination,
-                Some(account),
-            )?;
+            let bytes =
+                CompositeParameterBytes::try_from_runtime_layer(parameters, destination, account)?;
             if bytes.as_bytes().len() != 112 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",
@@ -243,6 +240,12 @@ mod role_lookup_accounting_tests {
 
     #[test]
     fn pixelated_prepared_mask_lattice_refuses_before_serialization() {
+        for limit in [0, 75, 76] {
+            assert_prepared_mask_lattice_boundary(limit);
+        }
+    }
+
+    fn assert_prepared_mask_lattice_boundary(limit: u64) {
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
             Antialiasing, Capabilities, Color, Format, Image, ImageRendering, Layer, Rect,
@@ -322,7 +325,7 @@ mod role_lookup_accounting_tests {
 
         let phase = RenderPhase::GpuPrepare;
         let limits = RenderLimits::new()
-            .with_work_limit(RenderWork::CoordinateVisits, 0)
+            .with_work_limit(RenderWork::CoordinateVisits, limit)
             .unwrap()
             .with_work_limit(RenderWork::SerializedBytes, 0)
             .unwrap();
@@ -330,7 +333,7 @@ mod role_lookup_accounting_tests {
             .with_limits(limits)
             .with_profile(RenderProfile::Detailed {
                 timing: false,
-                event_limit: 16,
+                event_limit: 128,
                 filter: RenderPhaseFilter::Phase(phase),
             });
         let cpu = RendererCpu::new(options).unwrap();
@@ -353,7 +356,16 @@ mod role_lookup_accounting_tests {
             Some(RenderAccountingError::Refused(refusal))
         );
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
-        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+        let (work, current, amount) = if limit == 76 {
+            (RenderWork::SerializedBytes, 0, 112)
+        } else {
+            (RenderWork::CoordinateVisits, limit, 1)
+        };
+        assert_eq!(
+            refusal.reason(),
+            RenderRefusalReason::Limit { limit: current }
+        );
+        assert_eq!(attempt.dropped_events(), 0);
         assert!(attempt.events().any(|event| matches!(
             event,
             RenderEvent::Refused {
@@ -363,13 +375,13 @@ mod role_lookup_accounting_tests {
         )));
         let usage = attempt.phase_usage(phase);
         assert_eq!(usage.work(RenderWork::ResourceProbes), 1);
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 0);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
         assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
         assert_eq!(usage.work(RenderWork::UploadBytes), 0);
         assert_eq!(
             (refusal.quantity(), refusal.current(), refusal.amount()),
-            (RenderQuantity::Work(RenderWork::CoordinateVisits), 0, 1),
-            "the Pixelated mask placement must admit coordinates before the 112-byte block"
+            (RenderQuantity::Work(work), current, amount),
+            "Pixelated placement must finish before serializing the 112-byte block"
         );
     }
 

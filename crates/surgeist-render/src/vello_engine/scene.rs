@@ -122,7 +122,8 @@ impl VelloScene {
         if image.data.width == 0 || image.data.height == 0 {
             return encode(self, kurbo::Affine::IDENTITY);
         }
-        let expansion = super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device)?;
+        let expansion =
+            super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device, account)?;
         let first_patch = self.encoding.resources.patches.len();
         let result = encode(self, expansion.compensation())?;
         self.mark_image_expansion(first_patch, image.data.data.id(), expansion, account)?;
@@ -596,7 +597,11 @@ impl VelloScene {
             {
                 Some((
                     image.data.data.id(),
-                    super::image_atlas::ImageExpansion::try_new(&image.data, paint_transform)?,
+                    super::image_atlas::ImageExpansion::try_new(
+                        &image.data,
+                        paint_transform,
+                        account,
+                    )?,
                 ))
             }
             _ => None,
@@ -1204,6 +1209,12 @@ mod pixelated_tests {
 
     #[test]
     fn pixelated_native_lattice_refuses_before_path_materialization() {
+        for limit in [0, 15, 16] {
+            assert_native_lattice_boundary(limit);
+        }
+    }
+
+    fn assert_native_lattice_boundary(limit: u64) {
         use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
             Image, ImageRendering, RenderAccountingError, RenderAccountingOptions,
@@ -1219,7 +1230,7 @@ mod pixelated_tests {
         let bounds = kurbo::Rect::new(0.0, 0.0, 2.0, 1.0);
         let phase = RenderPhase::Encode;
         let limits = RenderLimits::new()
-            .with_work_limit(RenderWork::CoordinateVisits, 0)
+            .with_work_limit(RenderWork::CoordinateVisits, limit)
             .unwrap()
             .with_work_limit(RenderWork::PathElementVisits, 0)
             .unwrap();
@@ -1231,6 +1242,12 @@ mod pixelated_tests {
                 filter: RenderPhaseFilter::Phase(phase),
             });
         let cpu = RendererCpu::new(options).unwrap();
+        // The registry retains reusable backing after the last payload lease.
+        drop(
+            cpu.at(RenderCpuScope::ImagePayloads)
+                .import_image(&image, None)
+                .unwrap(),
+        );
         let mut callback_reached = false;
         let (result, started, report, fault) = FrameFixture::new(&cpu, options)
             .run_sync(|attempt| {
@@ -1270,7 +1287,16 @@ mod pixelated_tests {
             Some(RenderAccountingError::Refused(refusal))
         );
         assert_eq!(refusal.phase(), RenderPhase::Attempt);
-        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+        let factors_admitted = limit == 16;
+        let (work, current) = if factors_admitted {
+            (RenderWork::PathElementVisits, 0)
+        } else {
+            (RenderWork::CoordinateVisits, limit)
+        };
+        assert_eq!(
+            refusal.reason(),
+            RenderRefusalReason::Limit { limit: current }
+        );
         assert!(attempt.events().any(|event| matches!(
             event,
             RenderEvent::Refused {
@@ -1280,13 +1306,13 @@ mod pixelated_tests {
         )));
         assert_eq!(
             (refusal.quantity(), refusal.current(), refusal.amount()),
-            (RenderQuantity::Work(RenderWork::CoordinateVisits), 0, 1),
-            "the first lattice coordinate must be admitted before the fill callback"
+            (RenderQuantity::Work(work), current, 1),
+            "factor derivation must finish before the fill callback"
         );
-        assert!(!callback_reached);
+        assert_eq!(callback_reached, factors_admitted);
         let encode = attempt.phase_usage(phase);
+        assert_eq!(encode.work(RenderWork::CoordinateVisits), limit);
         for work in [
-            RenderWork::CoordinateVisits,
             RenderWork::PathElementVisits,
             RenderWork::PaintVisits,
             RenderWork::ImageSourceBytes,
@@ -1384,12 +1410,17 @@ mod pixelated_tests {
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
         scene.import_image(&image, &account).unwrap();
+        let before = account.work_count(RenderWork::CoordinateVisits).unwrap();
         scene
             .with_pixelated_image(
                 &image,
                 kurbo::Affine::scale(4.0),
                 |scene, compensation| {
                     assert_eq!(compensation, kurbo::Affine::IDENTITY);
+                    assert_eq!(
+                        account.work_count(RenderWork::CoordinateVisits).unwrap(),
+                        before
+                    );
                     scene
                         .fill(
                             peniko::Fill::NonZero,

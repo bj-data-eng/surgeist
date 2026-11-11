@@ -221,6 +221,118 @@ fn pixelated_mask_gpu_fractional_rotation_and_dpr_match_independent_alpha_oracle
 
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
+fn pixelated_mask_accounts_for_both_placements_and_preserves_publication_on_refusal() {
+    use crate::{
+        ImageQuality, Options, Parameters, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptStatus, RenderLimits, RenderPhase, RenderQuantity, RenderRefusalReason,
+        RenderRoute, RenderWork, Renderer,
+    };
+
+    let pixelated = mask(PhysicalSize::new(2, 1), &[0, 255], Extend::Pad);
+    let ordinary = pixelated.clone().quality(ImageQuality::Medium);
+    let size = Size::new(7.0, 3.0);
+    let bounds = Rect::new(0.0, 0.0, 2.0, 1.0);
+    let transform = Transform::scale(2.5, 1.0)
+        .unwrap()
+        .then(Transform::translation(1.0, 1.0).unwrap())
+        .unwrap();
+    let [ordinary, pixelated] = [ordinary, pixelated].map(|image| {
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new()
+                .with_transform(transform)
+                .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(image, bounds).unwrap()),
+            |child| {
+                child.fill(bounds, Color::BLACK);
+            },
+        );
+        scene
+    });
+
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let coordinates = RenderWork::CoordinateVisits;
+    let [ordinary_work, pixelated_work] = [&ordinary, &pixelated].map(|scene| {
+        let stats = pollster::block_on(renderer.render(&mut surface, scene, Parameters::default()))
+            .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+        let report = renderer.last_attempt().unwrap();
+        let attempt = report.attempt().unwrap();
+        [
+            RenderPhase::Attempt,
+            RenderPhase::GpuPrepare,
+            RenderPhase::Encode,
+        ]
+        .map(|phase| attempt.phase_usage(phase).work(coordinates))
+    });
+    assert_eq!(pixelated_work[1], ordinary_work[1] + 76);
+    assert_eq!(pixelated_work[2], ordinary_work[2] + 76);
+    let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    for (y, row) in [[0; 7], [0, 0, 0, 128, 255, 255, 0], [0; 7]]
+        .into_iter()
+        .enumerate()
+    {
+        for (x, alpha) in row.into_iter().enumerate() {
+            let actual = super::support::pixel_rgba(&pixels, x as u32, y as u32)[3];
+            assert!(
+                actual.abs_diff(alpha) <= 2,
+                "({x}, {y}): {actual} != {alpha}"
+            );
+        }
+    }
+    drop((renderer, surface));
+
+    let cap = pixelated_work[0] - 1;
+    assert!(ordinary_work[0] <= cap);
+    let limits = RenderLimits::new()
+        .with_work_limit(coordinates, cap)
+        .unwrap();
+    let options =
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    let before_stats =
+        pollster::block_on(renderer.render(&mut surface, &ordinary, Parameters::default()))
+            .unwrap();
+    let before_pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    let before_publication = surface.headless_publication_count_for_test();
+    let error =
+        pollster::block_on(renderer.render(&mut surface, &pixelated, Parameters::default()))
+            .unwrap_err();
+    let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+        panic!("expected coordinate refusal, got {error:?}");
+    };
+    assert_eq!(refusal.quantity(), RenderQuantity::Work(coordinates));
+    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: cap });
+    let report = renderer.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.cleanup_fault(), None);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::Submissions),
+        0
+    );
+    assert_eq!(renderer.stats(), before_stats);
+    assert_eq!(
+        surface.headless_publication_count_for_test(),
+        before_publication
+    );
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before_pixels
+    );
+    pollster::block_on(renderer.render(&mut surface, &ordinary, Parameters::default())).unwrap();
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before_pixels
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
 fn pixelated_mask_gpu_reuses_source_at_distinct_scales_and_preserves_extends() {
     use crate::{Options, Parameters, RenderRoute, Renderer};
     let shared = mask(PhysicalSize::new(3, 1), &[0, 128, 255], Extend::Pad);

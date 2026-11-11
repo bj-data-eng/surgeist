@@ -15,8 +15,7 @@ mod inverse;
 pub(crate) use inverse::qualify_inverse;
 
 pub(crate) fn action<T>(account: &Account, run: impl FnOnce() -> T) -> Result<T> {
-    account.work(RenderWork::CoordinateVisits, 1)?;
-    Ok(run())
+    account.coordinate(run)
 }
 
 /// A cast is allowed to round normally. Concrete overflow/zero loss is distinct

@@ -325,19 +325,31 @@ impl ImageSampling {
     }
 }
 
-pub(crate) fn pixelated_multipliers(source_to_device: kurbo::Affine) -> Result<[u32; 2]> {
-    let [a, b, c, d, _, _] = source_to_device.as_coeffs();
+pub(crate) fn pixelated_multipliers(
+    source_to_device: kurbo::Affine,
+    account: &Account,
+) -> Result<[u32; 2]> {
+    let coefficients = source_to_device.as_coeffs();
+    let a = account.coordinate(|| coefficients[0])?;
+    let b = account.coordinate(|| coefficients[1])?;
+    let horizontal = account.coordinate(|| a.hypot(b))?;
+    let c = account.coordinate(|| coefficients[2])?;
+    let d = account.coordinate(|| coefficients[3])?;
+    let vertical = account.coordinate(|| c.hypot(d))?;
     let mut multiples = [1; 2];
-    for (multiple, scale) in multiples.iter_mut().zip([a.hypot(b), c.hypot(d)]) {
-        let rounded = scale.round().max(1.0);
-        if !scale.is_finite() || rounded > f64::from(u32::MAX) {
+    for (multiple, scale) in multiples.iter_mut().zip([horizontal, vertical]) {
+        let rounded = account.coordinate(|| scale.round())?;
+        let rounded = account.coordinate(|| rounded.max(1.0))?;
+        if !account.coordinate(|| scale.is_finite())?
+            || account.coordinate(|| rounded > f64::from(u32::MAX))?
+        {
             return Err(Error::invalid_value(
                 "pixelated image scale",
                 scale,
                 "must be finite with a positive integer multiple representable as u32",
             ));
         }
-        *multiple = rounded as u32;
+        *multiple = account.coordinate(|| rounded as u32)?;
     }
     Ok(multiples)
 }
