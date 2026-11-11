@@ -517,6 +517,63 @@ mod tests {
     }
 
     #[test]
+    fn corpus_authority_refuses_a_report_that_drops_a_sealed_observation() {
+        struct TestRoot(PathBuf);
+        impl Drop for TestRoot {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = TestRoot(std::env::temp_dir().join(format!(
+            "surgeist-layout-historical-report-{}-{unique}",
+            std::process::id()
+        )));
+        fs::create_dir(&root.0).unwrap();
+        fs::create_dir_all(root.0.join("xml/generation-reports")).unwrap();
+        let manifest = b"schema_version = 2\n";
+        let manifest_sha256 = sha256(manifest);
+        fs::write(root.0.join(MANIFEST), manifest).unwrap();
+        let mut report = serde_json::json!({
+            "metadata": {"schema_version": 4, "inputs": {"corpus.toml": manifest_sha256}},
+            "filter": null,
+            "summary": {"generated": 1},
+            "generated": [{
+                "name": "block_basic__border_box_ltr",
+                "source": SOURCE,
+                "output": OUTPUT,
+                "variant": "border_box_ltr",
+                "source_sha256": "historical-source",
+                "linked_resources": {},
+                "job_sha256": "historical-job",
+                "output_sha256": sha256(XML.as_bytes()),
+            }],
+        });
+        let report_sha256 = sha256(&serde_json::to_vec(&report).unwrap());
+        fs::write(
+            root.0.join(ACCOUNTING),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "manifest_sha256": manifest_sha256,
+                "report_sha256": report_sha256,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        report["generated"] = serde_json::json!([]);
+        report["summary"]["generated"] = serde_json::json!(0);
+        fs::write(root.0.join(REPORT), serde_json::to_vec(&report).unwrap()).unwrap();
+        assert_eq!(
+            HistoricalInputs::read(&root.0).err().as_deref(),
+            Some("historical inventory manifest or report identity changed")
+        );
+    }
+
+    #[test]
     fn corpus_authority_refuses_empty_prepared_text_ledger() {
         let accounting = sample(Disposition::Retired);
         assert_eq!(
