@@ -116,7 +116,7 @@ pub(super) fn native_document_retirement_releases_registered_callbacks() {
                 const listener = observeRetirement;
                 delete window.observeRetirement;
                 document.addEventListener("retire", listener);
-                EventTarget.prototype.addEventListener.call(window, "retire", listener);
+                window.addEventListener("retire", listener);
                 return true;
             })())"#,
             1.0,

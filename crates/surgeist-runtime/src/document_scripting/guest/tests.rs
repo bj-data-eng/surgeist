@@ -178,7 +178,26 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     assert!(bound.is_some());
     assert!(storage_failure.owner.native.attachment.get().is_none());
 
-    let mut host = storage_failure
+    let Err(window_collision) = storage_failure.owner.enable_with_guest_event_registry(
+        target,
+        policy,
+        DocumentScriptHooks {
+            child_count: &units("Window"),
+            detach_source_node_if: &detach,
+        },
+        &mut bound,
+        limits,
+    ) else {
+        panic!("a collision must leave the Window unpublished");
+    };
+    assert!(matches!(
+        window_collision.error,
+        DocumentGuestEventError::Document(DocumentScriptError::Script(Error::PropertyRejected))
+    ));
+    assert!(bound.is_some());
+    assert!(window_collision.owner.native.attachment.get().is_none());
+
+    let mut host = window_collision
         .owner
         .enable_with_guest_event_registry(target, policy, hooks(), &mut bound, limits)
         .unwrap();
