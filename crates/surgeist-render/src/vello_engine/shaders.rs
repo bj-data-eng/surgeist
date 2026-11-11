@@ -976,6 +976,71 @@ mod cpu_tests {
     }
 
     #[test]
+    fn shader_preparation_records_work_in_device_backing() {
+        let owner = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_profile(crate::RenderProfile::Summary { timing: false }),
+        )
+        .unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let replacement = ShaderSourceReplacement {
+            from: "old",
+            to: "new!",
+            count: 1,
+            failure: "missing source marker",
+        };
+        let code = replace_shader_code(&cpu, "old.", &[replacement]).unwrap();
+        assert_eq!(code.as_slice(), b"new!.");
+        drop(code);
+        let (indices, entries) = prepare_bindings(&cpu, None, &SHADERS.bbox_clear).unwrap();
+        assert_eq!(indices.as_slice(), &[0, 1]);
+        assert_eq!(entries.len(), 2);
+        drop((indices, entries));
+
+        let snapshot = owner.snapshot().unwrap();
+        let backing = snapshot.scope_usage(RenderCpuScope::DeviceBacking).unwrap();
+        let cleanup = snapshot.scope_usage(RenderCpuScope::Cleanup).unwrap();
+        assert_eq!(
+            [
+                backing.work(RenderWork::SerializedBytes),
+                backing.work(RenderWork::ShaderBindingVisits),
+                cleanup.work(RenderWork::SerializedBytes),
+                cleanup.work(RenderWork::ShaderBindingVisits),
+            ],
+            [5, 5, 0, 0],
+        );
+    }
+
+    #[test]
+    fn overlapping_shader_edits_refuse_before_output_scratch() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let replacements = [
+            ShaderSourceReplacement {
+                from: "aaa",
+                to: "xxx",
+                count: 1,
+                failure: "missing first marker",
+            },
+            ShaderSourceReplacement {
+                from: "aab",
+                to: "yyy",
+                count: 1,
+                failure: "missing second marker",
+            },
+        ];
+        let result = replace_shader_code(&cpu, "aaab", &replacements);
+        assert!(
+            matches!(result, Err(ref error) if error.code() == crate::ErrorCode::RenderFailed),
+            "overlapping equal-width edits must refuse: {result:?}",
+        );
+        let snapshot = owner.snapshot().unwrap();
+        assert_eq!(snapshot.usage().peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(snapshot.usage().work(RenderWork::SerializedBytes), 0);
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
     fn fine_source_scratch_refusal_emits_nothing_and_preserves_healthy_custody() {
         let owner = RendererCpu::new(
             RenderAccountingOptions::default()
