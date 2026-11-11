@@ -4114,6 +4114,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-js-wpt"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "surgeist-fuzz",
+]
+
+[[package]]
 name = "surgeist-layout"
 version = "0.1.0"
 dependencies = [

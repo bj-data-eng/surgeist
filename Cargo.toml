@@ -100,6 +100,7 @@ members = [
     "crates/surgeist-typed-winsafe",
     "crates/surgeist-window",
     "tools/cssom-reflections",
+    "tools/surgeist-js-wpt",
 ]
 exclude = [
     "api/generator",
