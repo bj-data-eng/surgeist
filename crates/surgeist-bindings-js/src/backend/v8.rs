@@ -933,6 +933,10 @@ impl Operations for Entered<'_, '_, '_> {
         self.pin_callback_object(object, realm, backing)
     }
 
+    fn validate_callback_object(&self, holder: &Rc<CallbackObjectIdentity>) -> Result<(), Error> {
+        self.validate_pinned_callback_object(holder)
+    }
+
     fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error> {
         self.open_pinned_callback_object(holder)
     }
@@ -1270,7 +1274,7 @@ impl Operations for Entered<'_, '_, '_> {
 
     fn project_retained_native_object_in_prototype_realm(
         &mut self,
-        prototype: &Root,
+        prototype: &Rc<CallbackObjectIdentity>,
         realm: RealmKey,
         payload: Rc<dyn std::any::Any>,
         backing: Box<dyn std::any::Any>,

@@ -97,13 +97,13 @@ impl<'scope> Scope<'scope> {
         mut admit: impl FnMut(usize) -> Result<Storage, E>,
     ) -> Result<RetainedCallbackObject, E> {
         let realm = prototype.associated_realm().clone();
-        let prototype = self.open_callback_object(prototype)?;
+        let prototype = prototype.validated_holder(self)?;
         let projection = admit(self.native_projection_bytes::<T, Storage>()?)?;
         let holder_backing = admit(self.callback_object_bytes::<Storage>()?)?;
         let holder = self
             .operations
             .project_retained_native_object_in_prototype_realm(
-                &prototype.root,
+                prototype,
                 realm.key,
                 Rc::new(NativeObject::new(payload, projection)),
                 Box::new(holder_backing),

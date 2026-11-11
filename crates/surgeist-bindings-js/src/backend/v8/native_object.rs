@@ -28,11 +28,11 @@ struct PreparedObject {
     entry: Rc<Entry>,
 }
 
-fn prepare_payload(
-    scope: &mut v8::PinScope<'_, '_>,
+fn prepare_payload<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
     roots: &Roots,
     realm: RealmKey,
-    prototype: ObjectPrototype<'_>,
+    prototype: impl FnOnce(&v8::PinScope<'s, '_>) -> Result<v8::Local<'s, v8::Value>, Error>,
     payload: Rc<dyn Any>,
 ) -> Result<PreparedObject, Error> {
     let bank = &roots.native_objects;
@@ -49,7 +49,7 @@ fn prepare_payload(
     let object = template
         .new_instance(scope)
         .ok_or(Error::BackendUnavailable)?;
-    let prototype = prototype_value(scope, roots, prototype)?;
+    let prototype = prototype(scope)?;
     let identity = v8::Integer::new_from_unsigned(scope, index);
     let references = v8::Object::new(scope);
     let null = v8::null(scope);
@@ -146,26 +146,19 @@ impl Entered<'_, '_, '_> {
 
     pub(super) fn project_pinned_payload_in_prototype_realm(
         &mut self,
-        prototype: &Root,
+        prototype: &Rc<CallbackObjectIdentity>,
         expected_realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error> {
         let prepared = self.attempt(ExceptionPhase::Prototype, |scope, roots, _, _| {
-            let object = v8::Local::<v8::Object>::try_from(roots.local(scope, prototype)?)
-                .map_err(|_| Error::ExpectedObject)?;
+            let object = roots.callback_objects.local(scope, roots, prototype)?;
             let (context, realm) = creation_context(scope, roots, object)?;
             if realm != expected_realm {
                 return Err(Error::CallbackRealmUnavailable);
             }
             let scope = &mut v8::ContextScope::new(scope, context);
-            prepare_payload(
-                scope,
-                roots,
-                realm,
-                ObjectPrototype::Object(prototype),
-                payload,
-            )
+            prepare_payload(scope, roots, realm, |_| Ok(object.into()), payload)
         })?;
         self.pin_prepared_payload(prepared, expected_realm, backing)
     }
@@ -199,7 +192,13 @@ impl Entered<'_, '_, '_> {
         payload: Rc<dyn Any>,
     ) -> Result<PreparedObject, Error> {
         self.attempt(ExceptionPhase::Prototype, |scope, roots, realm, _| {
-            prepare_payload(scope, roots, realm, prototype, payload)
+            prepare_payload(
+                scope,
+                roots,
+                realm,
+                |scope| prototype_value(scope, roots, prototype),
+                payload,
+            )
         })
     }
 

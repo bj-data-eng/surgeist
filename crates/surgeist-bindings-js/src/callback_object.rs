@@ -35,6 +35,14 @@ impl RetainedCallbackObject {
         Self { holder, realm }
     }
 
+    pub(crate) fn validated_holder(
+        &self,
+        scope: &Scope<'_>,
+    ) -> Result<&Rc<CallbackObjectIdentity>, Error> {
+        scope.operations.validate_callback_object(&self.holder)?;
+        Ok(&self.holder)
+    }
+
     /// The same engine Realm observed before this object was retained.
     pub fn associated_realm(&self) -> &RealmAuthority {
         &self.realm
