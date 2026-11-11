@@ -302,7 +302,7 @@ fn finish(
     invocation: PublicationInvocation<'_>,
 ) -> Result<()> {
     let PublicationInvocation { mode, output } = invocation;
-    require_original_flex_parent_inputs(owner, edition)?;
+    require_positioned_original_inputs(owner, edition)?;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -405,7 +405,7 @@ fn finish(
     // Catch source/input changes during the invocation, as well as stale binaries
     // whose include_bytes resources differ from the current handwritten owner.
     require_current_inputs(owner)?;
-    require_original_flex_parent_inputs(owner, edition)?;
+    require_positioned_original_inputs(owner, edition)?;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -557,7 +557,7 @@ fn require_current_inputs(owner: &Path) -> Result<()> {
     Ok(())
 }
 
-fn require_original_flex_parent_inputs(owner: &Path, edition: Edition) -> Result<()> {
+fn require_positioned_original_inputs(owner: &Path, edition: Edition) -> Result<()> {
     use crate::original_flex_parent_profile as profile;
     let inputs = match edition {
         Edition::Specialized(SpecializedProfile::OriginalFlexParent) => [
@@ -574,6 +574,16 @@ fn require_original_flex_parent_inputs(owner: &Path, edition: Edition) -> Result
                 profile::percentage::REQUEST,
             ),
         ],
+        Edition::Specialized(SpecializedProfile::OriginalBlockAxes) => [
+            (
+                "original_block_axes.js",
+                crate::original_block_axes_profile::SCRIPT.as_bytes(),
+            ),
+            (
+                "original_block_axes_request.json",
+                crate::original_block_axes_profile::REQUEST,
+            ),
+        ],
         _ => return Ok(()),
     };
     for (name, bytes) in inputs {
@@ -582,7 +592,7 @@ fn require_original_flex_parent_inputs(owner: &Path, edition: Edition) -> Result
         ))?;
         require_regular_input(owner, &path)?;
         if fs::read(owner.join(path.as_str()))? != bytes {
-            return Err(format!("current original Flex parent input differs: {name}").into());
+            return Err(format!("current positioned original input differs: {name}").into());
         }
     }
     Ok(())
@@ -907,6 +917,7 @@ impl Origin {
             Edition::Specialized(
                 SpecializedProfile::EmptyLineBrFontBand
                     | SpecializedProfile::OriginalPercentageFlexParent
+                    | SpecializedProfile::OriginalBlockAxes
             )
         ) {
             None
@@ -1464,6 +1475,7 @@ fn specialized_cases(
                 SpecializedProfile::OriginalPercentageFlexParent => {
                     authority::original_percentage_flex_parent_evidence()
                 }
+                SpecializedProfile::OriginalBlockAxes => authority::original_block_axes_evidence(),
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
                 SpecializedProfile::PreparedAtomicPercentage => {
                     authority::prepared_atomic_percentage_evidence()

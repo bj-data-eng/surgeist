@@ -3159,3 +3159,148 @@ inline_offset = 0
 [[specialized_publications]]
 source = "html/grid/chrome_issue_325928327.html"
 profile = "original-percentage-flex-parent"
+
+[[records]]
+source = "html/block/block_axes_horizontal_tb.html"
+source_sha256 = "158ae9aae424eb3607f7f8607d4f8193e3ec643feeb0d88f686083132cf3e202"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "59360e00e6dcc1c47653896918e580c0f220a5c572ad995ddaf549ad6e45fea0"
+content_box_ltr = "4e45b918074d74a84241bb3e50aab9ee196621a50d5c0cee7355547865abcdb8"
+border_box_rtl = "c953a539cf6edccdb15393eb3d4217642bb9a004ba1aee000c80eaa321301c5f"
+content_box_rtl = "b60eb8044cd708afc62f778b0074f8666cf4c6a6271da6e6f4372fe48e043fa2"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 100
+height = 100
+
+[[specialized_publications]]
+source = "html/block/block_axes_horizontal_tb.html"
+profile = "original-block-axes"
+
+[[records]]
+source = "html/block/block_axes_vertical_rl.html"
+source_sha256 = "34072a33a30f4e31f97d0d795fec9b2b0677f93dddaf03b785c14127641dfd7e"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "cb4d14f40f5f904833c3648d5710d7baa54b0df71ddc3bd1c6bdc75c0d8917a2"
+content_box_ltr = "e462c67c34c9dae47d2140da644a5f5b57b33c07590837c7b4548998dbc76590"
+border_box_rtl = "5bf2c335c240c6c7795db8d44ef0ed22dbbcf643a260d310189ef4aa3834d2a6"
+content_box_rtl = "8f932d7455d54be1ad489a91039eeb1b9da2a77d84e85e34d72f539792ba56b4"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-rl"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 100
+height = 100
+
+[[specialized_publications]]
+source = "html/block/block_axes_vertical_rl.html"
+profile = "original-block-axes"
+
+[[records]]
+source = "html/block/block_axes_vertical_lr.html"
+source_sha256 = "722bfeb44fc456adebd4fd48113dad52910e8a9d9660c75c167a15649d43c3fd"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "78e31f8f773710b3deecaf6ab3d29ce812248933273c72c59571e54a29c74ba7"
+content_box_ltr = "837d831d426d8195fc02785b85a4f2a0c2166f997105ad9e8e4d4425dfff312f"
+border_box_rtl = "8ba1b46b8c6bf3b7178211eddc91b5ddfec21ffc617536cf45ea04b0c70f3c0c"
+content_box_rtl = "aabbc530a6d0fb8785a302c66bb89622268810dad53ed27138832bc84fafb37c"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-lr"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 100
+height = 100
+
+[[specialized_publications]]
+source = "html/block/block_axes_vertical_lr.html"
+profile = "original-block-axes"
+
+[[records]]
+source = "html/block/block_axes_sideways_rl.html"
+source_sha256 = "1e801f54fa0ca03894716d821ba96942fa13fc9ae770203d03a8bdbb56f0e7ea"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "05e5dadecc37346942b52030fa80de1854049673a67ce31829017762804297ff"
+content_box_ltr = "5272f045ba9201c77e612fddfaf5c1775b199c237e2044e7452c63849c30aac0"
+border_box_rtl = "ca9adab81c24b1141ab055b84bd912291a82364fc3542dcf1bc036ac32edb21b"
+content_box_rtl = "ec383e407728a5b7cc7c09e52a02b15580e630dec067f946b98a7e10a96a39ae"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "sideways-rl"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 100
+height = 100
+
+[[specialized_publications]]
+source = "html/block/block_axes_sideways_rl.html"
+profile = "original-block-axes"
+
+[[records]]
+source = "html/block/block_axes_sideways_lr.html"
+source_sha256 = "bcbc0c8f660e1664db5936c019092b1f5aafaebaff841cd5a4ba1749c79d1ccc"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "59d8afbe8229427e3161f1e85a2f89401a2131db90f188c653d4df928f96316e"
+content_box_ltr = "83ea8e0af88f21192eccf3dd82ba51a0c5633ac2922b590734a2f027e937abcd"
+border_box_rtl = "93e889928cb37d168e2acb15874d75401c6449ad7dbc6c449e3ee0ea63a13448"
+content_box_rtl = "878aefc3e1a53c2be5c0937ac2d0c962af8f05d750825885e02f8f234205400e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "sideways-lr"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+block_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 100
+height = 100
+
+[[specialized_publications]]
+source = "html/block/block_axes_sideways_lr.html"
+profile = "original-block-axes"
