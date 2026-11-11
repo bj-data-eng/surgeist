@@ -1216,7 +1216,15 @@ fn repeat_positions(
     }
 
     let origin = first_repeated_tile_origin(clip_origin, tile_origin, tile_axis, account)?;
-    let count = repeat_position_count(origin, clip_end, tile_axis, account)?;
+    let Some(count) = repeat_position_count(origin, clip_end, tile_axis, account)? else {
+        return overflowing_repeat_positions(
+            clip_origin,
+            clip_end,
+            tile_origin,
+            tile_axis,
+            account,
+        );
+    };
     validate_image_repeat_tile_count(count, account)?;
 
     let mut positions = account.temporary(count)?;
@@ -1354,20 +1362,91 @@ fn repeat_position_count(
     clip_end: f64,
     tile_axis: f64,
     account: &Account,
-) -> Result<usize> {
+) -> Result<Option<usize>> {
     if account.coordinate(|| origin >= clip_end)? {
-        return Ok(0);
+        return Ok(Some(0));
     }
     let delta = account.coordinate(|| clip_end - origin)?;
     let quotient = account.coordinate(|| delta / tile_axis)?;
     let count = account.coordinate(|| quotient.ceil())?;
-    if account.coordinate(|| !count.is_finite())?
-        || account.coordinate(|| count < 0.0)?
-        || account.coordinate(|| count > usize::MAX as f64)?
-    {
+    if account.coordinate(|| !count.is_finite())? {
+        if account.coordinate(|| delta.is_infinite())? {
+            return Ok(None);
+        }
         return Err(image_repeat_tile_count_error(count));
     }
-    account.coordinate(|| count as usize)
+    if account.coordinate(|| count < 0.0)? || account.coordinate(|| count > usize::MAX as f64)? {
+        return Err(image_repeat_tile_count_error(count));
+    }
+    Ok(Some(account.coordinate(|| count as usize)?))
+}
+
+fn overflowing_repeat_positions(
+    clip_origin: f64,
+    clip_end: f64,
+    tile_origin: f64,
+    tile_axis: f64,
+    account: &Account,
+) -> Result<AccountedVec<f64>> {
+    // A rounded first origin can lose the phase of tiles closer to zero.
+    // Use the centered residue of the authored anchor for the entire range.
+    let anchor = centered_repeat_remainder(tile_origin, tile_axis, account)?;
+    let first = repeat_position_boundary(anchor, tile_axis, account, |position| {
+        let tile_end = account.coordinate(|| position + tile_axis)?;
+        account.coordinate(|| tile_end <= clip_origin)
+    })?;
+    let end = repeat_position_boundary(anchor, tile_axis, account, |position| {
+        account.coordinate(|| position < clip_end)
+    })?;
+    let indices = first..end;
+    let count = account.coordinate(|| indices.len())?;
+    if account.coordinate(|| count > MAX_IMAGE_REPEAT_TILES)? {
+        return Err(image_repeat_tile_count_error(format_args!(
+            "at least {count}"
+        )));
+    }
+    let mut positions = account.temporary(count)?;
+    for index in indices {
+        positions.push(fused_repeat_position(anchor, tile_axis, index, account)?)?;
+    }
+    Ok(positions)
+}
+
+fn repeat_position_boundary(
+    anchor: f64,
+    tile_axis: f64,
+    account: &Account,
+    before: impl Fn(f64) -> Result<bool>,
+) -> Result<i32> {
+    // Overflow of the span requires a negative first origin and positive clip
+    // end. The first visible tile's end exceeds the clip start, so the clip
+    // start is below one period. With a centered anchor the left boundary is
+    // therefore at or before index 1, and the right boundary at or after 0.
+    // Reaching either search bound implies more tiles than the limit permits.
+    const RADIUS: i32 = MAX_IMAGE_REPEAT_TILES as i32 + 1;
+    let mut lower = -RADIUS;
+    let mut upper = RADIUS + 1;
+    while account.coordinate(|| lower < upper)? {
+        let sum = account.coordinate(|| lower + upper)?;
+        let index = account.coordinate(|| sum.div_euclid(2))?;
+        let position = fused_repeat_position(anchor, tile_axis, index, account)?;
+        if before(position)? {
+            lower = account.coordinate(|| index + 1)?;
+        } else {
+            upper = index;
+        }
+    }
+    Ok(lower)
+}
+
+fn fused_repeat_position(
+    anchor: f64,
+    tile_axis: f64,
+    index: i32,
+    account: &Account,
+) -> Result<f64> {
+    let index = account.coordinate(|| f64::from(index))?;
+    account.coordinate(|| tile_axis.mul_add(index, anchor))
 }
 
 fn validate_image_repeat_tile_count(tile_count: usize, account: &Account) -> Result<()> {
@@ -1634,9 +1713,10 @@ mod accounting_tests {
         );
         let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
-        // Two 20-action axis plans, three actions for each of the four
-        // positions, the grid count and limit, and both maxima for each tile.
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 62);
+        // Each axis spends 4 visits on input checks, 4 on the aligned
+        // first tile, 8 on the count and 1 on the cap. Add three for
+        // each position, two for the grid count and limit, and two per tile.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 56);
         assert_eq!(
             usage.work(RenderWork::PreparedTransferredBytes),
             (resolved.tile_rects.capacity() * std::mem::size_of::<Rect>()) as u64
