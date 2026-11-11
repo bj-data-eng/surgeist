@@ -1,6 +1,6 @@
 use crate::{
     PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
+    accounting::{OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
 use std::cmp::Ordering;
 use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
@@ -42,6 +42,24 @@ pub enum BorderImageOutset {
     BorderWidthMultiple(f64),
 }
 
+/// Input for outset geometry, in CSS pixels in one physical coordinate space.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BorderImageAreaRequest {
+    pub border_origin: Point<f64>,
+    pub border_size: Size<f64>,
+    pub border_widths: Edges<f64>,
+    pub outsets: Edges<BorderImageOutset>,
+}
+
+/// Input for slicing a concrete source into an already admitted paint area.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BorderImagePartitionRequest {
+    pub source: BorderImageSource,
+    pub slices: Edges<BorderImageSlice>,
+    pub widths: Edges<BorderImageWidth>,
+    pub fill_center: bool,
+}
+
 /// Input for an already-sized border image. Box facts use CSS pixels in one
 /// caller-selected physical coordinate space.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,6 +98,42 @@ impl BorderImageRect {
     pub const fn max(self) -> Point<f64> {
         self.max
     }
+}
+
+/// A resolved paint area and the border widths that produced it.
+///
+/// ```compile_fail
+/// use surgeist_layout::Size;
+/// use surgeist_paint::BorderImageArea;
+///
+/// fn replace_sizing_extent(area: &mut BorderImageArea) {
+///     area.extent = Size::new(10.0, 20.0);
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BorderImageArea {
+    rect: BorderImageRect,
+    extent: Size<f64>,
+    border_widths: Edges<f64>,
+}
+impl BorderImageArea {
+    /// Returns the signed paint rectangle in CSS pixels.
+    pub const fn rect(self) -> BorderImageRect {
+        self.rect
+    }
+
+    /// Returns the CSS-pixel extent used for default source sizing and width percentages.
+    /// This extent is independent of rounding in the placed rectangle's coordinates.
+    pub const fn default_size(self) -> Size<f64> {
+        self.extent
+    }
+}
+
+/// One complete paint area or a typed refusal, with the operation's Ledger report.
+#[derive(Debug)]
+pub struct BorderImageAreaOutcome {
+    pub result: Result<BorderImageArea, PaintError>,
+    pub report: Option<PaintReport>,
 }
 
 /// One paired source and destination region. An empty region on one side
@@ -137,144 +191,228 @@ pub struct BorderImageOutcome {
     pub report: Option<PaintReport>,
 }
 
-/// Resolves slices, widths and outsets for a concrete border-image source.
-/// Source coordinates and destination widths remain in their respective units.
+/// Resolves the outset-adjusted paint area without concrete image coordinates.
+pub fn resolve_border_image_area(
+    request: BorderImageAreaRequest,
+    options: PaintOptions,
+) -> BorderImageAreaOutcome {
+    let (result, report) = run(
+        options,
+        OperationKind::BorderImageArea,
+        PaintPhase::BorderImageArea,
+        |work| {
+            validate_box(work, request)?;
+            validate_border_widths(work, request.border_widths)?;
+            validate_outsets(work, request.outsets)
+        },
+        |work| resolve_area(work, request),
+    );
+    BorderImageAreaOutcome { result, report }
+}
+
+/// Resolves slices and widths with the area and border widths already admitted by Paint.
+pub fn resolve_border_image_in_area(
+    area: BorderImageArea,
+    request: BorderImagePartitionRequest,
+    options: PaintOptions,
+) -> BorderImageOutcome {
+    let (result, report) = run(
+        options,
+        OperationKind::BorderImage,
+        PaintPhase::BorderImageGeometry,
+        |work| {
+            validate_source(work, request.source)?;
+            validate_slices(work, request.slices)?;
+            validate_widths(work, request.widths)
+        },
+        |work| resolve_geometry(work, request, |_| Ok(area)),
+    );
+    BorderImageOutcome { result, report }
+}
+
+/// Resolves slices, widths and outsets in a single budgeted operation for a concrete source.
 pub fn resolve_border_image(
     request: BorderImageRequest,
     options: PaintOptions,
 ) -> BorderImageOutcome {
-    let mut meter = match options.operation(OperationKind::BorderImage) {
-        Ok(meter) => meter,
-        Err(error) => {
-            return BorderImageOutcome {
-                result: Err(error),
-                report: None,
-            };
-        }
+    let area = BorderImageAreaRequest {
+        border_origin: request.border_origin,
+        border_size: request.border_size,
+        border_widths: request.border_widths,
+        outsets: request.outsets,
     };
-    let result = run(&mut meter, request);
-    let (result, report) = finish(meter, result);
+    let partition = BorderImagePartitionRequest {
+        source: request.source,
+        slices: request.slices,
+        widths: request.widths,
+        fill_center: request.fill_center,
+    };
+    let (result, report) = run(
+        options,
+        OperationKind::BorderImage,
+        PaintPhase::BorderImageGeometry,
+        |work| {
+            validate_box(work, area)?;
+            validate_source(work, partition.source)?;
+            validate_border_widths(work, area.border_widths)?;
+            validate_slices(work, partition.slices)?;
+            validate_outsets(work, area.outsets)?;
+            validate_widths(work, partition.widths)
+        },
+        |work| resolve_geometry(work, partition, |work| resolve_area(work, area)),
+    );
     BorderImageOutcome { result, report }
 }
 
-fn run(meter: &mut Meter, request: BorderImageRequest) -> Result<BorderImageGeometry, PaintError> {
-    let root = meter.root();
-    let mut scopes = [root; 4];
-    for (slot, phase) in scopes.iter_mut().zip([
-        PaintPhase::PaintValidation,
-        PaintPhase::BorderImageGeometry,
-        PaintPhase::Publication,
-        PaintPhase::Cleanup,
-    ]) {
-        *slot = meter.child(root, phase, Limits::unlimited(), Tariffs::identity())?;
-    }
-    let [validation, geometry, publication, cleanup] = scopes;
-    let mut retained = false;
+fn run<T>(
+    options: PaintOptions,
+    kind: OperationKind,
+    geometry_phase: PaintPhase,
+    validate: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>,
+    resolve: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<T, PaintError>,
+) -> (Result<T, PaintError>, Option<PaintReport>) {
+    let mut meter = match options.operation(kind) {
+        Ok(meter) => meter,
+        Err(error) => return (Err(error), None),
+    };
     let result = (|| {
-        meter
-            .with_phase(validation, |phase| validate(phase, validation, request))
-            .map_err(setup_error)??;
-        let result = meter
-            .with_phase(geometry, |phase| {
-                resolve(
-                    &mut GeometryWork {
+        let root = meter.root();
+        let mut scopes = [root; 4];
+        for (slot, phase) in scopes.iter_mut().zip([
+            PaintPhase::PaintValidation,
+            geometry_phase,
+            PaintPhase::Publication,
+            PaintPhase::Cleanup,
+        ]) {
+            *slot = meter.child(root, phase, Limits::unlimited(), Tariffs::identity())?;
+        }
+        let [validation, geometry, publication, cleanup] = scopes;
+        let mut retained = false;
+        let result = (|| {
+            meter
+                .with_phase(validation, |phase| {
+                    validate(&mut GeometryWork {
+                        phase,
+                        scope: validation,
+                    })
+                })
+                .map_err(setup_error)??;
+            let result = meter
+                .with_phase(geometry, |phase| {
+                    resolve(&mut GeometryWork {
                         phase,
                         scope: geometry,
-                    },
-                    request,
-                )
+                    })
+                })
+                .map_err(setup_error)??;
+            meter
+                .with_phase(publication, |phase| {
+                    apply(
+                        phase,
+                        root,
+                        Change::Acquire(ResourceKind::RetainedResultBytes, bytes::<T>(1)?),
+                    )?;
+                    retained = true;
+                    charge(phase, publication, WorkKind::OutputRecord, 1)?;
+                    Ok(result)
+                })
+                .map_err(setup_error)?
+        })();
+        let release = meter
+            .with_phase(cleanup, |phase| {
+                if result.is_err() && retained {
+                    apply(
+                        phase,
+                        root,
+                        Change::Release(ResourceKind::RetainedResultBytes, bytes::<T>(1)?),
+                    )?;
+                }
+                Ok(())
             })
-            .map_err(setup_error)??;
-        meter
-            .with_phase(publication, |phase| {
-                apply(
-                    phase,
-                    root,
-                    Change::Acquire(
-                        ResourceKind::RetainedResultBytes,
-                        bytes::<BorderImageGeometry>(1)?,
-                    ),
-                )?;
-                retained = true;
-                charge(phase, publication, WorkKind::OutputRecord, 1)?;
-                Ok(result)
-            })
-            .map_err(setup_error)?
+            .map_err(setup_error)
+            .and_then(|done| done);
+        result.and_then(|value| release.map(|()| value))
     })();
-    let release = meter
-        .with_phase(cleanup, |phase| {
-            if result.is_err() && retained {
-                apply(
-                    phase,
-                    root,
-                    Change::Release(
-                        ResourceKind::RetainedResultBytes,
-                        bytes::<BorderImageGeometry>(1)?,
-                    ),
-                )?;
-            }
-            Ok(())
-        })
-        .map_err(setup_error)
-        .and_then(|done| done);
-    result.and_then(|value| release.map(|()| value))
+    finish(meter, result)
 }
 
-fn validate(
-    phase: &mut PhaseMeter<'_, '_>,
-    scope: Scope,
-    request: BorderImageRequest,
+fn validate_box(
+    work: &mut GeometryWork<'_, '_, '_>,
+    request: BorderImageAreaRequest,
 ) -> Result<(), PaintError> {
-    use BorderImageGeometryError as Error;
-
-    let mut check = |value: f64, valid: fn(f64) -> bool, error| {
-        charge(phase, scope, WorkKind::BorderImageValidation, 1)?;
-        if valid(value) {
-            Ok(())
-        } else {
-            Err(PaintError::BorderImage(error))
-        }
-    };
     for value in [request.border_origin.x, request.border_origin.y] {
-        check(value, f64::is_finite, Error::InvalidBox)?;
+        work.check(value, f64::is_finite, BorderImageGeometryError::InvalidBox)?;
     }
     for value in [request.border_size.width, request.border_size.height] {
-        check(value, nonnegative, Error::InvalidBox)?;
+        work.check(value, nonnegative, BorderImageGeometryError::InvalidBox)?;
     }
-    for value in [
-        request.source.coordinate_size.width,
-        request.source.coordinate_size.height,
-    ] {
-        check(
+    Ok(())
+}
+
+fn validate_source(
+    work: &mut GeometryWork<'_, '_, '_>,
+    source: BorderImageSource,
+) -> Result<(), PaintError> {
+    for value in [source.coordinate_size.width, source.coordinate_size.height] {
+        work.check(
             value,
             |value| value.is_finite() && value > 0.0,
-            Error::InvalidSource,
+            BorderImageGeometryError::InvalidSource,
         )?;
     }
-    for value in [
-        request.source.natural_size.width,
-        request.source.natural_size.height,
-    ]
-    .into_iter()
-    .flatten()
+    for value in [source.natural_size.width, source.natural_size.height]
+        .into_iter()
+        .flatten()
     {
-        check(value, nonnegative, Error::InvalidSource)?;
+        work.check(value, nonnegative, BorderImageGeometryError::InvalidSource)?;
     }
-    for value in physical_edges(request.border_widths) {
-        check(value, nonnegative, Error::InvalidBorderWidth)?;
+    Ok(())
+}
+
+fn validate_border_widths(
+    work: &mut GeometryWork<'_, '_, '_>,
+    widths: Edges<f64>,
+) -> Result<(), PaintError> {
+    for value in physical_edges(widths) {
+        work.check(
+            value,
+            nonnegative,
+            BorderImageGeometryError::InvalidBorderWidth,
+        )?;
     }
-    for slice in physical_edges(request.slices) {
+    Ok(())
+}
+
+fn validate_slices(
+    work: &mut GeometryWork<'_, '_, '_>,
+    slices: Edges<BorderImageSlice>,
+) -> Result<(), PaintError> {
+    for slice in physical_edges(slices) {
         let (BorderImageSlice::SourceUnits(value) | BorderImageSlice::Fraction(value)) = slice;
-        check(value, nonnegative, Error::InvalidSlice)?;
+        work.check(value, nonnegative, BorderImageGeometryError::InvalidSlice)?;
     }
-    for outset in physical_edges(request.outsets) {
+    Ok(())
+}
+
+fn validate_outsets(
+    work: &mut GeometryWork<'_, '_, '_>,
+    outsets: Edges<BorderImageOutset>,
+) -> Result<(), PaintError> {
+    for outset in physical_edges(outsets) {
         let (BorderImageOutset::Length(value) | BorderImageOutset::BorderWidthMultiple(value)) =
             outset;
-        check(value, nonnegative, Error::InvalidOutset)?;
+        work.check(value, nonnegative, BorderImageGeometryError::InvalidOutset)?;
     }
-    for width in physical_edges(request.widths) {
+    Ok(())
+}
+
+fn validate_widths(
+    work: &mut GeometryWork<'_, '_, '_>,
+    widths: Edges<BorderImageWidth>,
+) -> Result<(), PaintError> {
+    for width in physical_edges(widths) {
         if let BorderImageWidth::BorderWidthMultiple(value) = width {
-            check(value, nonnegative, Error::InvalidWidth)?;
+            work.check(value, nonnegative, BorderImageGeometryError::InvalidWidth)?;
         }
     }
     Ok(())
@@ -297,6 +435,20 @@ struct GeometryWork<'phase, 'borrow, 'operation> {
     scope: Scope,
 }
 impl GeometryWork<'_, '_, '_> {
+    fn check(
+        &mut self,
+        value: f64,
+        valid: fn(f64) -> bool,
+        error: BorderImageGeometryError,
+    ) -> Result<(), PaintError> {
+        charge(self.phase, self.scope, WorkKind::BorderImageValidation, 1)?;
+        if valid(value) {
+            Ok(())
+        } else {
+            Err(PaintError::BorderImage(error))
+        }
+    }
+
     fn coordinate<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
         charge(self.phase, self.scope, WorkKind::BorderImageCoordinate, 1)?;
         Ok(action())
@@ -336,21 +488,12 @@ struct AxisWidths {
     last: f64,
 }
 
-fn resolve(
+fn resolve_area(
     work: &mut GeometryWork<'_, '_, '_>,
-    request: BorderImageRequest,
-) -> Result<BorderImageGeometry, PaintError> {
-    let source = request.source.coordinate_size;
-    let natural = request.source.natural_size;
-    let border = request.border_widths;
-    let input = request.slices;
-    let slices = Edges::new(
-        slice(work, input.top, source.height)?,
-        slice(work, input.right, source.width)?,
-        slice(work, input.bottom, source.height)?,
-        slice(work, input.left, source.width)?,
-    );
+    request: BorderImageAreaRequest,
+) -> Result<BorderImageArea, PaintError> {
     let input = request.outsets;
+    let border = request.border_widths;
     let outsets = Edges::new(
         outset(work, input.top, border.top)?,
         outset(work, input.right, border.right)?,
@@ -371,10 +514,35 @@ fn resolve(
         outsets.top,
         outsets.bottom,
     )?;
-    let area = BorderImageRect {
-        min: Point::new(x0, y0),
-        max: Point::new(x1, y1),
-    };
+    Ok(BorderImageArea {
+        rect: BorderImageRect {
+            min: Point::new(x0, y0),
+            max: Point::new(x1, y1),
+        },
+        extent: Size::new(width, height),
+        border_widths: border,
+    })
+}
+
+fn resolve_geometry(
+    work: &mut GeometryWork<'_, '_, '_>,
+    request: BorderImagePartitionRequest,
+    area: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<BorderImageArea, PaintError>,
+) -> Result<BorderImageGeometry, PaintError> {
+    let source = request.source.coordinate_size;
+    let natural = request.source.natural_size;
+    let input = request.slices;
+    let slices = Edges::new(
+        slice(work, input.top, source.height)?,
+        slice(work, input.right, source.width)?,
+        slice(work, input.bottom, source.height)?,
+        slice(work, input.left, source.width)?,
+    );
+    let area = area(work)?;
+    let border = area.border_widths;
+    let Size { width, height } = area.extent;
+    let Point { x: x0, y: y0 } = area.rect.min();
+    let Point { x: x1, y: y1 } = area.rect.max();
     let input = request.widths;
     let widths = Edges::new(
         used_width(
@@ -504,7 +672,7 @@ fn resolve(
         }
     }
     Ok(BorderImageGeometry {
-        area,
+        area: area.rect,
         used_widths,
         regions,
     })
@@ -978,6 +1146,147 @@ mod tests {
         resolve_border_image(request, options(PaintLimits::unlimited()))
             .result
             .unwrap()
+    }
+
+    #[test]
+    fn staged_area_supplies_the_width_basis_without_repeating_work() {
+        let input = request();
+        let area_outcome = resolve_border_image_area(
+            BorderImageAreaRequest {
+                border_origin: input.border_origin,
+                border_size: input.border_size,
+                border_widths: input.border_widths,
+                outsets: input.outsets,
+            },
+            options(PaintLimits::unlimited()),
+        );
+        let area = area_outcome.result.unwrap();
+        assert_eq!(area.rect(), rect(0.0, 16.0, 54.0, 46.0));
+        assert_eq!(area.default_size(), Size::new(54.0, 30.0));
+
+        let partition = BorderImagePartitionRequest {
+            source: input.source,
+            slices: input.slices,
+            widths: input.widths,
+            fill_center: input.fill_center,
+        };
+        let refused = resolve_border_image_in_area(
+            area,
+            partition,
+            options(PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 9)),
+        );
+        let Err(PaintError::Budget(refusal)) = refused.result else {
+            panic!("expected partition publication refusal");
+        };
+        assert_eq!(refusal.origin, PaintPhase::Publication);
+        assert_eq!(
+            refused
+                .report
+                .unwrap()
+                .live(ResourceKind::RetainedResultBytes),
+            0
+        );
+
+        let staged =
+            resolve_border_image_in_area(area, partition, options(PaintLimits::unlimited()));
+        let combined = resolve_border_image(input, options(PaintLimits::unlimited()));
+        assert_eq!(staged.result, combined.result);
+        assert_eq!(
+            staged.result.unwrap().used_widths(),
+            Edges::new(2.0, 13.5, 8.0, 10.0)
+        );
+        let area_report = area_outcome.report.unwrap();
+        let staged_report = staged.report.unwrap();
+        let combined_report = combined.report.unwrap();
+        assert_eq!(area_report.work(WorkKind::BorderImageValidation), 12);
+        for kind in [
+            WorkKind::BorderImageValidation,
+            WorkKind::BorderImageCoordinate,
+        ] {
+            assert_eq!(
+                area_report.work(kind) + staged_report.work(kind),
+                combined_report.work(kind)
+            );
+        }
+        assert_eq!(
+            area_report
+                .phases()
+                .find(|phase| phase.phase() == PaintPhase::BorderImageArea)
+                .unwrap()
+                .work(WorkKind::BorderImageCoordinate),
+            area_report.work(WorkKind::BorderImageCoordinate)
+        );
+        assert_eq!(area_report.work(WorkKind::OutputRecord), 1);
+        assert_eq!(staged_report.work(WorkKind::OutputRecord), 10);
+        assert_eq!(combined_report.work(WorkKind::OutputRecord), 10);
+        assert_eq!(area_report.live(ResourceKind::ScratchBytes), 0);
+        assert_eq!(
+            area_report.live(ResourceKind::RetainedResultBytes),
+            size_of::<BorderImageArea>() as u64
+        );
+    }
+
+    #[test]
+    fn area_refusal_reports_its_phase_and_releases_provisional_output() {
+        let mut input = BorderImageAreaRequest {
+            border_origin: Point::new(0.1, 0.0),
+            border_size: Size::new(0.2, 10.0),
+            border_widths: Edges::all(1.0),
+            outsets: Edges::all(BorderImageOutset::Length(0.0)),
+        };
+        for (kind, cap, phase) in [
+            (
+                WorkKind::BorderImageValidation,
+                0,
+                PaintPhase::PaintValidation,
+            ),
+            (
+                WorkKind::BorderImageCoordinate,
+                1,
+                PaintPhase::BorderImageArea,
+            ),
+            (WorkKind::OutputRecord, 0, PaintPhase::Publication),
+        ] {
+            let limited = options(PaintLimits::unlimited().with_work_limit(kind, cap));
+            let outcome = resolve_border_image_area(input, limited);
+            let Err(PaintError::Budget(refusal)) = outcome.result else {
+                panic!(
+                    "expected a budget refusal for {kind:?}: {:?}",
+                    outcome.result
+                );
+            };
+            assert_eq!(refusal.origin, phase);
+            assert_eq!(refusal.current, cap);
+            assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
+            let report = outcome.report.unwrap();
+            assert_eq!(report.work(kind), cap);
+            assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
+            if kind == WorkKind::OutputRecord {
+                assert_eq!(
+                    report.peak(ResourceKind::RetainedResultBytes),
+                    size_of::<BorderImageArea>() as u64
+                );
+            }
+        }
+        let retried = resolve_border_image_area(input, options(PaintLimits::unlimited()))
+            .result
+            .unwrap();
+        assert_eq!(retried.default_size(), input.border_size);
+        assert_ne!(retried.rect().max().x - retried.rect().min().x, 0.2);
+
+        input.outsets.left = BorderImageOutset::Length(-1.0);
+        assert_eq!(
+            resolve_border_image_area(input, options(PaintLimits::unlimited())).result,
+            Err(PaintError::BorderImage(
+                BorderImageGeometryError::InvalidOutset
+            ))
+        );
+        input.outsets.left = BorderImageOutset::Length(0.0);
+        input.border_origin.x = f64::MAX;
+        assert_eq!(
+            resolve_border_image_area(input, options(PaintLimits::unlimited())).result,
+            Err(geometry_error())
+        );
     }
 
     fn partition_request(x: f64, extent: f64, left: f64, right: f64) -> BorderImageRequest {

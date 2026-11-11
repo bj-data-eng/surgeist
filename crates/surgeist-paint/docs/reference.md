@@ -6,6 +6,7 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | Surface | Contract |
 | --- | --- |
 | `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
+| `resolve_border_image_area`, `BorderImageArea`, `resolve_border_image_in_area` | Compute the outset area before source sizing and reuse it for partitioning. |
 | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
 | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
 | `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
@@ -52,6 +53,15 @@ corresponding natural CSS-pixel extent. When that natural axis is absent, the
 automatic width uses the supplied border width.
 
 The outset paint area supplies the percentage basis for destination widths.
+For a source that first needs sizing, call `resolve_border_image_area` with a
+`BorderImageAreaRequest` and supply the resulting `default_size()` to the
+sizing owner. The extent is calculated from the box size and outsets before
+placement can round the edges. Pass that same `BorderImageArea` and the
+concrete `BorderImagePartitionRequest` to `resolve_border_image_in_area`.
+The resolved area retains the border-width basis for multiples and automatic
+fallbacks. For an already-sized source, `resolve_border_image` performs both
+calculations under one budget.
+
 One common factor fits opposing widths to the area. The nine output regions
 are in physical top-to-bottom, left-to-right order and distinguish independent
 source and destination emptiness. An overlapping source axis removes its middle
@@ -62,10 +72,12 @@ the output coordinates returns a typed numeric error. The resulting paint area
 is separate from layout, scrolling, and pointer geometry.
 
 Ledger reports admitted `BorderImageValidation`, `BorderImageCoordinate`, and
-`OutputRecord` work. Each region and the complete result count as output
-records. The fixed result accounts for retained bytes, and refusal releases
-any provisional result custody. Source sizing, resource selection, repetition,
-and concrete draw lowering belong to the callers and their respective owners.
+`OutputRecord` work. The staged area reports its coordinate work in
+`BorderImageArea` and publishes one output record. The partition operation
+charges each region and the complete result. Each operation accounts for its
+own fixed retained result and releases provisional custody on refusal. Source
+sizing, resource selection, repetition, and concrete draw lowering belong to
+the callers and their respective owners.
 
 ## Zero-height gradient colors
 
