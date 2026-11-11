@@ -73,6 +73,63 @@ fn attach_registry_with_limits(
     assert!(registry.is_none());
 }
 
+pub(in crate::document_scripting) fn refused_first_target_releases_prototype_capture() {
+    let (prototype_bytes, target_bytes) = {
+        let mut host = host(Arc::new(AtomicBool::new(false)));
+        let permit = host.permit().unwrap();
+        attach_registry(&mut host, &permit);
+        let events = host.guest_events().unwrap();
+        let owner = host.native.clone();
+        let before = events.used.get();
+        host.in_document(&permit, |scope| {
+            Ok(events.target_prototype(&owner, scope).map(drop))
+        })
+        .unwrap()
+        .unwrap();
+        let with_prototype = events.used.get();
+        let _target = host.create_guest_event_target(&permit).unwrap();
+        (with_prototype - before, events.used.get() - with_prototype)
+    };
+    assert!(prototype_bytes > 0 && target_bytes > 0);
+
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let events = host.guest_events().unwrap();
+    let available = events.limits.storage_bytes - events.used.get();
+    let one_short = events
+        .reserve(&host.native, available - prototype_bytes + 1)
+        .unwrap();
+    let at_refusal = events.used.get();
+    assert!(matches!(
+        host.create_guest_event_target(&permit),
+        Err(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+        ))
+    ));
+    assert!(events.target_prototype.get().is_none());
+    assert_eq!(
+        events.used.get(),
+        at_refusal,
+        "a refused prototype must release its method capture without collection"
+    );
+    drop(one_short);
+
+    let exact = events
+        .reserve(&host.native, available - prototype_bytes - target_bytes)
+        .unwrap();
+    let target = host.create_guest_event_target(&permit).unwrap();
+    assert_eq!(events.used.get(), events.limits.storage_bytes);
+    host.in_document(&permit, |scope| {
+        let target = target.object(scope)?;
+        let method = scope.get(&target, PropertyKey::String(&units("dispatchEvent")))?;
+        assert!(scope.is_callable(&method)?);
+        Ok(())
+    })
+    .unwrap();
+    drop(exact);
+}
+
 pub(in crate::document_scripting) fn refused_projection_releases_native_backing_before_retry() {
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();
