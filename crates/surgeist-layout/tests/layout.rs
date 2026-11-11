@@ -12,6 +12,8 @@ mod grid_alignment_reference;
 mod horizontal_br_font_band_profile;
 #[path = "layout/mod.rs"]
 mod layout;
+#[path = "bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
+mod original_flex_parent_profile;
 #[path = "bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
 mod original_subgrid_body_profile;
 #[path = "layout/browser_parity/pinned_font.rs"]

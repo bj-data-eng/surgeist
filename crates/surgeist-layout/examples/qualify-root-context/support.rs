@@ -23,6 +23,7 @@ use crate::horizontal_br_font_band_profile::SOURCE as HORIZONTAL_BR_SOURCE;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
 };
+use crate::original_flex_parent_profile::SOURCES as ORIGINAL_FLEX_PARENT_SOURCES;
 use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
@@ -54,6 +55,7 @@ pub(super) enum QualificationMode {
     FlexContentTextDiagnostics,
     PreparedRangeCapture,
     FlexCompositionCapture,
+    OriginalFlexParentCapture,
     OriginalSubgridBodyCapture,
     PreparedAtomicPercentageCapture,
     HorizontalBrFontBandCapture,
@@ -90,6 +92,7 @@ impl Serialize for QualificationMode {
             Self::FlexContentTextDiagnostics => "flex-content-text-diagnostics",
             Self::PreparedRangeCapture => "prepared-range-capture",
             Self::FlexCompositionCapture => "flex-composition-capture",
+            Self::OriginalFlexParentCapture => "original-flex-parent-capture",
             Self::OriginalSubgridBodyCapture => "original-subgrid-body-capture",
             Self::PreparedAtomicPercentageCapture => "prepared-atomic-percentage-capture",
             Self::HorizontalBrFontBandCapture => "horizontal-br-font-band-capture",
@@ -153,6 +156,12 @@ impl QualificationMode {
             | Self::CheckPublishedSpecialized(SpecializedProfile::FlexComposition)
             | Self::DeriveSpecialized(SpecializedProfile::FlexComposition) => {
                 BoxObservationRequest::FlexComposition
+            }
+            Self::OriginalFlexParentCapture
+            | Self::PublishSpecialized(SpecializedProfile::OriginalFlexParent)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalFlexParent)
+            | Self::DeriveSpecialized(SpecializedProfile::OriginalFlexParent) => {
+                BoxObservationRequest::OriginalFlexParent
             }
             Self::OriginalSubgridBodyCapture
             | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
@@ -225,6 +234,15 @@ fn select_records(
         declaration
             .records
             .retain(|record| record.source.as_str() != FLEX_COMPOSITION_SOURCE);
+    }
+    if mode == QualificationMode::OriginalFlexParentCapture {
+        if !fixture.is_some_and(|source| ORIGINAL_FLEX_PARENT_SOURCES.contains(&source)) {
+            return Err("original Flex parent capture requires a declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| !ORIGINAL_FLEX_PARENT_SOURCES.contains(&record.source.as_str()));
     }
     if mode == QualificationMode::OriginalSubgridBodyCapture {
         if fixture != Some(ORIGINAL_SUBGRID_BODY_SOURCE) {
@@ -324,6 +342,7 @@ fn select_records(
                 }
                 QualificationMode::PreparedRangeCapture
                 | QualificationMode::FlexCompositionCapture
+                | QualificationMode::OriginalFlexParentCapture
                 | QualificationMode::OriginalSubgridBodyCapture
                 | QualificationMode::PreparedAtomicPercentageCapture
                 | QualificationMode::HorizontalBrFontBandCapture
@@ -769,6 +788,11 @@ fn effective_mode(mode: QualificationMode, fixture: Option<&str>) -> Qualificati
         (QualificationMode::Regular, Some(FLEX_COMPOSITION_SOURCE)) => {
             QualificationMode::FlexCompositionCapture
         }
+        (QualificationMode::Regular, Some(source))
+            if ORIGINAL_FLEX_PARENT_SOURCES.contains(&source) =>
+        {
+            QualificationMode::OriginalFlexParentCapture
+        }
         (QualificationMode::Regular, Some(ORIGINAL_SUBGRID_BODY_SOURCE)) => {
             QualificationMode::OriginalSubgridBodyCapture
         }
@@ -1148,7 +1172,13 @@ fn validate_corpus(
         {
             let historical = fs::read_to_string(root.join(historical.as_str()))?;
             let current = std::str::from_utf8(&bytes)?;
-            if mode.box_observations() == BoxObservationRequest::OriginalSubgridBody {
+            if mode.box_observations() == BoxObservationRequest::OriginalFlexParent {
+                use crate::parity_support::{Golden, original_flex_parent};
+                original_flex_parent::verify_historical(
+                    &Golden::parse(current)?,
+                    &Golden::parse(&historical)?,
+                )?;
+            } else if mode.box_observations() == BoxObservationRequest::OriginalSubgridBody {
                 use crate::parity_support::Golden;
                 original_subgrid_body::verify_historical(
                     &Golden::parse(current)?,
@@ -1313,6 +1343,14 @@ fn validate_corpus(
             if let Err(error) = verdict {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }
+        } else if observation == BoxObservationRequest::OriginalFlexParent {
+            let (raw, verdict) = crate::parity_support::original_flex_parent::compare(&golden)?;
+            for difference in raw {
+                eprintln!("qualify-root-context: {}: {difference}", case.case.id());
+            }
+            if let Err(error) = verdict {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
         } else if observation == BoxObservationRequest::OriginalSubgridBody {
             let (raw, verdict) = original_subgrid_body::compare(&golden, case.case.variant())?;
             for difference in raw {
@@ -1471,6 +1509,7 @@ fn validate_corpus(
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
+        | QualificationMode::OriginalFlexParentCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1703,6 +1742,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
+        | QualificationMode::OriginalFlexParentCapture
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
@@ -1814,7 +1854,8 @@ fn inventory_with_retained_helper(
             }
         }
         Some(
-            SpecializedProfile::OriginalSubgridBody
+            SpecializedProfile::OriginalFlexParent
+            | SpecializedProfile::OriginalSubgridBody
             | SpecializedProfile::PreparedAtomicPercentage
             | SpecializedProfile::HorizontalBrFontBand
             | SpecializedProfile::VerticalBrFontBand
