@@ -522,6 +522,21 @@ fn preferred_main_max_content_settles_automatic_own_ratio_cross_f64() {
 }
 
 fn own_ratio_cross_minimum_controls<S: LayoutScalar>() {
+    fn measure<S: LayoutScalar>(input: LeafMeasureInputOf<S>) -> Size<S> {
+        let known = input.known_content_size();
+        let cross = if input.content_sizing_request().axes().height.operation()
+            == SizingOperation::MinContent
+        {
+            60.0
+        } else {
+            80.0
+        };
+        Size::new(
+            known.width.unwrap_or(n(65.0)),
+            known.height.unwrap_or(n(cross)),
+        )
+    }
+
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let scroll = ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
     for (label, minimum, maximum, overflow, expected_cross) in [
@@ -559,7 +574,7 @@ fn own_ratio_cross_minimum_controls<S: LayoutScalar>() {
         root.min_size.height = minimum;
         root.max_size.height = maximum;
         root.overflow = overflow;
-        let tree = tree.style(0, root).measure(1, Size::new(n(65.0), n(60.0)));
+        let tree = tree.style(0, root).measure_with(1, measure::<S>);
         let batch = compute_layout(&tree, 0, request(flow, None, None)).unwrap();
         assert_eq!(
             readback::single_box_output(&batch, 0, Phase::Unrounded).size,
@@ -575,6 +590,7 @@ fn own_ratio_cross_sizing_box_controls<S: LayoutScalar>() {
         let tree = own_ratio_tree::<S>(flow, PreferredSizeOf::AUTO);
         let mut root = tree.node_input(0).clone();
         root.box_sizing = box_sizing;
+        root.align_items = Some(AlignItems::End);
         root.padding = Edges::all(LengthOf::px(n(3.0)));
         root.border = Edges::all(LengthOf::px(n(2.0)));
         let batch = compute_layout(&tree.style(0, root), 0, request(flow, None, None)).unwrap();
@@ -585,7 +601,7 @@ fn own_ratio_cross_sizing_box_controls<S: LayoutScalar>() {
         );
         assert_eq!(
             readback::single_box_output(&batch, 1, Phase::Unrounded).location,
-            Point::new(n(5.0), n(5.0)),
+            Point::new(n(5.0), n(cross - 15.0)),
         );
     }
 }
@@ -600,6 +616,57 @@ fn preferred_main_max_content_applies_own_ratio_cross_minimum() {
 fn preferred_main_max_content_transfers_own_ratio_in_sizing_box() {
     own_ratio_cross_sizing_box_controls::<f32>();
     own_ratio_cross_sizing_box_controls::<f64>();
+}
+
+fn own_ratio_cross_request_authority<S: LayoutScalar>() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let source = own_ratio_tree::<S>(flow, PreferredSizeOf::AUTO);
+    for run_mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+        let mut tree = OracleTreeOf::<S>::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(0, source.node_input(0).clone())
+            .style(1, source.node_input(1).clone())
+            .measure(
+                1,
+                ComputeOutputOf::from_outer_size(Size::new(n(65.0), n(10.0))),
+            );
+        let input = ComputeInputOf::for_child(
+            run_mode,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+            request::<S>(flow, None, None).sizing_request(),
+        );
+        let output = tree.borrow_compute().compute_child(0, input).unwrap();
+        assert_eq!(output.size, Size::new(n(65.0), n(32.5)), "{run_mode:?}");
+        let queries = tree.inputs(1);
+        assert!(
+            queries.iter().any(|query| {
+                query.run_mode() == RunMode::ComputeSize
+                    && query.sizing_request().axes().height.operation()
+                        == SizingOperation::MinContent
+                    && query.known().width == Some(n(65.0))
+                    && query.known().height.is_none()
+            }),
+            "{run_mode:?}: {queries:?}"
+        );
+        assert!(
+            queries.iter().all(|query| query.parent().height.is_none()),
+            "{run_mode:?}: ratio geometry cannot supply a cross percentage basis: {queries:?}",
+        );
+        if run_mode == RunMode::ComputeSize {
+            assert!(tree.layout(1).is_none());
+        }
+    }
+}
+
+#[test]
+fn preferred_main_max_content_ratio_cross_preserves_request_authority() {
+    own_ratio_cross_request_authority::<f32>();
+    own_ratio_cross_request_authority::<f64>();
 }
 
 fn bounded_wrapping<S: LayoutScalar>() {
