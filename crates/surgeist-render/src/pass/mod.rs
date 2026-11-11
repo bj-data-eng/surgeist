@@ -143,6 +143,7 @@ impl<K: Ord> PassSet<K> {
     fn contains_with(&self, key: &K, account: &crate::accounting::Account) -> Result<bool> {
         Ok(self.0.get(key, account)?.is_some())
     }
+    #[cfg(test)]
     fn len(&self) -> usize {
         self.0.len()
     }

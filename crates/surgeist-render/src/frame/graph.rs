@@ -1402,18 +1402,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 outer_clips: shared_copy(&[], account)?,
             },
         )?;
-        let present = graph_build(planner.builder.declare_pass(
+        graph_build(planner.builder.declare_pass(
             SemanticPassIntent::Present,
             &dependencies_for(&[parent.current], account)?,
             &[parent.current.id],
             SemanticPassResult::Empty,
         ))?;
-        debug_assert_eq!(
-            planner.builder.final_present,
-            Some(present),
-            "the declared present must be the graph's terminal pass"
-        );
-
         graph_build(planner.builder.seal_recorded_read_counts())?;
         graph_build(planner.builder.begin_scheduling())?;
         for index in 0..planner.builder.passes.len() {

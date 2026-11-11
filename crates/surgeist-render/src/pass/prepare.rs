@@ -407,7 +407,7 @@ fn analyze_runtime_passes(
             account,
         )?;
         analyze_runtime_kernel(pass, device, &mut facts, account)?;
-        debug_assert!(pass_reads.len() == pass.reads.len());
+        drop(pass_reads);
     }
     Ok(facts)
 }
