@@ -347,8 +347,12 @@ impl PreparedDocumentScriptHost {
         hooks: DocumentScriptHooks<'_>,
     ) -> Result<DocumentScriptHost, EnableDocumentScriptFailure> {
         let result = self
-            .prepare_engine(target, hooks)
-            .and_then(|engine| engine.publish(&self.native, policy));
+            .prepare_engine(target, hooks, |execution| execution.create_realm())
+            .and_then(|engine| {
+                engine
+                    .publish(&self.native, policy, |_, realm| Ok((realm, ())))
+                    .map(|(engine, ())| engine)
+            });
         match result {
             Ok(engine) => Ok(self.into_host(engine, None)),
             Err(error) => Err(EnableDocumentScriptFailure { owner: self, error }),
@@ -368,11 +372,12 @@ impl PreparedDocumentScriptHost {
         }
     }
 
-    fn prepare_engine(
+    fn prepare_engine<R: SetupRealm>(
         &self,
         target: DomHostedTopLevel,
         hooks: DocumentScriptHooks<'_>,
-    ) -> Result<UnpublishedScriptEngine, DocumentScriptError> {
+        create_realm: impl FnOnce(&mut surgeist_bindings_js::Execution<'_>) -> Result<R, Error>,
+    ) -> Result<UnpublishedScriptEngine<R>, DocumentScriptError> {
         let owner = &self.native;
         let cancel = &owner.cancellation;
         let hosted = {
@@ -388,10 +393,8 @@ impl PreparedDocumentScriptHost {
         };
 
         let mut process = Process::bootstrap(EngineKind::V8)?;
-        let realm = process.execution().create_realm()?;
-        let authority = process
-            .execution()
-            .in_realm(&realm, |scope| scope.realm_authority())?;
+        let realm = create_realm(&mut process.execution())?;
+        let authority = realm.enter(&mut process, |scope| scope.realm_authority())?;
         let permit = DocumentScriptPermit {
             realm: authority.identity(),
             document: target.document(),
@@ -526,7 +529,7 @@ impl PreparedDocumentScriptHost {
                     .admit_script_work(&session.dom(), name.len(), cancel)
                     .map_err(DocumentScriptNativeError::from)?;
             }
-            process.execution().in_realm(&realm, |scope| {
+            realm.enter(&mut process, |scope| {
                 let global = scope.global()?;
                 let hook = scope.function(&callback)?;
                 scope.define_new_property(
@@ -541,7 +544,7 @@ impl PreparedDocumentScriptHost {
                 )
             })?;
         }
-        process.execution().in_realm(&realm, |scope| {
+        realm.enter(&mut process, |scope| {
             window_relations::install(
                 scope,
                 Rc::downgrade(owner),
@@ -582,9 +585,37 @@ impl PreparedDocumentScriptHost {
     }
 }
 
-struct UnpublishedScriptEngine {
+trait SetupRealm {
+    fn enter<T>(
+        &self,
+        process: &mut Process,
+        install: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error>;
+}
+
+impl SetupRealm for Realm {
+    fn enter<T>(
+        &self,
+        process: &mut Process,
+        install: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        process.execution().in_realm(self, install)
+    }
+}
+
+impl SetupRealm for surgeist_bindings_js::PendingWindowRealm {
+    fn enter<T>(
+        &self,
+        process: &mut Process,
+        install: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        process.execution().in_pending_window_realm(self, install)
+    }
+}
+
+struct UnpublishedScriptEngine<R> {
     process: Process,
-    realm: Realm,
+    realm: R,
     target: DomHostedTopLevel,
     authority: RealmAuthority,
     failures: FailureSlot,
@@ -596,12 +627,13 @@ struct UnpublishedScriptEngine {
     _hook_backing: DomHostedRuntimeRetention,
 }
 
-impl UnpublishedScriptEngine {
-    fn publish(
+impl<R> UnpublishedScriptEngine<R> {
+    fn publish<T, E: From<DocumentScriptNativeError>>(
         self,
         owner: &NativeOwner,
         policy: HtmlScriptingPolicy,
-    ) -> Result<ScriptEngine, DocumentScriptError> {
+        finish: impl FnOnce(&mut Process, R) -> Result<(Realm, T), E>,
+    ) -> Result<(ScriptEngine, T), E> {
         let cancel = &owner.cancellation;
         let Self {
             process,
@@ -617,7 +649,8 @@ impl UnpublishedScriptEngine {
             _hook_backing,
         } = self;
         // Keep the hook debit alive through engine disposal on refusal.
-        let process = process;
+        let mut process = process;
+        let (realm, value) = finish(&mut process, realm)?;
         let mut session = owner
             .session
             .try_borrow_mut()
@@ -648,18 +681,21 @@ impl UnpublishedScriptEngine {
             failures,
             source_failures,
         });
-        Ok(ScriptEngine {
-            registration,
-            guest_events: None,
-            window_event,
-            window_timers,
-            process,
-            realm,
-            comments: projection::ProjectedComments::default(),
-            creations: CreationRealms::default(),
-            retained_bytes,
-            _hook_backing,
-        })
+        Ok((
+            ScriptEngine {
+                registration,
+                guest_events: None,
+                window_event,
+                window_timers,
+                process,
+                realm,
+                comments: projection::ProjectedComments::default(),
+                creations: CreationRealms::default(),
+                retained_bytes,
+                _hook_backing,
+            },
+            value,
+        ))
     }
 }
 

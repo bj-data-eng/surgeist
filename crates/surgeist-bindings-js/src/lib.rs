@@ -202,6 +202,10 @@ pub struct Execution<'process> {
     engine: &'process mut dyn backend::Engine,
 }
 
+/// A Window-shaped realm during host installation. Only a completed
+/// installation yields the ordinary execution capability for this realm.
+pub struct PendingWindowRealm(Realm);
+
 impl Drop for Execution<'_> {
     fn drop(&mut self) {
         self.engine.reap();
@@ -211,7 +215,67 @@ impl Drop for Execution<'_> {
 impl Execution<'_> {
     /// Creates a distinct global environment in this heap.
     pub fn create_realm(&mut self) -> Result<Realm, Error> {
-        self.engine.create_realm()
+        self.engine.create_realm(backend::RealmProfile::Plain)
+    }
+
+    /// Prepare the attached Window and its immutable prototype chain without
+    /// making the realm available for ordinary execution.
+    pub fn prepare_window_realm(&mut self) -> Result<PendingWindowRealm, Error> {
+        self.engine
+            .create_realm(backend::RealmProfile::Window)
+            .map(PendingWindowRealm)
+    }
+
+    /// Enter a private Window during host installation.
+    pub fn in_pending_window_realm<T>(
+        &mut self,
+        pending: &PendingWindowRealm,
+        install: impl for<'scope> FnOnce(&mut Scope<'scope>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        self.in_realm(&pending.0, install)
+    }
+
+    /// Bind the installed EventTarget constructor to the Window interface.
+    /// The installer receives the reserved EventTarget prototype and must
+    /// return its constructor. A failed installation drops the pending realm.
+    pub fn finish_window_realm<T, E: From<Error>>(
+        &mut self,
+        pending: PendingWindowRealm,
+        install: impl for<'scope> FnOnce(
+            &mut Scope<'scope>,
+            &Value<'scope>,
+        ) -> Result<(Value<'scope>, T), E>,
+    ) -> Result<(Realm, T), E> {
+        let result = self.in_pending_window_realm(&pending, |scope| {
+            let interface = scope.operations.window_interface()?;
+            let window = scope.import(&interface.constructor)?;
+            let prototype = scope.import(&interface.event_target_prototype)?;
+            let (parent, value) = match install(scope, &prototype) {
+                Ok(result) => result,
+                Err(error) => return Ok(Err(error)),
+            };
+            let parent_prototype =
+                scope.get(&parent, PropertyKey::String(&b"prototype".map(u16::from)))?;
+            if !scope.is_callable(&parent)?
+                || !scope.strict_equals(&parent_prototype, &prototype)?
+            {
+                return Err(Error::PropertyRejected);
+            }
+            scope.set_prototype(&window, ObjectPrototype::Object(&parent))?;
+            let global = scope.global()?;
+            scope.define_new_property(
+                &global,
+                PropertyKey::String(&b"Window".map(u16::from)),
+                PropertyDescriptor::Data {
+                    value: &window,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                },
+            )?;
+            Ok(Ok(value))
+        })??;
+        Ok((pending.0, result))
     }
 
     /// Runs fallible Rust binding operations in a validated realm. The chosen

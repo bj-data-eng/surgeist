@@ -7,7 +7,7 @@ use std::thread::ThreadId;
 
 use super::{
     CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
-    PropertyDescriptor, PropertyKey,
+    PropertyDescriptor, PropertyKey, RealmProfile, WindowInterface,
 };
 use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
@@ -23,6 +23,7 @@ mod callback_object;
 mod native_object;
 #[cfg(test)]
 mod tests;
+mod window;
 
 static OWNER_THREAD: OnceLock<ThreadId> = OnceLock::new();
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -30,6 +31,8 @@ static NEXT_OWNER: AtomicU64 = AtomicU64::new(0);
 
 const ERROR_CONSTRUCTOR_FIELD: usize = 6;
 const DOM_EXCEPTION_PROFILE_FIELD: usize = 7;
+const WINDOW_CONSTRUCTOR_FIELD: usize = 8;
+const WINDOW_EVENT_TARGET_PROTOTYPE_FIELD: usize = 9;
 
 struct ActiveOwner;
 
@@ -340,7 +343,7 @@ impl super::Engine for Engine {
     fn owner_state(&self) -> Rc<OwnerState> {
         self.roots.owner.clone()
     }
-    fn create_realm(&mut self) -> Result<Realm, Error> {
+    fn create_realm(&mut self, profile: RealmProfile) -> Result<Realm, Error> {
         self.roots.available()?;
         if self.isolate.is_execution_terminating() {
             return Err(Error::Terminated);
@@ -359,7 +362,17 @@ impl super::Engine for Engine {
         }));
         let pinned = std::pin::pin!(v8::HandleScope::new(&mut self.isolate));
         let scope = &mut pinned.init();
-        let context = v8::Context::new(scope, Default::default());
+        let window = match profile {
+            RealmProfile::Plain => None,
+            RealmProfile::Window => Some(window::Templates::new(scope)?),
+        };
+        let context = v8::Context::new(
+            scope,
+            v8::ContextOptions {
+                global_template: window.as_ref().map(|window| window.global_template(scope)),
+                ..Default::default()
+            },
+        );
         let intrinsics = {
             let scope = &mut v8::ContextScope::new(scope, context);
             let reflect_key = v8::String::new(scope, "Reflect").ok_or(Error::BackendUnavailable)?;
@@ -394,7 +407,12 @@ impl super::Engine for Engine {
             let bind = pristine_method(scope, function_prototype, "bind")?;
             let construct = pristine_method(scope, reflect, "construct")?;
             let template = v8::ObjectTemplate::new(scope);
-            if !template.set_internal_field_count(DOM_EXCEPTION_PROFILE_FIELD + 1) {
+            let fields = if window.is_some() {
+                WINDOW_EVENT_TARGET_PROTOTYPE_FIELD + 1
+            } else {
+                DOM_EXCEPTION_PROFILE_FIELD + 1
+            };
+            if !template.set_internal_field_count(fields) {
                 return Err(Error::BackendUnavailable);
             }
             let intrinsics = template
@@ -409,6 +427,15 @@ impl super::Engine for Engine {
                 || !intrinsics.set_internal_field(ERROR_CONSTRUCTOR_FIELD, error_constructor.into())
             {
                 return Err(Error::BackendUnavailable);
+            }
+            if let Some(window) = window {
+                let (constructor, target) = window.open(scope)?;
+                if !intrinsics.set_internal_field(WINDOW_CONSTRUCTOR_FIELD, constructor.into())
+                    || !intrinsics
+                        .set_internal_field(WINDOW_EVENT_TARGET_PROTOTYPE_FIELD, target.into())
+                {
+                    return Err(Error::BackendUnavailable);
+                }
             }
             v8::Global::new(scope, intrinsics)
         };
@@ -681,6 +708,21 @@ impl Entered<'_, '_, '_> {
 }
 
 impl Operations for Entered<'_, '_, '_> {
+    fn window_interface(&mut self) -> Result<WindowInterface, Error> {
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, realm, intrinsics| {
+                let constructor = captured_value(scope, intrinsics, WINDOW_CONSTRUCTOR_FIELD)?;
+                let prototype =
+                    captured_value(scope, intrinsics, WINDOW_EVENT_TARGET_PROTOTYPE_FIELD)?;
+                Ok(WindowInterface {
+                    constructor: roots.retain(scope, realm, constructor)?,
+                    event_target_prototype: roots.retain(scope, realm, prototype)?,
+                })
+            },
+        )
+    }
+
     fn realm_key(&self) -> RealmKey {
         self.realm
     }

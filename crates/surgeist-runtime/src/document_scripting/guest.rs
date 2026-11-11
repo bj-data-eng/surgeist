@@ -526,7 +526,12 @@ impl PreparedDocumentScriptHost {
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             input.qualify_guest_registry(&session.dom())?;
         }
-        let mut script = self.prepare_engine(target, hooks)?;
+        let script =
+            self.prepare_engine(target, hooks, |execution| execution.prepare_window_realm())?;
+        let permit = DocumentScriptPermit {
+            realm: script.authority.identity(),
+            document: script.target.document(),
+        };
         let mut admission = GuestEventAdmission::prepare(
             &self.native,
             input,
@@ -534,12 +539,14 @@ impl PreparedDocumentScriptHost {
             script.retained_bytes.checked_add(limits.storage_bytes),
             &script.authority,
         )?;
-        admission.public = Some(PublicEventBindings::install(
-            &mut script,
-            &self.native,
-            &admission,
-        )?);
-        let engine = script.publish(&self.native, policy)?;
+        let (engine, public) = script.publish(&self.native, policy, |process, pending| {
+            process
+                .execution()
+                .finish_window_realm(pending, |scope, prototype| {
+                    PublicEventBindings::install(scope, &self.native, permit, &admission, prototype)
+                })
+        })?;
+        admission.public = Some(public);
         Ok((engine, admission))
     }
 }

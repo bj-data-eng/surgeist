@@ -93,29 +93,13 @@ pub(super) struct PublicEventBindings {
 }
 
 impl PublicEventBindings {
-    pub(super) fn install(
-        script: &mut UnpublishedScriptEngine,
-        owner: &Rc<NativeOwner>,
-        admission: &GuestEventAdmission,
-    ) -> Result<Self, DocumentGuestEventError> {
-        let permit = DocumentScriptPermit {
-            realm: script.authority.identity(),
-            document: script.target.document(),
-        };
-        script
-            .process
-            .execution()
-            .in_realm(&script.realm, |scope| {
-                Ok(Self::install_in_realm(scope, owner, permit, admission))
-            })?
-    }
-
-    fn install_in_realm(
-        scope: &mut Scope<'_>,
+    pub(super) fn install<'scope>(
+        scope: &mut Scope<'scope>,
         owner: &Rc<NativeOwner>,
         permit: DocumentScriptPermit,
         admission: &GuestEventAdmission,
-    ) -> Result<Self, DocumentGuestEventError> {
+        target: &Value<'scope>,
+    ) -> Result<(Value<'scope>, Self), DocumentGuestEventError> {
         let fund = |bytes| admission.budget.reserve(owner, admission.limits, bytes);
         let account_bytes = size_of::<Callbacks>()
             .checked_add(ConversionAccount::standalone_backing_bytes()?)
@@ -228,8 +212,7 @@ impl PublicEventBindings {
             &ascii(b"get isTrusted"),
         )?;
 
-        let target = scope.object(ObjectPrototype::Default)?;
-        listener_methods::install(scope, &target, &capture)?;
+        listener_methods::install(scope, target, &capture)?;
         let dispatch = capture(size_of::<Capture>())?;
         let dispatch_name = &ascii(b"dispatchEvent");
         let method = scope.fixed_arity_function(
@@ -241,7 +224,7 @@ impl PublicEventBindings {
         )?;
         define_data(
             scope,
-            &target,
+            target,
             PropertyKey::String(dispatch_name),
             &method,
             true,
@@ -249,7 +232,8 @@ impl PublicEventBindings {
             true,
         )?;
 
-        for (kind, prototype) in [(Interface::Event, &event), (Interface::Target, &target)] {
+        let mut target_constructor = None;
+        for (kind, prototype) in [(Interface::Event, &event), (Interface::Target, target)] {
             let fallback = capture(size_of::<(Capture, Interface)>())?;
             let constructor = capture(size_of::<(Capture, Interface)>())?;
             let (name, length, prefix) = kind.declaration();
@@ -320,22 +304,28 @@ impl PublicEventBindings {
                 false,
                 true,
             )?;
+            if matches!(kind, Interface::Target) {
+                target_constructor = Some(constructor);
+            }
         }
         let observed = scope.callback_object(&event)?;
         let document =
-            document::DocumentBindings::install(scope, document_id, &target, &capture, &fund)?;
+            document::DocumentBindings::install(scope, document_id, target, &capture, &fund)?;
         let event = scope.retain_callback_object(observed, fund)?;
-        let observed = scope.callback_object(&target)?;
+        let observed = scope.callback_object(target)?;
         let target = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
-        Ok(Self {
-            callbacks,
-            event,
-            target,
-            trusted,
-            document,
-        })
+        Ok((
+            target_constructor.ok_or(Error::BackendUnavailable)?,
+            Self {
+                callbacks,
+                event,
+                target,
+                trusted,
+                document,
+            },
+        ))
     }
 
     pub(super) fn activate(&self, events: &Rc<GuestEvents>) {

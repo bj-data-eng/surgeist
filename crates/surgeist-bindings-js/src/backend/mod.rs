@@ -71,7 +71,7 @@ pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
-    fn create_realm(&mut self) -> Result<Realm, Error>;
+    fn create_realm(&mut self, profile: RealmProfile) -> Result<Realm, Error>;
     fn with_realm(
         &mut self,
         realm: &Realm,
@@ -85,6 +85,17 @@ pub(crate) trait Engine {
     fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
     -> Result<(), Error>;
     fn reap(&mut self);
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum RealmProfile {
+    Plain,
+    Window,
+}
+
+pub(crate) struct WindowInterface {
+    pub(crate) constructor: Root,
+    pub(crate) event_target_prototype: Root,
 }
 
 pub(crate) struct DomExceptionProfile {
@@ -102,6 +113,7 @@ pub(crate) struct DeclaredCallable<'a> {
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
     fn realm_key(&self) -> RealmKey;
+    fn window_interface(&mut self) -> Result<WindowInterface, Error>;
     fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn refuse(&self, error: Error) -> Error;
     fn check_host_failure_report(&self) -> Result<(), Error>;
