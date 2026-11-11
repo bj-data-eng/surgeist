@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use super::{Attributes, Context, LayoutInput, MeasurementError, MeasurementErrorKind, WireNode};
 use crate::fri07_intrinsic_flex_profile as intrinsic;
+use crate::fri08_wrapped_subgrid_profile as wrapped;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -184,6 +185,140 @@ impl WireIntrinsicFlexText {
             rows,
         })
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct WireWrappedSubgrid {
+    font_resource_sha256: String,
+    items: Vec<WireWrappedItem>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WireWrappedItem {
+    card: usize,
+    item: usize,
+    direction: String,
+    source_units: Vec<u16>,
+    ranges: Vec<intrinsic::WordRange>,
+    clip: Option<[u32; 4]>,
+}
+
+impl WireWrappedSubgrid {
+    pub(super) fn validate(
+        &self,
+        root: &WireNode,
+        context: &Context<'_>,
+    ) -> Result<FlexContentText, MeasurementError> {
+        const FIELD: &str = "fri08WrappedSubgrid";
+        let style = context.required(root.style.as_ref(), "style")?;
+        let cards = context.required(root.children.as_deref(), "children")?;
+        context.compatible(
+            self.font_resource_sha256 == crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+                && root.layout_input == LayoutInput::Box
+                && root.tag_name.as_deref() == Some("div")
+                && style.display.as_deref() == Some("grid")
+                && style.writing_mode() == "horizontal-tb"
+                && root.text_content.is_none()
+                && cards.len() == 3
+                && self.items.len() == cards.len() * wrapped::LABELS.len(),
+            FIELD,
+            "wrapped Subgrid root, font or occurrence census changed",
+        )?;
+        let mut rows = Vec::new();
+        for (index, card) in cards.iter().enumerate() {
+            let card_context = context.child(index);
+            let children = subgrid_children(card, &card_context, 2)?;
+            let footer_context = card_context.child(1);
+            let footer = subgrid_children(&children[1], &footer_context, 1)?;
+            for (item, (node, label)) in [&children[0], &footer[0]]
+                .into_iter()
+                .zip(wrapped::LABELS)
+                .enumerate()
+            {
+                let witness = &self.items[index * wrapped::LABELS.len() + item];
+                let item_context = if item == 0 {
+                    card_context.child(0)
+                } else {
+                    footer_context.child(0)
+                };
+                let style = item_context.required(node.style.as_ref(), "style")?;
+                let expected_overflow = if item == 0 { "visible" } else { "hidden" };
+                item_context.compatible(
+                    (witness.card, witness.item) == (index, item)
+                        && matches!(witness.direction.as_str(), "ltr" | "rtl")
+                        && style.direction.as_deref() == Some(witness.direction.as_str())
+                        && style.overflow_x.as_deref().unwrap_or("visible") == expected_overflow
+                        && style.overflow_y.as_deref().unwrap_or("visible") == expected_overflow
+                        && node.layout_input == LayoutInput::Box
+                        && style.display.as_deref() == Some("flex")
+                        && style.writing_mode() == "horizontal-tb"
+                        && style.has_direct_flex_text_style()
+                        && node.tag_name.as_deref() == Some("div")
+                        && node.children.as_ref().is_some_and(Vec::is_empty)
+                        && node.text_content.as_deref() == Some(label)
+                        && label
+                            .encode_utf16()
+                            .eq(witness.source_units.iter().copied())
+                        && wrapped::valid_ranges(label, &witness.ranges)
+                        && match witness.clip {
+                            None => item == 0,
+                            Some(clip) => item == 1 && wrapped::valid_clip(clip),
+                        },
+                    FIELD,
+                    "wrapped source, typography, Range or clip observation changed",
+                )?;
+                let ranges = serde_json::to_string(&witness.ranges).map_err(|error| {
+                    item_context.error(FIELD, MeasurementErrorKind::InvalidValue, error.to_string())
+                })?;
+                let mut attrs = vec![
+                    ("card", index.to_string()),
+                    ("item", item.to_string()),
+                    ("direction", witness.direction.clone()),
+                    ("ranges", ranges),
+                ];
+                if let Some(clip) = witness.clip {
+                    let clip = serde_json::to_string(&clip).map_err(|error| {
+                        item_context.error(
+                            FIELD,
+                            MeasurementErrorKind::InvalidValue,
+                            error.to_string(),
+                        )
+                    })?;
+                    attrs.push(("clip", clip));
+                }
+                rows.push(attrs);
+            }
+        }
+        Ok(FlexContentText {
+            attrs: vec![
+                ("profile", wrapped::PROFILE.into()),
+                ("font-resource-sha256", self.font_resource_sha256.clone()),
+            ],
+            rows,
+        })
+    }
+}
+
+fn subgrid_children<'a>(
+    node: &'a WireNode,
+    context: &Context<'_>,
+    count: usize,
+) -> Result<&'a [WireNode], MeasurementError> {
+    let children = context.required(node.children.as_deref(), "children")?;
+    let style = context.required(node.style.as_ref(), "style")?;
+    context.compatible(
+        node.layout_input == LayoutInput::Box
+            && node.tag_name.as_deref() == Some("div")
+            && style.display.as_deref() == Some("grid")
+            && style.writing_mode() == "horizontal-tb"
+            && node.text_content.is_none()
+            && children.len() == count,
+        "children",
+        "original nested Subgrid topology changed",
+    )?;
+    Ok(children)
 }
 
 #[cfg(test)]

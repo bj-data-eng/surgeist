@@ -380,6 +380,11 @@ impl Declaration {
             {
                 return Err("original inline Subgrid matching requires both sources".into());
             }
+            if category == MatchingCategory::Fri08WrappedSubgrid
+                && members.len() != crate::fri08_wrapped_subgrid_profile::SOURCES.len()
+            {
+                return Err("wrapped Subgrid matching requires both sources".into());
+            }
             if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }

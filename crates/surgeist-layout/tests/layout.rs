@@ -8,6 +8,8 @@ mod empty_line_br_font_band_profile;
 mod fixture_variants;
 #[path = "bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
 mod fri07_intrinsic_flex_profile;
+#[path = "bin/surgeist-layout-generate/measurement/fri08_wrapped_subgrid_profile.rs"]
+mod fri08_wrapped_subgrid_profile;
 #[path = "layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
 #[path = "bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]

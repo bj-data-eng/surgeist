@@ -327,6 +327,15 @@ fn fri08_manifest_remaining_plain_boxes_replay_registered_geometry() {
 }
 
 #[test]
+fn fri08_manifest_wrapped_text_subgrid_siblings_replay_registered_geometry() {
+    let sources = [
+        "subgrid/subgrid_sibling_overflow_footer_second_matches_first",
+        "subgrid/subgrid_sibling_overflow_footer_third_matches_first",
+    ];
+    assert_active_manifest_originals_match(&sources);
+}
+
+#[test]
 fn manifest_active_outputs_match_layout() {
     let mut paths = manifest_active_output_paths().into_iter();
     let first = paths

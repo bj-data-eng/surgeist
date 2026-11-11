@@ -67,6 +67,8 @@ pub(crate) mod original_subgrid_body;
 pub(crate) mod prepared_atomic_percentage;
 #[path = "prepared_range_qualification.rs"]
 pub mod prepared_range_qualification;
+#[path = "wrapped_subgrid_text.rs"]
+mod wrapped_subgrid_text;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
 use prepared_range_qualification::{Comparisons as PreparedRangeComparisons, RangePieceKey};
 
@@ -503,7 +505,11 @@ fn compare_captured_with_projection(
     validate_grid_alignment_profile(&golden.root, true)?;
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
     if let Some(proof) = &golden.flex_content_text {
-        flex_content_text::lower(&mut tree, golden, proof)?;
+        if proof.is_wrapped_subgrid() {
+            wrapped_subgrid_text::install(&mut tree, golden, proof)?;
+        } else {
+            flex_content_text::lower(&mut tree, golden, proof)?;
+        }
     }
     if let Some(proof) = &golden.flex_composition_image {
         flex_composition::lower(&mut tree, golden, proof)?;
@@ -515,8 +521,12 @@ fn compare_captured_with_projection(
     }
     tree.apply_completed_batch(&batch);
     if let Some(proof) = &golden.flex_content_text {
-        tree.flex_projection = Some(flex_text_projection::validate(&tree, &batch)?);
-        flex_content_text::verify_word_ranges(&tree, &batch, proof)?;
+        if proof.is_wrapped_subgrid() {
+            wrapped_subgrid_text::verify(&tree, proof)?;
+        } else {
+            tree.flex_projection = Some(flex_text_projection::validate(&tree, &batch)?);
+            flex_content_text::verify_word_ranges(&tree, &batch, proof)?;
+        }
     }
     let normal_root = tree.nodes[0].unrounded;
     golden
@@ -2777,6 +2787,7 @@ struct TestTree {
     placed_text: Vec<layout::PlacedTextOutput<usize>>,
     flex_text: Vec<flex_content_text::LoweredOccurrence>,
     flex_projection: Option<flex_text_projection::ValidatedProjection>,
+    wrapped_subgrid_text: Option<std::rc::Rc<std::cell::RefCell<wrapped_subgrid_text::Measurer>>>,
     replaced_image: Option<(usize, layout::Size)>,
 }
 
@@ -3235,6 +3246,9 @@ impl TestTree {
         input: layout::LeafMeasureInput,
         text: &str,
     ) -> Result<layout::Size, Error> {
+        if let Some(measurer) = &self.wrapped_subgrid_text {
+            return measurer.borrow_mut().measure(text, input);
+        }
         let known = input.known_content_size();
         let requests = input.content_sizing_request().axes();
         let flow = input.flow_axes();
@@ -9239,6 +9253,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            wrapped_subgrid_text: None,
             replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
@@ -9344,6 +9359,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            wrapped_subgrid_text: None,
             replaced_image: None,
             nodes: vec![
                 node(
@@ -12309,6 +12325,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            wrapped_subgrid_text: None,
             replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),

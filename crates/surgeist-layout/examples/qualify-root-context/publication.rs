@@ -1001,6 +1001,7 @@ impl Origin {
             ) | Edition::Matching(
                 crate::original_inline_subgrid_profile::EDITION
                     | authority::ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION
+                    | authority::FRI08_WRAPPED_SUBGRID_EDITION
             )
         ) {
             None

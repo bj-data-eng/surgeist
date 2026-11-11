@@ -288,6 +288,19 @@ Together the two plain-box editions cover all 52 active plain-box variants.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-sources
 ~~~
 
+The [FRI08 wrapped-text Subgrid edition](../../tests/layout/browser_parity/captured/fri08-wrapped-subgrid-text/qualification.json)
+replays all eight variants of the two sibling-footer sources. The capture
+binds the exact loaded stylesheet face, source ranges and hidden client and
+scroll extents. Replay measures the authored paragraphs with the same
+[Ahem WOFF2](../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2)
+and compares the complete historical geometry. The [Layout notice](../../NOTICE.md#ahem)
+records the stylesheet font source and license. The shared capture input
+inventory also retains the separate Ahem TTF.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-wrapped-subgrid-text
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)

@@ -7,6 +7,7 @@ use super::{
 use surgeist_text as text;
 
 use crate::fri07_intrinsic_flex_profile as intrinsic;
+use crate::fri08_wrapped_subgrid_profile as wrapped;
 
 pub(super) const PROFILE: &str = "ahem-10px-flex-direct-text";
 const STYLESHEET: &[u8] = include_bytes!("scripts/gentest/test_base_style.css");
@@ -19,6 +20,11 @@ pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
     ("observation-request.json", REQUEST),
     (SCRIPT_PATH, SCRIPT),
+];
+pub(super) const WRAPPED_SUBGRID_CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
+    ("scripts/gentest/test_base_style.css", STYLESHEET),
+    ("observation-request.json", wrapped::REQUEST),
+    (wrapped::SCRIPT_PATH, wrapped::SCRIPT.as_bytes()),
 ];
 pub(super) const INTRINSIC_CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
@@ -34,6 +40,20 @@ pub(super) struct Proof {
 }
 
 impl Proof {
+    pub(super) fn is_wrapped_subgrid(&self) -> bool {
+        self.occurrences
+            .first()
+            .is_some_and(|occurrence| matches!(occurrence.path, SourcePath::SubgridLeaf { .. }))
+    }
+
+    pub(super) fn matches_source(&self, golden: &Golden) -> bool {
+        golden.root == *self.source && golden.viewport == self.viewport
+    }
+
+    pub(super) fn occurrences(&self) -> &[SourceOccurrence] {
+        &self.occurrences
+    }
+
     pub(super) fn is_intrinsic(&self) -> bool {
         self.occurrences
             .first()
@@ -42,16 +62,18 @@ impl Proof {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct SourceOccurrence {
-    path: SourcePath,
-    direction: layout::Direction,
-    words: Vec<intrinsic::WordRange>,
+pub(super) struct SourceOccurrence {
+    pub(super) path: SourcePath,
+    pub(super) direction: layout::Direction,
+    pub(super) words: Vec<intrinsic::WordRange>,
+    pub(super) clip: Option<[u32; 4]>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SourcePath {
     Child(usize),
     RowItem { row: usize, item: usize },
+    SubgridLeaf { card: usize, item: usize },
 }
 
 impl std::fmt::Display for SourcePath {
@@ -59,6 +81,9 @@ impl std::fmt::Display for SourcePath {
         match self {
             Self::Child(index) => write!(f, "/{index}"),
             Self::RowItem { row, item } => write!(f, "/{row}/{item}"),
+            Self::SubgridLeaf { card, item: 0 } => write!(f, "/{card}/0"),
+            Self::SubgridLeaf { card, item: 1 } => write!(f, "/{card}/1/0"),
+            Self::SubgridLeaf { card, item } => write!(f, "/{card}/invalid-{item}"),
         }
     }
 }
@@ -68,6 +93,14 @@ impl SourcePath {
         let (parent, index) = match self {
             Self::Child(index) => (0, index),
             Self::RowItem { row, item } => (*tree.nodes.first()?.children.get(row)?, item),
+            Self::SubgridLeaf { card, item } => {
+                let card = *tree.nodes.first()?.children.get(card)?;
+                match item {
+                    0 => (card, 0),
+                    1 => (*tree.nodes.get(card)?.children.get(1)?, 0),
+                    _ => return None,
+                }
+            }
         };
         let source = *tree.nodes.get(parent)?.children.get(index)?;
         Some((parent, index, source))
@@ -102,11 +135,16 @@ pub(super) fn bind(
     let proof = proofs
         .next()
         .ok_or_else(|| invalid("missing occurrence proof"))?;
-    let (intrinsic, inputs) = match proof.attribute("profile") {
-        Some(PROFILE) => (false, CAPTURE_INPUTS),
-        Some(intrinsic::PROFILE) => (true, INTRINSIC_CAPTURE_INPUTS),
+    let profile = proof.attribute("profile");
+    let inputs = match profile {
+        Some(PROFILE) => CAPTURE_INPUTS,
+        Some(intrinsic::PROFILE) => INTRINSIC_CAPTURE_INPUTS,
+        Some(wrapped::PROFILE) => WRAPPED_SUBGRID_CAPTURE_INPUTS,
         _ => return Err(invalid("unsupported Flex Text profile")),
     };
+    let direct = profile == Some(PROFILE);
+    let wrapped_subgrid = profile == Some(wrapped::PROFILE);
+    let intrinsic = profile == Some(intrinsic::PROFILE);
     if proofs.next().is_some()
         || proof.parent() != Some(root)
         || root.attribute("measurement-version") != Some("4")
@@ -115,8 +153,8 @@ pub(super) fn bind(
         || proof.attribute("font-resource-sha256")
             != Some(pinned_font::AHEM_STYLESHEET_WOFF2_SHA256)
         || !golden.use_rounding
-        || golden.has_element_scroll_sizes() == intrinsic
-        || golden.root.style.get("display") != Some("flex")
+        || golden.has_element_scroll_sizes() != direct
+        || golden.root.style.get("display") != Some(if wrapped_subgrid { "grid" } else { "flex" })
         || golden.root.text.is_some()
     {
         return Err(invalid("unsupported occurrence proof or root profile"));
@@ -129,7 +167,7 @@ pub(super) fn bind(
             .inputs
             .get(capture_authority::ROOT_HELPER_INPUT)
             .is_some_and(|hash| capture_authority::root_helper_profile(hash).is_ok())
-        || (intrinsic
+        || (!direct
             && !metadata
                 .inputs
                 .get(capture_authority::ROOT_HELPER_INPUT)
@@ -139,6 +177,9 @@ pub(super) fn bind(
         || (intrinsic
             && (source_path != intrinsic::SOURCE
                 || capture_authority::sha256(source_bytes) != intrinsic::SOURCE_SHA256))
+        || (wrapped_subgrid
+            && wrapped::source_digest(source_path)
+                != Some(capture_authority::sha256(source_bytes).as_str()))
         || capture_authority::sha256(STYLESHEET) != pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
         || capture_authority::sha256(pinned_font::AHEM_STYLESHEET_WOFF2)
             != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
@@ -174,7 +215,9 @@ pub(super) fn bind(
     {
         return Err(invalid("capture source or output binding changed"));
     }
-    let occurrences = if intrinsic {
+    let occurrences = if wrapped_subgrid {
+        bind_wrapped_occurrences(golden, proof)?
+    } else if intrinsic {
         bind_intrinsic_occurrences(golden, proof)?
     } else {
         bind_direct_occurrences(golden, proof)?
@@ -225,6 +268,7 @@ fn bind_direct_occurrences(
                 path: SourcePath::Child(index),
                 direction: occurrence_direction(direction)?,
                 words: Vec::new(),
+                clip: None,
             })
         })
         .collect()
@@ -310,6 +354,7 @@ fn bind_intrinsic_occurrences(
                 path,
                 direction: occurrence_direction(direction)?,
                 words,
+                clip: None,
             });
         }
     }
@@ -319,8 +364,172 @@ fn bind_intrinsic_occurrences(
     Ok(occurrences)
 }
 
+fn bind_wrapped_occurrences(
+    golden: &Golden,
+    proof: roxmltree::Node<'_, '_>,
+) -> Result<Vec<SourceOccurrence>, Error> {
+    if golden.root.children.len() != 3 {
+        return Err(invalid("unexpected wrapped Subgrid root census"));
+    }
+    let mut rows = proof.children().filter(roxmltree::Node::is_element);
+    let mut occurrences = Vec::new();
+    for (card, node) in golden.root.children.iter().enumerate() {
+        let [header, footer] = node.children.as_slice() else {
+            return Err(invalid("unexpected wrapped Subgrid card census"));
+        };
+        let [text_box] = footer.children.as_slice() else {
+            return Err(invalid("unexpected wrapped Subgrid footer census"));
+        };
+        if [node, footer].into_iter().any(|grid| {
+            grid.style.get("source-tag") != Some("div")
+                || grid.style.get("display") != Some("grid")
+                || grid.style.get("grid-template-rows") != Some("subgrid")
+                || grid.text.is_some()
+        }) {
+            return Err(invalid("original row Subgrid inputs changed"));
+        }
+        for (item, (node, label)) in [header, text_box]
+            .into_iter()
+            .zip(wrapped::LABELS)
+            .enumerate()
+        {
+            let row = rows
+                .next()
+                .ok_or_else(|| invalid("missing wrapped Text occurrence"))?;
+            let direction = occurrence_direction(row.attribute("direction"))?;
+            let words: Vec<intrinsic::WordRange> = serde_json::from_str(
+                row.attribute("ranges")
+                    .ok_or_else(|| invalid("missing wrapped source Ranges"))?,
+            )
+            .map_err(invalid)?;
+            let clip: Option<[u32; 4]> = row
+                .attribute("clip")
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(invalid)?;
+            let expected_overflow = if item == 0 { "visible" } else { "hidden" };
+            if !row.has_tag_name("occurrence")
+                || row.attributes().len() != if item == 0 { 4 } else { 5 }
+                || row.children().any(|node| node.is_element())
+                || row.attribute("card") != Some(card.to_string().as_str())
+                || row.attribute("item") != Some(item.to_string().as_str())
+                || node.style.get("source-tag") != Some("div")
+                || node.style.get("display") != Some("flex")
+                || node.style.get("direction") != row.attribute("direction")
+                || node.style.get("font-family").unwrap_or("ahem") != "ahem"
+                || node.style.get("font-size").unwrap_or("10px") != "10px"
+                || node.style.get("line-height").unwrap_or("10px") != "10px"
+                || node.style.get("writing-mode").unwrap_or("horizontal-tb") != "horizontal-tb"
+                || node.style.get("overflow-x").unwrap_or("visible") != expected_overflow
+                || node.style.get("overflow-y").unwrap_or("visible") != expected_overflow
+                || node.text.as_deref() != Some(label)
+                || !node.children.is_empty()
+                || node.prepared.is_some()
+                || !wrapped::valid_ranges(label, &words)
+                || match clip {
+                    None => item != 0,
+                    Some(clip) => item != 1 || !wrapped::valid_clip(clip),
+                }
+            {
+                return Err(invalid("wrapped source, Range or clip observation changed"));
+            }
+            occurrences.push(SourceOccurrence {
+                path: SourcePath::SubgridLeaf { card, item },
+                direction,
+                words,
+                clip,
+            });
+        }
+    }
+    if rows.next().is_some() {
+        return Err(invalid("extra wrapped Text occurrence"));
+    }
+    Ok(occurrences)
+}
+
+pub(super) fn prepare_label(
+    system: &mut text::System,
+    face: &surgeist_font::FontFace,
+    label: &str,
+    direction: layout::Direction,
+) -> Result<text::PreparedText, Error> {
+    let text_style = text::Style {
+        font: text::Font::new().family("Ahem"),
+        size: 10.0,
+        line_height: text::LineHeight::Absolute(10.0),
+        white_space: text::WhiteSpace::Collapse,
+        wrap: text::Wrap::Word,
+        locale: Some("en".to_owned()),
+        ..text::Style::default()
+    };
+    let original = text::Source::new(label);
+    let mut source = text::Source::new("");
+    let range = source.push(original.text().clone());
+    source.span(range, text_style.clone());
+    let analyzed = text::AnalyzedSource::from_paragraph(
+        text::ParagraphInput {
+            source,
+            base_style: text_style,
+            base_direction: match direction {
+                layout::Direction::Ltr => text::ParagraphBaseDirection::LeftToRight,
+                layout::Direction::Rtl => text::ParagraphBaseDirection::RightToLeft,
+            },
+            terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
+            tab_reference: None,
+            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+            origins: vec![text::ParagraphOrigin {
+                text_node: None,
+                source: original,
+                local: text::Range::new(0, range.len()),
+                aggregate: range,
+                kind: text::ParagraphOriginKind::Authored,
+            }],
+            connections: Vec::new(),
+            controls: Vec::new(),
+            boundary_policies: Vec::new(),
+            replacements: Vec::new(),
+            anchor_order: Vec::new(),
+        },
+        text::AnalysisTypography::HorizontalComposition,
+    )
+    .map_err(invalid)?;
+    let wraps = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| text::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap: text::Wrap::Word,
+        })
+        .collect();
+    let analyzed = analyzed.with_wrapping_policies(wraps).map_err(invalid)?;
+    let prepared = system
+        .prepare(&analyzed, text::PreparationOptions::default())
+        .map_err(invalid)?;
+    let mut saw_font = false;
+    for unit in prepared.unit_views() {
+        for instance in unit.font_instances() {
+            let instance = instance.map_err(invalid)?;
+            if instance.face().admitted_face() != face
+                || instance.axis_count() != 0
+                || instance.synthesis() != text::FontSynthesis::default()
+            {
+                return Err(invalid("prepared text selected a different effective face"));
+            }
+            saw_font = true;
+        }
+    }
+    if !saw_font {
+        return Err(invalid("prepared label has no font instances"));
+    }
+    Ok(prepared)
+}
+
 pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Result<(), Error> {
-    if golden.root != *proof.source || golden.viewport != proof.viewport {
+    if proof.is_wrapped_subgrid()
+        || golden.root != *proof.source
+        || golden.viewport != proof.viewport
+    {
         return Err(invalid("parsed source inputs changed after binding"));
     }
     let resource = surgeist_font::FontResource::decode(
@@ -360,75 +569,7 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
             .text
             .take()
             .ok_or_else(|| invalid("missing captured label"))?;
-        let text_style = text::Style {
-            font: text::Font::new().family("Ahem"),
-            size: 10.0,
-            line_height: text::LineHeight::Absolute(10.0),
-            white_space: text::WhiteSpace::Collapse,
-            wrap: text::Wrap::Word,
-            locale: Some("en".to_owned()),
-            ..text::Style::default()
-        };
-        let original = text::Source::new(label.as_str());
-        let mut source = text::Source::new("");
-        let range = source.push(original.text().clone());
-        source.span(range, text_style.clone());
-        let analyzed = text::AnalyzedSource::from_paragraph(
-            text::ParagraphInput {
-                source,
-                base_style: text_style,
-                base_direction: match direction {
-                    layout::Direction::Ltr => text::ParagraphBaseDirection::LeftToRight,
-                    layout::Direction::Rtl => text::ParagraphBaseDirection::RightToLeft,
-                },
-                terminal_edge: text::ParagraphTerminalEdge::BlockEnd,
-                tab_reference: None,
-                segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
-                origins: vec![text::ParagraphOrigin {
-                    text_node: None,
-                    source: original,
-                    local: text::Range::new(0, range.len()),
-                    aggregate: range,
-                    kind: text::ParagraphOriginKind::Authored,
-                }],
-                connections: Vec::new(),
-                controls: Vec::new(),
-                boundary_policies: Vec::new(),
-                replacements: Vec::new(),
-                anchor_order: Vec::new(),
-            },
-            text::AnalysisTypography::HorizontalComposition,
-        )
-        .map_err(invalid)?;
-        let wraps = analyzed
-            .wrapping_relations()
-            .filter(|relation| relation.ancestor_wrap().is_none())
-            .map(|relation| text::WrappingPolicy {
-                relation: relation.handle(),
-                ancestor_wrap: text::Wrap::Word,
-            })
-            .collect();
-        let analyzed = analyzed.with_wrapping_policies(wraps).map_err(invalid)?;
-        let prepared = system
-            .prepare(&analyzed, text::PreparationOptions::default())
-            .map_err(invalid)?;
-        let mut saw_font = false;
-        for unit in prepared.unit_views() {
-            for instance in unit.font_instances() {
-                let instance = instance.map_err(invalid)?;
-                if instance.face().admitted_face() != &face
-                    || instance.axis_count() != 0
-                    || instance.synthesis() != text::FontSynthesis::default()
-                {
-                    return Err(invalid("prepared text selected a different effective face"));
-                }
-                saw_font = true;
-            }
-        }
-        if !saw_font {
-            return Err(invalid("prepared label has no font instances"));
-        }
+        let prepared = prepare_label(&mut system, &face, &label, direction)?;
         let origin = prepared
             .origin_views()
             .next()
@@ -620,6 +761,7 @@ mod tests {
                         path: SourcePath::RowItem { row, item },
                         direction: layout::Direction::Ltr,
                         words: Vec::new(),
+                        clip: None,
                     })
                 })
                 .collect(),

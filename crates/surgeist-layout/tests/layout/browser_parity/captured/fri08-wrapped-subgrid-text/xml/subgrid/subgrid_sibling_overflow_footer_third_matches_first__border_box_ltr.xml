@@ -1,0 +1,82 @@
+<test name="subgrid_sibling_overflow_footer_third_matches_first__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="grid" direction="ltr" position="absolute" font-family="ahem" font-size="10px" line-height="10px" width="400px" row-gap="16px" column-gap="16px">
+      <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" row-gap="0px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-rows="subgrid" grid-row-start="span 3">
+        <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px">
+          Top
+        </text>
+        <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" padding-top="16px" padding-left="16px" padding-bottom="16px" padding-right="16px" grid-template-rows="subgrid" grid-row-start="span 2">
+          <text source-tag="div" display="flex" direction="ltr" overflow-x="hidden" overflow-y="hidden" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px">
+            Long text long enough to wrap onto multiple lines so that overflow:hidden can clip the overflowing portion
+          </text>
+        </div>
+      </div>
+      <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" row-gap="0px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-rows="subgrid" grid-row-start="span 3">
+        <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px">
+          Top
+        </text>
+        <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" padding-top="16px" padding-left="16px" padding-bottom="16px" padding-right="16px" grid-template-rows="subgrid" grid-row-start="span 2">
+          <text source-tag="div" display="flex" direction="ltr" overflow-x="hidden" overflow-y="hidden" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px">
+            Long text long enough to wrap onto multiple lines so that overflow:hidden can clip the overflowing portion
+          </text>
+        </div>
+      </div>
+      <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" row-gap="0px" border-top="1px" border-left="1px" border-bottom="1px" border-right="1px" grid-template-rows="subgrid" grid-row-start="span 3">
+        <text source-tag="div" display="flex" direction="ltr" font-family="ahem" font-size="10px" line-height="10px">
+          Top
+        </text>
+        <div source-tag="div" display="grid" direction="ltr" font-family="ahem" font-size="10px" line-height="10px" padding-top="16px" padding-left="16px" padding-bottom="16px" padding-right="16px" grid-template-rows="subgrid" grid-row-start="span 2">
+          <text source-tag="div" display="flex" direction="ltr" overflow-x="hidden" overflow-y="hidden" scrollbar-width="15" font-family="ahem" font-size="10px" line-height="10px">
+            Long text long enough to wrap onto multiple lines so that overflow:hidden can clip the overflowing portion
+          </text>
+        </div>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="400" height="308">
+      <node x="0" y="0" width="400" height="92">
+        <node x="1" y="1" width="398" height="10"/>
+        <node x="1" y="11" width="398" height="80">
+          <node x="16" y="16" width="366" height="40" scroll_width="0" scroll_height="0"/>
+        </node>
+      </node>
+      <node x="0" y="108" width="400" height="92">
+        <node x="1" y="1" width="398" height="10"/>
+        <node x="1" y="11" width="398" height="80">
+          <node x="16" y="16" width="366" height="40" scroll_width="0" scroll_height="0"/>
+        </node>
+      </node>
+      <node x="0" y="216" width="400" height="92">
+        <node x="1" y="1" width="398" height="10"/>
+        <node x="1" y="11" width="398" height="80">
+          <node x="16" y="16" width="366" height="40" scroll_width="0" scroll_height="0"/>
+        </node>
+      </node>
+    </node>
+  </expectations>
+  <flex-content-text profile="ahem-10px-fri08-wrapped-subgrid" font-resource-sha256="e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c">
+    <occurrence card="0" item="0" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:3,&quot;line&quot;:0,&quot;x&quot;:1.0,&quot;y&quot;:1.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0}]"/>
+    <occurrence card="0" item="1" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:4,&quot;line&quot;:0,&quot;x&quot;:17.0,&quot;y&quot;:27.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:5,&quot;end&quot;:9,&quot;line&quot;:0,&quot;x&quot;:67.0,&quot;y&quot;:27.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:10,&quot;end&quot;:14,&quot;line&quot;:0,&quot;x&quot;:117.0,&quot;y&quot;:27.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:15,&quot;end&quot;:21,&quot;line&quot;:0,&quot;x&quot;:167.0,&quot;y&quot;:27.0,&quot;width&quot;:60.0,&quot;height&quot;:10.0},{&quot;start&quot;:22,&quot;end&quot;:24,&quot;line&quot;:0,&quot;x&quot;:237.0,&quot;y&quot;:27.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:25,&quot;end&quot;:29,&quot;line&quot;:0,&quot;x&quot;:267.0,&quot;y&quot;:27.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:30,&quot;end&quot;:34,&quot;line&quot;:0,&quot;x&quot;:317.0,&quot;y&quot;:27.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:35,&quot;end&quot;:43,&quot;line&quot;:1,&quot;x&quot;:17.0,&quot;y&quot;:37.0,&quot;width&quot;:80.0,&quot;height&quot;:10.0},{&quot;start&quot;:44,&quot;end&quot;:49,&quot;line&quot;:1,&quot;x&quot;:107.0,&quot;y&quot;:37.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:50,&quot;end&quot;:52,&quot;line&quot;:1,&quot;x&quot;:167.0,&quot;y&quot;:37.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:53,&quot;end&quot;:57,&quot;line&quot;:1,&quot;x&quot;:197.0,&quot;y&quot;:37.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:58,&quot;end&quot;:73,&quot;line&quot;:2,&quot;x&quot;:17.0,&quot;y&quot;:47.0,&quot;width&quot;:150.0,&quot;height&quot;:10.0},{&quot;start&quot;:74,&quot;end&quot;:77,&quot;line&quot;:2,&quot;x&quot;:177.0,&quot;y&quot;:47.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:78,&quot;end&quot;:82,&quot;line&quot;:2,&quot;x&quot;:217.0,&quot;y&quot;:47.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:83,&quot;end&quot;:86,&quot;line&quot;:2,&quot;x&quot;:267.0,&quot;y&quot;:47.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:87,&quot;end&quot;:98,&quot;line&quot;:3,&quot;x&quot;:17.0,&quot;y&quot;:57.0,&quot;width&quot;:110.0,&quot;height&quot;:10.0},{&quot;start&quot;:99,&quot;end&quot;:106,&quot;line&quot;:3,&quot;x&quot;:137.0,&quot;y&quot;:57.0,&quot;width&quot;:70.0,&quot;height&quot;:10.0}]" clip="[366,40,366,40]"/>
+    <occurrence card="1" item="0" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:3,&quot;line&quot;:0,&quot;x&quot;:1.0,&quot;y&quot;:109.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0}]"/>
+    <occurrence card="1" item="1" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:4,&quot;line&quot;:0,&quot;x&quot;:17.0,&quot;y&quot;:135.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:5,&quot;end&quot;:9,&quot;line&quot;:0,&quot;x&quot;:67.0,&quot;y&quot;:135.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:10,&quot;end&quot;:14,&quot;line&quot;:0,&quot;x&quot;:117.0,&quot;y&quot;:135.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:15,&quot;end&quot;:21,&quot;line&quot;:0,&quot;x&quot;:167.0,&quot;y&quot;:135.0,&quot;width&quot;:60.0,&quot;height&quot;:10.0},{&quot;start&quot;:22,&quot;end&quot;:24,&quot;line&quot;:0,&quot;x&quot;:237.0,&quot;y&quot;:135.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:25,&quot;end&quot;:29,&quot;line&quot;:0,&quot;x&quot;:267.0,&quot;y&quot;:135.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:30,&quot;end&quot;:34,&quot;line&quot;:0,&quot;x&quot;:317.0,&quot;y&quot;:135.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:35,&quot;end&quot;:43,&quot;line&quot;:1,&quot;x&quot;:17.0,&quot;y&quot;:145.0,&quot;width&quot;:80.0,&quot;height&quot;:10.0},{&quot;start&quot;:44,&quot;end&quot;:49,&quot;line&quot;:1,&quot;x&quot;:107.0,&quot;y&quot;:145.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:50,&quot;end&quot;:52,&quot;line&quot;:1,&quot;x&quot;:167.0,&quot;y&quot;:145.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:53,&quot;end&quot;:57,&quot;line&quot;:1,&quot;x&quot;:197.0,&quot;y&quot;:145.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:58,&quot;end&quot;:73,&quot;line&quot;:2,&quot;x&quot;:17.0,&quot;y&quot;:155.0,&quot;width&quot;:150.0,&quot;height&quot;:10.0},{&quot;start&quot;:74,&quot;end&quot;:77,&quot;line&quot;:2,&quot;x&quot;:177.0,&quot;y&quot;:155.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:78,&quot;end&quot;:82,&quot;line&quot;:2,&quot;x&quot;:217.0,&quot;y&quot;:155.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:83,&quot;end&quot;:86,&quot;line&quot;:2,&quot;x&quot;:267.0,&quot;y&quot;:155.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:87,&quot;end&quot;:98,&quot;line&quot;:3,&quot;x&quot;:17.0,&quot;y&quot;:165.0,&quot;width&quot;:110.0,&quot;height&quot;:10.0},{&quot;start&quot;:99,&quot;end&quot;:106,&quot;line&quot;:3,&quot;x&quot;:137.0,&quot;y&quot;:165.0,&quot;width&quot;:70.0,&quot;height&quot;:10.0}]" clip="[366,40,366,40]"/>
+    <occurrence card="2" item="0" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:3,&quot;line&quot;:0,&quot;x&quot;:1.0,&quot;y&quot;:217.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0}]"/>
+    <occurrence card="2" item="1" direction="ltr" ranges="[{&quot;start&quot;:0,&quot;end&quot;:4,&quot;line&quot;:0,&quot;x&quot;:17.0,&quot;y&quot;:243.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:5,&quot;end&quot;:9,&quot;line&quot;:0,&quot;x&quot;:67.0,&quot;y&quot;:243.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:10,&quot;end&quot;:14,&quot;line&quot;:0,&quot;x&quot;:117.0,&quot;y&quot;:243.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:15,&quot;end&quot;:21,&quot;line&quot;:0,&quot;x&quot;:167.0,&quot;y&quot;:243.0,&quot;width&quot;:60.0,&quot;height&quot;:10.0},{&quot;start&quot;:22,&quot;end&quot;:24,&quot;line&quot;:0,&quot;x&quot;:237.0,&quot;y&quot;:243.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:25,&quot;end&quot;:29,&quot;line&quot;:0,&quot;x&quot;:267.0,&quot;y&quot;:243.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:30,&quot;end&quot;:34,&quot;line&quot;:0,&quot;x&quot;:317.0,&quot;y&quot;:243.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:35,&quot;end&quot;:43,&quot;line&quot;:1,&quot;x&quot;:17.0,&quot;y&quot;:253.0,&quot;width&quot;:80.0,&quot;height&quot;:10.0},{&quot;start&quot;:44,&quot;end&quot;:49,&quot;line&quot;:1,&quot;x&quot;:107.0,&quot;y&quot;:253.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:50,&quot;end&quot;:52,&quot;line&quot;:1,&quot;x&quot;:167.0,&quot;y&quot;:253.0,&quot;width&quot;:20.0,&quot;height&quot;:10.0},{&quot;start&quot;:53,&quot;end&quot;:57,&quot;line&quot;:1,&quot;x&quot;:197.0,&quot;y&quot;:253.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:58,&quot;end&quot;:73,&quot;line&quot;:2,&quot;x&quot;:17.0,&quot;y&quot;:263.0,&quot;width&quot;:150.0,&quot;height&quot;:10.0},{&quot;start&quot;:74,&quot;end&quot;:77,&quot;line&quot;:2,&quot;x&quot;:177.0,&quot;y&quot;:263.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:78,&quot;end&quot;:82,&quot;line&quot;:2,&quot;x&quot;:217.0,&quot;y&quot;:263.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:83,&quot;end&quot;:86,&quot;line&quot;:2,&quot;x&quot;:267.0,&quot;y&quot;:263.0,&quot;width&quot;:30.0,&quot;height&quot;:10.0},{&quot;start&quot;:87,&quot;end&quot;:98,&quot;line&quot;:3,&quot;x&quot;:17.0,&quot;y&quot;:273.0,&quot;width&quot;:110.0,&quot;height&quot;:10.0},{&quot;start&quot;:99,&quot;end&quot;:106,&quot;line&quot;:3,&quot;x&quot;:137.0,&quot;y&quot;:273.0,&quot;width&quot;:70.0,&quot;height&quot;:10.0}]" clip="[366,40,366,40]"/>
+  </flex-content-text>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="400" height="308" scroll-width="400" scroll-height="308" client-width="400" client-height="308"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="400" height="92" scroll-width="398" scroll-height="90" client-width="398" client-height="90"/>
+    <world-rounded-layout node-path="0.0.0" x="1" y="1" width="398" height="10" scroll-width="398" scroll-height="10" client-width="398" client-height="10"/>
+    <world-rounded-layout node-path="0.0.1" x="1" y="11" width="398" height="80" scroll-width="398" scroll-height="80" client-width="398" client-height="80"/>
+    <world-rounded-layout node-path="0.0.1.0" x="16" y="16" width="366" height="40" scroll-width="366" scroll-height="40" client-width="366" client-height="40"/>
+    <world-rounded-layout node-path="0.1" x="0" y="108" width="400" height="92" scroll-width="398" scroll-height="90" client-width="398" client-height="90"/>
+    <world-rounded-layout node-path="0.1.0" x="1" y="1" width="398" height="10" scroll-width="398" scroll-height="10" client-width="398" client-height="10"/>
+    <world-rounded-layout node-path="0.1.1" x="1" y="11" width="398" height="80" scroll-width="398" scroll-height="80" client-width="398" client-height="80"/>
+    <world-rounded-layout node-path="0.1.1.0" x="16" y="16" width="366" height="40" scroll-width="366" scroll-height="40" client-width="366" client-height="40"/>
+    <world-rounded-layout node-path="0.2" x="0" y="216" width="400" height="92" scroll-width="398" scroll-height="90" client-width="398" client-height="90"/>
+    <world-rounded-layout node-path="0.2.0" x="1" y="1" width="398" height="10" scroll-width="398" scroll-height="10" client-width="398" client-height="10"/>
+    <world-rounded-layout node-path="0.2.1" x="1" y="11" width="398" height="80" scroll-width="398" scroll-height="80" client-width="398" client-height="80"/>
+    <world-rounded-layout node-path="0.2.1.0" x="16" y="16" width="366" height="40" scroll-width="366" scroll-height="40" client-width="366" client-height="40"/>
+  </diagnostics>
+</test>

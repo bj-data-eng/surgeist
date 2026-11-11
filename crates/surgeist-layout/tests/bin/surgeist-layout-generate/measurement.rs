@@ -14,7 +14,7 @@ mod element_scroll_sizes;
 
 #[path = "measurement/flex_content_text.rs"]
 mod flex_content_text;
-use crate::fri07_intrinsic_flex_profile;
+use crate::{fri07_intrinsic_flex_profile, fri08_wrapped_subgrid_profile};
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
 use crate::horizontal_br_font_band_profile;
@@ -37,6 +37,7 @@ pub(super) enum BoxObservationRequest {
     MeasuredLeaf,
     FlexContentText,
     Fri07IntrinsicFlexText,
+    Fri08WrappedSubgrid,
     PreparedRanges,
     FlexComposition,
     OriginalFlexParent,
@@ -73,6 +74,9 @@ impl BoxObservationRequest {
             }
             Some(bytes) if Some(bytes) == Self::FlexContentText.input_bytes() => {
                 Ok(Self::FlexContentText)
+            }
+            Some(bytes) if Some(bytes) == Self::Fri08WrappedSubgrid.input_bytes() => {
+                Ok(Self::Fri08WrappedSubgrid)
             }
             Some(bytes) if Some(bytes) == Self::Fri07IntrinsicFlexText.input_bytes() => {
                 Ok(Self::Fri07IntrinsicFlexText)
@@ -132,6 +136,10 @@ impl BoxObservationRequest {
             Self::FlexContentText => Some((
                 "scripts/gentest/flex_content_text.js",
                 include_str!("measurement/flex_content_text.js"),
+            )),
+            Self::Fri08WrappedSubgrid => Some((
+                fri08_wrapped_subgrid_profile::SCRIPT_PATH,
+                fri08_wrapped_subgrid_profile::SCRIPT,
             )),
             Self::Fri07IntrinsicFlexText => Some((
                 fri07_intrinsic_flex_profile::SCRIPT_PATH,
@@ -211,6 +219,7 @@ impl BoxObservationRequest {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
             Self::Fri07IntrinsicFlexText => Some(fri07_intrinsic_flex_profile::REQUEST),
+            Self::Fri08WrappedSubgrid => Some(fri08_wrapped_subgrid_profile::REQUEST),
             Self::OriginalFlexParent => Some(original_flex_parent_profile::REQUEST),
             Self::OriginalPercentageFlexParent => {
                 Some(original_flex_parent_profile::percentage::REQUEST)
@@ -395,6 +404,8 @@ struct WireNode {
     flex_content_text: Option<flex_content_text::WireFlexContentText>,
     #[serde(default, deserialize_with = "present")]
     fri07_intrinsic_flex_text: Option<flex_content_text::WireIntrinsicFlexText>,
+    #[serde(default, deserialize_with = "present")]
+    fri08_wrapped_subgrid: Option<flex_content_text::WireWrappedSubgrid>,
     #[serde(default, deserialize_with = "present")]
     prepared_range_frame: Option<PreparedRangeFrame>,
     #[serde(default, deserialize_with = "present")]
@@ -748,6 +759,12 @@ pub(super) fn decode(
         "fri07IntrinsicFlexText",
         "intrinsic Flex evidence requires its registered request",
     )?;
+    context.compatible(
+        request == BoxObservationRequest::Fri08WrappedSubgrid
+            || wire.fri08_wrapped_subgrid.is_none(),
+        "fri08WrappedSubgrid",
+        "wrapped Subgrid text requires its exact observation request",
+    )?;
     let prepared_range_frame =
         request == BoxObservationRequest::PreparedRanges || prepared_atomic_percentage;
     context.compatible(
@@ -910,6 +927,7 @@ pub(super) fn decode(
     let element_scroll_sizes = match request {
         BoxObservationRequest::Geometry
         | BoxObservationRequest::Fri07IntrinsicFlexText
+        | BoxObservationRequest::Fri08WrappedSubgrid
         | BoxObservationRequest::PreparedRanges
         | BoxObservationRequest::FlexComposition
         | BoxObservationRequest::OriginalFlexParent
@@ -956,6 +974,16 @@ pub(super) fn decode(
     let flex_content_text = match request {
         BoxObservationRequest::FlexContentText => {
             let witness = context.required(wire.flex_content_text.as_ref(), "flexContentText")?;
+            Some(witness.validate(&wire, &context)?)
+        }
+        BoxObservationRequest::Fri08WrappedSubgrid => {
+            context.compatible(
+                root_local_positioned && use_rounding,
+                "viewport",
+                "wrapped Subgrid text requires the original absolute root-local frame",
+            )?;
+            let witness =
+                context.required(wire.fri08_wrapped_subgrid.as_ref(), "fri08WrappedSubgrid")?;
             Some(witness.validate(&wire, &context)?)
         }
         BoxObservationRequest::Fri07IntrinsicFlexText => {
@@ -1484,6 +1512,11 @@ impl WireNode {
     }
 
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            context.node_path == "root" || self.fri08_wrapped_subgrid.is_none(),
+            "fri08WrappedSubgrid",
+            "wrapped Subgrid text evidence belongs only on the root",
+        )?;
         context.compatible(
             context.node_path == "root" || self.fri07_intrinsic_flex_text.is_none(),
             "fri07IntrinsicFlexText",

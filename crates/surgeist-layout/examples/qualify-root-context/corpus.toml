@@ -5006,3 +5006,10 @@ sources = [
   "html/grid-lanes/grid_lanes_item_containing_block_content_width.html",
   "html/subgrid/fri08_standalone_intrinsic_composition.html",
 ]
+
+[[matching_publications]]
+edition = "fri08-wrapped-subgrid-text"
+sources = [
+  "html/subgrid/subgrid_sibling_overflow_footer_second_matches_first.html",
+  "html/subgrid/subgrid_sibling_overflow_footer_third_matches_first.html",
+]
