@@ -330,11 +330,10 @@ struct SourceSlice {
 }
 
 #[derive(Clone, Copy)]
-struct AxisFit {
-    factor: f64,
-    correction: f64,
-    fills: bool,
-    overlaps: bool,
+struct AxisWidths {
+    extent: f64,
+    first: f64,
+    last: f64,
 }
 
 fn resolve(
@@ -415,24 +414,40 @@ fn resolve(
             natural.width,
         )?,
     );
-    let fx = fit_factor(work, width, widths.left, widths.right)?;
-    let fy = fit_factor(work, height, widths.top, widths.bottom)?;
-    let comparison = compare_fits(work, fx, fy)?;
-    let selected = if comparison == Ordering::Greater {
-        fy
-    } else {
-        fx
+    let x = AxisWidths {
+        extent: width,
+        first: widths.left,
+        last: widths.right,
     };
-    let collapse_x =
-        work.coordinate(|| width == 0.0)? || (fx.fills && comparison != Ordering::Greater);
-    let collapse_y =
-        work.coordinate(|| height == 0.0)? || (fy.fills && comparison != Ordering::Less);
+    let y = AxisWidths {
+        extent: height,
+        first: widths.top,
+        last: widths.bottom,
+    };
+    let x_fit = compare_opposing(work, x.extent, x.first, x.last)?;
+    let y_fit = compare_opposing(work, y.extent, y.first, y.last)?;
+    let comparison = match (x_fit, y_fit) {
+        (Ordering::Greater, Ordering::Greater) => compare_fit_ratios(work, x, y)?,
+        (Ordering::Greater, _) => Ordering::Less,
+        (_, Ordering::Greater) => Ordering::Greater,
+        _ => Ordering::Equal,
+    };
+    let selected = if comparison == Ordering::Greater {
+        y
+    } else {
+        x
+    };
+    let collapse_x = work.coordinate(|| width == 0.0)?
+        || (x_fit != Ordering::Less && comparison != Ordering::Greater);
+    let collapse_y = work.coordinate(|| height == 0.0)?
+        || (y_fit != Ordering::Less && comparison != Ordering::Less);
     let extent = Size::new(width, height);
     let collapse = Size::new(collapse_x, collapse_y);
-    let mut factor = selected.factor;
-    if selected.overlaps && work.coordinate(|| factor == 1.0)? {
-        factor = work.coordinate(|| factor.next_down())?;
-    }
+    let mut factor = if x_fit == Ordering::Greater || y_fit == Ordering::Greater {
+        fit_factor(work, selected)?
+    } else {
+        1.0
+    };
     let mut used_widths = scale_widths(work, widths, factor, extent, collapse)?;
     if widths_overlap(work, used_widths, extent)? {
         // Multiplying the two sides rounds them independently. Use the next
@@ -607,31 +622,12 @@ fn compare_opposing(
         .ok_or_else(geometry_error)
 }
 
-fn fit_factor(
-    work: &mut GeometryWork<'_, '_, '_>,
-    extent: f64,
-    first: f64,
-    last: f64,
-) -> Result<AxisFit, PaintError> {
-    match compare_opposing(work, extent, first, last)? {
-        Ordering::Less => {
-            return Ok(AxisFit {
-                factor: 1.0,
-                correction: 0.0,
-                fills: false,
-                overlaps: false,
-            });
-        }
-        Ordering::Equal => {
-            return Ok(AxisFit {
-                factor: 1.0,
-                correction: 0.0,
-                fills: true,
-                overlaps: false,
-            });
-        }
-        Ordering::Greater => {}
-    }
+fn fit_factor(work: &mut GeometryWork<'_, '_, '_>, axis: AxisWidths) -> Result<f64, PaintError> {
+    let AxisWidths {
+        extent,
+        first,
+        last,
+    } = axis;
     let sum = work.coordinate(|| first + last)?;
     let (scaled_extent, first, last, sum) = if work.coordinate(|| sum.is_finite())? {
         (extent, first, last, sum)
@@ -643,8 +639,7 @@ fn fit_factor(
         let half_sum = work.coordinate(|| half_first + half_last)?;
         (half_extent, half_first, half_last, half_sum)
     };
-    // Keep the rounding residual of the opposing sum and the quotient. Two
-    // ratios that round to the same factor can limit different axes.
+    // Retain the error of the rounded opposing sum when computing the factor.
     let (larger, smaller) = if work.coordinate(|| first >= last)? {
         (first, last)
     } else {
@@ -657,37 +652,106 @@ fn fit_factor(
     let residual = work.coordinate(|| (-quotient).mul_add(sum_tail, residual))?;
     let adjustment = work.coordinate(|| residual / sum)?;
     let factor = work.coordinate(|| quotient + adjustment)?;
-    let lost_adjustment = work.coordinate(|| quotient - factor)?;
-    let correction = work.coordinate(|| lost_adjustment + adjustment)?;
     if work.coordinate(|| factor == 0.0)? && work.coordinate(|| extent > 0.0)? {
         return Err(geometry_error());
     }
-    Ok(AxisFit {
-        factor,
-        correction,
-        fills: true,
-        overlaps: true,
-    })
+    if work.coordinate(|| factor == 1.0)? {
+        return work.coordinate(|| factor.next_down());
+    }
+    Ok(factor)
 }
 
-fn compare_fits(
+// A product of two finite, nonnegative binary64 numbers has at most 106
+// significand bits. Keeping its binary exponent separate avoids overflow and
+// preserves contributions too small to affect a rounded opposing sum.
+struct ExactProduct {
+    significand: u128,
+    exponent: i32,
+}
+
+impl ExactProduct {
+    fn new(work: &mut GeometryWork<'_, '_, '_>, left: f64, right: f64) -> Result<Self, PaintError> {
+        let (left, left_exponent) = exact_parts(work, left)?;
+        let (right, right_exponent) = exact_parts(work, right)?;
+        Ok(Self {
+            significand: work.coordinate(|| left * right)?,
+            exponent: work.coordinate(|| left_exponent + right_exponent)?,
+        })
+    }
+
+    fn word_at(
+        &self,
+        work: &mut GeometryWork<'_, '_, '_>,
+        exponent: i32,
+    ) -> Result<u128, PaintError> {
+        let shift = work.coordinate(|| exponent - self.exponent)?;
+        let distance = work.coordinate(|| shift.unsigned_abs())?;
+        let aligned = if work.coordinate(|| shift < 0)? {
+            work.coordinate(|| self.significand.checked_shl(distance))?
+        } else {
+            work.coordinate(|| self.significand.checked_shr(distance))?
+        };
+        work.coordinate(|| u128::from(aligned.unwrap_or_default() as u64))
+    }
+}
+
+fn exact_parts(work: &mut GeometryWork<'_, '_, '_>, value: f64) -> Result<(u128, i32), PaintError> {
+    let bits = work.coordinate(|| value.to_bits())?;
+    let exponent = work.coordinate(|| ((bits >> 52) & 0x7ff) as i32)?;
+    let fraction = work.coordinate(|| u128::from(bits & ((1_u64 << 52) - 1)))?;
+    if work.coordinate(|| exponent == 0)? {
+        return Ok((fraction, -1074));
+    }
+    let significand = work.coordinate(|| fraction | (1_u128 << 52))?;
+    let exponent = work.coordinate(|| exponent - 1075)?;
+    Ok((significand, exponent))
+}
+
+fn compare_fit_ratios(
     work: &mut GeometryWork<'_, '_, '_>,
-    x: AxisFit,
-    y: AxisFit,
+    x: AxisWidths,
+    y: AxisWidths,
 ) -> Result<Ordering, PaintError> {
-    let factor = work
-        .coordinate(|| x.factor.partial_cmp(&y.factor))?
-        .ok_or_else(geometry_error)?;
-    if factor != Ordering::Equal {
-        return Ok(factor);
+    // Compare x.extent / (x.first + x.last) with the corresponding y
+    // ratio by cross multiplication, distributing before the exact products.
+    let x_first = ExactProduct::new(work, x.extent, y.first)?;
+    let x_last = ExactProduct::new(work, x.extent, y.last)?;
+    let y_first = ExactProduct::new(work, y.extent, x.first)?;
+    let y_last = ExactProduct::new(work, y.extent, x.last)?;
+    let mut start = i32::MAX;
+    let mut end = i32::MIN;
+    for term in [&x_first, &x_last, &y_first, &y_last] {
+        if work.coordinate(|| term.significand != 0)? {
+            start = work.coordinate(|| start.min(term.exponent))?;
+            // Include a possible carry above the product's 106 bits.
+            end = work.coordinate(|| end.max(term.exponent + 107))?;
+        }
     }
-    let correction = work
-        .coordinate(|| x.correction.partial_cmp(&y.correction))?
-        .ok_or_else(geometry_error)?;
-    if correction != Ordering::Equal {
-        return Ok(correction);
+
+    // Walk low to high so each sum can carry into its next word. The highest
+    // differing word determines the order. Binary64 bounds this to 66 words.
+    let mut exponent = start;
+    let mut x_carry = 0;
+    let mut y_carry = 0;
+    let mut order = Ordering::Equal;
+    while work.coordinate(|| exponent < end)? {
+        let first = x_first.word_at(work, exponent)?;
+        let last = x_last.word_at(work, exponent)?;
+        let sum = work.coordinate(|| first + last)?;
+        let x_word = work.coordinate(|| sum + x_carry)?;
+        x_carry = work.coordinate(|| x_word >> 64)?;
+        let first = y_first.word_at(work, exponent)?;
+        let last = y_last.word_at(work, exponent)?;
+        let sum = work.coordinate(|| first + last)?;
+        let y_word = work.coordinate(|| sum + y_carry)?;
+        y_carry = work.coordinate(|| y_word >> 64)?;
+        let word_order = work.coordinate(|| (x_word as u64).cmp(&(y_word as u64)))?;
+        if word_order != Ordering::Equal {
+            order = word_order;
+        }
+        exponent = work.coordinate(|| exponent + 64)?;
     }
-    work.coordinate(|| y.overlaps.cmp(&x.overlaps))
+    Ok(order)
 }
 
 fn scale_widths(
@@ -1027,6 +1091,63 @@ mod tests {
                     row_index != 1 && column_index != 1
                 );
             }
+        }
+    }
+
+    #[test]
+    fn partition_ratio_order_retains_tiny_products_and_carries() {
+        let mut meter = options(PaintLimits::unlimited())
+            .operation(OperationKind::BorderImage)
+            .unwrap();
+        let phase = meter
+            .child(
+                meter.root(),
+                PaintPhase::BorderImageGeometry,
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .unwrap();
+        let half = AxisWidths {
+            extent: 1.0,
+            first: 2.0,
+            last: 0.0,
+        };
+        let smallest = f64::from_bits(1);
+        let just_below_half = AxisWidths {
+            last: smallest,
+            ..half
+        };
+        let large_half = AxisWidths {
+            extent: f64::MAX,
+            first: f64::MAX,
+            last: f64::MAX,
+        };
+        let tiny = AxisWidths {
+            extent: smallest,
+            first: f64::MAX,
+            last: smallest,
+        };
+        let tiny_without_last = AxisWidths { last: 0.0, ..tiny };
+        for (x, y, expected) in [
+            (half, large_half, Ordering::Equal),
+            (just_below_half, large_half, Ordering::Less),
+            (large_half, just_below_half, Ordering::Greater),
+            (tiny, tiny_without_last, Ordering::Less),
+        ] {
+            let actual = meter
+                .with_phase(phase, |phase_meter| {
+                    compare_fit_ratios(
+                        &mut GeometryWork {
+                            phase: phase_meter,
+                            scope: phase,
+                        },
+                        x,
+                        y,
+                    )
+                })
+                .unwrap()
+                .unwrap();
+            assert_eq!(actual, expected);
         }
     }
 
