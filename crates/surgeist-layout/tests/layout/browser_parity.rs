@@ -1156,7 +1156,20 @@ fn runs_fri_02_block_axis_families_against_surgeist_layout() {
 
 #[test]
 fn runs_fri_02_flex_axis_families_against_surgeist_layout() {
-    assert_axis_fixture_family_matches(flex_axis_fixture_paths, assert_flex_axis_fixture_topology);
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    let originals: Vec<_> = flex_axis_fixture_paths(browser_parity_fixture_paths())
+        .unwrap()
+        .into_iter()
+        .map(|relative| {
+            let path = corpus.join(&relative);
+            let original = support::Golden::parse_file(&path).unwrap();
+            assert_flex_axis_fixture_topology(&original, &relative)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            path
+        })
+        .collect();
+    assert_eq!(originals.len(), 80);
+    assert_registered_originals_match(&originals);
 }
 
 #[test]
