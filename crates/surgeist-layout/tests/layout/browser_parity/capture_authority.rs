@@ -30,7 +30,7 @@ pub(crate) const TERMINAL_SCHEMA: u8 = 3;
 pub(crate) const ORIGINAL_DIAGNOSTIC_EDITION: &str = "grid-lanes-axis-original-diagnostics";
 pub(crate) const ORIGINAL_DIAGNOSTIC_RECEIPT: &str = "diagnostics.json";
 pub(crate) const GRID_LANES_PAIRED_EDITION: &str = "grid-lanes-axis-controls";
-pub(crate) const GRID_LANES_SHARED_INPUTS: [&str; 7] = [
+pub(crate) const FIXED_CAPTURE_SHARED_INPUTS: [&str; 7] = [
     "browser-owner.toml",
     "fonts/Ahem.ttf",
     "fonts/PROVENANCE.md",
@@ -198,7 +198,7 @@ pub(crate) fn verify_grid_lanes_shared_inputs(
     original: &BTreeMap<String, String>,
     control: &BTreeMap<String, String>,
 ) -> Result<()> {
-    for path in GRID_LANES_SHARED_INPUTS {
+    for path in FIXED_CAPTURE_SHARED_INPUTS {
         if original
             .get(path)
             .is_none_or(|digest| control.get(path) != Some(digest))
@@ -660,6 +660,15 @@ pub(crate) fn capture_binding_from_verified_inputs(
         ));
     }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
+        (request, None)
+            if request == MatchingCategory::Fri06Subgrid.observation_request()
+                && fri06_subgrid_profile(&case.source).is_some()
+                && !full_inputs.contains_key(OBSERVATION_REQUEST)
+                && artifact.linked_resources.is_empty() =>
+        {
+            verify_grid_lanes_producing_helper(full_inputs)?;
+            ("block-flow-atomic-subgrid", "ahem-10px-atomic-paragraphs")
+        }
         ("geometry", None)
             if !full_inputs.contains_key(OBSERVATION_REQUEST)
                 && !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
@@ -1383,6 +1392,58 @@ pub(crate) struct SpecializedCase {
     pub(crate) identity: IdentityProjection,
 }
 
+pub(crate) fn matching_metadata_is_valid(
+    category: MatchingCategory,
+    source: &str,
+    kind: SourceKind,
+    metadata: &Value,
+) -> bool {
+    match category {
+        MatchingCategory::Geometry => {
+            metadata["context"] == "absolute-local" && metadata["root_size"].is_null()
+        }
+        MatchingCategory::Fri06Subgrid => {
+            let Some((mode, owners)) = fri06_subgrid_profile(source) else {
+                return false;
+            };
+            kind == SourceKind::Original
+                && metadata["context"] == "block-flow"
+                && metadata["parent_direction"] == "ltr"
+                && metadata["root_direction"] == "variant"
+                && metadata["root_writing_mode"] == mode
+                && metadata["root_position"] == "relative"
+                && metadata["atomic_paragraphs"] == 6
+                && metadata["grid_reference_owners"]
+                    .as_array()
+                    .is_some_and(|actual| {
+                        actual
+                            .iter()
+                            .map(Value::as_str)
+                            .eq(owners.iter().copied().map(Some))
+                    })
+        }
+    }
+}
+
+pub(crate) const FRI06_SUBGRID_EDITION: &str = "fri06-subgrid-representatives";
+pub(crate) const FRI06_SUBGRID_SOURCES: [&str; 3] = [
+    "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html",
+    "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
+    "html/subgrid/subgrid_baseline_vertical_nested_inner_row1_first.html",
+];
+
+pub(crate) fn fri06_subgrid_profile(
+    source: &str,
+) -> Option<(&'static str, &'static [&'static str])> {
+    match FRI06_SUBGRID_SOURCES
+        .iter()
+        .position(|&known| known == source)?
+    {
+        0 => Some(("horizontal-tb", &[])),
+        _ => Some(("vertical-rl", &["/", "/0", "/0/0"])),
+    }
+}
+
 pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
     if edition.is_empty()
         || edition.starts_with('-')
@@ -1412,6 +1473,24 @@ pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum MatchingCategory {
     Geometry,
+    Fri06Subgrid,
+}
+
+impl MatchingCategory {
+    pub(crate) fn for_edition(edition: &str) -> Self {
+        if edition == FRI06_SUBGRID_EDITION {
+            Self::Fri06Subgrid
+        } else {
+            Self::Geometry
+        }
+    }
+
+    pub(crate) const fn observation_request(self) -> &'static str {
+        match self {
+            Self::Geometry => "geometry",
+            Self::Fri06Subgrid => "fri06-subgrid-representatives",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1478,6 +1557,10 @@ impl MatchingCase {
             matching,
             identity,
         })
+    }
+
+    pub(crate) const fn category(&self) -> MatchingCategory {
+        self.matching
     }
 
     pub(crate) const fn provenance(&self) -> &MatchingProvenance {
@@ -1958,8 +2041,13 @@ impl Qualification {
                         || !record.value["specialized_publication"].is_null()
                         || !record.value["relation"].is_null()
                         || record.value["expected"]["kind"] != "generated"
-                        || record.value["expected"]["metadata"]["context"] != "absolute-local"
-                        || !record.value["expected"]["metadata"]["root_size"].is_null()
+                        || case.category() != MatchingCategory::for_edition(&self.edition)
+                        || !matching_metadata_is_valid(
+                            case.category(),
+                            &descriptor.source,
+                            kind,
+                            &record.value["expected"]["metadata"],
+                        )
                         || !fixture_cases().iter().any(|(v, _)| *v == variant)
                         || descriptor.name != format!("{stem}__{variant}")
                         || descriptor.output.path != format!("xml/{family}__{variant}.xml")
@@ -2012,6 +2100,12 @@ impl Qualification {
                 != matching_history
         {
             return Err(malformed("matching historical input census changed"));
+        }
+        if self.edition == FRI06_SUBGRID_EDITION {
+            if self.records.len() != FRI06_SUBGRID_SOURCES.len() {
+                return Err(malformed("incomplete FRI06 Subgrid matching cohort"));
+            }
+            verify_grid_lanes_producing_helper(&self.retained_inputs)?;
         }
         if self.edition == GRID_LANES_PAIRED_EDITION {
             if paired_diagnostics.is_none()

@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
 use super::capture_authority::{
-    DiagnosticReference, GRID_LANES_AXIS_ORIGINAL_SOURCES, MatchingMembership, MatchingProvenance,
-    PathDigest, SourceEquivalentMatching, grid_lanes_control_source,
+    DiagnosticReference, FRI06_SUBGRID_SOURCES, GRID_LANES_AXIS_ORIGINAL_SOURCES, MatchingCategory,
+    MatchingMembership, MatchingProvenance, PathDigest, SourceEquivalentMatching,
+    grid_lanes_control_source, matching_metadata_is_valid,
 };
 pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
 use crate::fixture_variants::fixture_cases;
@@ -356,6 +357,12 @@ impl Declaration {
                 }
             };
             super::capture_authority::validate_matching_edition(&edition)?;
+            let category = MatchingCategory::for_edition(&edition);
+            if category == MatchingCategory::Fri06Subgrid
+                && members.len() != FRI06_SUBGRID_SOURCES.len()
+            {
+                return Err("FRI06 Subgrid matching requires all three sources".into());
+            }
             if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }
@@ -365,14 +372,14 @@ impl Declaration {
                     .iter_mut()
                     .find(|record| record.source == source)
                     .ok_or("matching publication requires a declared source")?;
-                if !matches!(
-                    record.expected,
-                    ExpectedDisposition::Generated {
-                        metadata: ExpectedMetadata::AbsoluteLocal {
-                            root_size: None,
-                            ..
-                        }
-                    }
+                let ExpectedDisposition::Generated { metadata } = &record.expected else {
+                    return Err("matching publication requires a Generated source".into());
+                };
+                if !matching_metadata_is_valid(
+                    category,
+                    record.source.as_str(),
+                    record.source_kind,
+                    &serde_json::to_value(metadata)?,
                 ) || record.relation.is_some()
                     || record.semantic_specifications.is_some()
                     || record.specialized_publication.is_some()
@@ -708,7 +715,42 @@ impl Record {
             (MatchingProvenance::Authored, None) => {}
             _ => return Err("matching capture history disagrees with its source".into()),
         }
-        verify_absolute_metadata(current, metadata, name, variant)
+        if self.matching_edition() == Some(super::capture_authority::FRI06_SUBGRID_EDITION) {
+            let document = roxmltree::Document::parse(current)?;
+            let test = document.root_element();
+            let viewport = test
+                .children()
+                .find(|node| node.has_tag_name("viewport"))
+                .ok_or("missing viewport")?;
+            let root = test
+                .children()
+                .find(|node| node.has_tag_name("input"))
+                .and_then(|node| node.children().find(roxmltree::Node::is_element))
+                .ok_or("missing root input")?;
+            let (mode, _) = super::capture_authority::fri06_subgrid_profile(self.source.as_str())
+                .ok_or("unexpected Subgrid source")?;
+            let direction = if variant.ends_with("_rtl") {
+                "rtl"
+            } else {
+                "ltr"
+            };
+            if test.attribute("name") != Some(name)
+                || test.attribute("measurement-version") != Some("4")
+                || test.attribute("observation-frame") != Some("root-border")
+                || viewport.attribute("root-context") != Some("block-flow-auto")
+                || viewport.attribute("parent-direction") != Some("ltr")
+                || viewport.attribute("parent-inline-extent")
+                    != viewport.attribute("fallback-icb-width")
+                || root.attribute("writing-mode").unwrap_or("horizontal-tb") != mode
+                || root.attribute("position").unwrap_or("relative") != "relative"
+                || root.attribute("direction") != Some(direction)
+            {
+                return Err("declared FRI06 Subgrid root capture metadata changed".into());
+            }
+            Ok(())
+        } else {
+            verify_absolute_metadata(current, metadata, name, variant)
+        }
     }
 }
 
@@ -1232,11 +1274,18 @@ grid_reference_owners = ["/", "/0", "/0/0"]
     #[test]
     fn paired_matching_requires_the_exact_complete_source_association() {
         let live = include_str!("../../../examples/qualify-root-context/corpus.toml");
-        let (prefix, publication) = live.rsplit_once("\n[[matching_publications]]\n").unwrap();
+        let header = "\n[[matching_publications]]\n";
+        let start = live
+            .find(&format!(
+                "{header}edition = {GRID_LANES_PAIRED_EDITION:?}\n"
+            ))
+            .unwrap();
+        let prefix = &live[..start];
+        let tail = &live[start + header.len()..];
+        let end = tail.find("\n[[").unwrap_or(tail.len());
+        let (publication, suffix) = tail.split_at(end);
         let parse = |publication: &str| {
-            Declaration::parse(
-                format!("{prefix}\n[[matching_publications]]\n{publication}").as_bytes(),
-            )
+            Declaration::parse(format!("{prefix}{header}{publication}{suffix}").as_bytes())
         };
         let valid = parse(publication).unwrap();
         let selected: BTreeMap<_, _> = valid
@@ -1253,7 +1302,7 @@ grid_reference_owners = ["/", "/0", "/0/0"]
             .collect();
         assert_eq!(selected.len(), 9);
         valid.check_live_records(&selected).unwrap();
-        let unpaired = Declaration::parse(prefix.as_bytes()).unwrap();
+        let unpaired = Declaration::parse(format!("{prefix}{suffix}").as_bytes()).unwrap();
         assert!(unpaired.check_live_records(&selected).is_err());
 
         let mut rows = publication

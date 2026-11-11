@@ -1177,6 +1177,11 @@ fn matching_cases(
                 },
                 record_sha256: semantic_record_digest(record)?.as_str().to_owned(),
             };
+            let category = authority::MatchingCategory::for_edition(
+                record
+                    .matching_edition()
+                    .ok_or("missing matching edition")?,
+            );
             let identity =
                 authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
                     metadata: &metadata,
@@ -1187,16 +1192,11 @@ fn matching_cases(
                     actual_xml_sha256: &authority::sha256(xml.as_bytes()),
                     historical_sha256: provenance.historical().map(|entry| entry.sha256.as_str()),
                     browser_settings: &settings,
-                    observation_request: "geometry",
+                    observation_request: category.observation_request(),
                     observation_input_sha256: None,
                 })?;
             Ok(authority::QualifiedCase::Matching(
-                authority::MatchingCase::new(
-                    case,
-                    provenance,
-                    authority::MatchingCategory::Geometry,
-                    identity,
-                )?,
+                authority::MatchingCase::new(case, provenance, category, identity)?,
             ))
         })
         .collect()
