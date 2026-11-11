@@ -95,6 +95,15 @@ impl Dom {
 }
 
 impl DomSourceLease<'_> {
+    #[cfg(test)]
+    pub(in crate::store) fn has_private_inline_inputs(&self) -> bool {
+        self.dom
+            .source_operation
+            .as_ref()
+            .and_then(|operation| operation.draft.inline_recording.as_ref())
+            .is_some_and(Recording::has_inputs)
+    }
+
     /// Advance the same retained Source invocation with a pure borrowed resolver.
     /// No callback is retained. Speculative command admission records inputs but
     /// never invokes this resolver. Producer evidence is returned once alongside

@@ -14,6 +14,9 @@ fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 50_000_000, 64, 4096, 4096, 1)
 }
 fn constructor() -> (Dom, DomHostedSource, DocumentId) {
+    constructor_with_meta_work(0)
+}
+fn constructor_with_meta_work(meta_work: u64) -> (Dom, DomHostedSource, DocumentId) {
     let mut dom = Dom::new(
         DomLimits::new(
             2048,
@@ -25,7 +28,8 @@ fn constructor() -> (Dom, DomHostedSource, DocumentId) {
             32_000_000,
             crate::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
-        .unwrap(),
+        .unwrap()
+        .with_meta_processing_work(meta_work),
     )
     .unwrap();
     let mut source = dom
@@ -2075,4 +2079,411 @@ fn stopped_registration_does_not_accept_a_prior_script_settings_receipt() {
     assert_eq!(lease.snapshot().node(script).unwrap().parent(), None);
     lease.source_script_step(request, &cancel).unwrap();
     drop(source);
+}
+
+#[test]
+fn rejected_svg_suffix_does_not_publish_private_meta_recording() {
+    use surgeist_html::values::Namespace;
+
+    let cancel = cancel();
+    let (mut dom, source, fixture) = svg_removal_fixture();
+    let SvgRemovalFixture {
+        document,
+        parent,
+        old,
+        root,
+        suffix,
+        ..
+    } = &fixture;
+    let (document, parent, old) = (*document, *parent, *old);
+    let mut batch = DomBatch::new();
+    let meta = batch.create_element_ns(document, Namespace::html(), "meta");
+    batch.set_attribute(&meta, "http-equiv", "default-style");
+    batch.set_attribute(&meta, "content", "rejected preference");
+    batch.insert_before(&meta, suffix.wrapper, Some(suffix.script.into()));
+    let meta = dom
+        .apply(batch, &cancel)
+        .unwrap()
+        .created(&meta)
+        .unwrap()
+        .unwrap();
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    let before = dom.snapshot();
+    let old_style = before.node(old).unwrap().as_style().unwrap().state();
+    let caps = [root];
+    let limits = crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
+    let advance = |lease: &mut crate::DomSourceLease<'_>| {
+        let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+        let crate::DomMetaSourceStep::Progress(progress) =
+            hold.prepare(&caps, None, &cancel).unwrap()
+        else {
+            panic!("a private rejected suffix must not expose a Meta producer preparation");
+        };
+        let (progress, inline) = progress.into_parts();
+        assert!(inline.is_none());
+        progress
+    };
+    let (read, prefix, removed) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::replace_child(suffix.wrapper, parent, old),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let progress = advance(&mut lease);
+        let removed = fixture.accept_removal(&mut lease, progress);
+        let DomSourceProgress::Request(DomSourceRequest::Script(read)) = advance(&mut lease) else {
+            panic!("the privately recorded Meta must precede the original HTML settings read");
+        };
+        assert_eq!(read.operation(), lease.operation());
+        assert_eq!(read.step(), crate::DomSourceScriptStep::ReadScripting);
+        assert_eq!(read.subject(), Some(suffix.script));
+        assert_eq!(read.node_document(), Some(document));
+        assert_eq!(read.relevant_global(), Some(binding.global));
+        let prefix = lease.snapshot();
+        assert_eq!(prefix.stamp(), read.basis());
+        assert_eq!(prefix.incomplete_source_operation(), Some(read.operation()));
+        assert_eq!(prefix.node(old).unwrap().parent(), None);
+        assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), None);
+        assert_eq!(
+            prefix.node(old).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        // The ordinary advance detects the real retained Meta occurrence before
+        // clearing its recording or consuming the parked Script settings.
+        assert!(matches!(
+            lease.advance(&cancel),
+            Err(DomError::Meta(crate::DomMetaError::DefaultStyleUnsupported))
+        ));
+        assert_eq!(lease.snapshot().stamp(), prefix.stamp());
+        assert!(
+            matches!(advance(&mut lease), DomSourceProgress::Request(DomSourceRequest::Script(again)) if again == read)
+        );
+        (read, prefix, removed)
+    };
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let spent = dom.changes_since(before.stamp()).unwrap().changes().len();
+    let with_outputs = |outputs| {
+        let limits = source_limits();
+        DomSourceLimits::new(
+            limits.retained_bytes(),
+            limits.retained_string_code_units(),
+            limits.work(),
+            limits.phase_publications(),
+            outputs,
+            limits.published_native_identities(),
+            limits.nested_operations(),
+        )
+    };
+    {
+        let mut lease = dom
+            .resume_source_edit(read.operation(), with_outputs(spent + 1), &cancel)
+            .unwrap();
+        let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+        match hold.prepare(&caps, None, &cancel) {
+            Err(crate::DomMetaAtomicError::Dom(DomError::SourceOutputLimit)) => {}
+            Err(error) => {
+                panic!("one missing closing output must retain the selected SVG failure: {error:?}")
+            }
+            Ok(_) => panic!("a one-output closing allowance must refuse"),
+        };
+    }
+    let cleanup = dom.pending_source_edit().unwrap();
+    assert_eq!(cleanup.operation(), read.operation());
+    assert_eq!(cleanup.phase(), crate::DomSourcePhase::PendingCleanup);
+    assert_eq!(
+        cleanup.cleanup_cause(),
+        Some(crate::DomSourceCleanupCause::SvgScriptProcessingUnavailable)
+    );
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    assert_eq!(root.snapshot().unwrap().revision(), removed.revision());
+    {
+        let mut lease = dom
+            .resume_source_edit(read.operation(), with_outputs(spent + 2), &cancel)
+            .unwrap();
+        let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
+        match hold.prepare(&caps, None, &cancel) {
+            Err(crate::DomMetaAtomicError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
+            Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
+            Ok(_) => {
+                panic!("the actual SVG requirement must refuse before Meta producer preparation")
+            }
+        };
+    }
+    let closed = dom.snapshot();
+    assert_eq!(closed.node(old).unwrap().parent(), None);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), None);
+    assert_eq!(
+        closed.node(suffix.wrapper).unwrap().children(),
+        [meta, suffix.script, suffix.svg]
+    );
+    let script = closed
+        .node(suffix.script)
+        .unwrap()
+        .as_html_script()
+        .unwrap();
+    assert!(!script.flags().already_started());
+    assert_eq!(script.preparation_document(), None);
+    assert!(
+        !closed
+            .node(suffix.svg)
+            .unwrap()
+            .as_svg_script()
+            .unwrap()
+            .flags()
+            .already_processed()
+    );
+    let current = root.snapshot().unwrap();
+    assert_eq!(current.revision(), removed.revision());
+    assert_eq!(current.sheets(), removed.sheets());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the private Meta input must not strand the original Source after SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert!(
+        closed
+            .node(old)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [
+            crate::DomChange::ElementState(old),
+            crate::DomChange::SourceOperation
+        ]
+    );
+}
+
+#[test]
+fn rejected_svg_suffix_does_not_publish_private_inline_recording() {
+    let cancel = cancel();
+    let (mut dom, source, fixture) = svg_removal_fixture();
+    let SvgRemovalFixture {
+        document,
+        parent,
+        old,
+        root,
+        suffix,
+        ..
+    } = &fixture;
+    let (document, parent, old) = (*document, *parent, *old);
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    dom.configure_inline_styles(
+        crate::DomInlineStyleLimits::new(
+            surgeist_cssom::CssomLimits::default(),
+            32,
+            64_000_000,
+            8_000_000,
+            4_000_000,
+        )
+        .unwrap(),
+        &cancel,
+    )
+    .unwrap();
+    let request_limits = crate::DomInlineStyleRequestLimits {
+        input: CssUtf16InputLimits::default(),
+        declaration: Default::default(),
+    };
+    let parser = CssParserContext::new(surgeist_css::CssParserMode::Quirks);
+    let version = CssomInputVersion {
+        role: CssomInputRole::Support,
+        identity: "private SVG suffix".into(),
+        revision: 1,
+    };
+    let inputs = crate::DomInlineStyleInputs::new(
+        dom.snapshot().document(document).unwrap().stamp(),
+        parser,
+        version.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let properties = dom
+        .inline_style(
+            suffix.wrapper,
+            &inputs,
+            request_limits,
+            no_svg_fixture_inline_inputs,
+            &cancel,
+        )
+        .unwrap();
+    let inline_before = dom.capture_inline_style(suffix.wrapper).unwrap().unwrap();
+    assert_eq!(inline_before.tree_scope().root(), suffix.wrapper);
+    assert_eq!(inline_before.properties().handle(), &properties);
+    let before = dom.snapshot();
+    let old_style = before.node(old).unwrap().as_style().unwrap().state();
+    let profile = crate::DomInlineStyleProfile::new(
+        suffix.wrapper,
+        document,
+        parser,
+        version,
+        Default::default(),
+    )
+    .unwrap();
+    let context = crate::DomInlineStyleSourceContext::new(before.stamp(), vec![profile]).unwrap();
+    let advance = |lease: &mut crate::DomSourceLease<'_>| {
+        let (source, inline) = lease
+            .advance_with_inline_styles(no_svg_fixture_inline_inputs, &cancel)
+            .unwrap()
+            .into_parts();
+        assert!(inline.is_none());
+        source
+    };
+    let (read, prefix, removed) = {
+        let mut lease = dom
+            .begin_source_edit_with_inline_styles(
+                DomSourceEdit::replace_child(suffix.wrapper, parent, old),
+                context,
+                source_limits(),
+                request_limits,
+                &cancel,
+            )
+            .unwrap();
+        let progress = advance(&mut lease);
+        let removed = fixture.accept_removal(&mut lease, progress);
+        assert!(!lease.has_private_inline_inputs());
+        let read = profile_svg_fixture_script(advance(&mut lease), &lease, suffix, document);
+        assert!(lease.has_private_inline_inputs());
+        assert!(
+            matches!(advance(&mut lease), DomSourceProgress::Request(DomSourceRequest::Script(again)) if again == read)
+        );
+        let prefix = lease.snapshot();
+        assert_eq!(prefix.node(old).unwrap().parent(), None);
+        assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), None);
+        assert_eq!(
+            prefix.node(old).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        (read, prefix, removed)
+    };
+    assert_eq!(read.relevant_global(), Some(binding.global));
+    drop(registration);
+    dom.release_document_script_registration(&binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let mut lease = dom
+        .resume_source_edit(read.operation(), source_limits(), &cancel)
+        .unwrap();
+    match lease.advance_with_inline_styles(no_svg_fixture_inline_inputs, &cancel) {
+        Err(crate::DomInlineStyleError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
+        Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
+        Ok(_) => panic!("the actual SVG requirement must refuse before an inline publication"),
+    }
+    drop(lease);
+    let closed = dom.snapshot();
+    suffix.check_private_scripts(&closed);
+    assert_eq!(closed.node(old).unwrap().parent(), None);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), None);
+    assert_eq!(root.snapshot().unwrap().revision(), removed.revision());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "private inline input must not strand the original Source after SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert!(
+        closed
+            .node(old)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    let inline_after = dom.capture_inline_style(suffix.wrapper).unwrap().unwrap();
+    assert_eq!(inline_after.tree_scope().root(), suffix.wrapper);
+    assert_eq!(inline_after.properties().handle(), &properties);
+    assert_eq!(
+        inline_after.properties().snapshot().revision(),
+        inline_before.properties().snapshot().revision()
+    );
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [
+            crate::DomChange::ElementState(old),
+            crate::DomChange::SourceOperation
+        ]
+    );
+}
+
+struct SvgRemovalFixture {
+    document: DocumentId,
+    parent: NodeId,
+    old: NodeId,
+    root: DomStyleCssomRoot,
+    sheet: surgeist_cssom::CssomSheetId,
+    before_cssom: CssomSnapshot,
+    suffix: StyleSvgSuffix,
+}
+
+fn svg_removal_fixture() -> (Dom, DomHostedSource, SvgRemovalFixture) {
+    let (mut dom, source, document) = constructor_with_meta_work(1_000_000);
+    let initial = dom.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let (root, sheet, before_cssom) =
+        style_resource(&mut dom, document, parent, document.node(), false);
+    let old = dom.snapshot().node(parent).unwrap().children()[0];
+    let suffix = style_svg_suffix(&mut dom, document, false);
+    (
+        dom,
+        source,
+        SvgRemovalFixture {
+            document,
+            parent,
+            old,
+            root,
+            sheet,
+            before_cssom,
+            suffix,
+        },
+    )
+}
+
+impl SvgRemovalFixture {
+    fn accept_removal(
+        &self,
+        lease: &mut crate::DomSourceLease<'_>,
+        progress: DomSourceProgress,
+    ) -> CssomSnapshot {
+        use surgeist_html::elements::style::HtmlStyleUpdateAction;
+
+        let DomSourceProgress::Request(DomSourceRequest::Style(remove)) = progress else {
+            panic!("the replacement must first request its original CSSOM removal");
+        };
+        assert_eq!(
+            remove.action(),
+            crate::DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet)
+        );
+        assert_eq!(remove.source().element(), self.old);
+        assert_eq!(remove.sheet().unwrap().id(), &self.sheet);
+        let remove = lease
+            .qualify_cssom(&remove, self.root.root(), &self.before_cssom)
+            .unwrap();
+        let mut batch = self
+            .root
+            .batch(CssomEditGuard::from_snapshot(&self.before_cssom))
+            .unwrap();
+        batch.remove_sheet(&self.sheet).unwrap();
+        let commit = self.root.commit(&mut Some(batch)).unwrap();
+        let removed = self.root.snapshot().unwrap();
+        assert_ne!(removed.revision(), self.before_cssom.revision());
+        assert!(removed.sheets().is_empty());
+        assert!(
+            lease
+                .accept_cssom_publication(&remove, commit, removed.clone(), None)
+                .unwrap()
+                .is_none()
+        );
+        removed
+    }
 }
