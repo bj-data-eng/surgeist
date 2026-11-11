@@ -203,6 +203,8 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::attached_guest_dispatch_restores_the_outer_window_event();
     super::guest::tests::direct_guest_dispatch_preserves_reports_and_object_custody();
     super::guest::tests::nested_guest_reports_keep_observation_order_and_depth();
+    super::guest::tests::full_guest_report_reservation_keeps_exact_invalid_state();
+    super::guest::tests::full_guest_report_bank_preserves_original_registry_work();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {

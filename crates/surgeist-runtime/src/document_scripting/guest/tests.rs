@@ -318,6 +318,218 @@ pub(in crate::document_scripting) fn nested_guest_reports_keep_observation_order
     }
 }
 
+pub(in crate::document_scripting) fn full_guest_report_bank_preserves_original_registry_work() {
+    #[derive(Debug, PartialEq, Eq)]
+    enum Refusal {
+        ReportStorage,
+        RegistryWork,
+    }
+
+    // Standalone construction costs one registry unit. First registration of
+    // custom one-unit `x` costs six static name lengths and one copied unit.
+    // A successful guest dispatch costs one unit of fixed native preparation.
+    // A second standalone construction is an independent one-unit probe.
+    let mut observed = Vec::new();
+    for (work, attempt_refused_dispatch) in [(10, false), (10, true), (9, true)] {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let mut host = host(cancel.clone());
+        let permit = host.permit().unwrap();
+        let global = host.attachment().unwrap().target.global();
+        let mut registry = Some(
+            DomEventDispatcher::new(DomEventRegistryLimits {
+                registrations: 1,
+                pending_events: 2,
+                nested_dispatches: 1,
+                storage_bytes: 1_000_000,
+                work,
+            })
+            .unwrap(),
+        );
+        host.attach_guest_event_registry(
+            &permit,
+            &mut registry,
+            DocumentGuestEventLimits {
+                storage_bytes: 32_000,
+                work: 1000,
+                pending_exception_reports: 1,
+                dispatch: DomEventDispatchLimits {
+                    path_items: 1,
+                    snapshot_listeners: 1,
+                    failure_records: 1,
+                    callbacks: 1,
+                    work: 10_000,
+                },
+            },
+        )
+        .unwrap();
+        assert!(registry.is_none());
+        let target = host.create_guest_event_target(&permit).unwrap();
+        let kind = units("x");
+        let first = host
+            .create_guest_event(&permit, &kind, Default::default())
+            .unwrap();
+        let blocked = host
+            .create_guest_event(&permit, &kind, Default::default())
+            .unwrap();
+        let listener = host
+            .in_document(&permit, |scope| {
+                let global = scope.global()?;
+                for (key, value) in [
+                    ("target", target.object(scope)?),
+                    ("first", first.object(scope)?),
+                    ("blocked", blocked.object(scope)?),
+                ] {
+                    scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+                }
+                scope.evaluate(&units("globalThis.calls = 0; globalThis.marker = {};"))?;
+                let listener = scope.evaluate(&units("(() => { calls++; throw marker; })"))?;
+                Ok(scope.retain(&listener))
+            })
+            .unwrap();
+        let registration = host
+            .add_guest_event_listener(
+                &permit,
+                &target,
+                &kind,
+                &listener,
+                DomEventListenerOptions {
+                    passive: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        host.in_document(&permit, |scope| {
+            assert_guest(scope, "target.dispatchEvent(first) === true && calls === 1 && globalThis.event === undefined")
+        }).unwrap();
+        assert!(first.native().target().is_some());
+        let refused = if attempt_refused_dispatch {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+                host.in_document(&permit, |scope| {
+                    scope.evaluate(&units(
+                        "try { target.dispatchEvent(blocked); } catch (_) { throw 7; }",
+                    ))?;
+                    Ok(())
+                })
+            else {
+                panic!("full report bank must refuse the actual guest method")
+            };
+            Some(match failure.cause::<DocumentGuestEventError>() {
+                Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
+                    DocumentScriptNativeError::StorageLimit,
+                ))) => Refusal::ReportStorage,
+                Some(DocumentGuestEventError::Dispatch(DomEventDispatchError::Admission(
+                    crate::DomEventResource::Work,
+                ))) => Refusal::RegistryWork,
+                cause => panic!("unexpected original dispatch refusal: {cause:?}"),
+            })
+        } else {
+            None
+        };
+        assert!(blocked.native().target().is_none());
+        let original = host
+            .take_guest_listener_exception(&permit)
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.registration, registration);
+        assert_eq!(original.realm, permit.realm);
+        assert!(
+            host.take_guest_listener_exception(&permit)
+                .unwrap()
+                .is_none()
+        );
+
+        // Enter the original native owner directly after the sticky guest
+        // refusal. This deliberately does not request any guest execution.
+        let events = host.guest_events().unwrap();
+        let probe = host
+            .with_native(|dom, mut hosted, _| {
+                hosted.create_event_target(dom, &events.registry.borrow(), global, &cancel)
+            })
+            .unwrap();
+        let probe_admitted = match probe {
+            Ok(_) => true,
+            Err(DomEventConstructionError::Event(DomEventDispatchError::Admission(
+                crate::DomEventResource::Work,
+            ))) => false,
+            Err(other) => panic!("unexpected native work-probe refusal: {other:?}"),
+        };
+        observed.push((refused, probe_admitted));
+    }
+    assert_eq!(
+        observed,
+        [
+            (None, true),
+            (Some(Refusal::ReportStorage), true),
+            (Some(Refusal::ReportStorage), false),
+        ]
+    );
+}
+
+pub(in crate::document_scripting) fn full_guest_report_reservation_keeps_exact_invalid_state() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mut host = host(cancel.clone());
+    let permit = host.permit().unwrap();
+    attach_registry_with_limits(&mut host, &permit, 4, 8);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = units("active");
+    let event = host
+        .create_guest_event(&permit, &kind, Default::default())
+        .unwrap();
+    let empty = host
+        .create_guest_event(&permit, &[], Default::default())
+        .unwrap();
+    let legacy = host
+        .with_native(|dom, mut hosted, _| {
+            hosted.create_legacy_event(dom, permit.document(), &units("Event"), &cancel)
+        })
+        .unwrap()
+        .unwrap();
+    let events = host.guest_events().unwrap();
+    let owner = host.native.clone();
+    let listener = host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let legacy = events.project(&owner, scope, ObjectPrototype::Default, legacy.clone()).unwrap();
+        for (key, value) in [
+            ("target", target.object(scope)?),
+            ("active", event.object(scope)?),
+            ("legacy", scope.open_callback_object(&legacy)?),
+            ("empty", empty.object(scope)?),
+        ] {
+            scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+        }
+        scope.evaluate(&units("globalThis.checked = 0;"))?;
+        let listener = scope.evaluate(&units(
+            "(function(e) {
+                if (e !== active || globalThis.event !== e) throw 1;
+                for (const candidate of [e, legacy]) {
+                    try {
+                        target.dispatchEvent(candidate);
+                        throw 2;
+                    } catch (error) {
+                        if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') throw error;
+                        checked++;
+                    }
+                    if (globalThis.event !== e) throw 3;
+                }
+            })",
+        ))?;
+        Ok(scope.retain(&listener))
+    }).unwrap();
+    host.add_guest_event_listener(&permit, &target, &kind, &listener, Default::default())
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "target.dispatchEvent(active) === true && checked === 2 && globalThis.event === undefined")?;
+        assert_guest(scope, "target.dispatchEvent(empty) === true")
+    }).unwrap();
+    assert!(
+        host.take_guest_listener_exception(&permit)
+            .unwrap()
+            .is_none()
+    );
+    assert!(legacy.target().is_none());
+    assert!(empty.native().target().is_some());
+}
+
 pub(in crate::document_scripting) fn direct_guest_dispatch_preserves_reports_and_object_custody() {
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();
