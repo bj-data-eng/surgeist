@@ -192,6 +192,27 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let event = host
         .create_guest_event(&permit, &kind, Default::default())
         .unwrap();
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let value = event.object(scope)?;
+        scope.set(&global, PropertyKey::String(&units("rustEvent")), &value)?;
+        assert_guest(
+            scope,
+            r#"(() => {
+            const trusted = Object.getOwnPropertyDescriptor(rustEvent, "isTrusted");
+            const type = Object.getOwnPropertyDescriptor(Event.prototype, "type");
+            let rejected = false;
+            try { type.get.call(Object.create(Event.prototype)); }
+            catch (error) { rejected = error instanceof TypeError; }
+            return rustEvent instanceof Event && rustEvent.type === "retained" &&
+                   trusted.enumerable && !trusted.configurable &&
+                   trusted.set === undefined && !trusted.get.call(rustEvent) &&
+                   Event.NONE === 0 && Event.prototype.AT_TARGET === 2 && rejected &&
+                   new EventTarget().dispatchEvent(new Event("actual"));
+        })()"#,
+        )
+    })
+    .unwrap();
     let report = host
         .dispatch_guest_event(&permit, &event_target, &event)
         .unwrap();
@@ -206,15 +227,18 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
         attach_registry(&mut host, &permit);
         let events = host.guest_events().unwrap();
         let owner = host.native.clone();
-        let before = events.used.get();
+        let before = events.budget.used.get();
         host.in_document(&permit, |scope| {
             Ok(events.target_prototype(&owner, scope).map(drop))
         })
         .unwrap()
         .unwrap();
-        let with_prototype = events.used.get();
+        let with_prototype = events.budget.used.get();
         let _target = host.create_guest_event_target(&permit).unwrap();
-        (with_prototype - before, events.used.get() - with_prototype)
+        (
+            with_prototype - before,
+            events.budget.used.get() - with_prototype,
+        )
     };
     assert!(prototype_bytes > 0 && target_bytes > 0);
 
@@ -222,11 +246,11 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
     let permit = host.permit().unwrap();
     attach_registry(&mut host, &permit);
     let events = host.guest_events().unwrap();
-    let available = events.limits.storage_bytes - events.used.get();
+    let available = events.limits.storage_bytes - events.budget.used.get();
     let one_short = events
         .reserve(&host.native, available - prototype_bytes + 1)
         .unwrap();
-    let at_refusal = events.used.get();
+    let at_refusal = events.budget.used.get();
     assert!(matches!(
         host.create_guest_event_target(&permit),
         Err(DocumentGuestEventError::Document(
@@ -235,7 +259,7 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
     ));
     assert!(events.target_prototype.get().is_none());
     assert_eq!(
-        events.used.get(),
+        events.budget.used.get(),
         at_refusal,
         "a refused prototype must release its method capture without collection"
     );
@@ -245,7 +269,7 @@ pub(in crate::document_scripting) fn refused_first_target_releases_prototype_cap
         .reserve(&host.native, available - prototype_bytes - target_bytes)
         .unwrap();
     let target = host.create_guest_event_target(&permit).unwrap();
-    assert_eq!(events.used.get(), events.limits.storage_bytes);
+    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
     host.in_document(&permit, |scope| {
         let target = target.object(scope)?;
         let method = scope.get(&target, PropertyKey::String(&units("dispatchEvent")))?;
@@ -262,11 +286,11 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
     attach_registry(&mut host, &permit);
     let events = host.guest_events().unwrap();
     let kind = units("projection");
-    let before = events.used.get();
+    let before = events.budget.used.get();
     let control = host
         .create_guest_event(&permit, &kind, DomEventInit::default())
         .unwrap();
-    let with_control = events.used.get();
+    let with_control = events.budget.used.get();
     let projection = with_control - before;
     assert!(projection > 0);
 
@@ -274,7 +298,7 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
     // positive control live so the second attempt cannot borrow its storage.
     let exact_margin = events.limits.storage_bytes - with_control - projection;
     let one_short = events.reserve(&host.native, exact_margin + 1).unwrap();
-    let at_refusal = events.used.get();
+    let at_refusal = events.budget.used.get();
     assert!(matches!(
         host.create_guest_event(&permit, &kind, DomEventInit::default()),
         Err(DocumentGuestEventError::Document(
@@ -282,7 +306,7 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
         ))
     ));
     assert_eq!(
-        events.used.get(),
+        events.budget.used.get(),
         at_refusal,
         "an unpublished Event must release its backing without collection"
     );
@@ -292,7 +316,7 @@ pub(in crate::document_scripting) fn refused_projection_releases_native_backing_
     let retry = host
         .create_guest_event(&permit, &kind, DomEventInit::default())
         .unwrap();
-    assert_eq!(events.used.get(), events.limits.storage_bytes);
+    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
     host.in_document(&permit, |scope| {
         let control = control.object(scope)?;
         let retry = retry.object(scope)?;
@@ -427,12 +451,12 @@ pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact
         Ok(())
     })
     .unwrap();
-    let before_root_reap = events.used.get();
+    let before_root_reap = events.budget.used.get();
     drop(escaped);
-    assert_eq!(events.used.get(), before_root_reap);
+    assert_eq!(events.budget.used.get(), before_root_reap);
     host.in_document(&permit, |_| Ok(())).unwrap();
     assert_eq!(
-        before_root_reap - events.used.get(),
+        before_root_reap - events.budget.used.get(),
         events.exception_root_bytes + size_of::<GuestBacking>()
     );
     assert!(!host.remove_guest_event_listener(&permit, first_id).unwrap());
@@ -851,12 +875,12 @@ pub(in crate::document_scripting) fn direct_guest_dispatch_preserves_reports_and
     })
     .unwrap();
     let events = host.guest_events().unwrap();
-    let before_root_reap = events.used.get();
+    let before_root_reap = events.budget.used.get();
     drop(original);
-    assert_eq!(events.used.get(), before_root_reap);
+    assert_eq!(events.budget.used.get(), before_root_reap);
     host.in_document(&permit, |_| Ok(())).unwrap();
     assert_eq!(
-        before_root_reap - events.used.get(),
+        before_root_reap - events.budget.used.get(),
         events.exception_root_bytes + size_of::<GuestBacking>()
     );
     host.in_document(&permit, |scope| {

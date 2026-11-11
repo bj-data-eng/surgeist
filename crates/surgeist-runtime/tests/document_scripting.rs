@@ -530,6 +530,24 @@ fn native_window_constructs_event_with_exact_type_flags_and_clock() {
                     if (!(error instanceof TypeError)) throw error;
                 }
             }
+            const order = [];
+            const observed = new Event({ toString() { order.push("type"); return "ordered"; } }, {
+                get composed() { order.push("composed"); return true; },
+                get cancelable() { order.push("cancelable"); return false; },
+                get bubbles() { order.push("bubbles"); return true; },
+            });
+            if (order.join() !== "type,bubbles,cancelable,composed"
+                || observed.type !== "ordered" || !observed.bubbles
+                || observed.cancelable || !observed.composed) {
+                return "Event must convert its arguments in declared order";
+            }
+            const original = {};
+            try {
+                new Event("throw", { get cancelable() { throw original; } });
+                return "Event must surface an original conversion exception";
+            } catch (error) {
+                if (error !== original) return "Event changed the conversion exception";
+            }
             const timestamp = event.timeStamp;
             return Number.isFinite(timestamp) ? timestamp : "Event timeStamp must be finite";
         } catch (error) {

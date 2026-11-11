@@ -1,5 +1,6 @@
 //! Registered guest callbacks for ordinary authored standalone dispatch.
 
+mod interfaces;
 mod reports;
 mod wrapper;
 
@@ -11,6 +12,7 @@ use crate::dom_event::{
     DomEventListenerOptions, DomEventRegistrationId, DomEventTarget, DomStandaloneEventTarget,
     NativeDomEvent,
 };
+use interfaces::PublicEventBindings;
 pub(super) use reports::GuestExceptionReports;
 use reports::{DirectExceptions, ExceptionRoots};
 use surgeist_bindings_js::{Exception, ObjectPrototype, RetainedCallbackObject, Root, Value};
@@ -37,6 +39,8 @@ pub enum DocumentGuestEventError {
     Document(DocumentScriptError),
     /// Event or standalone target construction refused.
     Construction(DomEventConstructionError),
+    /// No original native Event timestamp is available.
+    Timestamp(crate::DomEventTimestampUnavailable),
     /// Native dispatch or registration refused.
     Dispatch(DomEventDispatchError),
     /// The associated engine Realm has no authority in this attachment.
@@ -217,25 +221,30 @@ pub(crate) struct RegisteredGuestListener {
 pub(super) struct GuestEvents {
     registry: RefCell<DomEventDispatcher<()>>,
     limits: DocumentGuestEventLimits,
-    used: Rc<Cell<usize>>,
-    work: Cell<u64>,
+    budget: GuestBudget,
     next_callback: Cell<u64>,
     exception_root_bytes: usize,
     reports: Rc<GuestExceptionReports>,
     refusal: reports::DispatchFailure,
     window_event: Rc<window_event::WindowEvent>,
     target_prototype: OnceCell<RetainedCallbackObject>,
-    _backing: DomHostedRuntimeRetention,
+    public: Option<PublicEventBindings>,
+    backing: Rc<DomHostedRuntimeRetention>,
 }
 
-impl GuestEvents {
-    fn step(&self) -> Result<(), DocumentGuestEventError> {
+struct GuestBudget {
+    used: Rc<Cell<usize>>,
+    work: Cell<u64>,
+}
+
+impl GuestBudget {
+    fn step(&self, limit: u64) -> Result<(), DocumentGuestEventError> {
         let work = self
             .work
             .get()
             .checked_add(1)
             .ok_or(DocumentGuestEventError::WorkLimit)?;
-        if work > self.limits.work {
+        if work > limit {
             return Err(DocumentGuestEventError::WorkLimit);
         }
         self.work.set(work);
@@ -245,15 +254,16 @@ impl GuestEvents {
     fn reserve(
         &self,
         owner: &NativeOwner,
+        limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.step()?;
+        self.step(limits.work)?;
         let total = self
             .used
             .get()
             .checked_add(bytes)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        if total > self.limits.storage_bytes {
+        if total > limits.storage_bytes {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
         let mut session = owner
@@ -270,6 +280,20 @@ impl GuestEvents {
             bytes,
             _canonical: canonical,
         })
+    }
+}
+
+impl GuestEvents {
+    fn step(&self) -> Result<(), DocumentGuestEventError> {
+        self.budget.step(self.limits.work)
+    }
+
+    fn reserve(
+        &self,
+        owner: &NativeOwner,
+        bytes: usize,
+    ) -> Result<GuestBacking, DocumentGuestEventError> {
+        self.budget.reserve(owner, self.limits, bytes)
     }
 
     fn project<'scope, T: 'static>(
@@ -294,7 +318,8 @@ pub struct EnableDocumentGuestEventsFailure {
 }
 
 impl PreparedDocumentScriptHost {
-    /// Attach an engine and take the already-bound native event registry.
+    /// Attach an engine, take the bound native registry, and install Event
+    /// and EventTarget in the private Window before publishing it.
     /// Refusal returns the unpublished owner and restores the registry slot.
     pub fn enable_with_guest_event_registry(
         self,
@@ -341,14 +366,19 @@ impl PreparedDocumentScriptHost {
                 .map_err(|_| DocumentScriptNativeError::Busy)?;
             input.qualify_guest_registry(&session.dom())?;
         }
-        let script = self.prepare_engine(target, hooks)?;
-        let admission = GuestEventAdmission::prepare(
+        let mut script = self.prepare_engine(target, hooks)?;
+        let mut admission = GuestEventAdmission::prepare(
             &self.native,
             input,
             limits,
             script.retained_bytes.checked_add(limits.storage_bytes),
             &script.authority,
         )?;
+        admission.public = Some(PublicEventBindings::install(
+            &mut script,
+            &self.native,
+            &admission,
+        )?);
         let engine = script.publish(&self.native, policy)?;
         Ok((engine, admission))
     }
@@ -356,10 +386,11 @@ impl PreparedDocumentScriptHost {
 
 struct GuestEventAdmission {
     limits: DocumentGuestEventLimits,
-    required: usize,
+    budget: GuestBudget,
     reports: Rc<GuestExceptionReports>,
     refusal: reports::DispatchFailure,
     backing: DomHostedRuntimeRetention,
+    public: Option<PublicEventBindings>,
 }
 
 impl GuestEventAdmission {
@@ -370,7 +401,9 @@ impl GuestEventAdmission {
         total: Option<usize>,
         authority: &RealmAuthority,
     ) -> Result<Self, DocumentGuestEventError> {
-        let fixed = size_of::<GuestEvents>() + size_of::<Cell<usize>>();
+        let fixed = size_of::<GuestEvents>()
+            + size_of::<Cell<usize>>()
+            + size_of::<DomHostedRuntimeRetention>();
         let report_bytes = GuestExceptionReports::storage_bytes(limits.pending_exception_reports)
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
         let refusal_bytes = reports::DispatchFailure::storage_bytes();
@@ -408,10 +441,14 @@ impl GuestEventAdmission {
         let refusal = reports::DispatchFailure::new(authority, refusal_backing)?;
         Ok(Self {
             limits,
-            required,
+            budget: GuestBudget {
+                used: Rc::new(Cell::new(required)),
+                work: Cell::new(0),
+            },
             reports,
             refusal,
             backing,
+            public: None,
         })
     }
 
@@ -422,25 +459,30 @@ impl GuestEventAdmission {
     ) -> Rc<GuestExceptionReports> {
         let Self {
             limits,
-            required,
+            budget,
             reports,
             refusal,
             backing,
+            public,
         } = self;
         let exception_root_bytes = engine.process.managed_object_storage_bytes();
-        engine.guest_events = Some(Rc::new(GuestEvents {
+        let events = Rc::new(GuestEvents {
             registry: RefCell::new(registry),
             limits,
-            used: Rc::new(Cell::new(required)),
-            work: Cell::new(0),
+            budget,
             next_callback: Cell::new(0),
             exception_root_bytes,
             reports: reports.clone(),
             refusal,
             window_event: engine.window_event.clone(),
             target_prototype: OnceCell::new(),
-            _backing: backing,
-        }));
+            public,
+            backing: Rc::new(backing),
+        });
+        if let Some(public) = &events.public {
+            public.activate(&events);
+        }
+        engine.guest_events = Some(events);
         engine.retained_bytes += limits.storage_bytes;
         reports
     }
@@ -588,8 +630,24 @@ impl DocumentScriptHost {
                         )
                         .map_err(DocumentGuestEventError::Construction)?
                 };
-                let object =
-                    events.project(&owner, scope, ObjectPrototype::Default, native.clone())?;
+                let object = match &events.public {
+                    Some(public) => {
+                        let prototype = public.event_prototype(scope)?;
+                        let trusted = public.trusted_getter(scope)?;
+                        let object = events.project(
+                            &owner,
+                            scope,
+                            ObjectPrototype::Object(&prototype),
+                            native.clone(),
+                        )?;
+                        let value = scope.open_callback_object(&object)?;
+                        interfaces::expose_trust(scope, &value, &trusted)?;
+                        object
+                    }
+                    None => {
+                        events.project(&owner, scope, ObjectPrototype::Default, native.clone())?
+                    }
+                };
                 Ok(DocumentGuestEvent { native, object })
             })())
         })?
