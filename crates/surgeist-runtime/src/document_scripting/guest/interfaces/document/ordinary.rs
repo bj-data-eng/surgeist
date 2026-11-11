@@ -8,6 +8,11 @@ pub(super) struct OrdinaryBindings {
     pins: RefCell<OrdinaryPins>,
 }
 
+pub(super) enum NodePrototype<'value, 'scope> {
+    Selected(&'value Value<'scope>),
+    Creation(&'value RetainedCallbackObject),
+}
+
 #[derive(Default)]
 struct OrdinaryPins {
     slots: Vec<Slot>,
@@ -167,7 +172,7 @@ impl OrdinaryBindings {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        prototype: &Value<'scope>,
+        prototype: NodePrototype<'_, 'scope>,
         publish: impl FnOnce(
             &DomNodeRetirementInbox,
             usize,
@@ -190,15 +195,23 @@ impl OrdinaryBindings {
             retired: Cell::new(false),
             _backing: lifetime_backing,
         });
-        let holder = events.project(
-            owner,
-            scope,
-            ObjectPrototype::Object(prototype),
-            GuestNodeProjection {
-                node: Cell::new(None),
-                lifetime: Some(lifetime.clone()),
-            },
-        )?;
+        let payload = GuestNodeProjection {
+            node: Cell::new(None),
+            lifetime: Some(lifetime.clone()),
+        };
+        let holder = match prototype {
+            NodePrototype::Selected(prototype) => {
+                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?
+            }
+            NodePrototype::Creation(prototype) => {
+                events.step()?;
+                scope.project_retained_native_object_in_prototype_realm(
+                    prototype,
+                    payload,
+                    |bytes| events.reserve(owner, bytes),
+                )?
+            }
+        };
         let value = scope.open_callback_object(&holder)?;
         let projection = scope
             .native_object::<GuestNodeProjection>(&value)?

@@ -419,7 +419,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut foreign_registry = Some(foreign_registry);
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
-        storage_bytes: 32_000,
+        storage_bytes: 64_000,
         work: 1_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
@@ -699,7 +699,11 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let Err(refused) = host.dispatch_guest_event(&permit, &event_target, &event) else {
         panic!("callback work must refuse after native once selection");
     };
-    assert!(matches!(refused.error, DocumentGuestEventError::WorkLimit));
+    assert!(
+        matches!(refused.error, DocumentGuestEventError::WorkLimit),
+        "callback work must be the first refusal, got {:?}",
+        refused.error,
+    );
     assert!(refused.exceptions().is_empty());
     assert!(!events.registry.borrow().has_registration(id));
     host.in_document(&permit, |scope| {

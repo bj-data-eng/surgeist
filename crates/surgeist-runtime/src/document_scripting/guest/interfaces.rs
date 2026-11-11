@@ -81,6 +81,21 @@ struct Callbacks {
 
 struct Capture {
     callbacks: Rc<Callbacks>,
+    origin: Option<Rc<OriginAuthority>>,
+    _backing: GuestBacking,
+}
+
+struct OriginAuthority {
+    global: DomHostedGlobalId,
+    realm: RealmId,
+    _backing: GuestBacking,
+}
+
+struct OriginBindings {
+    global: DomHostedGlobalId,
+    target: RetainedCallbackObject,
+    elements: document::element::ElementBindings,
+    next: Option<Box<Self>>,
     _backing: GuestBacking,
 }
 
@@ -90,6 +105,16 @@ pub(super) struct PublicEventBindings {
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
     document: document::DocumentBindings,
+    origins: RefCell<Option<Box<OriginBindings>>>,
+}
+
+impl Drop for PublicEventBindings {
+    fn drop(&mut self) {
+        let origins = self.origins.get_mut();
+        while let Some(mut origin) = origins.take() {
+            *origins = origin.next.take();
+        }
+    }
 }
 
 impl PublicEventBindings {
@@ -163,6 +188,7 @@ impl PublicEventBindings {
         let capture = |bytes| -> Result<Capture, DocumentGuestEventError> {
             Ok(Capture {
                 callbacks: callbacks.clone(),
+                origin: None,
                 _backing: fund(bytes)?,
             })
         };
@@ -243,99 +269,10 @@ impl PublicEventBindings {
             &ascii(b"get isTrusted"),
         )?;
 
-        let target = scope.object(ObjectPrototype::Default)?;
-        listener_methods::install(scope, &target, &capture)?;
-        let dispatch = capture(size_of::<Capture>())?;
-        let dispatch_name = &ascii(b"dispatchEvent");
-        let method = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| dispatch.dispatch(scope, arguments)),
-            FunctionMetadata {
-                name: dispatch_name,
-                length: 1,
-            },
-        )?;
-        define_data(
-            scope,
-            &target,
-            PropertyKey::String(dispatch_name),
-            &method,
-            true,
-            true,
-            true,
-        )?;
+        let target = install_target_prototype(scope, &capture)?;
 
-        for (kind, prototype) in [(Interface::Event, &event), (Interface::Target, &target)] {
-            let fallback = capture(size_of::<(Capture, Interface)>())?;
-            let constructor = capture(size_of::<(Capture, Interface)>())?;
-            let (name, length, prefix) = kind.declaration();
-            let callback = ConstructorCallback::bounded(
-                prefix,
-                move |scope| fallback.prototype(scope, kind),
-                move |scope, arguments| constructor.construct(scope, kind, arguments),
-            );
-            let constructor = scope.constructor(&callback, FunctionMetadata { name, length })?;
-            scope.define_property(
-                &constructor,
-                PropertyKey::String(PROTOTYPE),
-                PropertyDescriptor::Data {
-                    value: prototype,
-                    writable: false,
-                    enumerable: false,
-                    configurable: false,
-                },
-            )?;
-            if matches!(kind, Interface::Event) {
-                for (key, code) in [
-                    (&ascii(b"NONE")[..], 0.0),
-                    (&ascii(b"CAPTURING_PHASE")[..], 1.0),
-                    (&ascii(b"AT_TARGET")[..], 2.0),
-                    (&ascii(b"BUBBLING_PHASE")[..], 3.0),
-                ] {
-                    let value = scope.primitive(Primitive::Number(code))?;
-                    for recipient in [&constructor, prototype] {
-                        define_data(
-                            scope,
-                            recipient,
-                            PropertyKey::String(key),
-                            &value,
-                            false,
-                            true,
-                            false,
-                        )?;
-                    }
-                }
-            }
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::String(CONSTRUCTOR),
-                &constructor,
-                true,
-                false,
-                true,
-            )?;
-            let tag_key = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
-            let tag = scope.string(name)?;
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::Value(&tag_key),
-                &tag,
-                false,
-                false,
-                true,
-            )?;
-            let global = scope.global()?;
-            define_data(
-                scope,
-                &global,
-                PropertyKey::String(name),
-                &constructor,
-                true,
-                false,
-                true,
-            )?;
-        }
+        install_event_interface(scope, Interface::Event, &event, &capture)?;
+        install_event_interface(scope, Interface::Target, &target, &capture)?;
         let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
             scope,
@@ -356,7 +293,78 @@ impl PublicEventBindings {
             target,
             trusted,
             document,
+            origins: RefCell::new(None),
         })
+    }
+
+    pub(super) fn install_origin(
+        &self,
+        scope: &mut Scope<'_>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+    ) -> Result<(), DocumentGuestEventError> {
+        let fund = |bytes| events.reserve(owner, bytes);
+        let backing = fund(size_of::<OriginBindings>())?;
+        let realm = scope.realm_authority()?.identity();
+        let authority = Rc::new(OriginAuthority {
+            global,
+            realm,
+            _backing: fund(size_of::<OriginAuthority>())?,
+        });
+        let capture = |bytes| -> Result<Capture, DocumentGuestEventError> {
+            Ok(Capture {
+                callbacks: self.callbacks.clone(),
+                origin: Some(authority.clone()),
+                _backing: fund(bytes)?,
+            })
+        };
+        let target = install_target_prototype(scope, &capture)?;
+        install_event_interface(scope, Interface::Target, &target, &capture)?;
+        let (constructor, node) = document::install_node(scope, &target, &capture)?;
+        let elements = document::element::ElementBindings::install(
+            scope,
+            &node,
+            &constructor,
+            &capture,
+            &fund,
+        )?;
+        let target = scope.callback_object(&target)?;
+        let target = scope.retain_callback_object(target, fund)?;
+        let mut origins = self
+            .origins
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let record = Box::new(OriginBindings {
+            global,
+            target,
+            elements,
+            next: origins.take(),
+            _backing: backing,
+        });
+        *origins = Some(record);
+        Ok(())
+    }
+
+    fn with_origin<T>(
+        &self,
+        events: &GuestEvents,
+        global: DomHostedGlobalId,
+        use_origin: impl FnOnce(&OriginBindings) -> Result<T, DocumentGuestEventError>,
+    ) -> Result<T, DocumentGuestEventError> {
+        let origins = self
+            .origins
+            .try_borrow()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut next = origins.as_deref();
+        while let Some(origin) = next {
+            events.step()?;
+            if origin.global == global {
+                return use_origin(origin);
+            }
+            next = origin.next.as_deref();
+        }
+        Err(DocumentScriptNativeError::CreationGlobalUnavailable.into())
     }
 
     pub(super) fn activate(&self, events: &Rc<GuestEvents>) {
@@ -397,6 +405,84 @@ impl PublicEventBindings {
     }
 }
 
+fn install_target_prototype<'scope>(
+    scope: &mut Scope<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<Value<'scope>, DocumentGuestEventError> {
+    let target = scope.object(ObjectPrototype::Default)?;
+    listener_methods::install(scope, &target, capture)?;
+    let dispatch = capture(size_of::<Capture>())?;
+    let dispatch_name = &ascii(b"dispatchEvent");
+    let method = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| dispatch.dispatch(scope, arguments)),
+        FunctionMetadata {
+            name: dispatch_name,
+            length: 1,
+        },
+    )?;
+    define_data(
+        scope,
+        &target,
+        PropertyKey::String(dispatch_name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+    Ok(target)
+}
+
+fn install_event_interface<'scope>(
+    scope: &mut Scope<'scope>,
+    kind: Interface,
+    prototype: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(), DocumentGuestEventError> {
+    let fallback = capture(size_of::<(Capture, Interface)>())?;
+    let constructor = capture(size_of::<(Capture, Interface)>())?;
+    let (name, length, prefix) = kind.declaration();
+    let callback = ConstructorCallback::bounded(
+        prefix,
+        move |scope| fallback.prototype(scope, kind),
+        move |scope, arguments| constructor.construct(scope, kind, arguments),
+    );
+    let constructor = scope.constructor(&callback, FunctionMetadata { name, length })?;
+    scope.define_property(
+        &constructor,
+        PropertyKey::String(PROTOTYPE),
+        PropertyDescriptor::Data {
+            value: prototype,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        },
+    )?;
+    if matches!(kind, Interface::Event) {
+        for (key, code) in [
+            (&ascii(b"NONE")[..], 0.0),
+            (&ascii(b"CAPTURING_PHASE")[..], 1.0),
+            (&ascii(b"AT_TARGET")[..], 2.0),
+            (&ascii(b"BUBBLING_PHASE")[..], 3.0),
+        ] {
+            let value = scope.primitive(Primitive::Number(code))?;
+            for recipient in [&constructor, prototype] {
+                define_data(
+                    scope,
+                    recipient,
+                    PropertyKey::String(key),
+                    &value,
+                    false,
+                    true,
+                    false,
+                )?;
+            }
+        }
+    }
+    let global = scope.global()?;
+    document::install_interface(scope, &global, name, &constructor, prototype)?;
+    Ok(())
+}
+
 impl Capture {
     fn active(&self, scope: &mut Scope<'_>) -> Result<(Rc<NativeOwner>, Rc<GuestEvents>), Error> {
         let owner = self
@@ -410,7 +496,11 @@ impl Capture {
             .get()
             .and_then(|access| access.events.upgrade())
             .ok_or(Error::ExpiredIdentity)?;
-        if scope.realm_authority()?.identity() != self.callbacks.permit.realm {
+        let realm = self
+            .origin
+            .as_ref()
+            .map_or(self.callbacks.permit.realm, |origin| origin.realm);
+        if scope.realm_authority()?.identity() != realm {
             return refuse(
                 scope,
                 &events.refusal,
@@ -427,6 +517,17 @@ impl Capture {
     ) -> Result<Value<'scope>, Error> {
         let (_, events) = self.active(scope)?;
         let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+        if let (Interface::Target, Some(origin)) = (kind, &self.origin) {
+            return match public.with_origin(&events, origin.global, |bindings| {
+                Ok(scope.open_callback_object(&bindings.target)?)
+            }) {
+                Ok(value) => Ok(value),
+                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                    Err(error)
+                }
+                Err(error) => refuse(scope, &events.refusal, error),
+            };
+        }
         scope.open_callback_object(match kind {
             Interface::Event => &public.event,
             Interface::Target => &public.target,
@@ -526,6 +627,7 @@ impl Capture {
         scope.check_active()?;
         events.step()?;
         let native = self.with_native(owner, |session, global| {
+            let global = self.origin.as_ref().map_or(global, |origin| origin.global);
             let registry = events
                 .registry
                 .try_borrow()

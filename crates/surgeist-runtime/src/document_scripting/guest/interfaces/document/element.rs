@@ -46,7 +46,7 @@ const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
     ("xmp", "HTMLPreElement"),
 ];
 
-pub(super) struct ElementBindings {
+pub(in crate::document_scripting::guest::interfaces) struct ElementBindings {
     element: RetainedCallbackObject,
     mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
@@ -95,11 +95,10 @@ impl From<RootReadError> for DocumentGuestEventError {
 }
 
 impl ElementBindings {
-    pub(super) fn install<'scope>(
+    pub(in crate::document_scripting::guest::interfaces) fn install<'scope>(
         scope: &mut Scope<'scope>,
         node: &Value<'scope>,
         node_constructor: &Value<'scope>,
-        document: &Value<'scope>,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
@@ -183,15 +182,6 @@ impl ElementBindings {
                 }),
             )?;
         }
-        let handler = capture(size_of::<Capture>())?;
-        install_getter(
-            scope,
-            document,
-            &ascii(b"documentElement"),
-            &ascii(b"get documentElement"),
-            true,
-            Callback::new(move |scope, arguments| handler.document_element(scope, arguments)),
-        )?;
         let base = scope.callback_object(&element)?;
         let mathml = scope.callback_object(&mathml)?;
         Ok(Self {
@@ -222,6 +212,23 @@ impl ElementBindings {
         }
         Err(DocumentScriptNativeError::ProjectionCustody.into())
     }
+}
+
+pub(super) fn install_document_root<'scope>(
+    scope: &mut Scope<'scope>,
+    document: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(), DocumentGuestEventError> {
+    let handler = capture(size_of::<Capture>())?;
+    install_getter(
+        scope,
+        document,
+        &ascii(b"documentElement"),
+        &ascii(b"get documentElement"),
+        true,
+        Callback::new(move |scope, arguments| handler.document_element(scope, arguments)),
+    )?;
+    Ok(())
 }
 
 fn element_interface(
@@ -347,11 +354,8 @@ impl Capture {
         };
         let (owner, events) = self.active(scope)?;
         let result = (|| {
-            let bindings = &events
-                .public
-                .as_ref()
-                .ok_or(Error::ExpiredIdentity)?
-                .document;
+            let public = events.public.as_ref().ok_or(Error::ExpiredIdentity)?;
+            let bindings = &public.document;
             let root = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
                 Ok(snapshot.document_element_with(document, || {
@@ -364,43 +368,51 @@ impl Capture {
             if let Some(value) = bindings.ordinary.open(scope, &events, root)? {
                 return Ok(value);
             }
-            let interface = self.with_native(&owner, |session, global| {
+            let (origin, attached, interface) = self.with_native(&owner, |session, global| {
                 let snapshot = session.snapshot();
                 events.step()?;
                 let origin = snapshot.relevant_global(root).map_err(|error| {
                     DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Dom(error))
                 })?;
-                if origin != Some(global) {
-                    return Err(DocumentScriptNativeError::CreationGlobalUnavailable.into());
-                }
+                let origin = origin.ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?;
                 events.step()?;
                 let element = snapshot
                     .node(root)
                     .map_err(DocumentScriptNativeError::from)?
                     .as_element()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                element_interface(element.name(), &events)
+                Ok((origin, global, element_interface(element.name(), &events)?))
             })?;
-            let prototype =
-                scope.open_callback_object(bindings.element.prototype(&events, interface)?)?;
-            bindings
-                .ordinary
-                .project(scope, &owner, &events, &prototype, |inbox, key| {
-                    self.with_native(&owner, |session, _| {
-                        let watch = session
-                            .dom()
-                            .raw_mut()
-                            .watch_node_retirement(
-                                root,
-                                inbox,
-                                key,
-                                events.limits.node_retirement,
-                                &owner.cancellation,
-                            )
-                            .map_err(DocumentScriptNativeError::from)?;
-                        Ok((GuestNode::Element(root), watch))
-                    })
-                })
+            let project = |elements: &ElementBindings| {
+                let prototype = elements.prototype(&events, interface)?;
+                bindings.ordinary.project(
+                    scope,
+                    &owner,
+                    &events,
+                    ordinary::NodePrototype::Creation(prototype),
+                    |inbox, key| {
+                        self.with_native(&owner, |session, _| {
+                            let watch = session
+                                .dom()
+                                .raw_mut()
+                                .watch_node_retirement(
+                                    root,
+                                    inbox,
+                                    key,
+                                    events.limits.node_retirement,
+                                    &owner.cancellation,
+                                )
+                                .map_err(DocumentScriptNativeError::from)?;
+                            Ok((GuestNode::Element(root), watch))
+                        })
+                    },
+                )
+            };
+            if origin == attached {
+                project(&bindings.element)
+            } else {
+                public.with_origin(&events, origin, |origin| project(&origin.elements))
+            }
         })();
         complete(scope, &events, result)
     }

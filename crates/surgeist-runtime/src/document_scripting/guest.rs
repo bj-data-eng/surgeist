@@ -457,6 +457,30 @@ impl GuestBudget {
 }
 
 impl GuestEvents {
+    pub(super) fn install_origin(
+        &self,
+        process: &mut Process,
+        realm: &Realm,
+        owner: &NativeOwner,
+        global: DomHostedGlobalId,
+    ) -> Result<(), DocumentScriptError> {
+        let Some(public) = &self.public else {
+            return Ok(());
+        };
+        process
+            .execution()
+            .in_realm(realm, |scope| {
+                Ok(public.install_origin(scope, owner, self, global))
+            })?
+            .map_err(|error| match error {
+                DocumentGuestEventError::Document(error) => error,
+                DocumentGuestEventError::WorkLimit => {
+                    DocumentScriptNativeError::CreationRealmWorkLimit.into()
+                }
+                _ => Error::BackendUnavailable.into(),
+            })
+    }
+
     fn step(&self) -> Result<(), DocumentGuestEventError> {
         self.charge_work(1)
     }

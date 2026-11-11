@@ -36,6 +36,9 @@ pub(super) fn event_receiver<'scope>(
         }));
     }
     let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+    if scope.realm_authority()?.identity() != attachment.realm.identity() {
+        return Ok(None);
+    }
     let global = scope.global()?;
     Ok(scope
         .strict_equals(receiver, &global)?

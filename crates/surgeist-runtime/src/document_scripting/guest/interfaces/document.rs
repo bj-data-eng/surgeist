@@ -8,7 +8,7 @@ use surgeist_html::values::DocumentString;
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
 mod character_data;
-mod element;
+pub(super) mod element;
 mod fragment;
 mod ordinary;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
@@ -111,24 +111,8 @@ impl DocumentBindings {
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let node = scope.object(ObjectPrototype::Object(target_prototype))?;
+        let (node_constructor, node) = install_node(scope, target_prototype, capture)?;
         let prototype = scope.object(ObjectPrototype::Object(&node))?;
-        let node_constructor = scope.constructor(
-            &ConstructorCallback::bounded(
-                0,
-                // Node rejects construction before selecting any prototype.
-                |_| Err(Error::BackendUnavailable),
-                |scope, _| {
-                    Ok(ConstructorCompletion::Throw(
-                        scope.type_error(&ascii(b"Illegal constructor"))?,
-                    ))
-                },
-            ),
-            FunctionMetadata {
-                name: NODE,
-                length: 0,
-            },
-        )?;
         let fallback = capture(size_of::<Capture>())?;
         let construct = capture(size_of::<Capture>())?;
         let callback = ConstructorCallback::bounded(
@@ -147,124 +131,24 @@ impl DocumentBindings {
                 length: 0,
             },
         )?;
-        let target_constructor = scope.get(target_prototype, PropertyKey::String(CONSTRUCTOR))?;
-        scope.set_prototype(
-            &node_constructor,
-            ObjectPrototype::Object(&target_constructor),
-        )?;
         scope.set_prototype(
             &document_constructor,
             ObjectPrototype::Object(&node_constructor),
         )?;
 
-        let global = scope.global()?;
-        for (interface, prototype) in [
-            (&node_constructor, &node),
-            (&document_constructor, &prototype),
-        ] {
-            scope.define_property(
-                interface,
-                PropertyKey::String(PROTOTYPE),
-                PropertyDescriptor::Data {
-                    value: prototype,
-                    writable: false,
-                    enumerable: false,
-                    configurable: false,
-                },
-            )?;
-        }
-        for (member, key, name) in [
-            (
-                NodeMember::Type,
-                &ascii(b"nodeType")[..],
-                &ascii(b"get nodeType")[..],
-            ),
-            (
-                NodeMember::Name,
-                &ascii(b"nodeName")[..],
-                &ascii(b"get nodeName")[..],
-            ),
-            (
-                NodeMember::Connected,
-                &ascii(b"isConnected")[..],
-                &ascii(b"get isConnected")[..],
-            ),
-            (
-                NodeMember::OwnerDocument,
-                &ascii(b"ownerDocument")[..],
-                &ascii(b"get ownerDocument")[..],
-            ),
-            (
-                NodeMember::Parent,
-                &ascii(b"parentNode")[..],
-                &ascii(b"get parentNode")[..],
-            ),
-        ] {
-            let handler = capture(size_of::<(Capture, NodeMember)>())?;
-            install_getter(
-                scope,
-                &node,
-                key,
-                name,
-                true,
-                Callback::new(move |scope, arguments| {
-                    handler.node_member(scope, arguments, member)
-                }),
-            )?;
-        }
-        let root = capture(size_of::<Capture>())?;
-        let root_name = &ascii(b"getRootNode");
-        let method = scope.bounded_function(
-            &Callback::new(move |scope, arguments| root.root_node(scope, arguments)),
-            FunctionMetadata {
-                name: root_name,
-                length: 0,
+        scope.define_property(
+            &document_constructor,
+            PropertyKey::String(PROTOTYPE),
+            PropertyDescriptor::Data {
+                value: &prototype,
+                writable: false,
+                enumerable: false,
+                configurable: false,
             },
-            1,
         )?;
-        define_data(
-            scope,
-            &node,
-            PropertyKey::String(root_name),
-            &method,
-            true,
-            true,
-            true,
-        )?;
-        for (key, code) in [
-            (&ascii(b"ELEMENT_NODE")[..], 1.0),
-            (&ascii(b"ATTRIBUTE_NODE")[..], 2.0),
-            (&ascii(b"TEXT_NODE")[..], 3.0),
-            (&ascii(b"CDATA_SECTION_NODE")[..], 4.0),
-            (&ascii(b"ENTITY_REFERENCE_NODE")[..], 5.0),
-            (&ascii(b"ENTITY_NODE")[..], 6.0),
-            (&ascii(b"PROCESSING_INSTRUCTION_NODE")[..], 7.0),
-            (&ascii(b"COMMENT_NODE")[..], 8.0),
-            (&ascii(b"DOCUMENT_NODE")[..], 9.0),
-            (&ascii(b"DOCUMENT_TYPE_NODE")[..], 10.0),
-            (&ascii(b"DOCUMENT_FRAGMENT_NODE")[..], 11.0),
-            (&ascii(b"NOTATION_NODE")[..], 12.0),
-        ] {
-            let value = scope.primitive(Primitive::Number(code))?;
-            for recipient in [&node_constructor, &node] {
-                define_data(
-                    scope,
-                    recipient,
-                    PropertyKey::String(key),
-                    &value,
-                    false,
-                    true,
-                    false,
-                )?;
-            }
-        }
         fragment::install_factory(scope, &prototype, capture)?;
-        for (name, interface, prototype) in [
-            (NODE, &node_constructor, &node),
-            (DOCUMENT, &document_constructor, &prototype),
-        ] {
-            install_interface(scope, &global, name, interface, prototype)?;
-        }
+        let global = scope.global()?;
+        install_interface(scope, &global, DOCUMENT, &document_constructor, &prototype)?;
         let fragment =
             fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
         let character_data = character_data::CharacterBindings::install(
@@ -275,14 +159,9 @@ impl DocumentBindings {
             capture,
             fund,
         )?;
-        let element = element::ElementBindings::install(
-            scope,
-            &node,
-            &node_constructor,
-            &prototype,
-            capture,
-            fund,
-        )?;
+        let element =
+            element::ElementBindings::install(scope, &node, &node_constructor, capture, fund)?;
+        element::install_document_root(scope, &prototype, capture)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -409,7 +288,132 @@ impl DocumentBindings {
     }
 }
 
-fn install_interface<'scope>(
+pub(super) fn install_node<'scope>(
+    scope: &mut Scope<'scope>,
+    target_prototype: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let node = scope.object(ObjectPrototype::Object(target_prototype))?;
+    let node_constructor = scope.constructor(
+        &ConstructorCallback::bounded(
+            0,
+            // Node rejects construction before selecting any prototype.
+            |_| Err(Error::BackendUnavailable),
+            |scope, _| {
+                Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ))
+            },
+        ),
+        FunctionMetadata {
+            name: NODE,
+            length: 0,
+        },
+    )?;
+    let target_constructor = scope.get(target_prototype, PropertyKey::String(CONSTRUCTOR))?;
+    scope.set_prototype(
+        &node_constructor,
+        ObjectPrototype::Object(&target_constructor),
+    )?;
+    scope.define_property(
+        &node_constructor,
+        PropertyKey::String(PROTOTYPE),
+        PropertyDescriptor::Data {
+            value: &node,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        },
+    )?;
+    for (member, key, name) in [
+        (
+            NodeMember::Type,
+            &ascii(b"nodeType")[..],
+            &ascii(b"get nodeType")[..],
+        ),
+        (
+            NodeMember::Name,
+            &ascii(b"nodeName")[..],
+            &ascii(b"get nodeName")[..],
+        ),
+        (
+            NodeMember::Connected,
+            &ascii(b"isConnected")[..],
+            &ascii(b"get isConnected")[..],
+        ),
+        (
+            NodeMember::OwnerDocument,
+            &ascii(b"ownerDocument")[..],
+            &ascii(b"get ownerDocument")[..],
+        ),
+        (
+            NodeMember::Parent,
+            &ascii(b"parentNode")[..],
+            &ascii(b"get parentNode")[..],
+        ),
+    ] {
+        let handler = capture(size_of::<(Capture, NodeMember)>())?;
+        install_getter(
+            scope,
+            &node,
+            key,
+            name,
+            true,
+            Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
+        )?;
+    }
+    let root = capture(size_of::<Capture>())?;
+    let root_name = &ascii(b"getRootNode");
+    let method = scope.bounded_function(
+        &Callback::new(move |scope, arguments| root.root_node(scope, arguments)),
+        FunctionMetadata {
+            name: root_name,
+            length: 0,
+        },
+        1,
+    )?;
+    define_data(
+        scope,
+        &node,
+        PropertyKey::String(root_name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+    for (key, code) in [
+        (&ascii(b"ELEMENT_NODE")[..], 1.0),
+        (&ascii(b"ATTRIBUTE_NODE")[..], 2.0),
+        (&ascii(b"TEXT_NODE")[..], 3.0),
+        (&ascii(b"CDATA_SECTION_NODE")[..], 4.0),
+        (&ascii(b"ENTITY_REFERENCE_NODE")[..], 5.0),
+        (&ascii(b"ENTITY_NODE")[..], 6.0),
+        (&ascii(b"PROCESSING_INSTRUCTION_NODE")[..], 7.0),
+        (&ascii(b"COMMENT_NODE")[..], 8.0),
+        (&ascii(b"DOCUMENT_NODE")[..], 9.0),
+        (&ascii(b"DOCUMENT_TYPE_NODE")[..], 10.0),
+        (&ascii(b"DOCUMENT_FRAGMENT_NODE")[..], 11.0),
+        (&ascii(b"NOTATION_NODE")[..], 12.0),
+    ] {
+        let value = scope.primitive(Primitive::Number(code))?;
+        for recipient in [&node_constructor, &node] {
+            define_data(
+                scope,
+                recipient,
+                PropertyKey::String(key),
+                &value,
+                false,
+                true,
+                false,
+            )?;
+        }
+    }
+    let global = scope.global()?;
+    install_interface(scope, &global, NODE, &node_constructor, &node)?;
+    Ok((node_constructor, node))
+}
+
+pub(super) fn install_interface<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
     name: &[u16],
