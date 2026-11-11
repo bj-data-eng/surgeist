@@ -36,11 +36,12 @@ mod repeated_proof_edge_tests {
         RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
     };
 
-    #[test]
-    fn last_color_filter_lookup_uses_a_bounded_step_search() {
-        let setup = Account::for_test();
+    fn color_filter_lookup_graph(
+        count: usize,
+        setup: &Account,
+    ) -> crate::accounting::OwnedBox<GpuRenderGraph> {
         let mut scene = crate::Scene::new();
-        for _ in 0..16 {
+        for _ in 0..count {
             let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
                 crate::FilterAmount::try_new(1.25).unwrap(),
             )])
@@ -50,7 +51,7 @@ mod repeated_proof_edge_tests {
             });
         }
         let commands = scene
-            .normalize(crate::Capabilities::CURRENT, &setup)
+            .normalize(crate::Capabilities::CURRENT, setup)
             .unwrap();
         let context = crate::frame::FrameContext::try_new(
             crate::Size::new(4.0, 4.0),
@@ -59,11 +60,20 @@ mod repeated_proof_edge_tests {
             Color::TRANSPARENT,
         )
         .unwrap();
-        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap()
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, setup).unwrap()
         else {
             panic!("foreground filters must select the graph");
         };
-        assert_eq!(graph.filter_steps.len(), 16);
+        assert_eq!(graph.filter_steps.len(), count);
+        graph
+    }
+
+    #[test]
+    fn last_color_filter_lookup_uses_a_bounded_step_search() {
+        use crate::{RenderAttemptStatus, RenderQuantity, RenderResource};
+
+        let setup = Account::for_test();
+        let graph = color_filter_lookup_graph(16, &setup);
         let passes = graph.lowering_view(&setup).unwrap().passes(&setup).unwrap();
         let last = passes
             .iter()
@@ -72,18 +82,71 @@ mod repeated_proof_edge_tests {
             .copied()
             .unwrap();
 
-        let mut accounting = RenderAccountingContext::new(RenderAccountingOptions::new());
-        let kind = accounting
-            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
-                last.kind(account)
-            })
+        let node = RenderWork::GraphNodeVisits;
+        let edge = RenderWork::GraphEdgeVisits;
+        for limit in [4, 5] {
+            let limits = RenderLimits::new()
+                .with_work_limit(node, limit)
+                .unwrap()
+                .with_work_limit(edge, 5)
+                .unwrap();
+            let mut accounting =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let result = accounting.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                last.kind(account).map(|kind| {
+                    assert!(matches!(kind, GraphLoweringPassKind::ColorFilter(Some(_))));
+                })
+            });
+            let terminal = accounting.last_attempt().unwrap();
+            assert_eq!(terminal.cleanup_fault(), None);
+            let attempt = terminal.attempt().unwrap();
+            assert_eq!(attempt.usage().work(node), limit);
+            assert_eq!(attempt.usage().live(RenderResource::RetainedCpuBytes), 0);
+            if limit == 5 {
+                result.unwrap();
+                // The pass and four search probes. Each probe reads a start
+                // ID and the selected step proves membership.
+                assert_eq!(attempt.usage().work(edge), 5);
+            } else {
+                assert!(result.unwrap_err().accounting_diagnostic().is_some());
+                assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(refusal.quantity(), RenderQuantity::Work(node));
+                assert_eq!((refusal.current(), refusal.amount()), (4, 1));
+                assert_eq!(attempt.usage().work(edge), 3);
+            }
+        }
+    }
+
+    #[test]
+    fn filter_step_lookup_rejects_duplicate_and_unordered_membership() {
+        let setup = Account::for_test();
+        let mut graph = color_filter_lookup_graph(2, &setup);
+        let first = graph.filter_steps[0].passes[0];
+        let second = graph.filter_steps[1].passes[0];
+        let gap = graph
+            .passes
+            .iter()
+            .find(|pass| pass.id.index.0 > first.index.0 && pass.id.index.0 < second.index.0)
             .unwrap();
-        assert!(matches!(kind, GraphLoweringPassKind::ColorFilter(Some(_))));
-        let report = accounting.last_attempt().unwrap().attempt().unwrap();
-        // The pass plus four binary-search probes and the selected step.
-        assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 6);
-        // One start ID per probe and one membership check in the selected step.
-        assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 5);
+        let steps = QualifiedFilterSteps::try_new(&graph, &setup).unwrap();
+        assert!(steps.find(gap.id, &setup).unwrap().is_none());
+        assert!(steps.find(second, &setup).unwrap().is_some());
+
+        graph.filter_steps.swap(0, 1);
+        assert!(matches!(
+            QualifiedFilterSteps::try_new(&graph, &setup),
+            Err(GraphValidationError::InvalidPassArity)
+        ));
+        assert!(graph.lowering_view(&setup).is_err());
+
+        graph.filter_steps.swap(0, 1);
+        graph.filter_steps[1].passes = graph.filter_steps[0].passes.clone();
+        assert!(matches!(
+            QualifiedFilterSteps::try_new(&graph, &setup),
+            Err(GraphValidationError::InvalidPassArity)
+        ));
+        assert!(graph.lowering_view(&setup).is_err());
     }
 
     #[test]
@@ -185,8 +248,8 @@ impl GraphLoweringResourceId {
 impl GpuRenderGraph {
     pub(crate) fn lowering_view(&self, account: &Account) -> Result<GraphLoweringView<'_>> {
         let account = &account.at(RenderPhase::Lower);
-        validate_lowering_graph(self, account)?;
-        Ok(GraphLoweringView { graph: self })
+        let graph = validate_lowering_graph(self, account)?;
+        Ok(GraphLoweringView { graph })
     }
 }
 
@@ -882,7 +945,7 @@ pub(crate) enum GraphLoweringPassResult {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringPassView<'graph> {
-    graph: &'graph GpuRenderGraph,
+    graph: QualifiedFilterSteps<'graph>,
     pass: &'graph SemanticGraphPass,
 }
 
@@ -942,35 +1005,25 @@ impl GraphLoweringPassView<'_> {
     }
 }
 
-pub(super) fn validate_pass_projection(
-    graph: &GpuRenderGraph,
-    pass: &SemanticGraphPass,
-    account: &Account,
-) -> Result<()> {
-    GraphLoweringPassView { graph, pass }
-        .project(account, |_| Ok(()))
-        .map(drop)
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringView<'graph> {
-    graph: &'graph GpuRenderGraph,
+    graph: QualifiedFilterSteps<'graph>,
 }
 
 impl<'graph> GraphLoweringView<'graph> {
     #[must_use]
     pub(crate) const fn generation(self) -> GraphLoweringGeneration {
-        GraphLoweringGeneration::from_semantic(self.graph.generation)
+        GraphLoweringGeneration::from_semantic(self.graph.source.generation)
     }
 
     #[must_use]
     pub(crate) const fn root_working_image(self) -> GraphLoweringResourceId {
-        GraphLoweringResourceId::from_semantic(self.graph.root_working_image)
+        GraphLoweringResourceId::from_semantic(self.graph.source.root_working_image)
     }
 
     #[must_use]
     pub(crate) const fn final_present(self) -> GraphLoweringPassId {
-        GraphLoweringPassId::from_semantic(self.graph.final_present)
+        GraphLoweringPassId::from_semantic(self.graph.source.final_present)
     }
 
     pub(crate) fn resources(
@@ -978,11 +1031,12 @@ impl<'graph> GraphLoweringView<'graph> {
         account: &Account,
     ) -> Result<AccountedVec<GraphLoweringResourceView<'graph>>> {
         let account = &account.at(RenderPhase::Lower);
-        let mut result = account.temporary(self.graph.resources.len())?;
-        for resource in self.graph.resources.iter() {
+        let graph = self.graph.source;
+        let mut result = account.temporary(graph.resources.len())?;
+        for resource in graph.resources.iter() {
             account.work(RenderWork::GraphNodeVisits, 1)?;
             let mut import = None;
-            for candidate in self.graph.imports.iter() {
+            for candidate in graph.imports.iter() {
                 account.work(RenderWork::GraphNodeVisits, 1)?;
                 if candidate.resource == resource.id {
                     import = Some(candidate);
@@ -1002,25 +1056,22 @@ impl<'graph> GraphLoweringView<'graph> {
         account: &Account,
     ) -> Result<AccountedVec<GraphLoweringPassView<'graph>>> {
         let account = &account.at(RenderPhase::Lower);
-        let mut result = account.temporary(self.graph.passes.len())?;
-        for pass in self.graph.passes.iter() {
+        let mut result = account.temporary(self.graph.source.passes.len())?;
+        for pass in self.graph.source.passes.iter() {
             account.work(RenderWork::GraphNodeVisits, 1)?;
-            result.append_slot()?.write(GraphLoweringPassView {
-                graph: self.graph,
-                pass,
-            });
+            result.append_slot()?.write(self.graph.pass_view(pass));
         }
         Ok(result)
     }
 }
 
 fn graph_lowering_pass_kind(
-    graph: &GpuRenderGraph,
+    filter_steps: QualifiedFilterSteps<'_>,
     pass: &SemanticGraphPass,
-
     account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
     account.work(RenderWork::GraphNodeVisits, 1)?;
+    let graph = filter_steps.source;
     match pass.intent {
         SemanticPassIntent::ClearRoot { initialization } => {
             let (initialization, color) = match initialization {
@@ -1039,10 +1090,7 @@ fn graph_lowering_pass_kind(
         SemanticPassIntent::VelloCapture { .. } => {
             graph_lowering_vello_capture(graph, pass, account)
         }
-        SemanticPassIntent::CanonicalizeCapture => {
-            reject_unexpected_filter_metadata(graph, pass.id, account)?;
-            Ok(GraphLoweringPassKind::CanonicalizeCapture)
-        }
+        SemanticPassIntent::CanonicalizeCapture => Ok(GraphLoweringPassKind::CanonicalizeCapture),
         SemanticPassIntent::CopyBackdrop => {
             let reads = matching(&graph.backdrop_reads, account, |read| read.pass == pass.id)?;
             match (pass.result, reads) {
@@ -1050,22 +1098,27 @@ fn graph_lowering_pass_kind(
                 | (SemanticPassResult::Resource(_), Matches::One(_)) => {}
                 _ => return Err(GraphValidationError::InvalidPassArity),
             }
-            reject_unexpected_filter_metadata(graph, pass.id, account)?;
             Ok(GraphLoweringPassKind::CopyBackdrop)
         }
-        SemanticPassIntent::ColorFilter => graph_lowering_color_filter(graph, pass, account),
+        SemanticPassIntent::ColorFilter => {
+            graph_lowering_color_filter(pass, filter_steps.find(pass.id, account)?, account)
+        }
         SemanticPassIntent::BlurHorizontal { input }
-        | SemanticPassIntent::BlurVertical { input } => {
-            graph_lowering_blur_pass(graph, pass, input, account)
-        }
-        SemanticPassIntent::DropShadowColorize => {
-            graph_lowering_drop_shadow_pass(graph, pass, account)
-        }
-        SemanticPassIntent::Composite => graph_lowering_composite_pass(graph, pass, account),
-        SemanticPassIntent::Present => {
-            reject_unexpected_filter_metadata(graph, pass.id, account)?;
-            Ok(GraphLoweringPassKind::Present)
-        }
+        | SemanticPassIntent::BlurVertical { input } => graph_lowering_blur_pass(
+            graph,
+            pass,
+            input,
+            filter_steps.find(pass.id, account)?,
+            account,
+        ),
+        SemanticPassIntent::DropShadowColorize => graph_lowering_drop_shadow_pass(
+            graph,
+            pass,
+            filter_steps.find(pass.id, account)?,
+            account,
+        ),
+        SemanticPassIntent::Composite => graph_lowering_composite_pass(filter_steps, pass, account),
+        SemanticPassIntent::Present => Ok(GraphLoweringPassKind::Present),
     }
 }
 
@@ -1099,19 +1152,17 @@ fn graph_lowering_vello_capture(
 }
 
 fn graph_lowering_color_filter(
-    graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
-
+    step: Option<&SemanticFilterStepPlan>,
     account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass, account)?;
     let filter = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
             let ResolvedFilterOperationIntent::ColorRun(run) = &step.step.operation_intent else {
                 return Err(GraphValidationError::InvalidPassArity);
             };
-            if step.passes.as_slice() != [pass.id] {
+            if step.passes.len() != 1 {
                 return Err(GraphValidationError::InvalidPassArity);
             }
             Some(GraphLoweringColorFilter {
@@ -1141,10 +1192,9 @@ fn graph_lowering_blur_pass(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
     input: BlurInput,
-
+    step: Option<&SemanticFilterStepPlan>,
     account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass, account)?;
     let blur = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
@@ -1164,10 +1214,9 @@ fn graph_lowering_blur_pass(
 fn graph_lowering_drop_shadow_pass(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
-
+    step: Option<&SemanticFilterStepPlan>,
     account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass, account)?;
     let shadow = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
@@ -1181,20 +1230,20 @@ fn graph_lowering_drop_shadow_pass(
 }
 
 fn graph_lowering_composite_pass(
-    graph: &GpuRenderGraph,
+    filter_steps: QualifiedFilterSteps<'_>,
     pass: &SemanticGraphPass,
-
     account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
+    let graph = filter_steps.source;
     let composites = matching(graph.composites.as_slice(), account, |composite| {
         composite.pass == pass.id
     })?;
     let composite = match (pass.result, composites) {
         (SemanticPassResult::Empty, Matches::None) => None,
         (SemanticPassResult::Resource(_), Matches::One(composite)) => {
+            let step = filter_steps.find(pass.id, account)?;
             if composite.kind == SemanticCompositeKind::DropShadow {
-                let step = filter_step_for_pass(graph, pass, account)?
-                    .ok_or(GraphValidationError::InvalidPassArity)?;
+                let step = step.ok_or(GraphValidationError::InvalidPassArity)?;
                 let colorize_id = step
                     .passes
                     .get(2)
@@ -1206,8 +1255,8 @@ fn graph_lowering_composite_pass(
                 .first()
                 .ok_or(GraphValidationError::InvalidPassArity)?;
                 graph_lowering_drop_shadow(graph, colorize, step, account)?;
-            } else {
-                reject_unexpected_filter_metadata(graph, pass.id, account)?;
+            } else if step.is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
             }
             Some(graph_lowering_composite(composite, account)?)
         }
@@ -1253,49 +1302,124 @@ fn graph_lowering_clip_coverage(
     })
 }
 
-fn filter_step_for_pass<'graph>(
-    graph: &'graph GpuRenderGraph,
-    pass: &SemanticGraphPass,
-
-    account: &Account,
-) -> GraphBuildResult<Option<&'graph SemanticFilterStepPlan>> {
-    let mut found = None;
-    for step in graph.filter_steps.iter() {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
-        let mut contains = false;
-        for id in step.passes.iter() {
-            account.work(RenderWork::GraphEdgeVisits, 1)?;
-            if *id == pass.id {
-                contains = true;
-                break;
-            }
-        }
-        if contains {
-            if found.is_some() {
-                return Err(GraphValidationError::InvalidPassArity);
-            }
-            found = Some(step);
-        }
-    }
-    Ok(found)
+/// Borrowed filter steps whose pass IDs are nonempty, disjoint and ordered.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct QualifiedFilterSteps<'graph> {
+    source: &'graph GpuRenderGraph,
 }
 
-fn reject_unexpected_filter_metadata(
-    graph: &GpuRenderGraph,
-    pass: SemanticPassId,
+impl<'graph> QualifiedFilterSteps<'graph> {
+    pub(super) fn try_new(
+        graph: &'graph GpuRenderGraph,
+        account: &Account,
+    ) -> GraphBuildResult<Self> {
+        let mut previous = None;
+        for step in graph.filter_steps.iter() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let intents: &[SemanticPassIntent] = match &step.step.operation_intent {
+                ResolvedFilterOperationIntent::ColorRun(_) => &[SemanticPassIntent::ColorFilter],
+                ResolvedFilterOperationIntent::Blur(_) => &[
+                    SemanticPassIntent::BlurHorizontal {
+                        input: BlurInput::Rgba,
+                    },
+                    SemanticPassIntent::BlurVertical {
+                        input: BlurInput::Rgba,
+                    },
+                ],
+                ResolvedFilterOperationIntent::DropShadow(_) => &[
+                    SemanticPassIntent::BlurHorizontal {
+                        input: BlurInput::SourceAlpha,
+                    },
+                    SemanticPassIntent::BlurVertical {
+                        input: BlurInput::SourceAlpha,
+                    },
+                    SemanticPassIntent::DropShadowColorize,
+                    SemanticPassIntent::Composite,
+                ],
+            };
+            if step.passes.len() != intents.len() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            for (id, intent) in step.passes.iter().zip(intents) {
+                account.work(RenderWork::GraphEdgeVisits, 1)?;
+                if id.generation != graph.generation {
+                    return Err(GraphValidationError::WrongPassGeneration {
+                        expected: graph.generation,
+                        actual: id.generation,
+                    });
+                }
+                if previous.is_some_and(|previous| previous >= id.index.0) {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                let pass = graph
+                    .passes
+                    .get(id.index.as_usize()?)
+                    .filter(|pass| pass.id == *id)
+                    .ok_or(GraphValidationError::UnknownPass(*id))?;
+                if !matches!(pass.result, SemanticPassResult::Resource(_)) || pass.intent != *intent
+                {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                previous = Some(id.index.0);
+            }
+        }
+        Ok(Self { source: graph })
+    }
 
-    account: &Account,
-) -> GraphBuildResult<()> {
-    for step in graph.filter_steps.iter() {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
+    pub(super) fn validate_pass_projection(
+        self,
+        pass: &'graph SemanticGraphPass,
+        account: &Account,
+    ) -> Result<()> {
+        self.pass_view(pass).project(account, |_| Ok(())).map(drop)
+    }
+
+    fn pass_view(self, pass: &'graph SemanticGraphPass) -> GraphLoweringPassView<'graph> {
+        GraphLoweringPassView { graph: self, pass }
+    }
+
+    fn find(
+        self,
+        pass: SemanticPassId,
+        account: &Account,
+    ) -> GraphBuildResult<Option<&'graph SemanticFilterStepPlan>> {
+        let steps = &self.source.filter_steps;
+        let mut low = 0;
+        let mut high = steps.len();
+        let mut candidate = None;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let step = steps
+                .get(middle)
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            let first = step
+                .passes
+                .first()
+                .ok_or(GraphValidationError::InvalidPassArity)?;
+            if first.index.0 <= pass.index.0 {
+                candidate = Some(step);
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+
+        // Only the step with the nearest start at or before this pass can
+        // contain it. A pass between steps still has no filter metadata.
+        let Some(step) = candidate else {
+            return Ok(None);
+        };
         for id in step.passes.iter() {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
             if *id == pass {
-                return Err(GraphValidationError::InvalidPassArity);
+                return Ok(Some(step));
             }
         }
+        Ok(None)
     }
-    Ok(())
 }
 
 fn graph_lowering_filter_spatial(
