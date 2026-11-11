@@ -379,6 +379,18 @@ fn css_namespace_forwards_native_unicode_replacement_and_typed_limits() {
 }
 
 #[test]
+fn css_escape_emits_non_ascii_characters_literally() {
+    use surgeist_css::serialization::CssSerializationLimits;
+
+    // CSSOM §2.1 emits each character at or above U+0080 literally.
+    let identifier = "a\u{a0}\u{d7}\u{1f642}";
+    assert_eq!(
+        css::escape(identifier, CssSerializationLimits::default()).unwrap(),
+        identifier
+    );
+}
+
+#[test]
 fn historical_constants_and_actual_fields_support_send_sync() {
     assert_eq!(
         [
