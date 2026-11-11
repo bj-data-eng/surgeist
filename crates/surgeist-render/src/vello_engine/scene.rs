@@ -1640,6 +1640,127 @@ mod pixelated_tests {
     }
 
     #[test]
+    fn expansion_mark_rejects_an_out_of_range_suffix_and_preserves_the_prefix() {
+        let account = Account::for_test();
+        let image =
+            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let mut scene = VelloScene::default();
+        scene
+            .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
+        let expansion = super::super::image_atlas::ImageExpansion::try_new(
+            &image.data,
+            kurbo::Affine::scale(2.0),
+            &account,
+        )
+        .unwrap();
+        let source_id = image.data.data.id();
+        let error = scene
+            .mark_image_expansion(2, source_id, expansion, &account)
+            .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image patch suffix starts beyond the recorded patches"
+        );
+        scene
+            .mark_image_expansion(1, source_id, expansion, &account)
+            .unwrap();
+        assert_eq!(scene.encoding.resources.patches.len(), 1);
+        assert!(scene.image_expansions.is_empty());
+    }
+
+    #[test]
+    fn pixelated_callback_error_preserves_its_cause_and_releases_the_draft() {
+        use crate::accounting::{FrameFixture, RendererCpu};
+        use crate::{RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderResource};
+
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let image =
+            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let transform = kurbo::Affine::scale(2.0);
+        // Warm registry backing so the draft's image lease has a stable opening baseline.
+        drop(
+            cpu.at(RenderCpuScope::ImagePayloads)
+                .import_image(&image, None)
+                .unwrap(),
+        );
+        let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account().at(RenderPhase::Encode);
+                account.phase(RenderPhase::Encode, || {
+                    let mut scene = VelloScene::default();
+                    let result = scene.with_pixelated_image(
+                        &image,
+                        transform,
+                        |draws, compensation| {
+                            draws.draw_image(&brush, transform * compensation, &account)?;
+                            Err::<(), _>(Error::new(
+                                BackendErrorCode::RenderFailed,
+                                "sampled draw callback stopped",
+                            ))
+                        },
+                        &account,
+                    );
+                    assert_eq!(scene.encoding.resources.patches.len(), 1);
+                    assert!(scene.image_expansions.is_empty());
+                    result
+                })
+            })
+            .unwrap()
+            .into_parts();
+        assert!(started);
+        assert_eq!(fault, None);
+        assert_eq!(
+            result.unwrap_err().message(),
+            "sampled draw callback stopped"
+        );
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        let usage = report.renderer_cpu().unwrap();
+        for scope in [RenderCpuScope::ImagePayloads, RenderCpuScope::FrameBacking] {
+            let scope = usage.scope_usage(scope);
+            for resource in [
+                RenderResource::RetainedCpuBytes,
+                RenderResource::ScratchCpuBytes,
+            ] {
+                assert_eq!(scope.live(resource), scope.opening_live(resource));
+            }
+        }
+
+        let (result, _, _, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let mut scene = VelloScene::default();
+                scene.with_pixelated_image(
+                    &image,
+                    transform,
+                    |draws, compensation| {
+                        draws.draw_image(&brush, transform * compensation, account)
+                    },
+                    account,
+                )?;
+                let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
+                    &scene.encoding,
+                    &scene.image_expansions,
+                    account,
+                )?;
+                assert_eq!(plan.entries.len(), 1);
+                assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 2));
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
+        assert_eq!(fault, None);
+        result.unwrap();
+    }
+
+    #[test]
     fn empty_native_space_skips_unused_positions_and_visible_failure_keeps_source_index() {
         use skrifa::MetadataProvider;
         let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");

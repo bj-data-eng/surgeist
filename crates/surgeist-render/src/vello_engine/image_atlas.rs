@@ -750,6 +750,81 @@ mod tests {
     }
 
     #[test]
+    fn atlas_refuses_an_expansion_from_different_source_axes() {
+        let horizontal = image();
+        let mut vertical = horizontal.clone();
+        vertical.width = 1;
+        vertical.height = 2;
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&horizontal, 1.0);
+        encoding.encode_image(&vertical, 1.0);
+        let original_words = encoding.draw_data.clone();
+        let mismatched = ImageExpansions::from_records([(
+            3,
+            ImageExpansion::from_factors(&horizontal, [2, 3]).unwrap(),
+        )]);
+
+        let (result, report) = measure_atlas(&encoding, &mismatched, RenderLimits::new());
+        let error = match result {
+            Ok(plan) => panic!(
+                "atlas accepted 1×2 source with a 2×1 expansion: {:?}",
+                plan.entries[1].extent()
+            ),
+            Err(error) => error,
+        };
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas expansion does not match source dimensions"
+        );
+        let attempt = report.attempt().unwrap();
+        assert_eq!(
+            attempt.status(),
+            RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        );
+        let usage = attempt.phase_usage(RenderPhase::Atlas);
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 4);
+        assert_eq!(usage.work(RenderWork::EncodingStreamCopies), 10);
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 8);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 2);
+        assert_eq!(usage.work(RenderWork::RasterResourceCopies), 3);
+        assert_eq!(usage.work(RenderWork::UploadBytes), 0);
+        let cpu = report.renderer_cpu().unwrap();
+        for resource in [
+            RenderResource::RetainedCpuBytes,
+            RenderResource::ScratchCpuBytes,
+        ] {
+            assert_eq!(
+                cpu.scope_usage(RenderCpuScope::FrameBacking).live(resource),
+                0
+            );
+        }
+        assert_eq!(encoding.draw_data, original_words);
+        assert_eq!(encoding.resources.patches.len(), 2);
+
+        let (result, report) = measure_atlas(
+            &encoding,
+            &mismatched,
+            RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, 3)
+                .unwrap(),
+        );
+        assert!(result.is_err());
+        assert_work_refusal(&report, RenderWork::ResourceProbes, 3, 1);
+
+        let matching = ImageExpansions::from_records([(
+            3,
+            ImageExpansion::from_factors(&vertical, [2, 3]).unwrap(),
+        )]);
+        let (retry, _) = measure_atlas(&encoding, &matching, RenderLimits::new());
+        let plan = retry.unwrap();
+        assert_eq!(plan.entries[0].extent(), PhysicalSize::new(2, 1));
+        assert_eq!(plan.entries[1].extent(), PhysicalSize::new(2, 6));
+        assert_eq!(plan.encoding.draw_data[1], (2 << 16) | 1);
+        assert_eq!(plan.encoding.draw_data[4], (2 << 16) | 6);
+    }
+
+    #[test]
     fn malformed_or_unsupported_source_is_refused_before_recording_uploads() {
         let mut source = image();
         source.format = peniko::ImageFormat::Bgra8;
