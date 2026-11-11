@@ -670,6 +670,12 @@ fn native_window_event_observes_its_live_standalone_dispatch() {
         .unwrap();
     host.in_document(&permit, |scope| {
         let object = event.object(scope)?;
+        let receiver = target.object(scope)?;
+        assert!(
+            scope
+                .native_object::<DomStandaloneEventTarget>(&receiver)?
+                .is_none()
+        );
         assert!(
             scope.native_object::<NativeDomEvent>(&object)?.is_none(),
             "a public Event wrapper must not expose its native mutation authority"
@@ -721,6 +727,17 @@ fn native_window_event_observes_its_live_standalone_dispatch() {
             1.0,
         )
     }).unwrap();
+    let reset = "host reset".encode_utf16().collect::<Vec<_>>();
+    host.initialize_guest_event(&permit, &event, &reset, true, false)
+        .unwrap();
+    assert_eq!(event.native().event_type().code_units(), reset);
+    assert!(event.native().target().is_none());
+    eval(
+        &mut host,
+        &permit,
+        "Number(liveEvent.type === 'host reset' && liveEvent.target === null && liveEvent.bubbles && !liveEvent.defaultPrevented)",
+        1.0,
+    );
 }
 
 fn native_window_registers_and_removes_guest_event_listeners() {

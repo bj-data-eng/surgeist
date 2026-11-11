@@ -119,12 +119,12 @@ fn exact_target<'scope>(
     target: &DomEventTarget,
 ) -> Result<Value<'scope>, Error> {
     let value = scope
-        .native_object_reference::<NativeDomEvent>(event, EVENT_TARGET_REFERENCE)?
+        .native_object_reference::<GuestEventProjection>(event, EVENT_TARGET_REFERENCE)?
         .ok_or(Error::RegistryConflict)?;
     let original = scope
-        .native_object::<DomStandaloneEventTarget>(&value)?
+        .native_object::<GuestTargetProjection>(&value)?
         .ok_or(Error::RegistryConflict)?;
-    if matches!(target, DomEventTarget::Standalone(expected) if expected == original.payload()) {
+    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().0) {
         Ok(value)
     } else {
         Err(Error::RegistryConflict)
@@ -140,7 +140,7 @@ impl Capture {
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
         let receiver = arguments.receiver();
-        let Some(native) = scope.native_object::<NativeDomEvent>(receiver)? else {
+        let Some(native) = scope.native_object::<GuestEventProjection>(receiver)? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Event required"))?,
             ));
@@ -148,7 +148,7 @@ impl Capture {
         if let Err(error) = events.step() {
             return refuse(scope, &events.refusal, error);
         }
-        let event = native.payload();
+        let event = &native.payload().0;
         match method {
             Method::Path => {
                 let mut path = event.composed_path();
@@ -166,13 +166,15 @@ impl Capture {
             Method::Stop => event.stop_propagation(),
             Method::StopImmediate => event.stop_immediate_propagation(),
             Method::PreventDefault => event.prevent_default(),
-            Method::Initialize => match self.initialize_event(scope, &owner, &arguments, event) {
-                Ok(()) => {}
-                Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
-                    return Err(error);
+            Method::Initialize => {
+                match self.initialize_event(scope, &owner, &events, &arguments, event) {
+                    Ok(()) => {}
+                    Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
+                        return Err(error);
+                    }
+                    Err(error) => return refuse(scope, &events.refusal, error),
                 }
-                Err(error) => return refuse(scope, &events.refusal, error),
-            },
+            }
         }
         Ok(Completion::Undefined)
     }
@@ -184,7 +186,8 @@ impl Capture {
         assignment: Assignment,
     ) -> Result<Completion<'scope>, Error> {
         let (_, events) = self.active(scope)?;
-        let Some(native) = scope.native_object::<NativeDomEvent>(arguments.receiver())? else {
+        let Some(native) = scope.native_object::<GuestEventProjection>(arguments.receiver())?
+        else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Event required"))?,
             ));
@@ -197,8 +200,8 @@ impl Capture {
             None => false,
         };
         match assignment {
-            Assignment::CancelBubble => native.payload().set_cancel_bubble(flag),
-            Assignment::ReturnValue => native.payload().set_return_value(flag),
+            Assignment::CancelBubble => native.payload().0.set_cancel_bubble(flag),
+            Assignment::ReturnValue => native.payload().0.set_return_value(flag),
         }
         Ok(Completion::Undefined)
     }
@@ -207,6 +210,7 @@ impl Capture {
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
+        events: &GuestEvents,
         arguments: &Arguments<'scope>,
         event: &NativeDomEvent,
     ) -> Result<(), DocumentGuestEventError> {
@@ -232,26 +236,13 @@ impl Capture {
         else {
             return Err(Error::BackendUnavailable.into());
         };
-        scope.check_active()?;
-        if event.is_dispatching() {
-            return Ok(());
-        }
-        self.with_native(owner, |session, _| {
-            event
-                .init_event(
-                    &mut session.dom(),
-                    ty.as_code_units(),
-                    *bubbles,
-                    *cancelable,
-                    &owner.cancellation,
-                )
-                .map_err(Into::into)
-        })?;
-        scope.set_native_object_reference::<NativeDomEvent>(
+        events.initialize_projection(
+            owner,
+            scope,
             arguments.receiver(),
-            EVENT_TARGET_REFERENCE,
-            None,
-        )?;
-        Ok(())
+            event,
+            ty.as_code_units(),
+            [*bubbles, *cancelable],
+        )
     }
 }

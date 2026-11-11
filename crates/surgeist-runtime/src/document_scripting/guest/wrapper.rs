@@ -116,7 +116,7 @@ pub(super) fn call_dispatch_event<'scope>(
         return refuse(scope, &events.refusal, error);
     }
     let receiver = arguments.receiver();
-    let Some(target) = scope.native_object::<DomStandaloneEventTarget>(receiver)? else {
+    let Some(target) = scope.native_object::<GuestTargetProjection>(receiver)? else {
         return Ok(Completion::Throw(
             scope.type_error(&b"EventTarget required".map(u16::from))?,
         ));
@@ -126,7 +126,7 @@ pub(super) fn call_dispatch_event<'scope>(
             scope.type_error(&b"Event required".map(u16::from))?,
         ));
     };
-    let Some(event) = scope.native_object::<NativeDomEvent>(argument)? else {
+    let Some(event) = scope.native_object::<GuestEventProjection>(argument)? else {
         return Ok(Completion::Throw(
             scope.type_error(&b"Event required".map(u16::from))?,
         ));
@@ -135,9 +135,9 @@ pub(super) fn call_dispatch_event<'scope>(
         owner,
         scope,
         receiver,
-        target.payload(),
+        &target.payload().0,
         argument,
-        event.payload(),
+        &event.payload().0,
     ) {
         Ok(result) => Ok(Completion::Return(
             scope.primitive(Primitive::Boolean(result))?,

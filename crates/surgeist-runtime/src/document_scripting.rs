@@ -31,7 +31,7 @@ mod projection;
 pub use guest::{
     DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
     DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
-    DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
+    DocumentGuestEventView, DocumentGuestListenerException, EnableDocumentGuestEventsFailure,
 };
 mod source;
 mod window_event;

@@ -456,7 +456,7 @@ impl Capture {
         let trusted = public.trusted_getter(scope)?;
         let value = scope.project_native_object(
             ObjectPrototype::Object(selected.prototype()),
-            native,
+            GuestEventProjection(native),
             |bytes| events.reserve(owner, bytes),
         )?;
         expose_trust(scope, &value, &trusted)?;
@@ -485,7 +485,7 @@ impl Capture {
         })?;
         scope.project_native_object(
             ObjectPrototype::Object(selected.prototype()),
-            native,
+            GuestTargetProjection(native),
             |bytes| events.reserve(owner, bytes),
         )
     }
@@ -521,7 +521,8 @@ impl Capture {
         attribute: Attribute,
     ) -> Result<Completion<'scope>, Error> {
         let (_, events) = self.active(scope)?;
-        let Some(native) = scope.native_object::<NativeDomEvent>(arguments.receiver())? else {
+        let Some(native) = scope.native_object::<GuestEventProjection>(arguments.receiver())?
+        else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"Event required"))?,
             ));
@@ -529,7 +530,7 @@ impl Capture {
         if let Err(error) = events.step() {
             return refuse(scope, &events.refusal, error);
         }
-        let event = native.payload();
+        let event = &native.payload().0;
         let value = match attribute {
             Attribute::Type => {
                 let ty = event.event_type();

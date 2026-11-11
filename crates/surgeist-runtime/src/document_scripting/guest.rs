@@ -6,11 +6,12 @@ mod wrapper;
 
 use super::*;
 use crate::dom_event::{
-    DispatchHost, DomEventCallback, DomEventCallbackError, DomEventConstructionError,
-    DomEventDispatch, DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
+    DispatchHost, DomEventCallback, DomEventCallbackError, DomEventComposedPath,
+    DomEventConstructionError, DomEventCreationObservation, DomEventDispatch,
+    DomEventDispatchError, DomEventDispatchLimits, DomEventDispatchOutcome,
     DomEventDispatchReceipt, DomEventDispatcher, DomEventHostError, DomEventInit,
-    DomEventListenerOptions, DomEventRegistrationId, DomEventTarget, DomStandaloneEventTarget,
-    NativeDomEvent,
+    DomEventListenerOptions, DomEventPhase, DomEventRegistrationId, DomEventTarget,
+    DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, NativeDomEvent,
 };
 use interfaces::PublicEventBindings;
 pub(super) use reports::GuestExceptionReports;
@@ -91,6 +92,8 @@ impl From<DomEventDispatchError> for DocumentGuestEventError {
     }
 }
 
+struct GuestTargetProjection(DomStandaloneEventTarget);
+
 /// An explicitly host-owned guest projection of a native standalone target.
 pub struct DocumentGuestEventTarget {
     native: DomStandaloneEventTarget,
@@ -104,6 +107,9 @@ impl DocumentGuestEventTarget {
     }
 }
 
+// A borrowed Bindings scope cannot extract this private native authority.
+struct GuestEventProjection(NativeDomEvent);
+
 /// An explicitly host-owned guest projection of an authored native Event.
 pub struct DocumentGuestEvent {
     native: NativeDomEvent,
@@ -116,9 +122,119 @@ impl DocumentGuestEvent {
         scope.open_callback_object(&self.object)
     }
 
-    /// The native body's live observations and native Event controls.
-    pub fn native(&self) -> &NativeDomEvent {
-        &self.native
+    /// Live native observations and propagation/cancellation controls.
+    pub fn native(&self) -> DocumentGuestEventView<'_> {
+        DocumentGuestEventView {
+            event: &self.native,
+        }
+    }
+}
+
+/// Borrowed native Event observations and controls. Target-changing
+/// operations require the owning script host.
+pub struct DocumentGuestEventView<'event> {
+    event: &'event NativeDomEvent,
+}
+
+impl DocumentGuestEventView<'_> {
+    /// Exact native Event type.
+    pub fn event_type(&self) -> DomEventType {
+        self.event.event_type()
+    }
+
+    /// Authenticated creation observation.
+    pub fn creation(&self) -> Option<&DomEventCreationObservation> {
+        self.event.creation()
+    }
+
+    /// Coarse relative time in milliseconds.
+    pub fn time_stamp(&self) -> Result<f64, DomEventTimestampUnavailable> {
+        self.event.time_stamp()
+    }
+
+    /// Current construction trust.
+    pub fn is_trusted(&self) -> bool {
+        self.event.is_trusted()
+    }
+
+    /// Current native Event target.
+    pub fn target(&self) -> Option<DomEventTarget> {
+        self.event.target()
+    }
+
+    /// Current invocation target.
+    pub fn current_target(&self) -> Option<DomEventTarget> {
+        self.event.current_target()
+    }
+
+    /// Legacy alias of the current target.
+    pub fn src_element(&self) -> Option<DomEventTarget> {
+        self.event.src_element()
+    }
+
+    /// Current invocation phase.
+    pub fn phase(&self) -> DomEventPhase {
+        self.event.phase()
+    }
+
+    /// Original composed path for the active invocation.
+    pub fn composed_path(&self) -> DomEventComposedPath {
+        self.event.composed_path()
+    }
+
+    /// Whether the Event bubbles.
+    pub fn bubbles(&self) -> bool {
+        self.event.bubbles()
+    }
+
+    /// Whether the Event is cancelable.
+    pub fn cancelable(&self) -> bool {
+        self.event.cancelable()
+    }
+
+    /// Whether the Event crosses shadow boundaries.
+    pub fn composed(&self) -> bool {
+        self.event.composed()
+    }
+
+    /// Whether the Event is canceled.
+    pub fn default_prevented(&self) -> bool {
+        self.event.default_prevented()
+    }
+
+    /// Legacy propagation flag.
+    pub fn cancel_bubble(&self) -> bool {
+        self.event.cancel_bubble()
+    }
+
+    /// Legacy inverse cancellation flag.
+    pub fn return_value(&self) -> bool {
+        self.event.return_value()
+    }
+
+    /// Request native cancellation.
+    pub fn prevent_default(&self) {
+        self.event.prevent_default();
+    }
+
+    /// Stop native propagation.
+    pub fn stop_propagation(&self) {
+        self.event.stop_propagation();
+    }
+
+    /// Stop remaining listeners in the current invocation.
+    pub fn stop_immediate_propagation(&self) {
+        self.event.stop_immediate_propagation();
+    }
+
+    /// Apply the native legacy propagation rule.
+    pub fn set_cancel_bubble(&self, value: bool) {
+        self.event.set_cancel_bubble(value);
+    }
+
+    /// Apply the native legacy cancellation rule.
+    pub fn set_return_value(&self, value: bool) {
+        self.event.set_return_value(value);
     }
 }
 
@@ -594,7 +710,7 @@ impl DocumentScriptHost {
                     &owner,
                     scope,
                     ObjectPrototype::Object(&prototype),
-                    native.clone(),
+                    GuestTargetProjection(native.clone()),
                 )?;
                 Ok(DocumentGuestEventTarget { native, object })
             })())
@@ -638,17 +754,48 @@ impl DocumentScriptHost {
                             &owner,
                             scope,
                             ObjectPrototype::Object(&prototype),
-                            native.clone(),
+                            GuestEventProjection(native.clone()),
                         )?;
                         let value = scope.open_callback_object(&object)?;
                         interfaces::expose_trust(scope, &value, &trusted)?;
                         object
                     }
-                    None => {
-                        events.project(&owner, scope, ObjectPrototype::Default, native.clone())?
-                    }
+                    None => events.project(
+                        &owner,
+                        scope,
+                        ObjectPrototype::Default,
+                        GuestEventProjection(native.clone()),
+                    )?,
                 };
                 Ok(DocumentGuestEvent { native, object })
+            })())
+        })?
+    }
+
+    /// Initialize an idle guest Event through its original attached owner.
+    /// The native target and its traced guest projection clear together.
+    pub fn initialize_guest_event(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        event: &DocumentGuestEvent,
+        event_type: &[u16],
+        bubbles: bool,
+        cancelable: bool,
+    ) -> Result<(), DocumentGuestEventError> {
+        self.check_permit(permit)?;
+        let owner = self.native.clone();
+        let events = self.guest_events()?;
+        self.in_document(permit, |scope| {
+            Ok((|| {
+                let receiver = event.object(scope)?;
+                events.initialize_projection(
+                    &owner,
+                    scope,
+                    &receiver,
+                    &event.native,
+                    event_type,
+                    [bubbles, cancelable],
+                )
             })())
         })?
     }
@@ -813,6 +960,54 @@ impl GuestEvents {
         )
     }
 
+    fn initialize_projection<'scope>(
+        &self,
+        owner: &NativeOwner,
+        scope: &mut Scope<'scope>,
+        receiver: &Value<'scope>,
+        event: &NativeDomEvent,
+        event_type: &[u16],
+        [bubbles, cancelable]: [bool; 2],
+    ) -> Result<(), DocumentGuestEventError> {
+        scope.check_active()?;
+        if event.is_dispatching() {
+            return Ok(());
+        }
+        self.step()?;
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        if scope.realm_authority()?.identity() != attachment.realm.identity() {
+            return Err(DocumentScriptNativeError::ForeignPermit.into());
+        }
+        {
+            let mut session = owner
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            if owner.observe(attachment, &mut session)?.status() != HtmlScriptingStatus::Enabled {
+                return Err(DocumentScriptNativeError::Revoked.into());
+            }
+            event.init_event(
+                &mut session.dom(),
+                event_type,
+                bubbles,
+                cancelable,
+                &owner.cancellation,
+            )?;
+        }
+        if let Err(error) = scope.set_native_object_reference::<GuestEventProjection>(
+            receiver,
+            interfaces::EVENT_TARGET_REFERENCE,
+            None,
+        ) {
+            return refuse(scope, &self.refusal, DocumentGuestEventError::from(error))
+                .map_err(Into::into);
+        }
+        Ok(())
+    }
+
     fn prepare(
         &self,
         owner: &NativeOwner,
@@ -856,10 +1051,10 @@ impl GuestEvents {
             self.step()?;
             Some((
                 scope
-                    .native_object::<NativeDomEvent>(argument)?
+                    .native_object::<GuestEventProjection>(argument)?
                     .ok_or(Error::ExpectedNativeObject)?,
                 scope
-                    .native_object::<DomStandaloneEventTarget>(receiver)?
+                    .native_object::<GuestTargetProjection>(receiver)?
                     .ok_or(Error::ExpectedNativeObject)?,
             ))
         } else {
@@ -886,10 +1081,10 @@ impl GuestEvents {
                 )?
             };
             if let Some((event, target)) = &projection
-                && matches!(event.payload().target(), Some(DomEventTarget::Standalone(ref actual))
-                    if actual == target.payload())
+                && matches!(event.payload().0.target(), Some(DomEventTarget::Standalone(ref actual))
+                    if actual == &target.payload().0)
             {
-                if let Err(error) = scope.set_native_object_reference::<NativeDomEvent>(
+                if let Err(error) = scope.set_native_object_reference::<GuestEventProjection>(
                     argument,
                     interfaces::EVENT_TARGET_REFERENCE,
                     Some(receiver),
