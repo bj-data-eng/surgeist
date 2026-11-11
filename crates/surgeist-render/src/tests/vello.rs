@@ -3260,6 +3260,7 @@ fn image_fit_transforms_use_uniform_scale() {
         Size::new(4.0, 2.0),
         Rect::new(0.0, 0.0, 2.0, 2.0),
         ImageFit::Contain,
+        &crate::accounting::Account::for_test(),
     )
     .unwrap()
     .as_coeffs();
@@ -3267,6 +3268,7 @@ fn image_fit_transforms_use_uniform_scale() {
         Size::new(4.0, 2.0),
         Rect::new(0.0, 0.0, 2.0, 2.0),
         ImageFit::Cover,
+        &crate::accounting::Account::for_test(),
     )
     .unwrap()
     .as_coeffs();

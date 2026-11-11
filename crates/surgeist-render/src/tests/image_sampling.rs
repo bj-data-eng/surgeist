@@ -198,6 +198,26 @@ fn pixelated_image_paint_keeps_shape_geometry_while_scaling_its_brush() {
 
 #[test]
 fn pixelated_image_in_a_scaled_opacity_group_keeps_its_final_sampling_lattice() {
+    assert_scaled_opacity_group_keeps_pixelated_lattice(|scene| {
+        scene.fill(
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            crate::Paint::image(black_white_image().rendering(ImageRendering::Pixelated)),
+        );
+    });
+}
+
+#[test]
+fn fitted_pixelated_image_command_in_a_scaled_opacity_group_keeps_its_sampling_lattice() {
+    assert_scaled_opacity_group_keeps_pixelated_lattice(|scene| {
+        scene.image(
+            black_white_image().rendering(ImageRendering::Pixelated),
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            ImageFit::Fill,
+        );
+    });
+}
+
+fn assert_scaled_opacity_group_keeps_pixelated_lattice(draw: impl FnOnce(&mut Scene)) {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
@@ -211,12 +231,7 @@ fn pixelated_image_in_a_scaled_opacity_group_keeps_its_final_sampling_lattice() 
                 )
                 .unwrap(),
             ),
-        |scene| {
-            scene.fill(
-                Rect::new(0.0, 0.0, 2.0, 1.0),
-                crate::Paint::image(black_white_image().rendering(ImageRendering::Pixelated)),
-            );
-        },
+        draw,
     );
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let output = render(&mut renderer, &scene, 5, 1);

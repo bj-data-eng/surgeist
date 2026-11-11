@@ -102,8 +102,12 @@ pub(super) fn prepare(
         crate::Size::try_new(f64::from(width), f64::from(height))?,
         pixels,
     )?;
-    let brush_transform =
-        crate::encode::image_transform(image.size(), rect, crate::ImageFit::Fill)?;
+    let brush_transform = crate::encode::image_transform(
+        image.size(),
+        rect,
+        crate::ImageFit::Fill,
+        &account.at(RenderPhase::Bitmap),
+    )?;
     qualify_preparation_bounds(brush_transform, None, account)?;
     pen.paint(GlyphPaint::Bitmap {
         image,

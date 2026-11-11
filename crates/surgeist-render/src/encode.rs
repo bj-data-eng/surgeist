@@ -10,6 +10,7 @@ use super::{
     *,
 };
 use crate::accounting::{Account, AccountedVec, DisposalCompletion, Hold, RenderPhase, RenderWork};
+use crate::vello_engine::geometry::{action as coordinate_action, affine_product};
 use crate::vello_engine::gradient_endpoints::{
     GradientProgram, GradientSampling, PadEndpoints, SceneBrush,
 };
@@ -273,30 +274,14 @@ fn encode_vello_commands(
                             image,
                             rect,
                             brush_transform,
-                        } => {
-                            // The admitted endpoint quad is the geometry. A
-                            // rounded sampling matrix cannot rebuild/expand it.
-                            with_sampled_image(
-                                scene,
-                                image,
-                                transform * *brush_transform,
-                                |scene, brush, compensation| {
-                                    scene.fill(
-                                        peniko::Fill::NonZero,
-                                        transform,
-                                        brush,
-                                        Some(
-                                            *brush_transform
-                                                * compensation.unwrap_or(kurbo::Affine::IDENTITY),
-                                        ),
-                                        &kurbo::Rect::from(*rect),
-                                        account,
-                                    )?;
-                                    Ok(())
-                                },
-                                account,
-                            )?;
-                        }
+                        } => encode_prepared_bitmap(
+                            scene,
+                            transform,
+                            image,
+                            *rect,
+                            *brush_transform,
+                            account,
+                        )?,
                     }
                 }
             }
@@ -661,6 +646,28 @@ fn encode_non_uniform_rounded_shadow(
     Ok(())
 }
 
+fn encode_prepared_bitmap(
+    scene: &mut VelloScene,
+    transform: kurbo::Affine,
+    image: &Image,
+    rect: Rect,
+    brush_transform: kurbo::Affine,
+    account: &Account,
+) -> Result<()> {
+    // Prepared sbix bitmaps use ordinary sampling and keep the admitted endpoint quad.
+    scene.import_image(image, account)?;
+    let brush = image_brush(image);
+    let brush_transform = affine_product(brush_transform, kurbo::Affine::IDENTITY, account)?;
+    scene.fill(
+        peniko::Fill::NonZero,
+        transform,
+        &brush,
+        Some(brush_transform),
+        &kurbo::Rect::from(rect),
+        account,
+    )
+}
+
 fn encode_image(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
@@ -669,7 +676,8 @@ fn encode_image(
     fit: ImageFit,
     account: &Account,
 ) -> Result<()> {
-    let image_transform = transform * image_transform(image.size, rect, fit)?;
+    let local = image_transform(image.size, rect, fit, account)?;
+    let image_transform = affine_product(transform, local, account)?;
     let clip_to_target = matches!(fit, ImageFit::Contain | ImageFit::Cover);
     if clip_to_target {
         scene.push_clip_layer(
@@ -1342,46 +1350,69 @@ fn offset_rect(rect: Rect, offset: Point) -> Rect {
     )
 }
 
-pub(crate) fn image_transform(size: Size, rect: Rect, fit: ImageFit) -> Result<kurbo::Affine> {
-    if size.width() <= 0.0 || size.height() <= 0.0 {
-        return Err(Error::new(
-            BackendErrorCode::ImageUploadFailed,
-            "image size must be positive",
-        ));
-    }
-    let scale_x = rect.width() / size.width();
-    let scale_y = rect.height() / size.height();
+pub(crate) fn image_transform(
+    size: Size,
+    rect: Rect,
+    fit: ImageFit,
+    account: &Account,
+) -> Result<kurbo::Affine> {
+    let positive_source = |size: f64| -> Result<f64> {
+        if coordinate_action(account, || size <= 0.0)? {
+            return Err(Error::new(
+                BackendErrorCode::ImageUploadFailed,
+                "image size must be positive",
+            ));
+        }
+        Ok(size)
+    };
+    let width = positive_source(coordinate_action(account, || size.width())?)?;
+    let height = positive_source(coordinate_action(account, || size.height())?)?;
+    let target_width = coordinate_action(account, || rect.width())?;
+    let scale_x = coordinate_action(account, || target_width / width)?;
+    let target_height = coordinate_action(account, || rect.height())?;
+    let scale_y = coordinate_action(account, || target_height / height)?;
     let (fit_scale_x, fit_scale_y, tx, ty) = match fit {
-        ImageFit::Fill | ImageFit::Stretch | ImageFit::None => {
-            (scale_x, scale_y, rect.x(), rect.y())
-        }
-        ImageFit::Contain => {
-            let scale = scale_x.min(scale_y);
-            (
-                scale,
-                scale,
-                rect.x() + (rect.width() - size.width() * scale) * 0.5,
-                rect.y() + (rect.height() - size.height() * scale) * 0.5,
-            )
-        }
-        ImageFit::Cover => {
-            let scale = scale_x.max(scale_y);
-            (
-                scale,
-                scale,
-                rect.x() + (rect.width() - size.width() * scale) * 0.5,
-                rect.y() + (rect.height() - size.height() * scale) * 0.5,
-            )
+        ImageFit::Fill | ImageFit::Stretch | ImageFit::None => (
+            scale_x,
+            scale_y,
+            coordinate_action(account, || rect.x())?,
+            coordinate_action(account, || rect.y())?,
+        ),
+        ImageFit::Contain | ImageFit::Cover => {
+            let scale = coordinate_action(account, || match fit {
+                ImageFit::Contain => scale_x.min(scale_y),
+                _ => scale_x.max(scale_y),
+            })?;
+            let center = |origin: f64, target: f64, source: f64| -> Result<f64> {
+                let fitted = coordinate_action(account, || source * scale)?;
+                let remaining = coordinate_action(account, || target - fitted)?;
+                let offset = coordinate_action(account, || remaining * 0.5)?;
+                coordinate_action(account, || origin + offset)
+            };
+            let tx = center(
+                coordinate_action(account, || rect.x())?,
+                target_width,
+                width,
+            )?;
+            let ty = center(
+                coordinate_action(account, || rect.y())?,
+                target_height,
+                height,
+            )?;
+            (scale, scale, tx, ty)
         }
     };
-    Ok(kurbo::Affine::translate((tx, ty))
-        * kurbo::Affine::scale_non_uniform(fit_scale_x, fit_scale_y))
+    affine_product(
+        kurbo::Affine::translate((tx, ty)),
+        kurbo::Affine::scale_non_uniform(fit_scale_x, fit_scale_y),
+        account,
+    )
 }
 
 #[cfg(test)]
 mod image_fit_accounting_tests {
     use super::*;
-    use crate::accounting::{FrameFixture, RendererCpu};
+    use crate::accounting::{FrameFixture, RenderAttemptKind, RendererCpu};
 
     fn positive_image() -> Image {
         Image::from_rgba(Size::new(4.0, 2.0), [255, 0, 0, 255].repeat(8)).unwrap()
@@ -1483,6 +1514,113 @@ mod image_fit_accounting_tests {
     fn pixelated_image_fit_refuses_coordinates_before_path_preparation() {
         let image = positive_image().rendering(ImageRendering::Pixelated);
         assert_fit_refuses_before_downstream_work(&image);
+    }
+
+    #[test]
+    fn image_fit_places_literal_bounds_and_counts_local_work() {
+        let size = Size::new(4.0, 2.0);
+        let rect = Rect::new(1.0, 0.0, 2.0, 2.0);
+        for (fit, visits, expected) in [
+            (ImageFit::Fill, 42, [0.5, 0.0, 0.0, 1.0, 1.0, 0.0]),
+            (ImageFit::Contain, 51, [0.5, 0.0, 0.0, 0.5, 1.0, 0.5]),
+            (ImageFit::Cover, 51, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            let fitted = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    image_transform(size, rect, fit, account)
+                })
+                .unwrap();
+            assert_eq!(fitted.as_coeffs(), expected, "{fit:?}");
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                attempt
+                    .phase_usage(RenderPhase::Encode)
+                    .work(RenderWork::CoordinateVisits),
+                visits,
+                "{fit:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn image_fit_admits_the_device_product_before_entering_the_draw() {
+        let rect = Rect::new(1.0, 0.0, 2.0, 2.0);
+        for (fit, visits) in [
+            (ImageFit::Fill, 74),
+            (ImageFit::Contain, 83),
+            (ImageFit::Cover, 83),
+        ] {
+            for (cap, next_work, current) in [
+                (visits - 1, RenderWork::CoordinateVisits, visits - 1),
+                (visits, RenderWork::PathElementVisits, 0),
+            ] {
+                assert_placement_boundary(cap, next_work, current, |account| {
+                    encode_image(
+                        &mut VelloScene::default(),
+                        kurbo::Affine::translate((8.0, -3.0)),
+                        &positive_image(),
+                        rect,
+                        fit,
+                        account,
+                    )
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn prepared_bitmap_replay_admits_one_affine_product_before_the_draw() {
+        for (cap, next_work, current) in [
+            (31, RenderWork::CoordinateVisits, 31),
+            (32, RenderWork::PathElementVisits, 0),
+        ] {
+            assert_placement_boundary(cap, next_work, current, |account| {
+                encode_prepared_bitmap(
+                    &mut VelloScene::default(),
+                    kurbo::Affine::translate((8.0, -3.0)),
+                    &positive_image(),
+                    Rect::new(1.0, 0.0, 2.0, 2.0),
+                    kurbo::Affine::new([0.5, 0.0, 0.0, 1.0, 1.0, 0.0]),
+                    account,
+                )
+            });
+        }
+    }
+
+    fn assert_placement_boundary(
+        cap: u64,
+        next_work: RenderWork,
+        current: u64,
+        draw: impl FnOnce(&Account) -> Result<()>,
+    ) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, cap)
+            .unwrap()
+            .with_work_limit(RenderWork::PathElementVisits, 0)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, draw)
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected a work refusal at cap {cap}: {error:?}");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(next_work),
+            "cap {cap}"
+        );
+        assert_eq!((refusal.current(), refusal.amount()), (current, 1));
+        let usage = context
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .phase_usage(RenderPhase::Encode);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
     }
 }
 
