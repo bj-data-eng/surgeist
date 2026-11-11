@@ -1394,6 +1394,342 @@ fn check_published_style_after_svg_refusal(retry_close: bool) {
 }
 
 #[test]
+fn replacement_closes_original_style_removal_after_svg_refusal() {
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let (root, sheet, before_cssom) =
+        style_resource(&mut dom, document, parent, document.node(), false);
+    let old = dom.snapshot().node(parent).unwrap().children()[0];
+    let suffix = style_svg_suffix(&mut dom, document, false);
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    let before = dom.snapshot();
+    let old_association = before
+        .node(old)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    assert_eq!(old_association.id(), &sheet);
+    assert_eq!(old_association.revision(), before_cssom.revision());
+    assert_eq!(before.node(old).unwrap().parent(), Some(parent));
+    let (read, prefix, removed) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::replace_child(suffix.wrapper, parent, old),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(remove)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("replacement must first request removal of the old attached sheet");
+        };
+        assert_eq!(
+            remove.action(),
+            crate::DomStyleAction::Update(HtmlStyleUpdateAction::RemoveAssociatedSheet)
+        );
+        assert_eq!(remove.source().element(), old);
+        assert_eq!(remove.sheet(), Some(old_association));
+        assert_eq!(remove.cssom_root(), Some(document.node()));
+        let remove = lease
+            .qualify_cssom(&remove, root.root(), &before_cssom)
+            .unwrap();
+        let mut batch = root
+            .batch(CssomEditGuard::from_snapshot(&before_cssom))
+            .unwrap();
+        batch.remove_sheet(&sheet).unwrap();
+        let commit = root.commit(&mut Some(batch)).unwrap();
+        let removed = root.snapshot().unwrap();
+        assert_ne!(removed.revision(), before_cssom.revision());
+        assert!(removed.sheets().is_empty());
+        let detached_sheet = removed.sheet(&sheet).unwrap();
+        assert!(detached_sheet.inputs().owner.is_none());
+        assert!(detached_sheet.owner_rule().is_none());
+        assert!(
+            lease
+                .accept_cssom_publication(&remove, commit, removed.clone(), None)
+                .unwrap()
+                .is_none()
+        );
+        let read = require_svg_fixture_script(&mut lease, &suffix, document, &cancel);
+        let prefix = lease.snapshot();
+        assert_eq!(prefix.node(old).unwrap().parent(), None);
+        assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), None);
+        assert_eq!(
+            prefix.node(old).unwrap().as_style().unwrap().state(),
+            before.node(old).unwrap().as_style().unwrap().state()
+        );
+        (read, prefix, removed)
+    };
+    let closed =
+        resume_svg_fixture_failure(&mut dom, &binding, registration, read, &prefix, &cancel);
+    suffix.check_private_scripts(&closed);
+    assert_eq!(closed.node(old).unwrap().parent(), None);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), None);
+    let current = root.snapshot().unwrap();
+    assert_eq!(current.revision(), removed.revision());
+    assert_eq!(current.sheets(), removed.sheets());
+    assert!(current.sheet(&sheet).unwrap().inputs().owner.is_none());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the original CSSOM removal must settle after SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert!(
+        closed
+            .node(old)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [
+            crate::DomChange::ElementState(old),
+            crate::DomChange::SourceOperation
+        ]
+    );
+}
+
+#[test]
+fn accepted_inline_csp_denial_closes_marker_after_svg_refusal() {
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+
+    let cancel = cancel();
+    let (mut dom, source, document) = constructor();
+    let initial = dom.snapshot();
+    let html = initial.node(document.node()).unwrap().children()[0];
+    let parent = initial.node(html).unwrap().children()[1];
+    let suffix = style_svg_suffix(&mut dom, document, true);
+    let style = suffix.style.unwrap();
+    let (binding, registration) = attach_svg_cleanup_fixture(&mut dom, &source, document);
+    let before = dom.snapshot();
+    let old_style = before.node(style).unwrap().as_style().unwrap().state();
+    let (read, prefix) = {
+        let mut lease = dom
+            .begin_source_edit(
+                DomSourceEdit::insert_before(suffix.wrapper, parent, None),
+                source_limits(),
+                &cancel,
+            )
+            .unwrap();
+        let DomSourceProgress::Request(DomSourceRequest::Style(policy)) =
+            lease.advance(&cancel).unwrap()
+        else {
+            panic!("the first inserted Style must reach its actual CSP request");
+        };
+        assert_eq!(
+            policy.action(),
+            crate::DomStyleAction::Update(HtmlStyleUpdateAction::CheckInlineCsp)
+        );
+        assert_eq!(policy.source().element(), style);
+        let denial = crate::DomStyleInlineCspObservation::evaluated(
+            policy.source(),
+            Arc::new(vec!["style-src 'none'".into()]),
+            1,
+            false,
+        );
+        lease.accept_inline_csp(&policy, &denial, &cancel).unwrap();
+        let read = require_svg_fixture_script(&mut lease, &suffix, document, &cancel);
+        let prefix = lease.snapshot();
+        assert_eq!(prefix.node(suffix.wrapper).unwrap().parent(), Some(parent));
+        assert_eq!(
+            prefix.node(style).unwrap().as_style().unwrap().state(),
+            old_style
+        );
+        (read, prefix)
+    };
+    let closed =
+        resume_svg_fixture_failure(&mut dom, &binding, registration, read, &prefix, &cancel);
+    suffix.check_private_scripts(&closed);
+    assert_eq!(closed.node(suffix.wrapper).unwrap().parent(), Some(parent));
+    assert_eq!(
+        closed.node(style).unwrap().as_style().unwrap().state(),
+        old_style
+    );
+    assert!(!dom.has_style_cssom_roots());
+    let pending = dom.pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the accepted CSP denial must allow the original marker to settle after SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    assert!(
+        closed
+            .node(style)
+            .unwrap()
+            .as_style()
+            .unwrap()
+            .sheet()
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        dom.changes_since(prefix.stamp()).unwrap().changes(),
+        [crate::DomChange::SourceOperation]
+    );
+}
+
+struct StyleSvgSuffix {
+    wrapper: NodeId,
+    style: Option<NodeId>,
+    script: NodeId,
+    svg: NodeId,
+}
+
+impl StyleSvgSuffix {
+    fn check_private_scripts(&self, snapshot: &crate::DomSnapshot) {
+        let children = snapshot.node(self.wrapper).unwrap().children();
+        if let Some(style) = self.style {
+            assert_eq!(children, [style, self.script, self.svg]);
+        } else {
+            assert_eq!(children, [self.script, self.svg]);
+        }
+        let html = snapshot
+            .node(self.script)
+            .unwrap()
+            .as_html_script()
+            .unwrap();
+        assert!(!html.flags().already_started());
+        assert_eq!(html.script_type(), None);
+        assert_eq!(html.preparation_document(), None);
+        let svg = snapshot.node(self.svg).unwrap().as_svg_script().unwrap();
+        assert_eq!(svg.origin(), crate::DomSvgScriptOrigin::Native);
+        assert!(!svg.flags().already_processed());
+    }
+}
+
+fn style_svg_suffix(dom: &mut Dom, document: DocumentId, with_style: bool) -> StyleSvgSuffix {
+    use surgeist_html::values::Namespace;
+
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let style = with_style.then(|| {
+        let style = batch.create_element_ns(document, Namespace::html(), "style");
+        let css = batch.create_text(document, "div { color: red }");
+        batch.insert_before(&css, &style, None);
+        batch.insert_before(&style, &wrapper, None);
+        style
+    });
+    let script = batch.create_element_ns(document, Namespace::html(), "script");
+    let text = batch.create_text(document, "globalThis.ran = true");
+    batch.insert_before(&text, &script, None);
+    batch.insert_before(&script, &wrapper, None);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    batch.insert_before(&svg, &wrapper, None);
+    let result = dom.apply(batch, &cancel()).unwrap();
+    let resolve = |ticket| result.created(ticket).unwrap().unwrap();
+    StyleSvgSuffix {
+        wrapper: resolve(&wrapper),
+        style: style.as_ref().map(resolve),
+        script: resolve(&script),
+        svg: resolve(&svg),
+    }
+}
+
+fn attach_svg_cleanup_fixture(
+    dom: &mut Dom,
+    source: &DomHostedSource,
+    document: DocumentId,
+) -> (
+    crate::DomDocumentScriptBinding,
+    crate::DomDocumentScriptRegistration,
+) {
+    use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
+
+    let snapshot = dom.snapshot();
+    let navigable = snapshot.document(document).unwrap().navigable().unwrap();
+    let global = snapshot.hosted_navigable(navigable).unwrap().global();
+    let backing = source
+        .retain_runtime_payload(
+            dom,
+            crate::DomDocumentScriptRegistration::storage_bytes(),
+            &cancel(),
+        )
+        .unwrap();
+    source
+        .attach_document_script_host(
+            dom,
+            global,
+            document,
+            crate::DomDocumentScriptingFacts {
+                engine: HtmlScriptingEngine::Supported,
+                policy: HtmlScriptingPolicy {
+                    user_allows: true,
+                    automation_allows: true,
+                },
+            },
+            backing,
+            &cancel(),
+        )
+        .unwrap()
+}
+
+fn require_svg_fixture_script(
+    lease: &mut crate::DomSourceLease<'_>,
+    suffix: &StyleSvgSuffix,
+    document: DocumentId,
+    cancel: &AtomicBool,
+) -> crate::DomSourceScriptRequest {
+    let DomSourceProgress::Request(DomSourceRequest::Script(read)) = lease.advance(cancel).unwrap()
+    else {
+        panic!(
+            "the accepted Style action must be followed by the original Script settings request"
+        );
+    };
+    assert_eq!(read.operation(), lease.operation());
+    assert_eq!(read.step(), crate::DomSourceScriptStep::ReadScripting);
+    assert_eq!(read.subject(), Some(suffix.script));
+    assert_eq!(read.node_document(), Some(document));
+    let prefix = lease.snapshot();
+    assert_eq!(read.basis(), prefix.stamp());
+    assert_eq!(prefix.incomplete_source_operation(), Some(read.operation()));
+    assert!(lease.status().has_published());
+    suffix.check_private_scripts(&prefix);
+    assert!(
+        matches!(lease.advance(cancel).unwrap(), DomSourceProgress::Request(DomSourceRequest::Script(again)) if again == read)
+    );
+    read
+}
+
+fn resume_svg_fixture_failure(
+    dom: &mut Dom,
+    binding: &crate::DomDocumentScriptBinding,
+    registration: crate::DomDocumentScriptRegistration,
+    read: crate::DomSourceScriptRequest,
+    prefix: &crate::DomSnapshot,
+    cancel: &AtomicBool,
+) -> crate::DomSnapshot {
+    assert_eq!(read.relevant_global(), Some(binding.global));
+    drop(registration);
+    dom.release_document_script_registration(binding);
+    assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+    let mut lease = dom
+        .resume_source_edit(read.operation(), source_limits(), cancel)
+        .unwrap();
+    let refusal = lease.advance(cancel);
+    assert!(
+        matches!(refusal, Err(DomError::SvgScriptProcessingUnavailable)),
+        "the original Disabled read must reach actual SVG refusal: {refusal:?}"
+    );
+    drop(lease);
+    dom.snapshot()
+}
+
+#[test]
 fn stopped_registration_does_not_accept_a_prior_script_settings_receipt() {
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
