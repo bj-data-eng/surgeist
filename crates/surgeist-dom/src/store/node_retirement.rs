@@ -124,15 +124,49 @@ impl DomNodeRetirementNotice {
     }
 }
 
+/// A canonical batch publication and the watch of one node it created.
+pub struct DomWatchedCreation {
+    commit: DomCommit,
+    node: NodeId,
+    watch: DomNodeRetirementWatch,
+}
+
+impl DomWatchedCreation {
+    /// The exact newly published generation.
+    pub const fn node(&self) -> NodeId {
+        self.node
+    }
+
+    /// Transfer the publication receipt, created node and affine watch.
+    pub fn into_parts(self) -> (DomCommit, NodeId, DomNodeRetirementWatch) {
+        (self.commit, self.node, self.watch)
+    }
+}
+
 struct Armed {
     notice: Box<Notice>,
     queue: Arc<Mutex<Queue>>,
     backing: Debit,
 }
 
+impl Armed {
+    fn matches(&self, node: NodeId, key: Option<usize>) -> bool {
+        self.notice.node == node && key.is_none_or(|key| self.notice.custody_key == key)
+    }
+}
+
 enum Row {
     Leaf(Box<Armed>),
+    Replacement(Box<Replacement>),
     Branch(Box<Branch>),
+}
+
+// A single slot can hold both generations until canonical publication.
+// The old watch can still disarm its exact row before the notice is delivered.
+struct Replacement {
+    retiring: Box<Armed>,
+    created: Box<Armed>,
+    _backing: Debit,
 }
 
 struct Branch {
@@ -157,7 +191,12 @@ impl Row {
             step()?;
             depth += 1;
             match row {
-                Self::Leaf(armed) => return Ok((armed.notice.node == node).then_some(depth)),
+                Self::Leaf(armed) => return Ok(armed.matches(node, None).then_some(depth)),
+                Self::Replacement(pair) => {
+                    return Ok((pair.retiring.matches(node, None)
+                        || pair.created.matches(node, None))
+                    .then_some(depth));
+                }
                 Self::Branch(branch) => {
                     let Some(child) = branch.children[side(node.slot, branch.bit)].as_ref() else {
                         return Ok(None);
@@ -171,28 +210,31 @@ impl Row {
     // The first differing bit separates two exact slot identities. Return
     // it up the original descent until the parent of the splice is reached.
     // None means that child installed the watch and no more work may refuse.
-    fn arm_below(&mut self, admission: &WatchAdmission<'_>) -> Result<Option<usize>, DomError> {
+    fn arm_below(
+        root: &mut Option<Self>,
+        admission: &WatchAdmission<'_>,
+        publication: Option<&PublicationPlan>,
+    ) -> Result<Option<usize>, DomError> {
         admission.step()?;
-        match self {
+        match root.as_mut().ok_or(DomError::RepresentationExhausted)? {
             Self::Leaf(armed) => {
-                let differing = admission.node.slot ^ armed.notice.node.slot;
-                let bit = differing
-                    .checked_ilog2()
-                    .ok_or(DomError::NodeRetirementAlreadyWatched)?;
-                Ok(Some(1 << bit))
+                let existing = armed.notice.node;
+                let differing = admission.node.slot ^ existing.slot;
+                if let Some(bit) = differing.checked_ilog2() {
+                    return Ok(Some(1 << bit));
+                }
+                admission.replace(root, existing, publication)?;
+                Ok(None)
             }
+            Self::Replacement(_) => Err(DomError::NodeRetirementAlreadyWatched),
             Self::Branch(branch) => {
                 let child = &mut branch.children[side(admission.node.slot, branch.bit)];
-                let Some(bit) = child
-                    .as_mut()
-                    .ok_or(DomError::RepresentationExhausted)?
-                    .arm_below(admission)?
-                else {
+                let Some(bit) = Self::arm_below(child, admission, publication)? else {
                     return Ok(None);
                 };
                 admission.step()?;
                 if branch.bit > bit {
-                    admission.splice(child, Some(bit))?;
+                    admission.splice(child, Some(bit), publication)?;
                     Ok(None)
                 } else {
                     Ok(Some(bit))
@@ -203,16 +245,36 @@ impl Row {
 
     fn remove(root: &mut Option<Self>, node: NodeId, key: Option<usize>) -> Option<Box<Armed>> {
         match root.as_mut()? {
-            Self::Leaf(row)
-                if row.notice.node == node
-                    && key.is_none_or(|key| row.notice.custody_key == key) =>
-            {
-                match root.take() {
-                    Some(Self::Leaf(row)) => Some(row),
-                    _ => None,
-                }
-            }
+            Self::Leaf(row) if row.matches(node, key) => match root.take() {
+                Some(Self::Leaf(row)) => Some(row),
+                _ => None,
+            },
             Self::Leaf(_) => None,
+            Self::Replacement(pair) => {
+                let remove_retiring = pair.retiring.matches(node, key);
+                if !remove_retiring && !pair.created.matches(node, key) {
+                    return None;
+                }
+                let Some(Self::Replacement(pair)) = root.take() else {
+                    return None;
+                };
+                let Replacement {
+                    retiring,
+                    created,
+                    _backing: backing,
+                } = {
+                    let allocation = pair;
+                    *allocation
+                };
+                drop(backing);
+                let (removed, remaining) = if remove_retiring {
+                    (retiring, created)
+                } else {
+                    (created, retiring)
+                };
+                *root = Some(Self::Leaf(remaining));
+                Some(removed)
+            }
             Self::Branch(branch) => {
                 let index = side(node.slot, branch.bit);
                 let removed = Self::remove(&mut branch.children[index], node, key);
@@ -292,8 +354,8 @@ impl Index {
         let Some(depth) = depth else {
             return Ok(false);
         };
-        // The committed path can only shrink if a watch is disarmed after
-        // preparation. Admit the removal descent, branch updates and append.
+        // Admit the removal descent, branch updates and append. A new arm
+        // in the same ordinary publication admits any additional branch.
         for _ in 0..depth {
             step()?;
             step()?;
@@ -394,8 +456,23 @@ impl WatchAdmission<'_> {
         Ok((armed, retained))
     }
 
-    fn splice(&self, root: &mut Option<Row>, bit: Option<usize>) -> Result<(), DomError> {
+    fn splice(
+        &self,
+        root: &mut Option<Row>,
+        bit: Option<usize>,
+        publication: Option<&PublicationPlan>,
+    ) -> Result<(), DomError> {
         self.step()?;
+        if bit.is_some()
+            && let Some(publication) = publication
+        {
+            // One new branch can add at most one descent and one unwind
+            // visit to each pending exact removal.
+            for _ in &publication.nodes {
+                self.step()?;
+                self.step()?;
+            }
+        }
         let branch_bytes = bit.map_or(0, |_| size_of::<Branch>());
         let (armed, mut retained) = self.form(branch_bytes)?;
         let branch = if let Some(bit) = bit {
@@ -418,6 +495,42 @@ impl WatchAdmission<'_> {
             Row::Leaf(armed)
         });
         Ok(())
+    }
+
+    fn replace(
+        &self,
+        root: &mut Option<Row>,
+        existing: NodeId,
+        publication: Option<&PublicationPlan>,
+    ) -> Result<(), DomError> {
+        let publication = publication
+            .filter(|_| existing != self.node)
+            .ok_or(DomError::NodeRetirementAlreadyWatched)?;
+        for &retiring in &publication.nodes {
+            self.step()?;
+            if retiring != existing {
+                continue;
+            }
+            let bytes = size_of::<Replacement>();
+            let (created, mut retained) = self.form(bytes)?;
+            let backing = retained.take(bytes)?;
+            drop(retained);
+            check_cancel(self.cancel)?;
+            let retiring = match root.take() {
+                Some(Row::Leaf(retiring)) => retiring,
+                other => {
+                    *root = other;
+                    return Err(DomError::RepresentationExhausted);
+                }
+            };
+            *root = Some(Row::Replacement(Box::new(Replacement {
+                retiring,
+                created,
+                _backing: backing,
+            })));
+            return Ok(());
+        }
+        Err(DomError::NodeRetirementAlreadyWatched)
     }
 }
 
@@ -477,7 +590,7 @@ impl Dom {
             custody_key,
             cancel,
         };
-        let index = arm(self.node_retirements.as_ref(), &admission)?;
+        let index = arm(self.node_retirements.as_ref(), &admission, None)?;
         Ok(self.finish_watch(index, node, custody_key))
     }
 
@@ -496,19 +609,84 @@ impl Dom {
             return Err(DomError::ForeignOwner);
         }
         self.require_source_idle()?;
+        let admission =
+            self.ordinary_watch_admission(&self.state, node, inbox, custody_key, limits, cancel)?;
+        let index = arm(self.node_retirements.as_ref(), &admission, None)?;
+        Ok(self.finish_watch(index, node, custody_key))
+    }
+
+    /// Apply an ordinary batch and arm a retirement watch for one of its
+    /// newly created nodes at the same publication boundary. The ticket must
+    /// belong to the batch and remain live in its resulting state. A refusal
+    /// leaves both the canonical state and the retirement index unchanged.
+    pub fn apply_with_node_retirement_watch(
+        &mut self,
+        batch: DomBatch,
+        ticket: &CreatedNode,
+        inbox: &DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomWatchedCreation, DomError> {
+        if inbox.owner != self.owner {
+            return Err(DomError::ForeignOwner);
+        }
+        self.require_source_idle()?;
+        let result = (|| {
+            let prepared = self.prepare(batch, cancel)?;
+            let node = resolve_created_node(&prepared.owner, &prepared.created, ticket)?
+                .ok_or(DomError::UnavailableCreation)?;
+            let mut publication = self.prepare_publication(prepared, cancel)?;
+            publication.close_ordinary_sharing(cancel)?;
+            let admission = self.ordinary_watch_admission(
+                &publication.state,
+                node,
+                inbox,
+                custody_key,
+                limits,
+                cancel,
+            )?;
+            let index = arm(
+                self.node_retirements.as_ref(),
+                &admission,
+                publication.node_retirement_publication.as_ref(),
+            )?;
+            // Index insertion ends admission. Publication cannot refuse.
+            let watch = self.finish_watch(index, node, custody_key);
+            let commit = self.publish_prepared(publication);
+            Ok(DomWatchedCreation {
+                commit,
+                node,
+                watch,
+            })
+        })();
+        if result.is_err() {
+            // Abandoned staged frontiers have dropped. Release their registry
+            // tickets before returning the caller's original refusal.
+            self.custody_registry.reconcile_releases();
+        }
+        result
+    }
+
+    fn ordinary_watch_admission<'a>(
+        &'a self,
+        state: &State,
+        node: NodeId,
+        inbox: &'a DomNodeRetirementInbox,
+        custody_key: usize,
+        limits: DomNodeRetirementLimits,
+        cancel: &'a AtomicBool,
+    ) -> Result<WatchAdmission<'a>, DomError> {
         let ordinary = OrdinaryAdmission::new(self, limits, cancel);
         ordinary.admit_work(1)?;
-        self.state
-            .node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
-        let admission = WatchAdmission {
+        state.node_with(self.owner, node, &mut || ordinary.admit_work(1))?;
+        Ok(WatchAdmission {
             funding: Funding::Ordinary(ordinary),
             inbox,
             node,
             custody_key,
             cancel,
-        };
-        let index = arm(self.node_retirements.as_ref(), &admission)?;
-        Ok(self.finish_watch(index, node, custody_key))
+        })
     }
 
     fn finish_watch(
@@ -542,15 +720,16 @@ fn retirement_inbox(owner: DomOwnerId, backing: Debit) -> DomNodeRetirementInbox
 fn arm(
     current: Option<&Arc<Index>>,
     admission: &WatchAdmission<'_>,
+    publication: Option<&PublicationPlan>,
 ) -> Result<Arc<Index>, DomError> {
     if let Some(index) = current {
         let mut root = lock(&index.armed);
-        if let Some(row) = root.as_mut() {
-            if let Some(bit) = row.arm_below(admission)? {
-                admission.splice(&mut root, Some(bit))?;
+        if root.is_some() {
+            if let Some(bit) = Row::arm_below(&mut root, admission, publication)? {
+                admission.splice(&mut root, Some(bit), publication)?;
             }
         } else {
-            admission.splice(&mut root, None)?;
+            admission.splice(&mut root, None, publication)?;
         }
         return Ok(index.clone());
     }

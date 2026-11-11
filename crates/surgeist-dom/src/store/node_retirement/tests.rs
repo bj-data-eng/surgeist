@@ -34,6 +34,316 @@ fn bytes(dom: &Dom) -> usize {
 }
 
 #[test]
+fn creation_and_watch_refusal_preserve_the_original_dom_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, original) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    // Settle releases from the successful fixture batch before measuring
+    // which custody belongs to the attempted creation.
+    dom.custody_registry.reconcile_releases();
+    let original_bytes = bytes(&dom);
+
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_fragment(document);
+    let result = dom.apply_with_node_retirement_watch(
+        batch,
+        &ticket,
+        &inbox,
+        9,
+        DomNodeRetirementLimits::new(16_000_000, 0),
+        &cancel,
+    );
+    assert!(matches!(
+        result,
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.snapshot().nodes().count(), before.nodes().count());
+    assert!(dom.snapshot().node(original).is_ok());
+    assert_eq!(bytes(&dom), original_bytes);
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+}
+
+#[test]
+fn watched_creation_admits_the_exact_peak_and_retires_the_exact_generation() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let fragment = || {
+        let mut batch = DomBatch::new();
+        let ticket = batch.create_fragment(document);
+        (batch, ticket)
+    };
+    dom.custody_registry.reconcile_releases();
+    let baseline = bytes(&dom);
+
+    // Independently measure the ordinary publication's actual retained
+    // preparation, then add the fixed first-watch index, leaf and notice.
+    let (batch, ticket) = fragment();
+    let prepared = dom.prepare(batch, &cancel).unwrap();
+    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
+    publication.close_ordinary_sharing(&cancel).unwrap();
+    let exact = bytes(&dom) + size_of::<Index>() + size_of::<Armed>() + size_of::<Notice>();
+    // The initial native lookup uses one slot page. Retirement reserves
+    // descent, unwind and exact-leaf disarm from the same work allowance.
+    let work = 5 + 2 * u64::from(usize::BITS) + 1;
+    let staged = resolve_created_node(&publication.owner, &publication.created, &ticket)
+        .unwrap()
+        .unwrap();
+    let admit = |limit| {
+        let admission = dom.ordinary_watch_admission(
+            &publication.state,
+            staged,
+            &inbox,
+            29,
+            DomNodeRetirementLimits::new(limit, work),
+            &cancel,
+        )?;
+        arm(dom.node_retirements.as_ref(), &admission, None)
+    };
+    assert!(matches!(
+        admit(exact - 1),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeRetirementCanonicalBytes,
+            limit,
+        }) if limit == exact - 1
+    ));
+    let provisional = admit(exact).unwrap();
+    assert_eq!(bytes(&dom), exact);
+    drop(provisional);
+    drop(publication);
+    dom.custody_registry.reconcile_releases();
+    assert_eq!(bytes(&dom), baseline);
+
+    let (batch, ticket) = fragment();
+    assert!(matches!(
+        dom.apply_with_node_retirement_watch(
+            batch,
+            &ticket,
+            &inbox,
+            29,
+            DomNodeRetirementLimits::new(16_000_000, work - 1),
+            &cancel,
+        ),
+        Err(DomError::NodeRetirementWorkLimit { limit }) if limit == work - 1
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(bytes(&dom), baseline);
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+
+    let (batch, ticket) = fragment();
+    let created = dom
+        .apply_with_node_retirement_watch(
+            batch,
+            &ticket,
+            &inbox,
+            29,
+            DomNodeRetirementLimits::new(16_000_000, work),
+            &cancel,
+        )
+        .unwrap();
+    let observed = created.node();
+    let (commit, node, watch) = created.into_parts();
+    assert_eq!(node, observed);
+    assert_eq!(commit.created(&ticket).unwrap(), Some(node));
+    assert_eq!(commit.changes().from(), before.stamp());
+    assert_eq!(commit.changes().to(), dom.snapshot().stamp());
+    assert!(inbox.take().is_none());
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(node);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!(notice.node(), node);
+    assert_eq!(notice.custody_key(), 29);
+    assert!(inbox.take().is_none());
+    let (batch, ticket) = fragment();
+    let (_, replacement, replacement_watch) = dom
+        .apply_with_node_retirement_watch(batch, &ticket, &inbox, 31, GENEROUS, &cancel)
+        .unwrap()
+        .into_parts();
+    assert_eq!(replacement.slot, node.slot);
+    assert_ne!(replacement.generation, node.generation);
+    drop(watch);
+    let mut destroy = DomBatch::new();
+    destroy.destroy(replacement);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!(notice.node(), replacement);
+    assert_eq!(notice.custody_key(), 31);
+    assert!(inbox.take().is_none());
+    drop(replacement_watch);
+}
+
+#[test]
+fn watched_creation_refuses_cancelled_foreign_and_destroyed_tickets() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, _) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    dom.custody_registry.reconcile_releases();
+    let baseline = bytes(&dom);
+
+    let mut batch = DomBatch::new();
+    let foreign_ticket = batch.create_fragment(document);
+    let mut other = DomBatch::new();
+    other.create_fragment(document);
+    assert!(matches!(
+        dom.apply_with_node_retirement_watch(other, &foreign_ticket, &inbox, 1, GENEROUS, &cancel),
+        Err(DomError::ForeignBatch)
+    ));
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        dom.apply_with_node_retirement_watch(batch, &foreign_ticket, &inbox, 1, GENEROUS, &cancel),
+        Err(DomError::Cancelled)
+    ));
+    cancel.store(false, Ordering::Relaxed);
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_fragment(document);
+    batch.destroy(&ticket);
+    assert!(matches!(
+        dom.apply_with_node_retirement_watch(batch, &ticket, &inbox, 1, GENEROUS, &cancel),
+        Err(DomError::UnavailableCreation)
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(bytes(&dom), baseline);
+    assert!(inbox.take().is_none());
+    assert!(dom.node_retirements.is_none());
+}
+
+#[test]
+fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, original) = fixture(&cancel);
+    let mut detach = DomBatch::new();
+    detach.detach(original);
+    dom.apply(detach, &cancel).unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let original_watch = dom
+        .watch_node_retirement(original, &inbox, 11, GENEROUS, &cancel)
+        .unwrap();
+    let before = dom.snapshot();
+    dom.custody_registry.reconcile_releases();
+    let baseline = bytes(&dom);
+    let replace = || {
+        let mut batch = DomBatch::new();
+        batch.destroy(original);
+        let ticket = batch.create_fragment(document);
+        (batch, ticket)
+    };
+
+    let (batch, ticket) = replace();
+    let Err(error) = dom.apply_with_node_retirement_watch(
+        batch,
+        &ticket,
+        &inbox,
+        13,
+        DomNodeRetirementLimits::new(16_000_000, 0),
+        &cancel,
+    ) else {
+        panic!("one short watch budget must refuse the whole batch");
+    };
+    assert!(
+        matches!(error, DomError::NodeRetirementWorkLimit { limit: 0 }),
+        "{error:?}"
+    );
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.snapshot().node(original).is_ok());
+    assert_eq!(bytes(&dom), baseline);
+    assert!(inbox.take().is_none());
+
+    let (batch, ticket) = replace();
+    let (_, successor, successor_watch) = dom
+        .apply_with_node_retirement_watch(batch, &ticket, &inbox, 13, GENEROUS, &cancel)
+        .unwrap()
+        .into_parts();
+    assert_eq!(successor.slot, original.slot);
+    assert_ne!(successor.generation, original.generation);
+    assert!(dom.snapshot().node(original).is_err());
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (original, 11));
+    assert!(inbox.take().is_none());
+    drop(original_watch);
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(successor);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (successor, 13));
+    assert!(inbox.take().is_none());
+    drop(successor_watch);
+}
+
+#[test]
+fn replacement_watch_can_still_disarm_the_old_generation_before_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, original) = fixture(&cancel);
+    let mut detach = DomBatch::new();
+    detach.detach(original);
+    dom.apply(detach, &cancel).unwrap();
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let old_watch = dom
+        .watch_node_retirement(original, &inbox, 17, GENEROUS, &cancel)
+        .unwrap();
+    let mut batch = DomBatch::new();
+    batch.destroy(original);
+    let ticket = batch.create_fragment(document);
+    let prepared = dom.prepare(batch, &cancel).unwrap();
+    let created = resolve_created_node(&prepared.owner, &prepared.created, &ticket)
+        .unwrap()
+        .unwrap();
+    let mut publication = dom.prepare_publication(prepared, &cancel).unwrap();
+    publication.close_ordinary_sharing(&cancel).unwrap();
+    let staged_bytes = bytes(&dom);
+    let exact = staged_bytes + size_of::<Replacement>() + size_of::<Armed>() + size_of::<Notice>();
+    let attempt = |limit| {
+        let admission = dom.ordinary_watch_admission(
+            &publication.state,
+            created,
+            &inbox,
+            19,
+            DomNodeRetirementLimits::new(limit, 1000),
+            &cancel,
+        )?;
+        arm(
+            dom.node_retirements.as_ref(),
+            &admission,
+            publication.node_retirement_publication.as_ref(),
+        )
+    };
+    assert!(matches!(
+        attempt(exact - 1),
+        Err(DomError::ResourceLimit {
+            resource: DomResource::NodeRetirementCanonicalBytes,
+            limit,
+        }) if limit == exact - 1
+    ));
+    assert_eq!(bytes(&dom), staged_bytes);
+    let index = attempt(exact).unwrap();
+    assert_eq!(bytes(&dom), exact);
+    assert!(index.prepare_match(original, || Ok(())).unwrap());
+    assert!(index.prepare_match(created, || Ok(())).unwrap());
+    drop(old_watch);
+    assert!(!index.prepare_match(original, || Ok(())).unwrap());
+    assert!(index.prepare_match(created, || Ok(())).unwrap());
+    let watch = dom.finish_watch(index, created, 19);
+    dom.publish_prepared(publication);
+    assert!(inbox.take().is_none());
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(created);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (created, 19));
+    assert!(inbox.take().is_none());
+    drop(watch);
+}
+
+#[test]
 fn exact_inbox_and_watch_admission_and_cancelled_disarm() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, node) = fixture(&cancel);
