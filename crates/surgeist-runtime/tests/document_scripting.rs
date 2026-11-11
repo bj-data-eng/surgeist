@@ -394,23 +394,53 @@ fn queue_observable_job(
     .unwrap();
 }
 
-fn retire_attached(host: &mut DocumentScriptHost, top: DomHostedTopLevel) {
-    host.with_native(|dom, mut hosted, _| {
-        let cancellation = cancel();
-        let queued = hosted
-            .destroy_top_level(dom, top.navigable(), &cancellation)
-            .unwrap();
-        for _ in 0..256 {
-            if matches!(
-                hosted.run_next(dom, queued.traversable(), &cancellation).unwrap(),
-                DomHostedTaskProgress::Complete { operation } if operation == queued.operation()
-            ) {
-                return;
-            }
+fn destroy_native_top(
+    dom: &mut DomEventDom<'_>,
+    mut hosted: HostedRuntime,
+    top: DomHostedTopLevel,
+) {
+    let cancellation = cancel();
+    let queued = hosted
+        .destroy_top_level(dom, top.navigable(), &cancellation)
+        .unwrap();
+    for _ in 0..256 {
+        if matches!(
+            hosted.run_next(dom, queued.traversable(), &cancellation).unwrap(),
+            DomHostedTaskProgress::Complete { operation } if operation == queued.operation()
+        ) {
+            return;
         }
-        panic!("the original native retirement never completed");
-    })
-    .unwrap();
+    }
+    panic!("the original native retirement never completed");
+}
+
+fn retire_attached(host: &mut DocumentScriptHost, top: DomHostedTopLevel) {
+    host.with_native(|dom, hosted, _| destroy_native_top(dom, hosted, top))
+        .unwrap();
+}
+
+fn retirement_unwind_disposes_the_revoked_guest_owner() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    queue_observable_job(&mut host, &permit, calls.clone());
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        host.with_native::<()>(|dom, hosted, _| {
+            destroy_native_top(dom, hosted, top);
+            panic!("native retirement unwind");
+        })
+        .unwrap();
+    }));
+    let original = result.expect_err("the actual host unwind must propagate");
+    assert_eq!(
+        original.downcast_ref::<&'static str>().copied(),
+        Some("native retirement unwind")
+    );
+    assert_immediate_retirement(&host, &calls);
+    let _session = host.stop().into_session().unwrap();
 }
 
 fn assert_immediate_retirement(host: &DocumentScriptHost, queued_calls: &Arc<AtomicUsize>) {
@@ -531,6 +561,7 @@ fn main() {
                 real_retirement_revokes_and_abandons(&expired);
             }
             "retirement-after-refusal" => native_refusal_stays_typed_and_sticky(),
+            "retirement-unwind" => retirement_unwind_disposes_the_revoked_guest_owner(),
             _ => panic!("unknown scripting scenario: {scenario}"),
         }
         return;
@@ -538,6 +569,7 @@ fn main() {
     failed_enable_preserves_original_owner();
     let expired_permit = native_read_snapshot_and_explicit_queue();
     real_retirement_revokes_and_abandons(&expired_permit);
+    retirement_unwind_disposes_the_revoked_guest_owner();
     native_refusal_stays_typed_and_sticky();
     source_events::run();
 }
