@@ -581,12 +581,12 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
                 Some(SessionError::Stop(first))
             );
             let storage = session.active().unwrap();
-            for parent in 0..storage.construction.test_storage().len() {
+            for parent in 0..storage.construction.len() {
                 for child in storage.construction.node_at(parent).unwrap().children() {
                     assert_eq!(child.parent().map(|node| node.position()), Some(parent));
                 }
             }
-            progressed |= storage.construction.test_storage().len() > nodes.len() + 3;
+            progressed |= storage.construction.len() > nodes.len() + 3;
             assert!(children(&session, &target).len() <= 1);
         }
         session.release(&mut c).unwrap();
@@ -1204,20 +1204,7 @@ fn non_element_clone_fixture(
     // Make the allocator's two reserve attempts no-growth operations. This is
     // real admitted fixture capacity, not an allocation substitute.
     let storage = session.active_mut().unwrap();
-    storage
-        .construction
-        .apply(
-            &mut c,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::ReserveRecords {
-                additional: 1,
-            },
-            &[],
-        )
-        .unwrap();
-    storage
-        .construction
-        .reserve_child_tickets(&mut c, 1)
-        .unwrap();
+    storage.reserve_records(&mut c, 1).unwrap();
     // PI owns its map plus two copied fields, a node-document binding,
     // and the source-qualified construction-cause binding;
     // Text/comment need fewer. All later registry reserves are no-growth.
@@ -1261,7 +1248,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
         .chain(std::iter::once((complete, true)))
     {
         let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
-        let nodes = session.active().unwrap().construction.test_storage().len();
+        let nodes = session.active().unwrap().construction.len();
         let slots = session.active().unwrap().payloads.values.len();
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -1272,7 +1259,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
                 .active_mut()
                 .unwrap()
                 .clone_node(&mut c, source, DocumentRef::Owned(0));
-        let installed = session.active().unwrap().construction.test_storage().len() - nodes;
+        let installed = session.active().unwrap().construction.len() - nodes;
         if result.is_ok() {
             assert_eq!(extra, complete);
             assert_eq!(installed, 1);
@@ -2293,9 +2280,7 @@ fn a_refused_attribute_replacement_leaves_the_attributes_and_the_incoming_value_
     // A position past the list: the storage refuses it as a request the parser's own
     // sequencing never makes, and nothing about the element changes.
     let mut value = Some(incoming());
-    let refused = storage
-        .construction
-        .replace_attribute(&mut c, div, 5, &mut value);
+    let refused = storage.replace_attribute(&mut c, div, 5, &mut value);
     let invariant = HtmlParseStop::InternalInvariant(
         crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal,
     );
@@ -2320,9 +2305,7 @@ fn a_replacement_on_a_non_element_is_refused_with_the_element_attributes_untouch
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
     // Node 0 is the document, not an element: the edit cannot be about it.
-    let refused = storage
-        .construction
-        .replace_attribute(&mut c, 0, 0, &mut None);
+    let refused = storage.replace_attribute(&mut c, 0, 0, &mut None);
     assert_eq!(refused.err(), Some(SessionError::WrongToken));
     assert_eq!(
         c.stop(),

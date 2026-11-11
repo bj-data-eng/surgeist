@@ -78,10 +78,7 @@ fn final_empty_attribute_cleanup_work_stop_releases_the_actual_lexical_capacity_
         }))
     ));
     assert!(input.is_none());
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        2
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 2);
     assert_eq!(
         c.usage().resource(HtmlParseResource::ManagedNodes).current,
         2
@@ -121,7 +118,7 @@ fn final_empty_attribute_cleanup_work_stop_releases_the_actual_lexical_capacity_
 
 #[test]
 fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimable() {
-    // Independently sum root Record+child-ticket vector, one exact frozen
+    // Independently sum the root record bank, one exact frozen
     // unit+Vec wrapper, and one source-origin record. None includes an Arc
     // header or preexisting source backing.
     let mut probe_control = control();
@@ -151,25 +148,22 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
             ..
         }))
     ));
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
-    // The token's string was counted as managed text before the record bank refused its
-    // record; the parse holds it until the release below.
+    assert_eq!(session.active().unwrap().construction.len(), 1);
+    // The record's units are acquired when the record is made, so the refusal of its bank
+    // leaves none held.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::ManagedUtf16Units)
             .current,
-        1
+        0
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);
 
     let caps = limits()
         .into_builder()
-        .auxiliary_entries(2)
-        .active_formatting_entries(2)
+        .auxiliary_entries(1)
+        .active_formatting_entries(1)
         .finish()
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -180,10 +174,10 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
         session.insert_text(&mut c, &root, None, &mut input, None),
         Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 2,
-            current: 2,
-            // The record's join cell and its child ticket slot: no registry row is asked for.
-            requested_delta: 2
+            limit: 1,
+            current: 1,
+            // The record's join cell: no registry row is asked for.
+            requested_delta: 1
         }))
     ));
     assert!(session.active().unwrap().payloads.values.is_empty());
@@ -191,7 +185,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        2
+        1
     );
     session.release(&mut c).unwrap();
     storage_zero(&c);

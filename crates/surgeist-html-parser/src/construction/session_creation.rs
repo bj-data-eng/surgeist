@@ -7,9 +7,9 @@ use surgeist_html::{
         HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidationError,
         HtmlNameIndexSlot,
     },
-    construction::{HtmlDoctype, HtmlDocumentMode, HtmlProcessingInstruction},
+    construction::HtmlDocumentMode,
     elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
-    values::{Attribute, DocumentString, OrderedAttributes, QualifiedName},
+    values::{Attribute, OrderedAttributes},
     vocabulary::KnownHtmlElement,
 };
 
@@ -61,49 +61,6 @@ pub(super) enum OrderedCreation {
     },
 }
 
-/// What one parser allocation creates. A leaf or an element carries its owned values; a root
-/// carries only its kind.
-pub(super) enum NewRecord {
-    Document(HtmlDocumentMode),
-    Fragment,
-    Text(DocumentString),
-    Comment(DocumentString),
-    ProcessingInstruction(HtmlProcessingInstruction),
-    Doctype(HtmlDoctype),
-    Element(QualifiedName, OrderedAttributes),
-}
-
-/// Admits the shared value owner's next real comparison through the original
-/// parser controller. Refusal returns the same allocation for existing cleanup.
-pub(super) fn creation_command(
-    record: NewRecord,
-) -> surgeist_html::bounded::construction::HtmlConstructionCommand {
-    use surgeist_html::bounded::construction::{
-        HtmlConstructionCommand as Command, HtmlConstructionLeaf as Leaf,
-    };
-    match record {
-        NewRecord::Document(mode) => Command::CreateDocument { mode },
-        NewRecord::Fragment => Command::CreateFragment,
-        NewRecord::Text(value) => Command::Create {
-            leaf: Leaf::Text(value),
-        },
-        NewRecord::Comment(value) => Command::Create {
-            leaf: Leaf::Comment(value),
-        },
-        NewRecord::ProcessingInstruction(value) => Command::Create {
-            leaf: Leaf::ProcessingInstruction(value),
-        },
-        NewRecord::Doctype(value) => Command::Create {
-            leaf: Leaf::Doctype(value),
-        },
-        NewRecord::Element(name, attributes) => Command::CreateElement {
-            name,
-            attributes,
-            link_flags: None,
-        },
-    }
-}
-
 pub(super) fn validate_parser_attributes(
     backing: Arc<Vec<Attribute>>,
     control: &mut ParseControl,
@@ -118,7 +75,7 @@ pub(super) fn validate_parser_attributes(
     // A long list is validated through a table of its names, so that the work is linear in the
     // list; a short one compares every pair, which is cheaper than building the table.
     let mut slots = None;
-    let mut validation = if count >= super::construction_owner::NAME_INDEX_MIN_ENTRIES
+    let mut validation = if count >= super::storage_holds::NAME_INDEX_MIN_ENTRIES
         && let Some(required) = HtmlAttributeNameIndex::slots_required(count)
     {
         let reserved = (|| {

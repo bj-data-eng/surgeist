@@ -1,7 +1,7 @@
 //! The check that the attribute names of a token are all different.
 use super::*;
 use crate::parser::tokenizer::{Names, token::Attribute as TokenAttribute};
-use construction_owner::NAME_INDEX_MIN_ENTRIES;
+use storage_holds::NAME_INDEX_MIN_ENTRIES;
 
 /// Compares each attribute name with the earlier ones: pair by pair for a short list, through a
 /// set of the names recorded so far for a long one, so that the work of checking `n` names is

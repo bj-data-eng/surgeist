@@ -13,7 +13,7 @@ const SOURCE: &str =
 
 fn root_of(session: &mut ParserArenaSession, c: &mut ParseControl, node: &ParserNode) -> usize {
     let storage = session.active_mut().unwrap();
-    let view = storage.construction.storage(c).unwrap();
+    let view = &storage.construction;
     storage.payloads.tree_root(c, view, node.index).unwrap()
 }
 
@@ -135,7 +135,7 @@ fn a_refused_insertion_ends_its_announcement_and_leaves_exact_roots() {
         }))
     ));
     assert_eq!(storage.payloads.topology_changes, Some(before + 2));
-    let view = storage.construction.test_storage();
+    let view = &storage.construction;
     for node in [&div, &span] {
         assert_eq!(
             storage.payloads.cached_root(node.index),

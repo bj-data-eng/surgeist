@@ -550,9 +550,7 @@ impl SessionStorage {
             control.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
             self.retire_field_group(control, old_slot)?;
             self.payloads.forget_attribute_strings(node);
-            let result =
-                self.construction
-                    .replace_attribute(control, node, position, &mut incoming);
+            let result = self.replace_attribute(control, node, position, &mut incoming);
             match result {
                 Ok(old) => {
                     self.detach_attribute_string(control, old_slot)?;

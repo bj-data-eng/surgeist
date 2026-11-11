@@ -548,7 +548,7 @@ fn checkbox_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner_r
         );
         let (mut c, mut session, capability, lexer, parent, mut input, range) =
             input_owner(&request);
-        let records = session.active().unwrap().construction.test_storage().len();
+        let records = session.active().unwrap().construction.len();
         let slots = session.active().unwrap().payloads.values.len();
         let alias = (case == 0).then(|| {
             input.as_ref().unwrap().attributes.as_slice()[1]
@@ -593,10 +593,7 @@ fn checkbox_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner_r
             }
         );
         assert!(input.is_some());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            records
-        );
+        assert_eq!(session.active().unwrap().construction.len(), records);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         drop(alias);
         let first = c.stop();
@@ -1428,7 +1425,7 @@ fn default_button_input_alias_foreign_parent_and_cancel_preserve_incoming_token(
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.test_storage().len();
+            let records = session.active().unwrap().construction.len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -1473,10 +1470,7 @@ fn default_button_input_alias_foreign_parent_and_cancel_preserve_incoming_token(
                 }
             );
             assert!(input.is_some());
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                records
-            );
+            assert_eq!(session.active().unwrap().construction.len(), records);
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
             assert_eq!(
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -2009,7 +2003,7 @@ fn text_input_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner
         );
         let (mut c, mut session, capability, lexer, parent, mut input, range) =
             input_owner(&request);
-        let records = session.active().unwrap().construction.test_storage().len();
+        let records = session.active().unwrap().construction.len();
         let slots = session.active().unwrap().payloads.values.len();
         let alias = (case == 0).then(|| {
             input.as_ref().unwrap().attributes.as_slice()[1]
@@ -2054,10 +2048,7 @@ fn text_input_alias_foreign_parent_and_cancel_refuse_before_take_with_live_owner
             }
         );
         assert!(input.is_some());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            records
-        );
+        assert_eq!(session.active().unwrap().construction.len(), records);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         drop(alias);
         let first = c.stop();
@@ -2580,13 +2571,7 @@ fn hidden_input_raw_rewrite_coexistence_exact_104_units_and_one_short_reclaims_e
                 101
             );
             assert_eq!(
-                session
-                    .active()
-                    .unwrap()
-                    .construction
-                    .test_storage()
-                    .usage()
-                    .utf16_units(),
+                session.active().unwrap().construction.usage().utf16_units(),
                 90
             );
             assert!(

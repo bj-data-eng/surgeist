@@ -1502,28 +1502,31 @@ impl<'a> HtmlConstructionAction<'a> {
     }
 }
 
-fn add(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
+pub(super) fn add(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
     left.checked_add(right)
         .ok_or(HtmlConstructionCause::RepresentationExhausted.error())
 }
 /// The record count after `additional` more records, which every record index must be able to
 /// name: `RepresentationExhausted` when the count exceeds what a node index holds.
-fn record_total(len: usize, additional: usize) -> Result<usize, HtmlConstructionError> {
+pub(super) fn record_total(len: usize, additional: usize) -> Result<usize, HtmlConstructionError> {
     let total = add(len, additional)?;
     u32::try_from(total).map_err(|_| HtmlConstructionCause::RepresentationExhausted.error())?;
     Ok(total)
 }
-fn subtract(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
+pub(super) fn subtract(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
     left.checked_sub(right)
         .ok_or(HtmlConstructionCause::ReleaseUnderflow.error())
 }
-fn checked_layout(slots: usize, element_size: usize) -> Result<usize, HtmlConstructionError> {
+pub(super) fn checked_layout(
+    slots: usize,
+    element_size: usize,
+) -> Result<usize, HtmlConstructionError> {
     slots
         .checked_mul(element_size)
         .filter(|bytes| *bytes <= isize::MAX as usize)
         .ok_or(HtmlConstructionCause::RepresentationExhausted.error())
 }
-fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
+pub(super) fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
     add(
         add(
             name.local_name().len(),
@@ -1535,12 +1538,12 @@ fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
 pub(super) fn attribute_units(attribute: &Attribute) -> Result<usize, HtmlConstructionError> {
     add(name_units(attribute.name())?, attribute.value().len())
 }
-fn processing_instruction_units(
+pub(super) fn processing_instruction_units(
     value: &HtmlProcessingInstruction,
 ) -> Result<usize, HtmlConstructionError> {
     add(value.target().len(), value.data().len())
 }
-fn doctype_units(value: &HtmlDoctype) -> Result<usize, HtmlConstructionError> {
+pub(super) fn doctype_units(value: &HtmlDoctype) -> Result<usize, HtmlConstructionError> {
     add(
         add(
             value.name().len(),
@@ -1549,10 +1552,10 @@ fn doctype_units(value: &HtmlDoctype) -> Result<usize, HtmlConstructionError> {
         value.system_id().map_or(0, DocumentString::len),
     )
 }
-fn structural_parent(arena: &Arena, index: NodeIx) -> Option<NodeIx> {
+pub(super) fn structural_parent(arena: &Arena, index: NodeIx) -> Option<NodeIx> {
     arena.records.get(index.position()).and_then(owning_parent)
 }
-fn ordinary_owned_contents(
+pub(super) fn ordinary_owned_contents(
     arena: &Arena,
     template: NodeIx,
 ) -> Result<NodeIx, HtmlConstructionError> {
@@ -1573,7 +1576,7 @@ fn ordinary_owned_contents(
     }
     Ok(contents)
 }
-fn unowned_fragment(
+pub(super) fn unowned_fragment(
     arena: &Arena,
     index: NodeIx,
     shadow: bool,
@@ -2571,7 +2574,7 @@ impl HtmlConstructionOperation {
     }
 }
 
-fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionError> {
+pub(super) fn validate_record(arena: &Arena, index: NodeIx) -> Result<(), HtmlConstructionError> {
     let record = &arena.records[index.position()];
     if let Some(parent) = record.parent {
         let parent = arena

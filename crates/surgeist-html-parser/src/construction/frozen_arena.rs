@@ -13,7 +13,7 @@ pub(crate) struct FrozenArena {
 pub(super) struct FrozenStorage {
     pub(super) view: HtmlConstructionResult,
     pub(super) control: ControlIdentity,
-    pub(super) construction: ConstructionOwner,
+    pub(super) holds: StorageHolds,
     pub(super) lease: Option<surgeist_html::bounded::construction::HtmlConstructionLease>,
     pub(super) payloads: PayloadStorage,
     pub(super) effects: ConstructionEffects,
@@ -67,16 +67,13 @@ impl FrozenArena {
         cleanup_owner(control, &storage.control)?;
         // A missing lease is refused before anything is taken, so the owner
         // stays where it was.
-        let Some(publication) = storage.lease.as_ref() else {
+        if storage.lease.is_none() {
             return Err(latch_registry_row(control));
-        };
-        storage
-            .construction
-            .require_recovery(control, publication)?;
+        }
         let Some(FrozenStorage {
             view,
             control: owner,
-            mut construction,
+            holds,
             mut lease,
             payloads,
             effects,
@@ -92,7 +89,7 @@ impl FrozenArena {
             self.storage = Some(FrozenStorage {
                 view,
                 control: owner,
-                construction,
+                holds,
                 lease: None,
                 payloads,
                 effects,
@@ -128,24 +125,27 @@ impl FrozenArena {
                     self.storage = Some(FrozenStorage {
                         view,
                         control: owner,
-                        construction,
+                        holds,
                         lease: Some(held_lease),
                         payloads,
                         effects,
                         evidence,
                         fragment,
                     });
-                    return Err(construction_owner::construction_error(control, error));
+                    return Err(construction_error(control, error));
                 }
             };
         // Every owner is released even after a refusal; the first one is
         // returned at the end. The recovery put the storage back before it
         // could refuse, so the owner below can still be retired.
         let mut refused = None;
-        let recovered = construction.recovered(control, recovery);
+        let (records, _) = recovery.into_parts();
+        #[cfg(test)]
+        if control.take_construction_recovery_fault() {
+            keep_first(&mut refused, Err(latch_registry_row(control)));
+        }
         #[cfg(test)]
         inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
-        keep_first(&mut refused, recovered);
         if let Some(fragment) = fragment {
             let released = fragment.release(control, &owner);
             #[cfg(test)]
@@ -166,7 +166,8 @@ impl FrozenArena {
             control,
             &owner,
             ReleasedStorage {
-                construction,
+                construction: records,
+                holds,
                 payloads,
             },
         );

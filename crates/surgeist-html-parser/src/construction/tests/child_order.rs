@@ -1,29 +1,6 @@
 use super::*;
 use surgeist_html::values::Namespace;
 
-fn start_test_insert(
-    c: &mut ParseControl,
-    owner: &mut ConstructionOwner,
-    parent: &ParserNode,
-    node: &ParserNode,
-    before: Option<&ParserNode>,
-) -> construction_owner::PendingConstruction {
-    c.charge(
-        HtmlParseWorkCategory::ProviderCall,
-        2 + u64::from(before.is_some()),
-    )
-    .unwrap();
-    owner
-        .start(
-            c,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::Insert {
-                node: node.handle,
-                parent: parent.handle,
-                before: before.map(|value| value.handle),
-            },
-        )
-        .unwrap()
-}
 /// Roomy limits for work comparisons across fanouts.
 fn roomy_limits() -> HtmlParseLimits {
     limits()
@@ -154,23 +131,21 @@ fn inserting_text_before_a_sibling_charges_the_same_work_at_every_fanout() {
 #[test]
 fn changes_in_an_order_charge_for_the_entries_between_them_and_the_nearer_end() {
     // Among `n` and `2n` children an order walks from both ends in turn, one
-    // action for each entry, and its commit moves the entries between the
-    // place and the nearer end, as a deque does. An action costs 3 record
-    // visits for the controller's `action` call and 1 for the described
-    // `Inspect`, so 4 visits per entry walked, and a shift costs one record
-    // write and one copied entry, a 32-bit record index, per entry moved:
+    // record visit for each entry examined, and its commit moves the entries
+    // between the place and the nearer end, as a deque does. A shift costs one
+    // record write and one copied entry, a 32-bit record index, per entry moved:
     // - cases 0 to 2 change the front: the walk examines the last entry and
     //   then the first, which is the target (insert before the first child
     //   walks to the reference sibling; remove and move walk to the node
     //   itself), and no entry moves, so going from n to 2n adds nothing;
     // - case 3 removes the child at n / 2, which has n / 2 entries before it
     //   and n / 2 - 1 behind it. The walk examines the entries from the back
-    //   first, the target being its (n / 2)th, which is action n - 1, and the
+    //   first, the target being its (n / 2)th, which is the (n - 1)th entry examined, and the
     //   nearer, back end moves n / 2 - 1 entries, so going from n = 20 to
-    //   n = 40 adds 20 actions, 80 visits, and 10 writes and entries.
+    //   n = 40 adds 20 entries examined, 20 visits, and 10 writes and entries.
     let entry = mem::size_of::<u32>() as u64;
     // (visits, writes, entries) added going from 20 to 40 children, per case.
-    let expected: [(u64, u64, u64); 4] = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (80, 10, 10)];
+    let expected: [(u64, u64, u64); 4] = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (20, 10, 10)];
     for (case, (visits, writes, entries)) in expected.into_iter().enumerate() {
         let measure = |fanout: usize| {
             let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
@@ -418,78 +393,151 @@ fn appending_children_to_a_wide_parent_charges_no_more_work_than_to_a_narrow_one
     session.release(&mut c).unwrap();
 }
 
-#[test]
-fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_intact() {
-    let selected = limits();
-    let work_limit = selected.work_credits();
-    let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+/// Runs `step` on a session under a work limit that allows `allowance` more credits than the
+/// session had used when `step` began, and returns what `step` returned with the credits the
+/// session had used by then.
+fn under_allowance<T>(
+    allowance: u64,
+    setup: impl FnOnce(&mut ParseControl, &mut ParserArenaSession) -> T,
+    step: impl FnOnce(&mut ParseControl, &mut ParserArenaSession, T) -> Result<(), SessionError>,
+) -> (
+    Result<(), SessionError>,
+    u64,
+    ParseControl,
+    ParserArenaSession,
+) {
+    let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-    let root = session.root(&mut c).unwrap();
-    let b = session
-        .allocate_element(&mut c, element(Namespace::none(), "b"))
-        .unwrap();
-    session.insert(&mut c, &root, &b, None, None).unwrap();
-    let a = session
-        .allocate_element(&mut c, element(Namespace::none(), "a"))
-        .unwrap();
-    let owner = &mut session.active_mut().unwrap().construction;
-    let mut pending = start_test_insert(&mut c, owner, &root, &a, Some(&b));
-    let copied = loop {
-        let edges = pending.before_edges();
-        let action = pending.action(&mut c).unwrap().unwrap();
-        let description = action.description();
-        if matches!(
-            description,
-            surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit { .. }
-        ) {
-            // The commit charges the bytes it copies as the amount the stop is then asked to refuse.
-            let copied_bytes =
-                crate::schema_support::through_charged(|charge| description.charge_commit(charge))
-                    .categories[2] as usize;
-            // Leave one credit too few for the commit's described writes.
-            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
-            c.charge(
-                HtmlParseWorkCategory::StateStep,
-                work_limit - before - (copied_bytes as u64 - 1),
-            )
-            .unwrap();
-            let copied = c.usage().work(HtmlParseWorkCategory::CopyByte);
-            assert!(
-                matches!(owner.perform_action(&mut c, action, &[], edges), Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, requested_delta, .. })) if requested_delta == copied_bytes as u64)
-            );
-            break copied;
+    let state = setup(&mut c, &mut session);
+    let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
+    c.test_limit(HtmlParseResource::WorkCredits, used + allowance);
+    let result = step(&mut c, &mut session, state);
+    (result, used, c, session)
+}
+
+#[test]
+fn a_work_limit_stop_at_every_charge_of_an_insert_leaves_a_coherent_order_and_the_stop_intact() {
+    // The limit is raised by the amount of each refused charge, so that every charge of the
+    // insertion is the one the limit cuts in turn. A charge before the commit leaves the order as
+    // it was; a charge of the hooks that follow the commit finds the insertion complete.
+    let mut before_commit = 0;
+    let mut allowance = 0;
+    let mut cuts = 0;
+    loop {
+        let (result, used, mut c, mut session) = under_allowance(
+            allowance,
+            |c, session| {
+                let root = session.root(c).unwrap();
+                let b = session
+                    .allocate_element(c, element(Namespace::none(), "b"))
+                    .unwrap();
+                session.insert(c, &root, &b, None, None).unwrap();
+                let a = session
+                    .allocate_element(c, element(Namespace::none(), "a"))
+                    .unwrap();
+                (root, a, b)
+            },
+            |c, session, (root, a, b)| session.insert(c, &root, &a, Some(&b), None),
+        );
+        let storage = session.active().unwrap();
+        let order = |node: usize| {
+            storage
+                .construction
+                .node_at(node)
+                .unwrap()
+                .children()
+                .map(surgeist_html::bounded::construction::HtmlConstructionNode::position)
+                .collect::<Vec<_>>()
+        };
+        match result {
+            Ok(()) => {
+                assert_eq!(order(0), [2, 1], "the insertion before b committed");
+                session.release(&mut c).unwrap();
+                break;
+            }
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                current,
+                requested_delta,
+                ..
+            })) => {
+                cuts += 1;
+                let parent = storage
+                    .construction
+                    .node_at(2)
+                    .unwrap()
+                    .parent()
+                    .map(|node| node.position());
+                match order(0).as_slice() {
+                    [1] => {
+                        before_commit += 1;
+                        assert_eq!(parent, None, "a refused insertion changed the order");
+                    }
+                    [2, 1] => assert_eq!(parent, Some(0)),
+                    other => panic!("the order is {other:?}"),
+                }
+                let first = c.stop();
+                let work = c.usage().resource(HtmlParseResource::WorkCredits);
+                session.release(&mut c).unwrap();
+                assert_eq!(c.stop(), first);
+                assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+                allowance = current - used + requested_delta;
+            }
+            Err(other) => panic!("the insertion stopped for another reason: {other:?}"),
         }
-        assert!(!owner.perform_action(&mut c, action, &[], edges).unwrap());
-    };
-    assert_eq!(c.usage().work(HtmlParseWorkCategory::CopyByte), copied);
-    // The order was grown for the push before the stop; nothing was written.
-    let capacity_at_stop = c.usage().actual_capacity_bytes;
-    let first = c.stop();
-    let work = c.usage().resource(HtmlParseResource::WorkCredits);
-    owner.abort_pending(&mut c, pending).unwrap();
-    assert_eq!(c.stop(), first);
-    assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
-    assert_eq!(c.usage().actual_capacity_bytes, capacity_at_stop);
-    assert_eq!(
-        owner
-            .node_at(root.index)
-            .unwrap()
-            .children()
-            .map(surgeist_html::bounded::construction::HtmlConstructionNode::position)
-            .collect::<Vec<_>>(),
-        [b.index]
+    }
+    assert!(cuts >= 5, "the insertion made only {cuts} charges");
+    assert!(
+        before_commit >= 3,
+        "only {before_commit} of the {cuts} cuts fell before the commit"
     );
-    assert!(owner.node_at(a.index).unwrap().parent().is_none());
-    session.release(&mut c).unwrap();
-    assert_eq!(c.usage().actual_capacity_bytes, 0);
+}
+
+#[test]
+fn a_work_limit_stop_at_every_charge_of_a_creation_leaves_the_storage_intact() {
+    let mut allowance = 0;
+    let mut cuts = 0;
+    loop {
+        let (result, used, mut c, mut session) = under_allowance(
+            allowance,
+            |_, _| (),
+            |c, session, ()| session.allocate_element(c, html("template")).map(|_| ()),
+        );
+        let records = session.active().unwrap().construction.len();
+        match result {
+            Ok(()) => {
+                assert_eq!(records, 3, "the root, the template and its contents");
+                session.release(&mut c).unwrap();
+                break;
+            }
+            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::WorkCredits,
+                current,
+                requested_delta,
+                ..
+            })) => {
+                cuts += 1;
+                // A refused creation leaves no record, whichever charge was cut.
+                assert_eq!(records, 1);
+                let first = c.stop();
+                session.release(&mut c).unwrap();
+                assert_eq!(c.stop(), first);
+                assert_eq!(c.usage().actual_capacity_bytes, 0);
+                allowance = current - used + requested_delta;
+            }
+            Err(other) => panic!("the creation stopped for another reason: {other:?}"),
+        }
+    }
+    assert!(cuts >= 5, "the creation made only {cuts} charges");
 }
 
 #[test]
 fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
     let selected = limits()
         .into_builder()
-        .auxiliary_entries(4)
-        .active_formatting_entries(4)
+        .auxiliary_entries(2)
+        .active_formatting_entries(2)
         .finish()
         .unwrap();
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -519,7 +567,7 @@ fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
         usage
             .resource(HtmlParseResource::AuxiliaryEntries)
             .high_water,
-        4
+        2
     );
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);

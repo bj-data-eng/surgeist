@@ -862,7 +862,7 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
         let retained = c.usage().clone();
         if count == 256 {
             let storage = session.active().unwrap();
-            assert_eq!(storage.construction.test_storage().len(), 2);
+            assert_eq!(storage.construction.len(), 2);
             // The registry holds the two node-cause rows and no string row: the text is the
             // record's own, and the groups of its tokens are parts of one group.
             assert_eq!(storage.payloads.values.len(), 2);
@@ -887,13 +887,13 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                     .count(),
                 0
             );
-            // Two registry rows, a join cell and a child ticket slot for each of the two
-            // records, and the one entry of the table of origins that holds the text's group.
+            // Two registry rows, a join cell for each of the two records, and the one entry of
+            // the table of origins that holds the text's group.
             assert_eq!(
                 retained
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2 + 2 * 2 + 1
+                2 + 2 + 1
             );
         }
         let projection = session.prepare_native_associations(&mut c, &source);
@@ -1293,10 +1293,7 @@ fn before_sibling_merges_only_preceding_text_and_document_ignores_text() {
             .is_none()
     );
     assert!(text.is_none());
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

@@ -395,8 +395,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
         let mut c = ParseControl::new(
             limits()
                 .into_builder()
-                .auxiliary_entries(20)
-                .active_formatting_entries(20)
+                .auxiliary_entries(17)
+                .active_formatting_entries(17)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),
@@ -437,8 +437,8 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             stop,
             HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
-                current: 20,
-                requested_delta: 3,
+                current: 17,
+                requested_delta: 2,
                 ..
             }
         ));
@@ -446,10 +446,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             input.as_ref().unwrap().name.value.text().code_units(),
             original
         );
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            3
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 3);
         assert_eq!(session.active().unwrap().payloads.values.len(), 14);
         assert!(session.active().unwrap().effects.form.is_none());
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -858,7 +855,7 @@ fn listed_id_slot_fixture(
 fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect() {
     let mut c = control();
     let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
-    let old_count = session.active().unwrap().construction.test_storage().len();
+    let old_count = session.active().unwrap().construction.len();
     assert!(matches!(
         session.form_association_owner(&mut c, &button),
         Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
@@ -868,7 +865,7 @@ fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect(
     let stop = c.stop().unwrap();
     assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
     let storage = session.active().unwrap();
-    assert_eq!(storage.construction.test_storage().len(), old_count);
+    assert_eq!(storage.construction.len(), old_count);
     assert!(storage.effects.form.is_some());
     let ConstructionNodeKind::Element(element) = &storage
         .construction

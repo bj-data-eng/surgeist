@@ -12,6 +12,11 @@ pub use crate::internal::construction::bounded::operations::{
     HtmlConstructionRetirement, HtmlConstructionRetirementAction,
     HtmlConstructionRetirementDescription, HtmlConstructionStepWork,
 };
+pub use crate::internal::construction::bounded::records::{
+    HtmlConstructionBank, HtmlConstructionBankCapacity, HtmlConstructionBankGrowth,
+    HtmlConstructionChange, HtmlConstructionGrowthRecord, HtmlConstructionPublishRefusal,
+    HtmlConstructionRecordError, HtmlRecordAdmission,
+};
 pub use crate::internal::construction::bounded::text_data::{
     HtmlConstructionTextCapacity, HtmlConstructionTextError, HtmlConstructionTextGrowth,
     HtmlTextAdmission,

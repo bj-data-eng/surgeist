@@ -213,15 +213,7 @@ fn real_standalone_capability_cannot_be_reused_for_another_arena_on_the_same_con
     let result = unrelated.mark_script_eof(&mut c, &node, &capability);
     assert_eq!(result, Err(SessionError::Stop(stop)));
     assert_eq!(c.stop(), Some(stop));
-    assert_eq!(
-        unrelated
-            .active()
-            .unwrap()
-            .construction
-            .test_storage()
-            .len(),
-        1
-    );
+    assert_eq!(unrelated.active().unwrap().construction.len(), 1);
     assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.flags.already_started())));
     assert!(matches!(unrelated.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop));
     unrelated.release(&mut c).unwrap();
@@ -367,10 +359,7 @@ fn empty_preparation_work_is_independent_of_actual_ordinary_ancestor_depth() {
         assert!(retained.flags.force_async() && !retained.flags.already_started());
         assert_eq!(retained.script_type, None);
         assert_eq!(retained.preparation_document, None);
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            3 + depth
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 3 + depth);
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -924,13 +913,13 @@ fn preparation_work_boundaries_retain_step15_step16_and_complete_step18() {
 #[test]
 fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_is_reclaimable() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Before script creation Document/html + completion/cause/nonce/index
-    // owners retain15 slots, including html's independent creation row.
-    // Script metadata is reserved first:16 stops at document/native preflight.
-    // Script adds document/creation metadata, name/URI, native/index,
-    // cause and two nonce slots: completed25. At24 the tag is transferred
-    // but the native ticket cannot be admitted; every initialized row is retained.
-    for cap in [16, 24, 25] {
+    // Before script creation Document/html + completion/cause/nonce/join
+    // owners retain 13 slots, including html's independent creation row.
+    // Script metadata is reserved first: 14 stops at document/native preflight.
+    // Script adds document/creation metadata, name/URI, its node-join cell,
+    // cause and two nonce slots: completed 22. At 21 the tag is transferred
+    // but the node-join cell cannot be admitted; every initialized row is retained.
+    for cap in [14, 21, 22] {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8("<html><head><script>"),
             limits()
@@ -961,10 +950,10 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             crate::construction::CreationContext::Ordinary,
             &capability,
         );
-        assert_eq!(incoming.is_some(), cap == 16);
+        assert_eq!(incoming.is_some(), cap == 14);
         assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            if cap == 25 { 3 } else { 2 }
+            session.active().unwrap().construction.len(),
+            if cap == 22 { 3 } else { 2 }
         );
         let count = session
             .active()
@@ -974,14 +963,14 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             .iter()
             .filter(|entry| matches!(entry, RetainedPayload::Script { .. }))
             .count();
-        if cap == 25 {
+        if cap == 22 {
             result.unwrap();
             assert_eq!(count, 1);
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                25
+                22
             );
         } else {
             assert!(matches!(
@@ -1007,7 +996,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
         assert_eq!(c.stop(), first);
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
-            if cap == 25 { 3 } else { 2 }
+            if cap == 22 { 3 } else { 2 }
         );
     }
 }
@@ -1034,7 +1023,7 @@ fn script_allocation_alias_rejection_preserves_the_actual_lexical_owner_and_aren
         }
     };
     let alias = tag.name.value.text().clone();
-    let before = session.active().unwrap().construction.test_storage().len();
+    let before = session.active().unwrap().construction.len();
     let mut input = Some(tag);
     assert!(matches!(
         session.allocate_disabled_parser_script(
@@ -1047,10 +1036,7 @@ fn script_allocation_alias_rejection_preserves_the_actual_lexical_owner_and_aren
         Err(SessionError::AliasedPayload)
     ));
     assert!(input.is_some());
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        before
-    );
+    assert_eq!(session.active().unwrap().construction.len(), before);
     assert_eq!(c.stop(), None);
     drop(alias);
     release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();

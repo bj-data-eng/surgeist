@@ -1,27 +1,9 @@
-//! The parser's original ledger applied to actual HTML-owned allocation reports.
+//! The parser's original ledger applied to the banks HTML's construction storage grows.
 use super::*;
 
 use surgeist_html::bounded::construction::{
-    HtmlConstructionAllocationSnapshot as Snapshot, HtmlConstructionRetired,
+    HtmlConstructionBank, HtmlConstructionBankGrowth as Growth,
 };
-
-/// One actual shared owner's bank, never a caller-supplied capacity or refund.
-#[derive(Debug)]
-pub(crate) struct ConstructionAllocation {
-    owner: Arc<()>,
-    /// The bank as the provider holds it, which identity and capacity checks
-    /// compare.
-    snapshot: Snapshot,
-    /// The bytes of the bank's payload the ledger admitted, which retirement
-    /// credits. A capacity the ledger refused to record is physical but not
-    /// admitted.
-    admitted: u64,
-}
-impl ConstructionAllocation {
-    pub(crate) fn snapshot(&self) -> &Snapshot {
-        &self.snapshot
-    }
-}
 
 impl ParseControl {
     /// The last checkpoint before the shared owner's ready commit. Only
@@ -90,158 +72,97 @@ impl ParseControl {
         };
         self.admit_resources(batch, Site::PLAIN)
     }
-    /// Preflight the precise old/new reserve overlap before its HTML provider call.
-    pub(crate) fn prepare_construction_reserve(
+    /// The capacity a bank grows to. A record or child-order bank that already has room grows by
+    /// the parser's amortized plan, which never reserves spare capacity the limits cannot hold,
+    /// and one that has none yet takes exactly the room needed. A string of a leaf takes its
+    /// length, and the shared arena of a publication holds one.
+    pub(crate) fn bank_growth_target(&mut self, growth: Growth) -> Result<usize, HtmlParseStop> {
+        let minimum = growth.minimum_capacity();
+        match growth.bank() {
+            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. } => {
+                self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                let before = growth.before();
+                if before.capacity() == 0 {
+                    return Ok(minimum);
+                }
+                match self.geometric_sized(
+                    growth.element_size(),
+                    before.initialized_len(),
+                    before.capacity(),
+                    minimum.saturating_sub(before.initialized_len()),
+                    usize::MAX,
+                ) {
+                    Ok(Some(plan)) => Ok(before
+                        .initialized_len()
+                        .checked_add(plan.additional)
+                        .map_or(minimum, |planned| planned.max(minimum))),
+                    Ok(None) => Ok(minimum),
+                    Err(stop) => self.fail(stop),
+                }
+            }
+            HtmlConstructionBank::Text | HtmlConstructionBank::Wrapper => Ok(minimum),
+        }
+    }
+
+    /// The bytes a bank of `capacity` elements holds, with the wrapper of a string.
+    fn bank_bytes(growth: Growth, capacity: usize) -> Option<u64> {
+        capacity
+            .checked_mul(growth.element_size())
+            .and_then(|bytes| bytes.checked_add(growth.wrapper_bytes()))
+            .and_then(|bytes| u64::try_from(bytes).ok())
+    }
+
+    /// Admits the growth of one bank to `chosen` elements before it is reserved: the overlap of
+    /// the old and the new layout is charged as reserved bytes, and the capacity, transient and
+    /// layout limits are checked. Returns the bytes of the new layout.
+    pub(crate) fn prepare_bank_growth(
         &mut self,
-        snapshot: &Snapshot,
-        minimum_capacity: usize,
-        ticket: Option<&ConstructionAllocation>,
-    ) -> Result<(), HtmlParseStop> {
+        growth: Growth,
+        chosen: usize,
+    ) -> Result<u64, HtmlParseStop> {
         self.checkpoint()?;
         self.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        self.require_construction_snapshot(snapshot, ticket)?;
-        let Some(new_bytes) = minimum_capacity
-            .checked_mul(snapshot.element_size())
+        let Some(new) = chosen
+            .checked_mul(growth.element_size())
             .filter(|bytes| *bytes <= isize::MAX as usize)
-            .and_then(|bytes| u64::try_from(bytes).ok())
+            .and_then(|_| Self::bank_bytes(growth, chosen))
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let old_bytes = snapshot.payload_bytes() as u64;
-        let Some(reserve_bytes) = old_bytes.checked_add(new_bytes) else {
+        // A string that has no vector yet holds no wrapper either.
+        let old = if growth.before().capacity() == 0 && growth.bank() == HtmlConstructionBank::Text
+        {
+            Some(0)
+        } else {
+            Self::bank_bytes(growth, growth.before().capacity())
+        };
+        let Some(old) = old else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        let Some(overlap) = old.checked_add(new) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         self.charge_many(&[
-            (HtmlParseWorkCategory::ReserveByte, reserve_bytes),
-            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::ReserveByte, overlap),
             (HtmlParseWorkCategory::RecordWrite, 1),
             (HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64),
         ])?;
-        self.preflight_construction_capacity(old_bytes, new_bytes)
+        self.preflight_construction_capacity(old, new)?;
+        Ok(new)
     }
-    /// The record count to request so the HTML-owned bank grows geometrically.
-    /// `additional` is returned unchanged when the bank already holds it, and
-    /// also when its exact layout cannot be admitted, so the existing reserve
-    /// gate reports that layout's concrete limit and stop. The bank is
-    /// described by its actual ticket; no bank exists before the first reserve.
-    pub(crate) fn geometric_construction_additional(
-        &mut self,
-        ticket: Option<&ConstructionAllocation>,
-        len: usize,
-        additional: usize,
-    ) -> Result<usize, HtmlParseStop> {
-        self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(ticket) = ticket else {
-            return Ok(additional);
-        };
-        let snapshot = ticket.snapshot();
-        match self.geometric_sized(
-            snapshot.element_size(),
-            len,
-            snapshot.capacity(),
-            additional,
-            usize::MAX,
-        ) {
-            Ok(Some(plan)) => Ok(plan.additional),
-            Ok(None) => Ok(additional),
-            Err(stop) => self.fail(stop),
-        }
-    }
-    pub(crate) fn prepare_construction_share(
-        &mut self,
-        payload_bytes: usize,
-    ) -> Result<(), HtmlParseStop> {
-        self.checkpoint()?;
-        let Ok(bytes) = u64::try_from(payload_bytes) else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.charge_many(&[
-            (HtmlParseWorkCategory::ReserveByte, bytes),
-            (HtmlParseWorkCategory::ProviderCall, 1),
-            (HtmlParseWorkCategory::RecordWrite, 1),
-            (HtmlParseWorkCategory::CopyByte, bytes),
-        ])?;
-        self.preflight_construction_capacity(0, bytes)
-    }
-    pub(super) fn preflight_construction_capacity(
+
+    /// Records the capacity a reservation reached in place of the bytes the bank held before it,
+    /// and moves `held`, the bytes the parse holds for banks of this kind, by the difference.
+    /// `old` is the bytes recorded before and `reached` the capacity of the bank now. The
+    /// allocation exists whatever its size, so an overshoot of the `expected` layout is recorded
+    /// and then stops the parse.
+    pub(crate) fn record_bank_growth(
         &mut self,
         old: u64,
-        new: u64,
+        actual: u64,
+        expected: u64,
+        held: &mut u64,
     ) -> Result<(), HtmlParseStop> {
-        self.preflight_capacity(old, new, false)
-    }
-    fn require_construction_snapshot(
-        &mut self,
-        snapshot: &Snapshot,
-        ticket: Option<&ConstructionAllocation>,
-    ) -> Result<(), HtmlParseStop> {
-        if let Some(ticket) = ticket {
-            if !Arc::ptr_eq(&ticket.owner, &self.identity) {
-                return self.fail(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::ForeignControl,
-                ));
-            }
-            // Initialized lengths may change at a ready commit; the allocation
-            // generation, actual capacity and hidden element layout cannot.
-            let expected = &ticket.snapshot;
-            if expected.id() != snapshot.id()
-                || expected.capacity() != snapshot.capacity()
-                || expected.element_size() != snapshot.element_size()
-                || expected.element_alignment() != snapshot.element_alignment()
-            {
-                return self.fail(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::CapacityMismatch,
-                ));
-            }
-        } else if snapshot.capacity() != 0 || snapshot.payload_bytes() != 0 {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::CapacityMismatch,
-            ));
-        }
-        Ok(())
-    }
-    /// Records actual provider ownership *before* the post-call checkpoint. The
-    /// ticket describes the bank the provider holds, and carries the bytes the
-    /// ledger admitted for it: a record the ledger refuses leaves those bytes as
-    /// they were, and retirement credits them.
-    pub(crate) fn observe_construction_allocation(
-        &mut self,
-        snapshot: &Snapshot,
-        ticket: &mut Option<ConstructionAllocation>,
-        expected_capacity_bytes: usize,
-    ) -> Result<(), HtmlParseStop> {
-        self.record_construction_allocation(snapshot, ticket, expected_capacity_bytes)?;
-        self.checkpoint()
-    }
-    pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> HtmlParseStop {
-        self.latch_stop(HtmlParseStop::AllocationFailed {
-            resource: HtmlParseResource::ManagedCapacityBytes,
-            layout_bytes: layout_bytes as u64,
-        })
-    }
-    pub(crate) fn record_construction_allocation(
-        &mut self,
-        snapshot: &Snapshot,
-        ticket: &mut Option<ConstructionAllocation>,
-        expected_capacity_bytes: usize,
-    ) -> Result<(), HtmlParseStop> {
-        let old = ticket.as_ref().map_or(0, |value| value.admitted);
-        if let Some(previous) = ticket.as_ref() {
-            if !Arc::ptr_eq(&previous.owner, &self.identity) {
-                return self.fail(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::ForeignControl,
-                ));
-            }
-            if !previous.snapshot.id().same_owner_role(snapshot.id())
-                || previous.snapshot.element_size() != snapshot.element_size()
-                || previous.snapshot.element_alignment() != snapshot.element_alignment()
-            {
-                return self.fail(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::CapacityMismatch,
-                ));
-            }
-        }
-        let actual = snapshot.payload_bytes() as u64;
         let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
         if current
             .checked_sub(old)
@@ -253,45 +174,56 @@ impl ParseControl {
         if current.checked_add(actual).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
         }
-        let recorded = self.record_capacity(old, actual, expected_capacity_bytes as u64);
-        // The ticket describes the bank as it is; only a record the ledger
-        // admitted changes the bytes it retires. Snapshot/owner clones are fixed
-        // provider calls prepaid by the driver.
-        *ticket = Some(ConstructionAllocation {
-            owner: self.identity.clone(),
-            snapshot: snapshot.clone(),
-            admitted: *recorded.as_ref().unwrap_or(&old),
-        });
+        let recorded = self.record_capacity(old, actual, expected);
+        // Only a record the ledger admitted changes the bytes held; a refused one keeps the old.
+        let Some(rest) = held.checked_sub(old) else {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
+        };
+        *held = rest.saturating_add(recorded.as_ref().copied().unwrap_or(old));
         recorded?;
-        if actual > expected_capacity_bytes as u64 {
+        if actual > expected {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
-                limit: expected_capacity_bytes as u64,
+                limit: expected,
                 current: old,
                 requested_delta: actual.saturating_sub(old),
             });
         }
         Ok(())
     }
-    pub(crate) fn require_construction_retirement(
-        &mut self,
-        ticket: &ConstructionAllocation,
-        snapshot: &Snapshot,
-    ) -> Result<(), HtmlParseStop> {
-        self.require_construction_snapshot(snapshot, Some(ticket))?;
-        if self.live(HtmlParseResource::ManagedCapacityBytes)? < ticket.admitted {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
+
+    /// The bytes a record of a growth holds, as the ledger counts them.
+    pub(crate) fn bank_record_bytes(
+        growth: Growth,
+        capacity: usize,
+        first: bool,
+    ) -> Result<u64, HtmlParseStop> {
+        if first && growth.bank() == HtmlConstructionBank::Text && capacity == 0 {
+            return Ok(0);
         }
-        Ok(())
+        Self::bank_bytes(growth, capacity).ok_or(HtmlParseStop::InternalInvariant(
+            HtmlParseInvariant::CapacityMismatch,
+        ))
     }
-    pub(crate) fn retire_construction_allocation(
+
+    /// Credits the bytes the parse holds for the banks of HTML's storage and for the published
+    /// arena. This is the only place they are credited.
+    pub(crate) fn release_banks(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
+        self.cleanup_capacity(bytes)
+    }
+    pub(super) fn preflight_construction_capacity(
         &mut self,
-        ticket: ConstructionAllocation,
-        receipt: HtmlConstructionRetired,
+        old: u64,
+        new: u64,
     ) -> Result<(), HtmlParseStop> {
-        self.require_construction_retirement(&ticket, receipt.allocation())?;
-        self.cleanup_capacity(ticket.admitted)
+        self.preflight_capacity(old, new, false)
+    }
+    pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> HtmlParseStop {
+        self.latch_stop(HtmlParseStop::AllocationFailed {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            layout_bytes: layout_bytes as u64,
+        })
     }
 }

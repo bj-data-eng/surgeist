@@ -74,7 +74,7 @@ impl SessionStorage {
         };
         let node = self.node(control, index)?;
         // Whether the text is a child of an element that reacts to its children changing.
-        let storage = self.construction.storage(control)?;
+        let storage = &self.construction;
         let children_changed = self.textarea_slot(control, parent)?.is_some()
             || Self::html_local_in(control, storage, parent, "script")?
             || Self::html_local_in(control, storage, parent, "style")?;
@@ -83,7 +83,7 @@ impl SessionStorage {
         }
         let merged =
             self.merge_groups_of_text(control, field, origins.take(), offset, added, total)?;
-        let appended = self.construction.append_text(control, index, incoming)?;
+        let appended = self.append_text(control, index, incoming)?;
         if appended != offset {
             return Err(latch_registry_row(control));
         }

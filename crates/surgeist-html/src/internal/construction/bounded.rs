@@ -34,6 +34,8 @@ use operations::{
     HtmlConstructionRetirement, HtmlConstructionStepWork,
 };
 
+pub(crate) mod records;
+
 pub(crate) mod text_data;
 
 /// Test adapters that keep a protocol owner in an `Option` slot, as a driver that stores it in a

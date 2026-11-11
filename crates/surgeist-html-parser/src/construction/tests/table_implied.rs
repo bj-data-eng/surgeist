@@ -113,18 +113,12 @@ fn table_implied_names_have_exact_managed_unit_caps_and_reclaim_partial_backing(
                         .current,
                     units
                 );
-                assert_eq!(
-                    session.active().unwrap().construction.test_storage().len(),
-                    2
-                );
+                assert_eq!(session.active().unwrap().construction.len(), 2);
             } else {
                 assert!(
                     matches!(result, Err(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedUtf16Units, limit, .. })) if limit == cap)
                 );
-                assert_eq!(
-                    session.active().unwrap().construction.test_storage().len(),
-                    1
-                );
+                assert_eq!(session.active().unwrap().construction.len(), 1);
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(c.stop().unwrap()))
@@ -219,10 +213,7 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
         wrong
     );
     assert_eq!(session.document_mode(&mut foreign), Err(wrong));
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     assert_eq!(
         session.document_mode(&mut c),
         Ok(HtmlDocumentMode::NoQuirks)
@@ -236,10 +227,7 @@ fn table_producers_and_mode_reject_foreign_cancel_and_one_short_before_effects()
         session.document_mode(&mut c),
         Err(SessionError::Stop(HtmlParseStop::Cancelled))
     );
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     session.release(&mut c).unwrap();
     storage_zero(&c);
     assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));

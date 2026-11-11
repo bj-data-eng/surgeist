@@ -22,10 +22,7 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
         Err(SessionError::DuplicateAttribute)
     ));
     assert!(tag.is_none());
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }

@@ -77,7 +77,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<bool, SessionError> {
-        let storage = self.construction.storage(c)?;
+        let storage = &self.construction;
         local(c, ConstructionView::Active(storage), node)
     }
     pub(super) fn svg_state_at(
@@ -212,7 +212,6 @@ impl ParserArenaSession {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -230,7 +229,6 @@ impl ParserArenaSession {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -810,10 +808,9 @@ mod tests {
     }
     #[test]
     fn svg_metadata_slot_exact_and_one_short_retains_actual_registry_capacity() {
-        // Fresh ordinary root owns record/self-document/document facts (3)
-        // and its one actual append-field index entry (1).
+        // A fresh ordinary root owns its node-join cell and its two document rows (3).
         // The SVG metadata is a separate retained scalar entry, never a raw bit default.
-        for cap in [4, 5] {
+        for cap in [3, 4] {
             let mut c = ParseControl::new(
                 limits()
                     .into_builder()
@@ -830,7 +827,7 @@ mod tests {
                 .active_mut()
                 .unwrap()
                 .retain_svg_slot(&mut c, SvgScriptState::fresh());
-            if cap == 5 {
+            if cap == 4 {
                 let slot = result.unwrap();
                 assert!(matches!(
                     session.active().unwrap().payloads.values[slot],
@@ -843,7 +840,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    5
+                    4
                 );
                 assert_eq!(
                     session.freeze(&mut c).err(),
@@ -861,7 +858,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    4
+                    3
                 );
             }
             session.release(&mut c).unwrap();
@@ -952,7 +949,7 @@ mod tests {
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
-        let nodes = session.active().unwrap().construction.test_storage().len();
+        let nodes = session.active().unwrap().construction.len();
         let slots = session.active().unwrap().payloads.values.len();
         assert_eq!(
             session
@@ -968,10 +965,7 @@ mod tests {
             Some(SessionError::AliasedPayload)
         );
         assert!(input.is_some());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            nodes
-        );
+        assert_eq!(session.active().unwrap().construction.len(), nodes);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         drop(alias);
         release_token_kind(&mut input.map(TokenKind::Tag), &mut c).unwrap();

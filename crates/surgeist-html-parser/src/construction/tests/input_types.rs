@@ -1027,7 +1027,7 @@ fn number_input_alias_foreign_and_pre_cancelled_rejections_preserve_original_tag
         );
         let (mut c, mut session, capability, lexer, parent, mut input, range) =
             input_owner(&request);
-        let records = session.active().unwrap().construction.test_storage().len();
+        let records = session.active().unwrap().construction.len();
         let slots = session.active().unwrap().payloads.values.len();
         let alias = (case == 0).then(|| {
             input.as_ref().unwrap().attributes.as_slice()[1]
@@ -1072,10 +1072,7 @@ fn number_input_alias_foreign_and_pre_cancelled_rejections_preserve_original_tag
             }
         );
         assert!(input.is_some());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            records
-        );
+        assert_eq!(session.active().unwrap().construction.len(), records);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         drop(alias);
         let first = c.stop();
@@ -1217,7 +1214,7 @@ fn range_input_precancel_alias_and_foreign_refusal_preserve_original_lexical_fie
         );
         let (mut c, mut session, capability, lexer, parent, mut input, range) =
             input_owner(&request);
-        let records = session.active().unwrap().construction.test_storage().len();
+        let records = session.active().unwrap().construction.len();
         let payloads = session.active().unwrap().payloads.values.len();
         let alias = (case == 0).then(|| {
             input.as_ref().unwrap().attributes.as_slice()[1]
@@ -1260,10 +1257,7 @@ fn range_input_precancel_alias_and_foreign_refusal_preserve_original_lexical_fie
             })
         );
         assert!(input.is_some());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            records
-        );
+        assert_eq!(session.active().unwrap().construction.len(), records);
         assert_eq!(session.active().unwrap().payloads.values.len(), payloads);
         drop(alias);
         release_formatting_tag(&mut input, &mut c).unwrap();

@@ -3,11 +3,18 @@
 use super::*;
 use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
 
-/// A string of a non-element field that the parse has taken over, and the group of its origins
-/// when the parse records them. The record that holds the string alone owns it.
+/// A string of a non-element field that a record is about to be created with, and the group of its
+/// origins when the parse records them. The record copies the units of the string, so the string
+/// is released once the record exists or the creation is refused.
 pub(super) struct FieldString {
-    pub(super) value: DocumentString,
+    pub(super) value: FrozenUtf16,
     pub(super) group: Option<OriginGroupRef>,
+}
+impl FieldString {
+    /// The units the record is created with.
+    pub(super) fn units(&self) -> &[u16] {
+        self.value.text().code_units()
+    }
 }
 
 /// A constant string that one parse creates once and shares between its occurrences.
@@ -449,16 +456,22 @@ impl SessionStorage {
             self.merge_text(control, parent_index, index, text, before_index.is_none())
                 .map(Some)
         } else {
-            let FieldString { value, group } = self.absorb_text_field(control, text)?;
-            control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
-            let node = self.allocate_prepared_owned(
-                control,
-                creation_command(NewRecord::Text(value)),
-                false,
-                0,
-                0,
-                prepared,
-            )?;
+            let field = self.text_field(control, text)?;
+            let created = (|| {
+                control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
+                self.allocate_prepared_owned(
+                    control,
+                    NewRecord::Text(field.units()),
+                    false,
+                    0,
+                    field.units().len(),
+                    prepared,
+                )
+            })();
+            let FieldString { value, group } = field;
+            let released = value.release(control);
+            let node = created?;
+            released?;
             self.bind_field(control, FieldRef::Text(node.index), group, 0)?;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion {
@@ -467,22 +480,20 @@ impl SessionStorage {
             }))
         }
     }
-    /// Takes over the string of a token for a field of a record that is about to be created: the
-    /// string moves to the managed units, and the parse holds its units and bytes with the
-    /// strings of the non-element fields from then on. The group of its origins is made when
-    /// the parse records the origin graph, and [`Self::bind_field`] binds it to the field once
-    /// the record exists.
-    pub(super) fn absorb_text_field(
+    /// Takes the string of a token for a field of a record that is about to be created. The
+    /// group of its origins is made when the parse records the origin graph, and
+    /// [`Self::bind_field`] binds it to the field once the record exists.
+    pub(super) fn text_field(
         &mut self,
         control: &mut ParseControl,
         text: Text,
     ) -> Result<FieldString, SessionError> {
         let Text { value, origins } = text;
-        self.absorb_field_string(control, value, Some(origins))
+        self.field_string(control, value, Some(origins))
     }
-    /// As [`Self::absorb_text_field`] for a string that is not a token's, such as the empty
+    /// As [`Self::text_field`] for a string that is not a token's, such as the empty
     /// identifier of a doctype.
-    pub(super) fn absorb_field_string(
+    pub(super) fn field_string(
         &mut self,
         control: &mut ParseControl,
         value: FrozenUtf16,
@@ -502,30 +513,6 @@ impl SessionStorage {
                 return Err(error);
             }
         };
-        self.absorb_group_string(control, value, group)
-    }
-    /// As [`Self::absorb_field_string`] for a string whose group exists already, such as the
-    /// copy of a field's group that a copy of the field keeps.
-    pub(super) fn absorb_group_string(
-        &mut self,
-        control: &mut ParseControl,
-        value: FrozenUtf16,
-        group: Option<OriginGroupRef>,
-    ) -> Result<FieldString, SessionError> {
-        let (value, mut allocation) = value.into_parts();
-        if let Err(stop) = control.manage_text_string(&mut allocation, &value) {
-            drop(value);
-            control.release_document_string(allocation)?;
-            return Err(stop.into());
-        }
-        // The ticket ends here: its string is held by the record it goes to alone.
-        let account = control.absorb_text_string(allocation)?;
-        self.construction.absorb_text(control, account)?;
-        control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            mem::size_of::<DocumentString>() as u64,
-        )?;
         Ok(FieldString { value, group })
     }
     /// Binds the group of the string of `field`, a non-element field of the record that holds

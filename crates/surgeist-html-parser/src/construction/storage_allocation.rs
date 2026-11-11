@@ -62,7 +62,7 @@ impl SessionStorage {
         }
         let node = self.allocate_native(
             control,
-            NewRecord::Element(name, attributes),
+            NewRecord::Element(name, attributes, None),
             template,
             attributes_len,
             units,
@@ -110,22 +110,22 @@ impl SessionStorage {
         attributes: usize,
         units: usize,
     ) -> Result<ParserNode, SessionError> {
-        self.allocate_native_record(control, creation_command(kind), template, attributes, units)
+        self.allocate_native_record(control, kind, template, attributes, units)
     }
     pub(super) fn allocate_native_record(
         &mut self,
         control: &mut ParseControl,
-        command: surgeist_html::bounded::construction::HtmlConstructionCommand,
+        kind: NewRecord<'_>,
         template: bool,
         attributes: usize,
         units: usize,
     ) -> Result<ParserNode, SessionError> {
         control.require_identity(&self.control)?;
         // A template is a record and its content fragment.
-        let (count, entries): (usize, u64) = if template { (2, 4) } else { (1, 2) };
+        let (count, entries): (usize, u64) = if template { (2, 2) } else { (1, 1) };
         let cause_slots = self.prepare_node_causes(control, count)?;
-        // Each record retains its original child-ticket slot and one derived
-        // node-join cell; payload metadata rows remain separately admitted.
+        // Each record retains one derived node-join cell; payload metadata rows remain
+        // separately admitted.
         let requests = [
             (HtmlParseResource::ManagedNodes, count as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
@@ -137,18 +137,15 @@ impl SessionStorage {
         // Preserve the original node/edge/logical preflight before preparing
         // any new nonce backing; successful elements still bind the slot
         // before their native record can be published.
-        let element_name = match &command {
-            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
-                name,
-                ..
-            } => Some(name),
+        let element_name = match &kind {
+            NewRecord::Element(name, ..) => Some(name),
             _ => None,
         };
         let nonce_slot = self.prepare_nonce(control, element_name)?;
         if nonce_slot.is_some() {
             payload_write::<Option<usize>>(control, 1)?;
         }
-        let index = self.construction.len(control)?;
+        let index = self.construction.len();
         control.reserve_vector_geometric(
             &mut self.payloads.node_joins,
             &mut self.payloads.node_joins_allocation,
@@ -165,12 +162,9 @@ impl SessionStorage {
             mem::size_of::<ParserNode>() as u64,
         )?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-        let Some(handle) = self.construction.apply(control, command, &requests)? else {
-            return Err(latch_owner_refusal(control));
-        };
+        let handle = self.create_record(control, kind, &requests)?;
         let Ok(position) = self
             .construction
-            .storage(control)?
             .node(&handle)
             .map(|record| record.position())
         else {
@@ -454,13 +448,11 @@ impl SessionStorage {
                 OrderedCreation::Select { metadata: None } => {}
             }
             let count = attributes.len();
-            if count >= construction_owner::NAME_INDEX_MIN_ENTRIES {
+            if count >= NAME_INDEX_MIN_ENTRIES {
                 // The attributes are installed one at a time, each in its own edit: they look
                 // up their names in one table, which the effects of an attribute may add to.
-                self.construction.provide_name_index(
-                    control,
-                    count.saturating_add(construction_owner::NAME_INDEX_SPARE_ENTRIES),
-                )?;
+                self.holds
+                    .provide_name_index(control, count.saturating_add(NAME_INDEX_SPARE_ENTRIES))?;
             }
             let mut stage = StagedAttributes::new(control)?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -478,7 +470,7 @@ impl SessionStorage {
                     };
                     last_name_slot.get_or_insert(local_ticket);
                     let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                    self.construction.acquire_attribute(control)?;
+                    self.holds.acquire_attribute(control)?;
                     remaining = remaining
                         .checked_sub(1)
                         .ok_or_else(|| latch_registry_row(control))?;
@@ -495,8 +487,7 @@ impl SessionStorage {
                     )
                     .map_err(|_| latch_registry_row(control))?;
                 }
-                self.construction
-                    .reserve_attributes(control, node.index, count)?;
+                self.reserve_attributes(control, node.index, count)?;
                 self.payloads.forget_attribute_strings(node.index);
                 for position in 0..count {
                     self.append_staged_attribute(control, node.index, &mut stage, None)?;
@@ -529,7 +520,7 @@ impl SessionStorage {
             let last_name_slot = installed?;
             released?;
             self.flush_attribute_origins(control, first_row)?;
-            self.construction.retire_name_index(control)?;
+            self.holds.retire_name_index(control)?;
             // The strings are registered last attribute first, as in the unordered
             // creation, once the edits that forget the layout are done.
             if let Some(slot) = last_name_slot {
@@ -669,7 +660,7 @@ impl SessionStorage {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
             // The record this creation makes is the next one, and names its attributes' strings.
-            let node_index = self.construction.len(control)?;
+            let node_index = self.construction.len();
             let first_row = self.payloads.values.len();
             // Names and values register as adjacent rows, last attribute first.
             let mut last_name_slot = None;
@@ -692,7 +683,7 @@ impl SessionStorage {
                         .ok_or_else(|| {
                             control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                         })?;
-                    self.construction.acquire_attribute(control)?;
+                    self.holds.acquire_attribute(control)?;
                     stage.push_plain(
                         control,
                         Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
@@ -734,7 +725,7 @@ impl SessionStorage {
                             // the owner for its release.
                             let (_, backing, shared) = refused.into_parts();
                             drop(backing);
-                            self.construction
+                            self.holds
                                 .absorb_attribute_list(control, allocation, shared)?;
                             Err(latch_registry_row(control))
                         }
@@ -743,7 +734,7 @@ impl SessionStorage {
             };
             // The list belongs to the record from here on, and the parse accounts for it with
             // the other lists of its storage.
-            self.construction
+            self.holds
                 .absorb_attribute_list(control, allocation, shared)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
@@ -757,11 +748,11 @@ impl SessionStorage {
             control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
             let node = self.allocate_prepared_owned(
                 control,
-                surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
-                    link_flags,
-                    name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
+                NewRecord::Element(
+                    QualifiedName::new(Namespace::from_uri(namespace), None, name),
                     attributes,
-                },
+                    link_flags,
+                ),
                 template,
                 0,
                 0,

@@ -382,7 +382,7 @@ pub(super) fn row_list(row: &RetainedPayload) -> Option<KindList> {
 /// The element record at `node`. A missing position or a record of another
 /// kind is an impossible registry state, latched as the controller's first stop.
 pub(super) fn element_record<'a>(
-    construction: &'a ConstructionOwner,
+    construction: &'a surgeist_html::bounded::construction::HtmlConstructionStorage,
     control: &mut ParseControl,
     node: usize,
 ) -> Result<HtmlElementView<'a>, SessionError> {
@@ -395,7 +395,7 @@ pub(super) fn element_record<'a>(
 /// The attribute at `position` of the element record at `node`, with the same
 /// registry-state stop as [`element_record`].
 pub(super) fn element_attribute<'a>(
-    construction: &'a ConstructionOwner,
+    construction: &'a surgeist_html::bounded::construction::HtmlConstructionStorage,
     control: &mut ParseControl,
     node: usize,
     position: usize,

@@ -30,7 +30,9 @@ pub(super) struct SessionStorage {
     #[cfg(test)]
     pub(super) cancel_after_range_ingress: Option<range::RangeIngressCancellation>,
     pub(super) standalone_ineligibility: Option<HtmlParseUnsupportedState>,
-    pub(super) construction: ConstructionOwner,
+    pub(super) construction: surgeist_html::bounded::construction::HtmlConstructionStorage,
+    /// What the parse holds for the storage: the bytes of its banks, lists and strings.
+    pub(super) holds: StorageHolds,
     pub(super) payloads: PayloadStorage,
     /// The units the text append being applied added to the end of the last
     /// child, from the append's commit until the children-changed hook takes
@@ -69,11 +71,12 @@ impl SessionStorage {
     pub(super) fn new(control: &mut ParseControl, root: RootKind) -> Result<Self, SessionError> {
         let detail_origins = DetailOrigins::new();
         let effects = ConstructionEffects::new(control)?;
-        let construction = ConstructionOwner::new(control)?;
+        let construction =
+            surgeist_html::bounded::construction::HtmlConstructionStorage::new(&mut *control)
+                .map_err(|error| record_error(control, error))?;
         let (values, allocation) = match control.new_vector() {
             Ok(value) => value,
             Err(stop) => {
-                construction.retire(control)?;
                 return Err(stop.into());
             }
         };
@@ -81,7 +84,6 @@ impl SessionStorage {
             Ok(value) => value,
             Err(stop) => {
                 release_vector(control, values, allocation)?;
-                construction.retire(control)?;
                 return Err(stop.into());
             }
         };
@@ -90,7 +92,6 @@ impl SessionStorage {
             Err(stop) => {
                 release_vector(control, node_joins, node_joins_allocation)?;
                 release_vector(control, values, allocation)?;
-                construction.retire(control)?;
                 return Err(stop.into());
             }
         };
@@ -100,7 +101,6 @@ impl SessionStorage {
                 release_vector(control, forms, forms_allocation)?;
                 release_vector(control, node_joins, node_joins_allocation)?;
                 release_vector(control, values, allocation)?;
-                construction.retire(control)?;
                 return Err(stop.into());
             }
         };
@@ -111,7 +111,6 @@ impl SessionStorage {
                 release_vector(control, forms, forms_allocation)?;
                 release_vector(control, node_joins, node_joins_allocation)?;
                 release_vector(control, values, allocation)?;
-                construction.retire(control)?;
                 return Err(stop.into());
             }
         };
@@ -154,6 +153,7 @@ impl SessionStorage {
             cancel_after_range_ingress: None,
             standalone_ineligibility: None,
             construction,
+            holds: StorageHolds::new(),
             appended_units: None,
             style_order_floor: 0,
             token_end: None,
@@ -285,7 +285,6 @@ impl SessionStorage {
         self.require(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         self.construction
-            .storage(control)?
             .position(&node.handle)
             .map_err(|_| SessionError::ForeignNode)
     }
@@ -297,7 +296,7 @@ impl SessionStorage {
     pub(super) fn leaf_strings(&self) -> provenance::LeafStrings<'_> {
         provenance::LeafStrings::with_records(
             &self.payloads,
-            ConstructionView::Active(self.construction.test_storage()),
+            ConstructionView::Active(&self.construction),
         )
     }
 }

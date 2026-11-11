@@ -42,10 +42,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
                 .node(&mut c, &session)
                 .unwrap();
             assert_ne!(inert.index, root.index);
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                4
-            );
+            assert_eq!(session.active().unwrap().construction.len(), 4);
             assert!(state.target.is_none() && state._start.is_none() && state.end.is_none());
         } else {
             let Err(SessionError::Stop(first)) = result else {
@@ -61,10 +58,7 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
                 }
             ));
             assert!(input.is_some());
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                1
-            );
+            assert_eq!(session.active().unwrap().construction.len(), 1);
             assert!(
                 !session
                     .active()
@@ -91,13 +85,12 @@ fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes
 #[test]
 fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_cap_boundaries() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Root record/self-document/cache facts =3 plus its append index =4.
-    // Fresh template adds three native records, five document/template facts,
-    // name/namespace owners, two nonce slots, three append indices
-    // and one creation row: completed20. Document/native preflight needs11
-    // above the root's4 before lexical take. At19 the tag is transferred but
-    // admission of the remaining records fails after the inert Document.
-    for cap in [14, 19, 20] {
+    // Root record/self-document/cache facts = 3.
+    // Fresh template adds three native records' join cells, five document/template facts,
+    // name/namespace owners, two nonce slots and one creation row: completed 16.
+    // Document/native preflight needs 8 above the root's 3 before lexical take. At 15 the tag
+    // is transferred but admission of the remaining records fails after the inert Document.
+    for cap in [10, 15, 16] {
         let source = crate::HtmlSource::utf8("<template>");
         let mut c = ParseControl::new(
             limits()
@@ -125,19 +118,16 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             None,
             CreationContext::Ordinary,
         );
-        if cap == 20 {
+        if cap == 16 {
             let node = result.unwrap();
             assert!(input.is_none());
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                20
+                16
             );
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                4
-            );
+            assert_eq!(session.active().unwrap().construction.len(), 4);
             assert!(
                 session
                     .template_state(&mut c, &node)
@@ -152,10 +142,10 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             assert!(
                 matches!(first, HtmlParseStop::LimitExceeded{resource: HtmlParseResource::AuxiliaryEntries,limit,..} if limit==cap)
             );
-            assert_eq!(input.is_some(), cap == 14);
+            assert_eq!(input.is_some(), cap == 10);
             assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                if cap == 14 { 1 } else { 2 }
+                session.active().unwrap().construction.len(),
+                if cap == 10 { 1 } else { 2 }
             );
             assert_eq!(
                 session.freeze(&mut c).err(),
@@ -200,10 +190,7 @@ fn template_pi_map_coexists_with_original_fields_at_exact_managed_units_and_recl
         let mut input = Some((target, data));
         let result = session.allocate_processing_instruction(&mut c, &mut input, None);
         assert!(input.is_none());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            2
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 2);
         if cap == 19 {
             let node = result.unwrap();
             assert_eq!(
@@ -372,7 +359,7 @@ fn template_pi_every_bounded_allocation_and_decode_prefix_keeps_original_and_map
         .unwrap();
         let result = session.allocate_processing_instruction(&mut c, &mut input, None);
         let storage = session.active().unwrap();
-        if storage.construction.test_storage().len() == 2 {
+        if storage.construction.len() == 2 {
             installed = true;
             let ConstructionNodeKind::ProcessingInstruction(pi) = &storage
                 .construction

@@ -45,10 +45,8 @@ use surgeist_html::{
 };
 
 mod activity;
-mod construction_owner;
-mod dialog;
-use construction_owner::{ConstructionOwner, ConstructionView};
 mod detail_origins;
+mod dialog;
 use detail_origins::DetailOrigins;
 
 pub(crate) mod associated;
@@ -95,6 +93,8 @@ mod no_panic_tests;
 mod prepared_slot_tests;
 #[cfg(test)]
 mod read_fault_tests;
+#[cfg(test)]
+mod record_admission_tests;
 mod select;
 mod svg;
 mod template;
@@ -144,11 +144,12 @@ use metadata_rows::{
     admitted_input_string, find_form_association_state, find_textarea_state, script_metadata,
     set_form_association_state, set_script_metadata, textarea_raw,
 };
+use ordinary_view::{
+    ConstructionView, next_ordinary_view_after_subtree, next_ordinary_view_node,
+    ordinary_view_parent,
+};
 #[cfg(test)]
 use ordinary_view::{append_descendant_text, find_output_state};
-use ordinary_view::{
-    next_ordinary_view_after_subtree, next_ordinary_view_node, ordinary_view_parent,
-};
 use script_type::{classify_script, script_attribute};
 #[cfg(test)]
 pub(crate) use test_support::csp_protocol_error;
@@ -182,16 +183,25 @@ pub(crate) use session_error::{
     ElementInsertionIgnored, SessionClass, SessionError, session_class,
 };
 use session_error::{
-    charge_fault, count_set, end_session_on, latch_creation_fault, latch_effect_fault,
+    construction_error, count_set, end_session_on, latch_creation_fault, latch_effect_fault,
     latch_owner_refusal, latch_registry_row, next_cursor, session_fault_invariant, successor,
 };
 use string_storage::ReleasedStorage;
 pub(crate) use string_storage::{FieldRef, RecordString, TextInsertion};
+mod attribute_admission;
 mod form_effects;
+mod record_admission;
 mod storage;
 mod storage_allocation;
 mod storage_attributes;
+mod storage_holds;
+mod text_admission;
+use record_admission::{
+    NewRecord, ShadowAttachment, associated_document_parent_of, attach_shadow_of, publish_records,
+    record_error,
+};
 use storage_attributes::StagedAttributes;
+use storage_holds::{NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES, StorageHolds};
 mod storage_input;
 mod storage_insertion;
 mod storage_release;
@@ -220,8 +230,7 @@ use frozen_arena::FrozenStorage;
 pub(crate) use session::ParserArenaSession;
 pub(crate) use session_creation::RootKind;
 use session_creation::{
-    CreationProfile, ImpliedHtmlName, NewRecord, OrderedCreation, creation_command,
-    validate_parser_attributes,
+    CreationProfile, ImpliedHtmlName, OrderedCreation, validate_parser_attributes,
 };
 #[cfg(test)]
 pub(crate) use storage_allocation::PreexistingElement;

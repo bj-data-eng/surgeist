@@ -61,7 +61,7 @@ impl SessionStorage {
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
             .check_detachment()
-            .map_err(|error| construction_owner::construction_error(control, error))?;
+            .map_err(|error| construction_error(control, error))?;
         if let Some(before) = before {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.construction
@@ -72,7 +72,7 @@ impl SessionStorage {
                         .node_at(parent)
                         .ok_or(SessionError::ForeignNode)?,
                 )
-                .map_err(|error| construction_owner::construction_error(control, error))?;
+                .map_err(|error| construction_error(control, error))?;
             if before == node {
                 // Pre-insert adjusts the reference child but still adopts
                 // (removes) and inserts the root. Final links/order are equal;
@@ -128,84 +128,16 @@ impl SessionStorage {
             HtmlParseResource::ManagedEdges,
             u64::from(old_parent.is_none()),
         )];
-        let mut pending = self.construction.start(
+        let result = self.insert_record(
             control,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::Insert {
-                node: node_handle,
-                parent: parent_handle,
-                before: before_handle,
-            },
-        )?;
-        let mut revoke_standalone = false;
-        let result = (|| {
-            loop {
-                let before_edges = pending.before_edges();
-                let Some(action) = pending.action(control)? else {
-                    break;
-                };
-                match action.description() {
-                    surgeist_html::bounded::construction::HtmlConstructionActionDescription::Preflight { usage } => {
-                        // Source semantics stay between the original depth and
-                        // edge checks, before any actual scratch-bank provider.
-                        control.observe_tree_depth(usage.depth() as u64)?;
-                        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                        let Some(view) = action.storage_view() else {
-                            return Err(latch_owner_refusal(control));
-                        };
-                        revoke_standalone = self.standalone_ineligibility.is_none()
-                            && self.associated_document_parent_in(control, view, parent)?;
-                        control.check_acquire_many(requests)?;
-                        action
-                            .perform()
-                            .map_err(|failure| {
-                                construction_owner::construction_error(
-                                    control,
-                                    failure.into_parts().0,
-                                )
-                            })?
-                            .accept();
-                    }
-                    surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit { .. } => {
-                        // These fixed source payloads precede the atomic commit,
-                        // after the original actual child-order preparation.
-                        self.construction.perform_action_with_commit(
-                            control,
-                            action,
-                            requests,
-                            before_edges,
-                            |control| {
-                                if revoke_standalone {
-                                    payload_write::<Option<HtmlParseUnsupportedState>>(control, 1)?;
-                                }
-                                if form_effects.is_some() {
-                                    payload_write::<Option<FormEffects>>(control, 1)?;
-                                }
-                                Ok(())
-                            },
-                        )?;
-                        break;
-                    }
-                    _ => {
-                        self.construction.perform_action(
-                            control,
-                            action,
-                            requests,
-                            before_edges,
-                        )?;
-                    }
-                }
-            }
-            Ok::<_, SessionError>(())
-        })();
-        if let Err(error) = result {
-            let aborted = self.construction.abort_pending(control, pending);
-            self.end_reroot(reroot);
-            aborted?;
-            return Err(error);
-        }
-        let finished = self.construction.finish_pending(control, pending);
+            &node_handle,
+            (parent, &parent_handle),
+            before_handle.as_ref(),
+            form_effects.is_some(),
+            requests,
+        );
         self.end_reroot(reroot);
-        finished?;
+        let revoke_standalone = result?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -237,7 +169,7 @@ impl SessionStorage {
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
             .check_detachment()
-            .map_err(|error| construction_owner::construction_error(control, error))?;
+            .map_err(|error| construction_error(control, error))?;
         if self
             .construction
             .node_at(node)
@@ -258,11 +190,7 @@ impl SessionStorage {
             .ok_or(SessionError::ForeignNode)?
             .handle();
         let reroot = self.begin_reroot(control, node, None)?;
-        let detached = self.construction.apply(
-            control,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::Detach { node: handle },
-            &[],
-        );
+        let detached = self.detach_record(control, &handle);
         self.end_reroot(reroot);
         detached?;
         if form_effects.is_some() {

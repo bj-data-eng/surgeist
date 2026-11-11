@@ -72,6 +72,7 @@ impl SessionStorage {
                 cancel_after_range_ingress: _,
             standalone_ineligibility: _,
             construction,
+            holds,
             payloads,
             appended_units: _,
             style_order_floor: _,
@@ -99,6 +100,7 @@ impl SessionStorage {
                 &owner,
                 ReleasedStorage {
                     construction,
+                    holds,
                     payloads,
                 },
             ),

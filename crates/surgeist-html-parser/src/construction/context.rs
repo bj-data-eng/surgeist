@@ -314,7 +314,7 @@ impl SessionStorage {
                 prepared,
                 RetainedPayload::NodeDocument {
                     node: None,
-                    document: DocumentRef::Owned(self.construction.storage(c)?.len()),
+                    document: DocumentRef::Owned(self.construction.len()),
                 },
             )
             .map_err(|_| latch_registry_row(c))?;
@@ -402,7 +402,7 @@ impl ParserArenaSession {
         storage.require(c)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
         if storage.fragment.is_some()
-            || storage.construction.storage(c)?.len() != 1
+            || storage.construction.len() != 1
             || !matches!(
                 storage
                     .construction
@@ -579,8 +579,8 @@ impl ParserArenaSession {
             .child_at(0)
             .ok_or(SessionError::ContextUnavailable)?
             .position();
-        if output >= storage.construction.storage(c)?.len()
-            || root >= storage.construction.storage(c)?.len()
+        if output >= storage.construction.len()
+            || root >= storage.construction.len()
             || !matches!(
                 storage
                     .construction
@@ -1515,21 +1515,15 @@ impl ParserArenaSession {
                 .node_at(root.index)
                 .ok_or(SessionError::ForeignNode)?
                 .handle();
-            let command = if let Some(host) = local_host {
-                surgeist_html::bounded::construction::HtmlConstructionCommand::AttachTemplateShadow {
-                    template: template_handle,
-                    host: storage
+            let host_handle = match local_host {
+                Some(host) => Some(
+                    storage
                         .construction
                         .node_at(host)
                         .ok_or(SessionError::ForeignNode)?
                         .handle(),
-                    contents: contents_handle,
-                }
-            } else {
-                surgeist_html::bounded::construction::HtmlConstructionCommand::SetTemplateShadowContents {
-                    template: template_handle,
-                    contents: contents_handle,
-                }
+                ),
+                None => None,
             };
             // Preflight the real effect receiver before the fixed native commit.
             let Some(ContextEffect::AttachShadow {
@@ -1547,7 +1541,18 @@ impl ParserArenaSession {
             else {
                 return Err(latch_registry_row(c));
             };
-            storage.construction.apply(c, command, &[])?;
+            attach_shadow_of(
+                &mut storage.construction,
+                &mut storage.holds,
+                &storage.control,
+                c,
+                ShadowAttachment {
+                    template: Some(&template_handle),
+                    host: host_handle.as_ref(),
+                    contents: &contents_handle,
+                },
+                &[],
+            )?;
             *contents = Some(root.index);
             *declarative = true;
             *available_to_internals = true;
@@ -1694,28 +1699,29 @@ impl SessionStorage {
             }
         }
     }
-    /// Whether the effect at `effect`, the slot the template's metadata
-    /// records, attached exactly this template's `contents` as a shadow root.
-    pub(super) fn shadow_template_contents(
-        &self,
-        c: &mut ParseControl,
-        template: usize,
-        contents: usize,
-        effect: Option<usize>,
-    ) -> Result<bool, SessionError> {
-        let (Some(fragment), Some(effect)) = (&self.fragment, effect) else {
-            return Ok(false);
-        };
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        Ok(matches!(
-            fragment.effects.as_slice().get(effect),
-            Some(ContextEffect::AttachShadow {
-                template: actual,
-                contents: Some(root),
-                ..
-            }) if *actual == template && *root == contents
-        ))
-    }
+}
+
+/// Whether the effect at `effect`, the slot the template's metadata
+/// records, attached exactly this template's `contents` as a shadow root.
+pub(super) fn shadow_template_contents_of(
+    fragment: &Option<FragmentContextStorage>,
+    c: &mut ParseControl,
+    template: usize,
+    contents: usize,
+    effect: Option<usize>,
+) -> Result<bool, SessionError> {
+    let (Some(fragment), Some(effect)) = (fragment, effect) else {
+        return Ok(false);
+    };
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    Ok(matches!(
+        fragment.effects.as_slice().get(effect),
+        Some(ContextEffect::AttachShadow {
+            template: actual,
+            contents: Some(root),
+            ..
+        }) if *actual == template && *root == contents
+    ))
 }
 
 #[cfg(test)]
@@ -1915,7 +1921,6 @@ impl SessionStorage {
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let shadow_contents = self
             .construction
-            .storage(c)?
             .node_by_result_id(&shadow.contents())
             .map_err(|_| SessionError::ForeignNode)?
             .position();
@@ -2020,11 +2025,15 @@ impl SessionStorage {
             .node_at(root.index)
             .ok_or(SessionError::ForeignNode)?
             .handle();
-        self.construction.apply(
+        attach_shadow_of(
+            &mut self.construction,
+            &mut self.holds,
+            &self.control,
             c,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::AttachShadow {
-                host,
-                contents,
+            ShadowAttachment {
+                template: None,
+                host: Some(&host),
+                contents: &contents,
             },
             &[(HtmlParseResource::ManagedEdges, 1)],
         )?;
@@ -3302,10 +3311,7 @@ mod tests {
             )))
         ));
         assert!(session.active().unwrap().fragment.is_none());
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            1
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 1);
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         assert_eq!(
             c.stop(),
@@ -3533,10 +3539,7 @@ mod tests {
                 assert!(
                     matches!(first,HtmlParseStop::LimitExceeded {resource:actual,..} if actual==resource)
                 );
-                assert_eq!(
-                    session.active().unwrap().construction.test_storage().len(),
-                    3
-                );
+                assert_eq!(session.active().unwrap().construction.len(), 3);
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(first))

@@ -79,10 +79,7 @@ fn template_owned_html_wrapper_pre_registration_stops_reclaim_lexical_fields() {
             input.is_none(),
             "lexical transfer precedes wrapper, credit={wrapper_credit}"
         );
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            1
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 1);
         assert_eq!(
             session.freeze(&mut c).err(),
             Some(SessionError::Stop(first))
@@ -273,10 +270,7 @@ fn formatting_completed_copy_take_stops_keep_recipe_and_reclaim_independent_fiel
             }
         ));
         assert_eq!(result.err(), Some(SessionError::Stop(first)));
-        assert_eq!(
-            session.active().unwrap().construction.test_storage().len(),
-            3
-        );
+        assert_eq!(session.active().unwrap().construction.len(), 3);
         assert_eq!(
             creation
                 .token
@@ -749,7 +743,7 @@ fn formatting_child_transfer_preserves_existing_destination_order_and_backlinks(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        2 * session.active().unwrap().construction.test_storage().len() as u64
+        session.active().unwrap().construction.len() as u64
             + session.active().unwrap().payloads.values.len() as u64
     );
     session.release(&mut c).unwrap();
@@ -1094,8 +1088,7 @@ fn formatting_child_transfer_stops_with_an_ordered_coherent_prefix_and_reclaims_
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            2 * storage.construction.test_storage().len() as u64
-                + storage.payloads.values.len() as u64
+            storage.construction.len() as u64 + storage.payloads.values.len() as u64
         );
         if result.is_err() {
             // The sweep leaves `remaining` work credits, so the first stop

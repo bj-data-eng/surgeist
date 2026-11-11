@@ -1,9 +1,9 @@
 //! The session's side of edits to the attribute lists of HTML's storage: the admission and
-//! accounting of the growth of a list, and the table of attribute names that long lists are
-//! edited through.
-use super::super::storage_attributes::KeptCandidate;
+//! accounting of the growth of a list.
+use super::storage_attributes::KeptCandidate;
 use super::*;
 use crate::parser::control::HtmlParseInvariant;
+use surgeist_html::construction::HtmlConstructionCause;
 use surgeist_html::{
     accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork},
     bounded::construction::{
@@ -14,14 +14,6 @@ use surgeist_html::{
     values::{Attribute, DocumentString},
 };
 use surgeist_ledger::Charge;
-
-/// Attribute lists at least this long are edited through a table of their names, so that the
-/// check for a repeated name costs work in proportion to the list instead of its square. A
-/// shorter list compares every pair, which is cheaper than building the table.
-pub(in crate::construction) const NAME_INDEX_MIN_ENTRIES: usize = 32;
-/// Names that effects of the attribute being installed may add to the list: the table is sized
-/// for them too, so that they are looked up in it like the rest.
-pub(in crate::construction) const NAME_INDEX_SPARE_ENTRIES: usize = 8;
 
 /// What the controller admits and records for one edit of an attribute list.
 struct Admission<'a> {
@@ -112,7 +104,7 @@ pub(in crate::construction) struct MergeCandidates<'a> {
 }
 
 impl<'a> MergeCandidates<'a> {
-    pub(in crate::construction) fn new(
+    pub(super) fn new(
         control: &'a mut ParseControl,
         names: &'a [crate::parser::tokenizer::token::Attribute],
         kept: &'a mut OwnedVec<KeptCandidate>,
@@ -169,121 +161,7 @@ impl HtmlAttributeMerge for MergeCandidates<'_> {
     }
 }
 
-impl ConstructionOwner {
-    /// Makes sure the table of attribute names can hold `entries` names, reserving its slots
-    /// through the controller. Nothing is built: an edit that borrows the table clears and
-    /// fills it. A count too large to size a table leaves it as it is, and the edit then
-    /// compares every pair.
-    pub(in crate::construction) fn provide_name_index(
-        &mut self,
-        control: &mut ParseControl,
-        entries: usize,
-    ) -> Result<(), SessionError> {
-        let Some(slots) = HtmlAttributeNameIndex::slots_required(entries) else {
-            return Ok(());
-        };
-        if self
-            .name_index
-            .as_ref()
-            .is_some_and(|index| index.capacity() >= slots)
-        {
-            return Ok(());
-        }
-        self.retire_name_index(control)?;
-        let (mut vector, mut ticket) = control.new_vector::<HtmlNameIndexSlot>()?;
-        if let Err(stop) = control.reserve_vector(&mut vector, &mut ticket, slots) {
-            // The reserve may have changed the capacity before it stopped.
-            release_vector(control, vector, ticket)?;
-            return Err(stop.into());
-        }
-        self.name_index = Some(HtmlAttributeNameIndex::new(vector));
-        self.name_index_slots = Some(ticket);
-        Ok(())
-    }
-
-    /// Releases the table of attribute names, crediting its slots. Nothing happens when there is
-    /// none.
-    pub(in crate::construction) fn retire_name_index(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let (Some(index), Some(ticket)) = (self.name_index.take(), self.name_index_slots.take())
-        else {
-            return Ok(());
-        };
-        release_vector(control, index.into_storage(), ticket)
-    }
-
-    /// Takes the accounting of a list built by the parse and handed to the storage in a record,
-    /// which the parse releases with the lists it holds.
-    pub(in crate::construction) fn absorb_attribute_list(
-        &mut self,
-        control: &mut ParseControl,
-        capacity: VectorCapacity<Attribute>,
-        shared: SharedAllocation<Vec<Attribute>>,
-    ) -> Result<(), SessionError> {
-        let bytes = control.absorb_attribute_list(capacity, shared)?;
-        self.attribute_bytes = self
-            .attribute_bytes
-            .checked_add(bytes)
-            .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
-        Ok(())
-    }
-
-    /// Acquires the logical slot of one attribute that the parse is about to store.
-    pub(in crate::construction) fn acquire_attribute(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let held = self
-            .attribute_entries
-            .checked_add(1)
-            .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedAttributes))?;
-        control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
-        self.attribute_entries = held;
-        Ok(())
-    }
-
-    /// Releases the logical slot of one attribute that the parse stopped storing.
-    pub(in crate::construction) fn release_attribute(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let Some(held) = self.attribute_entries.checked_sub(1) else {
-            return Err(latch_registry_row(control));
-        };
-        control.release(HtmlParseResource::ManagedAttributes, 1)?;
-        self.attribute_entries = held;
-        Ok(())
-    }
-
-    /// Releases the accounting of every attribute list the owner holds.
-    pub(super) fn release_attribute_accounts(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let mut refused = None;
-        keep_first(&mut refused, self.retire_name_index(control));
-        let bytes = std::mem::take(&mut self.attribute_bytes);
-        keep_first(
-            &mut refused,
-            control
-                .release_attribute_lists(bytes)
-                .map_err(SessionError::Stop),
-        );
-        let entries = std::mem::take(&mut self.attribute_entries);
-        keep_first(
-            &mut refused,
-            release_logical(
-                control,
-                &self.control,
-                HtmlParseResource::ManagedAttributes,
-                entries,
-            ),
-        );
-        refused.map_or(Ok(()), Err)
-    }
-
+impl SessionStorage {
     /// The handle of the element at `node` and the length of its attribute list, after the
     /// visit and provider call that qualify an edit.
     fn attribute_target(
@@ -295,7 +173,7 @@ impl ConstructionOwner {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let record = self
-            .storage(control)?
+            .construction
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?;
         let len = match record.kind() {
@@ -307,7 +185,7 @@ impl ConstructionOwner {
 
     /// Ensures the attribute list of the element at `node` holds `additional` more attributes,
     /// growing it once when it does not.
-    pub(in crate::construction) fn reserve_attributes(
+    pub(super) fn reserve_attributes(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -315,14 +193,11 @@ impl ConstructionOwner {
     ) -> Result<(), SessionError> {
         let (handle, _) = self.attribute_target(control, node)?;
         let Self {
-            owner,
-            attribute_bytes,
+            construction: storage,
+            holds,
             ..
         } = self;
-        let Some(storage) = owner.as_mut() else {
-            return Err(latch_registry_row(control));
-        };
-        let mut admission = Admission::new(control, attribute_bytes);
+        let mut admission = Admission::new(control, &mut holds.attribute_bytes);
         match storage.reserve_attributes(&handle, additional, &mut admission) {
             Ok(_) => Ok(()),
             Err(error) => Err(admission.error(error)),
@@ -331,7 +206,7 @@ impl ConstructionOwner {
 
     /// Appends the attribute in `incoming` to the element at `node`. `planned` names the
     /// candidate of a merge plan that the attribute is.
-    pub(in crate::construction) fn append_attribute(
+    pub(super) fn append_attribute(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -340,20 +215,17 @@ impl ConstructionOwner {
     ) -> Result<usize, SessionError> {
         let (handle, len) = self.attribute_target(control, node)?;
         let Self {
-            owner,
-            attribute_bytes,
-            name_index,
+            construction: storage,
+            holds,
             ..
         } = self;
-        let Some(storage) = owner.as_mut() else {
-            return Err(latch_registry_row(control));
-        };
+        let name_index = &mut holds.name_index;
         let names = if len.saturating_add(1) < NAME_INDEX_MIN_ENTRIES {
             None
         } else {
             name_index.as_mut()
         };
-        let mut admission = Admission::new(control, attribute_bytes);
+        let mut admission = Admission::new(control, &mut holds.attribute_bytes);
         let result = match planned {
             Some(candidate) => storage.append_planned_attribute(
                 &handle,
@@ -369,7 +241,7 @@ impl ConstructionOwner {
 
     /// Replaces the attribute at `index` of the element at `node` with the one in `incoming`
     /// and returns the one it replaced.
-    pub(in crate::construction) fn replace_attribute(
+    pub(super) fn replace_attribute(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -378,21 +250,18 @@ impl ConstructionOwner {
     ) -> Result<Attribute, SessionError> {
         let (handle, _) = self.attribute_target(control, node)?;
         let Self {
-            owner,
-            attribute_bytes,
+            construction: storage,
+            holds,
             ..
         } = self;
-        let Some(storage) = owner.as_mut() else {
-            return Err(latch_registry_row(control));
-        };
-        let mut admission = Admission::new(control, attribute_bytes);
+        let mut admission = Admission::new(control, &mut holds.attribute_bytes);
         storage
             .replace_attribute(&handle, index, incoming, &mut admission)
             .map_err(|error| admission.error(error))
     }
 
     /// Removes the attribute at `index` of the element at `node` and returns it.
-    pub(in crate::construction) fn remove_attribute(
+    pub(super) fn remove_attribute(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -400,14 +269,11 @@ impl ConstructionOwner {
     ) -> Result<Attribute, SessionError> {
         let (handle, _) = self.attribute_target(control, node)?;
         let Self {
-            owner,
-            attribute_bytes,
+            construction: storage,
+            holds,
             ..
         } = self;
-        let Some(storage) = owner.as_mut() else {
-            return Err(latch_registry_row(control));
-        };
-        let mut admission = Admission::new(control, attribute_bytes);
+        let mut admission = Admission::new(control, &mut holds.attribute_bytes);
         storage
             .remove_attribute(&handle, index, &mut admission)
             .map_err(|error| admission.error(error))
@@ -415,7 +281,7 @@ impl ConstructionOwner {
 
     /// Decides which of the candidates of `names` the element at `node` keeps, pushing the
     /// index of each kept candidate to `kept`. Returns how many are kept.
-    pub(in crate::construction) fn plan_attribute_merge(
+    pub(super) fn plan_attribute_merge(
         &mut self,
         control: &mut ParseControl,
         node: usize,
@@ -424,11 +290,11 @@ impl ConstructionOwner {
     ) -> Result<usize, SessionError> {
         let (handle, len) = self.attribute_target(control, node)?;
         let Self {
-            owner, name_index, ..
+            construction: storage,
+            holds,
+            ..
         } = self;
-        let Some(storage) = owner.as_ref() else {
-            return Err(latch_registry_row(control));
-        };
+        let name_index = &mut holds.name_index;
         let entries = len.saturating_add(names.len());
         let index = if entries < NAME_INDEX_MIN_ENTRIES {
             None

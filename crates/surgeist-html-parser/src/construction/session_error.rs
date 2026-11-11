@@ -1,6 +1,10 @@
 //! The parser-session failure vocabulary, its classification, and the latches that make a failure the controller's first stop.
 
 use super::*;
+use surgeist_html::{
+    accounting::HtmlAccountingFault,
+    construction::{HtmlConstructionCause, HtmlConstructionError},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionError {
@@ -75,35 +79,6 @@ pub(super) fn latch_owner_refusal(control: &mut ParseControl) -> SessionError {
         control
             .fail_invariant(crate::parser::control::HtmlParseInvariant::ConstructionOwnerRefusal),
     )
-}
-
-/// A work plan that counts less than was already charged for it: no row is
-/// missing, the plan and the charge disagree.
-pub(super) fn plan_below_charge(control: &mut ParseControl) -> SessionError {
-    SessionError::Stop(
-        control.fail_invariant(crate::parser::control::HtmlParseInvariant::CapacityMismatch),
-    )
-}
-
-/// The session error of a construction step's charge: the parser's own stop, or a step and a
-/// charge that disagree, which is an invariant of the owner.
-pub(super) fn charge_fault(
-    control: &mut ParseControl,
-    error: surgeist_html::accounting::HtmlChargedError<
-        crate::parser::control::HtmlParseStop,
-        surgeist_html::bounded::construction::HtmlConstructionChargeFault,
-    >,
-) -> SessionError {
-    use surgeist_html::accounting::HtmlChargedError;
-    use surgeist_html::bounded::construction::HtmlConstructionChargeFault;
-    match error {
-        HtmlChargedError::Stopped(stop) => SessionError::Stop(stop),
-        // The step describes fewer provider calls than the parser already charged for it.
-        HtmlChargedError::Faulted(HtmlConstructionChargeFault::PrepaidCallsExceedPlan) => {
-            plan_below_charge(control)
-        }
-        HtmlChargedError::Faulted(_) => latch_owner_refusal(control),
-    }
 }
 
 /// An impossible registry state, latched as the controller's first stop.
@@ -329,3 +304,131 @@ pub(super) fn successor(control: &mut ParseControl, value: usize) -> Result<usiz
 pub(super) fn count_set<const N: usize>(flags: [bool; N]) -> usize {
     flags.into_iter().filter(|flag| *flag).count()
 }
+
+/// How a cause of the owner's error is reported to the session.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Disposition {
+    /// A document-shaped error that `session_class` classifies; nothing is
+    /// latched here.
+    Session(SessionError),
+    /// The class a stage error of the same kind would carry, latched through it.
+    Class(SessionClass),
+    /// A count that cannot be represented.
+    Representation,
+    /// A failure of the ledger scope that is not a refused limit, latched as the parse's
+    /// accounting stop.
+    Accounting(HtmlAccountingFault),
+    /// An allocation whose layout is unknown here.
+    AllocationFailed,
+}
+
+/// Maps every cause of the owner's error to its report. The cause enum is exhaustive, so a cause
+/// that the owner adds needs a row here to compile.
+fn disposition(cause: HtmlConstructionCause) -> Disposition {
+    use crate::parser::control::HtmlParseInvariant;
+    use Disposition::{AllocationFailed, Class, Representation, Session};
+    use HtmlConstructionCause as Cause;
+    match cause {
+        Cause::ForeignBuilder | Cause::UnknownNode => Session(SessionError::ForeignNode),
+        Cause::RootMove => Session(SessionError::RootMove),
+        Cause::AssociationMove => Session(SessionError::AssociationMove),
+        Cause::ParentCannotHaveChildren => Session(SessionError::NotContainer),
+        Cause::TemplateContentsRequired => Session(SessionError::TemplateContentsRequired),
+        Cause::WrongSibling | Cause::ParentChildConflict => Session(SessionError::WrongSibling),
+        Cause::Cycle => Session(SessionError::Cycle),
+        Cause::SharedAllocationAliased => Class(SessionClass::Fault(
+            HtmlParseInvariant::SharedAllocationAliased,
+        )),
+        Cause::RepresentationExhausted => Representation,
+        Cause::CapacityMismatch | Cause::ForeignAllocation | Cause::LimitExceeded { .. } => {
+            Class(SessionClass::Fault(HtmlParseInvariant::CapacityMismatch))
+        }
+        Cause::ReleaseUnderflow => Class(SessionClass::Fault(HtmlParseInvariant::ReleaseUnderflow)),
+        Cause::Accounting(fault) => Disposition::Accounting(fault),
+        // `layout_bytes: 0` means the layout is unknown here, not that none was
+        // requested. Every bounded producer of this error reports it with its
+        // real layout before it gets this far: the record and child reserves
+        // in the record operations of HTML's construction storage, the attribute-list
+        // reserves in the attribute admission, and the text reserves in
+        // the text admission. This is only a failure a caller without a layout
+        // still has to report.
+        Cause::AllocationFailed => AllocationFailed,
+        Cause::ShadowHostMustBeElement
+        | Cause::ShadowAlreadyAttached
+        | Cause::WrongNodeKind
+        | Cause::AssociationAlreadyOwned
+        | Cause::InvalidTemplateAssociation
+        | Cause::DuplicateAttribute { .. }
+        | Cause::AttributeNameMismatch
+        | Cause::AttributeOrderMismatch
+        | Cause::InvalidShadowAssociation
+        | Cause::InvalidContentsReference
+        | Cause::InvalidOutputRoot
+        | Cause::OperationNotReady
+        | Cause::IndexUnavailable => Class(SessionClass::Fault(
+            HtmlParseInvariant::ConstructionOwnerRefusal,
+        )),
+    }
+}
+
+/// The session error for a refusal from HTML's construction owner, with every
+/// cause of its error reported by what it violates.
+///
+/// There are two tables, and the second is built on the first.
+/// [`session_class`] classifies every session error; [`disposition`] maps the
+/// construction owner's causes, which are not session errors until this
+/// function converts them. A document-shaped refusal converts to the
+/// [`SessionError`] that `session_class` already classifies, and nothing is
+/// latched here. Every other cause converts to the [`SessionClass`] that a
+/// stage error would carry and is latched through [`SessionClass::latch`], so
+/// the stop and the failure's reason derive from the same class (`StopCause`).
+/// Three stops are latched directly, as their controller owners latch them: a
+/// count that cannot be represented, an allocation that failed and a failure of
+/// the ledger scope. A test checks that no document-shaped disposition
+/// disagrees with `session_class`.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - A failure of the ledger scope that is not a refused limit stops the parse
+///   with the same accounting fault as every other ledger fault of the parser.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner's cause enum is exhaustive, so [`disposition`] has no fallback: a
+/// cause that the owner adds does not compile here until it has a row, and
+/// cannot become a parser fault or a document outcome by default. The tests
+/// cover the report of every cause, and the errors the owner produces for the
+/// document-shaped, refusal and limit causes.
+pub(super) fn construction_error(
+    control: &mut ParseControl,
+    error: HtmlConstructionError,
+) -> SessionError {
+    report(control, disposition(error.cause()))
+}
+
+/// Reports a disposition to the session, latching a stop where it names one.
+fn report(control: &mut ParseControl, disposition: Disposition) -> SessionError {
+    match disposition {
+        Disposition::Session(error) => error,
+        Disposition::Class(class) => SessionError::Stop(class.latch(control)),
+        Disposition::Accounting(fault) => SessionError::Stop(control.stop_accounting(fault)),
+        Disposition::Representation => {
+            SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
+        }
+        Disposition::AllocationFailed => {
+            SessionError::Stop(control.construction_allocation_failed(0))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
