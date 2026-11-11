@@ -614,6 +614,102 @@ fn native_window_constructs_distinct_event_targets_with_the_interface_prototype(
     );
 }
 
+fn native_window_event_observes_its_live_standalone_dispatch() {
+    let (mut host, _) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let initial = r#"(() => {
+        const target = new EventTarget();
+        const event = new Event("start", { cancelable: true, composed: true });
+        if (event.target !== null || event.srcElement !== null || event.currentTarget !== null) {
+            return "a new Event must have no native targets";
+        }
+        if (event.composedPath().length !== 0 || event.eventPhase !== Event.NONE) {
+            return "a new Event must be outside dispatch";
+        }
+        Object.freeze(event);
+        Object.freeze(target);
+        if (!target.dispatchEvent(event) || event.target !== target || event.srcElement !== target
+            || event.currentTarget !== null || event.composedPath().length !== 0) {
+            return "the original target must survive standalone dispatch";
+        }
+        event.returnValue = false;
+        event.returnValue = true;
+        if (!event.defaultPrevented || event.returnValue || target.dispatchEvent(event)) {
+            return "legacy cancellation must be sticky";
+        }
+        event.stopImmediatePropagation();
+        event.cancelBubble = false;
+        if (!event.cancelBubble) return "legacy propagation must be sticky";
+        event.initEvent("updated", true, true);
+        if (event.initEvent.length !== 1 || event.type !== "updated" || !event.bubbles
+            || !event.cancelable || !event.composed || event.target !== null
+            || event.defaultPrevented || event.cancelBubble) {
+            return "initialization must update the original native Event and clear its old target";
+        }
+        return "ok";
+    })()"#;
+    let observed = host
+        .in_document(&permit, |scope| {
+            let result = scope.evaluate(&initial.encode_utf16().collect::<Vec<_>>())?;
+            scope.to_utf16(&result)
+        })
+        .unwrap();
+    assert_eq!(String::from_utf16(&observed).unwrap(), "ok");
+
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = "live".encode_utf16().collect::<Vec<_>>();
+    let event = host
+        .create_guest_event(
+            &permit,
+            &kind,
+            DomEventInit {
+                cancelable: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let listener = host
+        .in_document(&permit, |scope| {
+            let listener = scope.evaluate(
+                &r#"(function(event) {
+            if (event.target !== this || event.currentTarget !== this || event.srcElement !== this
+                || event.eventPhase !== Event.AT_TARGET || event.composedPath().length !== 1
+                || event.composedPath()[0] !== this) {
+                throw Error("incorrect native event path");
+            }
+            event.initEvent("ignored", true, false);
+            if (event.type !== "live" || event.target !== this || event.bubbles) {
+                throw Error("active initialization changed the Event");
+            }
+            event.stopPropagation();
+            event.preventDefault();
+        })"#
+                .encode_utf16()
+                .collect::<Vec<_>>(),
+            )?;
+            Ok(scope.retain(&listener))
+        })
+        .unwrap();
+    host.add_guest_event_listener(&permit, &target, &kind, &listener, Default::default())
+        .unwrap();
+    let report = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(report.receipt().callbacks(), 1);
+    assert!(report.exceptions().is_empty());
+    assert!(report.receipt().default_prevented());
+    host.in_document(&permit, |scope| {
+        let global = scope.global()?;
+        let event = event.object(scope)?;
+        let target = target.object(scope)?;
+        scope.set(&global, PropertyKey::String(&"liveEvent".encode_utf16().collect::<Vec<_>>()), &event)?;
+        scope.set(&global, PropertyKey::String(&"liveTarget".encode_utf16().collect::<Vec<_>>()), &target)?;
+        assert_script_number(
+            scope,
+            "Number(liveEvent.target === liveTarget && liveEvent.currentTarget === null && liveEvent.eventPhase === Event.NONE && liveEvent.composedPath().length === 0)",
+            1.0,
+        )
+    }).unwrap();
+}
+
 fn native_window_exposes_dom_exception() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -1980,6 +2076,7 @@ fn main() {
             "window-event-target-constructor" => {
                 native_window_constructs_distinct_event_targets_with_the_interface_prototype()
             }
+            "window-event-live-operations" => native_window_event_observes_its_live_standalone_dispatch(),
             "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "dom-exception-error-data" => {
                 native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
@@ -2043,6 +2140,7 @@ fn main() {
     native_window_relation_work_is_admitted_at_the_callback();
     native_window_constructs_event_with_exact_type_flags_and_clock();
     native_window_constructs_distinct_event_targets_with_the_interface_prototype();
+    native_window_event_observes_its_live_standalone_dispatch();
     native_window_exposes_dom_exception();
     native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
     native_window_dom_exception_admission_and_hook_collision();
