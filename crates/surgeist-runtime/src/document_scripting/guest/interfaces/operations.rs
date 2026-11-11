@@ -56,50 +56,25 @@ pub(super) fn install<'scope>(
         )?;
     }
 
-    for (attribute, assignment, key, get_name, set_name) in [
-        (
-            Attribute::CancelBubble,
-            Assignment::CancelBubble,
-            &ascii(b"cancelBubble")[..],
-            &ascii(b"get cancelBubble")[..],
-            &ascii(b"set cancelBubble")[..],
-        ),
-        (
-            Attribute::ReturnValue,
-            Assignment::ReturnValue,
-            &ascii(b"returnValue"),
-            &ascii(b"get returnValue"),
-            &ascii(b"set returnValue"),
-        ),
-    ] {
-        let get = make_getter(
-            scope,
-            capture(size_of::<(Capture, Attribute)>())?,
-            attribute,
-            get_name,
-        )?;
-        let setter = capture(size_of::<(Capture, Assignment)>())?;
-        let set = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| {
-                setter.assign_event(scope, arguments, assignment)
-            }),
-            FunctionMetadata {
-                name: set_name,
-                length: 1,
-            },
-        )?;
-        scope.define_new_property(
-            prototype,
-            PropertyKey::String(key),
-            PropertyDescriptor::Accessor {
-                get: Some(&get),
-                set: Some(&set),
-                enumerable: true,
-                configurable: true,
-            },
-        )?;
-    }
     Ok(())
+}
+
+pub(super) fn event_setter<'scope>(
+    scope: &mut Scope<'scope>,
+    attribute: Attribute,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
+    let (assignment, name): (_, &[u16]) = match attribute {
+        Attribute::CancelBubble => (Assignment::CancelBubble, &ascii(b"set cancelBubble")),
+        Attribute::ReturnValue => (Assignment::ReturnValue, &ascii(b"set returnValue")),
+        _ => return Ok(None),
+    };
+    let setter = capture(size_of::<(Capture, Assignment)>())?;
+    let value = scope.fixed_arity_function(
+        &Callback::new(move |scope, arguments| setter.assign_event(scope, arguments, assignment)),
+        FunctionMetadata { name, length: 1 },
+    )?;
+    Ok(Some(value))
 }
 
 pub(super) fn nullable_target<'scope>(

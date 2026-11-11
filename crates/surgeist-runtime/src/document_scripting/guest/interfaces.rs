@@ -165,6 +165,16 @@ impl PublicEventBindings {
                 &ascii(b"get currentTarget"),
             ),
             (
+                Attribute::Phase,
+                &ascii(b"eventPhase"),
+                &ascii(b"get eventPhase"),
+            ),
+            (
+                Attribute::CancelBubble,
+                &ascii(b"cancelBubble"),
+                &ascii(b"get cancelBubble"),
+            ),
+            (
                 Attribute::Bubbles,
                 &ascii(b"bubbles"),
                 &ascii(b"get bubbles"),
@@ -175,9 +185,9 @@ impl PublicEventBindings {
                 &ascii(b"get cancelable"),
             ),
             (
-                Attribute::Composed,
-                &ascii(b"composed"),
-                &ascii(b"get composed"),
+                Attribute::ReturnValue,
+                &ascii(b"returnValue"),
+                &ascii(b"get returnValue"),
             ),
             (
                 Attribute::DefaultPrevented,
@@ -185,9 +195,9 @@ impl PublicEventBindings {
                 &ascii(b"get defaultPrevented"),
             ),
             (
-                Attribute::Phase,
-                &ascii(b"eventPhase"),
-                &ascii(b"get eventPhase"),
+                Attribute::Composed,
+                &ascii(b"composed"),
+                &ascii(b"get composed"),
             ),
             (
                 Attribute::TimeStamp,
@@ -201,7 +211,8 @@ impl PublicEventBindings {
                 attribute,
                 name,
             )?;
-            define_getter(scope, &event, key, &getter, true)?;
+            let setter = operations::event_setter(scope, attribute, &capture)?;
+            define_accessor(scope, &event, key, &getter, setter.as_ref(), true)?;
         }
         operations::install(scope, &event, &capture)?;
         let trusted = make_getter(
@@ -212,6 +223,7 @@ impl PublicEventBindings {
         )?;
 
         let target = scope.object(ObjectPrototype::Default)?;
+        listener_methods::install(scope, &target, &capture)?;
         let dispatch = capture(size_of::<Capture>())?;
         let dispatch_name = &ascii(b"dispatchEvent");
         let method = scope.fixed_arity_function(
@@ -230,8 +242,6 @@ impl PublicEventBindings {
             true,
             true,
         )?;
-
-        listener_methods::install(scope, &target, &capture)?;
 
         for (kind, prototype) in [(Interface::Event, &event), (Interface::Target, &target)] {
             let fallback = capture(size_of::<(Capture, Interface)>())?;
@@ -252,26 +262,6 @@ impl PublicEventBindings {
                     enumerable: false,
                     configurable: false,
                 },
-            )?;
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::String(CONSTRUCTOR),
-                &constructor,
-                true,
-                false,
-                true,
-            )?;
-            let tag_key = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
-            let tag = scope.string(name)?;
-            define_data(
-                scope,
-                prototype,
-                PropertyKey::Value(&tag_key),
-                &tag,
-                false,
-                false,
-                true,
             )?;
             if matches!(kind, Interface::Event) {
                 for (key, code) in [
@@ -294,6 +284,26 @@ impl PublicEventBindings {
                     }
                 }
             }
+            define_data(
+                scope,
+                prototype,
+                PropertyKey::String(CONSTRUCTOR),
+                &constructor,
+                true,
+                false,
+                true,
+            )?;
+            let tag_key = scope.well_known_symbol(WellKnownSymbol::ToStringTag)?;
+            let tag = scope.string(name)?;
+            define_data(
+                scope,
+                prototype,
+                PropertyKey::Value(&tag_key),
+                &tag,
+                false,
+                false,
+                true,
+            )?;
             let global = scope.global()?;
             define_data(
                 scope,
@@ -603,14 +613,15 @@ pub(super) fn expose_trust<'scope>(
     event: &Value<'scope>,
     trusted: &Value<'scope>,
 ) -> Result<(), Error> {
-    define_getter(scope, event, TRUSTED, trusted, false)
+    define_accessor(scope, event, TRUSTED, trusted, None, false)
 }
 
-fn define_getter<'scope>(
+fn define_accessor<'scope>(
     scope: &mut Scope<'scope>,
     object: &Value<'scope>,
     name: &[u16],
     getter: &Value<'scope>,
+    setter: Option<&Value<'scope>>,
     configurable: bool,
 ) -> Result<(), Error> {
     scope.define_new_property(
@@ -618,7 +629,7 @@ fn define_getter<'scope>(
         PropertyKey::String(name),
         PropertyDescriptor::Accessor {
             get: Some(getter),
-            set: None,
+            set: setter,
             enumerable: true,
             configurable,
         },
