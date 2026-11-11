@@ -1634,30 +1634,37 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         .unwrap();
     assert_eq!(retained.id(), queued.id());
     assert_eq!(retained.queue_association(), queued.queue_association());
-    // DOM's null-BC parent branch cannot supply fresh closed-native authority:
-    // this current node Document has an actual retired Global. The bounded
-    // native path must qualify it before invoking Rust callbacks (innerinvoke).
-    {
-        let mut dom = session.dom();
-        assert!(matches!(
-            DomElementTaskRuntime::run_next(
-                &mut dom,
-                surgeist_dom::DomElementTaskSourceKind::DomManipulation,
-                &mut registry,
-                &mut context,
-                crate::DomElementTaskRunLimits {
-                    dispatch: event_limits(),
-                    source: surgeist_dom::DomSourceLimits::new(
-                        16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
-                    )
-                },
-                &cancel()
+    let retired = before.document(second.document()).unwrap();
+    let environment = retired.metadata().document_environment();
+    assert!(environment.has_ever_had_navigable());
+    assert_eq!(
+        environment.browsing_context(),
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+    );
+    // The standard parent is null, but the selected native task must still
+    // qualify the actual retired destination before invoking Rust callbacks.
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        &mut registry,
+        &mut context,
+        crate::DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: surgeist_dom::DomSourceLimits::new(
+                16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
             ),
+        },
+        &cancel(),
+    );
+    assert!(
+        matches!(
+            result,
             Err(DomElementTaskRuntimeError::Dispatch(
                 DomEventDispatchError::Hosted(DomHostedError::StaleIdentity)
             ))
-        ));
-    }
+        ),
+        "the retired destination must refuse before the original task starts: {result:?}"
+    );
     assert!(context.seen.is_empty());
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert_eq!(
