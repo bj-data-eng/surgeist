@@ -675,3 +675,124 @@ fn flex_allocated_grid_lanes_uses_accepted_gap_basis() {
     assert_flex_allocated_grid_uses_accepted_gap_basis::<f32>(Display::GridLanes);
     assert_flex_allocated_grid_uses_accepted_gap_basis::<f64>(Display::GridLanes);
 }
+
+fn preferred_max_content_cross_size<S: LayoutScalar>() {
+    fn physical<T>(flow: FlowAxes, inline: T, block: T) -> Size<T> {
+        flow.physical_size(crate::geometry::LogicalSizeOf::new(inline, block))
+    }
+
+    for mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
+        let flow = FlowAxes::new(mode, Direction::Ltr);
+        let natural = physical(flow, n::<S>(20.0), n::<S>(16.0));
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    writing_mode: mode,
+                    size: physical(
+                        flow,
+                        PreferredSizeOf::px(n(80.0)),
+                        PreferredSizeOf::MAX_CONTENT,
+                    ),
+                    align_items: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    writing_mode: mode,
+                    size: physical(
+                        flow,
+                        PreferredSizeOf::AUTO,
+                        PreferredSizeOf::percent(n(0.5)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(1, natural);
+        let frame = Size::splat(Some(NonNegativeFiniteOf::new(n(100.0)).unwrap()));
+        let request = SizingRequestOf::new(
+            physical(flow, n(80.0), n(5.0)).map(|size| {
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(size).unwrap()),
+                    SizingOperation::Normal,
+                )
+            }),
+            OrthogonalFallbackOf::new(
+                frame,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        for (allocation, expected_cross, expected_child) in
+            [(None, 16.0, 16.0), (Some(60.0), 60.0, 30.0)]
+        {
+            let root = LayoutRootRequestOf::flex_item(
+                request,
+                FlexItemRootContextOf::new(
+                    flow,
+                    frame,
+                    physical(
+                        flow,
+                        None,
+                        allocation.map(|size| NonNegativeFiniteOf::new(n(size)).unwrap()),
+                    ),
+                ),
+            );
+            let batch = compute_layout(&tree, 0, root).unwrap_or_else(|error| {
+                panic!("preferred MaxContent cross size, {mode:?}, allocation {allocation:?}: {error:?}")
+            });
+            for phase in [Phase::Unrounded, Phase::Final] {
+                let rows = readback::continuous_custody(&batch, phase);
+                for (node, expected) in [
+                    (0, physical(flow, n(80.0), n(expected_cross))),
+                    (1, physical(flow, n(20.0), n(expected_child))),
+                ] {
+                    let row = rows.iter().find(|entry| entry.node() == node).unwrap();
+                    assert_eq!(row.output().size, expected, "{mode:?}, node {node}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flex_preferred_max_content_cross_size_respects_imposed_allocation() {
+    preferred_max_content_cross_size::<f32>();
+    preferred_max_content_cross_size::<f64>();
+}
+
+#[test]
+fn flex_preferred_max_content_cross_ratio_bounds_preserve_definite_main_size() {
+    for (minimum, maximum, child_cross, expected_cross) in [
+        (None, Some(15.0), 30.0, 15.0),
+        (Some(50.0), None, 30.0, 50.0),
+    ] {
+        let tree = maximum_cross_source::<f32>(
+            PreferredSize::MAX_CONTENT,
+            maximum,
+            PreferredSize::px(child_cross),
+            AlignItems::Start,
+        );
+        let mut style = tree.node_input(0).clone();
+        style.size.width = PreferredSize::px(80.0);
+        style.aspect_ratio = Some(AspectRatio::new(2.0).unwrap());
+        if let Some(minimum) = minimum {
+            style.min_size.height = MinSize::px(minimum);
+        }
+        let batch = compute_layout(&tree.style(0, style), 0, unbounded_normal_request()).unwrap();
+        for phase in [Phase::Unrounded, Phase::Final] {
+            let root = readback::single_box_output(&batch, 0, phase);
+            assert_eq!(
+                root.size,
+                Size::new(80.0, expected_cross),
+                "minimum {minimum:?}, maximum {maximum:?}"
+            );
+        }
+    }
+}
