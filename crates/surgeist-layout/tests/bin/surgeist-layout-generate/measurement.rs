@@ -32,6 +32,7 @@ pub(super) enum BoxObservationRequest {
     PreparedRanges,
     FlexComposition,
     OriginalFlexParent,
+    OriginalPercentageFlexParent,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -68,6 +69,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalFlexParent.input_bytes() => {
                 Ok(Self::OriginalFlexParent)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalPercentageFlexParent.input_bytes() => {
+                Ok(Self::OriginalPercentageFlexParent)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -97,6 +101,10 @@ impl BoxObservationRequest {
             Self::OriginalFlexParent => Some((
                 original_flex_parent_profile::SCRIPT_PATH,
                 original_flex_parent_profile::SCRIPT,
+            )),
+            Self::OriginalPercentageFlexParent => Some((
+                original_flex_parent_profile::percentage::SCRIPT_PATH,
+                original_flex_parent_profile::percentage::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -140,6 +148,9 @@ impl BoxObservationRequest {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
             Self::OriginalFlexParent => Some(original_flex_parent_profile::REQUEST),
+            Self::OriginalPercentageFlexParent => {
+                Some(original_flex_parent_profile::percentage::REQUEST)
+            }
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -235,7 +246,7 @@ struct Context<'a> {
     variant: &'a str,
     node_path: String,
 }
-impl Context<'_> {
+impl<'a> Context<'a> {
     fn error(
         &self,
         field: impl Into<String>,
@@ -282,7 +293,7 @@ impl Context<'_> {
             Err(self.error(field, MeasurementErrorKind::ContradictoryFields, detail))
         }
     }
-    fn child(&self, index: usize) -> Context<'_> {
+    fn child(&self, index: usize) -> Self {
         Context {
             case_id: self.case_id,
             variant: self.variant,
@@ -594,7 +605,7 @@ pub(super) enum Observation {
     RangeFragments(Vec<Attributes>),
     Boundary,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Geometry {
     x: f64,
     y: f64,
@@ -734,6 +745,14 @@ pub(super) fn decode(
         )?;
         wire.validate_original_flex_parent(&context)?;
     }
+    if request == BoxObservationRequest::OriginalPercentageFlexParent {
+        context.compatible(
+            root_local_positioned && use_rounding,
+            "viewport",
+            "original percentage Flex parent requires an absolute root-local observation",
+        )?;
+        wire.validate_original_percentage_flex_parent(&context)?;
+    }
     if request == BoxObservationRequest::OriginalSubgridBody {
         context.compatible(
             !root_local_positioned && use_rounding,
@@ -785,6 +804,7 @@ pub(super) fn decode(
         | BoxObservationRequest::PreparedRanges
         | BoxObservationRequest::FlexComposition
         | BoxObservationRequest::OriginalFlexParent
+        | BoxObservationRequest::OriginalPercentageFlexParent
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -2011,6 +2031,47 @@ impl WireNode {
                 "textContent",
                 "original Grid text boxes require captured Ahem break opportunities",
             )?;
+        }
+        Ok(())
+    }
+
+    fn validate_original_percentage_flex_parent(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        let mut node = self;
+        let mut place = Context {
+            node_path: context.node_path.clone(),
+            ..*context
+        };
+        let displays = ["flex", "grid", "flex", "flex"];
+        for (index, display) in displays.into_iter().enumerate() {
+            let style = place.required(node.style.as_ref(), "style")?;
+            let children = place.required(node.children.as_deref(), "children")?;
+            let last = index == displays.len() - 1;
+            place.compatible(
+                node.layout_input == LayoutInput::Box
+                    && node.tag_name.as_deref() == Some("div")
+                    && node.text_content.is_none()
+                    && style.display.as_deref() == Some(display)
+                    && (index != 0 || style.position.as_deref() == Some("absolute"))
+                    && children.len() == usize::from(!last),
+                "children",
+                "original percentage capture requires the full Flex, Grid and ratio-box source tree",
+            )?;
+            let unrounded = place.required(node.unrounded_layout.as_ref(), "unroundedLayout")?;
+            let rounded =
+                place.required(node.smart_rounded_layout.as_ref(), "smartRoundedLayout")?;
+            place.compatible(
+                unrounded.validate(&place, "unroundedLayout")?
+                    == rounded.validate(&place, "smartRoundedLayout")?,
+                "unroundedLayout",
+                "original percentage capture requires identical unrounded and rounded rectangles",
+            )?;
+            if let Some(child) = children.first() {
+                node = child;
+                place = place.child(0);
+            }
         }
         Ok(())
     }

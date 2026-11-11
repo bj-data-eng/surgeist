@@ -25,3 +25,13 @@ pub(crate) const REQUEST: &[u8] = include_bytes!("original_flex_parent_request.j
 pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
 }
+
+pub(crate) mod percentage {
+    pub(crate) const SOURCE: &str = "html/grid/chrome_issue_325928327.html";
+    pub(crate) const SOURCE_SHA256: &str =
+        "9704f1bec23b43e4904f554ab046625d9cec9fe6317301eaa6f0fb15430a5845";
+    pub(crate) const SCRIPT_PATH: &str = "scripts/gentest/original_percentage_flex_parent.js";
+    pub(crate) const SCRIPT: &str = include_str!("original_percentage_flex_parent.js");
+    pub(crate) const REQUEST: &[u8] =
+        include_bytes!("original_percentage_flex_parent_request.json");
+}
