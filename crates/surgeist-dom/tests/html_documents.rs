@@ -72,6 +72,17 @@ fn skeleton(snapshot: &DomSnapshot, document: DocumentId) -> (NodeId, NodeId, No
         assert_eq!(element.name().prefix(), None);
         assert_eq!(element.name().local_name(), &DocumentString::from(local));
         assert_eq!(node.tag_name(), Some(tag.into()));
+        assert!(matches!(
+            node.tag_name_spelling_with(|| Err(DomError::Cancelled)),
+            Err(DomError::Cancelled)
+        ));
+        let spelling = node
+            .tag_name_spelling_with(|| Ok::<_, DomError>(()))
+            .unwrap()
+            .unwrap();
+        assert!(spelling.contiguous_units().is_none());
+        assert_eq!(spelling.code_unit_len(), tag.encode_utf16().count());
+        assert!(spelling.code_units().eq(tag.encode_utf16()));
         assert_eq!(node.node_name(), DocumentString::from(tag));
         assert_eq!(node.owner_document(), Some(document));
         assert!(node.is_connected());

@@ -49,6 +49,13 @@ fn native_generic_elements_keep_exact_names_and_known_null_creation_state() {
     let element = node.as_element().unwrap();
     assert_eq!(node.node_name(), DocumentString::from("MiXeD:input"));
     assert_eq!(node.tag_name(), Some(DocumentString::from("MiXeD:input")));
+    let spelling = node
+        .tag_name_spelling_with(|| Err(DomError::Cancelled))
+        .unwrap()
+        .unwrap();
+    let expected: Vec<_> = "MiXeD:input".encode_utf16().collect();
+    assert_eq!(spelling.contiguous_units(), Some(expected.as_slice()));
+    assert_eq!(spelling.code_unit_len(), expected.len());
     assert_eq!(element.name().namespace_uri(), Namespace::none().uri());
     assert_eq!(element.name().prefix(), None);
     assert_eq!(

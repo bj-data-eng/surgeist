@@ -269,6 +269,44 @@ pub struct DomNode<'a> {
     id: NodeId,
     pub(crate) node: &'a Node,
 }
+
+/// The exact qualified tag spelling sampled from a node's current Document.
+/// This owns shared name handles and allocates no assembled UTF-16 buffer.
+#[derive(Clone, Debug)]
+pub struct DomTagName {
+    prefix: Option<DocumentString>,
+    local: DocumentString,
+    uppercase: bool,
+    length: usize,
+}
+
+impl DomTagName {
+    pub const fn code_unit_len(&self) -> usize {
+        self.length
+    }
+
+    /// Borrow the original units when no prefix or case transformation is due.
+    pub fn contiguous_units(&self) -> Option<&[u16]> {
+        (self.prefix.is_none() && !self.uppercase).then(|| self.local.code_units())
+    }
+
+    /// Iterate the exact presentation without allocating. Consumers own
+    /// admission for the unit traversal and any destination allocation.
+    pub fn code_units(&self) -> impl Iterator<Item = u16> + '_ {
+        self.prefix
+            .iter()
+            .flat_map(|prefix| prefix.code_units().iter().copied().chain([0x3a]))
+            .chain(self.local.code_units().iter().copied())
+            .map(|unit| {
+                if self.uppercase && (0x61..=0x7a).contains(&unit) {
+                    unit - 0x20
+                } else {
+                    unit
+                }
+            })
+    }
+}
+
 impl<'a> DomNode<'a> {
     pub fn as_form(self) -> Option<crate::DomForm<'a>> {
         self.as_element()
@@ -454,27 +492,54 @@ impl<'a> DomNode<'a> {
     pub fn as_element(self) -> Option<&'a DomElement> {
         self.node.element()
     }
+    /// Select the exact tag spelling without copying its code units. Any
+    /// lookup of the current node-document pays the visited native pages.
+    pub fn tag_name_spelling_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomTagName>, E> {
+        let Some(element) = self.as_element() else {
+            return Ok(None);
+        };
+        let name = element.name();
+        let prefix = name.prefix();
+        let local = name.local_name();
+        let mut length = local.len();
+        if let Some(prefix) = prefix {
+            length = length
+                .checked_add(prefix.len())
+                .and_then(|length| length.checked_add(1))
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        let uppercase = if crate::names::in_html_namespace(name) {
+            let document = self
+                .snapshot
+                .node_with(self.node.document().node(), &mut step)?;
+            let DomNodeKind::Document(metadata) = document.kind() else {
+                return Err(DomError::WrongNodeKind.into());
+            };
+            metadata.class() == crate::DomDocumentClass::Html
+        } else {
+            false
+        };
+        Ok(Some(DomTagName {
+            prefix: prefix.cloned(),
+            local: local.clone(),
+            uppercase,
+            length,
+        }))
+    }
+
     /// Source tagName follows the actual current node-document. Raw namespace,
     /// prefix and local name remain unchanged by this presentation or adoption.
     pub fn tag_name(self) -> Option<DocumentString> {
-        let element = self.as_element()?;
-        let spelling = crate::names::qualified_spelling(element.name());
-        Some(if self.html_element_in_html_document() {
-            DocumentString::from_utf16(
-                spelling
-                    .code_units()
-                    .iter()
-                    .map(|&unit| {
-                        if (0x61..=0x7a).contains(&unit) {
-                            unit - 0x20
-                        } else {
-                            unit
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )
+        let spelling = self
+            .tag_name_spelling_with(|| Ok::<_, DomError>(()))
+            .ok()??;
+        Some(if spelling.contiguous_units().is_some() {
+            spelling.local
         } else {
-            spelling
+            DocumentString::from_utf16(spelling.code_units().collect::<Vec<_>>())
         })
     }
     fn html_element_in_html_document(self) -> bool {

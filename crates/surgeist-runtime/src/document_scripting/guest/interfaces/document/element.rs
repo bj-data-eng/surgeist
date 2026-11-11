@@ -74,6 +74,11 @@ enum ElementMember {
     TagName,
 }
 
+enum ElementObservation {
+    Raw(Option<DocumentString>),
+    TagName(DomTagName),
+}
+
 enum NativeProjection {
     Document(DocumentId),
     Element {
@@ -401,6 +406,42 @@ impl PublicEventBindings {
 }
 
 impl Capture {
+    pub(super) fn copy_tag_name<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        name: &DomTagName,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let _backing;
+        let buffer;
+        let units = if let Some(units) = name.contiguous_units() {
+            units
+        } else {
+            let length = name.code_unit_len();
+            let bytes = length
+                .checked_mul(size_of::<u16>())
+                .ok_or(Error::Allocation)?;
+            _backing = events.reserve(owner, bytes)?;
+            events.charge_work(u64::try_from(length).map_err(|_| Error::StringTooLong)?)?;
+            let mut allocated = Vec::new();
+            allocated
+                .try_reserve_exact(length)
+                .map_err(|_| Error::Allocation)?;
+            if allocated.capacity() != length {
+                return Err(Error::Allocation.into());
+            }
+            allocated.extend(name.code_units());
+            buffer = allocated;
+            &buffer
+        };
+        Ok(self
+            .callbacks
+            .conversion
+            .run(scope, |conversion| conversion.copy_to_js(units))
+            .map_err(Error::from)?)
+    }
+
     fn document_element<'scope>(
         &self,
         scope: &mut Scope<'scope>,
@@ -449,28 +490,38 @@ impl Capture {
             events.step()?;
             let value = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let node = snapshot.node(id).map_err(DocumentScriptNativeError::from)?;
+                let node = snapshot.node_with(id, || events.step())?;
                 let element = node
                     .as_element()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
                 let name = element.name();
                 Ok(match member {
-                    ElementMember::Namespace => name.namespace_uri().cloned(),
-                    ElementMember::Prefix => name.prefix().cloned(),
-                    ElementMember::LocalName => Some(name.local_name().clone()),
-                    ElementMember::TagName => node.tag_name(),
+                    ElementMember::Namespace => {
+                        ElementObservation::Raw(name.namespace_uri().cloned())
+                    }
+                    ElementMember::Prefix => ElementObservation::Raw(name.prefix().cloned()),
+                    ElementMember::LocalName => {
+                        ElementObservation::Raw(Some(name.local_name().clone()))
+                    }
+                    ElementMember::TagName => ElementObservation::TagName(
+                        node.tag_name_spelling_with(|| events.step())?
+                            .ok_or(DocumentScriptNativeError::ProjectionCustody)?,
+                    ),
                 })
             })?;
-            let Some(value) = value else {
-                return Ok(scope.primitive(Primitive::Null)?);
-            };
-            Ok(self
-                .callbacks
-                .conversion
-                .run(scope, |conversion| {
-                    conversion.copy_to_js(value.code_units())
-                })
-                .map_err(Error::from)?)
+            match value {
+                ElementObservation::Raw(None) => Ok(scope.primitive(Primitive::Null)?),
+                ElementObservation::Raw(Some(value)) => Ok(self
+                    .callbacks
+                    .conversion
+                    .run(scope, |conversion| {
+                        conversion.copy_to_js(value.code_units())
+                    })
+                    .map_err(Error::from)?),
+                ElementObservation::TagName(name) => {
+                    self.copy_tag_name(scope, &owner, &events, &name)
+                }
+            }
         })();
         complete(scope, &events, result)
     }

@@ -2,7 +2,7 @@
 
 use super::*;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
-use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, NodeId};
+use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, DomTagName, NodeId};
 use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
@@ -97,6 +97,7 @@ enum NodeMember {
 enum Observation {
     Number(f64),
     String(DocumentString),
+    TagName(DomTagName),
     Boolean(bool),
     Node(Option<NodeId>),
     Document(Option<DocumentId>),
@@ -553,7 +554,10 @@ impl Capture {
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
-                    NodeMember::Name => Observation::String(node.node_name()),
+                    NodeMember::Name => match node.tag_name_spelling_with(|| events.step())? {
+                        Some(name) => Observation::TagName(name),
+                        None => Observation::String(node.node_name()),
+                    },
                     NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
                     NodeMember::Parent => Observation::Node(node.parent()),
                     NodeMember::Connected => Observation::Boolean(
@@ -573,6 +577,7 @@ impl Capture {
                         conversion.copy_to_js(value.code_units())
                     })
                     .map_err(Error::from)?),
+                Observation::TagName(name) => self.copy_tag_name(scope, &owner, &events, &name),
                 Observation::Node(None) | Observation::Document(None) => {
                     Ok(scope.primitive(Primitive::Null)?)
                 }
