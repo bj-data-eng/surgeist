@@ -694,6 +694,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "7b156a74615954eb2a6d90f210b9f2ef33bb5b878e2b435e5009b570b3df481f",
     ),
     (
+        crate::original_inline_subgrid_profile::EDITION,
+        "acc95fea9e393a05b17bc64f762898383bb88bc98f43535c588514f64dc7d194",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),
@@ -2048,3 +2052,66 @@ fn admit_specialized(
 #[cfg(test)]
 #[path = "portable_qualification_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn original_inline_subgrid_alignment_capture_refuses_changed_source_authority() {
+    let source = "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html";
+    let case = "subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr";
+    let original = include_str!(
+        "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml"
+    );
+    let current = include_str!(
+        "captured/original-inline-subgrid-alignment/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml"
+    );
+    let declaration = Declaration::parse(include_bytes!(
+        "../../../examples/qualify-root-context/corpus.toml"
+    ))
+    .unwrap();
+    let record = declaration
+        .records
+        .iter()
+        .find(|record| record.source.as_str() == source)
+        .unwrap();
+    let verify =
+        |xml: &str| record.verify_matching_capture(xml, Some(original), case, "border_box_ltr");
+    verify(current).unwrap();
+    support::Golden::parse(current).unwrap();
+
+    for (field, changed) in [
+        (
+            "root-context=\"inline-grid\"",
+            "root-context=\"block-flow-auto\"",
+        ),
+        ("position=\"static\"", "position=\"relative\""),
+        ("display=\"inline-grid\"", "display=\"grid\""),
+        (
+            "writing-mode=\"vertical-lr\"",
+            "writing-mode=\"horizontal-tb\"",
+        ),
+        ("grid-template-rows=\"50px\"", "grid-template-rows=\"51px\""),
+    ] {
+        assert!(current.contains(field));
+        assert!(
+            verify(&current.replacen(field, changed, 1)).is_err(),
+            "{field} accepted as {changed}",
+        );
+    }
+    for (field, changed) in [
+        ("parent-direction=\"ltr\"", "parent-direction=\"rtl\""),
+        (
+            "parent-inline-extent=\"800px\"",
+            "parent-inline-extent=\"50px\"",
+        ),
+        (
+            "observation-frame=\"root-border\"",
+            "observation-frame=\"root-border-local\"",
+        ),
+    ] {
+        assert!(current.contains(field));
+        assert!(
+            support::Golden::parse(&current.replacen(field, changed, 1)).is_err(),
+            "{field} accepted as {changed}",
+        );
+    }
+}

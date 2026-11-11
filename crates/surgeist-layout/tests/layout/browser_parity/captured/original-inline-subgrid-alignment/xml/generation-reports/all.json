@@ -1,0 +1,129 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-qualification",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "90069acb30e8a5ecb7320a59a7dd0a9aa43a64343f791daab5dc36a1232b974f",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "d0b30a3bb26fc14b8a18ef878cecf63b26238a0978cf6e795b9de6b767d55ec0",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "corpus.toml": "768e8b18e763b8adf2b6db55b6277ac5cfb255c8b873a35c9db72b37dd2c9563",
+      "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+      "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+      "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+      "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+      "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+      "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+      "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+      "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+      "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+      "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+      "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+      "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+      "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+      "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+      "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+      "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 8,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "subgrid_alignment_002_center_start_item__border_box_ltr",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+      "linked_resources": {},
+      "job_sha256": "791c58d5aea22cb94a93fbc130754451b10f163349355bb3c97d4e6cb4a0dd5e",
+      "output_sha256": "f5cc5bba23aa59711ec23af40d8195f6360d29a1e7df3ec5cdec58762bfa6bdb"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_item__border_box_rtl",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+      "linked_resources": {},
+      "job_sha256": "791c58d5aea22cb94a93fbc130754451b10f163349355bb3c97d4e6cb4a0dd5e",
+      "output_sha256": "7204f3b1087cd35583407df217d41cca8abf399812cea79028605d5f3f48b09c"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_item__content_box_ltr",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+      "linked_resources": {},
+      "job_sha256": "791c58d5aea22cb94a93fbc130754451b10f163349355bb3c97d4e6cb4a0dd5e",
+      "output_sha256": "a0e4a6262f6c1c4d0e3e62e6a77562dd8533ba5ef5f6fbe179b2680706949bc7"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_item__content_box_rtl",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+      "linked_resources": {},
+      "job_sha256": "791c58d5aea22cb94a93fbc130754451b10f163349355bb3c97d4e6cb4a0dd5e",
+      "output_sha256": "0893f1954ca9cd91b79ab591b43bda4a5c470eb22d4c9e30c8b08c6ba7afbf2b"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+      "linked_resources": {},
+      "job_sha256": "af457ae4edf92e555459fdb26edbeef6ab50c5fafb405c6bee9430e8d03bb0c9",
+      "output_sha256": "c114db6274b84c8bc61aa83b2423cc84ba7bc9f777f523c96a1c65a33d017a08"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+      "linked_resources": {},
+      "job_sha256": "af457ae4edf92e555459fdb26edbeef6ab50c5fafb405c6bee9430e8d03bb0c9",
+      "output_sha256": "153223c1ab9d12080e920fadd5192da330c6fc125cfdeb872e4acaa249f9055f"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+      "linked_resources": {},
+      "job_sha256": "af457ae4edf92e555459fdb26edbeef6ab50c5fafb405c6bee9430e8d03bb0c9",
+      "output_sha256": "4281cd0a735c3125208c4476ea8a613b53d591aa7cfb5e1ccf22975af66acd99"
+    },
+    {
+      "name": "subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl",
+      "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+      "output": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+      "linked_resources": {},
+      "job_sha256": "af457ae4edf92e555459fdb26edbeef6ab50c5fafb405c6bee9430e8d03bb0c9",
+      "output_sha256": "f540522df1933ea20c7e94d68c7d82777c8bf14e49aaeea8d97cfd210d8ce6e6"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}

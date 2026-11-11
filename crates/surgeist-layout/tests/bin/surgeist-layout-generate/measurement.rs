@@ -18,13 +18,13 @@ use crate::fri07_intrinsic_flex_profile;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
 use crate::horizontal_br_font_band_profile;
-use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
     original_grid_axes_profile, original_subgrid_axes_profile,
 };
+use crate::{original_inline_subgrid_profile, original_subgrid_body_profile};
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +43,7 @@ pub(super) enum BoxObservationRequest {
     OriginalGridAxes,
     OriginalSubgridAxes,
     OriginalSubgridBody,
+    OriginalInlineSubgrid,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
     VerticalBrFontBand,
@@ -95,6 +96,9 @@ impl BoxObservationRequest {
             }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridAxes.input_bytes() => {
                 Ok(Self::OriginalSubgridAxes)
+            }
+            Some(bytes) if Some(bytes) == Self::OriginalInlineSubgrid.input_bytes() => {
+                Ok(Self::OriginalInlineSubgrid)
             }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
@@ -150,6 +154,10 @@ impl BoxObservationRequest {
                 original_subgrid_axes_profile::SCRIPT_PATH,
                 original_subgrid_axes_profile::SCRIPT,
             )),
+            Self::OriginalInlineSubgrid => Some((
+                original_inline_subgrid_profile::SCRIPT_PATH,
+                original_inline_subgrid_profile::SCRIPT,
+            )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
                 original_subgrid_body_profile::SCRIPT,
@@ -201,6 +209,7 @@ impl BoxObservationRequest {
             Self::OriginalGridAxes => Some(original_grid_axes_profile::REQUEST),
             Self::OriginalSubgridAxes => Some(original_subgrid_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
+            Self::OriginalInlineSubgrid => Some(original_inline_subgrid_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
             Self::VerticalBrFontBand => Some(vertical_br_font_band_profile::REQUEST),
@@ -761,6 +770,14 @@ pub(super) fn decode(
             )
         })?
         .validate(&context)?;
+    context.compatible(
+        wire.viewport
+            .as_ref()
+            .is_some_and(WireViewport::inline_grid)
+            == (request == BoxObservationRequest::OriginalInlineSubgrid),
+        "viewport.rootContext",
+        "static inline Grid requires the original inline Subgrid observation request",
+    )?;
     wire.validate_grid_alignment_profile(&context)?;
     let block_offset = wire
         .viewport
@@ -874,6 +891,7 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalGridAxes
         | BoxObservationRequest::OriginalSubgridAxes
         | BoxObservationRequest::OriginalSubgridBody
+        | BoxObservationRequest::OriginalInlineSubgrid
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
         | BoxObservationRequest::VerticalBrFontBand

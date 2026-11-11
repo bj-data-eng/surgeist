@@ -1,0 +1,558 @@
+{
+  "schema_version": 3,
+  "edition": "original-inline-subgrid-alignment",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "768e8b18e763b8adf2b6db55b6277ac5cfb255c8b873a35c9db72b37dd2c9563"
+  },
+  "records": [
+    {
+      "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+      "sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "context": "inline-grid",
+            "subgrid_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "border_box_rtl": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "content_box_ltr": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "content_box_rtl": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb"
+        },
+        "matching_publication": "original-inline-subgrid-alignment",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "source_kind": "original",
+        "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f"
+      }
+    },
+    {
+      "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+      "sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "context": "inline-grid",
+            "subgrid_writing_mode": "vertical-lr"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "border_box_rtl": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "content_box_ltr": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "content_box_rtl": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84"
+        },
+        "matching_publication": "original-inline-subgrid-alignment",
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "source_kind": "original",
+        "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "4105b64c7b18f09fb32e7561eb876a35481d2ed4417f53884fd249ba15a40dc6"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "39dce2957421124de2d5bc54da6a57c98532ca83d088b653ad8da58fffbe6956"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_item__border_box_ltr",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml",
+          "sha256": "f5cc5bba23aa59711ec23af40d8195f6360d29a1e7df3ec5cdec58762bfa6bdb"
+        },
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml",
+        "sha256": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+        "variant": "border_box_ltr",
+        "historical_sha256": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+        "capture_sha256": "f5cc5bba23aa59711ec23af40d8195f6360d29a1e7df3ec5cdec58762bfa6bdb",
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "03471c2b4ffa942e44545bfa90eeb13c37e15cc9c990198ff0d8c1b1efe2821b",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_item__border_box_rtl",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml",
+          "sha256": "7204f3b1087cd35583407df217d41cca8abf399812cea79028605d5f3f48b09c"
+        },
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml",
+        "sha256": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+        "variant": "border_box_rtl",
+        "historical_sha256": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+        "capture_sha256": "7204f3b1087cd35583407df217d41cca8abf399812cea79028605d5f3f48b09c",
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "3600214dbc21555fe4d33e5c6fea4f940151d4b265e6e6a249920f82394f5b8d",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_item__content_box_ltr",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml",
+          "sha256": "a0e4a6262f6c1c4d0e3e62e6a77562dd8533ba5ef5f6fbe179b2680706949bc7"
+        },
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml",
+        "sha256": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+        "variant": "content_box_ltr",
+        "historical_sha256": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+        "capture_sha256": "a0e4a6262f6c1c4d0e3e62e6a77562dd8533ba5ef5f6fbe179b2680706949bc7",
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0e2805082f3c488d951a65b9e328339becd36458a1a2ca972f9ea2fa27157bcd",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_item__content_box_rtl",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml",
+          "sha256": "0893f1954ca9cd91b79ab591b43bda4a5c470eb22d4c9e30c8b08c6ba7afbf2b"
+        },
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml",
+        "sha256": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_item.html",
+        "source_sha256": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+        "variant": "content_box_rtl",
+        "historical_sha256": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+        "capture_sha256": "0893f1954ca9cd91b79ab591b43bda4a5c470eb22d4c9e30c8b08c6ba7afbf2b",
+        "record_sha256": "b877830fc6c7a21ba7f5335a62098799cfefc935763cf48008fe801c2904319e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "69d83346b441c060573df76eb3b6281ef894a886369a627a2d4169ef2bab894a",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml",
+          "sha256": "c114db6274b84c8bc61aa83b2423cc84ba7bc9f777f523c96a1c65a33d017a08"
+        },
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml",
+        "sha256": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+        "variant": "border_box_ltr",
+        "historical_sha256": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+        "capture_sha256": "c114db6274b84c8bc61aa83b2423cc84ba7bc9f777f523c96a1c65a33d017a08",
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "62ff7c1deb02f5709a488dddadcb84700c18cb8220a3fd9b44ebb7a901a353f9",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml",
+          "sha256": "153223c1ab9d12080e920fadd5192da330c6fc125cfdeb872e4acaa249f9055f"
+        },
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml",
+        "sha256": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+        "variant": "border_box_rtl",
+        "historical_sha256": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+        "capture_sha256": "153223c1ab9d12080e920fadd5192da330c6fc125cfdeb872e4acaa249f9055f",
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "970d006d2b909299bce9e981618a3608d50786b4852f8eb38815877fadcce0b8",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml",
+          "sha256": "4281cd0a735c3125208c4476ea8a613b53d591aa7cfb5e1ccf22975af66acd99"
+        },
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml",
+        "sha256": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+        "variant": "content_box_ltr",
+        "historical_sha256": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+        "capture_sha256": "4281cd0a735c3125208c4476ea8a613b53d591aa7cfb5e1ccf22975af66acd99",
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "4b087058ea1f0f6cd5331fac8e5854d33cb1a22865edeed683d0ff3fc0b631c6",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    },
+    {
+      "case": {
+        "name": "subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl",
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml",
+          "sha256": "f540522df1933ea20c7e94d68c7d82777c8bf14e49aaeea8d97cfd210d8ce6e6"
+        },
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3"
+      },
+      "historical": {
+        "path": "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml",
+        "sha256": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84"
+      },
+      "matching": "original-inline-subgrid",
+      "identity": {
+        "source": "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+        "source_sha256": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+        "variant": "content_box_rtl",
+        "historical_sha256": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+        "capture_sha256": "f540522df1933ea20c7e94d68c7d82777c8bf14e49aaeea8d97cfd210d8ce6e6",
+        "record_sha256": "24aaebd90a589e471bc78b0aabc2882f6c7bd7a4f1386619a248dc2613c005a3",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "bd78ceb1d75be09bdc35e8170fa00fda02a272992f972bf234c3fb5b933b7eae",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+          "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+          "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+          "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+          "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+          "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+          "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+        },
+        "linked_resources": {},
+        "font_demand": "none"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "768e8b18e763b8adf2b6db55b6277ac5cfb255c8b873a35c9db72b37dd2c9563",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+    "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+    "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+    "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+    "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+    "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+    "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+    "historical/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84",
+    "html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+    "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+    "observation-request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+    "origin/selected-originals.json": "1bfdcbe16c1b80e3cacd91d5e622ff6033c2b95032caf4939cdc71d32667b705",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+  },
+  "current_owner_inputs": {
+    "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
+    "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid_request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
+    "tests/layout/browser_parity/html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_item__content_box_rtl.xml": "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml": "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_rtl.xml": "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_ltr.xml": "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877",
+    "tests/layout/browser_parity/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__content_box_rtl.xml": "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-computed-margin-v1",
+    "producer_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63",
+    "validator_profile": "root-context-computed-margin-v1",
+    "validator_helper_sha256": "a838b2c84fd7cf71288831b75e97a3d4d3b4f5978adf20a6c914ec28cedb2a63"
+  }
+}

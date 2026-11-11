@@ -4723,3 +4723,40 @@ root_writing_mode = "horizontal-tb"
 [[matching_publications]]
 edition = "fri07-intrinsic-flex-text"
 sources = ["html/flex/fri07_intrinsic_flex_basis.html"]
+
+[[records]]
+source = "html/subgrid/subgrid_alignment_002_center_start_item.html"
+source_sha256 = "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a"
+border_box_rtl = "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088"
+content_box_ltr = "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8"
+content_box_rtl = "f0f9466f11cf852e32304e9c5e1ff34e4dc9c55516030b445767aead048dfcdb"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "inline-grid"
+subgrid_writing_mode = "horizontal-tb"
+
+[[records]]
+source = "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html"
+source_sha256 = "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "0eb6b2973b6c2bed519bf08e11f6b443c3ac08e57e80b3f0cdce9058f2f696ab"
+border_box_rtl = "436b6482d0d1a69b78410b30ca02d045b910fcda50fc556a4106d0e4cb14c9f5"
+content_box_ltr = "87222887d314c722294968caaa7270cf358a6b5ee201e10f5a4179f64680c877"
+content_box_rtl = "f938d6d4186ccbb48d2ee703d6c86026f8512abc4870beee3e25822a3295dd84"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "inline-grid"
+subgrid_writing_mode = "vertical-lr"
+
+[[matching_publications]]
+edition = "original-inline-subgrid-alignment"
+sources = [
+  "html/subgrid/subgrid_alignment_002_center_start_item.html",
+  "html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html",
+]

@@ -34,6 +34,11 @@ enum WireRootContext {
         parent_direction: Direction,
         fallback: Fallback,
     },
+    InlineGrid {
+        parent_inline_extent: f64,
+        parent_direction: Direction,
+        fallback: Fallback,
+    },
 }
 
 #[derive(Deserialize)]
@@ -162,13 +167,17 @@ impl WireViewport {
     pub(super) fn root_local_positioned(&self) -> bool {
         matches!(self.root_context, WireRootContext::AbsoluteRootLocal { .. })
     }
+    pub(super) fn inline_grid(&self) -> bool {
+        matches!(self.root_context, WireRootContext::InlineGrid { .. })
+    }
+
     pub(super) fn hypothetical_block_offset(&self) -> Option<f64> {
         match &self.root_context {
             WireRootContext::AbsoluteRootLocal {
                 hypothetical_block_offset,
                 ..
             } => *hypothetical_block_offset,
-            WireRootContext::BlockFlowAuto { .. } => None,
+            WireRootContext::BlockFlowAuto { .. } | WireRootContext::InlineGrid { .. } => None,
         }
     }
 
@@ -195,6 +204,14 @@ impl WireViewport {
                     && style.display.as_deref() == Some(expected),
                 "viewport.rootContext.hypotheticalDisplay",
                 "absolute proof disagrees with actual position or blockified display",
+            )?;
+        } else if self.inline_grid() {
+            let style = context.required(style, "style")?;
+            context.compatible(
+                style.position.as_deref() == Some("static")
+                    && style.display.as_deref() == Some("inline-grid"),
+                "viewport.rootContext",
+                "inline Grid proof requires its authored static display",
             )?;
         }
         Ok(())
@@ -265,6 +282,11 @@ impl WireViewport {
                 parent_inline_extent,
                 fallback,
                 ..
+            }
+            | WireRootContext::InlineGrid {
+                parent_inline_extent,
+                fallback,
+                ..
             } => {
                 fallback.validate(context)?;
                 layout_number(
@@ -279,7 +301,7 @@ impl WireViewport {
                 context.compatible(
                     *parent_inline_extent == fallback.initial_containing_block.width,
                     "viewport.rootContext",
-                    "zero-edge Auto body inline extent must match the authenticated ICB",
+                    "zero-edge containing inline extent must match the authenticated ICB",
                 )?;
             }
         }
@@ -327,9 +349,22 @@ impl WireViewport {
                 parent_inline_extent,
                 parent_direction,
                 fallback,
+            }
+            | WireRootContext::InlineGrid {
+                parent_inline_extent,
+                parent_direction,
+                fallback,
             } => (
                 vec![
-                    ("root-context", "block-flow-auto".into()),
+                    (
+                        "root-context",
+                        if self.inline_grid() {
+                            "inline-grid"
+                        } else {
+                            "block-flow-auto"
+                        }
+                        .into(),
+                    ),
                     (
                         "parent-inline-extent",
                         format!("{}px", number(*parent_inline_extent)),

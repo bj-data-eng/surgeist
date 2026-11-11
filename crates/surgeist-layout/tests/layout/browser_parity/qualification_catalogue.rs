@@ -124,6 +124,9 @@ pub(crate) enum ExpectedMetadata {
         block_offset: Option<f64>,
         root_size: Option<ExpectedRootSize>,
     },
+    InlineGrid {
+        subgrid_writing_mode: String,
+    },
     BlockFlow {
         parent_direction: String,
         root_direction: String,
@@ -372,6 +375,11 @@ impl Declaration {
             {
                 return Err("FRI06 Subgrid matching requires all three sources".into());
             }
+            if category == MatchingCategory::OriginalInlineSubgrid
+                && members.len() != crate::original_inline_subgrid_profile::SOURCES.len()
+            {
+                return Err("original inline Subgrid matching requires both sources".into());
+            }
             if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }
@@ -571,6 +579,84 @@ pub(crate) fn compare_observation_tree(
     }
     for (a, b) in a.into_iter().zip(b) {
         compare_observation_tree(a, b)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_inline_grid_metadata(
+    test: roxmltree::Node<'_, '_>,
+    subgrid_writing_mode: &str,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let viewport = test
+        .children()
+        .find(|node| node.has_tag_name("viewport"))
+        .ok_or("missing inline Grid viewport")?;
+    if test.attribute("measurement-version") != Some("4")
+        || test.attribute("use-rounding") != Some("true")
+        || viewport.attribute("root-context") != Some("inline-grid")
+        || viewport.attribute("parent-direction") != Some("ltr")
+    {
+        return Err("original inline Subgrid containing frame changed".into());
+    }
+
+    fn single_child<'a, 'input: 'a>(
+        node: roxmltree::Node<'a, 'input>,
+    ) -> Result<roxmltree::Node<'a, 'input>, &'static str> {
+        let mut children = node.children().filter(roxmltree::Node::is_element);
+        let child = children
+            .next()
+            .ok_or("missing original inline Subgrid box")?;
+        if children.next().is_some() {
+            return Err("extra original inline Subgrid box");
+        }
+        Ok(child)
+    }
+    let root = single_child(
+        test.children()
+            .find(|node| node.has_tag_name("input"))
+            .ok_or("missing inline Grid input")?,
+    )?;
+    let subgrid = single_child(root)?;
+    let item = single_child(subgrid)?;
+    for (node, display, mode) in [
+        (root, "inline-grid", "horizontal-tb"),
+        (subgrid, "grid", subgrid_writing_mode),
+        (item, "block", subgrid_writing_mode),
+    ] {
+        if !node.has_tag_name("div")
+            || node.attribute("source-tag") != Some("div")
+            || node.attribute("display") != Some(display)
+            || node.attribute("direction") != Some("ltr")
+            || node.attribute("box-sizing") != Some("content-box")
+            || node.attribute("writing-mode").unwrap_or("horizontal-tb") != mode
+        {
+            return Err("original inline Subgrid box or writing mode changed".into());
+        }
+    }
+    if root.attribute("position") != Some("static")
+        || ["width", "height"]
+            .iter()
+            .any(|field| root.attribute(*field).is_some_and(|value| value != "auto"))
+        || [root, subgrid].iter().any(|node| {
+            ["column-gap", "row-gap"]
+                .iter()
+                .any(|field| node.attribute(*field) != Some("5px"))
+        })
+        || ["grid-template-columns", "grid-template-rows"]
+            .iter()
+            .any(|field| {
+                root.attribute(*field) != Some("50px")
+                    || subgrid.attribute(*field) != Some("subgrid")
+            })
+        || item
+            .children()
+            .any(|child| child.is_element() || child.is_text())
+        || item.attribute("width") != Some("20px")
+        || item.attribute("height") != Some("20px")
+        || item.attribute("align-self") != Some("center")
+        || item.attribute("justify-self") != Some("start")
+    {
+        return Err("original inline Subgrid sizing or alignment input changed".into());
     }
     Ok(())
 }
@@ -787,6 +873,12 @@ impl Record {
             ExpectedMetadata::BlockFlow { .. } => {
                 let document = roxmltree::Document::parse(current)?;
                 verify_block_flow_metadata(document.root_element(), metadata, name, variant)
+            }
+            ExpectedMetadata::InlineGrid {
+                subgrid_writing_mode,
+            } => {
+                let document = roxmltree::Document::parse(current)?;
+                verify_inline_grid_metadata(document.root_element(), subgrid_writing_mode)
             }
         }
     }

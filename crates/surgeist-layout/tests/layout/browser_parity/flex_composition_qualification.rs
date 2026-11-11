@@ -255,7 +255,7 @@ fn verify_native_control(
     }
     let request = root_request(&golden.viewport.root_context).map_err(map_error)?;
     let batch = compute_actual_batch(&tree, &golden.name, request).map_err(map_error)?;
-    let actual = snapshot_batch(&tree, &batch, source)?;
+    let actual = snapshot_batch(&tree, &batch, source, false)?;
 
     let [_, _, _, restored, _, scroller, child] = actual.as_slice() else {
         return Err(unsupported("/", "collapse control source census"));

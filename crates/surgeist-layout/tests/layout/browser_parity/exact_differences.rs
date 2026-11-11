@@ -1444,7 +1444,9 @@ pub(crate) fn compare_matching_capture(
 )> {
     use super::capture_authority::{MatchingCategory, fri06_subgrid_profile};
     match category {
-        MatchingCategory::Geometry => return compare_matching_geometry(golden),
+        MatchingCategory::Geometry | MatchingCategory::OriginalInlineSubgrid => {
+            return compare_matching_geometry(golden);
+        }
         MatchingCategory::Fri07IntrinsicFlexText => {
             if source != crate::fri07_intrinsic_flex_profile::SOURCE
                 || !golden.has_intrinsic_flex_text()
@@ -1687,7 +1689,13 @@ fn collect_captured_comparison(
         fields: Vec::new(),
     };
     let comparison = compare_captured_with_batch(golden, &mut sink, |tree, batch| {
-        match snapshot_batch(tree, batch, source) {
+        let inline_grid_root = matches!(
+            golden.viewport.root_context,
+            super::RootContext::Qualified(
+                super::root_context::QualifiedRootContext::InlineGrid { .. }
+            )
+        );
+        match snapshot_batch(tree, batch, source, inline_grid_root) {
             Ok(nodes) => snapshot = Some(nodes),
             Err(error) => {
                 let message = error.to_string();
@@ -1815,6 +1823,7 @@ fn snapshot_batch(
     tree: &TestTree,
     batch: &layout::CompletedLayoutBatch<usize>,
     source: &[SourceNode],
+    inline_grid_root: bool,
 ) -> Result<Vec<NativeNode>> {
     let flex_text = source
         .iter()
@@ -1917,10 +1926,13 @@ fn snapshot_batch(
         let matches_role = match role {
             SourceRole::OrdinaryBox => {
                 !actual.synthetic
-                    && actual
-                        .layout_input
-                        .as_box()
-                        .is_some_and(|input| !input.display.is_inline_level())
+                    && actual.layout_input.as_box().is_some_and(|input| {
+                        if inline_grid_root && path == "/" {
+                            input.display == layout::Display::InlineGrid
+                        } else {
+                            !input.display.is_inline_level()
+                        }
+                    })
             }
             SourceRole::AnonymousFlexItem => {
                 actual.synthetic

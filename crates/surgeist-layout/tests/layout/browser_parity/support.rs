@@ -262,7 +262,7 @@ impl Golden {
         if test.attribute("measurement-version") == Some("4") {
             let expected = match viewport.attribute("root-context") {
                 Some("absolute-root-local") => "root-border-local",
-                Some("block-flow-auto") => "root-border",
+                Some("block-flow-auto" | "inline-grid") => "root-border",
                 _ => return Err(Error::new("V4 requires a closed root-context authority")),
             };
             if test.attribute("observation-frame") != Some(expected) {
@@ -651,6 +651,9 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             containing_direction,
             ..
         }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *containing_direction),
+        RootContext::Qualified(root_context::QualifiedRootContext::InlineGrid { .. }) => {
+            layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr)
+        }
         RootContext::UnqualifiedCapture { .. } => {
             return Err(Error::new("MissingRootContextAuthority"));
         }
@@ -2820,6 +2823,7 @@ impl TestTree {
                 context,
                 Some(RootContext::Qualified(
                     root_context::QualifiedRootContext::BlockFlowAuto { .. }
+                        | root_context::QualifiedRootContext::InlineGrid { .. }
                 ))
             ) || [
                 "left",
