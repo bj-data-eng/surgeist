@@ -2475,23 +2475,19 @@ impl NativeDomEvent {
     fn continuation(&self) -> Option<Rc<EventContinuation>> {
         self.0.invocation()?.upgrade()
     }
-    /// Construct the load event for an actual owning Style completion operation.
-    pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(
-            target,
-            EventData::StyleLoad,
-            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
-            backing,
-        )
-    }
-    /// Construct the error event for an actual owning Style completion operation.
-    pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(
-            target,
-            EventData::StyleError,
-            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
-            backing,
-        )
+    /// Construct the actual reached Style networking notification.
+    pub(crate) fn style_notification(
+        target: NodeId,
+        success: bool,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        let data = if success {
+            EventData::StyleLoad
+        } else {
+            EventData::StyleError
+        };
+        EventInvocationOwner::new(target, data, creation, backing)
     }
     /// The actual Details task owner supplies its exact queued/coalesced data.
     /// The selected HTML firing clause supplies no source Element. Equal states

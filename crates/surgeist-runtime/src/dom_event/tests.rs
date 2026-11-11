@@ -1,6 +1,27 @@
 //! Literal behavioral oracles from retained DOM3071 dispatch/invoke/parent and
 //! composedPath algorithms. This wholly new API has no executable prior RED.
 use super::*;
+
+impl NativeDomEvent {
+    fn style_load(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
+        Self::style_notification(
+            target,
+            true,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            backing,
+        )
+    }
+
+    fn style_error(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
+        Self::style_notification(
+            target,
+            false,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            backing,
+        )
+    }
+}
+
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::{DocumentId, DomBatch, DomCommit, DomLimits, Namespace};
 

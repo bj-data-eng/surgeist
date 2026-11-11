@@ -102,6 +102,64 @@ impl HostedState {
     }
 }
 
+/// Non-owning permission for an admitted native producer to sample the
+/// original session clock without retaining its Event storage or host.
+#[derive(Clone)]
+pub(crate) struct HostedEventClock(Weak<RefCell<HostedState>>);
+
+impl HostedOwner {
+    pub(crate) fn event_clock(&self) -> HostedEventClock {
+        HostedEventClock(Rc::downgrade(&self.state))
+    }
+}
+
+impl HostedEventClock {
+    pub(crate) fn sample(
+        &self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        origin: surgeist_dom::DomHostedMoment,
+        cancel: &AtomicBool,
+    ) -> Result<Result<EventCreation, DomEventTimestampUnavailable>, DomHostedRuntimeError> {
+        let owner = self
+            .0
+            .upgrade()
+            .ok_or(DomHostedRuntimeError::OwnerDisposed)?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomHostedRuntimeError::Busy)?;
+        state.qualify(dom)?;
+        let source = state.source.id();
+        if origin.source() != source || global.source() != source || state.clock.source() != source
+        {
+            return Err(DomHostedRuntimeError::Protocol);
+        }
+        state.step(cancel)?;
+        let occurrence = match state.clock.sample().and_then(|sample| sample.coarsen()) {
+            Ok(occurrence) => occurrence,
+            Err(error) => {
+                return Ok(Err(DomEventTimestampUnavailable::Provider(
+                    event_clock_failure(error),
+                )));
+            }
+        };
+        let origin = clock::CoarsenedSample {
+            source,
+            microseconds: origin.microseconds(),
+        };
+        creation_from_coarsened(global, origin, occurrence)
+            .map(|observation| Ok(EventCreation(observation)))
+    }
+}
+
+fn event_clock_failure(error: clock::Error) -> DomSourceEventClockFailure {
+    match error {
+        clock::Error::Unavailable => DomSourceEventClockFailure::Unavailable,
+        clock::Error::Regressed => DomSourceEventClockFailure::Regressed,
+        clock::Error::Overflow => DomSourceEventClockFailure::Overflow,
+    }
+}
+
 impl NativeTaskRunning {
     pub(crate) fn sample_event_creation(
         &self,
@@ -151,11 +209,7 @@ impl HostedRuntime {
             .sample()
             .and_then(|sample| sample.coarsen())
             .map(|sample| sample.microseconds)
-            .map_err(|error| match error {
-                clock::Error::Unavailable => DomSourceEventClockFailure::Unavailable,
-                clock::Error::Regressed => DomSourceEventClockFailure::Regressed,
-                clock::Error::Overflow => DomSourceEventClockFailure::Overflow,
-            });
+            .map_err(event_clock_failure);
         loan.finish(occurrence).map_err(DomHostedRuntimeError::Dom)
     }
 
@@ -262,6 +316,14 @@ pub(super) fn creation_observation(
     occurrence: clock::Sample,
 ) -> Result<DomEventCreationObservation, DomHostedRuntimeError> {
     let occurrence = occurrence.coarsen().map_err(clock_error)?;
+    creation_from_coarsened(global, origin, occurrence)
+}
+
+fn creation_from_coarsened(
+    global: DomHostedGlobalId,
+    origin: clock::CoarsenedSample,
+    occurrence: clock::CoarsenedSample,
+) -> Result<DomEventCreationObservation, DomHostedRuntimeError> {
     if occurrence.source != origin.source {
         return Err(DomHostedRuntimeError::Protocol);
     }

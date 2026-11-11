@@ -162,6 +162,8 @@ pub enum DomStyleRuntimeError {
     Resource(DomStyleCssomRootError),
     /// Actual bound trusted event executor refused Style attestation.
     EventExecutor(crate::DomSourceEventRuntimeError),
+    /// The original hosted issuer refused Style event timing qualification.
+    EventClock(crate::DomHostedRuntimeError),
 }
 impl std::fmt::Display for DomStyleRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -177,6 +179,7 @@ impl std::error::Error for DomStyleRuntimeError {
             Self::Dispatch(error) => Some(error),
             Self::Resource(error) => Some(error),
             Self::EventExecutor(error) => Some(error),
+            Self::EventClock(error) => Some(error),
             _ => None,
         }
     }
@@ -189,6 +192,14 @@ impl From<DomStyleCssomRootError> for DomStyleRuntimeError {
 impl From<DomError> for DomStyleRuntimeError {
     fn from(e: DomError) -> Self {
         Self::Dom(e)
+    }
+}
+impl From<surgeist_dom::DomHostedError> for DomStyleRuntimeError {
+    fn from(error: surgeist_dom::DomHostedError) -> Self {
+        match error {
+            surgeist_dom::DomHostedError::Dom(error) => Self::Dom(error),
+            error => Self::EventClock(crate::DomHostedRuntimeError::Dom(error)),
+        }
     }
 }
 impl From<surgeist_cssom::CssomError> for DomStyleRuntimeError {
@@ -542,8 +553,12 @@ struct StyleState {
     next_task: u64,
     work: std::cell::Cell<u64>,
     dom: DomOwnerId,
-    events: Option<crate::dom_dialog::SourceEventRuntime>,
+    events: Option<StyleEvents>,
     body_bytes: std::rc::Rc<std::cell::Cell<usize>>,
+}
+struct StyleEvents {
+    source: crate::dom_dialog::SourceEventRuntime,
+    clock: crate::dom_lifecycle::HostedEventClock,
 }
 // The current storage observation already includes the old backing. A full
 // persistent bank additionally needs its entire requested replacement; spare
@@ -1951,7 +1966,10 @@ impl DomSession {
         );
         details.bind_events(events.execution());
         let mut state = StyleState::new(owner, limits.style);
-        state.events = Some(events.execution());
+        state.events = Some(StyleEvents {
+            source: events.execution(),
+            clock: hosted.event_clock(),
+        });
         state.work.set(parsed_work);
         Ok(Self {
             dom,
@@ -2554,29 +2572,42 @@ impl DomStyleRuntime {
                                     .ok_or(DomStyleRuntimeError::Admission)?,
                                 cancel,
                             )?;
-                            let storage = state
+                            let events = state
                                 .events
                                 .as_ref()
-                                .ok_or(DomStyleRuntimeError::SessionUnavailable)?
-                                .storage
-                                .clone();
+                                .ok_or(DomStyleRuntimeError::SessionUnavailable)?;
+                            let token = &state.completions[index].task().token;
+                            let origin = dom
+                                .raw()
+                                .style_event_creation_origin(token, &mut || state.step(cancel))?;
+                            // The original task admitted its body. Qualification
+                            // and clock work finish before its single sample.
+                            let creation = match origin {
+                                Some((global, origin)) => events
+                                    .clock
+                                    .sample(dom, global, origin, cancel)
+                                    .map_err(DomStyleRuntimeError::EventClock)?,
+                                None => {
+                                    Err(crate::DomEventTimestampUnavailable::NoAuthenticatedClock)
+                                }
+                            };
                             let backing = crate::dom_event::EventBodyCustody::style(
                                 &state.body_bytes,
-                                storage,
+                                events.source.storage.clone(),
                             );
-                            let target = state.completions[index].task().token.target();
-                            let event = if action == HtmlStyleNotificationAction::DispatchLoad {
-                                NativeDomEvent::style_load(target, backing)
-                            } else {
-                                NativeDomEvent::style_error(target, backing)
-                            };
+                            let event = NativeDomEvent::style_notification(
+                                token.target(),
+                                action == HtmlStyleNotificationAction::DispatchLoad,
+                                creation,
+                                backing,
+                            );
                             state.completions[index].task_mut().delivery =
                                 Delivery::Dispatching(event);
                         }
                         match &state.completions[index].task().delivery {
                             Delivery::Dispatching(event) => Some(event.dispatch_observation()),
                             Delivery::Delivered(_) => None,
-                            Delivery::NotStarted => unreachable!(),
+                            Delivery::NotStarted => return Err(DomStyleRuntimeError::Protocol),
                         }
                     };
                     if let Some(event) = event {
@@ -2713,7 +2744,7 @@ impl DomStyleRuntime {
                             state.step(cancel)?;
                         }
                     }
-                    let events = state.events.clone();
+                    let events = state.events.as_ref().map(|events| events.source.clone());
                     let task = state.completions[index].task_mut();
                     let Delivery::Delivered(receipt) = &task.delivery else {
                         return Err(DomStyleRuntimeError::Protocol);

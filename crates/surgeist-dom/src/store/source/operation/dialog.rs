@@ -535,16 +535,8 @@ impl Operation {
         subject: NodeId,
         cancel: &AtomicBool,
     ) -> Result<FiringTime, DomError> {
-        self.draft.source_step(cancel)?;
-        let Some(global) = dom.state.node(dom.owner, subject)?.relevant_global() else {
-            return Ok(FiringTime::Unavailable);
-        };
-        let document = dom
-            .state
-            .hosted_globals
-            .as_ref()
-            .ok_or(DomError::HostedSourceUnavailable)?
-            .document_with(global, &mut || {
+        let origin = dom
+            .selected_event_creation_origin(subject, &mut || {
                 self.draft
                     .source_step(cancel)
                     .map_err(crate::DomHostedError::from)
@@ -553,37 +545,14 @@ impl Operation {
                 crate::DomHostedError::Dom(error) => error,
                 _ => DomError::HostedSourceUnavailable,
             })?;
-        self.draft.source_step(cancel)?;
-        let node = match dom.state.node(dom.owner, document.node()) {
-            Ok(node) => node,
-            // The exact historical mapping still names this retired generation.
-            Err(DomError::StaleNode) => return Ok(FiringTime::Unavailable),
-            Err(error) => return Err(error),
-        };
-        let DomNodeKind::Document(metadata) = node.kind() else {
-            return Err(DomError::WrongDocument);
-        };
-        let environment = metadata.document_environment();
-        let association = environment
-            .hosted
-            .as_ref()
-            .filter(|association| association.global == global)
-            .ok_or(DomError::HostedSourceUnavailable)?;
-        if matches!(
-            association.phase,
-            crate::hosted::DocumentPhase::Retired { .. }
-        ) {
-            return Ok(FiringTime::Unavailable);
-        }
-        match association.validate_live() {
-            Ok(_) => Ok(FiringTime::Pending {
+        Ok(match origin {
+            Some((global, document, origin)) => FiringTime::Pending {
                 global,
                 document,
-                origin: association.navigation_start,
-            }),
-            Err(crate::DomHostedError::SourceExpired) => Ok(FiringTime::Unavailable),
-            Err(_) => Err(DomError::HostedSourceUnavailable),
-        }
+                origin,
+            },
+            None => FiringTime::Unavailable,
+        })
     }
 }
 /// Exclusive acknowledgment of the original issuer's prepared firing.

@@ -1302,6 +1302,71 @@ impl Dom {
 }
 
 impl Dom {
+    /// Original clock origin of the exact Style notification receiver. A
+    /// never-hosted receiver or retired origin has no available clock. The
+    /// receiver's current node document cannot substitute its Global.
+    pub fn style_event_creation_origin<E>(
+        &self,
+        token: &crate::DomStyleNotificationToken,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(DomHostedGlobalId, DomHostedMoment)>, E>
+    where
+        E: From<DomHostedError> + From<DomError>,
+    {
+        if token.complete || token.origin.is_none() {
+            return Err(DomError::StyleProtocol.into());
+        }
+        if token.owner() != self.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        self.selected_event_creation_origin(token.target(), step)
+            .map(|origin| origin.map(|(global, _, moment)| (global, moment)))
+    }
+
+    pub(in crate::store) fn selected_event_creation_origin<E>(
+        &self,
+        subject: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(DomHostedGlobalId, DocumentId, DomHostedMoment)>, E>
+    where
+        E: From<DomHostedError> + From<DomError>,
+    {
+        step()?;
+        let Some(global) = self.state.node(self.owner, subject)?.relevant_global() else {
+            return Ok(None);
+        };
+        let document = self
+            .state
+            .hosted_globals
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?
+            .document_with(global, step)?;
+        step()?;
+        let node = match self.state.node(self.owner, document.node()) {
+            Ok(node) => node,
+            // The exact historical mapping still names this retired generation.
+            Err(DomError::StaleNode) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .filter(|association| association.global == global)
+            .ok_or(DomHostedError::StaleIdentity)?;
+        if matches!(association.phase, DocumentPhase::Retired { .. }) {
+            return Ok(None);
+        }
+        match association.validate_live() {
+            Ok(_) => Ok(Some((global, document, association.navigation_start))),
+            Err(DomHostedError::SourceExpired) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Current Global association for an actual native dispatcher. An unfinished
     /// Source requires its exact active dispatch scope; snapshots stay incomplete.
     pub fn dispatch_relevant_global(

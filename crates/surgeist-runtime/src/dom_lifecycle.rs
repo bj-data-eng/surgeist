@@ -29,7 +29,7 @@ use surgeist_dom::{
     DomHostedPreparedTopLevel, DomHostedSource, DomHostedTopLevelPreparation, DomOwnerId,
 };
 mod event;
-pub(crate) use event::{EventCreation, EventTargetAssociation};
+pub(crate) use event::{EventCreation, EventTargetAssociation, HostedEventClock};
 
 /// Finite native orchestration bounds, separate from canonical DOM admission.
 #[derive(Clone, Copy, Debug)]
