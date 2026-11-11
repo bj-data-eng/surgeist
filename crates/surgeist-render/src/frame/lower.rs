@@ -912,12 +912,11 @@ pub(super) fn graph_lowering_pass_kind(
             Ok(GraphLoweringPassKind::CanonicalizeCapture)
         }
         SemanticPassIntent::CopyBackdrop => {
-            let count =
-                matching(&graph.backdrop_reads, account, |read| read.pass == pass.id)?.len();
-            if (pass.result == SemanticPassResult::Empty && count != 0)
-                || (matches!(pass.result, SemanticPassResult::Resource(_)) && count != 1)
-            {
-                return Err(GraphValidationError::InvalidPassArity);
+            let reads = matching(&graph.backdrop_reads, account, |read| read.pass == pass.id)?;
+            match (pass.result, reads) {
+                (SemanticPassResult::Empty, Matches::None)
+                | (SemanticPassResult::Resource(_), Matches::One(_)) => {}
+                _ => return Err(GraphValidationError::InvalidPassArity),
             }
             reject_unexpected_filter_metadata(graph, pass.id, account)?;
             Ok(GraphLoweringPassKind::CopyBackdrop)
@@ -950,17 +949,17 @@ fn graph_lowering_vello_capture(
     let coverages = matching(graph.clip_coverages.as_slice(), account, |coverage| {
         coverage.capture_pass == pass.id
     })?;
-    let work = match pass.result {
-        SemanticPassResult::Empty if spans.is_empty() && coverages.is_empty() => None,
-        SemanticPassResult::Resource(_) if spans.len() == 1 && coverages.is_empty() => Some(
-            GraphLoweringVelloCapture::Span(graph_lowering_vello_span(&spans[0])),
+    let work = match (pass.result, spans, coverages) {
+        (SemanticPassResult::Empty, Matches::None, Matches::None) => None,
+        (SemanticPassResult::Resource(_), Matches::One(span), Matches::None) => Some(
+            GraphLoweringVelloCapture::Span(graph_lowering_vello_span(span)),
         ),
-        SemanticPassResult::Resource(_) if spans.is_empty() && coverages.len() == 1 => {
+        (SemanticPassResult::Resource(_), Matches::None, Matches::One(coverage)) => {
             Some(GraphLoweringVelloCapture::ClipCoverage(
-                graph_lowering_clip_coverage(&coverages[0], account)?,
+                graph_lowering_clip_coverage(coverage, account)?,
             ))
         }
-        SemanticPassResult::Empty | SemanticPassResult::Resource(_) => {
+        _ => {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
     };
@@ -1058,10 +1057,9 @@ fn graph_lowering_composite_pass(
     let composites = matching(graph.composites.as_slice(), account, |composite| {
         composite.pass == pass.id
     })?;
-    let composite = match pass.result {
-        SemanticPassResult::Empty if composites.is_empty() => None,
-        SemanticPassResult::Resource(_) if composites.len() == 1 => {
-            let composite = &composites[0];
+    let composite = match (pass.result, composites) {
+        (SemanticPassResult::Empty, Matches::None) => None,
+        (SemanticPassResult::Resource(_), Matches::One(composite)) => {
             if composite.kind == SemanticCompositeKind::DropShadow {
                 let step = filter_step_for_pass(graph, pass, account)?
                     .ok_or(GraphValidationError::InvalidPassArity)?;
@@ -1072,18 +1070,16 @@ fn graph_lowering_composite_pass(
                 account.work(RenderWork::GraphEdgeVisits, 1)?;
                 let colorize = matching(&graph.passes, account, |candidate| {
                     candidate.id == *colorize_id
-                })?;
-                if colorize.is_empty() {
-                    return Err(GraphValidationError::InvalidPassArity);
-                }
-                let colorize = &colorize[0];
+                })?
+                .first()
+                .ok_or(GraphValidationError::InvalidPassArity)?;
                 graph_lowering_drop_shadow(graph, colorize, step, account)?;
             } else {
                 reject_unexpected_filter_metadata(graph, pass.id, account)?;
             }
             Some(graph_lowering_composite(composite, account)?)
         }
-        SemanticPassResult::Empty | SemanticPassResult::Resource(_) => {
+        _ => {
             return Err(GraphValidationError::InvalidPassArity);
         }
     };
@@ -1578,23 +1574,17 @@ fn sampling_edge_for_filter(edge: GraphLoweringEdgePolicy) -> GraphLoweringSampl
     }
 }
 
-struct Matches<'a, T> {
-    count: usize,
-    first: Option<&'a T>,
+enum Matches<'a, T> {
+    None,
+    One(&'a T),
+    Multiple { first: &'a T },
 }
-impl<T> Matches<'_, T> {
-    fn len(&self) -> usize {
-        self.count
-    }
-    fn is_empty(&self) -> bool {
-        self.count == 0
-    }
-}
-impl<T> std::ops::Index<usize> for Matches<'_, T> {
-    type Output = T;
-    fn index(&self, index: usize) -> &T {
-        assert_eq!(index, 0);
-        self.first.expect("one matching graph value")
+impl<'a, T> Matches<'a, T> {
+    fn first(self) -> Option<&'a T> {
+        match self {
+            Self::None => None,
+            Self::One(first) | Self::Multiple { first } => Some(first),
+        }
     }
 }
 fn matching<'a, T>(
@@ -1602,21 +1592,76 @@ fn matching<'a, T>(
     account: &Account,
     mut predicate: impl FnMut(&T) -> bool,
 ) -> GraphBuildResult<Matches<'a, T>> {
-    let mut result = Matches {
-        count: 0,
-        first: None,
-    };
+    let mut result = Matches::None;
     for value in values {
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if predicate(value) {
-            result.count += 1;
-            if result.first.is_none() {
-                result.first = Some(value);
-            }
+            result = match result {
+                Matches::None => Matches::One(value),
+                Matches::One(first) => Matches::Multiple { first },
+                multiple @ Matches::Multiple { .. } => multiple,
+            };
         }
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod metadata_match_tests {
+    use super::*;
+    use crate::{
+        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderAttemptKind,
+        RenderLimits, RenderQuantity, RenderRefusalReason,
+    };
+
+    #[test]
+    fn metadata_scan_admits_later_values_after_multiple_matches() {
+        let metadata = [7, 2, 9, 6, 11];
+        for (limit, expected) in [(3, &[7, 2, 9][..]), (5, &[7, 2, 9, 6, 11][..])] {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GraphNodeVisits, limit)
+                    .unwrap(),
+            );
+            let mut context = RenderAccountingContext::new(options);
+            let mut inspected = Vec::new();
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                graph_build(matching(&metadata, account, |value| {
+                    inspected.push(*value);
+                    value % 2 != 0
+                }))
+                .map(|_| ())
+            });
+            assert_eq!(inspected, expected);
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Lower)
+                    .work(RenderWork::GraphNodeVisits),
+                limit
+            );
+            if limit == 3 {
+                let error = result.unwrap_err();
+                let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+                else {
+                    panic!("the fourth value needs a graph node visit");
+                };
+                // The attempt owns the configured limit on Lower work.
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (3, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 3 });
+            } else {
+                result.unwrap();
+                assert!(report.refusal().is_none());
+            }
+        }
+    }
+}
+
 fn mapped_shared<T, U>(
     values: &[T],
     account: &Account,
