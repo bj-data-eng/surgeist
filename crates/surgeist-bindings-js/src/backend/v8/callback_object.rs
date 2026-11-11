@@ -27,6 +27,33 @@ impl CallbackObjects {
         size_of::<CallbackObjectIdentity>() + size_of::<Entry>() + size_of::<(u64, Rc<Entry>)>()
     }
 
+    fn entry(
+        &self,
+        roots: &Roots,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<Rc<Entry>, Error> {
+        if holder.owner != roots.owner.id() {
+            return Err(Error::ForeignOwner);
+        }
+        self.entries
+            .try_borrow()
+            .map_err(|_| roots.conflict())?
+            .get(&holder.index)
+            .filter(|entry| entry.identity.ptr_eq(&Rc::downgrade(holder)))
+            .cloned()
+            .ok_or(Error::ExpiredIdentity)
+    }
+
+    pub(super) fn local<'s>(
+        &self,
+        scope: &v8::PinScope<'s, '_>,
+        roots: &Roots,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<v8::Local<'s, v8::Object>, Error> {
+        let entry = self.entry(roots, holder)?;
+        Ok(v8::Local::new(scope, &entry.object))
+    }
+
     pub(super) fn release(
         &self,
         roots: &Roots,
@@ -74,7 +101,7 @@ impl CallbackObjects {
     }
 }
 
-fn creation_context<'s>(
+pub(super) fn creation_context<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     roots: &Roots,
     object: v8::Local<'s, v8::Object>,
@@ -137,25 +164,22 @@ impl Entered<'_, '_, '_> {
         Ok(identity)
     }
 
+    pub(super) fn validate_pinned_callback_object(
+        &self,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<(), Error> {
+        self.check_active()?;
+        self.roots.callback_objects.entry(&self.roots, holder)?;
+        Ok(())
+    }
+
     pub(super) fn open_pinned_callback_object(
         &mut self,
         holder: &Rc<CallbackObjectIdentity>,
     ) -> Result<Root, Error> {
         self.check_active()?;
         let roots = &self.roots;
-        if holder.owner != roots.owner.id() {
-            return Err(Error::ForeignOwner);
-        }
-        let entry = roots
-            .callback_objects
-            .entries
-            .try_borrow()
-            .map_err(|_| roots.conflict())?
-            .get(&holder.index)
-            .filter(|entry| entry.identity.ptr_eq(&Rc::downgrade(holder)))
-            .cloned()
-            .ok_or(Error::ExpiredIdentity)?;
-        let object = v8::Local::new(self.scope, &entry.object);
+        let object = roots.callback_objects.local(self.scope, roots, holder)?;
         roots.retain(self.scope, self.realm, object.into())
     }
 }

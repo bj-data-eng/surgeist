@@ -121,6 +121,7 @@ pub(crate) trait Operations {
         realm: RealmKey,
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    fn validate_callback_object(&self, holder: &Rc<CallbackObjectIdentity>) -> Result<(), Error>;
     fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error>;
     fn release_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>)
     -> Result<(), Error>;
@@ -182,6 +183,13 @@ pub(crate) trait Operations {
     fn project_retained_native_object(
         &mut self,
         prototype: ObjectPrototype<'_>,
+        payload: Rc<dyn Any>,
+        backing: Box<dyn Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error>;
+    fn project_retained_native_object_in_prototype_realm(
+        &mut self,
+        prototype: &Rc<CallbackObjectIdentity>,
+        realm: RealmKey,
         payload: Rc<dyn Any>,
         backing: Box<dyn Any>,
     ) -> Result<Rc<CallbackObjectIdentity>, Error>;
