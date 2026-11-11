@@ -25,6 +25,163 @@ fn fixture() -> (DomSession, HostedRuntime, DomHostedTopLevel) {
 }
 
 #[test]
+fn retired_runtime_only_shadow_releases_the_exact_root_capacity_for_construction() {
+    construct_after_shadow_retirement(1);
+}
+
+#[test]
+fn retired_runtime_only_shadow_releases_its_label_for_construction() {
+    construct_after_shadow_retirement(2);
+}
+
+fn construct_after_shadow_retirement(root_limit: usize) {
+    let label = "retired-shadow-label";
+    let (mut session, hosted, top) = fixture();
+    let mut styles = session.style_execution();
+    let cancel = AtomicBool::new(false);
+    let mut limits = limits();
+    limits.roots = root_limit;
+    styles.set_limits(&session.dom(), limits, &cancel).unwrap();
+
+    let document = top.document();
+    let mut create = DomBatch::new();
+    let host = create.create_element_ns(document, Namespace::html(), "div");
+    let shadow = create.attach_shadow(
+        &host,
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
+    );
+    let created = session.dom().apply(create, &cancel).unwrap();
+    let host = created.created(&host).unwrap().unwrap();
+    let shadow = created.created(&shadow).unwrap().unwrap();
+    let shadow_owner = DomStyleCssomRoot::new(
+        shadow,
+        CssomStore::new(Default::default(), Default::default()).unwrap(),
+    );
+    let old = shadow_owner.snapshot().unwrap();
+    styles
+        .bind_root(
+            &session.dom(),
+            label.into(),
+            &mut Some(shadow_owner),
+            &cancel,
+        )
+        .unwrap();
+    assert!(session.dom().style_cssom_root(shadow).unwrap().is_none());
+    let live = styles.construct_document_sheet(
+        &mut session.dom(),
+        &hosted,
+        top,
+        Default::default(),
+        fresh(label),
+        &cancel,
+    );
+    assert!(
+        match root_limit {
+            1 => matches!(
+                live,
+                Err(DomConstructedSheetError::Style(
+                    DomStyleRuntimeError::Admission
+                ))
+            ),
+            _ => matches!(
+                live,
+                Err(DomConstructedSheetError::Style(
+                    DomStyleRuntimeError::Binding
+                ))
+            ),
+        },
+        "the still-live shadow root must reserve capacity or its label: {live:?}"
+    );
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(host);
+    let destroyed = session.dom().apply(destroy, &cancel).unwrap();
+    assert!(
+        destroyed
+            .changes()
+            .changes()
+            .contains(&surgeist_dom::DomChange::Destroyed(shadow))
+    );
+    let retired = session.snapshot();
+    assert!(matches!(retired.node(shadow), Err(DomError::StaleNode)));
+    assert_eq!(
+        styles.snapshot(shadow).unwrap().unwrap().owner(),
+        old.owner()
+    );
+
+    let refused = styles.construct_document_sheet(
+        &mut session.dom(),
+        &hosted,
+        top,
+        Default::default(),
+        DomConstructedSheetOwnerInit {
+            label,
+            limits: CssomLimits {
+                max_revision: 0,
+                ..Default::default()
+            },
+        },
+        &cancel,
+    );
+    assert_eq!(session.snapshot().stamp(), retired.stamp());
+    assert!(
+        session
+            .dom()
+            .style_cssom_root(document.node())
+            .unwrap()
+            .is_none()
+    );
+    assert!(styles.snapshot(document.node()).unwrap().is_none());
+
+    let retry = styles.construct_document_sheet(
+        &mut session.dom(),
+        &hosted,
+        top,
+        Default::default(),
+        fresh(label),
+        &cancel,
+    );
+    assert!(
+        matches!(
+            refused,
+            Err(DomConstructedSheetError::Construction(
+                surgeist_dom::DomHostedSheetConstructionError::Cssom(
+                    surgeist_cssom::CssomError::RevisionExhausted
+                )
+            ))
+        ),
+        "after shadow retirement the actual CSSOM revision refusal must win: {refused:?}; retry: {retry:?}"
+    );
+    let published = retry.unwrap();
+    assert_eq!(published.document(), document);
+    assert_eq!(published.revision().value(), 1);
+    let canonical = session
+        .dom()
+        .style_cssom_root(document.node())
+        .unwrap()
+        .unwrap()
+        .snapshot()
+        .unwrap();
+    assert_ne!(canonical.owner(), old.owner());
+    assert_eq!(canonical.revision(), published.revision());
+    assert!(
+        canonical
+            .sheet(published.sheet())
+            .unwrap()
+            .inputs()
+            .constructed
+    );
+    assert!(canonical.sheets().is_empty());
+    assert!(styles.snapshot(shadow).unwrap().is_none());
+    assert_eq!(
+        styles.snapshot(document.node()).unwrap().unwrap().owner(),
+        canonical.owner()
+    );
+}
+
+#[test]
 fn fresh_and_joined_windows_use_one_real_store_and_the_current_native_fallback() {
     let (mut session, hosted, top) = fixture();
     let styles = session.style_execution();
