@@ -1380,9 +1380,13 @@ fn validate_corpus(
                     native_errors.push(diagnostic);
                 }
             }
-        } else if mode.matching_edition().is_some() {
+        } else if let Some(edition) = mode.matching_edition() {
             let (raw, qualified) =
-                crate::parity_support::exact_differences::compare_matching_geometry(&golden)?;
+                crate::parity_support::exact_differences::compare_matching_capture(
+                    capture_authority::MatchingCategory::for_edition(edition),
+                    case.source.as_str(),
+                    &golden,
+                )?;
             eprintln!(
                 "qualify-root-context: {} raw={raw:?}; qualified={qualified:?}",
                 case.case.id()

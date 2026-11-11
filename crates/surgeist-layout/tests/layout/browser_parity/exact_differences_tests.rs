@@ -1324,3 +1324,48 @@ fn matching_geometry_exposes_complete_raw_differences_and_requires_empty_compari
     late.root.children.push(late.root.clone());
     assert!(compare_matching_geometry(&late).is_err());
 }
+
+#[test]
+fn fri06_matching_requires_complete_box_and_br_observations() {
+    use super::capture_authority::{FRI06_SUBGRID_SOURCES, MatchingCategory};
+
+    let source = FRI06_SUBGRID_SOURCES[2];
+    let compare =
+        |golden: &Golden| compare_matching_capture(MatchingCategory::Fri06Subgrid, source, golden);
+    let capture = Golden::parse(include_str!(
+        "captured/fri06-subgrid-representatives/xml/subgrid/subgrid_baseline_vertical_nested_inner_row1_first__border_box_ltr.xml"
+    ))
+    .unwrap();
+    let (raw, qualified) = compare(&capture).unwrap();
+    assert!(raw.is_empty() && qualified.is_ok());
+
+    let mut incomplete = capture.clone();
+    incomplete.expectations.x = None;
+    assert!(compare(&incomplete).is_err());
+
+    fn first_br_observation(
+        expectation: &mut Expectation,
+    ) -> Option<&mut Option<BrowserControlExpectation>> {
+        if expectation.browser_control.is_some() {
+            return Some(&mut expectation.browser_control);
+        }
+        expectation
+            .children
+            .iter_mut()
+            .find_map(first_br_observation)
+    }
+
+    let mut incomplete = capture.clone();
+    first_br_observation(&mut incomplete.expectations)
+        .unwrap()
+        .take();
+    assert!(compare(&incomplete).is_err());
+
+    let mut incomplete = capture;
+    first_br_observation(&mut incomplete.expectations)
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .next_line = BrowserNeighborLine::Unobserved;
+    assert!(compare(&incomplete).is_err());
+}

@@ -314,7 +314,10 @@ struct AdmittedCase {
 }
 
 enum AdmittedComparison {
-    MatchingGeometry,
+    MatchingGeometry {
+        category: authority::MatchingCategory,
+        source: String,
+    },
     Exact {
         edition: PublishedEdition,
         spec: Box<ExactDifferenceSpec>,
@@ -461,8 +464,12 @@ impl AdmittedEdition {
                             })
                         })
                 }
-                AdmittedComparison::MatchingGeometry => {
-                    support::exact_differences::compare_matching_geometry(&case.golden)
+                AdmittedComparison::MatchingGeometry { category, source } => {
+                    support::exact_differences::compare_matching_capture(
+                        *category,
+                        source,
+                        &case.golden,
+                    )
                 }
                 AdmittedComparison::PreparedRange { variant } => {
                     compare_prepared_range(&case.golden, variant)
@@ -652,6 +659,10 @@ pub(super) fn admit_grid_lanes_axis_controls(owner: &Path) -> Result<AdmittedEdi
 }
 
 const REGISTERED_MATCHING: &[(&str, &str)] = &[
+    (
+        authority::FRI06_SUBGRID_EDITION,
+        "a9a95dcb6f77349cbe7180d9be1762d4166da726b11b481a67865ac8098c72f2",
+    ),
     (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
@@ -1205,7 +1216,7 @@ pub(super) fn admit_original_diagnostics(
     {
         return Err(changed("original diagnostic report lineage"));
     }
-    verify_grid_lanes_capture_contract(
+    verify_fixed_capture_contract(
         &root,
         &receipt,
         &report,
@@ -1213,6 +1224,7 @@ pub(super) fn admit_original_diagnostics(
             .cases
             .iter()
             .map(|case| case.historical.path.as_str()),
+        "Grid Lanes",
     )?;
     let artifacts: BTreeMap<_, _> = report
         .generated
@@ -1282,14 +1294,15 @@ pub(super) fn admit_original_diagnostics(
     })
 }
 
-fn verify_grid_lanes_capture_contract<'a, Case>(
+fn verify_fixed_capture_contract<'a, Case>(
     root: &Path,
     receipt: &'a authority::QualificationData<Case>,
     report: &Report,
     historical: impl Iterator<Item = &'a str>,
+    cohort: &str,
 ) -> Result<()> {
     const BROWSER_OWNER: &str = "browser-owner.toml";
-    let expected: BTreeSet<_> = authority::GRID_LANES_SHARED_INPUTS
+    let expected: BTreeSet<_> = authority::FIXED_CAPTURE_SHARED_INPUTS
         .into_iter()
         .chain(["corpus.toml", "origin/selected-originals.json"])
         .chain(receipt.records.iter().map(|record| record.source.as_str()))
@@ -1299,14 +1312,16 @@ fn verify_grid_lanes_capture_contract<'a, Case>(
         .into_iter()
         .eq(receipt.retained_inputs.keys().map(String::as_str))
     {
-        return Err(changed("complete Grid Lanes capture input census"));
+        return Err(changed(format!("complete {cohort} capture input census")));
     }
     if report
         .generated
         .iter()
         .any(|artifact| !artifact.linked_resources.is_empty())
     {
-        return Err(changed("Grid Lanes plain-box capture has linked resources"));
+        return Err(changed(format!(
+            "{cohort} plain-box capture has linked resources"
+        )));
     }
 
     // The generator owns full manifest validation and launch. The portable
@@ -1346,9 +1361,9 @@ fn verify_grid_lanes_capture_contract<'a, Case>(
     let declared =
         serde_json::to_value(&owner.browser).map_err(|error| malformed(error.to_string()))?;
     if witness != declared {
-        return Err(changed(
-            "Grid Lanes browser settings differ from the owner manifest",
-        ));
+        return Err(changed(format!(
+            "{cohort} browser settings differ from the owner manifest"
+        )));
     }
     let executable = surgeist_generator::RelativePath::new(&report.metadata.browser_executable)
         .map_err(|error| malformed(error.to_string()))?;
@@ -1360,7 +1375,9 @@ fn verify_grid_lanes_capture_contract<'a, Case>(
         .replace("{repository_relative_executable}", executable.as_str());
     if !executable.as_str().starts_with(&prefix) || report.metadata.browser_provenance != provenance
     {
-        return Err(changed("Grid Lanes browser executable or provenance"));
+        return Err(changed(format!(
+            "{cohort} browser executable or provenance"
+        )));
     }
     Ok(())
 }
@@ -1552,8 +1569,28 @@ fn admit_matching(
     {
         return Err(changed("complete matching edition source census"));
     }
+    if terminal.edition == authority::FRI06_SUBGRID_EDITION {
+        verify_fixed_capture_contract(
+            root,
+            terminal,
+            report,
+            terminal.cases.iter().filter_map(|case| match case {
+                authority::QualifiedCase::Matching(case) => case
+                    .provenance()
+                    .historical()
+                    .map(|entry| entry.path.as_str()),
+                _ => None,
+            }),
+            "FRI06 Subgrid",
+        )?;
+        if report.metadata.generator != authority::FIXED_GENERATOR
+            || !report.metadata.source_imports.is_empty()
+        {
+            return Err(changed("FRI06 Subgrid report lineage"));
+        }
+    }
     let diagnostics = if terminal.edition == authority::GRID_LANES_PAIRED_EDITION {
-        verify_grid_lanes_capture_contract(root, terminal, report, std::iter::empty())?;
+        verify_fixed_capture_contract(root, terminal, report, std::iter::empty(), "Grid Lanes")?;
         if report.metadata.generator != authority::FIXED_GENERATOR
             || !report.metadata.source_imports.is_empty()
         {
@@ -1624,7 +1661,7 @@ fn admit_matching(
                     .historical()
                     .map(|entry| entry.sha256.as_str()),
                 browser_settings: &terminal.browser_settings,
-                observation_request: "geometry",
+                observation_request: case.category().observation_request(),
                 observation_input_sha256: None,
             })?;
         if &identity != case.identity() {
@@ -1632,7 +1669,11 @@ fn admit_matching(
         }
         let golden = support::Golden::parse(xml).map_err(|error| changed(error.to_string()))?;
         // Validate supported complete geometry without accepting a mismatch.
-        let (raw, qualified) = support::exact_differences::compare_matching_geometry(&golden)?;
+        let (raw, qualified) = support::exact_differences::compare_matching_capture(
+            case.category(),
+            &descriptor.source,
+            &golden,
+        )?;
         if !raw.is_empty() || qualified.is_err() {
             return Err(changed(format!(
                 "matching edition contains raw geometry differences: {raw:?}"
@@ -1661,7 +1702,10 @@ fn admit_matching(
         }
         cases.push(AdmittedCase {
             output: descriptor.output.path.clone(),
-            comparison: AdmittedComparison::MatchingGeometry,
+            comparison: AdmittedComparison::MatchingGeometry {
+                category: case.category(),
+                source: descriptor.source.clone(),
+            },
             golden,
         });
     }

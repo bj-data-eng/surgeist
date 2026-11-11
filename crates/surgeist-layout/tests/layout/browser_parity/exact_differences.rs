@@ -1419,6 +1419,102 @@ fn source_census(
     Ok(out)
 }
 
+pub(crate) fn compare_matching_capture(
+    category: super::capture_authority::MatchingCategory,
+    source: &str,
+    golden: &Golden,
+) -> Result<(
+    Vec<String>,
+    std::result::Result<QualifiedComparison, String>,
+)> {
+    use super::capture_authority::{MatchingCategory, fri06_subgrid_profile};
+    if category == MatchingCategory::Geometry {
+        return compare_matching_geometry(golden);
+    }
+    let (_, owners) = fri06_subgrid_profile(source)
+        .ok_or_else(|| malformed("unexpected FRI06 Subgrid source"))?;
+    if !matches!(
+        golden.viewport.root_context,
+        super::RootContext::Qualified(
+            super::root_context::QualifiedRootContext::BlockFlowAuto { .. }
+        )
+    ) || golden.has_element_scroll_sizes()
+        || golden.has_prepared_range_frame()
+        || golden.measured_leaf.is_some()
+        || golden.has_flex_content_text()
+    {
+        return Err(unsupported("/", "FRI06 Subgrid observation profile"));
+    }
+    fn verify_boxes(
+        node: &Node,
+        expected: &Expectation,
+        paragraphs: &mut usize,
+        controls: &mut usize,
+    ) -> Result<()> {
+        if node.atomic_paragraph_metrics.is_some() {
+            *paragraphs += 1;
+        }
+        if let Some(control) = expected.browser_control {
+            *controls += 1;
+            if node.style.get("source-tag") != Some("br")
+                || control.terminal_visual_slot.is_none()
+                || control.previous_line == BrowserNeighborLine::Unobserved
+                || control.next_line == BrowserNeighborLine::Unobserved
+            {
+                return Err(malformed("FRI06 Subgrid BR observation is incomplete"));
+            }
+        } else if [expected.x, expected.y, expected.width, expected.height]
+            .into_iter()
+            .any(|value| value.is_none_or(|v| !v.is_finite()))
+        {
+            return Err(malformed(
+                "FRI06 Subgrid ordinary box geometry is incomplete",
+            ));
+        }
+        if node.children.len() != expected.children.len()
+            || expected.fragments.is_some()
+            || expected.range_rectangles.is_some()
+            || expected.browser_br_font_band.is_some()
+        {
+            return Err(malformed("FRI06 Subgrid observation census changed"));
+        }
+        for (child, observed) in node.children.iter().zip(&expected.children) {
+            verify_boxes(child, observed, paragraphs, controls)?;
+        }
+        Ok(())
+    }
+    let mut paragraphs = 0;
+    let mut controls = 0;
+    verify_boxes(
+        &golden.root,
+        &golden.expectations,
+        &mut paragraphs,
+        &mut controls,
+    )?;
+    if paragraphs != 6 || controls != 6 {
+        return Err(malformed(
+            "FRI06 Subgrid atomic paragraph or BR census changed",
+        ));
+    }
+    let owners: Vec<_> = owners.iter().map(|owner| (*owner).to_owned()).collect();
+    let comparison_failure = |error: super::Error| QualificationError::ComparisonFailure {
+        reason: error.to_string(),
+    };
+    super::assert_grid_alignment_reference_inputs(golden, &owners).map_err(comparison_failure)?;
+    let result = super::assert_surgeist_matches_with_endpoint_accounting(golden)
+        .map_err(comparison_failure)?;
+    if !result.endpoint_unobservable_fields().is_empty() {
+        return Err(unsupported("/", "FRI06 Subgrid browser control endpoints"));
+    }
+    Ok((
+        Vec::new(),
+        Ok(QualifiedComparison {
+            raw: RawVerdict::Matches,
+            qualified: QualifiedVerdict::MatchingControl,
+        }),
+    ))
+}
+
 /// Complete plain-box geometry comparison without a difference policy or native oracle.
 pub(crate) fn compare_matching_geometry(
     golden: &Golden,

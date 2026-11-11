@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "aef6bc2a6a48f53c62940c05cec2168347b910f03e50408b4240632ed2a80163",
+    "xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_ltr.xml": "8ea0f319302486815ed4916913efd7f12f8b3f4860fc1f22de5ec415b692369c",
+    "xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__border_box_rtl.xml": "7980df227dff172690b89d8de2ec9bed954c9b3e647191ace9ee6399d2ae775b",
+    "xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__content_box_ltr.xml": "3944a151013a8e50d26d12a6efb9f7d1cb66ce551516762ea5c8c70cf11d58e3",
+    "xml/subgrid/subgrid_baseline_inline_column_inner_col1_first__content_box_rtl.xml": "0e2436b55b6da3a0e42b9f7dc26bf27d96e4e28a25567ccf389a3ad3c21ac6fa",
+    "xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_ltr.xml": "c846a1cf7089e13130702be1e25f38c15dfb7cbea1479cc7e77494754b59d5b3",
+    "xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_rtl.xml": "6130c4a977d8521a0a82009e3d6040cb63c4c47b3f3553f75c5fdf082fc22616",
+    "xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__content_box_ltr.xml": "7d85d45c273d3a8d5eb5caf9bd0de2c825e4ccf4243259d391bdb56d257f092d",
+    "xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__content_box_rtl.xml": "cd32404c2a56df9cf47fdec565b6c28bf175a6f33ede920dc1506ad7efc23e0f",
+    "xml/subgrid/subgrid_baseline_vertical_nested_inner_row1_first__border_box_ltr.xml": "c6d978e58117f05b7c819a48f51dabad52fd7e9f9d7b1d00a6ebcbf5e96dd0d5",
+    "xml/subgrid/subgrid_baseline_vertical_nested_inner_row1_first__border_box_rtl.xml": "f2aad06032108938b794bb3b1174ceb390add64cd17f2ebd75c1067d12c27a8c",
+    "xml/subgrid/subgrid_baseline_vertical_nested_inner_row1_first__content_box_ltr.xml": "bcd10f2a8efca8247ae7e287583720fa190bb40458002eaa340bf459b20445be",
+    "xml/subgrid/subgrid_baseline_vertical_nested_inner_row1_first__content_box_rtl.xml": "d46dd59de164ebcfc7ce12aa328f02d29ef673cae9e82f90d21d1bd92cb560a7"
+  }
+}
