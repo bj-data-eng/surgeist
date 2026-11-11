@@ -3118,9 +3118,9 @@ fn runs_registered_current_browser_parity_qualification() {
 
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
-    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
-    run_raw_browser_parity(fixtures, filter.as_deref()).unwrap_or_else(|error| panic!("{error}"));
+    run_raw_browser_parity(fixtures, None)
+        .unwrap_or_else(|report| panic!("default full-inventory parity must qualify:\n{report}"));
 }
 
 #[test]
