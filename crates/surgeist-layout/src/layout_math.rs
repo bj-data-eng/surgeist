@@ -71,6 +71,55 @@ pub(crate) fn absolute_inset_child_axes<S: LayoutScalar>(
     })
 }
 
+/// Transfers definite min/max bounds in the box selected by `box-sizing`.
+/// Caps and floors use the declared preferred sizes (Sizing 4 §4.4).
+pub(crate) fn transfer_aspect_ratio_limits<S: LayoutScalar>(
+    preferred: Size<Option<S>>,
+    min: Size<Option<S>>,
+    max: Size<Option<S>>,
+    ratio: S,
+) -> (Size<Option<S>>, Size<Option<S>>) {
+    let cap = |value: S, first: Option<S>, second: Option<S>| {
+        let value = first.map_or(value, |first| value.min(first));
+        second.map_or(value, |second| value.min(second))
+    };
+    let floor = |value: S, floors: [Option<S>; 3]| {
+        floors
+            .into_iter()
+            .flatten()
+            .fold(value, |value, floor| value.max(floor))
+    };
+    let transferred_min = Size::new(
+        min.width.or_else(|| {
+            min.height
+                .map(|height| cap(height * ratio, preferred.width, max.width))
+        }),
+        min.height.or_else(|| {
+            min.width
+                .map(|width| cap(width / ratio, preferred.height, max.height))
+        }),
+    );
+    let transferred_max = Size::new(
+        max.width.or_else(|| {
+            max.height.map(|height| {
+                floor(
+                    height * ratio,
+                    [preferred.width, min.width, transferred_min.width],
+                )
+            })
+        }),
+        max.height.or_else(|| {
+            max.width.map(|width| {
+                floor(
+                    width / ratio,
+                    [preferred.height, min.height, transferred_min.height],
+                )
+            })
+        }),
+    );
+    (transferred_min, transferred_max)
+}
+
 /// Authored sizing declarations of an absolutely positioned box, resolved in
 /// the box selected by `box-sizing` and before any ratio work.
 pub(crate) struct PositionedSizeDeclarations<S: LayoutScalar> {
@@ -118,7 +167,7 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
             Size::ZERO
         };
         let (min, max) = match aspect_ratio {
-            Some(ratio) => Self::transfer_limits(preferred, min, max, ratio.get()),
+            Some(ratio) => transfer_aspect_ratio_limits(preferred, min, max, ratio.get()),
             None => (min, max),
         };
         Self {
@@ -132,55 +181,6 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
             max: max.add_optional(box_adjustment),
             box_adjustment,
         }
-    }
-
-    // Caps and floors come from the declared preferred sizes, not from a size
-    // derived through the ratio. The padding floor is applied later, in `clamp`.
-    fn transfer_limits(
-        preferred: Size<Option<S>>,
-        min: Size<Option<S>>,
-        max: Size<Option<S>>,
-        ratio: S,
-    ) -> (Size<Option<S>>, Size<Option<S>>) {
-        let cap = |value: S, first: Option<S>, second: Option<S>| {
-            let value = first.map_or(value, |first| value.min(first));
-            second.map_or(value, |second| value.min(second))
-        };
-        let floor = |value: S, floors: [Option<S>; 3]| {
-            floors
-                .into_iter()
-                .flatten()
-                .fold(value, |value, floor| value.max(floor))
-        };
-        let transferred_min = Size::new(
-            min.width.or_else(|| {
-                min.height
-                    .map(|height| cap(height * ratio, preferred.width, max.width))
-            }),
-            min.height.or_else(|| {
-                min.width
-                    .map(|width| cap(width / ratio, preferred.height, max.height))
-            }),
-        );
-        let transferred_max = Size::new(
-            max.width.or_else(|| {
-                max.height.map(|height| {
-                    floor(
-                        height * ratio,
-                        [preferred.width, min.width, transferred_min.width],
-                    )
-                })
-            }),
-            max.height.or_else(|| {
-                max.width.map(|width| {
-                    floor(
-                        width / ratio,
-                        [preferred.height, min.height, transferred_min.height],
-                    )
-                })
-            }),
-        );
-        (transferred_min, transferred_max)
     }
 
     pub(crate) fn clamp(self, size: Size<S>) -> Size<S> {

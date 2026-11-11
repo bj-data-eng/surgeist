@@ -13,6 +13,7 @@ use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, MaxBeforeMinSizeClampExt,
     OptionalMinimumSizeFloorExt, OptionalSizeExt, OptionalSizeMaxExt, UncheckedOptionalSizeSubExt,
     resolution_optional, resolution_or_zero, resolve_containing_padding_border,
+    transfer_aspect_ratio_limits,
 };
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, ScrollOriginAxes, ScrollOriginProgression,
@@ -541,12 +542,6 @@ impl<S: LayoutScalar> Constants<S> {
                     ),
                 )
                 .transpose_with_node(tree, node)?;
-                let style_size = if max_content_cross {
-                    style_size
-                } else {
-                    style_size.apply_aspect_ratio(*style.common.aspect_ratio)
-                }
-                .add_optional(box_sizing_adjustment);
                 let min_size = Size::new(
                     resolve_minimum_optional(
                         &style.common.min_size.width,
@@ -563,9 +558,7 @@ impl<S: LayoutScalar> Constants<S> {
                         true,
                     ),
                 )
-                .transpose_with_node(tree, node)?
-                .apply_aspect_ratio(*style.common.aspect_ratio)
-                .add_optional(box_sizing_adjustment);
+                .transpose_with_node(tree, node)?;
                 let max_size = Size::new(
                     resolve_maximum_optional(
                         &style.common.max_size.width,
@@ -582,10 +575,25 @@ impl<S: LayoutScalar> Constants<S> {
                         true,
                     ),
                 )
-                .transpose_with_node(tree, node)?
-                .apply_aspect_ratio(*style.common.aspect_ratio)
-                .add_optional(box_sizing_adjustment);
-                (style_size, min_size, max_size)
+                .transpose_with_node(tree, node)?;
+                let ratio = *style.common.aspect_ratio;
+                let (style_size, min_size, max_size) = if max_content_cross {
+                    let (min_size, max_size) = ratio.map_or((min_size, max_size), |ratio| {
+                        transfer_aspect_ratio_limits(style_size, min_size, max_size, ratio.get())
+                    });
+                    (style_size, min_size, max_size)
+                } else {
+                    (
+                        style_size.apply_aspect_ratio(ratio),
+                        min_size.apply_aspect_ratio(ratio),
+                        max_size.apply_aspect_ratio(ratio),
+                    )
+                };
+                (
+                    style_size.add_optional(box_sizing_adjustment),
+                    min_size.add_optional(box_sizing_adjustment),
+                    max_size.add_optional(box_sizing_adjustment),
+                )
             }
         };
         let min_max_definite_size = min_size.zip_map(max_size, |min, max| match (min, max) {
