@@ -141,6 +141,9 @@ pub(crate) enum ResourceAccountingFault {
     SelectedResourceMissing {
         resource: ResourceIdentity,
     },
+    SelectedResourceAlreadyReserved {
+        resource: ResourceIdentity,
+    },
     RetainedByteUnderflow {
         retained_bytes: u64,
         discarded_entry_bytes: u64,
@@ -308,6 +311,27 @@ impl ResourceManagerState {
         Ok(removed_bytes)
     }
 
+    pub(super) fn selected_entry_mut(
+        entries: &mut BTreeMap<ResourceIdentity, ResourceEntry>,
+        identity: ResourceIdentity,
+    ) -> std::result::Result<&mut ResourceEntry, ResourceAccountingFault> {
+        entries
+            .get_mut(&identity)
+            .ok_or(ResourceAccountingFault::SelectedResourceMissing { resource: identity })
+    }
+
+    fn idle_reservation_index(
+        reserved: &[ResourceIdentity],
+        identity: ResourceIdentity,
+    ) -> std::result::Result<usize, ResourceAccountingFault> {
+        match reserved.binary_search(&identity) {
+            Err(index) => Ok(index),
+            Ok(_) => {
+                Err(ResourceAccountingFault::SelectedResourceAlreadyReserved { resource: identity })
+            }
+        }
+    }
+
     pub(super) fn checked_registered_entry_bytes(
         &self,
         observer: Option<&Account>,
@@ -419,9 +443,10 @@ impl ResourceManagerState {
             }
             if let Some((_, identity)) = reusable {
                 self.generation.probe_cache(observer)?;
-                let index = selected_idle
-                    .binary_search(&identity)
-                    .expect_err("one selected idle identity per request");
+                let index = match Self::idle_reservation_index(&selected_idle, identity) {
+                    Ok(index) => index,
+                    Err(fault) => return self.fail_accounting(fault),
+                };
                 selected_idle.insert_slot(index)?.write(identity);
                 continue;
             }

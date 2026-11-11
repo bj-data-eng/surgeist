@@ -195,11 +195,10 @@ impl ResourceManagerState {
         let (resource, allocation_generation, payload) = if let Some(resource) = reusable {
             self.generation.probe_cache(observer)?;
             self.generation.reuse(key.generation_class())?;
-            let entry = self
-                .entries
-                .get_mut(&resource)
-                .expect("the selected idle resource must remain registered");
-            debug_assert!(entry.payload.matches_key(&key));
+            let entry = match Self::selected_entry_mut(&mut self.entries, resource) {
+                Ok(entry) => entry,
+                Err(fault) => return self.fail_accounting(fault),
+            };
             entry.registration.set_idle(false)?;
             entry.resolved = false;
             entry.provisional = false;
@@ -387,33 +386,34 @@ impl ResourceManagerState {
     ) -> Result<()> {
         self.validate_lease(manager_identity, frame, &token, None)?;
         self.generation.probe_cache(None)?;
-        let entry = self
-            .entries
-            .get_mut(&token.resource_identity)
-            .expect("validated resource");
+        let entry = match Self::selected_entry_mut(&mut self.entries, token.resource_identity) {
+            Ok(entry) => entry,
+            Err(fault) => return self.fail_accounting(fault),
+        };
         entry.resolved = true;
         self.generation.lease_return(entry.key.generation_class());
         Ok(())
     }
 
-    fn resolve_leases_atomically<'a>(
+    fn resolve_leases_atomically(
         &mut self,
         manager_identity: &ManagerIdentity,
         frame: FrameIdentity,
-        tokens: impl Clone + Iterator<Item = &'a ResourceLeaseToken>,
+        leases: &[&ResourceLease],
     ) -> Result<()> {
         self.prepare_resolution_proof(
             manager_identity,
             frame,
-            tokens.clone(),
+            leases.iter().map(|lease| &lease.token),
             ResolutionProofMode::ProvidedLeases,
         )?;
-        for token in tokens {
+        for lease in leases {
             self.generation.probe_cache(None)?;
-            let entry = self
-                .entries
-                .get_mut(&token.resource_identity)
-                .expect("validated lease");
+            let entry =
+                match Self::selected_entry_mut(&mut self.entries, lease.token.resource_identity) {
+                    Ok(entry) => entry,
+                    Err(fault) => return self.fail_accounting(fault),
+                };
             entry.resolved = true;
             self.generation.lease_return(entry.key.generation_class());
         }
@@ -1321,11 +1321,7 @@ impl FrameResourceScope {
         let mut state = lock_state(&self.state);
         let cpu = state.cpu.at(RenderCpuScope::Cleanup);
         cleanup_phase(&cpu, || {
-            state.resolve_leases_atomically(
-                &self.manager_identity,
-                self.frame,
-                leases.iter().map(|lease| &lease.token),
-            )
+            state.resolve_leases_atomically(&self.manager_identity, self.frame, leases)
         })
     }
 
