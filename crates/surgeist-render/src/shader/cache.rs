@@ -3,50 +3,48 @@ use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 use crate::{
     Error, Result,
     accounting::{
-        Account, CpuAccount, Generation, Hold, OwnedGpu, RenderResource, RenderWork, StorageAccount,
+        Account, CpuAccount, CpuHold, Generation, Hold, OwnedGpu, RenderResource, RenderWork,
     },
 };
 
 pub(super) struct CacheIndex<K, V> {
     values: HashMap<K, V>,
-    backing: Option<Hold>,
-    cpu: CpuAccount,
+    backing: Option<CpuHold>,
 }
 
 impl<K: Eq + Hash, V> CacheIndex<K, V> {
-    fn new(cpu: &CpuAccount) -> Self {
+    fn new() -> Self {
         Self {
             values: HashMap::new(),
             backing: None,
-            cpu: cpu.clone(),
         }
     }
 
-    fn reserve(&mut self, additional: usize) -> Result<()> {
+    fn reserve(&mut self, additional: usize, cpu: &CpuAccount) -> Result<()> {
         let resource = RenderResource::RetainedCpuBytes;
         let needed = self
             .len()
             .checked_add(additional)
-            .ok_or_else(|| self.cpu.capacity_error(resource))?;
+            .ok_or_else(|| cpu.capacity_error(resource))?;
         if needed <= self.capacity() {
             return Ok(());
         }
-        let storage = StorageAccount::Renderer(self.cpu.clone());
-        storage.phase(|| {
-            storage.preview(resource, storage.bytes::<(K, V)>(needed, resource)?)?;
+        let existing = self.backing.as_ref().map(CpuHold::account);
+        let cpu = existing.as_ref().unwrap_or(cpu);
+        cpu.phase(|| {
+            cpu.preview(resource, cpu.sized::<(K, V)>(needed, resource)?)?;
             let mut replacement = Self {
                 values: HashMap::with_hasher(self.values.hasher().clone()),
                 backing: None,
-                cpu: self.cpu.clone(),
             };
             replacement
                 .values
                 .try_reserve(needed)
-                .map_err(|_| storage.allocation_error(resource))?;
-            let actual_bytes = storage.bytes::<(K, V)>(replacement.capacity(), resource)?;
-            replacement.backing = Some(storage.acquire(resource, actual_bytes)?);
+                .map_err(|_| cpu.allocation_error(resource))?;
+            let actual_bytes = cpu.sized::<(K, V)>(replacement.capacity(), resource)?;
+            replacement.backing = Some(cpu.acquire(resource, actual_bytes)?);
             if !self.is_empty() {
-                self.cpu.work(RenderWork::StorageRelocations, self.len())?;
+                cpu.work(RenderWork::StorageRelocations, self.len())?;
             }
             for (key, value) in self.values.drain() {
                 replacement.values.insert(key, value);
@@ -56,8 +54,8 @@ impl<K: Eq + Hash, V> CacheIndex<K, V> {
         })
     }
 
-    pub(super) fn slot(&mut self) -> Result<CacheIndexSlot<'_, K, V>> {
-        self.reserve(1)?;
+    pub(super) fn slot(&mut self, cpu: &CpuAccount) -> Result<CacheIndexSlot<'_, K, V>> {
+        self.reserve(1, cpu)?;
         Ok(CacheIndexSlot(&mut self.values))
     }
 
@@ -87,7 +85,7 @@ impl<K, V> Drop for CacheIndex<K, V> {
     fn drop(&mut self) {
         let values = std::mem::take(&mut self.values);
         if let Some(backing) = self.backing.take() {
-            backing.dispose(|| drop(values));
+            Hold::Renderer(backing).dispose(|| drop(values));
         } else {
             drop(values);
         }
@@ -230,10 +228,10 @@ impl DevicePassCache {
         Self {
             generation,
             identity: Arc::new(()),
-            samplers: CacheIndex::new(&cpu),
-            layouts: CacheIndex::new(&cpu),
-            shaders: CacheIndex::new(&cpu),
-            pipelines: CacheIndex::new(&cpu),
+            samplers: CacheIndex::new(),
+            layouts: CacheIndex::new(),
+            shaders: CacheIndex::new(),
+            pipelines: CacheIndex::new(),
             cpu,
         }
     }
@@ -248,10 +246,10 @@ impl DevicePassCache {
     pub(crate) fn provisional_update(&self) -> ProvisionalDevicePassCacheUpdate {
         ProvisionalDevicePassCacheUpdate {
             cache_identity: Arc::clone(&self.identity),
-            samplers: CacheIndex::new(&self.cpu),
-            layouts: CacheIndex::new(&self.cpu),
-            shaders: CacheIndex::new(&self.cpu),
-            pipelines: CacheIndex::new(&self.cpu),
+            samplers: CacheIndex::new(),
+            layouts: CacheIndex::new(),
+            shaders: CacheIndex::new(),
+            pipelines: CacheIndex::new(),
         }
     }
 }
@@ -286,7 +284,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -302,7 +300,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_core_pass_bind_group_layout(
@@ -317,7 +315,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_core_pass_shader_module(
@@ -332,7 +330,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 core_pass_cache_error("core-pass bind-group layout realization was lost")
@@ -422,7 +420,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -438,7 +436,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_copy_backdrop_bind_group_layout(
@@ -452,7 +450,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_copy_backdrop_shader_module(
@@ -466,7 +464,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let created = create_copy_backdrop_pipeline(
                 &cache.generation,
                 &cache.cpu,
@@ -546,7 +544,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -562,7 +560,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_color_filter_bind_group_layout(
@@ -576,7 +574,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_color_filter_shader_module(
@@ -590,7 +588,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 color_filter_cache_error("color-filter bind-group layout realization was lost")
@@ -651,7 +649,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -667,7 +665,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_blur_bind_group_layout(
@@ -682,7 +680,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_blur_shader_module(&cache.generation, &cache.cpu, Some(account), device)?,
@@ -691,7 +689,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 blur_cache_error("blur bind-group layout realization was lost")
@@ -730,7 +728,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -746,7 +744,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_drop_shadow_colorize_bind_group_layout(
@@ -760,7 +758,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_drop_shadow_colorize_shader_module(
@@ -774,7 +772,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 drop_shadow_cache_error(
@@ -928,7 +926,7 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                let slot = self.samplers.slot()?;
+                let slot = self.samplers.slot(&cache.cpu)?;
                 slot.write(
                     *sampler_key,
                     create_sampler(
@@ -944,7 +942,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            let slot = self.layouts.slot()?;
+            let slot = self.layouts.slot(&cache.cpu)?;
             slot.write(
                 keys.layout.clone(),
                 create_composite_bind_group_layout(
@@ -959,7 +957,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            let slot = self.shaders.slot()?;
+            let slot = self.shaders.slot(&cache.cpu)?;
             slot.write(
                 keys.shader.clone(),
                 create_composite_shader_module(
@@ -973,7 +971,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            let slot = self.pipelines.slot()?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 core_pass_cache_error("composite bind-group layout realization was lost")
@@ -1097,7 +1095,7 @@ impl ProvisionalDevicePassCacheUpdate {
                         ));
                     }
                 }
-                cache.$field.reserve(self.$field.len())?;
+                cache.$field.reserve(self.$field.len(), &cache.cpu)?;
             }};
         }
         prepare!(samplers);
@@ -1648,16 +1646,16 @@ mod accounting_tests {
         .unwrap();
         let usage = || owner.snapshot().unwrap().usage();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
-        let mut index = CacheIndex::new(&cpu);
+        let mut index = CacheIndex::new();
         for key in 0..first {
-            index.slot().unwrap().write(key, key + 10);
+            index.slot(&cpu).unwrap().write(key, key + 10);
         }
         assert_eq!(
             usage().live(RenderResource::RetainedCpuBytes),
             opening + bytes(first)
         );
         let pressure = cpu.acquire(RenderResource::RetainedCpuBytes, 1).unwrap();
-        let error = index.slot().err().unwrap();
+        let error = index.slot(&cpu).err().unwrap();
         assert!(matches!(
             error.accounting_diagnostic(),
             Some(RenderAccountingError::CpuRefused {
@@ -1672,7 +1670,7 @@ mod accounting_tests {
         }
 
         drop(pressure);
-        index.slot().unwrap().write(first, first + 10);
+        index.slot(&cpu).unwrap().write(first, first + 10);
         assert_eq!(index.capacity(), second);
         assert_eq!(
             usage().peak(RenderResource::RetainedCpuBytes),
@@ -1955,7 +1953,14 @@ mod accounting_tests {
             create_sampler(&cache.generation, &cache.cpu, Some(account), device, key)
         });
         let expected = sampler.clone();
-        assert!(cache.samplers.slot().unwrap().write(key, sampler).is_none());
+        assert!(
+            cache
+                .samplers
+                .slot(&cache.cpu)
+                .unwrap()
+                .write(key, sampler)
+                .is_none()
+        );
         let reserved = cache_capacity(&cache);
         let (update, error, report) = rejected_readiness(update, &mut cache, 1);
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);

@@ -647,7 +647,10 @@ impl DevicePassCache {
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
         );
-        let slot = self.samplers.slot().expect("test sampler cache capacity");
+        let slot = self
+            .samplers
+            .slot(&self.cpu)
+            .expect("test sampler cache capacity");
         let sampler = self
             .generation
             .opaque(GpuObjectKind::Sampler, None, || {
