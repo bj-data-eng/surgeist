@@ -361,6 +361,92 @@ fn image_repeat_does_not_need_the_full_distance_between_origins() {
 }
 
 #[test]
+fn image_repeat_counts_tiles_across_an_overflowing_span() {
+    let unit = 2.0_f64.powi(1023);
+    let period = 0.5 * unit;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(-0.75 * unit, 0.0, 1.75 * unit, 1.0),
+        Rect::new(0.0, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    // The next tile starts at the clip end and is excluded.
+    assert_eq!(
+        repeated.tile_rects(),
+        [
+            Rect::new(-unit, 0.0, period, 1.0),
+            Rect::new(-0.5 * unit, 0.0, period, 1.0),
+            Rect::new(0.0, 0.0, period, 1.0),
+            Rect::new(0.5 * unit, 0.0, period, 1.0),
+        ]
+    );
+}
+
+#[test]
+fn image_repeat_resolves_finite_positions_with_overflowing_offsets() {
+    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+
+    let unit = 2.0_f64.powi(1023);
+    let period = 0.75 * unit;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(-0.625 * unit, 0.0, 1.875 * unit, 1.0),
+        Rect::new(0.25 * unit, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let mut accounting = style_work_limit(RenderWork::RepeatTiles, 3);
+    let error = repeat.resolve(placement, &mut accounting).unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Attempt,
+            quantity: RenderQuantity::Work(RenderWork::RepeatTiles),
+            current: 3,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: 3 },
+        },
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .phase_usage(RenderPhase::Repeat)
+            .work(RenderWork::RepeatTiles),
+        3
+    );
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(style_work_limit(RenderWork::RepeatTiles, 4).options());
+    let repeated = repeat.resolve(placement, &mut accounting).unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [
+            Rect::new(-1.25 * unit, 0.0, period, 1.0),
+            Rect::new(-0.5 * unit, 0.0, period, 1.0),
+            Rect::new(0.25 * unit, 0.0, period, 1.0),
+            Rect::new(unit, 0.0, period, 1.0),
+        ]
+    );
+    assert_eq!(
+        accounting
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::RepeatTiles),
+        4
+    );
+}
+
+#[test]
 fn image_repeat_restores_a_finite_origin_after_phase_rounding() {
     let high = 2.0_f64.powi(1023);
     let step = 2.0_f64.powi(971);
