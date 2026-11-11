@@ -16,7 +16,10 @@ use surgeist_dom::{
 };
 use surgeist_html::values::Namespace;
 
-fn hosted_session(cancel: &AtomicBool, source_jobs: usize) -> (DomSession, DomHostedTopLevel) {
+pub(super) fn hosted_session(
+    cancel: &AtomicBool,
+    source_jobs: usize,
+) -> (DomSession, DomHostedTopLevel) {
     let dom = Dom::new(
         DomLimits::new(
             128,
@@ -192,6 +195,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
+    super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {

@@ -6,7 +6,7 @@
 //! leave a reentrantly queued task untracked. Dropping this owner abandons its
 //! remaining tasks; it never reports those tasks as delivered.
 use crate::dom_event::{
-    DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
+    DispatchCall, DispatchFunding, DispatchHost, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
     DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
 };
@@ -1585,7 +1585,7 @@ impl DomElementTaskRuntime {
                     DispatchCall {
                         limits: limits.dispatch,
                         cancel,
-                        host: false,
+                        host: DispatchHost::Unavailable,
                         funding,
                     },
                 )

@@ -4,7 +4,7 @@
 //! caller-selected domains. This owner neither runs the Dialog tail nor owns a
 //! second canonical operation, listener registry or task loop.
 use crate::dom_event::{
-    DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
+    DispatchCall, DispatchFunding, DispatchHost, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
     DomEventTimestampUnavailable, EventInvocationOwner, NativeDomEvent, NativeEventCause,
 };
@@ -629,7 +629,7 @@ impl SourceEventRuntime {
                     DispatchCall {
                         limits: limits.dispatch,
                         cancel,
-                        host: true,
+                        host: DispatchHost::Source,
                         funding,
                     },
                 )

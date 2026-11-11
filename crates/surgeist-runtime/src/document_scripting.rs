@@ -26,7 +26,12 @@ use crate::{
     HostedRuntime,
 };
 
+pub(crate) mod guest;
 mod projection;
+pub use guest::{
+    DocumentGuestEvent, DocumentGuestEventError, DocumentGuestEventLimits,
+    DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestListenerException,
+};
 mod source;
 mod window_relations;
 pub use source::{
@@ -525,6 +530,7 @@ impl PreparedDocumentScriptHost {
         });
         Ok(ScriptEngine {
             registration,
+            guest_events: None,
             process,
             realm,
             comments: projection::ProjectedComments::default(),
@@ -589,6 +595,7 @@ struct CreationRealm {
 struct ScriptEngine {
     // Close the canonical engine fact before releasing SDK handles/captures.
     registration: DomDocumentScriptRegistration,
+    guest_events: Option<Rc<guest::GuestEvents>>,
     process: Process,
     realm: Realm,
     comments: projection::ProjectedComments,
