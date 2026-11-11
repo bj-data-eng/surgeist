@@ -293,6 +293,24 @@ fn long_text(units: usize) -> String {
     html
 }
 
+/// A table whose character tokens are foster parented: `appends` one-unit tokens, each followed by
+/// a `style` element, merge into the one text node before the table.
+fn foster_parented_text(appends: usize) -> String {
+    foster_parented(appends, "a")
+}
+
+/// The same table with `token` before each `style` element; an empty token leaves the elements
+/// alone.
+fn foster_parented(appends: usize, token: &str) -> String {
+    let mut html = String::from("<!DOCTYPE html><html><body><table>");
+    for _ in 0..appends {
+        html.push_str(token);
+        html.push_str("<style></style>");
+    }
+    html.push_str("</table></body></html>");
+    html
+}
+
 /// Formatting elements left open by a paragraph that ends, so the next
 /// paragraph reconstructs them. The elements repeat exactly, so the list of
 /// active formatting elements keeps at most three of each.
@@ -420,6 +438,83 @@ fn attributes_merged_into_the_root_grow_linearly_when_origins_are_recorded() {
         &costs,
         |cost| cost.copied_bytes,
     );
+}
+
+/// Each foster-parented character token appends to the same text node. The units an append
+/// copies must not depend on the length of the text before it.
+#[test]
+fn foster_parented_text_merged_one_token_at_a_time_grows_linearly() {
+    let costs = costs([1_000, 2_000, 4_000, 8_000], foster_parented_text);
+    assert_family("foster parented text", &costs);
+    assert_at_most_doubles("foster parented text", "copied bytes", &costs, |cost| {
+        cost.copied_bytes
+    });
+    // The elements alone cost what the merged tokens do not: the difference is the cost of the
+    // text.
+    let elements = self::costs([1_000, 2_000, 4_000, 8_000], |appends| {
+        foster_parented(appends, "")
+    });
+    let text: Vec<Cost> = costs
+        .iter()
+        .zip(&elements)
+        .map(|(with, without)| Cost {
+            credits: with.credits.saturating_sub(without.credits),
+            copied_bytes: with.copied_bytes.saturating_sub(without.copied_bytes),
+            ..*with
+        })
+        .collect();
+    assert!(
+        text.iter().all(|cost| cost.copied_bytes != 0),
+        "the merged text copies units: {text:?}"
+    );
+    assert_at_most_doubles("foster parented text only", "work credits", &text, |cost| {
+        cost.credits
+    });
+    assert_at_most_doubles("foster parented text only", "copied bytes", &text, |cost| {
+        cost.copied_bytes
+    });
+}
+
+/// With the origin graph recorded, every merge also extends the origins of the text.
+#[cfg(feature = "detail")]
+#[test]
+fn foster_parented_text_grows_linearly_when_origins_are_recorded() {
+    let costs: Vec<Cost> = [1_000, 2_000, 4_000, 8_000]
+        .iter()
+        .map(|&appends| cost_with_detail(foster_parented_text(appends), crate::DetailSet::ALL))
+        .collect();
+    assert_family("foster parented text, origins recorded", &costs);
+    assert_at_most_doubles(
+        "foster parented text, origins recorded",
+        "copied bytes",
+        &costs,
+        |cost| cost.copied_bytes,
+    );
+}
+
+/// A text node merged from `tokens` one-unit tokens holds the units of its data and nothing more:
+/// the tokens it absorbed are not stored strings. The elements of the same document without the
+/// tokens give the units that are not text.
+fn merged_text_units(detail: crate::DetailSet) {
+    let tokens = 40_usize;
+    let with = cost_with_detail(foster_parented(tokens, "a"), detail);
+    let without = cost_with_detail(foster_parented(tokens, ""), detail);
+    assert_eq!(
+        with.units - without.units,
+        tokens as u64,
+        "{tokens} merged one-unit tokens hold {tokens} units of text"
+    );
+}
+
+#[test]
+fn a_text_node_merged_from_tokens_holds_the_units_of_its_data() {
+    merged_text_units(crate::DetailSet::NONE);
+}
+
+#[cfg(feature = "detail")]
+#[test]
+fn a_text_node_merged_from_tokens_holds_the_units_of_its_data_when_origins_are_recorded() {
+    merged_text_units(crate::DetailSet::ALL);
 }
 
 #[test]
