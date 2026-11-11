@@ -920,6 +920,14 @@ unit. Both provisional and committed capacity count while their backings coexist
 Growth admits the replacement before relocating records. Publication uses
 the capacity reserved by the checked cache update.
 
+Native Vello recordings use consecutive typed resource handles. Render
+validates the intent order and reserves one scratch table under
+`FrameBacking` before requesting any native buffer or texture. Each
+slot holds the resource lease, its bounds and its release state. A
+binding or release visits its slot once. The frame resolves leases in
+recording order and handles persistent atlas retention at commit. It
+releases the scratch backing after closing the frame scope.
+
 `Summary` and `Detailed` optionally collect host elapsed time using Ledger's
 platform clock or `RenderClock::Host`. Timed phases surround actual work and
 awaits, including pending preparation, submission resolution and surface
