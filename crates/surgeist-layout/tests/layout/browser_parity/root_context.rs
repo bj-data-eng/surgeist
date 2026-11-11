@@ -27,6 +27,10 @@ pub enum QualifiedRootContext {
         parent_direction: layout::Direction,
         fallback: RootFallback,
     },
+    InlineGrid {
+        parent_inline_extent: layout::NonNegativeFiniteOf,
+        fallback: RootFallback,
+    },
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct RootFallback {
@@ -80,7 +84,7 @@ pub(crate) fn parse_root_context(
             "hypothetical-inline-offset",
             "hypothetical-block-offset",
         ][..],
-        "block-flow-auto" => &["parent-inline-extent", "parent-direction"][..],
+        "block-flow-auto" | "inline-grid" => &["parent-inline-extent", "parent-direction"][..],
         _ => return Err(Error::new(format!("unsupported root context {kind}"))),
     };
     for attribute in node.attributes() {
@@ -197,6 +201,20 @@ pub(crate) fn parse_root_context(
                 fallback,
             }
         }
+        "inline-grid" => {
+            let parent_inline_extent = extent(node, "parent-inline-extent")?;
+            if direction("parent-direction")? != layout::Direction::Ltr
+                || parent_inline_extent != icb.width
+            {
+                return Err(Error::new(
+                    "inline Grid requires the zero-edge LTR containing frame",
+                ));
+            }
+            QualifiedRootContext::InlineGrid {
+                parent_inline_extent,
+                fallback,
+            }
+        }
         _ => return Err(Error::new("invalid qualified root kind")),
     };
     let context = RootContext::Qualified(qualified);
@@ -241,6 +259,18 @@ impl RootContext {
                 ));
             }
         }
+        if matches!(
+            self,
+            Self::Qualified(QualifiedRootContext::InlineGrid { .. })
+        ) && (root.style.get("display") != Some("inline-grid")
+            || root.style.get("position") != Some("static")
+            || root.style.get("direction") != Some("ltr")
+            || root.style.get("writing-mode").unwrap_or("horizontal-tb") != "horizontal-tb")
+        {
+            return Err(Error::new(
+                "inline Grid proof disagrees with the actual static root",
+            ));
+        }
         Ok(())
     }
     pub(super) fn request(&self) -> Result<layout::LayoutRootRequest, Error> {
@@ -280,6 +310,26 @@ impl RootContext {
                     Error::new(format!("invalid root-local available space: {error:?}"))
                 })?
             }
+            QualifiedRootContext::InlineGrid {
+                parent_inline_extent,
+                fallback,
+            } => layout::LayoutRootRequest::standalone(
+                layout::SizingRequest::new(
+                    layout::Size::new(
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Definite(*parent_inline_extent),
+                            layout::SizingOperation::Normal,
+                        ),
+                        layout::AxisSizingRequest::new(
+                            layout::AvailableSpace::Indefinite,
+                            layout::SizingOperation::Normal,
+                        ),
+                    ),
+                    fallback.normalized(),
+                ),
+                layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+                layout::Size::new(Some(*parent_inline_extent), None),
+            ),
             QualifiedRootContext::BlockFlowAuto {
                 parent_inline_extent,
                 parent_direction,
@@ -311,7 +361,8 @@ impl RootContext {
                 parent_direction,
                 ..
             } => (parent_inline_extent.get(), *parent_direction),
-            QualifiedRootContext::AbsoluteRootLocal { .. } => {
+            QualifiedRootContext::AbsoluteRootLocal { .. }
+            | QualifiedRootContext::InlineGrid { .. } => {
                 if location != layout::Point::ZERO {
                     return Err(Error::new("Native root-local origin must be (0, 0)"));
                 }

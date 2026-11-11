@@ -98,6 +98,11 @@ covers 36 variants across nine parent and child writing-mode combinations.
 The focused Subgrid axis test checks both inherited axes and the original
 topology, then compares each registered rectangle tree through Native layout.
 
+The [original inline Subgrid alignment edition](captured/original-inline-subgrid-alignment/qualification.json)
+retains the two static inline Grid sources and all eight historical rectangle
+trees. The two focused callers replay each source's registered cases, including
+the vertical-lr nested Subgrid and the aligned 20px items.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the

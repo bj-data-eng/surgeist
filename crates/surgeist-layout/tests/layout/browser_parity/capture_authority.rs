@@ -18,7 +18,8 @@ use crate::original_flex_parent_profile::{
 use crate::prepared_atomic_percentage_profile as atomic_percentage;
 use crate::{
     original_block_axes_profile as block_axes, original_flex_axes_profile as flex_axes,
-    original_grid_axes_profile as grid_axes, original_subgrid_axes_profile as subgrid_axes,
+    original_grid_axes_profile as grid_axes, original_inline_subgrid_profile as inline_subgrid,
+    original_subgrid_axes_profile as subgrid_axes,
 };
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
@@ -321,6 +322,10 @@ pub(crate) fn current_owner_bindings(
                 ("original_grid_axes_request.json", grid_axes::REQUEST),
                 ("original_subgrid_axes_request.json", subgrid_axes::REQUEST),
                 (
+                    "original_inline_subgrid_request.json",
+                    inline_subgrid::REQUEST,
+                ),
+                (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
                 ),
@@ -357,6 +362,8 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/original_flex_axes.js".to_owned()
         } else if name == grid_axes::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_grid_axes.js".to_owned()
+        } else if name == inline_subgrid::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid.js".to_owned()
         } else if name == subgrid_axes::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_subgrid_axes.js".to_owned()
         } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
@@ -754,6 +761,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "empty-line break proof requires its observation request",
         ));
     }
+    if observation_request != inline_subgrid::EDITION
+        && full_inputs.contains_key(inline_subgrid::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "inline Subgrid proof requires its observation request",
+        ));
+    }
     if observation_request != FRI07_INTRINSIC_FLEX_EDITION
         && full_inputs.contains_key(intrinsic_flex::SCRIPT_PATH)
     {
@@ -918,7 +932,8 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "original-block-axes"
             | "original-flex-axes"
             | "original-grid-axes"
-            | "original-subgrid-axes",
+            | "original-subgrid-axes"
+            | inline_subgrid::EDITION,
             Some(request_sha256),
         ) => {
             let helper_digest = full_inputs.get(ROOT_HELPER_INPUT).map(String::as_str);
@@ -956,7 +971,15 @@ pub(crate) fn capture_binding_from_verified_inputs(
                         subgrid_axes::SCRIPT,
                         helper_digest.is_some_and(subgrid_axes::accepts_helper),
                     ),
-                    _ => unreachable!("only original axis capture profiles enter this arm"),
+                    inline_subgrid::EDITION => (
+                        inline_subgrid::EDITION,
+                        inline_subgrid::source_digest(&case.source),
+                        inline_subgrid::REQUEST,
+                        inline_subgrid::SCRIPT_PATH,
+                        inline_subgrid::SCRIPT,
+                        helper_digest.is_some_and(inline_subgrid::accepts_helper),
+                    ),
+                    _ => unreachable!("only original source capture profiles enter this arm"),
                 };
             let proof_sha256 = sha256(script.as_bytes());
             if source_digest != Some(artifact.source_sha256.as_str())
@@ -968,7 +991,7 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 || !helper_valid
                 || excluded_specs.contains(ROOT_HELPER_INPUT)
             {
-                return Err(changed("original axis capture profile"));
+                return Err(changed("original source capture profile"));
             }
             for (path, expected) in [
                 (case.source.as_str(), artifact.source_sha256.as_str()),
@@ -982,7 +1005,7 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 if full_inputs.get(path).map(String::as_str) != Some(expected)
                     || excluded_specs.contains(path)
                 {
-                    return Err(changed(format!("original axis input: {path}")));
+                    return Err(changed(format!("original source capture input: {path}")));
                 }
             }
             (profile, "none")
@@ -1810,6 +1833,12 @@ pub(crate) fn matching_metadata_is_valid(
             }
             _ => false,
         },
+        MatchingCategory::OriginalInlineSubgrid => {
+            kind == SourceKind::Original
+                && metadata["context"] == "inline-grid"
+                && inline_subgrid::subgrid_writing_mode(source)
+                    .is_some_and(|mode| metadata["subgrid_writing_mode"] == mode)
+        }
         MatchingCategory::Fri07IntrinsicFlexText => {
             source == intrinsic_flex::SOURCE
                 && kind == SourceKind::Original
@@ -1924,6 +1953,7 @@ pub(crate) enum MatchingCategory {
     Geometry,
     Fri06Subgrid,
     Fri07IntrinsicFlexText,
+    OriginalInlineSubgrid,
 }
 
 impl MatchingCategory {
@@ -1931,6 +1961,7 @@ impl MatchingCategory {
         match edition {
             FRI06_SUBGRID_EDITION => Self::Fri06Subgrid,
             FRI07_INTRINSIC_FLEX_EDITION => Self::Fri07IntrinsicFlexText,
+            inline_subgrid::EDITION => Self::OriginalInlineSubgrid,
             _ => Self::Geometry,
         }
     }
@@ -1940,6 +1971,7 @@ impl MatchingCategory {
             Self::Geometry => "geometry",
             Self::Fri06Subgrid => FRI06_SUBGRID_EDITION,
             Self::Fri07IntrinsicFlexText => FRI07_INTRINSIC_FLEX_EDITION,
+            Self::OriginalInlineSubgrid => inline_subgrid::EDITION,
         }
     }
 
@@ -1948,7 +1980,9 @@ impl MatchingCategory {
         inputs: &BTreeMap<String, String>,
     ) -> Option<&str> {
         match self {
-            Self::Fri07IntrinsicFlexText => inputs.get(OBSERVATION_REQUEST).map(String::as_str),
+            Self::Fri07IntrinsicFlexText | Self::OriginalInlineSubgrid => {
+                inputs.get(OBSERVATION_REQUEST).map(String::as_str)
+            }
             Self::Geometry | Self::Fri06Subgrid => None,
         }
     }

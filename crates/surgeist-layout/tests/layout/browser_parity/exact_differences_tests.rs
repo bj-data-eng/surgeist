@@ -481,7 +481,7 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
     assert!(ordinary.final_inline_fragments().is_empty());
     assert_eq!(ordinary.native_inline_box_families().count(), 0);
     assert_eq!(ordinary.native_inline_box_pieces().count(), 0);
-    assert!(snapshot_batch(&tree, &ordinary, &source).is_ok());
+    assert!(snapshot_batch(&tree, &ordinary, &source, false).is_ok());
 
     let flow = layout::LayoutFlowInput::try_new(
         &tree,
@@ -515,7 +515,7 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
         "an empty completion has a family but no formatted piece"
     );
     assert_eq!(
-        snapshot_batch(&tree, &demanded, &source).unwrap_err(),
+        snapshot_batch(&tree, &demanded, &source, false).unwrap_err(),
         QualificationError::UnsupportedObservation {
             owner: "/".into(),
             category: "Text/fragment/native-inline output census".into(),
@@ -574,7 +574,7 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
         },
     ];
     assert_eq!(
-        snapshot_batch(&tree, &batch, &source).unwrap_err(),
+        snapshot_batch(&tree, &batch, &source, false).unwrap_err(),
         QualificationError::UnsupportedObservation {
             owner: "/".into(),
             category: "Text/fragment/native-inline output census".into(),

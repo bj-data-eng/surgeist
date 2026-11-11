@@ -300,6 +300,9 @@ mod original_flex_parent_profile;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_grid_axes_profile.rs"]
 mod original_grid_axes_profile;
 #[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid_profile.rs"]
+mod original_inline_subgrid_profile;
+#[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_axes_profile.rs"]
 mod original_subgrid_axes_profile;
 #[cfg(test)]

@@ -254,6 +254,11 @@ impl QualificationMode {
             | Self::DeriveMatching(capture_authority::FRI07_INTRINSIC_FLEX_EDITION) => {
                 BoxObservationRequest::Fri07IntrinsicFlexText
             }
+            Self::PublishMatching(crate::original_inline_subgrid_profile::EDITION)
+            | Self::CheckPublishedMatching(crate::original_inline_subgrid_profile::EDITION)
+            | Self::DeriveMatching(crate::original_inline_subgrid_profile::EDITION) => {
+                BoxObservationRequest::OriginalInlineSubgrid
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishExact(PublishedEdition::MeasuredGrid)
             | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
@@ -270,6 +275,9 @@ fn select_records(
     fixture: Option<&str>,
     mode: QualificationMode,
 ) -> Result<()> {
+    declaration.records.retain(|record| {
+        crate::original_inline_subgrid_profile::source_digest(record.source.as_str()).is_none()
+    });
     let prepared_source = crate::parity_support::prepared_range_qualification::SOURCE;
     if mode == QualificationMode::PreparedRangeCapture {
         if fixture != Some(prepared_source) {
@@ -1946,6 +1954,7 @@ fn inventory_with_retained_helper(
                     | BoxObservationRequest::OriginalFlexAxes
                     | BoxObservationRequest::OriginalGridAxes
                     | BoxObservationRequest::OriginalSubgridAxes
+                    | BoxObservationRequest::OriginalInlineSubgrid
             )
         {
             continue;
@@ -2190,6 +2199,11 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
                 case.case.id(),
             )?;
         }
+        ExpectedMetadata::InlineGrid {
+            subgrid_writing_mode,
+        } => {
+            qualification_catalogue::verify_inline_grid_metadata(test, subgrid_writing_mode)?;
+        }
         ExpectedMetadata::BlockFlow { .. } => {
             qualification_catalogue::verify_block_flow_metadata(
                 test,
@@ -2221,7 +2235,7 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
         ExpectedMetadata::BlockFlow {
             atomic_paragraphs, ..
         } => *atomic_paragraphs,
-        ExpectedMetadata::AbsoluteLocal { .. } => None,
+        ExpectedMetadata::AbsoluteLocal { .. } | ExpectedMetadata::InlineGrid { .. } => None,
     };
     qualify_atomic_metric_census(input, expected_atomic_paragraphs, case.case.id())?;
 

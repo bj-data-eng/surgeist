@@ -1113,24 +1113,25 @@ fn runs_subgrid_relative_rtl_abspos_fixture_against_surgeist_layout() {
     support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
 }
 
+fn assert_registered_subgrid_alignment(source: &str) {
+    let root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/subgrid");
+    let originals: Vec<_> = crate::fixture_variants::fixture_cases()
+        .into_iter()
+        .map(|(variant, _)| root.join(format!("{source}__{variant}.xml")))
+        .collect();
+    assert_eq!(originals.len(), 4);
+    assert_registered_originals_match(&originals);
+}
+
 #[test]
 fn runs_subgrid_alignment_item_fixture_against_surgeist_layout() {
-    let golden = support::Golden::parse(include_str!(
-        "browser_parity/xml/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml"
-    ))
-    .expect("browser parity fixture should parse");
-
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    assert_registered_subgrid_alignment("subgrid_alignment_002_center_start_item");
 }
 
 #[test]
 fn runs_orthogonal_subgrid_alignment_fixture_against_surgeist_layout() {
-    let golden = support::Golden::parse(include_str!(
-        "browser_parity/xml/subgrid/subgrid_alignment_002_center_start_orthogonal_item__border_box_ltr.xml"
-    ))
-    .expect("browser parity fixture should parse");
-
-    support::assert_surgeist_matches(&golden).expect("surgeist layout should match fixture");
+    assert_registered_subgrid_alignment("subgrid_alignment_002_center_start_orthogonal_item");
 }
 
 #[test]

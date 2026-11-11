@@ -1,0 +1,22 @@
+<test name="subgrid_alignment_002_center_start_item__border_box_rtl" measurement-version="4" observation-frame="root-border" use-rounding="true">
+  <viewport root-context="inline-grid" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="inline-grid" box-sizing="content-box" direction="ltr" position="static" font-size="16px" row-gap="5px" column-gap="5px" grid-template-rows="50px" grid-template-columns="50px">
+      <div source-tag="div" display="grid" box-sizing="content-box" direction="ltr" font-size="16px" row-gap="5px" column-gap="5px" grid-template-rows="subgrid" grid-template-columns="subgrid">
+        <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" font-size="16px" align-self="center" justify-self="start" width="20px" height="20px"/>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="50" height="50">
+      <node x="0" y="0" width="50" height="50">
+        <node x="0" y="15" width="20" height="20"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="50" height="50" scroll-width="50" scroll-height="50" client-width="50" client-height="50"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="50" height="50" scroll-width="50" scroll-height="50" client-width="50" client-height="50"/>
+    <world-rounded-layout node-path="0.0.0" x="0" y="15" width="20" height="20" scroll-width="20" scroll-height="20" client-width="20" client-height="20"/>
+  </diagnostics>
+</test>
