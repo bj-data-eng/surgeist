@@ -3063,3 +3063,63 @@ sources = [
   "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
   "html/subgrid/subgrid_baseline_vertical_nested_inner_row1_first.html",
 ]
+
+[[records]]
+source = "html/grid/grid_available_space_greater_than_max_content.html"
+source_sha256 = "83d57a71bc2ebf2abe3e4342cfc1532b61d4902b0605bc646abe033c4ebb7d57"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "a724c093788506a1f10012e9ef5b170e7b352b54129d99ba61df49f22a6099a5"
+content_box_ltr = "30dd3cf875aea39f3f1c1154c1b0f1f0e9126bd75e7a6272be192489e68feacd"
+border_box_rtl = "ae481fb49b00401ceae50a062e85536c56f441acdf749e3f8e7ccf57b17326e4"
+content_box_rtl = "fefeb0cfa1be705499070242b7682685e66e2d84d1cada34df14f4e905503532"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_available_space_smaller_than_max_content.html"
+source_sha256 = "95abfc426f1337c0a4c936852eaaab07b4a1d651366ecf99727d0844a67b84a0"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "cbc64455481f2a4fc5908c9bf5ef47b590595aee71a603e5ef88b172196b629b"
+content_box_ltr = "faff3c1729444b1b406b0681fb43e8074716a1b27fa8b6b9b5ce480cd0a48a53"
+border_box_rtl = "87c1de83e6b1dc2471cd1cc57785b736178c9d4432de2c4accff94de8d362bc7"
+content_box_rtl = "4a8d5f5dedb1f41e55446aecef7ac28c3379063be567b66eb37ec03a01cf5e73"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_available_space_smaller_than_min_content.html"
+source_sha256 = "eb8d3865e36202ddd5b1751bbcf3b428bbb0f5482f7e96af519a73afc4cd469d"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2eb08becbb95442cc59f2694ca05abfcb7a37313de30b9ac83adc924eb26fdab"
+content_box_ltr = "fa11cfea9d58f11e2581566454c582dd094157e8df783c876e694a9a1e805a61"
+border_box_rtl = "e736d254665ed84738340d62fc23c59f5e716fd583fc1640e7852eb46c076686"
+content_box_rtl = "25cdc86d0c3c4f8ccb549128008110e72d65ac0f80272e5d24f0b5c345c423d4"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
