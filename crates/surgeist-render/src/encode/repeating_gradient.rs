@@ -1422,6 +1422,71 @@ mod tests {
         );
     }
     #[test]
+    fn repeating_geometry_dispatch_preserves_the_first_accounting_refusal() {
+        use crate::RenderRefusalReason;
+
+        let stops = [stop(1.0, Color::BLACK), stop(5.0, Color::TRANSPARENT)];
+        let cases = [
+            (linear(stops.to_vec()), 1),
+            (
+                RepeatingGradient::try_radial(Point::new(0.0, 0.0), 1.0, 1.0, stops.to_vec())
+                    .unwrap(),
+                1,
+            ),
+            (
+                RepeatingGradient::try_horizontal_distance(2.0, stops.to_vec()).unwrap(),
+                4,
+            ),
+        ];
+        for (gradient, geometry_amount) in cases {
+            // Two endpoint reads and their difference precede the zero-span
+            // comparison. Linear and radial next admit one remainder, while
+            // horizontal distance admits four linear coefficients together.
+            for (limit, amount) in [(3, 1), (4, geometry_amount)] {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let error = context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        prepare(&gradient, kurbo::Affine::IDENTITY, account).map(drop)
+                    })
+                    .unwrap_err();
+                let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+                else {
+                    panic!("expected coordinate admission refusal for {gradient:?}");
+                };
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::CoordinateVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (limit, amount));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+                let report = context.last_attempt().unwrap();
+                assert_eq!(report.cleanup_fault(), None);
+                let attempt = report.attempt().unwrap();
+                assert_eq!(attempt.refusal(), Some(refusal));
+                let usage = attempt.usage();
+                assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
+                assert_eq!(usage.work(RenderWork::GradientStopVisits), 2);
+                assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+                assert_eq!(usage.work(RenderWork::GpuObjectsCreated), 0);
+                for resource in [
+                    RenderResource::ScratchCpuBytes,
+                    RenderResource::RetainedCpuBytes,
+                    RenderResource::GpuBytes,
+                ] {
+                    assert_eq!(usage.live(resource), 0);
+                    assert_eq!(usage.peak(resource), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn distance_phase_actions_refuse_before_the_fifth_comparison_and_retry() {
         let account = Account::for_test();
         assert_eq!(horizontal_phase(1.0, 4.0, &account).unwrap(), 0.25);
