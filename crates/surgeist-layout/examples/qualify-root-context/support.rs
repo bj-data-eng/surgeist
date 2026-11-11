@@ -1065,9 +1065,18 @@ impl Invocation {
     }
 
     fn reserve(parent: &Path, candidate: &str) -> io::Result<Self> {
-        let root = parent.join(candidate);
-        fs::create_dir(&root)?;
-        Ok(Self { root })
+        let mut root = parent.join(candidate);
+        let mut suffix = 0_u64;
+        loop {
+            match fs::create_dir(&root) {
+                Ok(()) => return Ok(Self { root }),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    suffix = suffix.checked_add(1).ok_or(error)?;
+                    root = parent.join(format!("{candidate}-{suffix}"));
+                }
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     fn check_terminal(&self) -> Result<()> {
