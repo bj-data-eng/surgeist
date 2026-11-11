@@ -23,9 +23,9 @@ use crate::{
     pass::PreparedGraph,
     resource::WorkingFormat,
     surface::{
-        AcquiredPresentedSurfaceTexture, Format, PresentedConfigurationDraft, PresentedLifecycle,
-        PresentedResourceBundle, PresentedSurface, PresentedSurfaceAcquire, PresentedSurfaceState,
-        Surface, SurfaceBackend,
+        AcquiredPresentedSurfaceTexture, Format, PendingPresentedConfiguration,
+        PresentedConfigurationDraft, PresentedLifecycle, PresentedResourceBundle, PresentedSurface,
+        PresentedSurfaceAcquire, PresentedSurfaceState, Surface, SurfaceBackend,
     },
 };
 #[cfg(any(
@@ -96,13 +96,11 @@ impl Backend {
     ))]
     pub(crate) async fn configure_presented_surface(
         &mut self,
-        identity: DeviceSlotIdentity,
+        pending: &PendingPresentedConfiguration<'_>,
         operation: RuntimeOperation,
-        surface: &PresentedSurface,
-        physical_size: PhysicalSize,
-        present_mode: wgpu::PresentMode,
         observer: Option<&Account>,
     ) -> Result<PresentedConfigurationDraft> {
+        let identity = pending.device_identity();
         let phase_account = observer.map(|account| account.at(RenderPhase::Configure));
         let observer = phase_account.as_ref();
         let configure = async {
@@ -115,13 +113,7 @@ impl Backend {
                 BackendErrorCode::SurfaceConfigureFailed,
                 "presented device resources are unavailable before configuration",
             )?;
-            let draft = surface.configure_draft(
-                &ready.device,
-                &generation,
-                physical_size,
-                present_mode,
-                observer,
-            )?;
+            let draft = pending.configure_draft(&ready.device, &generation, observer)?;
             let result = transaction.finish(operation, observer).await;
             result?;
             Ok(draft)

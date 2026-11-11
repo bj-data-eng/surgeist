@@ -404,25 +404,22 @@ impl Renderer {
         surface: &mut Surface,
         observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
-        let SurfaceBackend::Presented { state, .. } = &surface.backend else {
+        let Some(pending) = surface.pending_presented_configuration() else {
             return Ok(());
         };
-        if !state.needs_configuration() {
-            return Ok(());
-        }
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
                 RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "no compatible wgpu adapter is available",
             )
         })?;
-        Self::configure_presented_surface_with_backend(
-            backend,
-            surface,
-            PresentedConfigurationOperation::Rendering,
-            observer,
-        )
-        .await
+        pending
+            .configure(
+                backend,
+                PresentedConfigurationOperation::Rendering.runtime_operation(),
+                observer,
+            )
+            .await
     }
 
     #[cfg(any(
@@ -435,39 +432,12 @@ impl Renderer {
         operation: PresentedConfigurationOperation,
         observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
-        let SurfaceBackend::Presented {
-            surface: native,
-            device_identity,
-            state,
-        } = &mut surface.backend
-        else {
+        let Some(pending) = surface.pending_presented_configuration() else {
             return Ok(());
         };
-        if !state.needs_configuration() {
-            return Ok(());
-        }
-        let device_identity = *device_identity;
-        let operation = operation.runtime_operation();
-        let draft = backend
-            .configure_presented_surface(
-                device_identity,
-                operation,
-                native.as_ref(),
-                state.requested_physical_size(),
-                surface.options.present_mode.into(),
-                observer,
-            )
-            .await?;
-        let publication_signal = backend.publication_signal(device_identity, operation)?;
-        let result = publication_signal.commit_if_no_terminal(operation, || {
-            native.commit_configuration(draft);
-            state.commit_configuration();
-        });
-        if let Err(error) = result {
-            backend.observe_device_terminal(device_identity);
-            return Err(error);
-        };
-        Ok(())
+        pending
+            .configure(backend, operation.runtime_operation(), observer)
+            .await
     }
 
     #[cfg(not(any(

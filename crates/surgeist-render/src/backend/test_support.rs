@@ -514,8 +514,8 @@ use crate::{
     gpu_transaction::GpuOperationTransaction,
     surface::{
         DisplayFreePresentedSurfaceObservationForTest,
-        DisplayFreePresentedSurfaceObservationHandleForTest, PresentedAcquireOutcomeForTest,
-        PresentedLifecycle, PresentedSurface,
+        DisplayFreePresentedSurfaceObservationHandleForTest, PendingPresentedConfiguration,
+        PresentedAcquireOutcomeForTest, PresentedLifecycle, PresentedSurface,
     },
 };
 
@@ -582,9 +582,7 @@ async fn configure_presented_surface_validation_failure_for_test(
     device: &wgpu::Device,
     signal: Arc<DeviceSignal>,
     custody: &Generation,
-    surface: &PresentedSurface,
-    physical_size: PhysicalSize,
-    present_mode: wgpu::PresentMode,
+    pending: &PendingPresentedConfiguration<'_>,
     operation: RuntimeOperation,
 ) -> Result<()> {
     let account = Account::for_test();
@@ -592,7 +590,7 @@ async fn configure_presented_surface_validation_failure_for_test(
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, custody, physical_size, present_mode, None);
+    let draft = pending.configure_draft(device, custody, None);
     let _invalid_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Surgeist explicit Configure validation failure stage"),
         size: wgpu::Extent3d {
@@ -619,14 +617,12 @@ fn discard_presented_configuration_draft_for_test(
     device: &wgpu::Device,
     signal: Arc<DeviceSignal>,
     custody: &Generation,
-    surface: &PresentedSurface,
-    physical_size: PhysicalSize,
-    present_mode: wgpu::PresentMode,
+    pending: &PendingPresentedConfiguration<'_>,
 ) -> Result<()> {
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, custody, physical_size, present_mode, None);
+    let draft = pending.configure_draft(device, custody, None);
     drop(draft);
     drop(transaction);
     Ok(())
@@ -635,28 +631,22 @@ fn discard_presented_configuration_draft_for_test(
 #[cfg(feature = "render-window")]
 pub(crate) async fn presented_configuration_validation_failure_stage_for_test(
     renderer: &mut Renderer,
-    surface: &Surface,
+    surface: &mut Surface,
     operation: RuntimeOperation,
 ) -> Result<()> {
-    let identity = presented_device_identity_for_test(surface);
+    let pending = surface.pending_presented_configuration().ok_or_else(|| {
+        Error::new(
+            BackendErrorCode::SurfaceConfigureFailed,
+            "the explicit Configure failure stage requires pending presented configuration",
+        )
+    })?;
+    let identity = pending.device_identity();
     let signal = renderer.device_signal_for_test(identity).ok_or_else(|| {
         Error::new(
             BackendErrorCode::SurfaceConfigureFailed,
             "the explicit Configure failure stage requires a current device signal",
         )
     })?;
-    let (native, physical_size) = match &surface.backend {
-        SurfaceBackend::Presented { surface, state, .. } => {
-            (surface.as_ref(), state.requested_physical_size())
-        }
-        _ => {
-            return Err(Error::new(
-                BackendErrorCode::SurfaceConfigureFailed,
-                "the explicit Configure failure stage requires a presented surface",
-            ));
-        }
-    };
-    let present_mode: wgpu::PresentMode = surface.options.present_mode.into();
     let ready = renderer
         .default_ready_device_state_borrow_for_test()
         .ok_or_else(|| {
@@ -669,9 +659,7 @@ pub(crate) async fn presented_configuration_validation_failure_stage_for_test(
         ready.device_for_test(),
         signal,
         ready.generation_for_test(),
-        native,
-        physical_size,
-        present_mode,
+        &pending,
         operation,
     )
     .await
@@ -680,27 +668,21 @@ pub(crate) async fn presented_configuration_validation_failure_stage_for_test(
 #[cfg(feature = "render-window")]
 pub(crate) fn discard_presented_configuration_stage_for_test(
     renderer: &mut Renderer,
-    surface: &Surface,
+    surface: &mut Surface,
 ) -> Result<()> {
-    let identity = presented_device_identity_for_test(surface);
+    let pending = surface.pending_presented_configuration().ok_or_else(|| {
+        Error::new(
+            BackendErrorCode::SurfaceConfigureFailed,
+            "the explicit Configure discard stage requires pending presented configuration",
+        )
+    })?;
+    let identity = pending.device_identity();
     let signal = renderer.device_signal_for_test(identity).ok_or_else(|| {
         Error::new(
             BackendErrorCode::SurfaceConfigureFailed,
             "the explicit Configure discard stage requires a current device signal",
         )
     })?;
-    let (native, physical_size) = match &surface.backend {
-        SurfaceBackend::Presented { surface, state, .. } => {
-            (surface.as_ref(), state.requested_physical_size())
-        }
-        _ => {
-            return Err(Error::new(
-                BackendErrorCode::SurfaceConfigureFailed,
-                "the explicit Configure discard stage requires a presented surface",
-            ));
-        }
-    };
-    let present_mode = surface.options.present_mode.into();
     let ready = renderer
         .default_ready_device_state_borrow_for_test()
         .ok_or_else(|| {
@@ -713,9 +695,7 @@ pub(crate) fn discard_presented_configuration_stage_for_test(
         ready.device_for_test(),
         signal,
         ready.generation_for_test(),
-        native,
-        physical_size,
-        present_mode,
+        &pending,
     )
 }
 

@@ -3,12 +3,22 @@ use super::{
     BackendErrorCode, Color, Error, PhysicalSize, Result, RuntimeCapabilityUnavailable, Size,
     geometry::physical_size, validation::*,
 };
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use super::{RuntimeOperation, backend::Backend};
 use crate::accounting::OwnedGpu;
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 use crate::accounting::{Account, Generation, GenerationClass, GpuObjectKind};
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 #[cfg(all(test, feature = "render-window"))]
@@ -451,6 +461,114 @@ pub(crate) struct PresentedConfigurationDraft {
     resources: PresentedResourceBundle,
 }
 
+/// Holds the pending extent and the exact target and lifecycle until installation.
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+pub(crate) struct PendingPresentedConfiguration<'surface> {
+    target: &'surface mut PresentedSurface,
+    lifecycle: &'surface mut PresentedLifecycle,
+    device_identity: DeviceSlotIdentity,
+    extent: PositivePresentedExtent,
+    resizing: ResizeState,
+    present_mode: wgpu::PresentMode,
+}
+
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+impl Surface {
+    pub(crate) fn pending_presented_configuration(
+        &mut self,
+    ) -> Option<PendingPresentedConfiguration<'_>> {
+        let SurfaceBackend::Presented {
+            surface: target,
+            device_identity,
+            state,
+        } = &mut self.backend
+        else {
+            return None;
+        };
+        let PresentedLifecycle::ResizePending {
+            physical_size,
+            resizing,
+        } = state.lifecycle
+        else {
+            return None;
+        };
+        Some(PendingPresentedConfiguration {
+            target: target.as_mut(),
+            lifecycle: &mut state.lifecycle,
+            device_identity: *device_identity,
+            extent: physical_size,
+            resizing,
+            present_mode: self.options.present_mode.into(),
+        })
+    }
+}
+
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+impl PendingPresentedConfiguration<'_> {
+    pub(crate) const fn device_identity(&self) -> DeviceSlotIdentity {
+        self.device_identity
+    }
+
+    pub(crate) fn configure_draft(
+        &self,
+        device: &wgpu::Device,
+        generation: &Generation,
+        observer: Option<&Account>,
+    ) -> Result<PresentedConfigurationDraft> {
+        generation.ensure_healthy()?;
+        let config = presented_configuration(
+            self.target.format,
+            self.extent.physical_size(),
+            self.present_mode,
+        );
+        let resources = PresentedResourceBundle::new(device, generation, config, observer)?;
+        match &self.target.target {
+            PresentedSurfaceTarget::Host(surface) => surface.configure(device, &resources.config),
+            #[cfg(all(test, feature = "render-window"))]
+            PresentedSurfaceTarget::DisplayFreeHostEffectForTest(state) => {
+                let mut state = state
+                    .lock()
+                    .expect("display-free presentation fixture state must remain available");
+                state.configuration_count = state.configuration_count.saturating_add(1);
+            }
+        }
+        Ok(PresentedConfigurationDraft { resources })
+    }
+
+    pub(crate) async fn configure(
+        self,
+        backend: &mut Backend,
+        operation: RuntimeOperation,
+        observer: Option<&Account>,
+    ) -> Result<()> {
+        let draft = backend
+            .configure_presented_surface(&self, operation, observer)
+            .await?;
+        let device_identity = self.device_identity;
+        let publication_signal = backend.publication_signal(device_identity, operation)?;
+        let result = publication_signal.commit_if_no_terminal(operation, || {
+            self.target.committed = Some(draft.resources);
+            *self.lifecycle = PresentedLifecycle::Ready {
+                resizing: self.resizing,
+            };
+        });
+        if let Err(error) = result {
+            backend.observe_device_terminal(device_identity);
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
 /// An acquired host frame that returns/discards itself unless it is presented.
 #[must_use = "acquired surface textures must be presented or dropped"]
 #[cfg(any(
@@ -554,30 +672,6 @@ impl PresentedSurface {
         self.committed
             .as_ref()
             .map(|resources| PhysicalSize::new(resources.config.width, resources.config.height))
-    }
-
-    pub(crate) fn configure_draft(
-        &self,
-        device: &wgpu::Device,
-        generation: &Generation,
-        physical_size: PhysicalSize,
-        present_mode: wgpu::PresentMode,
-        observer: Option<&Account>,
-    ) -> Result<PresentedConfigurationDraft> {
-        generation.ensure_healthy()?;
-        let config = presented_configuration(self.format, physical_size, present_mode);
-        let resources = PresentedResourceBundle::new(device, generation, config, observer)?;
-        match &self.target {
-            PresentedSurfaceTarget::Host(surface) => surface.configure(device, &resources.config),
-            #[cfg(all(test, feature = "render-window"))]
-            PresentedSurfaceTarget::DisplayFreeHostEffectForTest(state) => {
-                let mut state = state
-                    .lock()
-                    .expect("display-free presentation fixture state must remain available");
-                state.configuration_count = state.configuration_count.saturating_add(1);
-            }
-        }
-        Ok(PresentedConfigurationDraft { resources })
     }
 
     pub(crate) fn acquire_texture(&self, device: &wgpu::Device) -> PresentedSurfaceAcquire {
@@ -726,10 +820,6 @@ impl PresentedSurface {
             .expect("display-free presentation fixture state must remain available")
             .last_presented_texture
             .take()
-    }
-
-    pub(crate) fn commit_configuration(&mut self, draft: PresentedConfigurationDraft) {
-        self.committed = Some(draft.resources);
     }
 
     #[cfg(all(test, feature = "render-window"))]
@@ -958,12 +1048,39 @@ pub(crate) enum ResizeState {
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PositivePresentedExtent {
+    width: NonZeroU32,
+    height: NonZeroU32,
+}
+
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+impl PositivePresentedExtent {
+    fn from_physical_size(size: PhysicalSize) -> Option<Self> {
+        Some(Self {
+            width: NonZeroU32::new(size.width())?,
+            height: NonZeroU32::new(size.height())?,
+        })
+    }
+
+    const fn physical_size(self) -> PhysicalSize {
+        PhysicalSize::new(self.width.get(), self.height.get())
+    }
+}
+
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PresentedLifecycle {
     Ready {
         resizing: ResizeState,
     },
     ResizePending {
-        physical_size: PhysicalSize,
+        physical_size: PositivePresentedExtent,
         resizing: ResizeState,
     },
     NonRenderable {
@@ -992,16 +1109,15 @@ pub(crate) struct PresentedSurfaceState {
 ))]
 impl PresentedSurfaceState {
     pub(crate) fn new(physical_size: PhysicalSize, resizing: ResizeState) -> Self {
-        let lifecycle = if physical_size.width() == 0 || physical_size.height() == 0 {
-            PresentedLifecycle::NonRenderable {
+        let lifecycle = match PositivePresentedExtent::from_physical_size(physical_size) {
+            Some(extent) => PresentedLifecycle::ResizePending {
+                physical_size: extent,
+                resizing,
+            },
+            None => PresentedLifecycle::NonRenderable {
                 physical_size,
                 resizing,
-            }
-        } else {
-            PresentedLifecycle::ResizePending {
-                physical_size,
-                resizing,
-            }
+            },
         };
         Self {
             requested_physical_size: physical_size,
@@ -1017,10 +1133,6 @@ impl PresentedSurfaceState {
         self.requested_physical_size
     }
 
-    pub(crate) const fn needs_configuration(&self) -> bool {
-        matches!(self.lifecycle, PresentedLifecycle::ResizePending { .. })
-    }
-
     pub(crate) fn resize_requested(
         &mut self,
         committed_physical_size: Option<PhysicalSize>,
@@ -1031,34 +1143,31 @@ impl PresentedSurfaceState {
             return;
         }
         let resizing = self.lifecycle.resize_state();
-        self.lifecycle = if next.width() == 0 || next.height() == 0 {
-            PresentedLifecycle::NonRenderable {
+        let Some(extent) = PositivePresentedExtent::from_physical_size(next) else {
+            self.lifecycle = PresentedLifecycle::NonRenderable {
                 physical_size: next,
                 resizing,
-            }
-        } else if self.lifecycle.physical_size() == Some(next) {
+            };
+            return;
+        };
+        self.lifecycle = if self.lifecycle.physical_size() == Some(next) {
             self.lifecycle
         } else if committed_physical_size == Some(next) {
             PresentedLifecycle::Ready { resizing }
         } else {
             PresentedLifecycle::ResizePending {
-                physical_size: next,
+                physical_size: extent,
                 resizing,
             }
         };
     }
 
-    pub(crate) fn commit_configuration(&mut self) {
-        let resizing = self.lifecycle.resize_state();
-        debug_assert!(self.requested_physical_size.width() > 0);
-        debug_assert!(self.requested_physical_size.height() > 0);
-        self.lifecycle = PresentedLifecycle::Ready { resizing };
-    }
-
     pub(crate) fn mark_configuration_pending(&mut self) {
-        if self.requested_physical_size.width() > 0 && self.requested_physical_size.height() > 0 {
+        if let Some(extent) =
+            PositivePresentedExtent::from_physical_size(self.requested_physical_size)
+        {
             self.lifecycle = PresentedLifecycle::ResizePending {
-                physical_size: self.requested_physical_size,
+                physical_size: extent,
                 resizing: self.lifecycle.resize_state(),
             };
         }
@@ -1123,8 +1232,8 @@ impl PresentedLifecycle {
 
     pub(crate) const fn physical_size(self) -> Option<PhysicalSize> {
         match self {
-            Self::ResizePending { physical_size, .. }
-            | Self::NonRenderable { physical_size, .. } => Some(physical_size),
+            Self::ResizePending { physical_size, .. } => Some(physical_size.physical_size()),
+            Self::NonRenderable { physical_size, .. } => Some(physical_size),
             Self::Ready { .. } | Self::Occluded { .. } | Self::Lost => None,
         }
     }
