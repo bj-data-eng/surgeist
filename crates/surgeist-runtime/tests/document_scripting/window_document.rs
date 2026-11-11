@@ -39,6 +39,17 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
         if (!wrongNodeRejected || reads !== 0 || actual.getRootNode(options) !== actual || reads !== 1) {
             return "Node receiver qualification must precede options conversion";
         }
+        const sentinel = {};
+        const newTarget = new Proxy(function () {}, {
+            get(target, key) {
+                if (key === "prototype") throw sentinel;
+                return Reflect.get(target, key);
+            }
+        });
+        let abrupt = false;
+        try { Reflect.construct(Document, [], newTarget); }
+        catch (error) { abrupt = error === sentinel; }
+        if (!abrupt) return "Document must preserve abrupt prototype lookup";
         class DerivedDocument extends Document {}
         const created = new DerivedDocument();
         if (created === actual || !(created instanceof Document) ||
@@ -72,6 +83,46 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
     assert_eq!(count_documents(&host), before + 1);
+}
+
+pub(super) fn native_document_retirement_releases_registered_callbacks() {
+    let (mut host, top) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    host.in_document(&permit, |scope| {
+        let counter = calls.clone();
+        let observer = Callback::new(move |_, _| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            Ok(Completion::Undefined)
+        });
+        let function = scope.function(&observer)?;
+        let global = scope.global()?;
+        let key: Vec<_> = "observeRetirement".encode_utf16().collect();
+        scope.set(&global, PropertyKey::String(&key), &function)?;
+        assert_script_number(
+            scope,
+            r#"Number((() => {
+                const document = window.document;
+                const listener = observeRetirement;
+                delete window.observeRetirement;
+                document.addEventListener("retire", listener);
+                EventTarget.prototype.addEventListener.call(window, "retire", listener);
+                return true;
+            })())"#,
+            1.0,
+        )
+    })
+    .unwrap();
+    assert_eq!(Arc::strong_count(&calls), 2);
+    retire_attached(&mut host, top);
+    assert_immediate_retirement(&host, &calls);
+    assert!(matches!(
+        host.in_document::<()>(&permit, |_| panic!("retired Document reentered guest code")),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::Revoked
+        ))
+    ));
+    host.stop().into_session().unwrap();
 }
 
 fn count_documents(host: &DocumentScriptHost) -> usize {
