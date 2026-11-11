@@ -4806,6 +4806,103 @@ fn resolved_alpha_masks_leave_luminance_to_authored_mask_diagnostics() {
 }
 
 #[test]
+fn foreground_layer_blur_filters_group_before_clip_mask_and_opacity() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    let impulse = Rect::new(4.0, 4.0, 1.0, 1.0);
+    let paint_group = |scene: &mut Scene| {
+        scene.fill(impulse, Color::BLACK);
+        scene.fill(impulse, Color::BLACK);
+    };
+    let mut scene = Scene::new();
+    scene.layer(blur.clone(), paint_group);
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("an authored foreground blur should render through the public renderer");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(renderer.stats().route, Some(RenderRoute::GpuGraph));
+    // An opaque impulse stays opaque when composited with itself. For sigma 1,
+    // the normalized 2D Gaussian yields about 41 alpha at the center and 25
+    // alpha one texel away, on an 8-bit scale.
+    assert!((39..=43).contains(&pixel_alpha(&output, 4, 4)));
+    assert!((23..=27).contains(&pixel_alpha(&output, 5, 4)));
+    assert_eq!(pixel_alpha(&output, 8, 4), 0);
+
+    let neighbor = Rect::new(5.0, 4.0, 1.0, 1.0);
+    let mask = Image::from_rgba(Size::new(1.0, 1.0), vec![255, 255, 255, 128]).unwrap();
+    let layer = blur
+        .try_clip(Shape::rect(neighbor))
+        .unwrap()
+        .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(mask, neighbor).unwrap())
+        .try_opacity(0.5)
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(layer, paint_group);
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 4, 4), 0);
+    assert!((5..=7).contains(&pixel_alpha(&output, 5, 4)));
+    assert_eq!(pixel_alpha(&output, 6, 4), 0);
+}
+
+#[test]
+fn foreground_layer_blur_keeps_off_surface_ink_on_a_transformed_local_grid() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 10.0), 1.0)).unwrap();
+    let mut scene = Scene::new();
+    let layer = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap()
+        .with_transform(Transform::scale(2.0, 1.0).unwrap());
+    scene.layer(layer, |scene| {
+        scene.fill(Rect::new(-1.0, 4.0, 1.0, 1.0), Color::BLACK);
+    });
+    // An independent isolation group requests the surface grid.
+    scene.layer(Layer::new().isolated(), |scene| {
+        scene.fill(Rect::new(10.0, 8.0, 1.0, 1.0), Color::BLACK);
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("the transformed foreground blur should compose with a surface-grid sibling");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    // All source ink is outside the output. An x scale of 2 stretches the
+    // local sigma 1 halo horizontally, without stretching it vertically.
+    assert!(pixel_alpha(&output, 0, 4) > 20);
+    assert!(pixel_alpha(&output, 2, 4) > 4);
+    assert_eq!(pixel_alpha(&output, 0, 7), 0);
+    assert_eq!(pixel_alpha(&output, 10, 8), 255);
+
+    let stats = renderer.stats();
+    let mut refused = Scene::new();
+    let invalid_for_execution = Layer::new()
+        .try_filter(Filter::try_blur(f64::MAX).unwrap())
+        .unwrap();
+    refused.layer(invalid_for_execution, |scene| {
+        scene.fill(Rect::new(2.0, 2.0, 1.0, 1.0), Color::BLACK);
+    });
+    let error = pollster::block_on(renderer.render(&mut surface, &refused, Parameters::default()))
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    assert_eq!(renderer.stats(), stats);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        output
+    );
+
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        output
+    );
+}
+
+#[test]
 fn layer_resolved_alpha_mask_applies_after_children_before_parent_composite() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
