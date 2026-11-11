@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -22,6 +22,7 @@ struct DispositionDeclaration {
     schema_version: u8,
     manifest_sha256: String,
     report_sha256: String,
+    prepared_text_sha256: String,
     retired: Retirement,
     superseded: Vec<Superseded>,
 }
@@ -54,6 +55,76 @@ struct HistoricalReport {
     filter: Option<String>,
     summary: ReportSummary,
     generated: Vec<CapturedArtifact>,
+}
+
+pub(super) struct HistoricalInputs {
+    report: HistoricalReport,
+    manifest_sha256: String,
+    report_sha256: String,
+}
+
+impl HistoricalInputs {
+    pub(super) fn read(root: &Path) -> Result<Self, String> {
+        let manifest_sha256 = sha256(&read_file(root, MANIFEST)?);
+        let report = read_file(root, REPORT)?;
+        let report_sha256 = sha256(&report);
+        let report: HistoricalReport =
+            serde_json::from_slice(&report).map_err(|error| error.to_string())?;
+        if report.metadata.schema_version != 4
+            || report.filter.is_some()
+            || report.summary.generated != report.generated.len()
+            || report.metadata.inputs.get(MANIFEST) != Some(&manifest_sha256)
+        {
+            return Err("historical report census or manifest binding changed".into());
+        }
+        let mut outputs = BTreeSet::new();
+        for artifact in &report.generated {
+            let path = artifact.output.as_str();
+            if !path.starts_with("xml/")
+                || !path.ends_with(".xml")
+                || path.contains(['\\', '\0'])
+                || path.split('/').any(|part| matches!(part, "" | "." | ".."))
+                || !outputs.insert(path)
+            {
+                return Err(format!(
+                    "invalid or duplicate historical output path: {path}"
+                ));
+            }
+        }
+        Ok(Self {
+            report,
+            manifest_sha256,
+            report_sha256,
+        })
+    }
+
+    pub(super) fn include_reported_originals(&self, root: &Path, originals: &mut Vec<PathBuf>) {
+        let discovered: BTreeSet<_> = originals
+            .iter()
+            .filter_map(|path| relative_path(root, path))
+            .collect();
+        originals.extend(
+            self.report
+                .generated
+                .iter()
+                .filter(|artifact| !discovered.contains(&artifact.output))
+                .map(|artifact| root.join(&artifact.output)),
+        );
+    }
+}
+
+fn relative_path(root: &Path, path: &Path) -> Option<String> {
+    path.strip_prefix(root)
+        .or_else(|_| path.strip_prefix("./tests/layout/browser_parity"))
+        .or_else(|_| path.strip_prefix("crates/surgeist-layout/tests/layout/browser_parity"))
+        .ok()?
+        .components()
+        .map(|component| match component {
+            Component::Normal(part) => part.to_str(),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|parts| parts.join("/"))
 }
 
 #[derive(Deserialize)]
@@ -106,6 +177,7 @@ pub(super) struct HistoricalCounts {
 pub(super) struct HistoricalAccounting {
     artifacts: BTreeMap<String, CapturedArtifact>,
     dispositions: BTreeMap<String, Disposition>,
+    prepared_text_sha256: String,
     seen: BTreeSet<String>,
     counts: HistoricalCounts,
 }
@@ -116,29 +188,23 @@ fn read_file(root: &Path, name: &str) -> Result<Vec<u8>, String> {
 }
 
 impl HistoricalAccounting {
-    pub(super) fn load(root: &Path, registry: &AdmittedRegistry) -> Result<Self, String> {
+    pub(super) fn load(
+        root: &Path,
+        inputs: HistoricalInputs,
+        registry: &AdmittedRegistry,
+    ) -> Result<Self, String> {
         let declaration = read_file(root, ACCOUNTING)?;
         let declaration = std::str::from_utf8(&declaration).map_err(|error| error.to_string())?;
         let declaration: DispositionDeclaration =
             serde_json::from_value(unique_json(declaration).map_err(|error| error.to_string())?)
                 .map_err(|error| error.to_string())?;
-        let manifest = read_file(root, MANIFEST)?;
-        let report = read_file(root, REPORT)?;
         if declaration.schema_version != 1
-            || sha256(&manifest) != declaration.manifest_sha256
-            || sha256(&report) != declaration.report_sha256
+            || inputs.manifest_sha256 != declaration.manifest_sha256
+            || inputs.report_sha256 != declaration.report_sha256
         {
             return Err("historical accounting manifest or report identity changed".into());
         }
-        let report: HistoricalReport =
-            serde_json::from_slice(&report).map_err(|error| error.to_string())?;
-        if report.metadata.schema_version != 4
-            || report.filter.is_some()
-            || report.summary.generated != report.generated.len()
-            || report.metadata.inputs.get(MANIFEST) != Some(&declaration.manifest_sha256)
-        {
-            return Err("historical report census or manifest binding changed".into());
-        }
+        let report = inputs.report;
 
         let variants: BTreeSet<_> = crate::fixture_variants::fixture_cases()
             .into_iter()
@@ -224,6 +290,7 @@ impl HistoricalAccounting {
         let accounting = Self {
             artifacts,
             dispositions,
+            prepared_text_sha256: declaration.prepared_text_sha256,
             seen: BTreeSet::new(),
             counts: HistoricalCounts::default(),
         };
@@ -288,8 +355,13 @@ impl HistoricalAccounting {
     }
 
     fn verify_prepared_text(&self, bytes: &[u8]) -> Result<(), String> {
+        if sha256(bytes) != self.prepared_text_sha256 {
+            return Err("prepared Text accounting identity changed".into());
+        }
+        let raw = std::str::from_utf8(bytes).map_err(|error| error.to_string())?;
         let accounting: PreparedTextAccounting =
-            serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+            serde_json::from_value(unique_json(raw).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
         for observation in accounting.variants {
             if let Some(artifact) = self.artifacts.get(&observation.xml)
                 && artifact.output_sha256 == observation.xml_sha256
@@ -324,21 +396,16 @@ impl HistoricalAccounting {
         xml: Option<&str>,
         missing_root_authority: bool,
     ) -> Result<(), String> {
-        let relative = path
-            .strip_prefix(root)
-            .or_else(|_| path.strip_prefix("./tests/layout/browser_parity"))
-            .or_else(|_| path.strip_prefix("crates/surgeist-layout/tests/layout/browser_parity"))
-            .ok()
-            .and_then(Path::to_str)
+        let relative = relative_path(root, path)
             .ok_or_else(|| format!("unaccounted historical path: {}", path.display()))?;
         let artifact = self
             .artifacts
-            .get(relative)
+            .get(&relative)
             .ok_or_else(|| format!("unaccounted historical observation: {relative}"))?;
-        if !self.seen.insert(relative.to_owned()) {
+        if !self.seen.insert(relative.clone()) {
             return Err(format!("historical observation visited twice: {relative}"));
         }
-        regular_file(root, relative).map_err(|error| error.to_string())?;
+        regular_file(root, &relative).map_err(|error| error.to_string())?;
         if !xml.is_some_and(|xml| sha256(xml.as_bytes()) == artifact.output_sha256) {
             return Err(format!(
                 "historical observation identity changed: {relative}"
@@ -398,6 +465,7 @@ mod tests {
         HistoricalAccounting {
             artifacts: BTreeMap::from([(OUTPUT.into(), artifact)]),
             dispositions: BTreeMap::from([(SOURCE.into(), disposition)]),
+            prepared_text_sha256: sha256(include_bytes!("prepared-text-accounting.json")),
             seen: BTreeSet::new(),
             counts: HistoricalCounts::default(),
         }

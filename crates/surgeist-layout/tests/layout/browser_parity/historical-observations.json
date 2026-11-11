@@ -2,6 +2,7 @@
   "schema_version": 1,
   "manifest_sha256": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
   "report_sha256": "bd85f83b4df911b45f46641b6508a25eb7be19b1ff71f5188e52d9683507e2ba",
+  "prepared_text_sha256": "5acd7f73a15826c3e13b43236bbaab6f57559d50ca6282adcb6e7156acb2f846",
   "retired": {
     "reason": "missing-root-context-authority",
     "recapture_issue": 2021,

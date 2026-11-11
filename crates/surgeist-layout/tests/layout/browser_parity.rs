@@ -2772,13 +2772,23 @@ fn selected_current_outputs(
 struct ParitySelection {
     originals: Vec<PathBuf>,
     current: BTreeSet<String>,
+    historical_inputs: Result<Option<historical_disposition::HistoricalInputs>, String>,
 }
 
 fn select_parity_inventory(
-    originals: Vec<PathBuf>,
+    mut originals: Vec<PathBuf>,
     edition: Option<&portable_qualification::AdmittedRegistry>,
     filter: Option<&str>,
 ) -> Result<ParitySelection, String> {
+    let historical_inputs = filter
+        .is_none()
+        .then(|| {
+            let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+            let inputs = historical_disposition::HistoricalInputs::read(&root)?;
+            inputs.include_reported_originals(&root, &mut originals);
+            Ok(inputs)
+        })
+        .transpose();
     let current = edition
         .map(|edition| selected_current_outputs(edition, filter))
         .unwrap_or_default();
@@ -2787,7 +2797,11 @@ fn select_parity_inventory(
         Err(_) if !current.is_empty() => Vec::new(),
         Err(error) => return Err(error),
     };
-    Ok(ParitySelection { originals, current })
+    Ok(ParitySelection {
+        originals,
+        current,
+        historical_inputs,
+    })
 }
 
 #[test]
@@ -3359,18 +3373,28 @@ fn collect_browser_parity(
     filter: Option<&str>,
     qualify: bool,
 ) -> Result<BrowserParityRun, String> {
-    assert!(
-        !fixtures.is_empty(),
-        "expected at least one browser parity XML fixture"
-    );
     let mut raw = RawBrowserParity::default();
     let mut qualified = qualify.then(QualifiedBrowserParity::default);
     let edition = registered_current_edition();
     let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter)?;
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
-    let mut accounting = match (&edition, &mut qualified) {
-        (Ok(admitted), Some(qualified)) => {
-            match historical_disposition::HistoricalAccounting::load(&root, admitted) {
+    let historical_inputs = match selection.historical_inputs {
+        Ok(inputs) => inputs,
+        Err(error) => {
+            let error = format!("historical inventory: {error}");
+            *raw.by_kind
+                .entry("InvalidHistoricalInventory".into())
+                .or_default() += 1;
+            raw.historical.push(error.clone());
+            if let Some(qualified) = &mut qualified {
+                qualified.failures.push(error);
+            }
+            None
+        }
+    };
+    let mut accounting = match (&edition, &mut qualified, historical_inputs) {
+        (Ok(admitted), Some(qualified), Some(inputs)) => {
+            match historical_disposition::HistoricalAccounting::load(&root, inputs, admitted) {
                 Ok(accounting) => Some(accounting),
                 Err(error) => {
                     qualified.failures.push(error);
