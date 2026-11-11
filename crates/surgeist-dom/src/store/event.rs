@@ -701,17 +701,24 @@ impl Dom {
         };
         self.require_source_entry()?;
         check_cancel(cancel)?;
+        let processing = Processing::new(self.limits.event_recipients(), None, cancel);
         match target {
             DomEventRecipientTarget::Node(node) => {
                 self.state.node(self.owner, node)?;
             }
             DomEventRecipientTarget::Global(global) => {
-                self.dispatch_global_document(global, cancel)?;
+                // The association lookup charges the active Source itself.
+                // Attach the formation only after that lookup.
+                self.dispatch_global_document_with(global, cancel, &mut || {
+                    processing.step().map_err(crate::DomHostedError::from)
+                })?;
             }
         }
         let formation = self.source_observation_formation(cancel)?;
-        let processing =
-            Processing::new(self.limits.event_recipients(), formation.as_ref(), cancel);
+        let processing = Processing {
+            formation: formation.as_ref(),
+            ..processing
+        };
         let next = self
             .event_recipients
             .as_ref()

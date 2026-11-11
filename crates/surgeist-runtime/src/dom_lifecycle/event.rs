@@ -151,6 +151,12 @@ impl HostedEventClock {
             return Err(DomHostedRuntimeError::Protocol);
         }
         state.step(cancel)?;
+        if dom.raw().source_dispatch_blocker().is_none() {
+            state
+                .source
+                .admit_runtime_work(dom.raw(), 1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+        }
         let occurrence = match state.clock.sample().and_then(|sample| sample.coarsen()) {
             Ok(occurrence) => occurrence,
             Err(error) => {

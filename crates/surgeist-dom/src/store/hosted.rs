@@ -1304,10 +1304,12 @@ impl Dom {
 impl Dom {
     /// Original clock origin of the exact Style notification receiver. A
     /// never-hosted receiver or retired origin has no available clock. The
-    /// receiver's current node document cannot substitute its Global.
+    /// receiver's current node document cannot substitute its Global. An
+    /// enclosing active Source dispatch also pays for each origin read.
     pub fn style_event_creation_origin<E>(
         &self,
         token: &crate::DomStyleNotificationToken,
+        cancel: &AtomicBool,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<(DomHostedGlobalId, DomHostedMoment)>, E>
     where
@@ -1319,8 +1321,24 @@ impl Dom {
         if token.owner() != self.owner {
             return Err(DomError::ForeignOwner.into());
         }
-        self.selected_event_creation_origin(token.target(), step)
-            .map(|origin| origin.map(|(global, _, moment)| (global, moment)))
+        let work = if self
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| operation.permits_reentry())
+        {
+            self.dispatch_hosted_read_work(cancel)?
+        } else {
+            None
+        };
+        self.selected_event_creation_origin(token.target(), &mut || {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })
+        .map(|origin| origin.map(|(global, _, moment)| (global, moment)))
     }
 
     pub(in crate::store) fn selected_event_creation_origin<E>(

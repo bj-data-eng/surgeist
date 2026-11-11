@@ -2577,9 +2577,11 @@ impl DomStyleRuntime {
                                 .as_ref()
                                 .ok_or(DomStyleRuntimeError::SessionUnavailable)?;
                             let token = &state.completions[index].task().token;
-                            let origin = dom
-                                .raw()
-                                .style_event_creation_origin(token, &mut || state.step(cancel))?;
+                            let origin = dom.raw().style_event_creation_origin(
+                                token,
+                                cancel,
+                                &mut || state.step(cancel),
+                            )?;
                             // The original task admitted its body. Qualification
                             // and clock work finish before its single sample.
                             let creation = match origin {
