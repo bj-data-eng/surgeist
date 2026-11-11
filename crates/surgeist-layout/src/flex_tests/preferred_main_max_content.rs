@@ -436,7 +436,15 @@ fn preferred_main_max_content_keeps_intrinsic_measurement_and_normal_contents_se
     percentage_request_phases::<f64>();
 }
 
-fn own_ratio_tree<S: LayoutScalar>(block: PreferredSizeOf<S>) -> PublicLayoutTreeOf<S> {
+fn own_ratio_tree<S: LayoutScalar>(
+    flow: FlowAxes,
+    block: PreferredSizeOf<S>,
+) -> PublicLayoutTreeOf<S> {
+    let ratio = if flow.writing_mode() == WritingMode::HorizontalTb {
+        2.0
+    } else {
+        0.5
+    };
     PublicLayoutTreeOf::<S>::new()
         .children(0, [1])
         .children(1, [])
@@ -444,18 +452,28 @@ fn own_ratio_tree<S: LayoutScalar>(block: PreferredSizeOf<S>) -> PublicLayoutTre
             0,
             NodeInputOf {
                 display: Display::Flex,
-                size: Size::new(PreferredSizeOf::MAX_CONTENT, block),
-                aspect_ratio: AspectRatioOf::new(n(2.0)),
+                writing_mode: flow.writing_mode(),
+                direction: flow.direction(),
+                size: physical(flow, PreferredSizeOf::MAX_CONTENT, block),
+                aspect_ratio: AspectRatioOf::new(n(ratio)),
+                align_items: Some(AlignItems::Start),
                 ..NodeInputOf::default()
             },
         )
-        .style(1, NodeInputOf::default())
-        .measure(1, Size::new(n(65.0), n(10.0)))
+        .style(
+            1,
+            NodeInputOf {
+                writing_mode: flow.writing_mode(),
+                direction: flow.direction(),
+                ..NodeInputOf::default()
+            },
+        )
+        .measure(1, physical(flow, n(65.0), n(10.0)))
 }
 
 fn nonautomatic_preferred_sizes<S: LayoutScalar>() {
-    let tree = own_ratio_tree::<S>(PreferredSizeOf::px(n(10.0)));
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = own_ratio_tree::<S>(flow, PreferredSizeOf::px(n(10.0)));
     let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None))
         .expect("the ratio does not replace either nonautomatic preferred size");
     for phase in [Phase::Unrounded, Phase::Final] {
@@ -472,21 +490,35 @@ fn preferred_main_max_content_is_not_backfilled_from_the_cross_size_and_ratio() 
     nonautomatic_preferred_sizes::<f64>();
 }
 
+fn own_ratio_cross_from_preferred_inline<S: LayoutScalar>() {
+    for mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            let flow = FlowAxes::new(mode, direction);
+            let tree = own_ratio_tree::<S>(flow, PreferredSizeOf::AUTO);
+            let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None))
+                .unwrap_or_else(|error| panic!("ratio cross sizing in {flow:?}: {error:?}"));
+            for (phase, block) in [(Phase::Unrounded, 32.5), (Phase::Final, 33.0)] {
+                assert_eq!(
+                    readback::single_box_output(&batch, 0, phase).size,
+                    physical(flow, n(65.0), n(block)),
+                );
+                assert_eq!(
+                    readback::single_box_output(&batch, 1, phase).size,
+                    physical(flow, n(65.0), n(10.0)),
+                );
+            }
+        }
+    }
+}
+
 #[test]
-fn preferred_main_max_content_preserves_unresolved_own_ratio_cross_refusal() {
-    let tree = own_ratio_tree::<f64>(PreferredSizeOf::AUTO);
-    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let error = compute_layout(&tree, 0, request(flow, Some(300.0), None))
-        .expect_err("ratio-dependent automatic cross sizing requires its own settlement");
-    assert!(
-        matches!(error.kind(), LayoutErrorKindOf::UnsupportedCapability(
-        LayoutUnsupportedCapability::SizingBehavior(behavior)
-    ) if behavior.property() == SizingProperty::Preferred
-        && behavior.behavior() == SizingBehavior::MaxContent
-        && behavior.algorithm() == SizingAlgorithm::Flex
-        && behavior.axis() == PhysicalAxis::Horizontal),
-        "{error:?}"
-    );
+fn preferred_main_max_content_settles_automatic_own_ratio_cross_f32() {
+    own_ratio_cross_from_preferred_inline::<f32>();
+}
+
+#[test]
+fn preferred_main_max_content_settles_automatic_own_ratio_cross_f64() {
+    own_ratio_cross_from_preferred_inline::<f64>();
 }
 
 fn bounded_wrapping<S: LayoutScalar>() {
