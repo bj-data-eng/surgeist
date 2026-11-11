@@ -977,6 +977,192 @@ mod tests {
             }
 
             #[test]
+            fn direct_global_error_registration_charges_both_reads_to_active_source() {
+                use crate::{
+                    DomEventCallback, DomEventDispatchLimits, DomEventDispatcher,
+                    DomEventListenerOptions, DomEventRegistryLimits, DomEventType,
+                    DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceUnavailable,
+                };
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, _, top, dialog) =
+                    hosted_dialog_for_clock(&[Ok(150_001), Ok(260_001), Ok(430_001)], &cancel);
+                let limits = session.dom().limits().with_event_recipients(
+                    surgeist_dom::DomEventRecipientLimits::new(4, 2_000_000, 2_000_000, 100_000)
+                        .unwrap(),
+                );
+                session.dom().raw_mut().set_limits(limits).unwrap();
+                let retain = |dom: &mut crate::DomEventDom<'_>, target| {
+                    dom.raw_mut()
+                        .retain_event_recipient(
+                            target,
+                            DomEventType::LOAD.code_units(),
+                            true,
+                            &cancel,
+                        )
+                        .unwrap()
+                        .unwrap()
+                };
+                let node_seed = retain(&mut session.dom(), dialog.into());
+                let global_seed = retain(&mut session.dom(), top.global().into());
+
+                let mut listeners = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 2,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 2_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                let options = DomEventListenerOptions {
+                    capture: true,
+                    passive: Some(false),
+                    ..Default::default()
+                };
+                listeners
+                    .add_listener(
+                        &mut session.dom(),
+                        dialog,
+                        DomEventType::BEFORE_TOGGLE,
+                        DomEventCallback::new(
+                            move |dom, listeners, observed: &mut Option<(u64, u64)>, event| {
+                                let cancel = AtomicBool::new(false);
+                                let spent = |dom: &crate::DomEventDom<'_>| {
+                                    dom.pending_source_edit().unwrap().spent_work()
+                                };
+                                let lookup_steps =
+                                    constructor_lookup_steps(dom, top, false, &cancel);
+                                let measure =
+                                    |dom: &mut crate::DomEventDom<'_>,
+                                     listeners: &mut DomEventDispatcher<Option<(u64, u64)>>,
+                                     target| {
+                                        let before = spent(dom);
+                                        let id = listeners
+                                            .add_listener(
+                                                dom,
+                                                target,
+                                                DomEventType::ERROR,
+                                                DomEventCallback::new(|_, _, _, _| Ok(())),
+                                                options,
+                                            )
+                                            .unwrap();
+                                        assert!(listeners.remove_listener(id));
+                                        spent(dom) - before
+                                    };
+                                let node =
+                                    measure(dom, listeners, crate::DomEventTarget::Node(dialog));
+                                let global = measure(
+                                    dom,
+                                    listeners,
+                                    crate::DomEventTarget::Global(top.global()),
+                                );
+                                // Existing Global and Node recipients differ by the u64
+                                // source-serial components, each with an extent and a
+                                // leaf read. The same active Source also pays for both
+                                // Global associations and their scope qualification.
+                                let extra_index = 2 * 64 / u64::from(usize::BITS / 2);
+                                *observed =
+                                    Some((global - node, extra_index + 2 * (1 + lookup_steps)));
+                                event.prevent_default();
+                                Ok(())
+                            },
+                        ),
+                        options,
+                    )
+                    .unwrap();
+                // Leave one reusable slot so the two registrations have the same
+                // Runtime bank shape and neither needs registry replacement storage.
+                let slot = listeners
+                    .add_listener(
+                        &mut session.dom(),
+                        dialog,
+                        [u16::from(b'x')],
+                        DomEventCallback::new(|_, _, _, _| Ok(())),
+                        options,
+                    )
+                    .unwrap();
+                assert!(listeners.remove_listener(slot));
+
+                let mut source = session.source_execution();
+                let mut services = DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                };
+                let DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: DomSourceUnavailable::Event,
+                } = source
+                    .apply(
+                        &mut session.dom(),
+                        DomSourceEdit::show_dialog(dialog),
+                        source_limits(),
+                        &mut services,
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("actual Show must expose beforetoggle");
+                };
+                source
+                    .raise_event_runtime_limits(
+                        &session.dom(),
+                        DomSourceEventRuntimeLimits {
+                            jobs: 1,
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
+                        &cancel,
+                    )
+                    .unwrap();
+                let mut observed = None;
+                let DomSourceEventServiceProgress::Serviced { receipt } = source
+                    .service_event(
+                        &mut session.dom(),
+                        &request,
+                        &mut listeners,
+                        &mut observed,
+                        DomSourceEventServiceLimits {
+                            source: source_limits(),
+                            dispatch: DomEventDispatchLimits {
+                                path_items: 16,
+                                snapshot_listeners: 2,
+                                failure_records: 2,
+                                callbacks: 2,
+                                work: 100_000,
+                            },
+                        },
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("original beforetoggle must complete");
+                };
+                assert!(receipt.failures().is_empty());
+                assert!(receipt.default_prevented());
+                assert!(matches!(
+                    source
+                        .resume(
+                            &mut session.dom(),
+                            request.operation(),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(_)
+                ));
+                drop((node_seed, global_seed));
+                let (actual, expected) = observed.unwrap();
+                assert_eq!(
+                    actual, expected,
+                    "additional Source work for Global recipient"
+                );
+            }
+
+            #[test]
             fn event_projection_preserves_an_earlier_occurrence_in_the_actual_global_domain() {
                 let cancel = AtomicBool::new(false);
                 let mut session = session();
@@ -1455,6 +1641,283 @@ mod tests {
                 assert_eq!(
                     [after_queue, after_firing, after_first_callback],
                     [400, 800, 1_100]
+                );
+            }
+
+            #[test]
+            fn hosted_style_firing_charges_active_source_before_nested_dispatch_refuses() {
+                use crate::{
+                    DomEventCallback, DomEventCreationObservation, DomEventDispatchError,
+                    DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
+                    DomEventRegistryLimits, DomEventResource, DomEventType,
+                    DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceUnavailable, DomStyleEventContext,
+                    DomStyleNetworkingProgress, DomStyleRuntime, DomStyleRuntimeError,
+                };
+                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace};
+
+                struct Context {
+                    styles: DomStyleRuntime,
+                    work: Option<(u64, u64, u64)>,
+                    seen: Vec<DomEventCreationObservation>,
+                }
+
+                impl DomStyleEventContext for Context {
+                    fn styles(&mut self) -> &mut DomStyleRuntime {
+                        &mut self.styles
+                    }
+                }
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, hosted, top, dialog) = hosted_dialog_for_clock(
+                    &[
+                        Ok(150_001),
+                        Ok(260_001),
+                        Ok(430_001),
+                        Ok(545_001),
+                        Ok(845_001),
+                    ],
+                    &cancel,
+                );
+                let recipient_limits = session.dom().limits().with_event_recipients(
+                    surgeist_dom::DomEventRecipientLimits::new(16, 2_000_000, 2_000_000, 100_000)
+                        .unwrap(),
+                );
+                session
+                    .dom()
+                    .raw_mut()
+                    .set_limits(recipient_limits)
+                    .unwrap();
+                let document = top.document();
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(document)
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut context = Context {
+                    styles: session.style_execution(),
+                    work: None,
+                    seen: Vec::new(),
+                };
+                let mut root = Some(DomStyleCssomRoot::new(
+                    document.node(),
+                    surgeist_cssom::CssomStore::new(Default::default(), Default::default())
+                        .unwrap(),
+                ));
+                context
+                    .styles
+                    .bind_root(&session.dom(), "hosted-clock".into(), &mut root, &cancel)
+                    .unwrap();
+
+                let mut batch = DomBatch::new();
+                let style = batch.create_element_ns(document, Namespace::html(), "style");
+                let text = batch.create_text(document, "p { color: red }");
+                batch.insert_before(&text, &style, None);
+                let target = session
+                    .dom()
+                    .apply(batch, &cancel)
+                    .unwrap()
+                    .created(&style)
+                    .unwrap()
+                    .unwrap();
+                let mut source = session.source_execution();
+                let mut services = DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |source| {
+                        Some(DomStyleInlineCspObservation::complete_empty(source, 1))
+                    },
+                    url: None,
+                };
+                assert!(matches!(
+                    source
+                        .apply(
+                            &mut session.dom(),
+                            DomSourceEdit::insert_before(target, body, None),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(_)
+                ));
+
+                let dispatch = DomEventDispatchLimits {
+                    path_items: 16,
+                    snapshot_listeners: 2,
+                    failure_records: 2,
+                    callbacks: 2,
+                    work: 100_000,
+                };
+                let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 2,
+                    pending_events: 2,
+                    nested_dispatches: 1,
+                    storage_bytes: 2_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                dispatcher
+                    .add_listener(
+                        &mut session.dom(),
+                        dialog,
+                        DomEventType::BEFORE_TOGGLE,
+                        DomEventCallback::new(
+                            move |dom, dispatcher, context: &mut Context, event| {
+                                let cancel = AtomicBool::new(false);
+                                let spent = |dom: &crate::DomEventDom<'_>| {
+                                    dom.pending_source_edit().unwrap().spent_work()
+                                };
+                                let minimum =
+                                    constructor_lookup_steps(dom, top, false, &cancel) + 2;
+                                let before = spent(dom);
+                                let stamp = dom.snapshot().stamp();
+                                for _ in 0..2 {
+                                    assert!(matches!(
+                                        DomStyleRuntime::run_networking(
+                                            dom, dispatcher, context, dispatch, &cancel,
+                                        ),
+                                        Err(DomStyleRuntimeError::Dispatch(
+                                            DomEventDispatchError::Admission(
+                                                DomEventResource::NestedDispatches
+                                            )
+                                        ))
+                                    ));
+                                    assert_eq!(dom.snapshot().stamp(), stamp);
+                                    assert_eq!(event.current_target(), Some(dialog.into()));
+                                    if let Some((_, first, _)) = context.work {
+                                        context.work =
+                                            Some((minimum, first, spent(dom) - before - first));
+                                    } else {
+                                        context.work = Some((minimum, spent(dom) - before, 0));
+                                    }
+                                }
+                                event.prevent_default();
+                                Ok(())
+                            },
+                        ),
+                        DomEventListenerOptions::default(),
+                    )
+                    .unwrap();
+                dispatcher
+                    .add_listener(
+                        &mut session.dom(),
+                        target,
+                        DomEventType::LOAD,
+                        DomEventCallback::new(|_, _, context: &mut Context, event| {
+                            context
+                                .seen
+                                .push(*event.creation().expect("original hosted firing sample"));
+                            Ok(())
+                        }),
+                        DomEventListenerOptions::default(),
+                    )
+                    .unwrap();
+
+                let DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: DomSourceUnavailable::Event,
+                } = source
+                    .apply(
+                        &mut session.dom(),
+                        DomSourceEdit::show_dialog(dialog),
+                        source_limits(),
+                        &mut services,
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("real Show must reach its beforetoggle request");
+                };
+                source
+                    .raise_event_runtime_limits(
+                        &session.dom(),
+                        DomSourceEventRuntimeLimits {
+                            jobs: 1,
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
+                        &cancel,
+                    )
+                    .unwrap();
+                let DomSourceEventServiceProgress::Serviced { receipt } = source
+                    .service_event(
+                        &mut session.dom(),
+                        &request,
+                        &mut dispatcher,
+                        &mut context,
+                        DomSourceEventServiceLimits {
+                            source: source_limits(),
+                            dispatch,
+                        },
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("the original beforetoggle must complete");
+                };
+                assert!(receipt.failures().is_empty());
+                assert!(receipt.default_prevented());
+                assert!(context.seen.is_empty());
+                assert!(matches!(
+                    source
+                        .resume(
+                            &mut session.dom(),
+                            request.operation(),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(_)
+                ));
+                let DomStyleNetworkingProgress::Complete { receipt, .. } =
+                    DomStyleRuntime::run_networking(
+                        &mut session.dom(),
+                        &mut dispatcher,
+                        &mut context,
+                        dispatch,
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("retry must finish the original Style Load");
+                };
+                assert_eq!(receipt.original_target(), target.into());
+                assert_eq!(receipt.callbacks(), 1);
+                assert!(receipt.failures().is_empty());
+                let [creation] = context.seen.as_slice() else {
+                    panic!("one actual Style Load callback");
+                };
+                assert_eq!(creation.global(), top.global());
+                assert_eq!(creation.time_origin_microseconds(), 100);
+                assert_eq!(creation.occurrence_microseconds(), 500);
+                let owner = hosted.state().unwrap();
+                assert_eq!(owner.borrow().clock.observations.as_ref().unwrap().len(), 1);
+                assert!(matches!(
+                    DomStyleRuntime::run_networking(
+                        &mut session.dom(),
+                        &mut dispatcher,
+                        &mut context,
+                        dispatch,
+                        &cancel,
+                    )
+                    .unwrap(),
+                    DomStyleNetworkingProgress::Empty
+                ));
+
+                // The subject provenance read and clock sample each add one unit to
+                // the separately observed canonical Global/Document association work.
+                let (minimum, first, retry) = context.work.unwrap();
+                assert_eq!(
+                    retry, 0,
+                    "the retained body has already paid for its sample"
+                );
+                assert!(
+                    first >= minimum,
+                    "active Source charged {first}, expected at least {minimum} for original origin and clock"
                 );
             }
 

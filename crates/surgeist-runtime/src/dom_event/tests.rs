@@ -437,6 +437,109 @@ fn direct_global_registration_admits_canonical_lookup_work_before_publication() 
         }
     }
 }
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn direct_global_error_registration_admits_canonical_recipient_lookup_work() {
+    let cancel = AtomicBool::new(false);
+    let mut session = event_session(dom());
+    let mut hosted = session.hosted_execution();
+    let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+    let top = hosted
+        .create_top_level(&mut session.dom(), host, &cancel)
+        .unwrap();
+    let mut dom = session.dom();
+    let target = DomEventTarget::Global(top.global());
+    let original_limits = dom.limits();
+    let mut lookup_steps = 0_u64;
+    assert_eq!(
+        dom.raw()
+            .dispatch_global_document_with(top.global(), &cancel, &mut || {
+                lookup_steps += 1;
+                Ok::<(), DomHostedError>(())
+            })
+            .unwrap(),
+        top.document()
+    );
+
+    // A live Load recipient supplies the same endpoint bucket without
+    // satisfying the Error registration or binding its listener registry.
+    let seed = dom
+        .raw_mut()
+        .retain_event_recipient(
+            top.global().into(),
+            DomEventType::LOAD.code_units(),
+            true,
+            &cancel,
+        )
+        .unwrap()
+        .unwrap();
+
+    // A first Global's serial, slot, and generation fit one radix page
+    // apiece. Its two u64 fields split into half-pointer-width pieces.
+    // Each occupied component needs an extent check and a leaf read.
+    // Reusing the bucket also needs one registration check and one
+    // occurrence debit. The exact hosted association is an additional read.
+    let pieces = 2 * 64 / u64::from(usize::BITS / 2) + 1;
+    let resident_recipient_steps = 2 * pieces + 2;
+    assert!(lookup_steps > 1);
+    let exact = lookup_steps + resident_recipient_steps;
+    let policy = |registrations, work| {
+        original_limits.with_event_recipients(
+            surgeist_dom::DomEventRecipientLimits::new(registrations, 16_000_000, 16_000_000, work)
+                .unwrap(),
+        )
+    };
+    let mut dispatcher = registry::<()>();
+    let callback = DomEventCallback::new(|_, _, _: &mut (), _| Ok(()));
+    let options = DomEventListenerOptions {
+        capture: true,
+        passive: Some(false),
+        ..DomEventListenerOptions::default()
+    };
+    dom.raw_mut().set_limits(policy(2, exact - 1)).unwrap();
+    let before = dom.usage();
+    let stamp = dom.snapshot().stamp();
+    assert_eq!(
+        dispatcher.add_listener(
+            &mut dom,
+            target.clone(),
+            DomEventType::ERROR,
+            callback.clone(),
+            options,
+        ),
+        Err(DomEventDispatchError::Dom(DomError::WorkLimit {
+            resource: surgeist_dom::DomResource::EventRecipientWork,
+            limit: exact - 1,
+        }))
+    );
+    assert_eq!(dom.usage(), before);
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    dom.raw_mut().set_limits(policy(1, exact)).unwrap();
+
+    dom.raw_mut().set_limits(policy(2, exact)).unwrap();
+    let registration = dispatcher
+        .add_listener(&mut dom, target, DomEventType::ERROR, callback, options)
+        .unwrap();
+    assert_eq!(dom.snapshot().stamp(), stamp);
+    assert!(matches!(
+        dom.raw_mut().set_limits(policy(1, exact)),
+        Err(DomError::ResourceLimit {
+            resource: surgeist_dom::DomResource::EventRecipients,
+            limit: 1,
+        })
+    ));
+    assert!(dispatcher.remove_listener(registration));
+    dom.raw_mut().set_limits(policy(1, exact)).unwrap();
+    drop(seed);
+    dom.raw_mut().set_limits(policy(0, exact)).unwrap();
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct Observation {
     current: NodeId,
