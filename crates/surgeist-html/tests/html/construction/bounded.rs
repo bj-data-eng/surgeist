@@ -765,7 +765,7 @@ fn element_creation_installs_supplied_link_history_with_the_record() {
 }
 
 #[test]
-fn invalid_link_history_refuses_before_providers_and_changes_nothing() {
+fn invalid_link_history_refuses_after_the_name_and_changes_no_record() {
     for (namespace, local) in [
         (Namespace::html(), "div"),
         (Namespace::svg(), "link"),
@@ -790,7 +790,15 @@ fn invalid_link_history_refuses_before_providers_and_changes_nothing() {
         )
         .unwrap_err();
         assert_eq!(error, cause::WRONG_NODE_KIND);
-        assert!(admission.growths.is_empty());
+        // The name was interned and charged first; no record bank grew and no record exists.
+        assert!(!admission.growths.is_empty());
+        assert!(admission.growths.iter().all(|growth| matches!(
+            growth.bank(),
+            HtmlConstructionBank::Names
+                | HtmlConstructionBank::NameSlots
+                | HtmlConstructionBank::NameEntry
+                | HtmlConstructionBank::Text
+        )));
         assert_eq!(owner.len(), 0);
         assert_eq!(owner.usage().nodes(), 0);
     }

@@ -40,17 +40,20 @@
 
 use super::*;
 use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
+use crate::internal::construction::names::NameKey;
 use crate::internal::values::{DocumentString, OrderedAttributes, QualifiedName};
 use surgeist_ledger::{Change, Charge};
 
 mod association;
 mod depth;
+mod names;
 mod order;
 mod publish;
 mod shape;
 #[cfg(test)]
 mod tests;
 
+pub use names::NameId;
 pub use publish::HtmlConstructionPublishRefusal;
 pub(in crate::internal::construction) use shape::{attribute_units, name_units};
 
@@ -76,6 +79,13 @@ pub enum HtmlConstructionBank {
     Text,
     /// The shared arena that publication creates.
     Wrapper,
+    /// The vector of the entries of the names the storage has interned.
+    Names,
+    /// The slots of the table that finds an interned name, a power of two in number.
+    NameSlots,
+    /// The allocation of one interned name entry. It has no capacity before the name is
+    /// interned.
+    NameEntry,
 }
 
 /// Actual dimensions of a bank; no allocation or release authority.
@@ -295,6 +305,7 @@ impl HtmlConstructionStorage {
         Ok(Self {
             arena: Arena {
                 records: Vec::new(),
+                names: NameTable::new(),
                 usage: HtmlConstructionUsage::default(),
                 serial,
                 attribute_revision: 0,
@@ -538,23 +549,12 @@ impl HtmlConstructionStorage {
         charge: &mut C,
     ) -> Result<(), HtmlConstructionRecordError<C::Stop>> {
         let position = self.operand(element, charge)?;
-        let name_bytes = match &self.record(position).map_err(faulted)?.kind {
+        let is_link = match &self.record(position).map_err(faulted)?.kind {
             NodeContent::Element(element) => {
-                times(element.name().local_name().len(), size_of::<u16>()).map_err(faulted)?
+                element.key().html() == Some(crate::vocabulary::KnownHtmlElement::Link)
             }
             _ => return Err(fault(HtmlConstructionCause::WrongNodeKind)),
         };
-        Work {
-            inspected_bytes: name_bytes,
-            ..Work::default()
-        }
-        .charge(charge)?;
-        let is_link = matches!(
-            &self.record(position).map_err(faulted)?.kind,
-            NodeContent::Element(element)
-                if crate::vocabulary::KnownHtmlElement::from_name(element.name())
-                    == Some(crate::vocabulary::KnownHtmlElement::Link)
-        );
         if !is_link {
             return Err(fault(HtmlConstructionCause::WrongNodeKind));
         }
@@ -598,12 +598,12 @@ enum Admitted<'a> {
 /// The values of a record a creation makes, before it is stored. A leaf holds its strings as `S`,
 /// so that each stage of the creation (the units given, the capacity admitted for each, the string
 /// built) is a mapping of the same shape, and no stage looks a string up by position.
-enum Created<'a, S> {
+enum Created<S> {
     Document(HtmlDocumentMode),
     Fragment,
     ShadowContents(HtmlShadowRootProperties),
     Element {
-        name: &'a QualifiedName,
+        name: Arc<NameEntry>,
         attributes: OrderedAttributes,
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         template: bool,
@@ -614,7 +614,7 @@ enum Created<'a, S> {
     Doctype(S, Option<S>, Option<S>),
 }
 
-impl<'a, S> Created<'a, S> {
+impl<S> Created<S> {
     /// The strings of a leaf, in the order its record holds them.
     fn strings(&self) -> [Option<&S>; 3] {
         match self {
@@ -629,7 +629,7 @@ impl<'a, S> Created<'a, S> {
     }
     /// The same creation with each string mapped, in the order the record holds them. The first
     /// refusal ends the mapping.
-    fn try_map<T, E>(self, mut map: impl FnMut(S) -> Result<T, E>) -> Result<Created<'a, T>, E> {
+    fn try_map<T, E>(self, mut map: impl FnMut(S) -> Result<T, E>) -> Result<Created<T>, E> {
         Ok(match self {
             Self::Document(mode) => Created::Document(mode),
             Self::Fragment => Created::Fragment,
@@ -663,7 +663,7 @@ impl<'a, S> Created<'a, S> {
 impl HtmlConstructionStorage {
     fn create<A: HtmlRecordAdmission>(
         &mut self,
-        created: Created<'_, Units<'_>>,
+        created: Created<Units<'_>>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
         let before = self.arena.usage;
@@ -700,7 +700,7 @@ impl HtmlConstructionStorage {
             Created::Element {
                 name, attributes, ..
             } => {
-                let mut units = name_units(name).map_err(faulted)?;
+                let mut units = name_units(name.name()).map_err(faulted)?;
                 for attribute in attributes.iter() {
                     units = plus(units, attribute_units(attribute).map_err(faulted)?)
                         .map_err(faulted)?;
@@ -838,7 +838,7 @@ impl HtmlConstructionStorage {
             } => (
                 NodeContent::Element(ElementContent {
                     link_flags,
-                    name: name.clone(),
+                    name,
                     attributes,
                 }),
                 None,
@@ -915,11 +915,15 @@ impl HtmlConstructionStorage {
         self.create(Created::ShadowContents(properties), admission)
     }
 
-    /// Creates a detached element with the name and the ordered attributes given. An HTML
-    /// `template` element also creates its owned contents fragment, which follows it among the
-    /// records. The name is stored as given; the attributes were validated by their owner. Link
-    /// construction flags may be given only for an element named `link` in the HTML namespace,
-    /// or the creation is refused with the wrong-node-kind cause.
+    /// Creates a detached element with the name and the ordered attributes given. The name is
+    /// interned first, as [`intern_name`](Self::intern_name) does, and is held by the storage
+    /// once for every element that has it; a name the storage did not hold has the strings of
+    /// `name` as its own. An HTML `template` element also creates its owned contents fragment,
+    /// which follows it among the records. The name is stored as given; the attributes were
+    /// validated by their owner. Link construction flags may be given only for an element named
+    /// `link` in the HTML namespace, or the creation is refused with the wrong-node-kind cause,
+    /// after the name is interned and its work is charged. A name that a refused creation
+    /// interned stays interned.
     pub fn create_element<A: HtmlRecordAdmission>(
         &mut self,
         name: &QualifiedName,
@@ -927,25 +931,8 @@ impl HtmlConstructionStorage {
         link_flags: Option<crate::internal::elements::rel::HtmlLinkFlags>,
         admission: &mut A,
     ) -> Result<HtmlBuilderNode, HtmlConstructionRecordError<A::Stop>> {
-        Work {
-            inspected_bytes: times(name.local_name().len(), size_of::<u16>()).map_err(faulted)?,
-            ..Work::default()
-        }
-        .charge(admission)?;
-        let known = crate::vocabulary::KnownHtmlElement::from_name(name);
-        let template = known == Some(crate::vocabulary::KnownHtmlElement::Template);
-        if link_flags.is_some() && known != Some(crate::vocabulary::KnownHtmlElement::Link) {
-            return Err(fault(HtmlConstructionCause::WrongNodeKind));
-        }
-        self.create(
-            Created::Element {
-                name,
-                attributes,
-                link_flags,
-                template,
-            },
-            admission,
-        )
+        let (_, entry) = self.intern(NameKey::of(name), Some(name), admission)?;
+        self.create_element_of(entry, attributes, link_flags, admission)
     }
 
     /// Creates a detached text record holding a copy of `units`.

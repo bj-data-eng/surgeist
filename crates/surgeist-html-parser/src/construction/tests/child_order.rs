@@ -375,6 +375,9 @@ fn appending_children_to_a_wide_parent_charges_no_more_work_than_to_a_narrow_one
         .finish()
         .unwrap();
     let (mut c, mut session, output, mut lexer) = output_owner(&source, caps);
+    // The first element of a name interns the name, which the elements after it find in the
+    // table instead; one pair interns it before anything is measured.
+    append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, 1);
     let narrow = append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, BLOCK);
     for _ in 0..15 {
         append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, BLOCK);

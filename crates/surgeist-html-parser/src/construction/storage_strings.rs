@@ -1,7 +1,11 @@
 //! Managed string registration, text insertion and merging, and string disposal.
 
 use super::*;
-use surgeist_html::{construction::ConstructionNodeKind, values::DocumentString};
+use surgeist_html::{
+    bounded::construction::NameId,
+    construction::ConstructionNodeKind,
+    values::{DocumentString, Namespace, QualifiedName},
+};
 
 /// A string of a non-element field that a record is about to be created with, and the group of its
 /// origins when the parse records them. The record copies the units of the string, so the string
@@ -324,6 +328,55 @@ impl SessionStorage {
     ) -> Result<(DocumentString, usize), SessionError> {
         self.register_string(control, text.value, Some(text.origins))
     }
+    /// Interns the name of `namespace`, no prefix and the local name that the string row `slot`
+    /// holds, and makes the row hold the storage's string for that name. The row's own string is
+    /// freed: the units are hashed once and the storage keeps one allocation for every
+    /// occurrence of the name. The row keeps the units of its occurrence and its origin group,
+    /// and holds the ticket of an occurrence, which admits only its units. Returns the id of the
+    /// name and its local name as the storage holds it.
+    ///
+    /// The caller holds no other handle on the row's string.
+    pub(super) fn intern_row_name(
+        &mut self,
+        control: &mut ParseControl,
+        slot: usize,
+        namespace: &Namespace,
+    ) -> Result<(NameId, DocumentString), SessionError> {
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) else {
+            return Err(latch_registry_row(control));
+        };
+        let units = value.clone();
+        let id = self.intern_name(control, namespace, units.code_units())?;
+        drop(units);
+        let local = match self.construction.name(&id) {
+            Ok(name) => name.local_name().clone(),
+            Err(_) => return Err(latch_registry_row(control)),
+        };
+        let Some(RetainedPayload::String {
+            value, allocation, ..
+        }) = self.payloads.values.get_mut(slot)
+        else {
+            return Err(latch_registry_row(control));
+        };
+        control.rebind_document_string_to_shared(allocation, value, &local)?;
+        Ok((id, local))
+    }
+    /// Registers an attribute name token as one occurrence of an interned name with no namespace
+    /// and no prefix. Returns the interned name and the row.
+    pub(super) fn register_attribute_name(
+        &mut self,
+        control: &mut ParseControl,
+        text: Text,
+    ) -> Result<(QualifiedName, usize), SessionError> {
+        let (local, slot) = self.register_text(control, text)?;
+        drop(local);
+        let (id, _) = self.intern_row_name(control, slot, &Namespace::none())?;
+        match self.construction.name(&id) {
+            Ok(name) => Ok((name.clone(), slot)),
+            Err(_) => Err(latch_registry_row(control)),
+        }
+    }
     /// Implements the pinned character-insertion operation at an already
     /// selected insertion location. Foster-parent selection belongs to the
     /// later tree builder. The returned offset locates the original token text
@@ -554,7 +607,10 @@ impl SessionStorage {
         };
         control.require_document_string(allocation, value)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        if value.block().holders() != if native { 2 } else { 1 } {
+        // The block of an occurrence of a shared string has other holders by definition: the
+        // row that charged it and every other occurrence. The ticket that charged the block keeps
+        // the check.
+        if !allocation.is_occurrence() && value.block().holders() != if native { 2 } else { 1 } {
             return Err(SessionError::AliasedPayload);
         }
         if let Some(group) = origins {

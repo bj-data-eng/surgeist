@@ -477,15 +477,17 @@ refuses an append stops and publishes none of them.
 The operations that make and connect records are methods of `HtmlConstructionStorage`, reached
 through `bounded::construction`. Their inputs are node handles, `&QualifiedName` and units
 (`&[u16]`): no `DocumentString` and no record crosses the boundary, so the operations survive any
-storage layout. `create_element` also takes the validated `OrderedAttributes` of the element by
-value, because an element's attribute list is still stored as the list its owner validated.
+storage layout. `create_element` and `create_element_named` also take the validated
+`OrderedAttributes` of the element by value, because an element's attribute list is still stored as
+the list its owner validated.
 
 | Method | Operation |
 | --- | --- |
 | `new` | Makes an empty storage with zero usage and the next process-wide serial. |
 | `reserve_records` | Reserves room for further records; nothing is admitted when the bank has it. |
 | `create_document`, `create_fragment`, `create_shadow_contents` | Create a detached root record. |
-| `create_element` | Creates a detached element; an HTML `template` also creates its owned contents fragment, which follows it among the records. Link construction flags may be given only for an HTML `link` element, or the creation is refused with the wrong-node-kind cause. |
+| `create_element`, `create_element_named` | Create a detached element of a name the storage holds: `create_element` interns the `&QualifiedName` it is given, and `create_element_named` takes the `NameId` of a name interned earlier, refusing the id of another storage with the foreign-builder cause. An HTML `template` also creates its owned contents fragment, which follows it among the records. Link construction flags may be given only for an HTML `link` element, or the creation is refused with the wrong-node-kind cause. |
+| `intern_name`, `name` | Intern the name of a namespace, an optional prefix and the units of a local name, and return its `NameId`; read a name back. |
 | `create_text`, `create_comment`, `create_processing_instruction`, `create_doctype` | Create a detached leaf holding copies of the units given; an absent doctype identifier stays absent and an empty one is kept. |
 | `insert` | Inserts a node into the ordinary children of a parent, before a reference child or last. |
 | `detach` | Removes a node from its parent. |
@@ -501,7 +503,7 @@ limits, once, before anything changes or is reserved; the operation has already 
 and the layout it reaches as the largest of their resources, and the charge of its writes follows
 the admission, before any bank grows. `admit_growth` receives the growth of
 a bank (the records, the child order of one record, one string of a leaf, the shared arena of a
-publication) and returns the capacity to reserve, at least the minimum the operation needs; every
+publication, and the three banks of a new name) and returns the capacity to reserve, at least the minimum the operation needs; every
 growth of an operation is admitted before the first is recorded. `record_growth` records the capacity
 chosen before the bank is reserved, and a second time with the capacity reached when it differs,
 which includes the unchanged capacity of a reservation the allocator refused. `record_change`
@@ -522,10 +524,67 @@ records, their order, depths and usage as they were, and with no capacity of the
 A refused reservation of spare room is retried with the room that is needed, and the retry is one
 provider call.
 
+#### Interned names
+
+A storage keeps one entry for each distinct element or attribute name it is given: the exact
+`QualifiedName` and its `ElementKey`, computed once when the entry is made, in the order the names
+were first interned. An element record holds a handle on the entry of its name, so the elements of
+one name share one allocation, `HtmlElementView::name` borrows the name from the entry, and the
+template and link checks of a creation read the key without comparing strings. The attributes of
+an element keep their `QualifiedName` values, which the parser takes from the entries, so the
+attributes of one name share the allocation of the entry too. A name is found by the keyed hash of
+its local name, which is chosen at random once per process, in the open-addressed `HtmlNameIndex`;
+its equality and hash are those of `QualifiedName`, so a name of one storage equals the same name of
+another storage and a name made on its own.
+
+`intern_name` charges one visit and the hash of the local name (twice its length in inspected
+bytes), then a fixed allowance of eight probe steps as visits and the comparison of each entry that
+has the same hash, each before it runs. A step beyond the allowance is charged one visit before the
+step. The index holds at most half its slots and probes linearly, so at the greatest load a probe
+examines 1.5 slots on average for a name it holds and 2.5 for one it does not; a simulation of
+tables of 16 to 256 slots found more than eight examined slots for at most 0.5% of the names held
+and 3.4% of the names absent. The work of a name therefore does not depend on the process's hash key
+unless its probe examines more than eight slots, counting the empty slot that ends a miss, or it
+meets a distinct name with an equal 64-bit hash, which is compared and charged. A name the storage
+already holds grows nothing. A new name grows up to four banks: the vector of entries
+(`HtmlConstructionBank::Names`), the slots of the index (`NameSlots`, a power of two in number, at
+most half full), the allocation of the entry (`NameEntry`) and, when the local name is copied, its
+units (`Text`). Every growth is admitted before the first is recorded and recorded before it is
+reserved. When the index grows, its new slots are made with the banks and the entries are placed
+in them after the last allocation: each placement of an entry, and of the new one, is charged the
+same allowance in advance and one visit for each step beyond it before the step, with one write
+for each entry. A refusal of a placement drops the new slots and leaves the table as it was. The
+allocation of the entry and the shared handle of a copied name are made before the placements and
+after the last request to the allocator, so an allocator failure there aborts. A name that
+`create_element` interns without a copy takes the strings of the `&QualifiedName` it is given;
+`intern_name` copies the local name into a string of the storage and keeps the namespace and
+prefix it is given. `create_element` refuses link flags on an element that is not a `link` after
+it interned the name and charged for it.
+
+What still varies between processes in the work of the parser: a name-table lookup or placement
+that examines more than eight slots, counting the empty slot that ends a miss, or that compares two
+distinct names with an equal 64-bit hash; the attribute name index of a list of 32 or more
+attributes; and the index of the pseudo-attributes of a processing instruction.
+
+The table only grows: an entry is never removed or changed. A refusal of `intern_name` leaves the
+entries and the index as they were, with the residue of the banks that every operation has. A name
+that an operation interned stays interned when a later step of that operation refuses, and when a
+native append that created it is rolled back; the entry holds no usage, and the bytes it occupies
+are the bank capacities the consumer recorded, which it credits once with the rest of the storage.
+
+The parser registers the name token of each start tag and attribute as a string row, as for any
+string, interns its units once and makes the row hold the string of the entry, with the ticket of
+an occurrence that admits only its units. The storage of the token's own string is credited, and
+the units of the row stay acquired, in one admission, so `ManagedUtf16Units` counts every
+occurrence of a name by its length while the parse holds one allocation for each distinct name.
+It creates the element from the `NameId`, so a name is hashed once for each token. The bytes of
+the entries, the index and the copied names are held with the banks of the storage.
+
 The work is counted in the records an operation writes, the bytes of rows and units it copies, one
 provider call for every request to the allocator, and the records it visits. A creation writes two fields for
 each record it makes and one for the usage, copies each row, the usage and the units of a leaf in
-runs of at most 256 bytes, and inspects twice the length of an element's local name to classify it.
+runs of at most 256 bytes, and, for an element, interns its name: the hash of the local name is the
+inspection of twice its length.
 An insertion visits its operands, the entries of the child orders it walks and, for a node that has
 something below it, the owners above the parent. A fresh childless node needs no walk of the owners
 and no walk of its subtree, and a new last child shifts no entry, so its work does not depend on the
@@ -535,7 +594,8 @@ record and each child entry a constant number of times.
 
 The parser is the consumer of these operations. The session storage holds the construction
 storage itself, and beside it the bytes the parse holds for the banks of the records, the child
-orders and the published arena, which are credited once when the storage is released; there is no
+orders, the interned names and the published arena, which are credited once when the storage is
+released; there is no
 ticket for a bank, no per-record registry of banks and no custody state in which the records are
 lent. A record bank and a child order that has capacity grow to the greater of the capacity needed
 and double the capacity, within the limits; one that has none takes exactly the room needed. The

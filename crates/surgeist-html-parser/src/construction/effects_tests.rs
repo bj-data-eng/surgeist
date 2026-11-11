@@ -497,11 +497,8 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             (ConstructionNodeKind::Element(a), ConstructionNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
                 assert_eq!(a.attributes().to_ordered(), b.attributes().to_ordered());
-                assert!(
-                    !a.name()
-                        .local_name()
-                        .shares_storage_with(b.name().local_name())
-                );
+                // A copy is an element of the same interned name, so both borrow one entry.
+                assert!(std::ptr::eq(a.name(), b.name()));
             }
             _ => panic!("literal shallow clone kind"),
         }

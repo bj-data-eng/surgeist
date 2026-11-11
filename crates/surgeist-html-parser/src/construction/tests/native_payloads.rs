@@ -392,7 +392,8 @@ fn topology_hooks_borrow_exact_names_and_distinguish_real_template_creation() {
 }
 
 #[test]
-fn token_backing_transfers_exact_names_order_attributes_and_template_pair_to_native_view() {
+fn native_view_keeps_exact_names_order_attributes_and_template_pair_with_names_in_the_storage_block()
+ {
     let mut c = control();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -401,7 +402,7 @@ fn token_backing_transfers_exact_names_order_attributes_and_template_pair_to_nat
         "template",
         &[("z", &[0xd800, 0, 0x20]), ("a:b", &[0xd83d, 0xde00])],
     ));
-    let original = tag
+    let token_name = tag
         .as_ref()
         .unwrap()
         .name
@@ -437,7 +438,13 @@ fn token_backing_transfers_exact_names_order_attributes_and_template_pair_to_nat
     else {
         panic!("element")
     };
-    assert_eq!(value.name().local_name().code_units().as_ptr(), original);
+    // The storage keeps the name in a block of its own, which every element of the name shares:
+    // the token's block is freed, not published.
+    assert_ne!(value.name().local_name().code_units().as_ptr(), token_name);
+    assert_eq!(
+        value.name().local_name().code_units(),
+        "template".encode_utf16().collect::<Vec<_>>()
+    );
     assert_eq!(value.name().namespace(), &Namespace::html());
     let attrs: Vec<_> = value.attributes().iter().collect();
     assert_eq!(attrs[0].name().local_name().code_units(), &[0x7a]);

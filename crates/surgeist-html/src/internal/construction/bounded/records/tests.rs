@@ -5,6 +5,8 @@ use super::*;
 use crate::internal::construction::{HtmlShadowRootMode, HtmlSlotAssignment};
 use crate::internal::values::Namespace;
 
+mod names_tests;
+
 /// The refusal of a [`Meter`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Refused;
@@ -26,6 +28,8 @@ struct Meter {
     /// Chooses a capacity of `isize::MAX` bytes for the banks of this kind, which the allocator
     /// refuses.
     huge: Option<Huge>,
+    /// Chooses a capacity of `isize::MAX` bytes for this bank, which the allocator refuses.
+    huge_bank: Option<HtmlConstructionBank>,
 }
 /// The kinds of bank a [`Meter`] can choose a capacity for that the allocator refuses.
 #[derive(Clone, Copy)]
@@ -101,7 +105,7 @@ impl HtmlRecordAdmission for Meter {
                 | (Some(Huge::Children), HtmlConstructionBank::Children { .. })
                 | (Some(Huge::Records), HtmlConstructionBank::Records)
         );
-        if refused {
+        if refused || self.huge_bank == Some(growth.bank()) {
             return Ok(isize::MAX as usize / growth.element_size());
         }
         if self.exact {

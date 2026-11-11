@@ -2158,6 +2158,72 @@ impl ParseControl {
         })
     }
 
+    /// Replaces the string a managed row holds with `shared`, a string of the same units that
+    /// another holder keeps in its block, and the row's ticket with the ticket of an occurrence of
+    /// that block. The storage of the row's own block is credited and its units are acquired
+    /// again for the occurrence in one admission, so the units the parse holds do not change.
+    /// The row's own block must have no other holder. A refusal changes neither the string nor
+    /// the ticket.
+    pub(crate) fn rebind_document_string_to_shared(
+        &mut self,
+        allocation: &mut DocumentStringAllocation,
+        value: &mut surgeist_html::values::DocumentString,
+        shared: &surgeist_html::values::DocumentString,
+    ) -> Result<(), HtmlParseStop> {
+        self.require_document_string(allocation, value)?;
+        if allocation.shared
+            || allocation.resource != HtmlParseResource::ManagedUtf16Units
+            || shared.len() != value.len()
+        {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
+        }
+        if value.block().holders() != 1 {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::SharedAllocationAliased,
+            ));
+        }
+        let Some(bytes) = allocation
+            .vector_admitted
+            .checked_add(allocation.wrapper_bytes)
+        else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        let Some(dimension) = allocation.resource.dimension() else {
+            return Err(self.fail_invariant(HtmlParseInvariant::NonStorageResource));
+        };
+        self.checkpoint()?;
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+        ])?;
+        self.admit_resources(
+            &[
+                Change::Release(dimension, allocation.units),
+                Change::Release(HtmlResource::ManagedCapacityBytes, bytes),
+                Change::Release(HtmlResource::PeakTransientBytes, bytes),
+                Change::Acquire(dimension, allocation.units),
+            ],
+            Site::PLAIN,
+        )?;
+        // The units and bytes of the old ticket are credited, so it retires without a release.
+        *allocation = DocumentStringAllocation {
+            owner: self.identity.clone(),
+            units: allocation.units,
+            vector_capacity: shared.retained_units(),
+            vector_admitted: 0,
+            wrapper_bytes: 0,
+            resource: HtmlParseResource::ManagedUtf16Units,
+            data_pointer: shared.code_units().as_ptr() as usize,
+            backing: Some(shared.block().downgrade()),
+            shared: true,
+        };
+        *value = shared.clone();
+        Ok(())
+    }
+
     /// Transfers this producer's actual independent text ticket into the CSP
     /// provider aggregate. The aggregate is acquired before the vector ticket
     /// retires; the immutable backing remains live under its new sole receipt.
@@ -2317,6 +2383,12 @@ impl DocumentStringAllocation {
     /// Records that other strings hold this ticket's block.
     pub(crate) fn mark_shared(&mut self) {
         self.shared = true;
+    }
+    /// Whether this is the ticket of an occurrence of a string whose block another holder
+    /// charged: it admits units alone, no capacity and no wrapper. The block of such a string
+    /// has holders besides the row that holds the ticket.
+    pub(crate) fn is_occurrence(&self) -> bool {
+        self.shared && self.vector_admitted == 0 && self.wrapper_bytes == 0
     }
     #[cfg(test)]
     pub(crate) fn units(&self) -> u64 {

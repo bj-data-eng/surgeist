@@ -74,12 +74,16 @@ impl ParseControl {
     }
     /// The capacity a bank grows to. A record or child-order bank that already has room grows by
     /// the parser's amortized plan, which never reserves spare capacity the limits cannot hold,
-    /// and one that has none yet takes exactly the room needed. A string of a leaf takes its
-    /// length, and the shared arena of a publication holds one.
+    /// and one that has none yet takes exactly the room needed; the vector of interned names grows
+    /// the same way. A string of a leaf takes its length, the shared arena of a publication holds
+    /// one, and the slots of the name table and the allocation of one name entry take exactly
+    /// what they need.
     pub(crate) fn bank_growth_target(&mut self, growth: Growth) -> Result<usize, HtmlParseStop> {
         let minimum = growth.minimum_capacity();
         match growth.bank() {
-            HtmlConstructionBank::Records | HtmlConstructionBank::Children { .. } => {
+            HtmlConstructionBank::Records
+            | HtmlConstructionBank::Children { .. }
+            | HtmlConstructionBank::Names => {
                 self.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let before = growth.before();
                 if before.capacity() == 0 {
@@ -100,7 +104,10 @@ impl ParseControl {
                     Err(stop) => self.fail(stop),
                 }
             }
-            HtmlConstructionBank::Text | HtmlConstructionBank::Wrapper => Ok(minimum),
+            HtmlConstructionBank::Text
+            | HtmlConstructionBank::Wrapper
+            | HtmlConstructionBank::NameSlots
+            | HtmlConstructionBank::NameEntry => Ok(minimum),
         }
     }
 

@@ -3,15 +3,17 @@
 use super::template::template_slot_of;
 use super::*;
 use surgeist_html::construction::HtmlConstructionCause;
+#[cfg(test)]
+use surgeist_html::values::QualifiedName;
 use surgeist_html::{
     accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork},
     bounded::construction::{
         HtmlConstructionBank, HtmlConstructionBankGrowth, HtmlConstructionChange,
         HtmlConstructionGrowthRecord, HtmlConstructionRecordError, HtmlConstructionStorage,
-        HtmlRecordAdmission,
+        HtmlRecordAdmission, NameId,
     },
     construction::{HtmlConstructionResult, HtmlDocumentMode, HtmlShadowRootProperties},
-    values::{OrderedAttributes, QualifiedName},
+    values::{Namespace, OrderedAttributes},
 };
 use surgeist_ledger::Charge;
 
@@ -24,8 +26,17 @@ pub(super) enum NewRecord<'a> {
     Comment(&'a [u16]),
     ProcessingInstruction(&'a [u16], &'a [u16]),
     Doctype(&'a [u16], &'a [u16], &'a [u16]),
+    /// An element of a name that its caller holds, which the storage interns by content. Only an
+    /// element that exists before the parse has no string rows to share its name.
+    #[cfg(test)]
     Element(
         QualifiedName,
+        OrderedAttributes,
+        Option<surgeist_html::elements::link::HtmlLinkFlags>,
+    ),
+    /// An element of a name the storage has interned.
+    NamedElement(
+        NameId,
         OrderedAttributes,
         Option<surgeist_html::elements::link::HtmlLinkFlags>,
     ),
@@ -271,8 +282,12 @@ impl SessionStorage {
             NewRecord::Doctype(name, public, system) => {
                 construction.create_doctype(name, Some(public), Some(system), &mut admission)
             }
+            #[cfg(test)]
             NewRecord::Element(name, attributes, flags) => {
                 construction.create_element(&name, attributes, flags, &mut admission)
+            }
+            NewRecord::NamedElement(name, attributes, flags) => {
+                construction.create_element_named(&name, attributes, flags, &mut admission)
             }
             NewRecord::ShadowContents(properties) => {
                 construction.create_shadow_contents(properties, &mut admission)
@@ -281,6 +296,25 @@ impl SessionStorage {
         created.map_err(|error| admission.error(error))
     }
 
+    /// Interns the name of `namespace`, no prefix and the local name `units` in the storage.
+    pub(super) fn intern_name(
+        &mut self,
+        control: &mut ParseControl,
+        namespace: &Namespace,
+        units: &[u16],
+    ) -> Result<NameId, SessionError> {
+        control.require_identity(&self.control)?;
+        let Self {
+            construction,
+            holds,
+            control: identity,
+            ..
+        } = self;
+        let mut admission = RecordAdmission::new(control, identity, holds, &[]);
+        construction
+            .intern_name(namespace, None, units, &mut admission)
+            .map_err(|error| admission.error(error))
+    }
     /// Inserts `node` below `parent`, before `before` or last. `form_effects` says that the
     /// parse writes its form effects with the insertion. Returns whether the insertion revokes
     /// the eligibility of the standalone document, which the caller applies once the insertion
@@ -439,6 +473,7 @@ impl Charge<HtmlWork, HtmlResource> for SessionCharge<'_> {
 
 /// Publishes the records and returns the result. A refusal hands the storage back with the session
 /// error, so the session keeps its records and releases them as it would after any refused step.
+#[expect(clippy::result_large_err)] // Refusal hands the complete storage back without allocating after failure.
 pub(super) fn publish_records(
     control: &mut ParseControl,
     identity: &ControlIdentity,

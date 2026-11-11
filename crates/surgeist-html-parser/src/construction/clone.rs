@@ -416,6 +416,8 @@ impl SessionStorage {
         } else {
             (Namespace::none(), None)
         };
+        drop(name);
+        let (name_id, _) = self.intern_row_name(c, name_slot, &namespace)?;
         // The element is created without attributes; they are appended one at a time below.
         let stage = StagedAttributes::new(c)?;
         let (values, allocation) = stage.into_parts();
@@ -460,11 +462,7 @@ impl SessionStorage {
             .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            NewRecord::Element(
-                QualifiedName::new(namespace, None, name),
-                attributes,
-                link_flags,
-            ),
+            NewRecord::NamedElement(name_id, attributes, link_flags),
             template,
             0,
             0,

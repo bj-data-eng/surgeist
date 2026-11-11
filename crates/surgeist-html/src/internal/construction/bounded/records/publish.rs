@@ -26,6 +26,7 @@ impl HtmlConstructionStorage {
     /// leaves no record of it with the consumer. The move into the shared arena allocates its
     /// handle and cannot refuse: stable Rust has no fallible constructor for it, so an allocator
     /// failure there aborts, as any infallible allocation does.
+    #[expect(clippy::result_large_err)] // Refusal hands the complete storage back without allocating after failure.
     pub fn publish<A: HtmlRecordAdmission>(
         mut self,
         root: &HtmlBuilderNode,
