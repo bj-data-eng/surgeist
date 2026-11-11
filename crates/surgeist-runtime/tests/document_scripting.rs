@@ -5,7 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use surgeist_bindings_js::{
-    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope,
+    Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };
 use surgeist_css::{query::media::CssMediaScripting, source::CssUtf16InputLimits};
 use surgeist_dom::*;
@@ -135,6 +135,39 @@ fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &s
         assert_script_number(scope, script, expected)
     })
     .unwrap();
+}
+
+fn native_window_exposes_css_escape() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(permit.document(), top.document());
+
+    let kind = host
+        .in_document(&permit, |scope| {
+            let script: Vec<_> = "globalThis.CSS".encode_utf16().collect();
+            let value = scope.evaluate(&script)?;
+            scope.kind(&value)
+        })
+        .unwrap();
+    assert_eq!(
+        kind,
+        ValueKind::Object,
+        "native Window CSS namespace is missing"
+    );
+
+    for check in [
+        "Number(Object.getPrototypeOf(CSS) === Object.prototype)",
+        "Number(Object.prototype.toString.call(CSS) === '[object CSS]')",
+        "Number(CSS.escape.name === 'escape' && CSS.escape.length === 1)",
+        r"Number(CSS.escape('a\u00a0\ud800\0') === 'a\u00a0\ud800\ufffd')",
+        "Number((() => { try { CSS.escape(); } catch (error) { return error instanceof TypeError; } return false; })())",
+        "Number((() => { try { Reflect.construct(function() {}, [], CSS.escape); } catch (error) { return error instanceof TypeError; } return false; })())",
+    ] {
+        eval(&mut host, &permit, check, 1.0);
+    }
 }
 
 fn failed_enable_preserves_original_owner() {
@@ -732,6 +765,7 @@ fn stopped_session_reattaches_with_a_new_scripting_basis() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "css-namespace" => native_window_exposes_css_escape(),
             "conversion-revocation" => source_events::run(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
@@ -747,6 +781,7 @@ fn main() {
         }
         return;
     }
+    native_window_exposes_css_escape();
     failed_enable_preserves_original_owner();
     let expired_permit = native_read_snapshot_and_explicit_queue();
     stopped_host_captures_known_no_engine();
