@@ -322,6 +322,17 @@ class ValueLoweringTests(unittest.TestCase):
         self.assertEqual(re.findall(r"Some\(value\) => (.*)", derived),
                          ["Some(*cx.value(&types::BOOLEAN, &value)?.get()),"] * 4)
 
+    def test_stylesheet_constructor_derives_fixed_capture_and_lexicographic_keys(self):
+        data = g.load()
+        definitions, _ = g.validate(data)
+        output = g.emit_stylesheet(definitions)
+        self.assertIn("CAPTURED_OPTIONS: u32 = 1;", output)
+        self.assertIn("CONSTRUCTOR_LENGTH: u32 = 0;", output)
+        self.assertLess(output.index("const BASE_URL"), output.index("const DISABLED"))
+        self.assertLess(output.index("const DISABLED"), output.index("const MEDIA:"))
+        model = g.lower_values(data)
+        self.assertNotIn("CSSStyleSheetInit", [item["name"] for item in model["dictionaries"]])
+
     def test_rust_names_keep_acronyms_as_words(self):
         expected = {"DOMImplementation": "dom_implementation", "createHTMLDocument": "create_html_document",
                     "lookupNamespaceURI": "lookup_namespace_uri", "XMLDocument": "xml_document",

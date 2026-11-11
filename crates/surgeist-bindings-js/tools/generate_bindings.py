@@ -1054,8 +1054,9 @@ def emit_dom_exception(declaration, names):
 
 def emit_stylesheet(definitions):
     sheet = definitions["CSSStyleSheet"]
-    constructor, = [m for m in sheet["members"] if m["kind"] == "constructor"]
-    options = constructor["arguments"]
+    constructors = [m for m in sheet["members"] if m["kind"] == "constructor"]
+    require(len(constructors) == 1, "constructed stylesheet requires one selected constructor")
+    options = constructors[0]["arguments"]
     require(len(options) == 1 and options[0]["type"] == {"kind": "named", "name": "CSSStyleSheetInit"}
             and options[0]["presence"] == "optional"
             and options[0]["default"] == {"kind": "empty_dictionary"},

@@ -4712,13 +4712,12 @@
       "requirements": []
     },
     "StyleSheet.href/get": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Connect the selected StyleSheet.href/get operation to its native CSSOM owner and guest conversion or lifecycle.",
-        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
-        "issue": 2261
-      }
+      "kind": "native",
+      "adapter": "cssom.sheet_href",
+      "producers": [
+        {"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/cssom/interface.rs", "symbol": "sheet_href"}
+      ],
+      "requirements": []
     },
     "StyleSheet.ownerNode/get": {
       "kind": "host",
@@ -4928,20 +4927,19 @@
       "producers": [
         {
           "owner": "surgeist-bindings-js",
-          "path": "crates/surgeist-bindings-js/src/cssom/interface.rs",
+          "path": "crates/surgeist-bindings-js/src/cssom/media.rs",
           "symbol": "media_text"
         }
       ],
       "requirements": []
     },
     "MediaList.mediaText/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Connect the selected MediaList.mediaText/set operation to its native CSSOM owner and guest conversion or lifecycle.",
-        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
-        "issue": 2451
-      }
+      "kind": "native",
+      "adapter": "cssom.medialist.set_media_text",
+      "producers": [
+        {"owner": "surgeist-cssom", "path": "crates/surgeist-cssom/src/media_operations.rs", "symbol": "set_media_text"}
+      ],
+      "requirements": []
     },
     "MediaList.length/get": {
       "kind": "native",
@@ -4968,22 +4966,20 @@
       "requirements": []
     },
     "MediaList.appendMedium:0/call": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Connect the selected MediaList.appendMedium:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
-        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
-        "issue": 2451
-      }
+      "kind": "native",
+      "adapter": "cssom.medialist.append_medium",
+      "producers": [
+        {"owner": "surgeist-cssom", "path": "crates/surgeist-cssom/src/media_operations.rs", "symbol": "append_medium"}
+      ],
+      "requirements": []
     },
     "MediaList.deleteMedium:0/call": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Connect the selected MediaList.deleteMedium:0/call operation to its native CSSOM owner and guest conversion or lifecycle.",
-        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
-        "issue": 2451
-      }
+      "kind": "native",
+      "adapter": "cssom.medialist.delete_medium",
+      "producers": [
+        {"owner": "surgeist-cssom", "path": "crates/surgeist-cssom/src/media_operations.rs", "symbol": "delete_medium"}
+      ],
+      "requirements": []
     },
     "CSSRule.cssText/get": {
       "kind": "native",
@@ -4998,13 +4994,12 @@
       "requirements": []
     },
     "CSSRule.cssText/set": {
-      "kind": "host",
-      "requirement": {
-        "owner": "surgeist-runtime",
-        "contract": "Connect the selected CSSRule.cssText/set operation to its native CSSOM owner and guest conversion or lifecycle.",
-        "source": "https://github.com/w3c/csswg-drafts/blob/4f200bd6e3bd48ea9fb923b4f98f92a9bbfbb04c/cssom-1/Overview.bs",
-        "issue": 2261
-      }
+      "kind": "native",
+      "adapter": "cssom.set_rule_text",
+      "producers": [
+        {"owner": "surgeist-bindings-js", "path": "crates/surgeist-bindings-js/src/cssom/interface.rs", "symbol": "set_rule_text"}
+      ],
+      "requirements": []
     },
     "CSSRule.parentRule/get": {
       "kind": "host",

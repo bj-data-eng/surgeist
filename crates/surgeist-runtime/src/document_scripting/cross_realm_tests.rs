@@ -188,6 +188,9 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
     window_binding_storage_admits_exact_and_refuses_one_byte_short();
+    stylesheet_constructor_keeps_its_native_window_with_a_foreign_new_target();
+    stylesheet_new_target_reentry_revalidates_the_actual_current_attachment();
+    stylesheet_rule_list_and_rule_retain_the_original_owner_through_guest_gc();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
@@ -958,4 +961,209 @@ fn rejected_comment_requires_each_diagnostic_utf16_work_unit() {
             assert_eq!(projection.parent(), Some(document.node()));
         }
     }
+}
+
+fn stylesheet_constructor_keeps_its_native_window_with_a_foreign_new_target() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = enable(session, target, cancel);
+    let permit = host.permit().unwrap();
+    let constructor = host
+        .in_document(&permit, |scope| {
+            let original = evaluate(scope, "CSSStyleSheet")?;
+            let local_fallback = evaluate(scope, r#"(() => {
+                const Constructor = CSSStyleSheet;
+                const prototype = Constructor.prototype;
+                function Target() {}
+                const bound = Target.bind(null);
+                globalThis.CSSStyleSheet = function Replacement() {};
+                try {
+                    return Object.getPrototypeOf(Reflect.construct(Constructor, [], bound)) === prototype;
+                } finally { globalThis.CSSStyleSheet = Constructor; }
+            })()"#)?;
+            assert!(scope.boolean(&local_fallback)?);
+            Ok(scope.retain(&original))
+        })
+        .unwrap();
+    let engine = host.engine.as_mut().unwrap();
+    let mut execution = engine.process.execution();
+    let other = execution.create_realm().unwrap();
+    execution
+        .in_realm(&other, |scope| {
+            let global = scope.global()?;
+            let constructor = scope.import(&constructor)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&[102, 111, 114, 101, 105, 103, 110]),
+                &constructor,
+            )?;
+            let observed = evaluate(
+                scope,
+                r#"(() => {
+                function Target() {}
+                Target.prototype = Object.create(foreign.prototype);
+                Target.prototype.origin = 'foreign-prototype';
+                const sheet = Reflect.construct(foreign, [{media: 'screen'}], Target);
+                return Object.getPrototypeOf(sheet) === Target.prototype
+                    && sheet.origin === 'foreign-prototype'
+                    && sheet.media.mediaText === 'screen'
+                    && sheet.insertRule('em {}') === 0;
+            })()"#,
+            )?;
+            assert!(scope.boolean(&observed)?);
+            Ok(())
+        })
+        .unwrap();
+    drop(execution);
+    host.with_native(|dom, _, _| {
+        let original = dom
+            .style_cssom_root(target.document().node())
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.snapshot().unwrap().revision().value(), 3);
+    })
+    .unwrap();
+}
+
+fn stylesheet_new_target_reentry_revalidates_the_actual_current_attachment() {
+    use std::error::Error as _;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = enable(session, target, cancel);
+    let permit = host.permit().unwrap();
+    let weak = Rc::downgrade(&host.native);
+    let calls = Rc::new(Cell::new(0));
+    let callback_calls = calls.clone();
+    let error = host
+        .in_document(&permit, |scope| {
+            let retire = scope.function(&Callback::new(move |_, _| {
+                let native = weak.upgrade().unwrap();
+                let mut session = native.session.try_borrow_mut().unwrap();
+                let mut hosted = session.hosted_execution();
+                hosted
+                    .destroy_top_level(&mut session.dom(), target.navigable(), &native.cancellation)
+                    .unwrap();
+                callback_calls.set(callback_calls.get() + 1);
+                Ok(Completion::Undefined)
+            }))?;
+            let global = scope.global()?;
+            scope.set(
+                &global,
+                PropertyKey::String(&[114, 101, 116, 105, 114, 101]),
+                &retire,
+            )?;
+            evaluate(
+                scope,
+                r#"(() => {
+                const proto = CSSStyleSheet.prototype;
+                const target = new Proxy(function Target() {}, {
+                    get(object, key, receiver) {
+                        if (key !== 'prototype') return Reflect.get(object, key, receiver);
+                        retire();
+                        return proto;
+                    }
+                });
+                return Reflect.construct(CSSStyleSheet, [], target);
+            })()"#,
+            )?;
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(calls.get(), 1);
+    let DocumentScriptError::Script(Error::HostFailure(failure)) = error else {
+        panic!("unexpected revalidation result {error:?}");
+    };
+    let native = failure.source().and_then(|cause| cause.source());
+    assert!(
+        native
+            .and_then(|cause| cause.downcast_ref::<DocumentScriptNativeError>())
+            .is_some(),
+        "{native:?}"
+    );
+    host.with_native(|dom, _, _| {
+        assert!(
+            dom.style_cssom_root(target.document().node())
+                .unwrap()
+                .is_none()
+        );
+    })
+    .unwrap();
+}
+
+fn stylesheet_rule_list_and_rule_retain_the_original_owner_through_guest_gc() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = enable(session, target, cancel);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        evaluate(
+            scope,
+            r#"(() => {
+            const sheet = new CSSStyleSheet();
+            sheet.insertRule('main {}');
+            globalThis.weakSheet = new WeakRef(sheet);
+            globalThis.heldList = sheet.cssRules;
+            globalThis.heldRule = heldList[0];
+        })()"#,
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    assert!(host.native.stylesheet_bytes.get() > 0);
+
+    let mut sheet_collected = false;
+    for _ in 0..8 {
+        stylesheet_gc(&mut host);
+        sheet_collected = host
+            .in_document(&permit, |scope| {
+                let collected = evaluate(scope, "weakSheet.deref() === undefined")?;
+                scope.boolean(&collected)
+            })
+            .unwrap();
+        if sheet_collected {
+            break;
+        }
+    }
+    assert!(
+        sheet_collected,
+        "original sheet wrapper is still strongly retained"
+    );
+    host.in_document(&permit, |scope| {
+        let live = evaluate(scope, "heldList.length === 1 && heldList.item(0) === heldRule && heldRule.cssText === 'main { }'")?;
+        assert!(scope.boolean(&live)?);
+        evaluate(scope, "delete globalThis.heldList")?;
+        Ok(())
+    }).unwrap();
+    stylesheet_gc(&mut host);
+    assert!(host.native.stylesheet_bytes.get() > 0);
+    host.in_document(&permit, |scope| {
+        let live = evaluate(scope, "heldRule.cssText === 'main { }'")?;
+        assert!(scope.boolean(&live)?);
+        evaluate(scope, "delete globalThis.heldRule")?;
+        Ok(())
+    })
+    .unwrap();
+    for _ in 0..8 {
+        stylesheet_gc(&mut host);
+        if host.native.stylesheet_bytes.get() == 0 {
+            break;
+        }
+    }
+    assert_eq!(host.native.stylesheet_bytes.get(), 0);
+    host.with_native(|dom, _, _| {
+        let original = dom
+            .style_cssom_root(target.document().node())
+            .unwrap()
+            .unwrap();
+        assert_eq!(original.snapshot().unwrap().revision().value(), 2);
+    })
+    .unwrap();
+}
+
+fn stylesheet_gc(host: &mut DocumentScriptHost) {
+    let engine = host.engine.as_mut().unwrap();
+    let mut execution = engine.process.execution();
+    execution.checkpoint().unwrap();
+    execution.memory_pressure();
 }

@@ -598,8 +598,9 @@ fn fixed_arity_captures_only_the_selected_prefix() -> TestResult {
                 name: &fixed_name,
                 length: 1,
             }),
+            Some(1),
         )?;
-        let raw = entered.function(&callback, None)?;
+        let raw = entered.function(&callback, None, None)?;
         entered.set(
             &global,
             crate::backend::PropertyKey::String(&fixed_name),
@@ -673,7 +674,7 @@ fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> Test
             Ok(crate::Completion::Undefined)
         });
         host.engine.with_context(&host.realm, |entered| {
-            let function = entered.function(&callback, None)?;
+            let function = entered.function(&callback, None, None)?;
             let global = entered.global()?;
             entered.set(
                 &global,

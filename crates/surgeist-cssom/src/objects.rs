@@ -38,7 +38,7 @@ impl<T> CssomCapture<T> {
 
 impl CssomSnapshot {
     /// Capture the exact stylesheet from this owning immutable revision.
-    pub fn capture_style_sheet(
+    pub fn capture_css_style_sheet(
         &self,
         id: &CssomSheetId,
     ) -> Result<CssomCapture<CssStyleSheet>, CssomError> {

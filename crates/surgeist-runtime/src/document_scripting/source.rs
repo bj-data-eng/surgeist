@@ -282,12 +282,13 @@ fn call_guest(
     let pin_bytes = projection::ProjectedComments::pin_bytes(&engine.process);
     let plan = engine.comments.plan_slot();
     let slot_bytes = plan.and_then(projection::SlotPlan::growth_bytes);
-    let miss_bytes = pin_bytes
+    let existing_base = engine.retained_bytes_with(event_report_bytes());
+    let miss_base = pin_bytes
         .zip(slot_bytes)
         .and_then(|(pin, slots)| pin.checked_add(slots))
         .and_then(|bytes| bytes.checked_add(event_report_bytes()))
-        .and_then(|additional| engine.retained_bytes_with(additional))
-        .and_then(|total| total.checked_add(native.stylesheet_bytes.get()));
+        .and_then(|additional| engine.retained_bytes_with(additional));
+    let miss_bytes = miss_base.and_then(|base| base.checked_add(native.stylesheet_bytes.get()));
     let comments = &mut engine.comments;
     let receiving_realm = &engine.realm;
     let result = (|| {
@@ -371,8 +372,8 @@ fn call_guest(
                 Ok(prepared)
             })?;
 
-        let key = match prepared {
-            PreparedPin::Existing(key) => key,
+        let (key, stylesheet_base) = match prepared {
+            PreparedPin::Existing(key) => (key, existing_base),
             PreparedPin::Funded {
                 plan,
                 watch,
@@ -395,7 +396,7 @@ fn call_guest(
                 };
                 let object = execution.in_realm(creation_realm, |scope| scope.managed_object())?;
                 vacant.install(delegated, object, watch, backing);
-                plan.key
+                (plan.key, miss_base)
             }
         };
         execution.in_realm(receiving_realm, |scope| {
@@ -416,6 +417,14 @@ fn call_guest(
                 argument: scope.retain(&argument),
             }));
             let receiver = scope.primitive(Primitive::Undefined)?;
+            let Some(stylesheet_base) = stylesheet_base else {
+                return refuse(
+                    scope,
+                    &attachment.failures,
+                    DocumentScriptNativeError::RepresentationExhausted,
+                );
+            };
+            native.stylesheet_base.set(stylesheet_base);
             scope.call(&handler, &receiver, &[argument])?;
             Ok(())
         })

@@ -2,10 +2,10 @@
 
 use super::*;
 use crate::{DomConstructedSheet, DomConstructedSheetError, DomConstructedSheetOwnerInit};
-use surgeist_bindings_js::cssom::{StylesheetHost, stylesheet_exception};
+use surgeist_bindings_js::cssom::{MediaEdit, StylesheetHost, stylesheet_exception};
 use surgeist_cssom::{
-    CssomBatch, CssomEditGuard, CssomError, CssomSheetId, CssomSheetInit, CssomSheetText,
-    CssomSnapshot,
+    CssomBatch, CssomEditGuard, CssomError, CssomMediaListId, CssomSheetId, CssomSheetInit,
+    CssomSheetText, CssomSnapshot,
 };
 use surgeist_dom::{DomHostedSheetConstructionError, DomStyleCssomRootError};
 
@@ -217,6 +217,12 @@ impl StylesheetHost for Host {
         scope: &mut Scope<'_>,
         init: CssomSheetInit<'_>,
     ) -> Result<Self::Sheet, Error> {
+        if scope.realm_authority()?.identity() != self.permit.realm {
+            return Err(self.refusal(
+                scope,
+                Failure::Native(DocumentScriptNativeError::ForeignPermit),
+            ));
+        }
         self.work(scope, 1)?;
         let owner = self.native_result(scope, self.current_owner())?;
         let result = (|| {
@@ -303,6 +309,25 @@ impl StylesheetHost for Host {
     ) -> Result<(), Error> {
         self.edit(scope, sheet, |batch, _| {
             batch.set_disabled(sheet.sheet(), disabled)?;
+            Ok(())
+        })
+    }
+
+    fn edit_media(
+        &self,
+        scope: &mut Scope<'_>,
+        sheet: &Self::Sheet,
+        media: &CssomMediaListId,
+        edit: MediaEdit,
+        text: Arc<Vec<u16>>,
+    ) -> Result<(), Error> {
+        self.edit(scope, sheet, |batch, cancel| {
+            let text = CssomSheetText::Utf16(text);
+            match edit {
+                MediaEdit::SetText => batch.set_media_text(media, text, cancel)?,
+                MediaEdit::Append => batch.append_medium(media, text, cancel)?,
+                MediaEdit::Delete => batch.delete_medium(media, text, cancel)?,
+            };
             Ok(())
         })
     }

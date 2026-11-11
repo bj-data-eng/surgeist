@@ -22,6 +22,12 @@ impl<'scope> Conversion<'_, 'scope> {
         media_brand: impl FnOnce(&mut Scope<'scope>, &Value<'scope>) -> Result<Option<M>, crate::Error>,
     ) -> Result<SheetOptions<M>, Failure> {
         self.work(Work::Argument, 1).map_err(Failure)?;
+        let options = if let Some(input) = options {
+            let kind = self.scope.kind(input);
+            (self.core(kind)? != crate::ValueKind::Undefined).then_some(input)
+        } else {
+            None
+        };
         let Some(options) = options else {
             return Ok(SheetOptions {
                 base_url: None,
@@ -56,5 +62,19 @@ impl<'scope> Conversion<'_, 'scope> {
             disabled,
             media,
         })
+    }
+}
+
+impl<'scope> Conversion<'_, 'scope> {
+    pub(crate) fn legacy_media_text(
+        &mut self,
+        input: &Value<'scope>,
+    ) -> Result<Converted<DomString>, Failure> {
+        let result = self.scope.kind(input);
+        if self.core(result)? == crate::ValueKind::Null {
+            self.work(Work::Value, 1).map_err(Failure)?;
+            return Ok(self.plain(DomString::new(Vec::new())));
+        }
+        self.value(&types::DOM_STRING, input)
     }
 }

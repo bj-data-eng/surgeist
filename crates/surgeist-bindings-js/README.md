@@ -176,6 +176,17 @@ copies when a native callback creates a typed diagnostic.
 `DomExceptionName` using the entered realm's private prototype. A native
 callback can return the value as `Completion::Throw`.
 
+The [constructed stylesheet binding](src/cssom.rs) converts options in Web IDL
+order and selects NewTarget's prototype before Runtime revalidates the current
+native Document. The binding prepares private guest objects before construction
+and holds the native publication receipt for their lifetime. The `cssRules` and
+`rules` properties share one indexed `CSSRuleList`. Rule wrappers follow native
+rule identity as indices change. The inherited `media` property holds the same
+live `MediaList` and forwards assignments to its `mediaText` setter. The
+constructor copies a branded MediaList from its current native state after
+NewTarget runs. Rule and media edits use the original producer, with CSSOM
+source errors surfaced as realm-local `DOMException` values.
+
 ## Verification
 
 Use the exact native artifact and offline environment described in
