@@ -44,6 +44,20 @@ fn sdr_color_preserves_srgb_and_treats_missing_components_as_zero() {
 }
 
 #[test]
+fn sdr_color_renders_missing_oklch_hue_as_zero_degrees() {
+    let mut accounting = RenderAccountingContext::default();
+    let source = ResolvedColor::new(
+        ColorSpace::Oklch,
+        [Finite::new(0.5), Finite::new(0.1), None],
+        UnitInterval::new(0.75),
+    );
+    let output = prepare_sdr_srgb_color(source, &mut accounting).unwrap();
+    let explicit = prepare_sdr_srgb_color(oklch(0.5, 0.1, 0.0, 0.75), &mut accounting).unwrap();
+    assert_eq!(output, explicit);
+    assert!(output.r() - output.g() > 0.25);
+}
+
+#[test]
 fn sdr_color_matches_independent_local_minde_vectors() {
     let mut accounting = RenderAccountingContext::default();
     // Local MINDE reference channels in units of 1/255 from the WPT
