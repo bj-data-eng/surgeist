@@ -187,6 +187,195 @@ fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_h
 }
 
 #[test]
+fn generation_named_roles_preserve_exact_usage_and_retirement_order() {
+    use crate::accounting::{
+        RenderChangeKind, RenderGenerationEvent, RenderPhaseFilter, RenderProfile,
+    };
+    use RenderGenerationScope as Scope;
+    use RenderResource::{GpuBytes, IdleCacheGpuBytes, OpaqueGpuObjects, RegisteredCacheGpuBytes};
+    use RenderWork::{
+        GpuObjectsCreated, ResourceAllocationRequests, ResourceAllocations, ResourceRetirements,
+    };
+
+    let generation = Generation::new(RenderAccountingOptions::new().with_profile(
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 512,
+            filter: RenderPhaseFilter::All,
+        },
+    ))
+    .unwrap();
+    let descriptors = [
+        (GenerationClass::CacheVello, Scope::Vello, 1, 1),
+        (GenerationClass::CacheEffects, Scope::Effects, 2, 2),
+        (GenerationClass::CacheMasks, Scope::Masks, 3, 3),
+        (GenerationClass::CacheKernels, Scope::Kernels, 4, 4),
+        (GenerationClass::SurfaceTargets, Scope::SurfaceTargets, 5, 0),
+        (GenerationClass::PassBuffers, Scope::PassBuffers, 6, 0),
+        (
+            GenerationClass::ReadbackStaging,
+            Scope::ReadbackStaging,
+            7,
+            0,
+        ),
+    ];
+    let object_kinds = [
+        (GpuObjectKind::ShaderModule, Scope::ShaderModule, 1),
+        (GpuObjectKind::BindGroupLayout, Scope::BindGroupLayout, 2),
+        (GpuObjectKind::PipelineLayout, Scope::PipelineLayout, 3),
+        (GpuObjectKind::ComputePipeline, Scope::ComputePipeline, 4),
+        (GpuObjectKind::RenderPipeline, Scope::RenderPipeline, 5),
+        (GpuObjectKind::Sampler, Scope::Sampler, 6),
+        (GpuObjectKind::BindGroup, Scope::BindGroup, 7),
+        (GpuObjectKind::TextureView, Scope::TextureView, 8),
+        (GpuObjectKind::CommandEncoder, Scope::CommandEncoder, 9),
+        (GpuObjectKind::CommandBuffer, Scope::CommandBuffer, 10),
+        (
+            GpuObjectKind::DependencyUtility,
+            Scope::DependencyUtility,
+            11,
+        ),
+    ];
+    let mut allocations = Vec::new();
+    let mut registrations = Vec::new();
+    let mut objects = Vec::new();
+    // Reverse creation makes the retirement sequence independent of insertion order.
+    for (kind, _, count) in object_kinds.into_iter().rev() {
+        for _ in 0..count {
+            objects.push(generation.opaque(kind, None, || ()).unwrap());
+        }
+    }
+    for (class, _, bytes, registered) in descriptors.into_iter().rev() {
+        allocations.push(generation.allocation(class, bytes, None, || ()).unwrap());
+        if registered != 0 {
+            let mut registration = generation.cache_registration(class, registered).unwrap();
+            registration.set_idle(true).unwrap();
+            registrations.push(registration);
+        }
+    }
+
+    let resources = [
+        GpuBytes,
+        OpaqueGpuObjects,
+        RegisteredCacheGpuBytes,
+        IdleCacheGpuBytes,
+    ];
+    let work = [
+        ResourceAllocationRequests,
+        ResourceAllocations,
+        GpuObjectsCreated,
+    ];
+    let descriptor_rows =
+        descriptors.map(|(_, scope, bytes, cache)| (scope, [bytes, 0, cache, cache], [1, 1, 0]));
+    let object_rows =
+        object_kinds.map(|(_, scope, count)| (scope, [0, count, 0, 0], [count, 0, count]));
+    let parent_rows = [
+        (Scope::Cache, [10, 0, 10, 10], [4, 4, 0]),
+        (Scope::External, [18, 0, 0, 0], [3, 3, 0]),
+        (Scope::Objects, [0, 66, 0, 0], [66, 0, 66]),
+        (Scope::Root, [28, 66, 10, 10], [73, 7, 66]),
+    ];
+    let rows = descriptor_rows
+        .into_iter()
+        .chain(object_rows)
+        .chain(parent_rows);
+    let before = generation.snapshot().unwrap();
+    assert_eq!(before.dropped_events(), 0);
+    assert!(!before.retired());
+    assert_eq!(before.fault(), None);
+    assert_eq!(before.scope_count(Scope::Initialization), 0);
+
+    let checkpoint = generation.begin_interval().unwrap();
+    generation.retire();
+    generation.retire();
+    let retirement = checkpoint.finish().unwrap();
+    let after = generation.snapshot().unwrap();
+    assert!(after.retired());
+    assert_eq!(after.identity(), before.identity());
+    assert_eq!(retirement.identity(), before.identity());
+    assert_eq!(after.fault(), None);
+    assert_eq!(after.dropped_events(), 0);
+    assert_eq!(retirement.dropped_events(), 0);
+    assert_eq!(retirement.scope_count(Scope::Retirement), 1);
+    for (scope, live, admitted) in rows {
+        let initial = before.scope_usage(scope).unwrap();
+        let final_usage = after.scope_usage(scope).unwrap();
+        let interval = retirement.scope_usage(scope);
+        assert_eq!(
+            resources.map(|resource| initial.live(resource)),
+            live,
+            "{scope:?}"
+        );
+        assert_eq!(
+            resources.map(|resource| retirement.scope_opening(scope, resource)),
+            live,
+            "{scope:?}"
+        );
+        assert_eq!(
+            resources.map(|resource| final_usage.live(resource)),
+            [0; 4],
+            "{scope:?}"
+        );
+        assert_eq!(
+            resources.map(|resource| interval.live(resource)),
+            [0; 4],
+            "{scope:?}"
+        );
+        assert_eq!(work.map(|unit| initial.work(unit)), admitted, "{scope:?}");
+        assert_eq!(
+            work.map(|unit| final_usage.work(unit)),
+            admitted,
+            "{scope:?}"
+        );
+        assert_eq!(work.map(|unit| interval.work(unit)), [0; 3], "{scope:?}");
+    }
+    assert_eq!(after.usage().work(ResourceRetirements), 1);
+    assert_eq!(
+        retirement
+            .scope_usage(Scope::Retirement)
+            .work(ResourceRetirements),
+        1
+    );
+
+    let expected_events: Vec<_> = descriptor_rows
+        .into_iter()
+        .chain(object_rows)
+        .flat_map(|(scope, live, _)| {
+            resources
+                .into_iter()
+                .zip(live)
+                .map(move |(resource, amount)| RenderGenerationEvent::Change {
+                    scope,
+                    quantity: RenderQuantity::Resource(resource),
+                    amount,
+                    kind: RenderChangeKind::Release,
+                    elapsed: None,
+                })
+        })
+        .chain([
+            RenderGenerationEvent::Change {
+                scope: Scope::Retirement,
+                quantity: RenderQuantity::Work(ResourceRetirements),
+                amount: 1,
+                kind: RenderChangeKind::Work,
+                elapsed: None,
+            },
+            RenderGenerationEvent::Phase {
+                scope: Scope::Retirement,
+                duration: None,
+                elapsed: None,
+            },
+        ])
+        .collect();
+    assert_eq!(retirement.events().collect::<Vec<_>>(), expected_events);
+
+    drop(allocations);
+    drop(objects);
+    drop(registrations);
+    assert_eq!(generation.snapshot().unwrap(), after);
+}
+
+#[test]
 fn retirement_during_native_creation_disposes_unpublished_handle_without_admission() {
     struct Dropped(Arc<AtomicUsize>);
     impl Drop for Dropped {
