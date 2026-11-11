@@ -1,3 +1,4 @@
+mod attribute_input_views;
 mod borrowed_inputs;
 mod core;
 mod document_string;

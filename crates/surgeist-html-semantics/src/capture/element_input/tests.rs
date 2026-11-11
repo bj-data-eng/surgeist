@@ -254,7 +254,7 @@ struct CountMismatch {
     count: usize,
 }
 impl HtmlAttributesInput for CountMismatch {
-    type Attribute = Attribute;
+    type Attribute<'a> = &'a Attribute;
     fn len(&self) -> usize {
         self.count
     }
@@ -404,7 +404,7 @@ fn actual_name_unit_limit_precedes_owned_cloning_and_later_interruption() {
     assert_eq!(owner.data.records.len(), 1);
 }
 impl HtmlAttributesInput for ChangedCapacity {
-    type Attribute = Attribute;
+    type Attribute<'a> = &'a Attribute;
     fn len(&self) -> usize {
         1
     }

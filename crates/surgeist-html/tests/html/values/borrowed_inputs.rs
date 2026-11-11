@@ -6,7 +6,7 @@ use surgeist_html::{
     parsing::is_html_integration_point,
     values::{
         DocumentString, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput,
-        HtmlValueInterpreter,
+        HtmlValueInterpretationError, HtmlValueInterpreter,
     },
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
@@ -192,7 +192,7 @@ struct Bank {
 }
 
 impl HtmlAttributesInput for Bank {
-    type Attribute = Attr;
+    type Attribute<'a> = &'a Attr;
     fn len(&self) -> usize {
         self.rows.len()
     }
@@ -414,4 +414,34 @@ fn meter_admits_all_six_original_borrowed_slots_before_element_applicability() {
     assert!(element.reads.borrow().is_empty());
     assert!(raw.name.reads.borrow().is_empty());
     assert_eq!(*raw.value_reads.borrow(), 1);
+}
+
+#[test]
+fn rel_admits_the_as_value_before_scanning_for_any_other_attribute() {
+    let element = Name::new(Some(HTML), None, "link");
+    let bank = Bank {
+        rows: vec![
+            Attr::new("rel", "stylesheet"),
+            Attr::new("other", "ignored"),
+            Attr::new("as", "too-long"),
+            Attr::new("href", "later"),
+        ],
+        visited: RefCell::default(),
+    };
+    let refused = HtmlValueInterpreter::new(7)
+        .rel_with_attributes(&element, &bank)
+        .err()
+        .unwrap();
+    let HtmlValueInterpretationError::Admission(refusal) = refused else {
+        panic!("expected an admission refusal, got {refused:?}");
+    };
+    assert_eq!((refusal.capacity(), refusal.required()), (7, 8));
+    // The `as` lookup stops at its attribute, and the refusal precedes every other lookup.
+    assert_eq!(&*bank.visited.borrow(), &[0, 1, 2]);
+    for row in &bank.rows {
+        assert_eq!(
+            *row.value_reads.borrow(),
+            usize::from(row.name.local == "as".into())
+        );
+    }
 }

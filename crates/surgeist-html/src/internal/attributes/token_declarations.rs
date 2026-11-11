@@ -847,12 +847,13 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         let raw = selected(attributes, KnownHtmlAttribute::Blocking);
         let rel = selected(attributes, KnownHtmlAttribute::Rel);
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        self.admit_attribute_raw(rel.map(HtmlAttributeInput::value))?;
-        let mut result = self.blocking_observed(element, raw, Some(KnownHtmlElement::Link))?;
+        self.admit_attribute_raw(raw.as_ref().map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(rel.as_ref().map(HtmlAttributeInput::value))?;
+        let mut result =
+            self.blocking_observed(element, raw.as_ref(), Some(KnownHtmlElement::Link))?;
         link_context(
             &mut result.input,
-            rel,
+            rel.as_ref(),
             &["stylesheet", "expect"],
             HtmlAttributeContextConformanceError::BlockingRequiresStylesheetOrExpectRel,
         );
@@ -927,12 +928,13 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlIconSizesReport, HtmlValueAdmissionError> {
         let raw = selected(attributes, KnownHtmlAttribute::Sizes);
         let rel = selected(attributes, KnownHtmlAttribute::Rel);
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        self.admit_attribute_raw(rel.map(HtmlAttributeInput::value))?;
-        let mut result = self.icon_sizes_observed(element, raw, Some(KnownHtmlElement::Link))?;
+        self.admit_attribute_raw(raw.as_ref().map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(rel.as_ref().map(HtmlAttributeInput::value))?;
+        let mut result =
+            self.icon_sizes_observed(element, raw.as_ref(), Some(KnownHtmlElement::Link))?;
         link_context(
             &mut result.input,
-            rel,
+            rel.as_ref(),
             &["icon", "apple-touch-icon"],
             HtmlAttributeContextConformanceError::IconSizesRequireIconRel,
         );
@@ -945,7 +947,7 @@ impl HtmlValueInterpreter {
 fn selected<A: crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized>(
     attributes: &A,
     name: KnownHtmlAttribute,
-) -> Option<&A::Attribute> {
+) -> Option<A::Attribute<'_>> {
     let name = name.qualified_name();
     find_attribute(attributes, name.namespace(), name.local_name())
 }

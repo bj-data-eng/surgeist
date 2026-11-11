@@ -93,7 +93,10 @@ impl<'a> HtmlAttributes<'a> {
     }
 }
 impl crate::internal::values::semantic_input::HtmlAttributesInput for HtmlAttributes<'_> {
-    type Attribute = Attribute;
+    type Attribute<'a>
+        = &'a Attribute
+    where
+        Self: 'a;
     fn len(&self) -> usize {
         self.attributes.len()
     }

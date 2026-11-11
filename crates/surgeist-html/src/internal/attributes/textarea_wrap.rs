@@ -123,9 +123,12 @@ impl HtmlValueInterpreter {
         let namespace = Namespace::none();
         let wrap = find_attribute(attributes, &namespace, &DocumentString::from("wrap"));
         let cols = find_attribute(attributes, &namespace, &DocumentString::from("cols"));
-        self.admit_attribute_raw(wrap.map(HtmlAttributeInput::value))?;
-        self.admit_attribute_raw(cols.map(HtmlAttributeInput::value))?;
-        Ok(with_cols_context(self.textarea_wrap(element, wrap)?, cols))
+        self.admit_attribute_raw(wrap.as_ref().map(HtmlAttributeInput::value))?;
+        self.admit_attribute_raw(cols.as_ref().map(HtmlAttributeInput::value))?;
+        Ok(with_cols_context(
+            self.textarea_wrap(element, wrap.as_ref())?,
+            cols.as_ref(),
+        ))
     }
 }
 
