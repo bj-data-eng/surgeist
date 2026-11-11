@@ -1233,3 +1233,123 @@ fn preferred_main_max_content_uses_the_authored_cross_operation_in_nested_probes
         "expected inner {expected:?}; {differences:?}"
     );
 }
+
+#[test]
+fn preferred_main_max_content_basis_uses_the_bounded_authored_cross_size() {
+    fn measure(input: LeafMeasureInputOf<f64>) -> Size<f64> {
+        let known = input.known_content_size();
+        let cross = known
+            .height
+            .or_else(|| {
+                input
+                    .content_sizing_request()
+                    .axes()
+                    .height
+                    .space()
+                    .definite_size()
+                    .map(NonNegativeFiniteOf::get)
+            })
+            .unwrap_or(10.0);
+        Size::new(known.width.unwrap_or(cross * 2.0), 10.0)
+    }
+
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let child = NodeInputOf {
+        display: Display::Flex,
+        size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(40.0)),
+        max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(20.0)),
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+        align_items: Some(AlignItems::Start),
+        ..NodeInputOf::default()
+    };
+    let leaf = NodeInputOf {
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+        ..NodeInputOf::default()
+    };
+    let root = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(0, child.clone())
+        .style(1, leaf.clone())
+        .measure_with(1, measure);
+    let nested = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1])
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(1, child)
+        .style(2, leaf)
+        .measure_with(2, measure);
+    for (tree, child_node) in [(root, 0), (nested, 1)] {
+        let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+        for phase in [Phase::Unrounded, Phase::Final] {
+            assert_eq!(
+                readback::single_box_output(&batch, child_node, phase).size,
+                Size::new(40.0, 20.0),
+                "child at node {child_node}"
+            );
+        }
+    }
+}
+
+#[test]
+fn preferred_main_max_content_sets_the_extent_used_for_lane_packing() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1, 3])
+        .children(1, [2])
+        .children(2, [])
+        .children(3, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Column, false, false),
+                grid_template_columns: vec![TrackComponentOf::px(100.0)],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::percent(1.0), PreferredSizeOf::AUTO),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(3, NodeInputOf::default())
+        .measure_with(2, |input| {
+            let inline = input.known_content_size().width.unwrap_or(40.0);
+            Size::new(inline, if inline > 40.0 { 30.0 } else { 10.0 })
+        })
+        .measure(3, Size::new(10.0, 10.0));
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    for phase in [Phase::Unrounded, Phase::Final] {
+        assert_eq!(
+            readback::single_box_output(&batch, 1, phase).size,
+            Size::new(40.0, 10.0)
+        );
+        assert_eq!(
+            readback::single_box_output(&batch, 3, phase).location.y,
+            10.0
+        );
+    }
+}
