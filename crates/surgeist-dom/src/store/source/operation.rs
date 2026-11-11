@@ -2518,13 +2518,19 @@ impl DomSourceLease<'_> {
                     op.started = started;
                     if matches!(e, DomError::SvgScriptProcessingUnavailable)
                         && op.script_parked
-                        && !op.published
-                        && !op.event_exposed
                         && op.draft.pending_script().is_none()
                     {
-                        // The real settings reply has been consumed. Allow the
-                        // usual private lease cleanup after this semantic refusal.
-                        op.script_parked = false;
+                        if op.can_close_svg_failure(self.dom) {
+                            op.remember_failure(
+                                DomSourceCleanupCause::SvgScriptProcessingUnavailable,
+                            );
+                            return self.finish_source_failure(op, cancel).map_err(Into::into);
+                        }
+                        if !op.published && !op.event_exposed {
+                            // The real settings reply has been consumed. Allow
+                            // the usual private cleanup after this refusal.
+                            op.script_parked = false;
+                        }
                     }
                     return Err(e.into());
                 }

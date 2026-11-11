@@ -130,6 +130,8 @@ impl DomSourceInvariantFailure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceCleanupCause {
     InvariantFailed(DomSourceInvariantFailure),
+    /// The reached SVG requirement refused after a canonical Source prefix.
+    SvgScriptProcessingUnavailable,
     ReceiverRetired {
         subject: crate::NodeId,
         action: DomSourceStoppedAction,

@@ -1537,6 +1537,9 @@ fn main() {
             "published-iframe-script-svg-refusal" => {
                 script_preparation::published_iframe_prefix_closes_after_svg_refusal()
             }
+            "published-iframe-script-svg-close-retry" => {
+                script_preparation::published_iframe_prefix_retries_svg_failure_close()
+            }
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);

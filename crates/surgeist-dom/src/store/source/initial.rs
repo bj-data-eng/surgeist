@@ -206,6 +206,44 @@ impl Initial {
     }
 }
 impl Draft {
+    pub(in crate::store) fn new_source_failure_close(
+        dom: &Dom,
+        original: &Self,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        let limits = original
+            .source_limits
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let phase = original
+            .phase_map
+            .as_ref()
+            .ok_or(DomError::InvalidSourceOperation)?;
+        let work = original.source_work_custody();
+        let initial = Initial::with_work(limits, work.work().clone(), work.identity())
+            .with_names(Some(original.names.clone()))
+            .with_ancestors(
+                original.source_ancestors.clone(),
+                original.source_ancestor_custody.clone(),
+            );
+        initial.retain(
+            Payload {
+                bytes: original.source_other_bytes,
+                units: original.source_other_units,
+            },
+            cancel,
+        )?;
+        let mut draft = Self::new_formed(dom, original.owner.clone(), Some(&initial), cancel)?;
+        draft.source_other_bytes = original.source_other_bytes;
+        draft.source_other_units = original.source_other_units;
+        draft.source_invocation = original.source_invocation;
+        draft.phase_map = Some(super::PhaseMap {
+            ids: phase.ids.clone(),
+            private: super::Privacy::default(),
+        });
+        draft.source_admit(0, cancel)?;
+        Ok(draft)
+    }
+
     pub(in crate::store) fn new_source(
         dom: &Dom,
         owner: Arc<BatchIdentity>,

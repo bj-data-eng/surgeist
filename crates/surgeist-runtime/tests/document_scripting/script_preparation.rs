@@ -998,6 +998,70 @@ pub(super) fn svg_settings_order_control(svg_first: bool) {
 }
 
 pub(super) fn published_iframe_prefix_closes_after_svg_refusal() {
+    check_published_iframe_svg_refusal(false);
+}
+
+pub(super) fn published_iframe_prefix_retries_svg_failure_close() {
+    check_published_iframe_svg_refusal(true);
+}
+
+fn with_output_limit(outputs: usize) -> DomSourceLimits {
+    DomSourceLimits::new(
+        LIMITS.retained_bytes(),
+        LIMITS.retained_string_code_units(),
+        LIMITS.work(),
+        LIMITS.phase_publications(),
+        outputs,
+        LIMITS.published_native_identities(),
+        LIMITS.nested_operations(),
+    )
+}
+
+fn published_output_limit(host: &mut DocumentScriptHost, read: DomSourceScriptRequest) -> usize {
+    let mut admitted = LIMITS.output_records();
+    let mut refused = 0;
+    let reissue = |host: &mut DocumentScriptHost, outputs| {
+        host.with_native(|dom, _, mut source| {
+            match source.resume(
+                dom,
+                read.operation(),
+                with_output_limit(outputs),
+                &mut DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                },
+                &cancel(),
+            ) {
+                Ok(progress) => {
+                    assert_eq!(request(progress, read.step()), read);
+                    true
+                }
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::InvalidLimit(DomResource::SourceRetainedBytes),
+                ))) => false,
+                other => panic!("unexpected Source output admission: {other:?}"),
+            }
+        })
+        .unwrap()
+    };
+    assert!(!reissue(host, refused));
+    assert!(reissue(host, admitted));
+    while admitted - refused > 1 {
+        let candidate = refused + (admitted - refused) / 2;
+        if reissue(host, candidate) {
+            admitted = candidate;
+        } else {
+            refused = candidate;
+        }
+    }
+    assert!(!reissue(host, admitted - 1));
+    assert!(reissue(host, admitted));
+    admitted
+}
+
+fn check_published_iframe_svg_refusal(retry_close: bool) {
     let (mut session, top) = setup();
     let document = top.document();
     let parent = body(&session, document);
@@ -1080,6 +1144,7 @@ pub(super) fn published_iframe_prefix_closes_after_svg_refusal() {
     assert_eq!(status.operation(), operation);
     assert!(status.has_published());
     assert_eq!(request(resume(&mut host, operation), read.step()), read);
+    let outputs = retry_close.then(|| published_output_limit(&mut host, read));
 
     let mut session = host.stop().into_session().unwrap();
     assert_eq!(session.snapshot().stamp(), prefix.stamp());
@@ -1090,10 +1155,62 @@ pub(super) fn published_iframe_prefix_closes_after_svg_refusal() {
         style_policy: &mut |_| None,
         url: None,
     };
+    let close_limits = if let Some(outputs) = outputs {
+        let refused = source.resume(
+            &mut session.dom(),
+            operation,
+            with_output_limit(outputs),
+            &mut services,
+            &cancel(),
+        );
+        assert!(
+            matches!(
+                refused,
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::SourceOutputLimit
+                )))
+            ),
+            "closing marker needs one actual output: {refused:?}"
+        );
+        let cleanup = session.dom().pending_source_edit().unwrap();
+        assert_eq!(cleanup.operation(), operation);
+        assert_eq!(cleanup.phase(), DomSourcePhase::PendingCleanup);
+        assert_eq!(
+            cleanup.cleanup_cause(),
+            Some(DomSourceCleanupCause::SvgScriptProcessingUnavailable)
+        );
+        assert_eq!(cleanup.published_phases(), status.published_phases());
+        assert!(cleanup.spent_work() > status.spent_work());
+        let unchanged = session.snapshot();
+        assert_eq!(unchanged.stamp(), prefix.stamp());
+        assert_eq!(unchanged.incomplete_source_operation(), Some(operation));
+        check_prefix(&unchanged);
+        let increased = with_output_limit(outputs + 1);
+        let cancelled = source.resume(
+            &mut session.dom(),
+            operation,
+            increased,
+            &mut services,
+            &AtomicBool::new(true),
+        );
+        assert!(
+            matches!(
+                cancelled,
+                Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                    DomError::Cancelled
+                )))
+            ),
+            "closing cancellation must be retryable: {cancelled:?}"
+        );
+        assert_eq!(session.dom().pending_source_edit(), Some(cleanup));
+        increased
+    } else {
+        LIMITS
+    };
     let reached = source.resume(
         &mut session.dom(),
         operation,
-        LIMITS,
+        close_limits,
         &mut services,
         &cancel(),
     );
@@ -1156,4 +1273,5 @@ pub(super) fn run() {
     stopped_script_precedes_replacement_child_service();
     enabled_html_script_precedes_unavailable_svg_processing();
     published_iframe_prefix_closes_after_svg_refusal();
+    published_iframe_prefix_retries_svg_failure_close();
 }
