@@ -1464,14 +1464,17 @@ fn positioned_ratio_uses_selected_sizing_box_f64() {
     assert_positioned_ratio_uses_selected_sizing_box::<f64>();
 }
 
-#[test]
-fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
-    let mode = WritingMode::VerticalRl;
-    let mut root = root_style::<f64>(Direction::Ltr);
+fn auto_fixed_grid<S: LayoutScalar>(mode: WritingMode) -> NodeInputOf<S> {
+    let mut root = root_style(Direction::Ltr);
     root.display = Display::Grid;
     root.writing_mode = mode;
-    root.grid_template_columns = vec![TrackComponentOf::px(30.0), TrackComponentOf::px(40.0)];
-    root.grid_template_rows = vec![TrackComponentOf::px(50.0), TrackComponentOf::px(60.0)];
+    root.grid_template_columns = vec![TrackComponentOf::px(n(30.0)), TrackComponentOf::px(n(40.0))];
+    root.grid_template_rows = vec![TrackComponentOf::px(n(50.0)), TrackComponentOf::px(n(60.0))];
+    root
+}
+
+fn auto_grid_tree<S: LayoutScalar>(root: NodeInputOf<S>) -> PublicLayoutTreeOf<S> {
+    let mode = root.writing_mode;
     let child = |start| NodeInputOf {
         display: Display::Flex,
         writing_mode: mode,
@@ -1479,18 +1482,24 @@ fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
         grid_row: GridPlacement::try_lines(start, start + 1).unwrap(),
         ..NodeInputOf::default()
     };
-    let tree = PublicLayoutTreeOf::new()
+    PublicLayoutTreeOf::new()
         .children(0, [1, 2])
         .children(1, [])
         .children(2, [])
         .style(0, root)
         .style(1, child(1))
-        .style(2, child(2));
+        .style(2, child(2))
+}
+
+fn auto_grid_request<S: LayoutScalar>(
+    inline_offset: f64,
+    block_offset: f64,
+) -> LayoutRootRequestOf<S> {
     let size = Size::new(nn(800.0), nn(600.0));
     let frame = RootLocalPositionedContextOf::horizontal_auto_insets(
         size,
         Direction::Ltr,
-        0.0,
+        n(inline_offset),
         OrthogonalFallbackOf::new(
             size.map(Some),
             NearestScrollportOf::Absent,
@@ -1498,23 +1507,94 @@ fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
         ),
     )
     .unwrap()
-    .with_hypothetical_block_offset(0.0)
+    .with_hypothetical_block_offset(n(block_offset))
     .unwrap();
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::positioned_root_local(frame).unwrap(),
-    )
-    .unwrap();
-    for finalized in [false, true] {
-        for (node, x, y, width, height) in [
-            (0, 0.0, 0.0, 110.0, 70.0),
-            (1, 60.0, 0.0, 50.0, 30.0),
-            (2, 0.0, 30.0, 60.0, 40.0),
-        ] {
-            let box_output = output(&batch, node, finalized);
-            assert_eq!(box_output.location, Point::new(x, y));
-            assert_eq!(box_output.size, Size::new(width, height));
+    LayoutRootRequestOf::positioned_root_local(frame).unwrap()
+}
+
+fn assert_root_local_auto_grid_geometry<S: LayoutScalar>() {
+    for (mode, expected) in [
+        (
+            WritingMode::HorizontalTb,
+            [
+                [0.0, 0.0, 70.0, 110.0],
+                [0.0, 0.0, 30.0, 50.0],
+                [30.0, 50.0, 40.0, 60.0],
+            ],
+        ),
+        (
+            WritingMode::VerticalRl,
+            [
+                [0.0, 0.0, 110.0, 70.0],
+                [60.0, 0.0, 50.0, 30.0],
+                [0.0, 30.0, 60.0, 40.0],
+            ],
+        ),
+        (
+            WritingMode::VerticalLr,
+            [
+                [0.0, 0.0, 110.0, 70.0],
+                [0.0, 0.0, 50.0, 30.0],
+                [50.0, 30.0, 60.0, 40.0],
+            ],
+        ),
+        (
+            WritingMode::SidewaysRl,
+            [
+                [0.0, 0.0, 110.0, 70.0],
+                [60.0, 0.0, 50.0, 30.0],
+                [0.0, 30.0, 60.0, 40.0],
+            ],
+        ),
+        (
+            WritingMode::SidewaysLr,
+            [
+                [0.0, 0.0, 110.0, 70.0],
+                [0.0, 40.0, 50.0, 30.0],
+                [50.0, 0.0, 60.0, 40.0],
+            ],
+        ),
+    ] {
+        let tree = auto_grid_tree(auto_fixed_grid::<S>(mode));
+        for (inline, block) in [(0.0, 0.0), (780.0, 585.0)] {
+            let batch = compute_layout(&tree, 0, auto_grid_request(inline, block)).unwrap();
+            for finalized in [false, true] {
+                for (node, [x, y, width, height]) in [0, 1, 2].into_iter().zip(expected) {
+                    let actual = output(&batch, node, finalized);
+                    assert_eq!(
+                        actual.location,
+                        Point::new(n(x), n(y)),
+                        "{mode:?}, node {node}"
+                    );
+                    assert_eq!(
+                        actual.size,
+                        Size::new(n(width), n(height)),
+                        "{mode:?}, node {node}"
+                    );
+                }
+            }
+        }
+
+        let mut root = auto_fixed_grid::<S>(mode);
+        root.min_size.width =
+            MinSizeOf::value(LengthPercentageOf::from_percent_fraction(n(0.25)).unwrap());
+        root.max_size.height = MaxSizeOf::percent(n(0.0625));
+        let tree = auto_grid_tree(root);
+        let batch = compute_layout(&tree, 0, auto_grid_request(780.0, 585.0)).unwrap();
+        for (finalized, height) in [(false, 37.5), (true, 38.0)] {
+            let actual = output(&batch, 0, finalized);
+            assert_eq!(actual.location, Point::ZERO, "{mode:?}");
+            assert_eq!(actual.size, Size::new(n(200.0), n(height)), "{mode:?}");
         }
     }
+}
+
+#[test]
+fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
+    assert_root_local_auto_grid_geometry::<f64>();
+}
+
+#[test]
+fn root_local_auto_grid_uses_authored_orthogonal_tracks_f32() {
+    assert_root_local_auto_grid_geometry::<f32>();
 }
