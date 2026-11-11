@@ -5,6 +5,7 @@ pub mod surgeist_bindings_js
 pub mod surgeist_bindings_js::conversion
 pub mod surgeist_bindings_js::conversion::declarations
 pub fn surgeist_bindings_js::conversion::declarations::character_data_append_data_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::character_data_data_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_delete_data_0_count() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_delete_data_0_offset() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::character_data_insert_data_0_data() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -55,6 +56,7 @@ pub fn surgeist_bindings_js::conversion::declarations::document_visibility_state
 pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_message() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_exception_constructor_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
+pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_public_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::dom_implementation_create_document_type_0_system_id() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
@@ -98,6 +100,8 @@ pub fn surgeist_bindings_js::conversion::declarations::event_target_remove_event
 pub fn surgeist_bindings_js::conversion::declarations::get_root_node_options() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::declarations::GetRootNodeOptions>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_item_0_index() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::IntegerType>
 pub fn surgeist_bindings_js::conversion::declarations::html_collection_named_item_0_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
+pub fn surgeist_bindings_js::conversion::declarations::html_element_inner_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub fn surgeist_bindings_js::conversion::declarations::html_element_outer_text_setter() -> surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_0_qualified_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_local_name() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>
 pub fn surgeist_bindings_js::conversion::declarations::named_node_map_get_named_item_ns_0_namespace() -> surgeist_bindings_js::conversion::Argument<surgeist_bindings_js::conversion::Nullable<surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>>>
@@ -131,6 +135,7 @@ pub mod surgeist_bindings_js::conversion::types
 pub const surgeist_bindings_js::conversion::types::BOOLEAN: surgeist_bindings_js::conversion::Type<bool>
 pub const surgeist_bindings_js::conversion::types::BYTE_STRING: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::ByteString>
 pub const surgeist_bindings_js::conversion::types::DOM_STRING: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
+pub const surgeist_bindings_js::conversion::types::DOM_STRING_NULL_TO_EMPTY: surgeist_bindings_js::conversion::Type<surgeist_bindings_js::DomString>
 pub const surgeist_bindings_js::conversion::types::DOUBLE: surgeist_bindings_js::conversion::Type<f64>
 pub const surgeist_bindings_js::conversion::types::FLOAT: surgeist_bindings_js::conversion::Type<f32>
 pub const surgeist_bindings_js::conversion::types::UNDEFINED: surgeist_bindings_js::conversion::Type<()>

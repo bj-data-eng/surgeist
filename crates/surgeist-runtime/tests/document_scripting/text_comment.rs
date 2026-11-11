@@ -83,15 +83,38 @@ pub(super) fn creates_canonical_text_and_comments() {
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
         batch.replace_data(text, 1, 1, "B");
+        let destination = batch.create_document();
+        batch.adopt(text, &destination);
         dom.apply(batch, &cancel()).unwrap();
     })
     .unwrap();
     eval(
         &mut host,
         &permit,
-        r#"Number(projectedText.data === "\ud800B\0" && projectedText.length === 3)"#,
+        r#"Number(projectedText.data === "\ud800B\0" && projectedText.length === 3
+            && projectedText.ownerDocument instanceof Document
+            && projectedText.ownerDocument !== document
+            && projectedText.ownerDocument === projectedText.ownerDocument
+            && projectedText.getRootNode() === projectedText)"#,
         1.0,
     );
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.destroy(text);
+        dom.apply(batch, &cancel()).unwrap();
+    })
+    .unwrap();
+    let failure = native_failure(host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&"projectedText.data".encode_utf16().collect::<Vec<_>>())
+            .map(drop)
+    }));
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
 }
 
 fn character_nodes(host: &DocumentScriptHost, document: DocumentId) -> Vec<NodeId> {

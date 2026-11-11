@@ -90,6 +90,8 @@ fn native_dom() -> Dom {
             surgeist_dom::DomNameLimits::new(16_777_216, 16_384, 4_000_000, 1_048_576).unwrap(),
         )
         .unwrap()
+        .with_ranges(8)
+        .unwrap()
         .with_dispatch_custody(
             DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
         ),
@@ -496,6 +498,7 @@ fn attach_event_window(
                 work: 10_000,
                 pending_exception_reports: 16,
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
+                source_edits: DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
                     path_items: 4,
                     snapshot_listeners: 16,

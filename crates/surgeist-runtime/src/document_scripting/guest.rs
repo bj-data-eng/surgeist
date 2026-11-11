@@ -20,7 +20,7 @@ use reports::{DirectExceptions, ExceptionRoots};
 use surgeist_bindings_js::{
     Exception, NativeObjectToken, ObjectPrototype, RetainedCallbackObject, Root, Value,
 };
-use surgeist_dom::DomNodeRetirementLimits;
+use surgeist_dom::{DomNodeRetirementLimits, DomSourceLimits};
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
 #[derive(Clone, Copy, Debug)]
@@ -36,6 +36,8 @@ pub struct DocumentGuestEventLimits {
     pub dispatch: DomEventDispatchLimits,
     /// Canonical DOM storage and work for retained ordinary-node watches.
     pub node_retirement: DomNodeRetirementLimits,
+    /// Canonical Source limits for a guest-initiated edit.
+    pub source_edits: DomSourceLimits,
 }
 
 /// Failure before successful guest dispatch completion.
@@ -409,11 +411,11 @@ struct GuestBudget {
 }
 
 impl GuestBudget {
-    fn step(&self, limit: u64) -> Result<(), DocumentGuestEventError> {
+    fn charge_work(&self, limit: u64, units: u64) -> Result<(), DocumentGuestEventError> {
         let work = self
             .work
             .get()
-            .checked_add(1)
+            .checked_add(units)
             .ok_or(DocumentGuestEventError::WorkLimit)?;
         if work > limit {
             return Err(DocumentGuestEventError::WorkLimit);
@@ -428,7 +430,7 @@ impl GuestBudget {
         limits: DocumentGuestEventLimits,
         bytes: usize,
     ) -> Result<GuestBacking, DocumentGuestEventError> {
-        self.step(limits.work)?;
+        self.charge_work(limits.work, 1)?;
         let total = self
             .used
             .get()
@@ -456,7 +458,11 @@ impl GuestBudget {
 
 impl GuestEvents {
     fn step(&self) -> Result<(), DocumentGuestEventError> {
-        self.budget.step(self.limits.work)
+        self.charge_work(1)
+    }
+
+    fn charge_work(&self, units: u64) -> Result<(), DocumentGuestEventError> {
+        self.budget.charge_work(self.limits.work, units)
     }
 
     fn reserve(

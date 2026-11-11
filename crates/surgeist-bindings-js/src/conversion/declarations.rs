@@ -534,6 +534,17 @@ pub fn dom_implementation_create_document_0_namespace() -> Argument<Nullable<Typ
     )
 }
 
+/// Selected argument `DOMImplementation.createDocument:0/qualifiedName` (not overload selection).
+pub fn dom_implementation_create_document_0_qualified_name() -> Argument<Type<DomString>> {
+    Argument::new(
+        "DOMImplementation.createDocument:0/qualifiedName",
+        1,
+        false,
+        types::DOM_STRING_NULL_TO_EMPTY,
+        None,
+    )
+}
+
 /// Selected argument `DOMImplementation.createHTMLDocument:0/title` (not overload selection).
 pub fn dom_implementation_create_html_document_0_title() -> Argument<Type<DomString>> {
     Argument::new(
@@ -1454,4 +1465,19 @@ pub fn document_html_query_command_value_0_command_id() -> Argument<Type<DomStri
         types::DOM_STRING,
         None,
     )
+}
+
+/// Selected setter conversion for `CharacterData.data`.
+pub fn character_data_data_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLElement.innerText`.
+pub fn html_element_inner_text_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
+}
+
+/// Selected setter conversion for `HTMLElement.outerText`.
+pub fn html_element_outer_text_setter() -> Type<DomString> {
+    types::DOM_STRING_NULL_TO_EMPTY
 }

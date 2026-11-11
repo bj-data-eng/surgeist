@@ -7,6 +7,7 @@ use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
+mod character_data;
 mod fragment;
 mod ordinary;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
@@ -15,13 +16,15 @@ pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
 pub(in crate::document_scripting::guest) enum GuestNode {
     Document(DocumentId),
     Fragment(NodeId),
+    Text(NodeId),
+    Comment(NodeId),
 }
 
 impl GuestNode {
     pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
         match self {
             Self::Document(id) => id.node(),
-            Self::Fragment(id) => id,
+            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) => id,
         }
     }
 
@@ -29,6 +32,8 @@ impl GuestNode {
         match (self, kind) {
             (Self::Document(_), DomNodeKind::Document(_)) => Ok(9.0),
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
+            (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
+            (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
             _ => Err(DocumentScriptNativeError::ProjectionCustody),
         }
     }
@@ -62,6 +67,7 @@ pub(super) struct DocumentBindings {
     prototype: RetainedCallbackObject,
     documents: RefCell<Option<Box<DocumentPin>>>,
     fragment: fragment::FragmentBindings,
+    character_data: character_data::CharacterBindings,
     ordinary: ordinary::OrdinaryBindings,
 }
 
@@ -257,6 +263,14 @@ impl DocumentBindings {
         }
         let fragment =
             fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
+        let character_data = character_data::CharacterBindings::install(
+            scope,
+            &node,
+            &node_constructor,
+            &prototype,
+            capture,
+            fund,
+        )?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -282,6 +296,7 @@ impl DocumentBindings {
             prototype,
             documents: RefCell::new(None),
             fragment,
+            character_data,
             ordinary: ordinary::OrdinaryBindings::new(inbox),
         })
     }
