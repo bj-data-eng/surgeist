@@ -1617,6 +1617,63 @@ fn matching<'a, T>(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod metadata_match_tests {
+    use super::*;
+    use crate::{
+        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderAttemptKind,
+        RenderLimits, RenderQuantity, RenderRefusalReason,
+    };
+
+    #[test]
+    fn metadata_scan_admits_later_values_after_multiple_matches() {
+        let metadata = [7, 2, 9, 6, 11];
+        for (limit, expected) in [(3, &[7, 2, 9][..]), (5, &[7, 2, 9, 6, 11][..])] {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GraphNodeVisits, limit)
+                    .unwrap(),
+            );
+            let mut context = RenderAccountingContext::new(options);
+            let mut inspected = Vec::new();
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                graph_build(matching(&metadata, account, |value| {
+                    inspected.push(*value);
+                    value % 2 != 0
+                }))
+                .map(|_| ())
+            });
+            assert_eq!(inspected, expected);
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Lower)
+                    .work(RenderWork::GraphNodeVisits),
+                limit
+            );
+            if limit == 3 {
+                let error = result.unwrap_err();
+                let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+                else {
+                    panic!("the fourth value needs a graph node visit");
+                };
+                // The attempt owns the configured limit on Lower work.
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (3, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 3 });
+            } else {
+                result.unwrap();
+                assert!(report.refusal().is_none());
+            }
+        }
+    }
+}
+
 fn mapped_shared<T, U>(
     values: &[T],
     account: &Account,
