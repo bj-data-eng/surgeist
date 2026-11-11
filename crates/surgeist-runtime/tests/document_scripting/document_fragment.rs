@@ -88,7 +88,8 @@ pub(super) fn fragment_projection_observes_adoption_dispatch_and_native_retireme
                     && event.currentTarget === original && path.length === 1
                     && path[0] === original;
             });
-            return original.dispatchEvent(new Event("fragment")) && observed;
+            globalThis.savedEvent = new Event("fragment");
+            return original.dispatchEvent(savedEvent) && observed;
         })())"#,
         1.0,
     );
@@ -144,7 +145,11 @@ pub(super) fn fragment_projection_observes_adoption_dispatch_and_native_retireme
     eval(
         &mut host,
         &permit,
-        "Number((new DocumentFragment()).ownerDocument === window.document)",
+        r#"Number((() => {
+            const replacement = new DocumentFragment();
+            return replacement.ownerDocument === window.document
+                && savedEvent.target === original && savedEvent.target !== replacement;
+        })())"#,
         1.0,
     );
     assert_ne!(fragment_node(&host), original);
@@ -159,6 +164,52 @@ pub(super) fn fragment_projection_observes_adoption_dispatch_and_native_retireme
             DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
         ))
     ));
+}
+
+pub(super) fn fragment_observes_a_destination_with_an_existing_host_watch() {
+    let mut dom = native_dom();
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_document();
+    let document = dom
+        .apply(batch, &cancel())
+        .unwrap()
+        .document(&ticket)
+        .unwrap();
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1_000);
+    let mut inbox = dom.node_retirement_inbox(watch_limits, &cancel()).unwrap();
+    let watch = dom
+        .watch_node_retirement(document.node(), &inbox, 42, watch_limits, &cancel())
+        .unwrap();
+    let mut session = DomSession::new(dom, limits()).unwrap();
+    let (_, top) = create(&mut session);
+    let (mut host, _) = attach_event_window(session, top, Arc::new(cancel()), |_, _, _| {});
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number((globalThis.original = new DocumentFragment()).ownerDocument === document)",
+        1.0,
+    );
+    let fragment = fragment_node(&host);
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(fragment, document);
+        dom.apply(batch, &cancel()).unwrap();
+    })
+    .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const destination = original.ownerDocument;
+            return destination instanceof Document && destination !== document
+                && destination === original.ownerDocument
+                && destination.createDocumentFragment().ownerDocument === destination;
+        })())"#,
+        1.0,
+    );
+    assert!(inbox.take().is_none());
+    drop(watch);
 }
 
 fn fragment_node(host: &DocumentScriptHost) -> NodeId {

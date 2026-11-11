@@ -72,7 +72,11 @@ fn limits() -> DomSessionLimits {
     }
 }
 fn session(policy: DomSessionLimits) -> DomSession {
-    let dom = Dom::new(
+    DomSession::new(native_dom(), policy).unwrap()
+}
+
+fn native_dom() -> Dom {
+    Dom::new(
         DomLimits::new(
             256,
             200_000,
@@ -88,8 +92,7 @@ fn session(policy: DomSessionLimits) -> DomSession {
             DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
         ),
     )
-    .unwrap();
-    DomSession::new(dom, policy).unwrap()
+    .unwrap()
 }
 fn create(session: &mut DomSession) -> (HostedRuntime, DomHostedTopLevel) {
     let mut hosted = session.hosted_execution();
@@ -459,7 +462,16 @@ fn prepare_event_window_with(
     cancellation: Arc<AtomicBool>,
     configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
 ) -> (DocumentScriptHost, DomHostedTopLevel) {
-    let (mut session, top) = setup();
+    let (session, top) = setup();
+    attach_event_window(session, top, cancellation, configure)
+}
+
+fn attach_event_window(
+    mut session: DomSession,
+    top: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    configure: impl FnOnce(&mut DomEventDom<'_>, &mut DomEventDispatcher<()>, DomHostedTopLevel),
+) -> (DocumentScriptHost, DomHostedTopLevel) {
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 16,
         pending_events: 4,
@@ -2239,6 +2251,7 @@ fn main() {
             "window-document-projection" => window_document::window_projects_the_live_document_and_node_brands(),
             "document-fragment-creation" => document_fragment::creates_fragments_through_the_canonical_document(),
             "document-fragment-retirement" => document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement(),
+            "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
             "window-document-retirement" => window_document::native_document_retirement_releases_registered_callbacks(),
             "window-document-native-observer" => window_document::document_dispatch_preserves_native_observer_and_refusal(),
             "window-global-event-target" => window_document::window_uses_the_real_global_event_target(),
@@ -2312,6 +2325,7 @@ fn main() {
     window_document::window_projects_the_live_document_and_node_brands();
     document_fragment::creates_fragments_through_the_canonical_document();
     document_fragment::fragment_projection_observes_adoption_dispatch_and_native_retirement();
+    document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
     window_document::native_document_retirement_releases_registered_callbacks();
     window_document::document_dispatch_preserves_native_observer_and_refusal();
     window_document::window_uses_the_real_global_event_target();
