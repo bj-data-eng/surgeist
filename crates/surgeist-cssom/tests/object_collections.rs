@@ -126,7 +126,7 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
         &mut source,
         document(),
         CssStyleSheetInit {
-            media: CssStyleSheetMedia::Text("screen and, print"),
+            media: CssStyleSheetMedia::Text("screen and, print".into()),
             ..Default::default()
         },
     )
@@ -153,7 +153,7 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
         &mut owner,
         document(),
         CssStyleSheetInit {
-            base_url: Some(String::new()),
+            base_url: Some(std::sync::Arc::new(Vec::new())),
             media: CssStyleSheetMedia::List(&original),
             disabled: true,
         },
@@ -178,7 +178,7 @@ fn captured_media_is_copied_through_cssom_text_with_new_origin_and_identity() {
             .unwrap()
             .inputs()
             .base_url,
-        Some(String::new())
+        Some(std::sync::Arc::new(Vec::new()))
     );
     assert!(outcome.value().disabled(&owner).unwrap());
 }
@@ -440,7 +440,7 @@ fn failed_output_constructor_and_media_mutation_preserve_publication() {
         &mut owner,
         document(),
         CssStyleSheetInit {
-            media: CssStyleSheetMedia::Text("screen, print"),
+            media: CssStyleSheetMedia::Text("screen, print".into()),
             ..Default::default()
         },
     );

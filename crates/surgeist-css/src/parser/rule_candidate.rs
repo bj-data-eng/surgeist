@@ -10,7 +10,7 @@ use crate::parser::{ScopedBodyKind, fragments, recovery, tree_build_diagnostics}
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::rule::{CssRuleAdmissionContext, CssRuleSyntax};
-use crate::source::CssParsedOrigin;
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::DocumentExt;
 use crate::syntax_consumption::{self as syntax, GenericRule};
 use surgeist_css_parser::document::Fault;
@@ -20,15 +20,49 @@ pub(crate) fn classify_rule_syntax_with_limits(
     source: &str,
     limits: CssComponentValueLimits,
 ) -> CssParseReport<Option<CssRuleSyntax>> {
-    let document = match syntax::source_document_with_limits(source, limits) {
-        Ok(document) => document,
-        Err(error) => {
-            return CssParseReport::new(
-                None,
-                vec![tree_build_diagnostics::tree_build_failure(source, error)],
-            );
-        }
+    classify_rule_input(source, None, limits)
+}
+
+pub(crate) fn classify_rule_snapshot_with_limits(
+    source: &CssSourceSnapshot,
+    limits: CssComponentValueLimits,
+) -> CssParseReport<Option<CssRuleSyntax>> {
+    classify_rule_input(source.as_str(), Some(source), limits)
+}
+
+fn classify_rule_input(
+    source: &str,
+    original: Option<&CssSourceSnapshot>,
+    limits: CssComponentValueLimits,
+) -> CssParseReport<Option<CssRuleSyntax>> {
+    let document = match original {
+        Some(snapshot) => syntax::source_document_snapshot_with_limits(snapshot, limits),
+        None => syntax::source_document_with_limits(source, limits),
     };
+    let (mut candidate, mut diagnostics) = match document {
+        Ok(document) => classify_document(source, &document, limits),
+        Err(error) => CssParseReport::new(
+            None,
+            vec![tree_build_diagnostics::tree_build_failure(source, error)],
+        ),
+    }
+    .into_parts();
+    if let Some(snapshot) = original {
+        for diagnostic in &mut diagnostics {
+            diagnostic.bind_source(snapshot);
+        }
+    }
+    if let Some(candidate) = &mut candidate {
+        candidate.diagnostics = diagnostics.clone();
+    }
+    CssParseReport::new(candidate, diagnostics)
+}
+
+fn classify_document(
+    source: &str,
+    document: &crate::parser::syntax_types::Document<'_>,
+    limits: CssComponentValueLimits,
+) -> CssParseReport<Option<CssRuleSyntax>> {
     let snapshot = document
         .snapshot()
         .expect("original source document")
@@ -36,7 +70,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
     let selected = syntax::consume_one_rule(&mut document.cursor(document.root_list()));
     let selected = match selected {
         Ok(GenericRule::Qualified(rule))
-            if syntax::custom_property_rule_prelude(&document, &rule.prelude) =>
+            if syntax::custom_property_rule_prelude(document, &rule.prelude) =>
         {
             Err(document
                 .boundary(rule.range.list, rule.range.start)
@@ -129,7 +163,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
         name,
         limits,
         metrics: document.metrics(),
-        diagnostics: diagnostics.clone(),
+        diagnostics: Vec::new(),
     };
     CssParseReport::new(Some(candidate), diagnostics)
 }

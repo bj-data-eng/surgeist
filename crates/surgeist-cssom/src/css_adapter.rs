@@ -214,6 +214,7 @@ impl State {
                 parent,
                 data: data.into(),
                 authored: authored.into(),
+                insertion_origin: None,
                 selector_input: None,
                 selector_inputs: None,
                 selector_namespaces: None,

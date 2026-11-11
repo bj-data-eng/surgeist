@@ -424,7 +424,7 @@ fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
     let mut edit = batch(&store);
     let a = edit.create_typed_sheet(CssSheet::new(), inputs()).unwrap();
     let mut empty = inputs();
-    empty.base_url = Some(String::new());
+    empty.base_url = Some(std::sync::Arc::new(Vec::new()));
     let b = edit.create_typed_sheet(CssSheet::new(), empty).unwrap();
     let commit = store.commit(edit).unwrap();
     let snapshot = store.snapshot();
@@ -442,7 +442,7 @@ fn computed_readonly_owner_and_null_base_are_independent_explicit_inputs() {
             .unwrap()
             .inputs()
             .base_url,
-        Some(String::new())
+        Some(std::sync::Arc::new(Vec::new()))
     );
 }
 

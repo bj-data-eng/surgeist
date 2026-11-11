@@ -3,7 +3,9 @@ use crate::component::CssComponentValueLimits;
 use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
-use crate::parser::rule_candidate::classify_rule_syntax_with_limits;
+use crate::parser::rule_candidate::{
+    classify_rule_snapshot_with_limits, classify_rule_syntax_with_limits,
+};
 use crate::parser::{conditional_chains, fragments, recovery};
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
@@ -41,7 +43,7 @@ pub enum CssRuleAdmissionContext {
 
 /// One complete generic CSS Syntax rule, retaining its original input occurrence.
 ///
-/// Construction is exclusively through [`crate::rule::CssRuleSyntax::classify`]. A candidate
+/// Construction is exclusively through [`Self::classify`] and [`Self::classify_utf16`]. A candidate
 /// is retained even when its name, selector or feature grammar is unsupported.
 /// Its origin excludes surrounding trivia; its snapshot is the complete input.
 /// Semantic admission uses the selected original unit and the existing grammar
@@ -204,6 +206,12 @@ impl CssRuleSyntax {
             }
         }
         diagnostics.extend(additional);
+        let source = self.origin.source();
+        if source.original_utf16().is_some() {
+            for diagnostic in &mut diagnostics {
+                diagnostic.bind_source(source);
+            }
+        }
         CssParseReport::new(rule, diagnostics)
     }
 }
@@ -221,5 +229,23 @@ impl CssRuleSyntax {
         source: impl AsRef<str>,
     ) -> CssParseReport<Option<CssRuleSyntax>> {
         classify_rule_syntax_with_limits(source.as_ref(), parser.component_limits())
+    }
+
+    /// Classifies actual UTF-16 input with the same complete-rule Syntax
+    /// selection as [`Self::classify`]. The candidate and diagnostics retain
+    /// the original units and their mapping to normalized CSS bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the CSS preparation refusal or the caller's interruption.
+    pub fn classify_utf16<E>(
+        parser: &crate::CssParser,
+        original: std::sync::Arc<Vec<u16>>,
+        limits: crate::source::CssUtf16InputLimits,
+        poll: impl FnMut() -> Result<(), E>,
+    ) -> Result<CssParseReport<Option<CssRuleSyntax>>, crate::source::CssUtf16InputError<E>> {
+        crate::source::utf16_input::parse_utf16(original, limits, poll, |source| {
+            classify_rule_snapshot_with_limits(source, parser.component_limits())
+        })
     }
 }

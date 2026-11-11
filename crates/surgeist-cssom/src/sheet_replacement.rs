@@ -26,7 +26,7 @@ struct ReplacementInput {
     parser: CssParserContext,
     parser_input: Option<CssomInput>,
     sheet_version: CssomInputVersion,
-    base_url: Option<String>,
+    base_url: Option<Arc<Vec<u16>>>,
     location: Option<String>,
     constructor_document: Option<String>,
 }
@@ -139,7 +139,6 @@ impl CssomStore {
         let bytes = [
             source.len(),
             facts.version.identity.len(),
-            facts.base_url.as_ref().map_or(0, String::len),
             facts.location.as_ref().map_or(0, String::len),
             facts.constructor_document.as_ref().map_or(0, String::len),
             parser_input
@@ -184,6 +183,7 @@ impl CssomStore {
             parser: self.state.context.parser_context(),
             parser_input,
             sheet_version: facts.version.clone(),
+            // This immutable backing is already charged by the live sheet.
             base_url: facts.base_url.clone(),
             location: facts.location.clone(),
             constructor_document: facts.constructor_document.clone(),

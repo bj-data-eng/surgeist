@@ -1,10 +1,11 @@
 //! Source stylesheet construction, attributes and collection operations.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
+use std::{convert::Infallible, sync::Arc};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssSheet;
-use surgeist_css::source::CssRetainedPayloadError;
+use surgeist_css::source::{CssRetainedPayloadError, CssUtf16InputLimits};
 use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
 /// Supplied current-global Document facts; no document or URL resolution occurs.
@@ -15,16 +16,35 @@ pub struct CssomConstructorDocument {
     pub base_location: String,
 }
 
+/// Authored text for stylesheet operations. Native UTF-8 and exact UTF-16
+/// each retain their own source coordinates through the same CSS grammar.
+#[derive(Clone, Debug)]
+pub enum CssomSheetText<'a> {
+    Utf8(&'a str),
+    Utf16(Arc<Vec<u16>>),
+}
+impl<'a> From<&'a str> for CssomSheetText<'a> {
+    fn from(text: &'a str) -> Self {
+        Self::Utf8(text)
+    }
+}
+
+pub(crate) fn sheet_utf16_limits(limits: &CssomLimits) -> CssUtf16InputLimits {
+    let mut input = limits.sheet_utf16_input;
+    input.max_output_bytes = input.max_output_bytes.min(limits.max_input_bytes);
+    input
+}
+
 /// Actual source constructor media input. A list is copied through its CSSOM text.
 pub enum CssomInitialMedia<'a> {
-    Text(&'a str),
+    Text(CssomSheetText<'a>),
     List {
         snapshot: &'a CssomSnapshot,
         id: &'a CssomMediaListId,
     },
 }
 pub struct CssomSheetInit<'a> {
-    pub base_url: Option<String>,
+    pub base_url: Option<Arc<Vec<u16>>>,
     pub media: CssomInitialMedia<'a>,
     pub disabled: bool,
 }
@@ -32,7 +52,7 @@ impl Default for CssomSheetInit<'_> {
     fn default() -> Self {
         Self {
             base_url: None,
-            media: CssomInitialMedia::Text(""),
+            media: CssomInitialMedia::Text("".into()),
             disabled: false,
         }
     }
@@ -270,8 +290,20 @@ impl CssomBatch {
                 ));
             }
             let (media, media_diagnostics) = match init.media {
-                CssomInitialMedia::Text(source) => {
+                CssomInitialMedia::Text(CssomSheetText::Utf8(source)) => {
                     parse_media(source, &this.limits, this.staged.context.parser_context())?
+                }
+                CssomInitialMedia::Text(CssomSheetText::Utf16(original)) => {
+                    let parser =
+                        CssParser::new(this.staged.context.parser_context(), Default::default());
+                    let report = CssMediaQueryList::parse_utf16(
+                        &parser,
+                        original,
+                        sheet_utf16_limits(&this.limits),
+                        || Ok::<(), Infallible>(()),
+                    )?;
+                    check_resource_diagnostics(report.diagnostics())?;
+                    report.into_parts()
                 }
                 CssomInitialMedia::List { snapshot, id } => {
                     let text = snapshot
@@ -509,7 +541,7 @@ impl CssomBatch {
             source.push('}');
             Ok((source, index))
         })?;
-        self.insert_sheet_rule(sheet, &source, index)?;
+        self.insert_sheet_rule(sheet, source.as_str(), index)?;
         Ok(-1)
     }
     /// Standards-defined `removeRule()` defaults its index to zero.

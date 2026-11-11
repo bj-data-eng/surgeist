@@ -276,20 +276,27 @@ impl State {
 
 impl CssomBatch {
     /// CSSStyleSheet insertion's preliminary checks precede the shared index guard.
-    pub fn insert_sheet_rule(
+    pub fn insert_sheet_rule<'a>(
         &mut self,
         id: &CssomSheetId,
-        source: &str,
+        source: impl Into<CssomSheetText<'a>>,
         index: usize,
     ) -> Result<(usize, CssomRuleTicket), CssomError> {
         self.apply(|this| {
             let sheet = this.staged.editable_sheet_rules(id)?;
             let constructed = sheet.inputs.constructed;
-            let (candidate, diagnostics) = CssRuleSyntax::classify(
-                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
-                source,
-            )
-            .into_parts();
+            let parser =
+                CssParser::new(CssParserContext::default(), component_limits(&this.limits));
+            let report = match source.into() {
+                CssomSheetText::Utf8(text) => CssRuleSyntax::classify(&parser, text),
+                CssomSheetText::Utf16(original) => CssRuleSyntax::classify_utf16(
+                    &parser,
+                    original,
+                    crate::sheet_operations::sheet_utf16_limits(&this.limits),
+                    || Ok::<(), std::convert::Infallible>(()),
+                )?,
+            };
+            let (candidate, diagnostics) = report.into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let candidate = candidate.ok_or_else(syntax)?;
             if constructed
@@ -301,7 +308,7 @@ impl CssomBatch {
             }
             this.insert_prepared_rule(
                 RuleDestination::Sheet(id.clone()),
-                source,
+                candidate.origin().source().as_str(),
                 Some(&candidate),
                 index,
                 false,
@@ -490,11 +497,11 @@ impl CssomBatch {
         let id = self
             .staged
             .adopt(authored, parent.clone(), depth, &self.limits)?;
-        self.staged
-            .rules
-            .get_mut(&id)
-            .expect("adopted rule")
-            .admission_diagnostics = retained_diagnostics.into();
+        let record = self.staged.rules.get_mut(&id).expect("adopted rule");
+        if matches!(destination, RuleDestination::Sheet(_)) {
+            record.insertion_origin = candidate.map(|syntax| syntax.origin().clone());
+        }
+        record.admission_diagnostics = retained_diagnostics.into();
         self.staged
             .lists
             .get_mut(&list)

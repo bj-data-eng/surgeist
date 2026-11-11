@@ -1,5 +1,6 @@
 //! Synchronous admission accounting for complete retained CSSOM state.
 use crate::{model::State, *};
+use std::{collections::HashSet, sync::Arc};
 
 impl State {
     pub(crate) fn check_limits(&self, limits: &CssomLimits) -> Result<(), CssomError> {
@@ -121,6 +122,7 @@ impl State {
             linked.snapshot.sheet(&linked.sheet)?;
             add(&mut entries, 1);
         }
+        let mut bases = HashSet::new();
         for sheet in self.sheets.values() {
             if let Some(input) = sheet.authored.parse_source()
                 && input.source().as_str().len() > limits.max_input_bytes
@@ -144,8 +146,22 @@ impl State {
                         maximum: limits.max_string_bytes,
                     })?;
             add(&mut strings, title_bytes);
+            if let Some(base) = &sheet.inputs.base_url {
+                let identity = Arc::as_ptr(base);
+                if !bases.contains(&identity) {
+                    bases.try_reserve(1).map_err(|_| CssomError::Limit {
+                        resource: "base URL source identities",
+                        maximum: limits.max_objects,
+                    })?;
+                    bases.insert(identity);
+                    strings = strings.and_then(|total| {
+                        base.capacity()
+                            .checked_mul(size_of::<u16>())
+                            .and_then(|bytes| total.checked_add(bytes))
+                    });
+                }
+            }
             for text in [
-                &sheet.inputs.base_url,
                 &sheet.inputs.location,
                 &sheet.inputs.constructor_document,
                 &sheet.inputs.owner,

@@ -12,18 +12,19 @@
 //! ```
 use crate::object_operations::execute;
 use crate::*;
+use std::sync::Arc;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::serialization::CssSerializationLimits;
 
 /// Explicit constructor media input. Captured lists are copied through CSSOM text,
 /// including across owners; the constructed sheet receives a fresh MediaList.
 pub enum CssStyleSheetMedia<'a> {
-    Text(&'a str),
+    Text(CssomSheetText<'a>),
     List(&'a CssomCapture<MediaList>),
 }
 /// Standard constructor defaults with explicitly supplied document facts.
 pub struct CssStyleSheetInit<'a> {
-    pub base_url: Option<String>,
+    pub base_url: Option<Arc<Vec<u16>>>,
     pub media: CssStyleSheetMedia<'a>,
     pub disabled: bool,
 }
@@ -31,7 +32,7 @@ impl Default for CssStyleSheetInit<'_> {
     fn default() -> Self {
         Self {
             base_url: None,
-            media: CssStyleSheetMedia::Text(""),
+            media: CssStyleSheetMedia::Text("".into()),
             disabled: false,
         }
     }
@@ -172,10 +173,10 @@ impl CssStyleSheet {
     pub fn rules(&self, store: &CssomStore) -> Result<CssRuleList, CssomError> {
         self.css_rules(store)
     }
-    pub fn insert_rule(
+    pub fn insert_rule<'a>(
         &self,
         store: &mut CssomStore,
-        rule: &str,
+        rule: impl Into<CssomSheetText<'a>>,
         index: Option<usize>,
     ) -> Result<CssomOperationOutcome<usize>, CssomError> {
         execute(store, |batch| {

@@ -191,6 +191,9 @@ impl State {
                         }
                         sources.visit(rule.authored.as_ref())?;
                         sources.visit(rule.data.as_ref())?;
+                        if let Some(origin) = &rule.insertion_origin {
+                            sources.visit(origin)?;
+                        }
                         sources.visit(&rule.selector_input)?;
                         sources.visit(rule.admission_diagnostics.as_slice())?;
                     }
