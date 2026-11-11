@@ -2516,6 +2516,16 @@ impl DomSourceLease<'_> {
                     checkpoint.restore(&mut op.draft);
                     op.restore_external_receipt(external_applied);
                     op.started = started;
+                    if matches!(e, DomError::SvgScriptProcessingUnavailable)
+                        && op.script_parked
+                        && !op.published
+                        && !op.event_exposed
+                        && op.draft.pending_script().is_none()
+                    {
+                        // The real settings reply has been consumed. Allow the
+                        // usual private lease cleanup after this semantic refusal.
+                        op.script_parked = false;
+                    }
                     return Err(e.into());
                 }
                 Ok(()) => {
