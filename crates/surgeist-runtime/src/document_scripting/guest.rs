@@ -361,7 +361,7 @@ struct TracedListener {
 }
 
 enum RegisteredListenerObject {
-    Retained(RetainedCallbackObject),
+    Retained(RefCell<Option<RetainedCallbackObject>>),
     Traced(TracedListener),
 }
 
@@ -857,7 +857,6 @@ impl DocumentScriptHost {
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
         self.check_permit(permit)?;
-        let registration_window = self.attachment()?.target;
         let owner = self.native.clone();
         let events = self.guest_events()?;
         self.in_document(permit, |scope| {
@@ -869,51 +868,18 @@ impl DocumentScriptHost {
                     return Err(DocumentGuestEventError::CallbackRealmUnavailable);
                 }
                 let receiver = target.object(scope)?;
-                if let Some(registration) = events.find_listener(
-                    &owner,
-                    scope,
-                    listeners::ListenerMatch {
-                        receiver: &receiver,
-                        target: &target.native,
-                        event_type,
-                        callback: &value,
-                        capture: options.capture,
-                    },
-                )? {
+                let native_target = DomEventTarget::from(target.native.clone());
+                let key = listeners::ListenerMatch {
+                    receiver: &receiver,
+                    target: &native_target,
+                    event_type,
+                    callback: &value,
+                    capture: options.capture,
+                };
+                if let Some(registration) = events.find_listener(&owner, scope, key)? {
                     return Ok(registration);
                 }
-                let target = DomEventTarget::from(target.native.clone());
-                let backing = events.reserve(&owner, size_of::<RegisteredGuestListener>())?;
-                let object = scope
-                    .retain_callback_object(observed, |bytes| events.reserve(&owner, bytes))?;
-                let code = events
-                    .next_callback
-                    .get()
-                    .checked_add(1)
-                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-                let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
-                    code,
-                    object: RegisteredListenerObject::Retained(object),
-                    registration_window,
-                    _backing: backing,
-                }));
-                let mut session = owner
-                    .session
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let mut registry = events
-                    .registry
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let registration = registry.add_listener(
-                    &mut session.dom(),
-                    target,
-                    event_type,
-                    callback,
-                    options,
-                )?;
-                events.next_callback.set(code);
-                Ok(registration)
+                events.register_retained(&owner, scope, key, options, observed)
             })())
         })?
     }
@@ -980,7 +946,7 @@ impl GuestEvents {
         let exceptions = exceptions.insert(bank);
         let receiver = target.object(scope)?;
         let argument = event.object(scope)?;
-        let invocation = self.prepare(owner, &target.native, &event.native)?;
+        let invocation = self.prepare(owner, target.native.clone().into(), &event.native)?;
         self.run(
             owner,
             scope,
@@ -1042,7 +1008,7 @@ impl GuestEvents {
     fn prepare(
         &self,
         owner: &NativeOwner,
-        target: &DomStandaloneEventTarget,
+        target: DomEventTarget,
         event: &NativeDomEvent,
     ) -> Result<DomEventDispatch, DocumentGuestEventError> {
         let mut session = owner
@@ -1053,12 +1019,7 @@ impl GuestEvents {
             .registry
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        Ok(registry.prepare_dispatch(
-            &mut session.dom(),
-            target.clone(),
-            event,
-            &owner.cancellation,
-        )?)
+        Ok(registry.prepare_dispatch(&mut session.dom(), target, event, &owner.cancellation)?)
     }
 
     fn run<'scope>(
@@ -1084,13 +1045,14 @@ impl GuestEvents {
                 scope
                     .native_object::<GuestEventProjection>(argument)?
                     .ok_or(Error::ExpectedNativeObject)?,
-                scope
-                    .native_object::<GuestTargetProjection>(receiver)?
-                    .ok_or(Error::ExpectedNativeObject)?,
+                wrapper::event_receiver(owner, scope, receiver)?
+                    .ok_or(Error::ExpectedNativeObject)?
+                    .target(),
             ))
         } else {
             None
         };
+        let dispatch_target = projection.as_ref().map(|(_, target)| target.clone());
         loop {
             self.step()?;
             let outcome = {
@@ -1112,8 +1074,7 @@ impl GuestEvents {
                 )?
             };
             let projected = if let Some((event, target)) = &projection
-                && matches!(event.payload().0.target(), Some(DomEventTarget::Standalone(ref actual))
-                    if actual == &target.payload().native)
+                && event.payload().0.target().as_ref() == Some(target)
             {
                 projection = None;
                 scope.set_native_object_reference::<GuestEventProjection>(
@@ -1170,10 +1131,31 @@ impl GuestEvents {
             let key = selected.key();
             let mut current_event = None;
             let callback = selected.selected_guest();
+            let recipient = (|| {
+                let Some(dispatch_target) = &dispatch_target else {
+                    return Ok(None);
+                };
+                let current = selected
+                    .event()
+                    .current_target()
+                    .ok_or(Error::RegistryConflict)?;
+                if &current == dispatch_target {
+                    return Ok(None);
+                }
+                wrapper::event_target_value(owner, self, scope, argument, &current).map(Some)
+            })();
+            let (current_receiver, recipient_error) = match recipient {
+                Ok(receiver) => (receiver, None),
+                Err(error) => (None, Some(error)),
+            };
+            let invocation_receiver = current_receiver.as_ref().unwrap_or(receiver);
             let prepared = (|| {
                 projected?;
+                if let Some(error) = recipient_error {
+                    return Err(error);
+                }
                 let callback = callback.ok_or(DocumentGuestEventError::RegistryState)?;
-                let authority = callback.realm();
+                let authority = callback.realm()?;
                 authority.check_owner_active()?;
                 if callback.registration_window != attachment.target
                     || authority.identity() != attachment.realm.identity()
@@ -1193,24 +1175,26 @@ impl GuestEvents {
                     }
                 }
                 self.step()?;
-                Ok((callback.open(scope, receiver)?, authority.identity()))
+                Ok((
+                    callback.open(scope, invocation_receiver)?,
+                    authority.identity(),
+                ))
             })();
             // Native selection already removed this once registration. Keep the
             // selected object local on success, but always clear the exact edge.
             let cleared = match callback {
-                Some(callback) if selected.once_removed() => {
-                    callback.clear_receiver(scope, receiver)
-                }
+                Some(callback) if selected.once_removed() => callback.release(scope),
                 _ => Ok(()),
             };
             let result = (|| {
                 let (object, realm) = prepared?;
                 cleared?;
-                // A standalone path item is outside any shadow tree.
+                // All supported receivers in this attached profile are
+                // outside any shadow tree.
                 current_event = Some(self.window_event.enter(scope.retain(argument)));
                 let arguments = std::slice::from_ref(argument);
                 let called = if scope.is_callable(&object)? {
-                    scope.call(&object, receiver, arguments)
+                    scope.call(&object, invocation_receiver, arguments)
                 } else {
                     self.step()?;
                     scope.call_object_operation(&object, &b"handleEvent".map(u16::from), arguments)

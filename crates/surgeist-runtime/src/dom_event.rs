@@ -2840,6 +2840,15 @@ pub struct DomEventComposedPath {
 }
 impl Iterator for DomEventComposedPath {
     type Item = DomEventTarget;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self
+            .current_index
+            .zip(self.path.as_ref())
+            .map_or(0, |(_, path)| path.len().saturating_sub(self.next));
+        (0, Some(remaining))
+    }
+
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.path.as_ref()?;
         let current = self.current_index?;

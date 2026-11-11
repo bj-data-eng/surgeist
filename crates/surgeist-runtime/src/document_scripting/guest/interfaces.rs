@@ -1,9 +1,11 @@
-//! Public Event constructors on the authenticated, unpublished Window.
+//! Public native interfaces on the authenticated, unpublished Window.
 
+mod document;
 mod listener_methods;
 mod operations;
 
 use super::*;
+pub(super) use document::GuestDocumentProjection;
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
     WellKnownSymbol,
@@ -87,6 +89,7 @@ pub(super) struct PublicEventBindings {
     event: RetainedCallbackObject,
     target: RetainedCallbackObject,
     trusted: RetainedCallbackObject,
+    document: document::DocumentBindings,
 }
 
 impl PublicEventBindings {
@@ -134,6 +137,7 @@ impl PublicEventBindings {
                 BufferBytes: buffer_bytes,
             },
         )?;
+        let document_id = permit.document;
         let callbacks = Rc::new(Callbacks {
             owner: Rc::downgrade(owner),
             permit,
@@ -318,6 +322,8 @@ impl PublicEventBindings {
             )?;
         }
         let observed = scope.callback_object(&event)?;
+        let document =
+            document::DocumentBindings::install(scope, document_id, &target, &capture, &fund)?;
         let event = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(&target)?;
         let target = scope.retain_callback_object(observed, fund)?;
@@ -328,6 +334,7 @@ impl PublicEventBindings {
             event,
             target,
             trusted,
+            document,
         })
     }
 
@@ -343,6 +350,15 @@ impl PublicEventBindings {
         scope: &mut Scope<'scope>,
     ) -> Result<Value<'scope>, Error> {
         scope.open_callback_object(&self.target)
+    }
+
+    pub(super) fn document_object<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        events: &GuestEvents,
+        node: surgeist_dom::NodeId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        self.document.open(scope, events, node)
     }
 
     pub(super) fn event_prototype<'scope>(
@@ -535,7 +551,7 @@ impl Capture {
         arguments: Arguments<'scope>,
         attribute: Attribute,
     ) -> Result<Completion<'scope>, Error> {
-        let (_, events) = self.active(scope)?;
+        let (owner, events) = self.active(scope)?;
         let Some(native) = scope.native_object::<GuestEventProjection>(arguments.receiver())?
         else {
             return Ok(Completion::Throw(
@@ -553,12 +569,20 @@ impl Capture {
                     .conversion
                     .run(scope, |conversion| conversion.copy_to_js(ty.code_units()))?
             }
-            Attribute::Target => {
-                operations::nullable_target(scope, arguments.receiver(), event.target())?
-            }
-            Attribute::CurrentTarget => {
-                operations::nullable_target(scope, arguments.receiver(), event.current_target())?
-            }
+            Attribute::Target => operations::nullable_target(
+                &owner,
+                &events,
+                scope,
+                arguments.receiver(),
+                event.target(),
+            )?,
+            Attribute::CurrentTarget => operations::nullable_target(
+                &owner,
+                &events,
+                scope,
+                arguments.receiver(),
+                event.current_target(),
+            )?,
             Attribute::CancelBubble => {
                 scope.primitive(Primitive::Boolean(event.cancel_bubble()))?
             }

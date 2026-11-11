@@ -185,10 +185,65 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     assert!(bound.is_none());
     let exact_activation = host.guest_events().unwrap().budget.used.get();
     let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "window.document.custodyMarker = Symbol(); globalThis.marker = window.document.custodyMarker",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    host.checkpoint().unwrap();
+    host.engine
+        .as_mut()
+        .unwrap()
+        .process
+        .execution()
+        .memory_pressure();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "window.document.custodyMarker === marker")
+    })
+    .unwrap();
     assert!(
         host.remove_guest_event_listener(&permit, original_registration)
             .unwrap()
     );
+    let events = host.guest_events().unwrap();
+    host.in_document(&permit, |scope| {
+        let before = events.budget.used.get();
+        scope.evaluate(&units(
+            r#"(() => {
+                const callback = () => {};
+                const api = EventTarget.prototype;
+                api.addEventListener.call(window, "release", callback);
+                api.removeEventListener.call(window, "release", callback);
+            })()"#,
+        ))?;
+        assert_eq!(
+            events.budget.used.get(),
+            before,
+            "removal releases the callback holder before the guest turn ends",
+        );
+        let event = scope.evaluate(&units("new Event('release')"))?;
+        let global = scope.global()?;
+        scope.set(&global, PropertyKey::String(&units("releaseEvent")), &event)?;
+        let before = events.budget.used.get();
+        scope.evaluate(&units(
+            r#"(() => {
+                const callback = () => {};
+                const api = EventTarget.prototype;
+                api.addEventListener.call(window, "release", callback, { once: true });
+                api.dispatchEvent.call(window, releaseEvent);
+            })()"#,
+        ))?;
+        assert_eq!(
+            events.budget.used.get(),
+            before,
+            "once delivery releases the callback holder before the guest turn ends",
+        );
+        Ok(())
+    })
+    .unwrap();
     let event_target = host.create_guest_event_target(&permit).unwrap();
     let event = host
         .create_guest_event(&permit, &kind, Default::default())

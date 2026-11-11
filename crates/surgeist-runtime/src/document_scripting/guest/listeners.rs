@@ -1,21 +1,27 @@
 //! Registry identity and guest-traced listener custody.
 
 use super::*;
+use surgeist_bindings_js::CallbackObject;
 
 #[derive(Clone, Copy)]
 pub(super) struct ListenerMatch<'value, 'scope> {
     pub(super) receiver: &'value Value<'scope>,
-    pub(super) target: &'value DomStandaloneEventTarget,
+    pub(super) target: &'value DomEventTarget,
     pub(super) event_type: &'value [u16],
     pub(super) callback: &'value Value<'scope>,
     pub(super) capture: bool,
 }
 
 impl RegisteredGuestListener {
-    pub(super) fn realm(&self) -> &RealmAuthority {
+    pub(super) fn realm(&self) -> Result<RealmAuthority, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => callback.associated_realm(),
-            RegisteredListenerObject::Traced(traced) => &traced.realm,
+            RegisteredListenerObject::Retained(callback) => callback
+                .try_borrow()
+                .map_err(|_| Error::RegistryConflict)?
+                .as_ref()
+                .map(|callback| callback.associated_realm().clone())
+                .ok_or(Error::RegistryConflict),
+            RegisteredListenerObject::Traced(traced) => Ok(traced.realm.clone()),
         }
     }
 
@@ -25,24 +31,36 @@ impl RegisteredGuestListener {
         receiver: &Value<'scope>,
     ) -> Result<Value<'scope>, Error> {
         match &self.object {
-            RegisteredListenerObject::Retained(callback) => scope.open_callback_object(callback),
+            RegisteredListenerObject::Retained(callback) => {
+                let callback = callback.try_borrow().map_err(|_| Error::RegistryConflict)?;
+                scope.open_callback_object(callback.as_ref().ok_or(Error::RegistryConflict)?)
+            }
             RegisteredListenerObject::Traced(traced) => scope
                 .native_object_reference::<GuestTargetProjection>(receiver, traced.slot)?
                 .ok_or(Error::RegistryConflict),
         }
     }
 
-    pub(super) fn clear_receiver<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        receiver: &Value<'scope>,
-    ) -> Result<(), Error> {
-        if let RegisteredListenerObject::Traced(traced) = &self.object {
-            scope.set_native_object_reference::<GuestTargetProjection>(
-                receiver,
-                traced.slot,
-                None,
-            )?;
+    pub(super) fn release(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
+        match &self.object {
+            RegisteredListenerObject::Retained(callback) => {
+                let callback = callback
+                    .try_borrow_mut()
+                    .map_err(|_| Error::RegistryConflict)?
+                    .take();
+                if let Some(callback) = callback {
+                    scope.release_callback_object(callback)?;
+                }
+            }
+            RegisteredListenerObject::Traced(traced) => {
+                if let Some(target) = scope.open_native_object(&traced.target)? {
+                    scope.set_native_object_reference::<GuestTargetProjection>(
+                        &target,
+                        traced.slot,
+                        None,
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -81,7 +99,6 @@ impl GuestEvents {
         scope: &mut Scope<'scope>,
         key: ListenerMatch<'_, 'scope>,
     ) -> Result<Option<DomEventRegistrationId>, DocumentGuestEventError> {
-        let target = DomEventTarget::from(key.target.clone());
         let mut cursor = 0;
         loop {
             let candidate = self
@@ -89,7 +106,7 @@ impl GuestEvents {
                 .try_borrow()
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .next_guest_registration(
-                    &target,
+                    key.target,
                     key.event_type,
                     key.capture,
                     &mut cursor,
@@ -104,6 +121,50 @@ impl GuestEvents {
                 return Ok(Some(registration));
             }
         }
+    }
+
+    pub(super) fn register_retained<'scope>(
+        &self,
+        owner: &NativeOwner,
+        scope: &mut Scope<'scope>,
+        key: ListenerMatch<'_, 'scope>,
+        options: DomEventListenerOptions,
+        observed: CallbackObject<'scope>,
+    ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let backing = self.reserve(owner, size_of::<RegisteredGuestListener>())?;
+        let object = scope.retain_callback_object(observed, |bytes| self.reserve(owner, bytes))?;
+        let code = self
+            .next_callback
+            .get()
+            .checked_add(1)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
+            code,
+            object: RegisteredListenerObject::Retained(RefCell::new(Some(object))),
+            registration_window: attachment.target,
+            _backing: backing,
+        }));
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut registry = self
+            .registry
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let registration = registry.add_listener(
+            &mut session.dom(),
+            key.target.clone(),
+            key.event_type,
+            callback,
+            options,
+        )?;
+        self.next_callback.set(code);
+        Ok(registration)
     }
 
     pub(super) fn remove_registration(
@@ -122,11 +183,8 @@ impl GuestEvents {
                 registry.remove_listener(id),
             )
         };
-        if let Some(callback) = callback
-            && let RegisteredListenerObject::Traced(traced) = &callback.object
-            && let Some(target) = scope.open_native_object(&traced.target)?
-        {
-            callback.clear_receiver(scope, &target)?;
+        if let Some(callback) = callback {
+            callback.release(scope)?;
         }
         Ok(removed)
     }

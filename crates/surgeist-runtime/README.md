@@ -286,8 +286,14 @@ reporting. Guest listener references follow heap reachability, so an
 unreachable target and its listener cycle can retire together. Rust callers
 can inspect or control an authored Event through its borrowed native view.
 Host and guest initialization clear the same native target and guest reference.
-Node and Window EventTarget projections and AbortSignal integration have
-separate native prerequisites.
+The Window's readonly own `document` getter returns its canonical Document
+wrapper. The Document exposes the base Node reads for identity, connectivity,
+parent, owner and root. The standard Document constructor uses the original
+native Global and retains each created Document in its creation realm.
+Document and Window listeners share the native registry. Borrowed
+`EventTarget.prototype` methods authenticate the exact Window, and dispatch
+through a Document uses the canonical Window capture and bubble path.
+AbortSignal and descendant Node projections are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.
