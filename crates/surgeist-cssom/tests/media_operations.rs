@@ -257,6 +257,71 @@ fn utf16_single_medium_preserves_canonical_duplicate_recovery_and_removal() {
 }
 
 #[test]
+fn utf16_batch_replaces_exact_member_origin_even_when_normalization_is_equal() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let input = |unit| {
+        let mut units = vec![b'/' as u16, b'*' as u16, unit];
+        units.extend("*/print".encode_utf16());
+        Arc::new(units)
+    };
+    let original = input(0xd800);
+    let _ = media
+        .append_medium(
+            &mut store,
+            CssomSheetText::Utf16(original.clone()),
+            &proceed,
+        )
+        .unwrap();
+    let first = store.snapshot();
+    let original_units = |snapshot: &CssomSnapshot| {
+        let [member] = snapshot.media(media.id()).unwrap().queries() else {
+            panic!("expected one print member");
+        };
+        let CssValueOrigin::Parsed(origin) = member.origin() else {
+            panic!("expected an authored member origin");
+        };
+        assert_eq!(origin.source().as_str(), "/*\u{fffd}*/print");
+        origin.source().original_utf16().unwrap().clone()
+    };
+    assert!(Arc::ptr_eq(&original_units(&first), &original));
+    let replace = |store: &mut CssomStore, replacement| {
+        let mut edit = batch(store);
+        assert!(
+            edit.delete_medium(media.id(), "print", &proceed)
+                .unwrap()
+                .changed()
+        );
+        assert!(
+            edit.append_medium(media.id(), CssomSheetText::Utf16(replacement), &proceed)
+                .unwrap()
+                .changed()
+        );
+        store.commit(edit).unwrap()
+    };
+
+    let equal = input(0xd800);
+    assert!(!Arc::ptr_eq(&equal, &original));
+    unchanged(&replace(&mut store, equal));
+    assert_eq!(store.snapshot().revision(), first.revision());
+    assert!(Arc::ptr_eq(&original_units(&store.snapshot()), &original));
+
+    let replacement = input(0);
+    let commit = replace(&mut store, replacement.clone());
+    assert!(
+        matches!(commit.publication(), CssomPublication::Changed(_)),
+        "different original units must publish a new member origin: {:?}",
+        commit.publication()
+    );
+    let current = store.snapshot();
+    assert_ne!(current.revision(), first.revision());
+    assert_eq!(media.media_text(&store, limits()).unwrap(), "print");
+    assert!(Arc::ptr_eq(&original_units(&current), &replacement));
+    assert!(Arc::ptr_eq(&original_units(&first), &original));
+}
+
+#[test]
 fn utf16_media_admits_exact_backing_and_cumulative_equal_input_work() {
     let raw = Arc::new(exact_media("screen"));
     let (parsed, parse_work) = CssMediaQueryList::parse_utf16_with_work(
