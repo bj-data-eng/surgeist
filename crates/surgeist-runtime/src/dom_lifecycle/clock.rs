@@ -604,6 +604,378 @@ mod tests {
                 (body, commit.created(&iframe).unwrap().unwrap())
             }
 
+            fn constructor_lookup_steps(
+                dom: &crate::DomEventDom<'_>,
+                top: DomHostedTopLevel,
+                legacy: bool,
+                cancel: &AtomicBool,
+            ) -> u64 {
+                let mut steps = 0;
+                let mut step = || {
+                    steps += 1;
+                    Ok::<(), DomHostedError>(())
+                };
+                if legacy {
+                    dom.raw()
+                        .qualify_native_dispatch_document(top.document(), cancel, &mut step)
+                        .unwrap();
+                } else {
+                    let document = dom
+                        .raw()
+                        .dispatch_global_document_with(top.global(), cancel, &mut step)
+                        .unwrap();
+                    assert_eq!(document, top.document());
+                }
+                assert!(steps > 0);
+                steps
+            }
+
+            fn constructor_host(
+                cancel: &AtomicBool,
+            ) -> (DomSession, HostedRuntime, DomHostedTopLevel) {
+                let mut session = session();
+                let mut hosted = session.hosted_execution();
+                script(&hosted, &[Ok(150_001), Ok(260_001), Ok(430_001)]);
+                let host = hosted.create_host(&mut session.dom(), cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, cancel)
+                    .unwrap();
+                (session, hosted, top)
+            }
+
+            fn check_event_constructor_lookup(legacy: bool) {
+                use crate::{DomEventConstructionError, DomEventInit};
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, mut hosted, top) = constructor_host(&cancel);
+                let canonical_steps =
+                    constructor_lookup_steps(&session.dom(), top, legacy, &cancel);
+                let owner = hosted.state().unwrap();
+                let before = session.snapshot().stamp();
+                let clock_samples_left =
+                    || owner.borrow().clock.observations.as_ref().unwrap().len();
+                assert_eq!(clock_samples_left(), 1);
+                let construct = |hosted: &mut HostedRuntime, session: &mut DomSession| {
+                    if legacy {
+                        hosted.create_legacy_event(
+                            &mut session.dom(),
+                            top.document(),
+                            &b"Event".map(u16::from),
+                            &cancel,
+                        )
+                    } else {
+                        hosted.create_event(
+                            &mut session.dom(),
+                            top.global(),
+                            &[u16::from(b'x')],
+                            DomEventInit::default(),
+                            &cancel,
+                        )
+                    }
+                };
+                // The first admitted top-level uses one Host, top-level, cluster,
+                // and Global read, followed by one clock sample.
+                let required = canonical_steps + 4 + 1;
+                let short_cap = owner.borrow().work + required - 1;
+                owner.borrow_mut().limits.work = short_cap;
+                let result = construct(&mut hosted, &mut session);
+                assert!(
+                    matches!(
+                        result,
+                        Err(DomEventConstructionError::Hosted(
+                            DomHostedRuntimeError::Admission
+                        ))
+                    ),
+                    "one short of {canonical_steps} canonical steps, four Settings reads and one clock read: {result:?}"
+                );
+                assert_eq!(owner.borrow().work, short_cap);
+                assert_eq!(clock_samples_left(), 1);
+                assert_eq!(session.snapshot().stamp(), before);
+
+                let exact_cap = short_cap + required;
+                owner.borrow_mut().limits.work = exact_cap;
+                let event = construct(&mut hosted, &mut session).unwrap();
+                assert_eq!(event.creation().unwrap().global(), top.global());
+                assert_eq!(event.creation().unwrap().occurrence_microseconds(), 400);
+                if legacy {
+                    assert!(event.event_type().code_units().is_empty());
+                } else {
+                    assert_eq!(event.event_type().code_units(), [u16::from(b'x')]);
+                }
+                assert_eq!(owner.borrow().work, exact_cap);
+                assert_eq!(clock_samples_left(), 0);
+                assert_eq!(session.snapshot().stamp(), before);
+            }
+
+            #[test]
+            fn authored_event_requires_work_for_the_actual_creation_global_lookup() {
+                check_event_constructor_lookup(false);
+            }
+
+            #[test]
+            fn legacy_event_requires_work_for_the_receiving_documents_global_lookup() {
+                check_event_constructor_lookup(true);
+            }
+
+            #[test]
+            fn standalone_target_requires_global_lookup_work_before_spending_registry_work() {
+                use crate::{
+                    DomEventConstructionError, DomEventDispatcher, DomEventRegistryLimits,
+                };
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, mut hosted, top) = constructor_host(&cancel);
+                let canonical_steps = constructor_lookup_steps(&session.dom(), top, false, &cancel);
+                let owner = hosted.state().unwrap();
+                let registry = DomEventDispatcher::<()>::new(DomEventRegistryLimits {
+                    registrations: 1,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 1_000_000,
+                    work: 1,
+                })
+                .unwrap();
+                let before = session.snapshot().stamp();
+                let short_cap = {
+                    let mut state = owner.borrow_mut();
+                    let cap = state.work + canonical_steps + 4 - 1;
+                    state.limits.work = cap;
+                    cap
+                };
+                let short = hosted.create_event_target(
+                    &mut session.dom(),
+                    &registry,
+                    top.global(),
+                    &cancel,
+                );
+                assert!(
+                    matches!(
+                        short,
+                        Err(DomEventConstructionError::Hosted(
+                            DomHostedRuntimeError::Admission
+                        ))
+                    ),
+                    "one short of {canonical_steps} canonical steps and four Settings reads: {short:?}"
+                );
+                assert_eq!(owner.borrow().work, short_cap);
+                let exact_cap = short_cap + canonical_steps + 4;
+                owner.borrow_mut().limits.work = exact_cap;
+
+                // Exact Hosted work and the same registry's only step must suffice.
+                let standalone = hosted
+                    .create_event_target(&mut session.dom(), &registry, top.global(), &cancel)
+                    .unwrap();
+                assert_eq!(standalone.relevant_global(), top.global());
+                assert_eq!(owner.borrow().work, exact_cap);
+                assert_eq!(owner.borrow().clock.observations.as_ref().unwrap().len(), 1);
+                assert_eq!(session.snapshot().stamp(), before);
+            }
+
+            #[test]
+            fn hosted_constructors_charge_the_active_source_for_each_canonical_lookup_step() {
+                use crate::{
+                    DomEventCallback, DomEventConstructionError, DomEventDispatchError,
+                    DomEventDispatchLimits, DomEventDispatcher, DomEventInit,
+                    DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
+                    DomEventType, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceUnavailable,
+                };
+
+                let cancel = AtomicBool::new(false);
+                let (mut session, hosted, top, dialog) = hosted_dialog_for_clock(
+                    &[
+                        Ok(150_001),
+                        Ok(260_001),
+                        Ok(430_001),
+                        Err(Error::Unavailable),
+                        Err(Error::Unavailable),
+                    ],
+                    &cancel,
+                );
+                let mut source = session.source_execution();
+                let mut services = DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                };
+                let mut listeners = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 1,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 1_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                listeners
+                    .add_listener(
+                        &mut session.dom(),
+                        dialog,
+                        DomEventType::BEFORE_TOGGLE,
+                        DomEventCallback::new(move |dom, _, observations: &mut Vec<_>, event| {
+                            let mut hosted = hosted.clone();
+                            let cancel = AtomicBool::new(false);
+                            let spent = |dom: &crate::DomEventDom<'_>| {
+                                dom.pending_source_edit().unwrap().spent_work()
+                            };
+                            let before_control = spent(dom);
+                            let canonical_steps =
+                                constructor_lookup_steps(dom, top, false, &cancel);
+                            let global_work = spent(dom) - before_control;
+                            assert_eq!(global_work, 1 + canonical_steps);
+                            let before_control = spent(dom);
+                            let canonical_steps = constructor_lookup_steps(dom, top, true, &cancel);
+                            let legacy_work = spent(dom) - before_control;
+                            assert_eq!(legacy_work, 1 + canonical_steps);
+
+                            // Refuse after the complete lookup so Event and registry allocation
+                            // have no effect on the Source work measured here.
+                            let before = spent(dom);
+                            let event_result = hosted.create_event(
+                                dom,
+                                top.global(),
+                                &[],
+                                DomEventInit::default(),
+                                &cancel,
+                            );
+                            observations.push(("Event", spent(dom) - before, global_work + 4 + 1));
+                            assert!(matches!(
+                                event_result,
+                                Err(DomEventConstructionError::Hosted(
+                                    DomHostedRuntimeError::ClockUnavailable
+                                ))
+                            ));
+
+                            let before = spent(dom);
+                            let legacy_result = hosted.create_legacy_event(
+                                dom,
+                                top.document(),
+                                &b"Event".map(u16::from),
+                                &cancel,
+                            );
+                            observations.push((
+                                "legacy Event",
+                                spent(dom) - before,
+                                legacy_work + 4 + 1,
+                            ));
+                            assert!(matches!(
+                                legacy_result,
+                                Err(DomEventConstructionError::Hosted(
+                                    DomHostedRuntimeError::ClockUnavailable
+                                ))
+                            ));
+
+                            let no_registry_work =
+                                DomEventDispatcher::<()>::new(DomEventRegistryLimits {
+                                    registrations: 0,
+                                    pending_events: 0,
+                                    nested_dispatches: 0,
+                                    storage_bytes: 1_000_000,
+                                    work: 0,
+                                })
+                                .unwrap();
+                            let before = spent(dom);
+                            let target_result = hosted.create_event_target(
+                                dom,
+                                &no_registry_work,
+                                top.global(),
+                                &cancel,
+                            );
+                            observations.push((
+                                "EventTarget",
+                                spent(dom) - before,
+                                global_work + 4,
+                            ));
+                            assert!(matches!(
+                                target_result,
+                                Err(DomEventConstructionError::Event(
+                                    DomEventDispatchError::Admission(DomEventResource::Work)
+                                ))
+                            ));
+                            event.prevent_default();
+                            Ok(())
+                        }),
+                        DomEventListenerOptions {
+                            passive: Some(false),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                let DomSourceDriveProgress::Pending {
+                    request: DomSourceRequest::Event(request),
+                    reason: DomSourceUnavailable::Event,
+                } = source
+                    .apply(
+                        &mut session.dom(),
+                        DomSourceEdit::show_dialog(dialog),
+                        source_limits(),
+                        &mut services,
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("real Show must reach its beforetoggle request");
+                };
+                source
+                    .raise_event_runtime_limits(
+                        &session.dom(),
+                        DomSourceEventRuntimeLimits {
+                            jobs: 1,
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
+                        &cancel,
+                    )
+                    .unwrap();
+                let mut observations = Vec::new();
+                let DomSourceEventServiceProgress::Serviced { receipt } = source
+                    .service_event(
+                        &mut session.dom(),
+                        &request,
+                        &mut listeners,
+                        &mut observations,
+                        DomSourceEventServiceLimits {
+                            source: source_limits(),
+                            dispatch: DomEventDispatchLimits {
+                                path_items: 16,
+                                snapshot_listeners: 2,
+                                failure_records: 2,
+                                callbacks: 2,
+                                work: 100_000,
+                            },
+                        },
+                        &cancel,
+                    )
+                    .unwrap()
+                else {
+                    panic!("the original real beforetoggle must complete");
+                };
+                assert_eq!(receipt.callbacks(), 1);
+                assert!(receipt.failures().is_empty());
+                assert!(receipt.default_prevented());
+                assert!(matches!(
+                    source
+                        .resume(
+                            &mut session.dom(),
+                            request.operation(),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(_)
+                ));
+                assert_eq!(observations.len(), 3);
+                let mismatches = observations
+                    .iter()
+                    .filter(|(_, actual, expected)| actual != expected)
+                    .collect::<Vec<_>>();
+                assert!(
+                    mismatches.is_empty(),
+                    "Source work (front, actual, expected): {mismatches:?}"
+                );
+            }
+
             #[test]
             fn event_projection_preserves_an_earlier_occurrence_in_the_actual_global_domain() {
                 let cancel = AtomicBool::new(false);
