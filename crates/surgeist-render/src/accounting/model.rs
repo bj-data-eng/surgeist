@@ -185,6 +185,9 @@ dimensions! {
         /// Graph proof records moved by in-place ordering, two per executed swap.
         /// Comparisons and replacement-backing relocations have separate dimensions.
         GraphProofSortMoves,
+        /// Output slice bytes admitted before each native glyph bitmap decode call.
+        /// Includes calls that return a decode error.
+        NativeBitmapDecodeBytes,
     }
 }
 impl RenderWork {
@@ -297,6 +300,7 @@ impl RenderWork {
                         | Self::RasterCommandVisits
                         | Self::RasterResourceCopies
                         | Self::GraphProofSortMoves
+                        | Self::NativeBitmapDecodeBytes
                 ) || (cfg!(any(
                     feature = "render-window",
                     all(feature = "render-web", target_arch = "wasm32")
@@ -471,9 +475,11 @@ pub enum RenderPhase {
     ReadbackResolve,
     /// Actual readback staging-owner disposal before interval closure.
     ReadbackCleanup,
+    /// Selected bitmap glyph validation during native scene encoding.
+    NativeGlyphBitmap,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 44] = [
+    pub(crate) const ALL: [Self; 45] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -518,6 +524,7 @@ impl RenderPhase {
         Self::ReadbackSubmit,
         Self::ReadbackResolve,
         Self::ReadbackCleanup,
+        Self::NativeGlyphBitmap,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
@@ -548,6 +555,7 @@ impl RenderPhase {
             Self::Plan => Some(Self::FramePrepare),
             Self::Lower => Some(Self::FramePrepare),
             Self::Encode => Some(Self::FramePrepare),
+            Self::NativeGlyphBitmap => Some(Self::Encode),
             Self::GradientPrepare => Some(Self::Encode),
             Self::Atlas => Some(Self::Encode),
             Self::AtlasQuota => Some(Self::Atlas),
@@ -597,6 +605,7 @@ impl RenderPhase {
             Self::Plan => "plan",
             Self::Lower => "lower",
             Self::Encode => "encode",
+            Self::NativeGlyphBitmap => "native_glyph_bitmap",
             Self::GradientPrepare => "gradient_prepare",
             Self::Atlas => "atlas",
             Self::AtlasQuota => "atlas_quota",

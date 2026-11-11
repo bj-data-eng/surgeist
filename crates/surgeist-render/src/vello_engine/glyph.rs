@@ -292,7 +292,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             Some(account),
         )? {
             preflight_selected_image_head(&font, font_data)?;
-            let encoding = preflight_bitmap(&bitmap, font_data)?;
+            let encoding = preflight_bitmap(&bitmap, font_data, account)?;
             #[cfg(test)]
             selected_glyph_traces.push(
                 bitmap
@@ -1129,7 +1129,22 @@ fn checked_indexed_offset(
         .ok_or_else(|| font_data_error(font_data))
 }
 
-fn preflight_bitmap(bitmap: &SelectedBitmap<'_>, font_data: &FontData) -> Result<BitmapEncoding> {
+fn preflight_bitmap(
+    bitmap: &SelectedBitmap<'_>,
+    font_data: &FontData,
+    account: &Account,
+) -> Result<BitmapEncoding> {
+    let account = account.at(RenderPhase::NativeGlyphBitmap);
+    account.phase(RenderPhase::NativeGlyphBitmap, || {
+        validate_bitmap_data(bitmap, font_data, &account)
+    })
+}
+
+fn validate_bitmap_data(
+    bitmap: &SelectedBitmap<'_>,
+    font_data: &FontData,
+    account: &Account,
+) -> Result<BitmapEncoding> {
     match &bitmap.data {
         SelectedBitmapData::Bgra(data) => {
             let pixel_count = checked_pixel_count(bitmap.width, bitmap.height, font_data)?;
@@ -1144,7 +1159,7 @@ fn preflight_bitmap(bitmap: &SelectedBitmap<'_>, font_data: &FontData) -> Result
         SelectedBitmapData::Png {
             data,
             expected_dimensions,
-        } => preflight_png(data, *expected_dimensions, font_data),
+        } => preflight_png(data, *expected_dimensions, font_data, account),
         SelectedBitmapData::Mask {
             bpp,
             is_packed,
@@ -1167,12 +1182,13 @@ fn preflight_bitmap(bitmap: &SelectedBitmap<'_>, font_data: &FontData) -> Result
             if data.len() != expected {
                 return Err(font_data_error(font_data));
             }
+            let mut output = bitmap_decode_output(pixel_count, account)?;
             MaskData {
                 bpp: *bpp,
                 is_packed: *is_packed,
                 data,
             }
-            .decode(bitmap.width, bitmap.height)
+            .decode_to_slice(bitmap.width, bitmap.height, &mut output)
             .map_err(|_| font_data_error(font_data))?;
             Ok(BitmapEncoding::PackedMask)
         }
@@ -1184,6 +1200,7 @@ fn preflight_png(
     data: &[u8],
     expected_dimensions: Option<(u32, u32)>,
     font_data: &FontData,
+    account: &Account,
 ) -> Result<BitmapEncoding> {
     let mut decoder = png::Decoder::new(Cursor::new(data));
     decoder.set_transformations(Transformations::ALPHA | Transformations::STRIP_16);
@@ -1194,9 +1211,9 @@ fn preflight_png(
     let output_size = reader
         .output_buffer_size()
         .ok_or_else(|| font_data_error(font_data))?;
-    let mut output = vec![0; output_size];
+    let mut output = bitmap_decode_output(output_size, account)?;
     let info = reader
-        .next_frame(output.as_mut_slice())
+        .next_frame(&mut output)
         .map_err(|_| font_data_error(font_data))?;
     if let Some((width, height)) = expected_dimensions
         && (info.width != width || info.height != height)
@@ -1207,6 +1224,13 @@ fn preflight_png(
         return Err(unsupported_image_error());
     }
     Ok(BitmapEncoding::Png)
+}
+
+fn bitmap_decode_output(len: usize, account: &Account) -> Result<AccountedVec<u8>> {
+    let mut output = account.temporary(len)?;
+    account.work(RenderWork::NativeBitmapDecodeBytes, len)?;
+    output.resize(len, 0)?;
+    Ok(output)
 }
 
 fn checked_pixel_count(width: u32, height: u32, font_data: &FontData) -> Result<usize> {
@@ -1440,6 +1464,12 @@ mod receiving_tests {
 
     #[test]
     fn native_png_preflight_requires_decoded_output_scratch() {
+        let png = two_pixel_png();
+        let bitmap = selected_png(&png);
+        assert_bitmap_scratch_admission(&bitmap, 8, BitmapEncoding::Png);
+    }
+
+    fn two_pixel_png() -> Vec<u8> {
         let mut png = Vec::new();
         let mut encoder = png::Encoder::new(&mut png, 2, 1);
         encoder.set_color(png::ColorType::Rgba);
@@ -1449,17 +1479,20 @@ mod receiving_tests {
             .write_image_data(&[0, 17, 34, 255, 51, 68, 85, 255])
             .unwrap();
         writer.finish().unwrap();
-        let bitmap = SelectedBitmap {
+        png
+    }
+
+    fn selected_png(png: &[u8]) -> SelectedBitmap<'_> {
+        SelectedBitmap {
             width: 2,
             height: 1,
             source: SelectedBitmapSource::Other,
             data: SelectedBitmapData::Png {
-                data: &png,
+                data: png,
                 expected_dimensions: Some((2, 1)),
             },
             selection: None,
-        };
-        assert_bitmap_scratch_admission(&bitmap, 8, BitmapEncoding::Png);
+        }
     }
 
     #[test]
@@ -1488,8 +1521,8 @@ mod receiving_tests {
             let options = RenderAccountingOptions::new()
                 .with_limits(RenderLimits::new().with_scratch_bytes(scratch_limit));
             let mut context = RenderAccountingContext::new(options);
-            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Encode, |_| {
-                preflight_bitmap(bitmap, &font).map(|result| {
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                preflight_bitmap(bitmap, &font, account).map(|result| {
                     assert_eq!(
                         std::mem::discriminant(&result),
                         std::mem::discriminant(&encoding)
@@ -1502,9 +1535,96 @@ mod receiving_tests {
                 let error = result.expect_err("one-short scratch must refuse native bitmap decode");
                 assert!(error.accounting_diagnostic().is_some());
                 assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+                assert_eq!(usage.work(RenderWork::NativeBitmapDecodeBytes), 0);
             } else {
                 result.unwrap();
                 assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), decoded_bytes);
+                assert_eq!(
+                    usage.work(RenderWork::NativeBitmapDecodeBytes),
+                    decoded_bytes
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_png_work_refusal_and_decode_failure_release_frame_backing() {
+        use crate::accounting::{
+            FrameFixture, RenderClock, RenderCpuScope, RenderProfile, RendererCpu,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        fn clock() -> Duration {
+            Duration::from_nanos(TICKS.fetch_add(1, Ordering::Relaxed))
+        }
+
+        let (font, _, _) = fixture();
+        let png = two_pixel_png();
+        let idat = png.windows(4).position(|word| word == b"IDAT").unwrap();
+        let truncated = &png[..idat + 5];
+        let options = RenderAccountingOptions::new()
+            .with_clock(RenderClock::Host(clock))
+            .with_profile(RenderProfile::Summary { timing: true });
+        let cpu = RendererCpu::new(options).unwrap();
+        for (input, limit, expected_work) in [
+            (png.as_slice(), 7, 0),
+            (truncated, 8, 8),
+            (png.as_slice(), 8, 8),
+        ] {
+            let options = options.with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::NativeBitmapDecodeBytes, limit)
+                    .unwrap(),
+            );
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    preflight_bitmap(&selected_png(input), &font, attempt.account())
+                })
+                .unwrap()
+                .into_parts();
+            assert_eq!(fault, None);
+            let attempt = report.attempt().unwrap();
+            let phase = RenderPhase::NativeGlyphBitmap;
+            assert_eq!(
+                attempt
+                    .phase_usage(phase)
+                    .work(RenderWork::NativeBitmapDecodeBytes),
+                expected_work
+            );
+            assert_eq!(
+                attempt
+                    .phase_usage(RenderPhase::Encode)
+                    .work(RenderWork::NativeBitmapDecodeBytes),
+                expected_work
+            );
+            assert_eq!(attempt.phase_count(phase), 1);
+            assert!(attempt.phase_elapsed(phase).unwrap() > Duration::ZERO);
+            let backing = report
+                .renderer_cpu()
+                .unwrap()
+                .scope_usage(RenderCpuScope::FrameBacking);
+            assert_eq!(backing.peak(RenderResource::ScratchCpuBytes), 8);
+            assert_eq!(backing.live(RenderResource::ScratchCpuBytes), 0);
+            if limit == 7 {
+                let Some(crate::RenderAccountingError::Refused(refusal)) =
+                    result.err().unwrap().accounting_diagnostic()
+                else {
+                    panic!("one-short decode work must refuse");
+                };
+                assert_eq!(
+                    refusal.quantity(),
+                    crate::RenderQuantity::Work(RenderWork::NativeBitmapDecodeBytes)
+                );
+                assert_eq!(refusal.amount(), 8);
+            } else if input.len() < png.len() {
+                let error = result.err().unwrap();
+                assert_eq!(error.accounting_diagnostic(), None);
+                assert_eq!(error.code(), font_data_error(&font).code());
+                assert_eq!(error.message(), font_data_error(&font).message());
+            } else {
+                assert!(matches!(result, Ok(BitmapEncoding::Png)));
             }
         }
     }

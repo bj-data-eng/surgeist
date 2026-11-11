@@ -628,6 +628,7 @@ pub surgeist_render::RenderPhase::GradientPrepare
 pub surgeist_render::RenderPhase::Initialization
 pub surgeist_render::RenderPhase::Kernel
 pub surgeist_render::RenderPhase::Lower
+pub surgeist_render::RenderPhase::NativeGlyphBitmap
 pub surgeist_render::RenderPhase::Normalize
 pub surgeist_render::RenderPhase::Outline
 pub surgeist_render::RenderPhase::Output
@@ -742,6 +743,7 @@ pub surgeist_render::RenderWork::ImageTexelVisits
 pub surgeist_render::RenderWork::ImagesEmitted
 pub surgeist_render::RenderWork::KernelSampleVisits
 pub surgeist_render::RenderWork::LayersEmitted
+pub surgeist_render::RenderWork::NativeBitmapDecodeBytes
 pub surgeist_render::RenderWork::OutlinePointVisits
 pub surgeist_render::RenderWork::PaintVisits
 pub surgeist_render::RenderWork::PathElementVisits
@@ -1819,6 +1821,7 @@ pub surgeist_render::RenderWorkTable::ImageTexelVisits: T
 pub surgeist_render::RenderWorkTable::ImagesEmitted: T
 pub surgeist_render::RenderWorkTable::KernelSampleVisits: T
 pub surgeist_render::RenderWorkTable::LayersEmitted: T
+pub surgeist_render::RenderWorkTable::NativeBitmapDecodeBytes: T
 pub surgeist_render::RenderWorkTable::OutlinePointVisits: T
 pub surgeist_render::RenderWorkTable::PaintVisits: T
 pub surgeist_render::RenderWorkTable::PathElementVisits: T
