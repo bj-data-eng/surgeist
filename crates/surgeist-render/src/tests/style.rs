@@ -353,7 +353,7 @@ fn repeat_planning_admits_a_disjoint_nonrepeated_axis() {
         &error,
         report,
         RenderRefusal {
-            phase: RenderPhase::Repeat,
+            phase: RenderPhase::Attempt,
             quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
             current: 0,
             amount: 1,
@@ -396,7 +396,7 @@ fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
         &error,
         report,
         RenderRefusal {
-            phase: RenderPhase::Repeat,
+            phase: RenderPhase::Attempt,
             quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
             current: cap,
             amount: 1,
@@ -405,6 +405,14 @@ fn repeat_planning_admits_the_axis_count_before_its_semantic_limit() {
     );
     let usage = report.attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::CoordinateVisits), cap);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .phase_usage(RenderPhase::Repeat)
+            .work(RenderWork::CoordinateVisits),
+        cap
+    );
     assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
     assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
     assert_style_failure_releases_backing(report);
@@ -446,7 +454,7 @@ fn background_repeat_planning_admits_empty_axes_before_publication() {
         &error,
         report,
         RenderRefusal {
-            phase: RenderPhase::Repeat,
+            phase: RenderPhase::Attempt,
             quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
             current: 2,
             amount: 1,
@@ -469,6 +477,14 @@ fn background_repeat_planning_admits_empty_axes_before_publication() {
     };
     assert_eq!(layer.repeat().clip_rect(), rect);
     assert!(layer.repeat().tile_rects().is_empty());
+    let report = accounting.last_attempt().unwrap().attempt().unwrap();
+    assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 14);
+    assert_eq!(
+        report
+            .phase_usage(RenderPhase::Repeat)
+            .work(RenderWork::CoordinateVisits),
+        12
+    );
 }
 
 #[test]
