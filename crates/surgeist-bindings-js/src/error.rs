@@ -79,6 +79,8 @@ pub enum Error {
     /// This operation requires an object or function, respectively.
     ExpectedObject,
     ExpectedFunction,
+    /// This object has no supported associated engine creation Realm.
+    CallbackRealmUnavailable,
     /// Web IDL EnforceRange rejected a nonfinite or out-of-range Number.
     /// Installed JavaScript interfaces map this category to TypeError.
     IntegerOutOfRange,
@@ -124,6 +126,9 @@ impl fmt::Display for Error {
             Self::TooManyArguments => "the argument list exceeds the backend limit",
             Self::ExpectedObject => "an object is required",
             Self::ExpectedFunction => "a callable function is required",
+            Self::CallbackRealmUnavailable => {
+                "the callback object's associated realm is unavailable"
+            }
             Self::IntegerOutOfRange => "the Number is outside the Web IDL integer range",
             Self::FloatOutOfRange => "the Number is outside the Web IDL floating point range",
             Self::ByteStringOutOfRange => "the string contains a code unit outside the byte range",

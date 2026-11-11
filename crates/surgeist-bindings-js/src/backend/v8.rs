@@ -9,6 +9,7 @@ use super::{
     CoercedString, DomExceptionProfile, ObjectPrototype, Operations, PropertyDefinition,
     PropertyDescriptor, PropertyKey,
 };
+use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
 use crate::owner::OwnerState;
 use crate::{
@@ -18,6 +19,7 @@ use crate::{
     ValueKind, WellKnownSymbol,
 };
 
+mod callback_object;
 #[cfg(test)]
 mod tests;
 
@@ -72,6 +74,7 @@ struct Roots {
     owner: Rc<OwnerState>,
     next: Cell<u64>,
     entries: RefCell<BTreeMap<u64, Rc<RootEntry>>>,
+    callback_objects: callback_object::CallbackObjects,
     next_callback: Cell<u32>,
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
@@ -187,6 +190,7 @@ impl Roots {
             }
         };
         drop(retired);
+        self.callback_objects.reap(self);
         let retired = match self.callbacks.try_borrow_mut() {
             Ok(mut entries) => {
                 let dead: Vec<_> = entries
@@ -257,6 +261,7 @@ impl Engine {
             owner: Rc::new(OwnerState::new(owner)),
             next: Cell::new(0),
             entries: RefCell::new(BTreeMap::new()),
+            callback_objects: callback_object::CallbackObjects::default(),
             next_callback: Cell::new(0),
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
@@ -486,6 +491,13 @@ impl super::Engine for Engine {
         }
         drop(entry);
         Ok(())
+    }
+
+    fn release_callback_object(
+        &mut self,
+        holder: &Rc<CallbackObjectIdentity>,
+    ) -> Result<(), Error> {
+        self.roots.callback_objects.release(&self.roots, holder)
     }
 }
 
@@ -891,6 +903,27 @@ impl Operations for Entered<'_, '_, '_> {
                 Ok(roots.local(scope, value)?.is_function())
             },
         )
+    }
+
+    fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
+        self.observe_callback_object(value)
+    }
+
+    fn callback_object_storage_bytes(&self) -> usize {
+        callback_object::CallbackObjects::storage_bytes()
+    }
+
+    fn retain_callback_object(
+        &mut self,
+        object: &Root,
+        realm: RealmKey,
+        backing: Box<dyn std::any::Any>,
+    ) -> Result<Rc<CallbackObjectIdentity>, Error> {
+        self.pin_callback_object(object, realm, backing)
+    }
+
+    fn open_callback_object(&mut self, holder: &Rc<CallbackObjectIdentity>) -> Result<Root, Error> {
+        self.open_pinned_callback_object(holder)
     }
 
     fn native_error(&mut self) -> Result<Root, Error> {
