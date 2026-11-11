@@ -34,7 +34,8 @@ impl Operation {
         locked_cssom: Option<&surgeist_cssom::CssomStore>,
     ) -> bool {
         // A settled handoff keeps its job and closing credit in the fullscreen
-        // bank. Current producer inputs and live continuations stay with Source.
+        // bank. Unprepared Inline and Meta inputs belong to the rejected Draft.
+        // A prepared Meta phase or saved producer receipt still belongs to Source.
         self.published
             && dom.state.incomplete_source == Some(self.id)
             && matches!(self.commands, OperationRoot::Edit(_))
@@ -45,12 +46,6 @@ impl Operation {
             && self.draft.hosted_pending.is_none()
             && self.hosted_global.is_none()
             && self.request_close.is_none()
-            && self
-                .draft
-                .inline_recording
-                .as_ref()
-                .is_none_or(|recording| !recording.has_inputs())
-            && !self.meta_reached()
             && self.pending_meta.is_none()
             && self.meta_receipt.is_none()
             && self.draft.method.is_none()
