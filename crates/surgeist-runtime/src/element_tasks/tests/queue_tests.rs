@@ -440,30 +440,13 @@ fn details_dispatch_funding(state: &RefCell<ElementTaskState>, dom: &Dom) -> (us
     )
 }
 
-fn details_source_admission_cut(dom: &mut Dom, target: NodeId) -> usize {
-    let mut refused = 0;
-    let mut admitted = source_limits().retained_bytes();
-    while admitted - refused > 1 {
-        let bytes = refused + (admitted - refused) / 2;
-        let limits = DomSourceLimits::new(bytes, 16_000_000, 4_000_000, 64, 65_536, 65_536, 16);
-        match dom.begin_source_edit(
-            DomSourceEdit::set_attribute(target, "data-probe", ""),
-            limits,
-            &cancel(),
-        ) {
-            Ok(lease) => {
-                // No cursor step, publication, or effect escapes this probe.
-                drop(lease);
-                admitted = bytes;
-            }
-            Err(DomError::ResourceLimit {
-                resource: surgeist_dom::DomResource::SourceRetainedBytes,
-                limit,
-            }) if limit == bytes => refused = bytes,
-            Err(error) => panic!("the Source byte allowance decides the cut: {error:?}"),
-        }
-    }
-    admitted
+fn running_details_funding(
+    state: &RefCell<ElementTaskState>,
+    dom: &DomEventDom<'_>,
+) -> (usize, usize, usize) {
+    let (runtime, event_source, canonical) = details_dispatch_funding(state, dom.raw());
+    let dispatch_source = dom.inspect_running_element_source_bytes().unwrap();
+    (runtime, event_source + dispatch_source, canonical)
 }
 
 fn details_drop_registry() -> DomEventDispatcher<DispatchDropObservation> {
@@ -512,21 +495,9 @@ fn details_dispatch_drop_fixture(drop_while_running: bool) -> DetailsDispatchDro
                     context.held.path = Some(event.composed_path());
                     if drop_while_running {
                         let state = context.held.owner.state().unwrap();
-                        let (runtime, _, canonical) = details_dispatch_funding(&state, dom.raw());
-                        let registry_bytes = listeners.inspect_pending_index_bytes()
-                            + listeners.inspect_registration_bytes();
-                        let before = (
-                            runtime,
-                            details_source_admission_cut(dom.raw_mut(), target) - registry_bytes,
-                            canonical,
-                        );
+                        let before = running_details_funding(&state, dom);
                         drop(std::mem::replace(listeners, details_drop_registry()));
-                        let (runtime, _, canonical) = details_dispatch_funding(&state, dom.raw());
-                        let after = (
-                            runtime,
-                            details_source_admission_cut(dom.raw_mut(), target),
-                            canonical,
-                        );
+                        let after = running_details_funding(&state, dom);
                         context.running = Some([before, after]);
                     }
                     Err(DomEventCallbackError { code: 91 })
@@ -785,10 +756,9 @@ fn details_dispatcher_drop_keeps_running_dispatch_funded_until_callback_returns(
         settled.2 < after.2,
         "the actual stack scope releases after return"
     );
-    let source_after = details_source_admission_cut(session.dom().raw_mut(), target);
     assert!(
-        after.1 - source_after > after.2 - settled.2,
-        "return releases the original task Source funding as well as the canonical scope"
+        settled.1 + path < after.1,
+        "return releases stack Source funding beyond the retained Event and path"
     );
     assert_eq!(context.calls, ["prefix"]);
     assert_abandoned_details_row(
