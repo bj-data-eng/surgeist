@@ -384,6 +384,121 @@ pub(in crate::document_scripting) fn attached_window_event_clears_on_terminal_li
     ));
 }
 
+pub(in crate::document_scripting) fn attached_guest_dispatch_restores_the_outer_window_event() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = units("nested");
+    let outer = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let inner = host
+        .create_guest_event(
+            &permit,
+            &kind,
+            DomEventInit {
+                cancelable: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    inner.native().prevent_default();
+    let (once, listener, original_exception) = host
+        .in_document(&permit, |scope| {
+            let global = scope.global()?;
+            for (key, value) in [
+                ("target", target.object(scope)?),
+                ("outer", outer.object(scope)?),
+                ("inner", inner.object(scope)?),
+            ] {
+                scope.set(&global, PropertyKey::String(&units(key)), &value)?;
+            }
+            scope.evaluate(&units(
+                "globalThis.trace = [];
+                 globalThis.marker = {};
+                 globalThis.check = (condition, detail) => { if (!condition) throw new Error(detail); };",
+            ))?;
+            assert_guest(scope, "globalThis.event === undefined && outer !== inner")?;
+            let once = scope.evaluate(&units(
+                "(function(e) {
+                    check(this === target && e === outer && globalThis.event === e, 'outer entry');
+                    trace.push('once:outer');
+                    check(target.dispatchEvent(inner) === false, 'inner native cancellation');
+                    check(globalThis.event === e, 'outer current event restored');
+                    trace.push('restored:outer');
+                    try {
+                        target.dispatchEvent(e);
+                        throw new Error('redispatched active Event');
+                    } catch (error) {
+                        check(error instanceof DOMException && error.name === 'InvalidStateError', 'active Event refusal');
+                    }
+                    check(globalThis.event === e, 'active Event refusal retained outer scope');
+                    throw marker;
+                })",
+            ))?;
+            let listener = scope.evaluate(&units(
+                "({ get handleEvent() {
+                    check(globalThis.event === inner || globalThis.event === outer, 'late lookup scope');
+                    return function(e) {
+                        check(this === listener && globalThis.event === e, 'object listener scope');
+                        check(e === inner || e === outer, 'exact projected Event');
+                        trace.push(e === inner ? 'object:inner' : 'object:outer');
+                    };
+                } })",
+            ))?;
+            scope.set(&global, PropertyKey::String(&units("listener")), &listener)?;
+            let marker = scope.get(&global, PropertyKey::String(&units("marker")))?;
+            Ok((scope.retain(&once), scope.retain(&listener), scope.retain(&marker)))
+        })
+        .unwrap();
+    let once_id = host
+        .add_guest_event_listener(
+            &permit,
+            &target,
+            &kind,
+            &once,
+            DomEventListenerOptions {
+                once: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    host.add_guest_event_listener(&permit, &target, &kind, &listener, Default::default())
+        .unwrap();
+    let report = host.dispatch_guest_event(&permit, &target, &outer).unwrap();
+    assert_eq!(report.receipt().callbacks(), 2);
+    assert_eq!(report.receipt().failures().len(), 1);
+    assert!(!report.receipt().default_prevented());
+    let [exception] = report.exceptions() else {
+        panic!("outer listener's original exception")
+    };
+    assert_eq!(exception.registration, once_id);
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trace[0] === 'once:outer'")?;
+        let trace = scope.evaluate(&units("trace.join(',')"))?;
+        assert_eq!(
+            String::from_utf16_lossy(&scope.to_utf16(&trace)?),
+            "once:outer,object:inner,restored:outer,object:outer"
+        );
+        assert_guest(scope, "globalThis.event === undefined")?;
+        let original = scope.import(&original_exception)?;
+        let reported = scope.import(exception.exception.value())?;
+        assert!(scope.strict_equals(&original, &reported)?);
+        Ok(())
+    })
+    .unwrap();
+    assert!(!host.remove_guest_event_listener(&permit, once_id).unwrap());
+    for event in [&inner, &outer] {
+        assert_eq!(
+            event.native().target(),
+            Some(report.receipt().original_target())
+        );
+        assert_eq!(event.native().current_target(), None);
+        assert_eq!(event.native().composed_path().count(), 0);
+    }
+}
+
 pub(in crate::document_scripting) fn attached_object_listeners_look_up_handle_event_when_invoked() {
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();
