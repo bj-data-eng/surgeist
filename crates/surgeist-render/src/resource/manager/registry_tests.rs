@@ -55,6 +55,43 @@ fn lifetime_probes(manager: &ResourceManager) -> u64 {
 }
 
 #[test]
+fn active_frame_admission_refuses_unfunded_index_without_advancing_identity() {
+    use crate::accounting::{RenderCpuScope, RenderResource, RendererCpu};
+
+    let options = RenderAccountingOptions::new();
+    let opening = RendererCpu::new(options)
+        .unwrap()
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    let options = options.with_limits(RenderLimits::new().with_retained_bytes(opening));
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let error = manager
+        .begin_frame(None)
+        .err()
+        .expect("the first active-frame record needs retained backing");
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+            current,
+            ..
+        }) if current == opening
+    ));
+    assert_eq!(registry_facts(&manager), (0, 0, 0, 0));
+    let usage = cpu.snapshot().unwrap().usage();
+    assert_eq!(usage.live(RenderResource::RetainedCpuBytes), opening);
+    assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), opening);
+    cpu.ensure_healthy().unwrap();
+}
+
+#[test]
 fn mutable_registration_receipt_names_the_missing_identity_and_preserves_custody() {
     use crate::RenderResource;
     use surgeist_ledger::Dimension;
