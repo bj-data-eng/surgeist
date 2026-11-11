@@ -1,7 +1,9 @@
 use super::{IndexedPaint, PaintCleanup, SequencedPaint, model::*, validation::PaintIndex};
 use crate::{
     AccountingFailure, BoxId, PaintError, Participation, Position, ResourceKind, WorkKind,
-    accounting::{Meter, PhaseMeter, allocate, charge, release, setup_error},
+    accounting::{
+        Meter, PhaseMeter, allocate, allocate_with_headroom, charge, release, setup_error,
+    },
     algorithm,
 };
 use std::{
@@ -127,8 +129,12 @@ mod pending_tests {
 #[cfg(test)]
 mod growth_tests {
     use super::*;
-    use crate::{PaintLimits, PaintOptions, PaintReport, ProfileMode, accounting::OperationKind};
+    use crate::{
+        BoxFacts, ChildOrder, ContextEffect, EventFilter, PaintChange, PaintEvent, PaintLimits,
+        PaintOptions, PaintReport, ProfileMode, RefusalReason, ZIndex, accounting::OperationKind,
+    };
     use std::mem::size_of;
+    use surgeist_layout::SourceIndex;
 
     fn exercise(work_limit: u64, resource_limit: u64) -> (bool, u64, u64, PaintReport) {
         let limits = PaintLimits::unlimited()
@@ -193,6 +199,122 @@ mod growth_tests {
         assert_eq!((retained, unchanged), (old, old));
         assert_eq!(report.work(WorkKind::OrderMove), 0);
         assert_eq!(report.peak(ResourceKind::ScratchBytes), old);
+    }
+
+    #[test]
+    fn scratch_growth_reports_whether_required_replacement_fits() {
+        let old = 3 * size_of::<u64>() as u64;
+        let required = 4 * size_of::<u64>() as u64;
+        let (accepted, retained, replacement, report) = exercise(3, old + required);
+        assert!(accepted, "the live backing and four required records fit");
+        assert_eq!((retained, replacement), (old, required));
+        assert_eq!(report.peak(ResourceKind::ScratchBytes), old + required);
+        assert_eq!(report.work(WorkKind::OrderMove), 3);
+        assert_eq!(report.refusals().count(), 0);
+
+        let cap = old + required - 1;
+        let (accepted, retained, unchanged, report) = exercise(3, cap);
+        assert!(!accepted);
+        assert_eq!((retained, unchanged), (old, old));
+        assert_eq!(report.peak(ResourceKind::ScratchBytes), old);
+        assert_eq!(report.work(WorkKind::OrderMove), 0);
+        let refusal = report.refusals().next().unwrap();
+        assert_eq!(refusal.current, old);
+        assert_eq!(refusal.reason, RefusalReason::Limit { limit: cap });
+        assert_eq!(
+            refusal.change,
+            PaintChange::Acquire {
+                kind: ResourceKind::ScratchBytes,
+                amount: required
+            }
+        );
+    }
+
+    #[test]
+    fn paint_order_publishes_when_scratch_fits_nine_pending_tasks() {
+        let boxes = [BoxFacts::new(
+            None,
+            SourceIndex::new(0),
+            ChildOrder::Source,
+            Participation::Ordinary,
+            Position::Static,
+            ZIndex::Auto,
+            ContextEffect::None,
+        )];
+        let paint = [BoxPaint::new(BoxPaintKind::Block, FloatParticipation::None)];
+        let root = BoxId::new(0);
+        let request = PaintRequest::new(&boxes, &paint, &[], &[], &[], &[], root);
+        let profile = ProfileMode::Detailed {
+            timing: false,
+            event_limit: 512,
+            filter: EventFilter::All,
+        };
+        let options = PaintOptions::new(PaintLimits::unlimited(), profile);
+        let baseline = crate::plan_paint_order(request, options);
+        assert!(baseline.result.is_ok());
+        let baseline = baseline.report.unwrap();
+        // A root pushes its end marker and eight stages. Its ninth pending
+        // task previously grew the eight-record backing to sixteen records.
+        let task_bytes = size_of::<Task>() as u64;
+        let required_peak = baseline.peak(ResourceKind::ScratchBytes) - 7 * task_bytes;
+        let outcome = crate::plan_paint_order(
+            request,
+            options.with_limits(
+                PaintLimits::unlimited()
+                    .with_resource_limit(ResourceKind::ScratchBytes, required_peak),
+            ),
+        );
+        let plan = outcome
+            .result
+            .expect("nine pending tasks fit the scratch limit");
+        let events: Vec<_> = plan.events().collect();
+        assert!(
+            matches!(events.as_slice(), [PaintOrderEvent::BeginContext(begin), PaintOrderEvent::EndContext(end)] if begin.id() == root && end.id() == root)
+        );
+        let report = outcome.report.unwrap();
+        assert_eq!(report.peak(ResourceKind::ScratchBytes), required_peak);
+        assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
+        assert_eq!(report.refusals().count(), 0);
+        assert_eq!(report.dropped_events(), 0);
+        assert!(
+            !report
+                .events()
+                .any(|event| matches!(event, PaintEvent::Refused { .. }))
+        );
+        for &kind in WorkKind::ALL {
+            assert_eq!(report.work(kind), baseline.work(kind), "{kind:?}");
+        }
+
+        let one_short = required_peak - 1;
+        let outcome = crate::plan_paint_order(
+            request,
+            options.with_limits(
+                PaintLimits::unlimited().with_resource_limit(ResourceKind::ScratchBytes, one_short),
+            ),
+        );
+        let Err(PaintError::Budget(refusal)) = outcome.result else {
+            panic!("the ninth task needs a replacement");
+        };
+        assert_eq!(refusal.current, required_peak - 9 * task_bytes);
+        assert_eq!(refusal.reason, RefusalReason::Limit { limit: one_short });
+        assert_eq!(
+            refusal.change,
+            PaintChange::Acquire {
+                kind: ResourceKind::ScratchBytes,
+                amount: 9 * task_bytes,
+            }
+        );
+        let report = outcome.report.unwrap();
+        assert_eq!(report.refusals().collect::<Vec<_>>(), [refusal]);
+        assert_eq!(
+            report
+                .events()
+                .filter(|event| matches!(event, PaintEvent::Refused { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
+        assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
     }
 }
 
@@ -316,7 +438,7 @@ fn capacity<T: Copy>(
         return Ok(());
     }
     let doubled = values.capacity().checked_mul(2).unwrap_or(wanted);
-    let mut next = allocate(p, root, wanted.max(doubled), ResourceKind::ScratchBytes)?;
+    let mut next = allocate_with_headroom(p, root, wanted, doubled, ResourceKind::ScratchBytes)?;
     if let Err(error) = charge(p, phase, WorkKind::OrderMove, values.len()) {
         release(p, root, next, ResourceKind::ScratchBytes)?;
         return Err(error);

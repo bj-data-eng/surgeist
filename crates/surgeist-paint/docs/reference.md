@@ -218,6 +218,12 @@ children under the `paint stacking` root: eight scopes in total.
 inside that single operation/report. Phase usage is inclusive; root totals and
 child attribution must not be summed together.
 
+When sequencing scratch grows, Paint previews doubled capacity and uses the
+required capacity when the extra space is unavailable. The selected allocation
+charges its actual capacity while the old allocation remains live. A capacity
+refusal describes the required acquisition. Copy work is charged only after
+the replacement is admitted.
+
 `resolve_linear_gradient` uses gradient validation, geometry and publication
 attribution. Validation counts each input scalar or direction discriminant;
 direction work counts actual resolution actions. Coordinate work counts actual
