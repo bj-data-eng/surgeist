@@ -1080,6 +1080,27 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
     }
 }
 
+impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
+    pub(super) fn settled_indefinite_percentage_axis(
+        &self,
+        axes: super::FlexAxes,
+        child_flow: crate::FlowAxes,
+    ) -> Option<PhysicalAxis> {
+        let cross_axis = axes.cross_physical_axis();
+        let cross_is_fixed_by_bounds = axes
+            .cross_size(self.min_size)
+            .zip(axes.cross_size(self.max_size))
+            .is_some_and(|(min, max)| max <= min);
+        let indefinite_cross = (child_flow.block_axis() == cross_axis
+            && self.authored_cross_size.is_none()
+            && !cross_is_fixed_by_bounds
+            && !self.ratio_cross_has_percentage_basis
+            && !self.stretches_cross(axes))
+        .then_some(cross_axis);
+        self.indefinite_percentage_axis.or(indefinite_cross)
+    }
+}
+
 pub(super) fn compute_sized_item<'input, Tree, M>(
     tree: &mut Tree,
     item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
@@ -1093,18 +1114,6 @@ where
     let known = final_item_size::<Tree, M>(tree, item, style, constants)?;
 
     let axes = constants.axes;
-    let cross_axis = axes.cross_physical_axis();
-    let cross_is_fixed_by_bounds = axes
-        .cross_size(item.min_size)
-        .zip(axes.cross_size(item.max_size))
-        .is_some_and(|(min, max)| max <= min);
-    let indefinite_cross = (style.common.flow_axes.block_axis() == cross_axis
-        && item.authored_cross_size.is_none()
-        && !cross_is_fixed_by_bounds
-        && !item.ratio_cross_has_percentage_basis
-        && !item.stretches_cross(axes))
-    .then_some(cross_axis);
-
     let available = crate::layout_math::transpose_axis_requests_at_node(
         item.node,
         Size::new(
@@ -1143,7 +1152,9 @@ where
             constants.sizing_request.with_axes(available),
         )
         .with_physical_baseline_demand(mode == RunMode::ComputeSize)
-        .with_indefinite_percentage_axis(item.indefinite_percentage_axis.or(indefinite_cross))
+        .with_indefinite_percentage_axis(
+            item.settled_indefinite_percentage_axis(axes, style.common.flow_axes),
+        )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )
 }

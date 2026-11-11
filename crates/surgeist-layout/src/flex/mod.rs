@@ -1840,7 +1840,17 @@ where
     );
     let demand_baseline =
         constants.physical_baseline_demand || item.uses_native_cross_baseline(axes);
-    let measure_cross = |tree: &mut Tree, mode, known_cross, cross_request, demand| {
+    let child_flow = FlowAxes::new(style.writing_mode, style.direction);
+    let measure_cross = |tree: &mut Tree,
+                         mode,
+                         known_cross: Option<Tree::Scalar>,
+                         cross_request,
+                         demand| {
+        let indefinite_axis = if known_cross.is_some() {
+            item.settled_indefinite_percentage_axis(axes, child_flow)
+        } else {
+            item.indefinite_percentage_axis
+        };
         tree.compute_child(
             item.node,
             ComputeInputOf::for_child(
@@ -1855,7 +1865,7 @@ where
                     .with_axes(axes.size_from_main_cross(available_main, cross_request)),
             )
             .with_physical_baseline_demand(demand)
-            .with_indefinite_percentage_axis(item.indefinite_percentage_axis)
+            .with_indefinite_percentage_axis(indefinite_axis)
             .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
     };
