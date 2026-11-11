@@ -250,11 +250,15 @@ fact with their exact snapshot and captured registration. A stopped snapshot
 rejects the former live observation at the same structural revision. Historical
 snapshots retain that observation. A Source event can select an external guest
 listener through the original dispatcher and transfer the actual invocation to
-the script owner. Guest execution releases native loans, can detach an explicitly
-delegated Document comment through nested Source work, and retains any exact guest
-exception for the native report. The original dispatcher then continues delivery
-and the caller resumes the same Source operation. Standard DOM wrappers and
-parser execution belong to their own contributions.
+the script owner. The selected guest handler receives the explicitly delegated
+Document Comment as a host object. The detach hook requires that exact object
+as its second argument and converts the first argument to Number before applying
+the nested Source edit. Repeated exposure preserves the wrapper and its expandos
+until native destruction or attachment teardown. Guest execution releases native
+loans and retains any exact guest exception for the native report. The original
+dispatcher then continues delivery and the caller resumes the same Source
+operation. Standard DOM interfaces and parser execution belong to their own
+contributions.
 
 ## Start
 

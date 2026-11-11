@@ -172,6 +172,18 @@ impl Process {
     pub fn conversion_cleanup_status(&self) -> conversion::CleanupStatus {
         self.engine.owner_state().cleanup_status()
     }
+
+    /// Requested Rust root record backing for one managed object, excluding
+    /// allocator and SDK storage. Admit this before allocating a holder.
+    pub fn managed_object_storage_bytes(&self) -> usize {
+        self.engine.managed_object_storage_bytes()
+    }
+
+    /// Releases the managed holder without entering guest code, including
+    /// after this process has refused further execution.
+    pub fn release_managed_object(&mut self, object: ManagedObject) -> Result<(), Error> {
+        self.engine.release_managed_object(object.holder)
+    }
 }
 
 /// Exclusive access to an execution owner's heap.
@@ -273,6 +285,13 @@ pub(crate) struct RootIdentity {
 /// identity before accessing the engine. This token is neither Send nor Sync.
 #[derive(Clone, Debug)]
 pub struct Root(Rc<RootIdentity>);
+
+/// Exclusive native custody of one host object's managed heap holder.
+/// The holder keeps the object and its creation context alive. Native callback
+/// registrations must not capture this custody.
+pub struct ManagedObject {
+    holder: Root,
+}
 
 /// A value confined to one Rust binding scope.
 pub struct Value<'scope> {
@@ -678,6 +697,22 @@ pub struct Scope<'scope> {
 }
 
 impl<'scope> Scope<'scope> {
+    /// Allocates one host object in the entered creation realm, with its
+    /// original Object prototype and a private managed holder.
+    pub fn managed_object(&mut self) -> Result<ManagedObject, Error> {
+        self.operations
+            .managed_object()
+            .map_err(|error| self.operations.refuse(error))
+            .map(|holder| ManagedObject { holder })
+    }
+
+    /// Reopens the exact projected object, including from a different realm
+    /// of the same owner. The holder itself is never exposed to the guest.
+    pub fn open_managed_object(&mut self, object: &ManagedObject) -> Result<Value<'scope>, Error> {
+        let root = self.operations.open_managed_object(&object.holder)?;
+        Ok(self.value(root))
+    }
+
     /// Observes the actual selected scope realm. In a native callback this
     /// is its creation realm; it says nothing about a guest caller, incumbent
     /// settings, a native Global, or permission to access a Document.

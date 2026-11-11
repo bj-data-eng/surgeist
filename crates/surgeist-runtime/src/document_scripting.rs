@@ -15,7 +15,7 @@ use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializat
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
     DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
-    DomSnapshot,
+    DomSnapshot, DomStamp,
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -25,6 +25,7 @@ use crate::{
     HostedRuntime,
 };
 
+mod projection;
 mod source;
 pub use source::{
     DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
@@ -52,6 +53,8 @@ pub enum DocumentScriptNativeError {
     SourcePending,
     /// This hook lacks the selected native event's exact Source authority.
     SourceAccess,
+    /// The native Comment's creation Global is unavailable in this attachment.
+    CreationGlobalUnavailable,
     /// The result cannot be represented in the supported service profile.
     RepresentationExhausted,
 }
@@ -198,8 +201,9 @@ impl NativeOwner {
 pub struct DocumentScriptHooks<'a> {
     /// Reads the attached Document's current direct child count.
     pub child_count: &'a [u16],
-    /// During a selected Source event, converts its argument to Number and
-    /// detaches the delegated direct Document comment for a nonzero, non-NaN result.
+    /// During a selected Source event, takes a condition and the exact projected
+    /// Comment. After authenticating the Comment, converts the condition to
+    /// Number and detaches it for a nonzero, non-NaN result.
     pub detach_source_node_if: &'a [u16],
 }
 
@@ -462,6 +466,7 @@ impl PreparedDocumentScriptHost {
             registration,
             process,
             realm,
+            comments: projection::ProjectedComments::default(),
             retained_bytes: bytes,
             _hook_backing: hook_backing,
         })
@@ -488,8 +493,25 @@ struct ScriptEngine {
     registration: DomDocumentScriptRegistration,
     process: Process,
     realm: Realm,
+    comments: projection::ProjectedComments,
     retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
+}
+
+impl ScriptEngine {
+    fn retained_bytes_with(&self, additional: usize) -> Option<usize> {
+        self.comments
+            .len()
+            .checked_mul(projection::ProjectedComments::pin_bytes(&self.process)?)?
+            .checked_add(self.retained_bytes)?
+            .checked_add(additional)
+    }
+
+    fn release_terminal_comments(&mut self, realm: &RealmAuthority) {
+        if realm.check_owner_active().is_err() {
+            self.comments.release_all(&mut self.process);
+        }
+    }
 }
 
 enum ScriptRetirement {
@@ -504,11 +526,27 @@ pub struct DocumentScriptHost {
     retirement: Option<ScriptRetirement>,
 }
 
-struct NativeLoanExit<'a>(&'a mut DocumentScriptHost);
+struct NativeLoanExit<'a> {
+    host: &'a mut DocumentScriptHost,
+    projection_basis: Option<DomStamp>,
+}
 
 impl Drop for NativeLoanExit<'_> {
     fn drop(&mut self) {
-        self.0.dispose_retired_engine();
+        self.host.dispose_retired_engine();
+        if let Some(basis) = self.projection_basis
+            && let Some(engine) = self.host.engine.as_mut()
+            && let Ok(session) = self.host.native.session.try_borrow()
+        {
+            let snapshot = session.snapshot();
+            drop(session);
+            if snapshot.stamp() != basis {
+                engine.comments.retire(&snapshot, &mut engine.process);
+            }
+            if let Some(attachment) = self.host.native.attachment.get() {
+                engine.release_terminal_comments(&attachment.realm);
+            }
+        }
     }
 }
 
@@ -623,11 +661,18 @@ impl DocumentScriptHost {
     ) -> Result<T, DocumentScriptError> {
         self.check_permit(permit)?;
         self.observe()?;
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         let engine = self
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        Ok(engine.process.execution().in_realm(&engine.realm, action)?)
+        let result = engine.process.execution().in_realm(&engine.realm, action);
+        engine.release_terminal_comments(&attachment.realm);
+        Ok(result?)
     }
 
     /// Run the shared guest queue only after current native qualification and
@@ -644,11 +689,18 @@ impl DocumentScriptHost {
             });
         }
         self.observe()?;
+        let attachment = self
+            .native
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
         let engine = self
             .engine
             .as_mut()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        Ok(engine.process.execution().checkpoint()?)
+        let result = engine.process.execution().checkpoint();
+        engine.release_terminal_comments(&attachment.realm);
+        Ok(result?)
     }
 
     /// Historical native snapshot; it carries no live script authority.
@@ -670,15 +722,23 @@ impl DocumentScriptHost {
     ) -> Result<T, DocumentScriptNativeError> {
         // The Session loan and DOM view must end before Process disposal,
         // including if caller code unwinds after canonical retirement.
-        let exit = NativeLoanExit(self);
+        let mut exit = NativeLoanExit {
+            host: self,
+            projection_basis: None,
+        };
         let mut session = exit
-            .0
+            .host
             .native
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let hosted = session.hosted_execution();
         let source = session.source_execution();
+        if let Some(engine) = exit.host.engine.as_ref()
+            && engine.comments.len() != 0
+        {
+            exit.projection_basis = Some(session.snapshot().stamp());
+        }
         Ok(action(&mut session.dom(), hosted, source))
     }
 
@@ -768,7 +828,7 @@ fn read_child_count<'scope>(
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let status = match native.active_source() {
-            Some(active) => native.qualify_event(attachment, &mut session, &active)?,
+            Some(active) => native.qualify_event(attachment, &mut session, active.request())?,
             None => native.observe(attachment, &mut session)?.status(),
         };
         if status != HtmlScriptingStatus::Enabled {

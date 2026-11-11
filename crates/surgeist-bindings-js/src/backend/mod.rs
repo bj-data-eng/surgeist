@@ -74,6 +74,8 @@ pub(crate) trait Engine {
     ) -> Result<(), Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
     fn memory_pressure(&mut self);
+    fn managed_object_storage_bytes(&self) -> usize;
+    fn release_managed_object(&mut self, holder: Root) -> Result<(), Error>;
     fn reap(&mut self);
 }
 
@@ -118,6 +120,8 @@ pub(crate) trait Operations {
         definition: PropertyDefinition,
     ) -> Result<(), Error>;
     fn object(&mut self, prototype: ObjectPrototype<'_>) -> Result<Root, Error>;
+    fn managed_object(&mut self) -> Result<Root, Error>;
+    fn open_managed_object(&mut self, holder: &Root) -> Result<Root, Error>;
     fn set_prototype(&mut self, object: &Root, prototype: ObjectPrototype<'_>)
     -> Result<(), Error>;
     fn array(&mut self, values: &[Root]) -> Result<Root, Error>;

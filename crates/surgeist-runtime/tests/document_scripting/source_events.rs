@@ -29,6 +29,7 @@ struct Fixture {
     dispatcher: DomEventDispatcher<NativeTrace>,
     context: NativeTrace,
     registration: DomEventRegistrationId,
+    later_registration: DomEventRegistrationId,
     request: DomSourceEventRequest,
     handler: Root,
     dialog: NodeId,
@@ -41,6 +42,15 @@ fn fixture(
     cancellation: Arc<AtomicBool>,
     initialize: impl FnOnce(&mut Scope<'_>) -> Result<(), Error>,
 ) -> Fixture {
+    fixture_with_storage(handler, cancellation, initialize, STORAGE).unwrap()
+}
+
+fn fixture_with_storage(
+    handler: &str,
+    cancellation: Arc<AtomicBool>,
+    initialize: impl FnOnce(&mut Scope<'_>) -> Result<(), Error>,
+    storage: usize,
+) -> Result<Fixture, DocumentScriptError> {
     let mut policy = limits();
     policy.source_events.jobs = 8;
     let mut session = session(policy);
@@ -106,7 +116,7 @@ fn fixture(
             },
         )
         .unwrap();
-    dispatcher
+    let later_registration = dispatcher
         .add_listener(
             &mut session.dom(),
             dialog,
@@ -129,9 +139,10 @@ fn fixture(
         )
         .unwrap();
 
-    let mut host = prepare(session, cancellation.clone())
+    let mut host = PreparedDocumentScriptHost::prepare(session, storage, cancellation.clone())
+        .map_err(|failure| DocumentScriptError::Native(failure.error))?
         .enable(top, ALLOW, hooks(&hook()))
-        .unwrap();
+        .map_err(|failure| failure.error)?;
     let permit = host.permit().unwrap();
     let handler = host
         .in_document(&permit, |scope| {
@@ -167,19 +178,20 @@ fn fixture(
         })
         .unwrap();
 
-    Fixture {
+    Ok(Fixture {
         host,
         permit,
         execution,
         dispatcher,
         context: NativeTrace::default(),
         registration,
+        later_registration,
         request,
         handler,
         dialog,
         comment,
         document,
-    }
+    })
 }
 
 fn ordinary_throw_keeps_the_real_event_and_tail() {
@@ -382,7 +394,7 @@ fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
     let jobs = Arc::new(AtomicUsize::new(0));
     let job_counter = jobs.clone();
     let handler = format!(
-        "(() => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); {conversion}; }} }}); }} catch (_) {{}} sourceJob(); }})"
+        "((comment) => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); {conversion}; }} }}, comment); }} catch (_) {{}} sourceJob(); }})"
     );
     let mut fixture = fixture(&handler, cancellation.clone(), move |scope| {
         let job = Callback::new(move |_, _| {
@@ -499,7 +511,11 @@ fn conversion_time_native_refusal_retains_original_source(conversion: &str) {
 }
 
 fn source_driver_refusal_keeps_the_original_cause() {
-    let mut fixture = fixture("(() => detachIf(1))", Arc::new(cancel()), |_| Ok(()));
+    let mut fixture = fixture(
+        "((comment) => detachIf(1, comment))",
+        Arc::new(cancel()),
+        |_| Ok(()),
+    );
     let no_nested_work = DomSourceLimits::new(32_000_000, 1_000_000, 0, 128, 4096, 4096, 8);
     {
         let progress = fixture
@@ -544,6 +560,295 @@ fn source_driver_refusal_keeps_the_original_cause() {
     let _session = fixture.host.stop().into_session().unwrap();
 }
 
+fn finish_projected_close(fixture: &mut Fixture, delegated: NodeId) {
+    {
+        let progress = fixture
+            .host
+            .select_source_event(
+                &fixture.permit,
+                &fixture.request,
+                &mut fixture.dispatcher,
+                &mut fixture.context,
+                EVENT,
+            )
+            .unwrap();
+        let DocumentScriptEventProgress::Selected(selected) = progress else {
+            panic!("the original dispatcher must select the routed host listener");
+        };
+        let mut report = selected.invoke(&fixture.handler, delegated, SOURCE);
+        assert!(
+            matches!(report.outcome(), DocumentScriptGuestResult::Returned),
+            "{:?}",
+            report.outcome()
+        );
+        report.report(&fixture.dispatcher).unwrap();
+    }
+    let progress = fixture
+        .host
+        .select_source_event(
+            &fixture.permit,
+            &fixture.request,
+            &mut fixture.dispatcher,
+            &mut fixture.context,
+            EVENT,
+        )
+        .unwrap();
+    assert!(matches!(
+        progress,
+        DocumentScriptEventProgress::Native(DomSourceEventServiceProgress::Serviced { .. })
+    ));
+    drop(progress);
+    fixture
+        .host
+        .with_native(|dom, _, mut source| {
+            let progress = source
+                .resume(
+                    dom,
+                    fixture.request.operation(),
+                    SOURCE,
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: Some(&fixture.execution),
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                )
+                .unwrap();
+            assert!(matches!(progress, DomSourceDriveProgress::Complete(_)));
+            assert_eq!(dom.snapshot().node(delegated).unwrap().parent(), None);
+        })
+        .unwrap();
+}
+
+fn start_another_close(fixture: &mut Fixture, retire_original: bool) -> NodeId {
+    let (request, delegated) = fixture
+        .host
+        .with_native(|dom, _, mut source| {
+            let document = fixture.document.node();
+            let delegated = if retire_original {
+                let mut destroy = DomBatch::new();
+                destroy.destroy(fixture.comment);
+                dom.apply(destroy, &cancel()).unwrap();
+                assert!(matches!(
+                    dom.snapshot().node(fixture.comment),
+                    Err(DomError::StaleNode)
+                ));
+                let mut create = DomBatch::new();
+                let comment = create.create_comment(document, "delegated Source comment");
+                create.insert_before(&comment, document, None);
+                dom.apply(create, &cancel())
+                    .unwrap()
+                    .created(&comment)
+                    .unwrap()
+                    .unwrap()
+            } else {
+                let mut insert = DomBatch::new();
+                insert.insert_before(fixture.comment, document, None);
+                dom.apply(insert, &cancel()).unwrap();
+                fixture.comment
+            };
+            fixture
+                .dispatcher
+                .add_listener(
+                    dom,
+                    fixture.dialog,
+                    DomEventType::BeforeToggle,
+                    DomEventCallback::host(ROUTE),
+                    DomEventListenerOptions {
+                        once: true,
+                        capture: false,
+                    },
+                )
+                .unwrap();
+            let mut services = DomSourceServices {
+                meta: None,
+                execution_scope: Some(&fixture.execution),
+                style_policy: &mut |_| None,
+                url: None,
+            };
+            assert!(matches!(
+                source
+                    .apply(
+                        dom,
+                        DomSourceEdit::set_attribute(fixture.dialog, "open", ""),
+                        SOURCE,
+                        &mut services,
+                        &cancel(),
+                    )
+                    .unwrap(),
+                DomSourceDriveProgress::Complete(_)
+            ));
+            let progress = source
+                .apply(
+                    dom,
+                    DomSourceEdit::close_dialog(fixture.dialog, None),
+                    SOURCE,
+                    &mut services,
+                    &cancel(),
+                )
+                .unwrap();
+            let DomSourceDriveProgress::Pending {
+                request: DomSourceRequest::Event(request),
+                reason: DomSourceUnavailable::Event,
+            } = progress
+            else {
+                panic!("the next actual Dialog Close must reach beforetoggle: {progress:?}");
+            };
+            (request, delegated)
+        })
+        .unwrap();
+    fixture.request = request;
+    delegated
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PinAdmission {
+    BeforeProjection,
+    Refused,
+    Admitted,
+}
+
+fn observe_pin_admission(storage: usize) -> PinAdmission {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let mut fixture = match fixture_with_storage(
+        "((comment) => { reachedGuest(); detachIf(1, comment); })",
+        Arc::new(cancel()),
+        |scope| {
+            let callback = Callback::new(move |_, _| {
+                count.fetch_add(1, Ordering::Relaxed);
+                Ok(Completion::Undefined)
+            });
+            let global = scope.global()?;
+            let function = scope.function(&callback)?;
+            let name = "reachedGuest".encode_utf16().collect::<Vec<_>>();
+            scope.set(&global, PropertyKey::String(&name), &function)
+        },
+        storage,
+    ) {
+        Ok(fixture) => fixture,
+        Err(DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)) => {
+            return PinAdmission::BeforeProjection;
+        }
+        Err(error) => panic!("unexpected host admission failure: {error:?}"),
+    };
+    let outcome = {
+        let progress = fixture.host.select_source_event(
+            &fixture.permit,
+            &fixture.request,
+            &mut fixture.dispatcher,
+            &mut fixture.context,
+            EVENT,
+        );
+        let selected = match progress {
+            Ok(DocumentScriptEventProgress::Selected(selected)) => selected,
+            Err(DocumentScriptEventError::Access(DocumentScriptError::Native(
+                DocumentScriptNativeError::StorageLimit,
+            ))) => return PinAdmission::BeforeProjection,
+            Err(error) => panic!("unexpected listener selection failure: {error:?}"),
+            Ok(_) => panic!("the original dispatcher must select the routed host listener"),
+        };
+        let mut report = selected.invoke(&fixture.handler, fixture.comment, SOURCE);
+        let outcome = match report.outcome() {
+            DocumentScriptGuestResult::Returned => PinAdmission::Admitted,
+            DocumentScriptGuestResult::Refused(Error::HostFailure(failure))
+                if matches!(
+                    failure.cause::<DocumentScriptNativeError>(),
+                    Some(DocumentScriptNativeError::StorageLimit)
+                ) =>
+            {
+                PinAdmission::Refused
+            }
+            other => panic!("unexpected projection outcome: {other:?}"),
+        };
+        report.report(&fixture.dispatcher).unwrap();
+        outcome
+    };
+    let admitted = outcome == PinAdmission::Admitted;
+    assert_eq!(calls.load(Ordering::Relaxed), usize::from(admitted));
+    assert_eq!(
+        fixture
+            .host
+            .snapshot()
+            .unwrap()
+            .node(fixture.comment)
+            .unwrap()
+            .parent(),
+        (!admitted).then_some(fixture.document.node())
+    );
+    outcome
+}
+
+fn exact_one_pin_storage() -> usize {
+    let mut short = 0;
+    let mut exact = STORAGE;
+    assert_eq!(observe_pin_admission(exact), PinAdmission::Admitted);
+    while exact - short > 1 {
+        let probe = short + (exact - short) / 2;
+        if observe_pin_admission(probe) == PinAdmission::Admitted {
+            exact = probe;
+        } else {
+            short = probe;
+        }
+    }
+    // Selection still succeeds at one byte short. The typed refusal must be
+    // from projection, and the guest marker and native node must be untouched.
+    assert_eq!(observe_pin_admission(short), PinAdmission::Refused);
+    exact
+}
+
+fn projected_comment_survives_detach_but_does_not_alias_a_replacement() {
+    let storage = exact_one_pin_storage();
+    let mut fixture = fixture_with_storage(
+        "globalThis.turn = 0; globalThis.same = 0; globalThis.fresh = 0;
+         globalThis.rejected = 0; globalThis.coercions = 0; globalThis.traps = 0;
+         ((comment) => {
+             if (++turn === 1) { globalThis.original = comment; comment.mark = 17; }
+             if (turn === 2) same = Number(comment === original && comment.mark === 17);
+             if (turn === 3) {
+                 fresh = Number(comment !== original && comment.mark === undefined);
+                 const proxy = new Proxy(comment, {
+                     getPrototypeOf() { ++traps; return null; },
+                     get() { ++traps; }
+                 });
+                 for (const wrong of [original, proxy, undefined]) {
+                     try { detachIf({ valueOf() { ++coercions; return 0; } }, wrong); }
+                     catch (error) { if (error instanceof TypeError) ++rejected; }
+                 }
+             }
+             detachIf(1, comment);
+         })",
+        Arc::new(cancel()),
+        |_| Ok(()),
+        storage,
+    )
+    .unwrap();
+    let original = fixture.comment;
+    finish_projected_close(&mut fixture, original);
+    assert!(
+        fixture
+            .dispatcher
+            .remove_listener(fixture.later_registration)
+    );
+    let delegated = start_another_close(&mut fixture, false);
+    assert_eq!(delegated, original);
+    finish_projected_close(&mut fixture, delegated);
+    let replacement = start_another_close(&mut fixture, true);
+    assert_ne!(replacement, original);
+    finish_projected_close(&mut fixture, replacement);
+    fixture
+        .host
+        .in_document(&fixture.permit, |scope| {
+            assert_script_number(scope, "same", 1.0)?;
+            assert_script_number(scope, "fresh", 1.0)?;
+            assert_script_number(scope, "rejected", 3.0)?;
+            assert_script_number(scope, "coercions", 0.0)?;
+            assert_script_number(scope, "traps", 0.0)
+        })
+        .unwrap();
+}
+
 pub(super) fn run() {
     ordinary_throw_keeps_the_real_event_and_tail();
     for conversion in [
@@ -555,4 +860,5 @@ pub(super) fn run() {
         conversion_time_native_refusal_retains_original_source(conversion);
     }
     source_driver_refusal_keeps_the_original_cause();
+    projected_comment_survives_detach_but_does_not_alias_a_replacement();
 }

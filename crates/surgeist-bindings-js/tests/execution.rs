@@ -1536,6 +1536,50 @@ fn captured_intrinsics_survive_guest_replacement_and_realm_lease_release(
     Ok(())
 }
 
+fn managed_holder_preserves_object_and_creation_realm_until_release(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let a = execution.create_realm()?;
+    let b = execution.create_realm()?;
+    let drops = Rc::new(Cell::new(0));
+    let receipt = DropReceipt(drops.clone());
+    let callback = Callback::new(move |scope, _| {
+        let _receipt = &receipt;
+        Ok(Completion::Return(scope.evaluate(&units("realmMarker"))?))
+    });
+    let holder = execution.in_realm(&a, |scope| {
+        scope.evaluate(&units("globalThis.realmMarker = 41"))?;
+        let holder = scope.managed_object()?;
+        let object = scope.open_managed_object(&holder)?;
+        let marker = scope.function(&callback)?;
+        scope.set(&object, PropertyKey::String(&units("marker")), &marker)?;
+        Ok(holder)
+    })?;
+    drop(callback);
+    drop(a);
+    evaluate(&mut execution, &b, "gc()")?;
+    execution.memory_pressure();
+    assert_eq!(drops.get(), 0);
+    execution.in_realm(&b, |scope| {
+        let object = scope.open_managed_object(&holder)?;
+        let again = scope.open_managed_object(&holder)?;
+        assert!(scope.strict_equals(&object, &again)?);
+        let marker = scope.get(&object, PropertyKey::String(&units("marker")))?;
+        let result = scope.call(&marker, &object, &[])?;
+        let expected = scope.primitive(Primitive::Number(41.0))?;
+        assert!(scope.strict_equals(&result, &expected)?);
+        Ok(())
+    })?;
+    drop(execution);
+    process.release_managed_object(holder)?;
+    let mut execution = process.execution();
+    evaluate(&mut execution, &b, "gc()")?;
+    execution.memory_pressure();
+    assert_eq!(drops.get(), 1);
+    Ok(())
+}
+
 fn new_object_paths_preserve_the_first_host_failure() -> Result<(), Error> {
     let mut process = Process::bootstrap(EngineKind::V8)?;
     let mut execution = process.execution();
@@ -2195,6 +2239,7 @@ fn main() -> Result<(), Error> {
     new_property_refuses_own_keys_and_preserves_proxy_probe_exceptions(&mut process)?;
     objects_prototypes_and_dense_arrays_preserve_identity(&mut process)?;
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
+    managed_holder_preserves_object_and_creation_realm_until_release(&mut process)?;
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
     declared_constructor_length_is_exact_u32(&mut process)?;
     declared_constructor_prototype_get_follows_conversions_and_preserves_abrupt(&mut process)?;
