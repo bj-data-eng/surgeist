@@ -1867,6 +1867,57 @@ fn declared_constructors_preserve_calls_metadata_and_installed_descriptors(
     Ok(())
 }
 
+fn declared_callable_length_is_exact_and_only_captures_supplied_prefix(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    let captured = Rc::new(Cell::new(0));
+    let observed = captured.clone();
+    let callback = Callback::new(move |scope, arguments| {
+        let (receiver, mut values) = arguments.into_parts();
+        observed.set(values.len());
+        assert!(scope.strict_equals(&receiver, &values[0])?);
+        if values.len() == 3 {
+            assert_eq!(scope.kind(&values[1])?, ValueKind::Undefined);
+        }
+        Ok(Completion::Return(values.pop().unwrap()))
+    });
+
+    for (length, expected_count, expected_result) in [(1, 1, "receiver"), (u32::MAX, 3, "last")] {
+        execution.in_realm(&realm, |scope| {
+            let function = scope
+                .fixed_arity_function(
+                    &callback,
+                    FunctionMetadata {
+                        name: &units("declared"),
+                        length,
+                    },
+                )
+                .unwrap_or_else(|error| panic!("declared callable length {length} refused: {error:?}"));
+            let global = scope.global()?;
+            scope.set(&global, PropertyKey::String(&units("declared")), &function)?;
+            let result = scope.evaluate(&units(
+                "(() => {
+                    const descriptor = Object.getOwnPropertyDescriptor(declared, 'length');
+                    const receiver = {}, last = {};
+                    const result = declared.call(receiver, receiver, undefined, last);
+                    const identity = result === receiver ? 'receiver' : result === last ? 'last' : 'other';
+                    return [descriptor.value, descriptor.writable, descriptor.enumerable,
+                        descriptor.configurable, identity].join('|');
+                })()",
+            ))?;
+            assert_eq!(
+                scope.to_utf16(&result)?,
+                units(&format!("{length}|false|false|true|{expected_result}"))
+            );
+            assert_eq!(captured.get(), expected_count);
+            Ok::<_, Error>(())
+        })?;
+    }
+    Ok(())
+}
+
 fn declared_constructor_length_is_exact_u32(process: &mut Process) -> Result<(), Error> {
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
@@ -2254,6 +2305,9 @@ fn main() -> Result<(), Error> {
         assert_eq!(drops.get(), 1, "the retired profile retained its backing");
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some("--callable-length") {
+        return declared_callable_length_is_exact_and_only_captures_supplied_prefix(&mut process);
+    }
     if std::env::args().nth(1).as_deref() == Some("--constructor-length") {
         return declared_constructor_length_is_exact_u32(&mut process);
     }
@@ -2288,6 +2342,7 @@ fn main() -> Result<(), Error> {
     captured_intrinsics_survive_guest_replacement_and_realm_lease_release(&mut process)?;
     managed_holder_preserves_object_and_creation_realm_until_release(&mut process)?;
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
+    declared_callable_length_is_exact_and_only_captures_supplied_prefix(&mut process)?;
     declared_constructor_length_is_exact_u32(&mut process)?;
     declared_constructor_prototype_get_follows_conversions_and_preserves_abrupt(&mut process)?;
     declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_independent(
