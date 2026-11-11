@@ -1,6 +1,9 @@
 //! CSSOM common serialization idioms over decoded text and serialized items.
 
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::serialization::specified_serialization::{
+    CssSpecifiedValueSerializationErrorKind as Kind, SpecifiedSerializationContext,
+};
 use crate::serialization::{CssSerializationError, CssSerializationLimits};
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -11,7 +14,7 @@ fn writer(limits: CssSerializationLimits) -> Result<SpecifiedRuleWriter> {
     Ok(writer)
 }
 
-/// Escapes arbitrary decoded text using CSSOM identifier serialization.
+/// Escapes arbitrary decoded text for the CSS Syntax identifier round trip.
 /// Empty text emits an empty identifier; NUL becomes U+FFFD.
 /// This operation does not validate a property's identifier grammar.
 ///
@@ -21,6 +24,60 @@ pub fn serialize_css_identifier(value: &str, limits: CssSerializationLimits) -> 
     let mut writer = writer(limits)?;
     writer.append_identifier(value)?;
     Ok(writer.css)
+}
+
+/// Independent limits for CSSOM identifier serialization of a DOMString.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssomIdentifierLimits {
+    max_input_units: usize,
+    max_output_bytes: usize,
+}
+
+impl CssomIdentifierLimits {
+    /// Bounds work by UTF-16 input units and output by encoded UTF-16 bytes.
+    #[must_use]
+    pub const fn new(max_input_units: usize, max_output_bytes: usize) -> Self {
+        Self {
+            max_input_units,
+            max_output_bytes,
+        }
+    }
+}
+
+impl Default for CssomIdentifierLimits {
+    fn default() -> Self {
+        Self::new(65_536, 1_048_576)
+    }
+}
+
+/// Serializes the exact UTF-16 DOMString using CSSOM 1 §2.1.
+/// The input limit is checked before traversal. The output limit counts the
+/// returned units as two bytes each, excluding spare allocator capacity.
+///
+/// # Errors
+/// Refuses an exhausted limit or allocation failure without returning text.
+pub fn serialize_cssom_identifier(
+    value: &[u16],
+    limits: CssomIdentifierLimits,
+) -> Result<Vec<u16>> {
+    if value.len() > limits.max_input_units {
+        return Err(CssSerializationError::new(Kind::InputUnitLimit));
+    }
+    let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+        0,
+        0,
+        limits.max_output_bytes,
+    ));
+    let mut output = Vec::new();
+    surgeist_css_parser::serialize::cssom_identifier(value, |fragment| -> Result<()> {
+        context.charge_captured_bytes(size_of_val(fragment))?;
+        output
+            .try_reserve(fragment.len())
+            .map_err(|_| CssSerializationError::new(Kind::CapacityOverflow))?;
+        output.extend_from_slice(fragment);
+        Ok(())
+    })?;
+    Ok(output)
 }
 
 /// Quotes arbitrary decoded text using CSSOM double-quoted string serialization.

@@ -76,8 +76,8 @@ pub(crate) mod specified_serialization;
 
 #[doc(inline)]
 pub use common_serialization::{
-    serialize_css_comma_separated_list, serialize_css_identifier, serialize_css_string,
-    serialize_css_whitespace_separated_list,
+    CssomIdentifierLimits, serialize_css_comma_separated_list, serialize_css_identifier,
+    serialize_css_string, serialize_css_whitespace_separated_list, serialize_cssom_identifier,
 };
 #[doc(inline)]
 pub use cssom_rule_serialization::{

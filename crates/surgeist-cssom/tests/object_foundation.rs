@@ -364,29 +364,61 @@ fn collection_and_sheet_shells_check_existing_identity_and_share_captures() {
 }
 
 #[test]
-fn css_namespace_forwards_native_unicode_replacement_and_typed_limits() {
-    use surgeist_css::serialization::{CssSerializationLimits, serialize_css_identifier};
-    let defaults = CssSerializationLimits::default();
-    assert_eq!(css::escape("0a\0é", defaults).unwrap(), "\\30 a�é");
-    assert_eq!(css::escape("", defaults).unwrap(), "");
-    let limits = CssSerializationLimits::new(0, 10, 10);
-    assert_eq!(
-        css::escape("é", limits),
-        serialize_css_identifier("é", limits)
-    );
-    assert!(css::escape("é", limits).is_err());
-    assert_eq!(css::escape("é", defaults).unwrap(), "é");
+fn css_escape_applies_cssom_position_and_control_rules() {
+    use surgeist_css::serialization::CssomIdentifierLimits;
+
+    for (input, expected) in [
+        ("0a\0é", "\\30 a�é"),
+        ("", ""),
+        ("é", "é"),
+        ("-1", "-\\31 "),
+        ("-", "\\-"),
+        ("--1", "--1"),
+        ("a b\u{1}\u{1f}\u{7f}", "a\\ b\\1 \\1f \\7f "),
+        ("a#b\\c", "a\\#b\\\\c"),
+    ] {
+        let input: Vec<_> = input.encode_utf16().collect();
+        let expected: Vec<_> = expected.encode_utf16().collect();
+        assert_eq!(
+            css::escape(&input, CssomIdentifierLimits::default()).unwrap(),
+            expected
+        );
+    }
 }
 
 #[test]
 fn css_escape_emits_non_ascii_characters_literally() {
-    use surgeist_css::serialization::CssSerializationLimits;
+    use surgeist_css::serialization::CssomIdentifierLimits;
 
     // CSSOM §2.1 emits each character at or above U+0080 literally.
-    let identifier = "a\u{a0}\u{d7}\u{1f642}";
+    let identifier: Vec<_> = "a\u{a0}\u{d7}\u{1f642}".encode_utf16().collect();
     assert_eq!(
-        css::escape(identifier, CssSerializationLimits::default()).unwrap(),
+        css::escape(&identifier, CssomIdentifierLimits::default()).unwrap(),
         identifier
+    );
+}
+
+#[test]
+fn css_escape_preserves_surrogates_and_enforces_exact_input_and_output_limits() {
+    use surgeist_css::serialization::CssomIdentifierLimits;
+
+    let input = [0x31, 0xd800, 0x5f, 0xd83d, 0xde42, 0xdc00];
+    let expected = [0x5c, 0x33, 0x31, 0x20, 0xd800, 0x5f, 0xd83d, 0xde42, 0xdc00];
+    assert_eq!(
+        css::escape(&input, CssomIdentifierLimits::new(6, 18)),
+        Ok(expected.to_vec())
+    );
+
+    let work_refusal = css::escape(&input, CssomIdentifierLimits::new(5, 18)).unwrap_err();
+    assert!(work_refusal.is_input_unit_limit());
+    assert!(work_refusal.is_resource_limit());
+
+    let output_refusal = css::escape(&input, CssomIdentifierLimits::new(6, 17)).unwrap_err();
+    assert!(output_refusal.is_byte_limit());
+    assert!(output_refusal.is_resource_limit());
+    assert_eq!(
+        css::escape(&[], CssomIdentifierLimits::new(0, 0)),
+        Ok(vec![])
     );
 }
 

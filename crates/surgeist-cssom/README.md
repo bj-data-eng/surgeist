@@ -16,9 +16,10 @@ Infallible upcasts preserve identity; checked downcasts return `None` for a
 nonmatching interface and explicit errors for foreign or absent objects.
 The public `id()` and `snapshot()` accessors support trusted provenance and host
 integration separately from standard object operations. Standard rule text uses
-the native bounded graph serializer. `css::escape` forwards identifier escaping
-to CSS under caller-supplied serialization limits; CSS support evaluation remains outside this
-authored-state crate. [Object foundation tests](tests/object_foundation.rs) cover
+the native bounded graph serializer. `css::escape` implements CSSOM identifier
+serialization over exact UTF-16 input and output, including isolated surrogates.
+CSS bounds input work and encoded output bytes. CSS support evaluation remains
+outside this authored-state crate. [Object foundation tests](tests/object_foundation.rs) cover
 the live/captured distinction, checked conversions and retained ancestry.
 
 Concrete interfaces inherit standard members through private dispatch. Keyframes
