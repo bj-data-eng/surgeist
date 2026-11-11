@@ -378,6 +378,58 @@ pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_ba
     host.in_document(&permit, read).unwrap();
 }
 
+pub(in crate::document_scripting) fn refused_element_realm_installation_releases_guest_backing() {
+    let create_origin = |host: &mut DocumentScriptHost| {
+        let cancel = host.native.cancellation.clone();
+        host.with_native(|dom, mut hosted, _| {
+            let owner = hosted.create_headless_host(dom, &cancel).unwrap();
+            hosted.create_top_level(dom, owner, &cancel).unwrap()
+        })
+        .unwrap()
+    };
+    let mut control = public_node_host(1_000, 20_000);
+    let permit = control.permit().unwrap();
+    let origin = create_origin(&mut control);
+    let events = control.guest_events().unwrap();
+    let before = events.budget.used.get();
+    control
+        .register_node_creation_realm(&permit, origin)
+        .unwrap();
+    let exact = events.budget.used.get() - before;
+    assert!(exact > 0);
+    drop((control, events));
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let origin = create_origin(&mut host);
+    let events = host.guest_events().unwrap();
+    let spare = events.limits.storage_bytes - events.budget.used.get() - exact;
+    let one_short = events.reserve(&host.native, spare + 1).unwrap();
+    let before = events.budget.used.get();
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::StorageLimit
+        ))
+    ));
+    assert_eq!(
+        events.budget.used.get(),
+        before,
+        "an unpublished realm must release its guest backing"
+    );
+    drop(one_short);
+    let exact_backing = events.reserve(&host.native, spare).unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationRealmAlreadyRegistered
+        ))
+    ));
+    drop(exact_backing);
+}
+
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
  {
     let mut host = public_node_host(1_000, 20_000);
