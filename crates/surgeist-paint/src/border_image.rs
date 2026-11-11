@@ -676,6 +676,65 @@ mod tests {
             .unwrap()
     }
 
+    fn partition_request(x: f64, extent: f64, left: f64, right: f64) -> BorderImageRequest {
+        let px = |value| BorderImageWidth::LengthPercentage(LengthPercentageOf::px(value).unwrap());
+        BorderImageRequest {
+            border_origin: Point::new(x, 0.0),
+            border_size: Size::new(extent, 20.0),
+            widths: Edges::new(px(2.0), px(right), px(0.0), px(left)),
+            outsets: Edges::all(BorderImageOutset::Length(0.0)),
+            ..request()
+        }
+    }
+
+    #[test]
+    fn partition_keeps_zero_width_side_empty_when_opposite_side_is_reduced() {
+        let result = geometry(partition_request(0.0, 1.0, 49.0, 0.0));
+        assert!(result.regions()[0][2].source().is_some());
+        assert_eq!(result.regions()[0][2].destination(), None);
+        assert_eq!(result.used_widths().left, 1.0);
+        assert_eq!(result.regions()[0][0].destination().unwrap().max().x, 1.0);
+    }
+
+    #[test]
+    fn partition_keeps_exactly_filled_destination_middle_empty_at_a_fractional_origin() {
+        let result = geometry(partition_request(0.1, 1.0, 0.5, 0.5));
+        assert!(
+            result
+                .regions()
+                .iter()
+                .all(|row| row[1].destination().is_none())
+        );
+        assert_eq!(
+            result.regions()[0][0].destination().unwrap().max().x,
+            result.regions()[0][2].destination().unwrap().min().x,
+        );
+    }
+
+    #[test]
+    fn partition_refuses_a_positive_middle_erased_by_destination_placement() {
+        let input = partition_request(9_007_199_254_740_992.0, 4.0, 1.75, 1.75);
+        let result = resolve_border_image(input, options(PaintLimits::unlimited())).result;
+        assert_eq!(
+            result,
+            Err(PaintError::BorderImage(
+                BorderImageGeometryError::UnrepresentableGeometry
+            ))
+        );
+    }
+
+    #[test]
+    fn partition_keeps_complementary_percentages_empty_in_source_units() {
+        let mut input = request();
+        input.source.coordinate_size.width = 0.9;
+        input.slices.left = BorderImageSlice::Fraction(0.125);
+        input.slices.right = BorderImageSlice::Fraction(0.875);
+        let result = geometry(input);
+        assert!(result.regions().iter().all(|row| row[1].source().is_none()));
+        assert!(result.regions()[0][0].source().is_some());
+        assert!(result.regions()[0][2].source().is_some());
+    }
+
     #[test]
     fn computes_slices_and_outset_area_in_separate_units() {
         let result = geometry(request());
