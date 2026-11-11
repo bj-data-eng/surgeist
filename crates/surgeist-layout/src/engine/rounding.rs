@@ -462,6 +462,92 @@ fn finalize_named_baselines<S: LayoutScalar, M>(
 mod tests {
     use super::*;
 
+    fn assert_deep_rounding<S: LayoutScalar>(fragment: bool) {
+        use crate::test_support::layout_tree::OracleTreeOf;
+        use crate::{NodeOutputOf, Size};
+
+        const NODES: u32 = 1025;
+        let mut tree = OracleTreeOf::<S>::new();
+        for node in 0..NODES {
+            tree = tree.unrounded(
+                node,
+                NodeOutputOf {
+                    location: Point::new(S::from_f64(0.25), S::ZERO),
+                    size: Size::splat(S::from_f64(10.25)),
+                    ..NodeOutputOf::default()
+                },
+            );
+            if node + 1 < NODES {
+                tree = tree.children(node, [node + 1]);
+            }
+        }
+        if fragment {
+            let anchor = FragmentAnchor::external(Point::new(S::from_f64(0.25), S::ZERO));
+            round_fragment_subtree(&mut tree.borrow_compute(), 0, anchor).unwrap();
+        } else {
+            round_layout(&mut tree.borrow_compute(), 0).unwrap();
+        }
+
+        let (x, width) = if fragment { (1.0, 10.0) } else { (0.0, 11.0) };
+        for node in [0, NODES - 1] {
+            let rounded = tree.final_layout(node).expect("node was rounded");
+            assert_eq!(rounded.location, Point::new(S::from_f64(x), S::ZERO));
+            assert_eq!(
+                rounded.size,
+                Size::new(S::from_f64(width), S::from_f64(10.0))
+            );
+        }
+    }
+
+    #[test]
+    fn deep_ordinary_and_fragment_rounding_return_on_bounded_stack() {
+        const CHILD: &str = "SURGEIST_TEST_ROUNDING_STACK_CHILD";
+        const TEST: &str =
+            "engine::rounding::tests::deep_ordinary_and_fragment_rounding_return_on_bounded_stack";
+        const STACK_BYTES: usize = 2 * 1024 * 1024;
+
+        if let Ok(case) = std::env::var(CHILD) {
+            std::thread::Builder::new()
+                .name("bounded-rounding-stack".into())
+                .stack_size(STACK_BYTES)
+                .spawn(move || match case.as_str() {
+                    "ordinary-f32" => assert_deep_rounding::<f32>(false),
+                    "ordinary-f64" => assert_deep_rounding::<f64>(false),
+                    "fragment-f32" => assert_deep_rounding::<f32>(true),
+                    "fragment-f64" => assert_deep_rounding::<f64>(true),
+                    _ => panic!("unknown rounding case {case}"),
+                })
+                .unwrap()
+                .join()
+                .unwrap();
+            return;
+        }
+
+        let executable = std::env::current_exe().unwrap();
+        let mut failures = Vec::new();
+        for case in [
+            "ordinary-f32",
+            "ordinary-f64",
+            "fragment-f32",
+            "fragment-f64",
+        ] {
+            let result = std::process::Command::new(&executable)
+                .args([TEST, "--exact", "--nocapture"])
+                .env(CHILD, case)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            if !result.status.success() || !stdout.contains("1 passed") {
+                failures.push(format!(
+                    "{case} failed on a {STACK_BYTES}-byte stack, child {}\n{stdout}\n{}",
+                    result.status,
+                    String::from_utf8_lossy(&result.stderr),
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
     fn assert_layout_round_boundaries<S: LayoutScalar>() {
         for (value, expected) in [
             (-2.0, -2.0),
