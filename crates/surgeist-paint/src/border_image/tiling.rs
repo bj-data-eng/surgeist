@@ -867,6 +867,33 @@ mod tests {
     }
 
     #[test]
+    fn tiling_repeat_keeps_fractional_phase_at_period_boundary() {
+        let tile = 2_251_799_813_685_248.0;
+        let far_edge = 9_007_199_254_740_992.0;
+        let mut input = center_only(far_edge, tile);
+        input.border_origin = Point::new(0.25, 0.25);
+        input.border_size = Size::new(far_edge, far_edge);
+        input.source.coordinate_size = Size::new(tile, tile);
+        let repeat = Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Repeat);
+        let plan = tiling(input, repeat);
+        let region = plan.regions()[1][1].unwrap();
+        assert_eq!(region.clip().min(), Point::new(0.25, 0.25));
+        assert_eq!(region.clip().max(), Point::new(far_edge, far_edge));
+        // The span is four tile widths minus 0.25. Taking away one tile
+        // width and halving leaves half a period minus 0.125 modulo tile.
+        let expected = BorderImageAxisPlacement::Repeat {
+            anchor: tile * 0.5 - 0.125,
+        };
+        assert_eq!(
+            [
+                region.axes().width.placement(),
+                region.axes().height.placement()
+            ],
+            [expected, expected],
+        );
+    }
+
+    #[test]
     fn tiling_space_counts_only_tiles_inside_the_exact_clip_span() {
         let mut input = center_only(9_007_199_254_740_992.0, 2.0);
         input.border_origin.x = 0.5;
