@@ -6,6 +6,8 @@ mod capture_helper_identity;
 mod empty_line_br_font_band_profile;
 #[path = "layout/browser_parity/fixture_variants.rs"]
 mod fixture_variants;
+#[path = "bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
+mod fri07_intrinsic_flex_profile;
 #[path = "layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
 #[path = "bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]

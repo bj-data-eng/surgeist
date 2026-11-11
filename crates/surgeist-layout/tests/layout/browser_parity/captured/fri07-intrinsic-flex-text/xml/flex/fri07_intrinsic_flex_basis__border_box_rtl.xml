@@ -1,0 +1,50 @@
+<test name="fri07_intrinsic_flex_basis__border_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="flex" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" display="flex" direction="rtl" position="absolute" flex-direction="column" font-family="ahem" font-size="10px" line-height="10px" width="260px" row-gap="10px" column-gap="10px">
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="260px">
+        <text source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" flex-basis="min-content" min-width="0px">
+          alpha beta gamma
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" flex-basis="max-content" min-width="0px">
+          alpha beta gamma
+        </text>
+      </div>
+      <div source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" width="120px">
+        <text source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" flex-basis="min-content" min-width="0px">
+          longword short tail
+        </text>
+        <text source-tag="div" display="flex" direction="rtl" font-family="ahem" font-size="10px" line-height="10px" flex-grow="1" flex-basis="max-content" min-width="0px">
+          longword short tail
+        </text>
+      </div>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="260" height="70">
+      <node x="0" y="0" width="260" height="30">
+        <node x="185" y="0" width="75" height="30"/>
+        <node x="0" y="0" width="185" height="30"/>
+      </node>
+      <node x="140" y="40" width="120" height="30">
+        <node x="84" y="0" width="36" height="30"/>
+        <node x="0" y="0" width="84" height="30"/>
+      </node>
+    </node>
+  </expectations>
+  <flex-content-text profile="ahem-10px-fri07-intrinsic-flex-text" font-resource-sha256="e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c">
+    <occurrence row="0" item="0" direction="rtl" words="[{&quot;start&quot;:0,&quot;end&quot;:5,&quot;line&quot;:0,&quot;x&quot;:210.0,&quot;y&quot;:0.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:6,&quot;end&quot;:10,&quot;line&quot;:1,&quot;x&quot;:220.0,&quot;y&quot;:10.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:11,&quot;end&quot;:16,&quot;line&quot;:2,&quot;x&quot;:210.0,&quot;y&quot;:20.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0}]"/>
+    <occurrence row="0" item="1" direction="rtl" words="[{&quot;start&quot;:0,&quot;end&quot;:5,&quot;line&quot;:0,&quot;x&quot;:25.0,&quot;y&quot;:0.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:6,&quot;end&quot;:10,&quot;line&quot;:0,&quot;x&quot;:85.0,&quot;y&quot;:0.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0},{&quot;start&quot;:11,&quot;end&quot;:16,&quot;line&quot;:0,&quot;x&quot;:135.0,&quot;y&quot;:0.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0}]"/>
+    <occurrence row="1" item="0" direction="rtl" words="[{&quot;start&quot;:0,&quot;end&quot;:8,&quot;line&quot;:0,&quot;x&quot;:180.0,&quot;y&quot;:40.0,&quot;width&quot;:80.0,&quot;height&quot;:10.0},{&quot;start&quot;:9,&quot;end&quot;:14,&quot;line&quot;:1,&quot;x&quot;:210.0,&quot;y&quot;:50.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:15,&quot;end&quot;:19,&quot;line&quot;:2,&quot;x&quot;:220.0,&quot;y&quot;:60.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0}]"/>
+    <occurrence row="1" item="1" direction="rtl" words="[{&quot;start&quot;:0,&quot;end&quot;:8,&quot;line&quot;:0,&quot;x&quot;:144.4375,&quot;y&quot;:40.0,&quot;width&quot;:80.0,&quot;height&quot;:10.0},{&quot;start&quot;:9,&quot;end&quot;:14,&quot;line&quot;:1,&quot;x&quot;:174.4375,&quot;y&quot;:50.0,&quot;width&quot;:50.0,&quot;height&quot;:10.0},{&quot;start&quot;:15,&quot;end&quot;:19,&quot;line&quot;:2,&quot;x&quot;:184.4375,&quot;y&quot;:60.0,&quot;width&quot;:40.0,&quot;height&quot;:10.0}]"/>
+  </flex-content-text>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="260" height="70" scroll-width="260" scroll-height="70" client-width="260" client-height="70"/>
+    <world-rounded-layout node-path="0.0" x="0" y="0" width="260" height="30" scroll-width="260" scroll-height="30" client-width="260" client-height="30"/>
+    <world-rounded-layout node-path="0.0.0" x="185" y="0" width="75" height="30" scroll-width="75" scroll-height="30" client-width="75" client-height="30"/>
+    <world-rounded-layout node-path="0.0.1" x="0" y="0" width="185" height="30" scroll-width="185" scroll-height="30" client-width="185" client-height="30"/>
+    <world-rounded-layout node-path="0.1" x="140" y="40" width="120" height="30" scroll-width="120" scroll-height="30" client-width="120" client-height="30"/>
+    <world-rounded-layout node-path="0.1.0" x="84" y="0" width="36" height="30" scroll-width="80" scroll-height="30" client-width="36" client-height="30"/>
+    <world-rounded-layout node-path="0.1.1" x="0" y="0" width="84" height="30" scroll-width="84" scroll-height="30" client-width="84" client-height="30"/>
+  </diagnostics>
+</test>

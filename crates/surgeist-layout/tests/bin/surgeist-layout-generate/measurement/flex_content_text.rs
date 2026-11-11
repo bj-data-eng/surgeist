@@ -2,7 +2,8 @@
 
 use serde::Deserialize;
 
-use super::{Attributes, Context, LayoutInput, MeasurementError, WireNode};
+use super::{Attributes, Context, LayoutInput, MeasurementError, MeasurementErrorKind, WireNode};
+use crate::fri07_intrinsic_flex_profile as intrinsic;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -86,10 +87,122 @@ impl WireFlexContentText {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct WireIntrinsicFlexText {
+    font_resource_sha256: String,
+    items: Vec<WireIntrinsicFlexItem>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WireIntrinsicFlexItem {
+    row: usize,
+    item: usize,
+    direction: String,
+    source_units: Vec<u16>,
+    words: Vec<intrinsic::WordRange>,
+}
+
+impl WireIntrinsicFlexText {
+    pub(super) fn validate(
+        &self,
+        root: &WireNode,
+        context: &Context<'_>,
+    ) -> Result<FlexContentText, MeasurementError> {
+        const FIELD: &str = "fri07IntrinsicFlexText";
+        let style = context.required(root.style.as_ref(), "style")?;
+        let root_children = context.required(root.children.as_deref(), "children")?;
+        context.compatible(
+            self.font_resource_sha256 == crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+                && root.layout_input == LayoutInput::Box
+                && root.tag_name.as_deref() == Some("div")
+                && style.display.as_deref() == Some("flex")
+                && style.flex_direction.as_deref() == Some("column")
+                && style.writing_mode() == "horizontal-tb"
+                && root.text_content.is_none()
+                && root_children.len() == intrinsic::LABELS.len()
+                && self.items.len() == intrinsic::LABELS.len() * 2,
+            FIELD,
+            "intrinsic Flex source root, font or occurrence census changed",
+        )?;
+
+        let mut rows = Vec::new();
+        for (row_index, (row, label)) in root_children.iter().zip(intrinsic::LABELS).enumerate() {
+            let row_context = context.child(row_index);
+            let style = row_context.required(row.style.as_ref(), "style")?;
+            let children = row_context.required(row.children.as_deref(), "children")?;
+            context.compatible(
+                row.layout_input == LayoutInput::Box
+                    && row.tag_name.as_deref() == Some("div")
+                    && style.display.as_deref() == Some("flex")
+                    && matches!(style.flex_direction.as_deref(), None | Some("row"))
+                    && style.writing_mode() == "horizontal-tb"
+                    && row.text_content.is_none()
+                    && children.len() == 2,
+                FIELD,
+                "original Flex row topology changed",
+            )?;
+            for (item_index, item) in children.iter().enumerate() {
+                let witness = &self.items[row_index * 2 + item_index];
+                let item_context = row_context.child(item_index);
+                let style = item_context.required(item.style.as_ref(), "style")?;
+                item_context.compatible(
+                    (witness.row, witness.item) == (row_index, item_index)
+                        && matches!(witness.direction.as_str(), "ltr" | "rtl")
+                        && style.direction.as_deref() == Some(witness.direction.as_str())
+                        && item.layout_input == LayoutInput::Box
+                        && style.display.as_deref() == Some("flex")
+                        && style.writing_mode() == "horizontal-tb"
+                        && style.has_intrinsic_flex_text_style(item_index)
+                        && item.tag_name.as_deref() == Some("div")
+                        && item.children.as_ref().is_some_and(Vec::is_empty)
+                        && item.text_content.as_deref() == Some(label)
+                        && label
+                            .encode_utf16()
+                            .eq(witness.source_units.iter().copied())
+                        && intrinsic::valid_words(label, &witness.words),
+                    FIELD,
+                    "original Flex item, UTF-16 label, typography or word Range changed",
+                )?;
+                let words = serde_json::to_string(&witness.words).map_err(|error| {
+                    item_context.error(FIELD, MeasurementErrorKind::InvalidValue, error.to_string())
+                })?;
+                rows.push(vec![
+                    ("row", row_index.to_string()),
+                    ("item", item_index.to_string()),
+                    ("direction", witness.direction.clone()),
+                    ("words", words),
+                ]);
+            }
+        }
+        Ok(FlexContentText {
+            attrs: vec![
+                ("profile", intrinsic::PROFILE.into()),
+                ("font-resource-sha256", self.font_resource_sha256.clone()),
+            ],
+            rows,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn original_intrinsic_flex_capture_uses_its_own_request() {
+        const REQUEST: &[u8] =
+            b"{\"schema_version\":1,\"text_source\":\"ahem-10px-fri07-intrinsic-flex-text\"}\n";
+        let request = super::super::BoxObservationRequest::from_input_bytes(Some(REQUEST))
+            .expect("the original nested Flex source has an exact Text capture request");
+        assert_eq!(request.input_bytes(), Some(REQUEST));
+        assert_eq!(
+            request.proof_script().map(|(path, _)| path),
+            Some("scripts/gentest/fri07_intrinsic_flex_text.js")
+        );
+    }
 
     #[test]
     fn flex_content_proof_binds_every_text_occurrence_and_style() {

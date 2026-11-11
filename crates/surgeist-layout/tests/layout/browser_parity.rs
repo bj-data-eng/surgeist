@@ -432,12 +432,8 @@ fn normalized_flex_collapse_ordinary_variants_match_layout() {
         })
         .collect::<Vec<_>>();
 
-    for path in paths {
-        let golden = support::Golden::parse_file(&path)
-            .unwrap_or_else(|error| panic!("{} failed to parse: {error}", path.display()));
-        support::assert_surgeist_matches(&golden)
-            .unwrap_or_else(|error| panic!("{} failed layout comparison: {error}", path.display()));
-    }
+    assert_eq!(paths.len(), 12);
+    assert_registered_originals_match(&paths);
 }
 
 #[test]

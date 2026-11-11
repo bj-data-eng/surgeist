@@ -5,6 +5,7 @@ use super::{
     flex_composition, flex_content_text, original_subgrid_body, pinned_font,
     prepared_range_qualification,
 };
+use crate::fri07_intrinsic_flex_profile as intrinsic_flex;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
@@ -298,6 +299,10 @@ pub(crate) fn current_owner_bindings(
             let file = [
                 ("measured_leaf_request.json", MEASURED_LEAF_REQUEST_BYTES),
                 ("flex_content_text_request.json", flex_content_text::REQUEST),
+                (
+                    "fri07_intrinsic_flex_text_request.json",
+                    intrinsic_flex::REQUEST,
+                ),
                 ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
                 (
                     "prepared_atomic_percentage_request.json",
@@ -339,6 +344,8 @@ pub(crate) fn current_owner_bindings(
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
+        } else if name == intrinsic_flex::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_text.js".to_owned()
         } else if name == original_flex_parent::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_flex_parent.js".to_owned()
         } else if name == percentage_flex_parent::SCRIPT_PATH {
@@ -747,6 +754,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "empty-line break proof requires its observation request",
         ));
     }
+    if observation_request != FRI07_INTRINSIC_FLEX_EDITION
+        && full_inputs.contains_key(intrinsic_flex::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "intrinsic Flex Text proof requires its observation request",
+        ));
+    }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         (request, None)
             if request == MatchingCategory::Fri06Subgrid.observation_request()
@@ -816,6 +830,34 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 }
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
+        }
+        (FRI07_INTRINSIC_FLEX_EDITION, Some(request_sha256)) => {
+            if case.source != intrinsic_flex::SOURCE
+                || artifact.source_sha256 != intrinsic_flex::SOURCE_SHA256
+                || request_sha256 != sha256(intrinsic_flex::REQUEST)
+                || MatchingCategory::Fri07IntrinsicFlexText.observation_input_sha256(full_inputs)
+                    != Some(request_sha256)
+                || excluded_specs.contains(OBSERVATION_REQUEST)
+                || !artifact.linked_resources.is_empty()
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+                || full_inputs.get(ROOT_HELPER_INPUT).map(String::as_str)
+                    != Some(crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256)
+                || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
+            {
+                return Err(changed(
+                    "original intrinsic Flex Text source or capture request",
+                ));
+            }
+            for (name, bytes) in flex_content_text::INTRINSIC_CAPTURE_INPUTS {
+                if name != OBSERVATION_REQUEST
+                    && (full_inputs.get(name) != Some(&sha256(bytes))
+                        || excluded_specs.contains(name))
+                {
+                    return Err(changed(format!("intrinsic Flex Text input: {name}")));
+                }
+            }
+            (FRI07_INTRINSIC_FLEX_EDITION, intrinsic_flex::PROFILE)
         }
         ("original-flex-parent" | "original-percentage-flex-parent", Some(request_sha256)) => {
             let (source_digest, request, script_path, script, profile, font_demand) =
@@ -1768,6 +1810,19 @@ pub(crate) fn matching_metadata_is_valid(
             }
             _ => false,
         },
+        MatchingCategory::Fri07IntrinsicFlexText => {
+            source == intrinsic_flex::SOURCE
+                && kind == SourceKind::Original
+                && metadata["context"] == "absolute-local"
+                && metadata["hypothetical_display"] == "flex"
+                && metadata["containing_direction"] == "ltr"
+                && metadata["hypothetical_direction"] == "ltr"
+                && metadata["root_direction"] == "variant"
+                && metadata["root_writing_mode"] == "horizontal-tb"
+                && metadata["inline_offset"].as_f64() == Some(0.0)
+                && metadata["block_offset"].is_null()
+                && metadata["root_size"].is_null()
+        }
         MatchingCategory::Fri06Subgrid => {
             let Some((mode, owners)) = fri06_subgrid_profile(source) else {
                 return false;
@@ -1792,6 +1847,7 @@ pub(crate) fn matching_metadata_is_valid(
 }
 
 pub(crate) const FRI06_SUBGRID_EDITION: &str = "fri06-subgrid-representatives";
+pub(crate) const FRI07_INTRINSIC_FLEX_EDITION: &str = "fri07-intrinsic-flex-text";
 pub(crate) const FRI06_SUBGRID_SOURCES: [&str; 3] = [
     "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html",
     "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
@@ -1867,21 +1923,33 @@ impl CaseNaming {
 pub(crate) enum MatchingCategory {
     Geometry,
     Fri06Subgrid,
+    Fri07IntrinsicFlexText,
 }
 
 impl MatchingCategory {
     pub(crate) fn for_edition(edition: &str) -> Self {
-        if edition == FRI06_SUBGRID_EDITION {
-            Self::Fri06Subgrid
-        } else {
-            Self::Geometry
+        match edition {
+            FRI06_SUBGRID_EDITION => Self::Fri06Subgrid,
+            FRI07_INTRINSIC_FLEX_EDITION => Self::Fri07IntrinsicFlexText,
+            _ => Self::Geometry,
         }
     }
 
     pub(crate) const fn observation_request(self) -> &'static str {
         match self {
             Self::Geometry => "geometry",
-            Self::Fri06Subgrid => "fri06-subgrid-representatives",
+            Self::Fri06Subgrid => FRI06_SUBGRID_EDITION,
+            Self::Fri07IntrinsicFlexText => FRI07_INTRINSIC_FLEX_EDITION,
+        }
+    }
+
+    pub(crate) fn observation_input_sha256(
+        self,
+        inputs: &BTreeMap<String, String>,
+    ) -> Option<&str> {
+        match self {
+            Self::Fri07IntrinsicFlexText => inputs.get(OBSERVATION_REQUEST).map(String::as_str),
+            Self::Geometry | Self::Fri06Subgrid => None,
         }
     }
 }

@@ -1322,7 +1322,7 @@ fn matching_cases(
                     historical_sha256: provenance.historical().map(|entry| entry.sha256.as_str()),
                     browser_settings: &settings,
                     observation_request: category.observation_request(),
-                    observation_input_sha256: None,
+                    observation_input_sha256: category.observation_input_sha256(&retained),
                 })?;
             Ok(authority::QualifiedCase::Matching(
                 authority::MatchingCase::new(case, provenance, category, identity)?,
