@@ -89,11 +89,9 @@ fn determine_container_main_size<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let fallback_outer_main_size = if constants
-        .axes
-        .main_size(constants.node_outer_size)
-        .is_none()
-    {
+    let outer_main_size = if let Some(size) = constants.axes.main_size(constants.node_outer_size) {
+        size
+    } else {
         let main_request = constants.available_main;
         let content_main = match (main_request.operation(), main_request.space()) {
             (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(available_main)) => {
@@ -119,33 +117,25 @@ where
                 intrinsic_container_main_size(tree, constants, items, lines, intrinsic)?
             }
         };
-        Some(
-            content_main
-                + constants
-                    .axes
-                    .main_size(constants.content_box_inset.sum_axes()),
-        )
-    } else {
-        None
-    };
-    let Some(outer_main_size) = constants
-        .axes
-        .main_size(constants.node_outer_size)
-        .or(fallback_outer_main_size)
-    else {
-        return Ok(());
-    };
-
-    let outer_main_size = outer_main_size
-        .clamp_max_before_min_optional(
-            constants.axes.main_size(constants.min_outer_size),
-            constants.axes.main_size(constants.max_outer_size),
-        )
-        .max(
-            constants
+        content_main
+            + constants
                 .axes
-                .main_size(constants.non_gutter_box_inset.sum_axes()),
-        );
+                .main_size(constants.content_box_inset.sum_axes())
+    };
+    let outer_main_size =
+        if constants.preferred_inline_phase == super::PreferredInlinePhase::Accepted {
+            outer_main_size
+        } else {
+            outer_main_size.clamp_max_before_min_optional(
+                constants.axes.main_size(constants.min_outer_size),
+                constants.axes.main_size(constants.max_outer_size),
+            )
+        };
+    let outer_main_size = outer_main_size.max(
+        constants
+            .axes
+            .main_size(constants.non_gutter_box_inset.sum_axes()),
+    );
     let inner_main_size = (outer_main_size
         - constants
             .axes
@@ -243,28 +233,43 @@ where
         )
     });
     let child_known = axes.with_cross_size(child_known, cross);
-    let child_available = axes.size_from_main_cross(
-        constants.available_main.with_operation(operation),
-        cross_available,
-    );
     // A flex allocation can supply the cross extent but cannot measure the
     // item's intrinsic main content. Apply its authored main bounds below.
-    let measured = tree.compute_child(
-        item.node,
-        ComputeInputOf::for_child(
-            RunMode::ComputeSize,
-            SizingMode::ContentSize,
-            axes.main_requested_axis(),
+    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
+    let measure = |tree: &mut Tree, operation| {
+        let child_available = super::child_preferred_probe_axes(
+            axes,
+            axes.size_from_main_cross(
+                constants.available_main.with_operation(operation),
+                cross_available,
+            ),
             child_known,
-            axes.with_main_size(constants.percentage_parent_size, None),
-            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-            constants.sizing_request.with_axes(child_available),
+            child_owned_axes,
+        );
+        tree.compute_child(
+            item.node,
+            ComputeInputOf::for_child(
+                RunMode::ComputeSize,
+                SizingMode::ContentSize,
+                axes.main_requested_axis(),
+                child_known,
+                axes.with_main_size(constants.percentage_parent_size, None),
+                ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+                constants.sizing_request.with_axes(child_available),
+            )
+            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
-        .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-    )?;
+    };
+    let measured = axes.main_size(measure(tree, operation)?.size);
     let padding_border = (item.padding + item.border).sum_axes();
     let style = tree.node_input(item.node);
-    let preferred = if let Some(preferred) = axes.main_size(item.size) {
+    let preferred = if axes.main_size(child_owned_axes) {
+        if operation == SizingOperation::MaxContent {
+            measured
+        } else {
+            axes.main_size(measure(tree, SizingOperation::MaxContent)?.size)
+        }
+    } else if let Some(preferred) = axes.main_size(item.size) {
         preferred
     } else if let Some((cross, ratio)) = cross.zip(style.aspect_ratio) {
         let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
@@ -287,8 +292,7 @@ where
     let minimum = axes
         .main_size(item.min_size)
         .or(item.automatic_min_main_size);
-    let contribution = axes
-        .main_size(measured.size)
+    let contribution = measured
         .max(preferred)
         .clamp_max_before_min_optional(basis_min, basis_max)
         .clamp_max_before_min_optional(minimum, axes.main_size(item.max_size))

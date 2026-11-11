@@ -132,6 +132,37 @@ pub(crate) fn resolve_preferred_optional<S: LayoutScalar>(
     }
 }
 
+/// Resolve the parent's numeric sizing inputs without consuming authored
+/// intrinsic axes that the child formatter will resolve.
+pub(crate) fn resolve_child_preferred_size<S: LayoutScalar>(
+    preferred: &Size<PreferredSizeOf<S>>,
+    basis: Size<Option<S>>,
+    algorithm: SizingAlgorithm,
+    child_owned_axes: Size<bool>,
+) -> Size<Result<Option<S>, SizingResolutionError<S>>> {
+    let resolve = |value, axis, basis, child_owned| {
+        if child_owned {
+            Ok(None)
+        } else {
+            resolve_preferred_optional(value, algorithm, axis, basis, true)
+        }
+    };
+    Size::new(
+        resolve(
+            &preferred.width,
+            PhysicalAxis::Horizontal,
+            basis.width,
+            child_owned_axes.width,
+        ),
+        resolve(
+            &preferred.height,
+            PhysicalAxis::Vertical,
+            basis.height,
+            child_owned_axes.height,
+        ),
+    )
+}
+
 pub(crate) fn resolve_length_or_zero_fallible<S>(
     length: LengthOf<S>,
     basis: Option<S>,

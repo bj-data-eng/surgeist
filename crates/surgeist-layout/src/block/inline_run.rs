@@ -763,6 +763,7 @@ where
                     axes.physical_size(LogicalSizeOf::new(
                         super::in_flow::in_flow_child_inline_request(
                             &child_style,
+                            tree.has_leaf_measurement(child),
                             axes,
                             inline,
                             available.inline,

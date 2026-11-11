@@ -60,6 +60,66 @@ use scroll::{
     flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
+/// When a row owns its preferred inline size, retain any intrinsic cross
+/// preference handled by the same formatter.
+pub(crate) fn preferred_flex_axes<S: LayoutScalar>(
+    display: crate::Display,
+    direction: FlexDirection,
+    flow_axes: FlowAxes,
+    preferred: &Size<crate::PreferredSizeOf<S>>,
+) -> Size<bool> {
+    let preferred = flow_axes.logical_size(Size::new(&preferred.width, &preferred.height));
+    let owns_inline =
+        display == crate::Display::Flex && direction.is_row() && preferred.inline.is_max_content();
+    flow_axes.physical_size(crate::geometry::LogicalSizeOf::new(
+        owns_inline,
+        owns_inline && preferred.block.is_max_content(),
+    ))
+}
+
+pub(crate) fn child_preferred_axes<'input, Tree, M>(tree: &Tree, child: Tree::Node) -> Size<bool>
+where
+    Tree: Compute<'input, M>,
+{
+    if tree.has_leaf_measurement(child) {
+        return Size::splat(false);
+    }
+    let input = tree.node_input(child);
+    preferred_flex_axes(
+        input.display,
+        input.flex_direction,
+        FlowAxes::new(input.writing_mode, input.direction),
+        &input.size,
+    )
+}
+
+fn preferred_intrinsic_request<S: LayoutScalar>() -> AxisSizingRequestOf<S> {
+    AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MaxContent,
+    )
+}
+
+/// A ContentSize probe omits the child's authored sizes. Retain the operations
+/// that its intrinsic preferences supply while preserving imposed dimensions
+/// and the specific main-axis contribution requested by the parent.
+fn child_preferred_probe_axes<S: LayoutScalar>(
+    axes: FlexAxes,
+    requests: Size<AxisSizingRequestOf<S>>,
+    known: Size<Option<S>>,
+    preferred: Size<bool>,
+) -> Size<AxisSizingRequestOf<S>> {
+    let mut main = axes.main_size(requests);
+    let mut cross = axes.cross_size(requests);
+    if axes.main_size(preferred) && axes.main_size(known).is_none() {
+        main = main.with_space(crate::AvailableSpaceOf::Indefinite);
+    }
+    if axes.cross_size(preferred) && axes.cross_size(known).is_none() {
+        cross = preferred_intrinsic_request();
+    }
+    axes.size_from_main_cross(main, cross)
+}
+
 pub(crate) fn compute_flex<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -148,9 +208,20 @@ where
         );
     }
 
-    let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
+    let requested_inline_operation = constants
+        .flow_axes
+        .logical_size(input.sizing_request().axes())
+        .inline
+        .operation();
+    let first_run_mode = if constants.preferred_inline_phase == PreferredInlinePhase::Discover {
+        // Preferred-size discovery has no accepted percentage basis yet.
+        RunMode::ComputeSize
+    } else {
+        input.run_mode()
+    };
+    let mut collected_items = collect_items(tree, node, &constants, first_run_mode)?;
     let (mut layout_constants, mut resolved_items, mut lines) =
-        resolve_flex_collection(tree, node, input.run_mode(), &constants, &collected_items)?;
+        resolve_flex_collection(tree, node, first_run_mode, &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
     let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
         DistributionNumber::finite(constants.axes.main_size(size)).map_err(|value| {
@@ -173,11 +244,12 @@ where
     // Constructing this internal box does not stage output geometry.
     let mut final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
     if !collected_items.is_empty()
-        && let Some(contents_constants) = constants.normal_inline_contents(final_scroll_box)
+        && let Some(contents_constants) = constants
+            .complete_inline_contents(final_scroll_box, requested_inline_operation)
+            .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))?
     {
-        // Fix the cyclic inline extent, then perform the real Normal main
-        // calculation. The entry context retains actual block constraints;
-        // the earlier content-derived main size is not a final allocation.
+        // Use the accepted inline size with the caller's contents operation.
+        // Block constraints and percentage authority still come from entry.
         collected_items = collect_items(tree, node, &contents_constants, input.run_mode())?;
         (layout_constants, resolved_items, lines) = resolve_flex_collection(
             tree,
@@ -451,12 +523,20 @@ where
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PreferredInlinePhase {
+    Ordinary,
+    Discover,
+    Accepted,
+}
+
 #[derive(Clone, Copy)]
 struct Constants<S: LayoutScalar> {
     flow_axes: crate::geometry::FlowAxes,
     axes: FlexAxes,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
+    preferred_inline_phase: PreferredInlinePhase,
     cross_content_offer: Option<S>,
     percentage_parent_size: Size<Option<S>>,
     physical_baseline_demand: bool,
@@ -516,14 +596,17 @@ impl<S: LayoutScalar> Constants<S> {
         };
 
         let preferred = Size::new(&style.common.size.width, &style.common.size.height);
-        let max_content_cross = input.sizing_mode() == SizingMode::InherentSize
-            && axes.main_logical_axis() == LogicalAxis::Inline
-            && axes.cross_size(preferred).is_max_content();
+        let row_preferred_size = input.sizing_mode() == SizingMode::InherentSize
+            && axes.main_logical_axis() == LogicalAxis::Inline;
+        let max_content_main = row_preferred_size && axes.main_size(preferred).is_max_content();
+        let max_content_cross = row_preferred_size && axes.cross_size(preferred).is_max_content();
         let (style_size, min_size, max_size) = match input.sizing_mode() {
             SizingMode::ContentSize => (Size::NONE, Size::NONE, Size::NONE),
             SizingMode::InherentSize => {
                 let resolve_preferred = |value, axis, basis| {
-                    if max_content_cross && axis == axes.cross_physical_axis() {
+                    if max_content_main && axis == axes.main_physical_axis()
+                        || max_content_cross && axis == axes.cross_physical_axis()
+                    {
                         Ok(None)
                     } else {
                         resolve_preferred_optional(value, SizingAlgorithm::Flex, axis, basis, true)
@@ -577,7 +660,7 @@ impl<S: LayoutScalar> Constants<S> {
                 )
                 .transpose_with_node(tree, node)?;
                 let ratio = *style.common.aspect_ratio;
-                let (style_size, min_size, max_size) = if max_content_cross {
+                let (style_size, min_size, max_size) = if max_content_main || max_content_cross {
                     let (min_size, max_size) = ratio.map_or((min_size, max_size), |ratio| {
                         transfer_aspect_ratio_limits(style_size, min_size, max_size, ratio.get())
                     });
@@ -606,20 +689,42 @@ impl<S: LayoutScalar> Constants<S> {
                 .or(style_size.clamp_max_before_min_optional(min_size, max_size)))
             .max_optional(padding_border.map(Some));
         let node_outer_size = contained_size.or(definite_outer_size);
-        let entry_axes = input.sizing_request().axes();
-        let entry_axes = if max_content_cross && axes.cross_size(node_outer_size).is_none() {
-            // The preferred intrinsic size uses the row's cross contributions.
-            // A finite containing offer does not bound that contribution.
-            axes.with_cross_size(
-                entry_axes,
-                AxisSizingRequestOf::new(
-                    crate::AvailableSpaceOf::Indefinite,
-                    crate::SizingOperation::MaxContent,
+        if max_content_main
+            && !max_content_cross
+            && style.common.aspect_ratio.is_some()
+            && axes.cross_size(node_outer_size).is_none()
+        {
+            // The container cannot settle a ratio-dependent automatic cross size
+            // from an intrinsic preferred main size in this sizing path.
+            return Err(crate::error::sizing_resolution_error(
+                node,
+                crate::sizing::resolve::SizingResolutionError::Unsupported(
+                    crate::UnsupportedSizingBehavior::new(
+                        crate::SizingProperty::Preferred,
+                        crate::SizingBehavior::MaxContent,
+                        SizingAlgorithm::Flex,
+                        axes.main_physical_axis(),
+                    ),
                 ),
-            )
+            ));
+        }
+        let mut entry_axes = input.sizing_request().axes();
+        // Preferred intrinsic sizes use Flex contributions independently of the
+        // finite containing offer. An already imposed size retains its request.
+        let intrinsic = preferred_intrinsic_request();
+        let preferred_inline_phase = if !max_content_main {
+            PreferredInlinePhase::Ordinary
+        } else if axes.main_size(node_outer_size).is_some() {
+            PreferredInlinePhase::Accepted
         } else {
-            entry_axes
+            PreferredInlinePhase::Discover
         };
+        if preferred_inline_phase == PreferredInlinePhase::Discover {
+            entry_axes = axes.with_main_size(entry_axes, intrinsic);
+        }
+        if max_content_cross && axes.cross_size(node_outer_size).is_none() {
+            entry_axes = axes.with_cross_size(entry_axes, intrinsic);
+        }
         let margin_debit = if input.run_mode() == RunMode::PerformRootLayout
             && input.parent_formatting_context() == ParentFormattingContext::NoParent
         {
@@ -760,6 +865,7 @@ impl<S: LayoutScalar> Constants<S> {
             axes,
             node_outer_size,
             node_inner_size,
+            preferred_inline_phase,
             cross_content_offer: None,
             percentage_parent_size,
             physical_baseline_demand: input.physical_baseline_demand(),
@@ -803,25 +909,29 @@ impl<S: LayoutScalar> Constants<S> {
             .or(self.axes.cross_size(self.node_inner_size))
     }
 
-    fn normal_inline_contents(self, accepted: CanonicalScrollBoxOf<S>) -> Option<Self> {
+    fn complete_inline_contents(
+        self,
+        accepted: CanonicalScrollBoxOf<S>,
+        requested_inline_operation: crate::SizingOperation,
+    ) -> Result<Option<Self>, LengthResolutionStatus<S>> {
         let axes = self.flow_axes;
         let mut percentage_parent = axes.logical_size(self.percentage_parent_size);
-        if percentage_parent.inline.is_some()
-            || axes
-                .logical_size(self.sizing_request.axes())
-                .inline
-                .operation()
-                != crate::SizingOperation::Normal
+        let normal = requested_inline_operation == crate::SizingOperation::Normal;
+        if self.preferred_inline_phase != PreferredInlinePhase::Discover
+            && (!normal || percentage_parent.inline.is_some())
         {
-            return None;
+            return Ok(None);
         }
         // Use the accepted unrounded inline content extent. All block sizing,
         // availability and maximum authority still come from the entry context.
         let mut outer = axes.logical_size(self.node_outer_size);
         let mut inner = axes.logical_size(self.node_inner_size);
+        let accepted_inline = axes.logical_size(accepted.content_box().size()).inline;
         outer.inline = Some(axes.logical_size(accepted.border_box().size()).inline);
-        inner.inline = Some(axes.logical_size(accepted.content_box().size()).inline);
-        percentage_parent.inline = inner.inline;
+        inner.inline = Some(accepted_inline);
+        if normal {
+            percentage_parent.inline = inner.inline;
+        }
         let inline_edges = |original, used| {
             let mut original = axes.logical_edges(original);
             let used = axes.logical_edges(used);
@@ -833,6 +943,18 @@ impl<S: LayoutScalar> Constants<S> {
         contents.node_outer_size = axes.physical_size(outer);
         contents.node_inner_size = axes.physical_size(inner);
         contents.percentage_parent_size = axes.physical_size(percentage_parent);
+        let mut requests = axes.logical_size(self.sizing_request.axes());
+        if self.preferred_inline_phase == PreferredInlinePhase::Discover {
+            // A completed property measurement does not select the caller's
+            // sizing operation or establish a formal percentage basis.
+            requests.inline = AxisSizingRequestOf::new(
+                crate::layout_math::checked_available_space(accepted_inline)?,
+                requested_inline_operation,
+            );
+            contents.sizing_request = self.sizing_request.with_axes(axes.physical_size(requests));
+            contents.available_main = self.axes.main_size(contents.sizing_request.axes());
+            contents.preferred_inline_phase = PreferredInlinePhase::Accepted;
+        }
         contents.scrollport_inset = inline_edges(
             self.scrollport_inset,
             accepted.effective_border() + accepted.effective_gutter(),
@@ -843,7 +965,7 @@ impl<S: LayoutScalar> Constants<S> {
             .max_outer_size
             .sub_optional_unchecked(contents.content_box_inset.sum_axes())
             .max_optional(Size::ZERO.map(Some));
-        Some(contents)
+        Ok(Some(contents))
     }
 
     fn with_final_scroll_box(mut self, scroll_box: CanonicalScrollBoxOf<S>) -> Self {
@@ -1540,6 +1662,7 @@ where
     let main_size_changed = (used_main - axes.main_size(item.initial_output.size)).abs()
         > Tree::Scalar::from_f64(0.001);
     if ratio.is_none()
+        && !item.initial_output_is_preferred_basis
         && item.initial_output.content_size == item.initial_output.size
         && !main_size_changed
     {

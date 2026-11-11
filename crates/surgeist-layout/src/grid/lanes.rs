@@ -3647,20 +3647,45 @@ where
     let preferred_size = grid_lanes_child_sizing_preflight(child_style, containing_physical_size)
         .map_err(|error| sizing_resolution_error(child, error))?;
     let logical_preferred_size = flow_axes.logical_size(preferred_size);
-    let (margin, known, parent, available) = {
-        let unresolved_margin = flow_axes
-            .zip_physical_edges_with_inline_extent(
-                child_style.margin,
+    let flex_owns_preferred =
+        child_style.flex_preferred_axes.width || child_style.flex_preferred_axes.height;
+    let logical_parent = containing_block.logical_size();
+    let packing_sizing = if flex_owns_preferred && !inherits_grid_axis {
+        let track_extent = match containing_block.grid_axis().logical_axis() {
+            LogicalAxis::Inline => LogicalSizeOf::new(logical_parent.inline, None),
+            LogicalAxis::Block => LogicalSizeOf::new(None, logical_parent.block),
+        };
+        Some(
+            grid_item_sizing_with_optional_alignment(
+                child_style,
+                container_style,
+                Size::splat(false),
+                flow_axes.physical_size(track_extent),
                 containing_physical_size,
-                resolve_auto_optional,
+                flow_axes,
             )
-            .transpose_with_node(tree, child)?;
+            .map_err(|error| sizing_resolution_error(child, error))?,
+        )
+    } else {
+        None
+    };
+    let (margin, known, parent, available) = {
+        let unresolved_margin = if let Some(sizing) = packing_sizing {
+            sizing.unresolved_margin
+        } else {
+            flow_axes
+                .zip_physical_edges_with_inline_extent(
+                    child_style.margin,
+                    containing_physical_size,
+                    resolve_auto_optional,
+                )
+                .transpose_with_node(tree, child)?
+        };
         let margin = unresolved_margin.map(|margin| margin.unwrap_or(Tree::Scalar::ZERO));
         let logical_margin = flow_axes.logical_edges(margin);
         let logical_style_size =
             flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
         let mut logical_known = LogicalSizeOf::new(None, None);
-        let logical_parent = containing_block.logical_size();
         let mut logical_available = LogicalSizeOf::new(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
@@ -3696,6 +3721,8 @@ where
                 );
                 logical_known.inline = if inherits_grid_axis {
                     Some(available_inline)
+                } else if let Some(sizing) = packing_sizing {
+                    flow_axes.logical_size(sizing.known).inline
                 } else {
                     definite_preferred_size(logical_preferred_size.inline).or_else(|| {
                         (justify_self == AlignItems::Stretch).then_some(available_inline)
@@ -3733,6 +3760,8 @@ where
                 );
                 logical_known.block = if inherits_grid_axis {
                     Some(available_block)
+                } else if let Some(sizing) = packing_sizing {
+                    flow_axes.logical_size(sizing.known).block
                 } else {
                     definite_preferred_size(logical_preferred_size.block).or_else(|| {
                         (align_self == AlignItems::Stretch && child_style.aspect_ratio.is_none())

@@ -45,3 +45,6 @@ mod named_empty_absence;
 
 #[path = "flex_tests/inline_percentage_completion.rs"]
 mod inline_percentage_completion;
+
+#[path = "flex_tests/preferred_main_max_content.rs"]
+mod preferred_main_max_content;

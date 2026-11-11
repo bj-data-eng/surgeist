@@ -100,6 +100,7 @@ pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
     pub(super) baseline_source: crate::BaselineSource,
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
+    pub(super) flex_owns_preferred_inline: bool,
     pub(super) block_flow_context: crate::BlockFlowContext,
     pub(super) float: Float,
     pub(super) clear: Clear,
@@ -112,9 +113,17 @@ pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
 impl<'a, S: LayoutScalar> BlockChildProjection<'a, S> {
     #[must_use]
     pub(crate) fn from_node(input: &'a NodeInputOf<S>) -> Self {
+        let common = CommonBoxProjection::from_node(input);
+        let owned_axes = crate::flex::preferred_flex_axes(
+            input.display,
+            input.flex_direction,
+            common.flow_axes,
+            common.size,
+        );
         Self {
             baseline_source: input.baseline_source,
-            common: CommonBoxProjection::from_node(input),
+            common,
+            flex_owns_preferred_inline: common.flow_axes.logical_size(owned_axes).inline,
             display: input.display,
             block_flow_context: input.block_flow_context,
             float: input.float,

@@ -124,6 +124,7 @@ pub(crate) fn transfer_aspect_ratio_limits<S: LayoutScalar>(
 /// the box selected by `box-sizing` and before any ratio work.
 pub(crate) struct PositionedSizeDeclarations<S: LayoutScalar> {
     pub(crate) preferred: Size<Option<S>>,
+    pub(crate) child_owned_preferred_axes: Size<bool>,
     pub(crate) min: Size<Option<S>>,
     pub(crate) max: Size<Option<S>>,
     pub(crate) aspect_ratio: Option<AspectRatioOf<S>>,
@@ -146,6 +147,7 @@ pub(crate) struct PositionedSizeDeclarations<S: LayoutScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PositionedUsedSize<S: LayoutScalar> {
     pub(crate) preferred: Size<Option<S>>,
+    child_owned_preferred_axes: Size<bool>,
     min: Size<S>,
     max: Size<Option<S>>,
     box_adjustment: Size<S>,
@@ -155,6 +157,7 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
     pub(crate) fn resolve(declarations: PositionedSizeDeclarations<S>) -> Self {
         let PositionedSizeDeclarations {
             preferred,
+            child_owned_preferred_axes,
             min,
             max,
             aspect_ratio,
@@ -172,8 +175,11 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
         };
         Self {
             preferred: preferred
-                .apply_aspect_ratio(aspect_ratio)
+                .apply_aspect_ratio(aspect_ratio.filter(|_| {
+                    !child_owned_preferred_axes.width && !child_owned_preferred_axes.height
+                }))
                 .add_optional(box_adjustment),
+            child_owned_preferred_axes,
             min: min
                 .add_optional(box_adjustment)
                 .unwrap_or(padding_border)
@@ -191,6 +197,13 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
         size.clamp_max_before_min_optional(self.min.map(Some), self.max)
     }
 
+    /// A child-owned preferred extent cannot be filled by stretch.
+    pub(crate) fn automatic_stretch(self, stretch: Size<Option<S>>) -> Size<Option<S>> {
+        stretch.zip_map(self.child_owned_preferred_axes, |extent, owned| {
+            if owned { None } else { extent }
+        })
+    }
+
     /// Fills the missing axis of a border-box size through `ratio` in the box
     /// selected by `box-sizing`.
     pub(crate) fn transfer_ratio(
@@ -198,7 +211,9 @@ impl<S: LayoutScalar> PositionedUsedSize<S> {
         size: Size<Option<S>>,
         ratio: Option<AspectRatioOf<S>>,
     ) -> Size<Option<S>> {
-        let Some(ratio) = ratio else {
+        let Some(ratio) = ratio.filter(|_| {
+            !self.child_owned_preferred_axes.width && !self.child_owned_preferred_axes.height
+        }) else {
             return size;
         };
         let ratio = ratio.get();

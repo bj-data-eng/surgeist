@@ -14,8 +14,8 @@ use crate::layout_math::{
 };
 use crate::scroll::CanonicalScrollBoxOf;
 use crate::sizing::resolve::{
-    EdgesResultExt, SizeResultExt, resolve_maximum_optional, resolve_minimum_optional,
-    resolve_preferred_optional,
+    EdgesResultExt, SizeResultExt, resolve_child_preferred_size, resolve_maximum_optional,
+    resolve_minimum_optional,
 };
 use crate::{
     AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Edges,
@@ -81,24 +81,17 @@ where
                 )
                 .transpose_with_node(tree, child)?;
             let padding_border_size = (padding + border).sum_axes();
+            let child_owned_preferred_axes =
+                crate::flex::child_preferred_axes::<Tree, M>(tree, child);
             let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
-                preferred: Size::new(
-                    resolve_preferred_optional(
-                        &style.common.size.width,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Horizontal,
-                        inset_relative_size.width,
-                        true,
-                    ),
-                    resolve_preferred_optional(
-                        &style.common.size.height,
-                        SizingAlgorithm::Positioned,
-                        PhysicalAxis::Vertical,
-                        inset_relative_size.height,
-                        true,
-                    ),
+                preferred: resolve_child_preferred_size(
+                    style.common.size,
+                    inset_relative_size,
+                    SizingAlgorithm::Positioned,
+                    child_owned_preferred_axes,
                 )
                 .transpose_with_node(tree, child)?,
+                child_owned_preferred_axes,
                 min: Size::new(
                     resolve_minimum_optional(
                         &style.common.min_size.width,
@@ -165,6 +158,7 @@ where
                 child_input,
                 padding_border_size,
             );
+            let stretch = used_size.automatic_stretch(stretch);
             if known_size.width.is_none()
                 && let Some(stretch_width) = stretch.width
             {
