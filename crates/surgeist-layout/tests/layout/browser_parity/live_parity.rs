@@ -203,7 +203,7 @@ struct Receipt {
     historical_report_sha256: String,
     live_report_sha256: String,
     live_ownership_sha256: String,
-    classifications: ClassificationSummary,
+    classifications: Option<ClassificationSummary>,
     native_matches: usize,
     native_nonmatches: Vec<NativeNonmatch>,
 }
@@ -211,6 +211,7 @@ struct Receipt {
 pub(super) struct LiveCorpusRun {
     receipt: Receipt,
     errors: Vec<String>,
+    selected: usize,
 }
 
 pub(super) struct LiveCorpusCounts {
@@ -223,35 +224,68 @@ pub(super) struct LiveCorpusCounts {
 }
 
 impl LiveCorpusRun {
-    pub(super) fn collect(root: &Path) -> Result<Self, String> {
-        let historical_bytes = read_file(root, HISTORICAL_REPORT)?;
+    pub(super) fn collect(root: &Path, filter: Option<&str>) -> Result<Self, String> {
         let live_bytes = read_file(root, LIVE_REPORT)?;
-        let historical: CaptureReport = parse_json(&historical_bytes)?;
         let live: CaptureReport = parse_json(&live_bytes)?;
-        verify_shared_inputs(&historical.metadata.inputs, &live.metadata.inputs)?;
-        let classifications = ClassificationSummary::compare(historical, &live)?;
-        for (path, expected) in &live.metadata.inputs {
-            read_pinned(root, path, expected)?;
+        let historical_bytes = read_file(root, HISTORICAL_REPORT);
+        let historical_report_sha256 = historical_bytes
+            .as_ref()
+            .map_or_else(|_| String::new(), |bytes| sha256(bytes));
+        let mut errors = Vec::new();
+        let classifications = historical_bytes
+            .and_then(|bytes| parse_json::<CaptureReport>(&bytes))
+            .and_then(|historical| {
+                if let Err(error) =
+                    verify_shared_inputs(&historical.metadata.inputs, &live.metadata.inputs)
+                {
+                    errors.push(error);
+                }
+                ClassificationSummary::compare(historical, &live)
+            });
+        let classifications = match classifications {
+            Ok(summary) => Some(summary),
+            Err(error) => {
+                errors.push(error);
+                None
+            }
+        };
+        let mut discovered = BTreeSet::new();
+        if filter.is_none() {
+            for (path, expected) in &live.metadata.inputs {
+                if let Err(error) = read_pinned(root, path, expected) {
+                    errors.push(error);
+                }
+            }
+            discovered = live_outputs(root, &mut errors);
         }
 
-        let mut discovered = live_outputs(root)?;
         let live_report_sha256 = sha256(&live_bytes);
-        let (live_ownership_sha256, mut errors) =
+        let live_ownership_sha256 =
             match verify_ownership(root, &live_report_sha256, &live.generated) {
-                Ok(digest) => (digest, Vec::new()),
-                Err(error) => (String::new(), vec![error]),
+                Ok(digest) => digest,
+                Err(error) => {
+                    errors.push(error);
+                    String::new()
+                }
             };
         let mut receipt = Receipt {
             schema_version: 1,
-            historical_report_sha256: sha256(&historical_bytes),
+            historical_report_sha256,
             live_report_sha256,
             live_ownership_sha256,
             classifications,
             native_matches: 0,
             native_nonmatches: Vec::new(),
         };
+        let mut selected = 0;
         let mut visited = BTreeSet::new();
         for artifact in live.generated {
+            if filter.is_some_and(|filter| {
+                !super::parity_path_matches(&root.join(&artifact.output), filter)
+            }) {
+                continue;
+            }
+            selected += 1;
             if !visited.insert(artifact.output.clone()) {
                 errors.push(format!("duplicate live output {}", artifact.output));
                 continue;
@@ -284,7 +318,15 @@ impl LiveCorpusRun {
                 errors.push(error);
             }
         }
-        Ok(Self { receipt, errors })
+        Ok(Self {
+            receipt,
+            errors,
+            selected,
+        })
+    }
+
+    pub(super) fn has_selection(&self) -> bool {
+        self.selected != 0
     }
 
     pub(super) fn check_accounting(&self, root: &Path) -> Result<(), String> {
@@ -331,8 +373,14 @@ impl LiveCorpusRun {
         if !self.errors.is_empty() {
             return Err(self.errors.join("\n"));
         }
+        let classifications = self
+            .receipt
+            .classifications
+            .as_ref()
+            .ok_or("live corpus classifications are incomplete")?;
         if self.receipt.native_matches + self.receipt.native_nonmatches.len()
-            != self.receipt.classifications.live.generated
+            != classifications.live.generated
+            || self.selected != classifications.live.generated
         {
             return Err("live Native comparison census is incomplete".into());
         }
@@ -350,9 +398,14 @@ impl LiveCorpusRun {
     }
 
     pub(super) fn counts(&self) -> LiveCorpusCounts {
+        let classifications = self
+            .receipt
+            .classifications
+            .as_ref()
+            .expect("complete live accounting");
         let mut counts = LiveCorpusCounts {
-            sources: self.receipt.classifications.sources,
-            unsupported: self.receipt.classifications.live.unsupported,
+            sources: classifications.sources,
+            unsupported: classifications.live.unsupported,
             matches: self.receipt.native_matches,
             differences: 0,
             refusals: 0,
@@ -433,6 +486,7 @@ fn compare_capture(
     {
         return Err("live capture source, variant, or output binding changed".into());
     }
+    read_pinned(root, &artifact.source, &artifact.source_sha256)?;
     for (path, expected) in &artifact.linked_resources {
         read_pinned(root, path, expected)?;
     }
@@ -472,26 +526,35 @@ fn compare_capture(
     Ok(outcome)
 }
 
-fn live_outputs(root: &Path) -> Result<BTreeSet<String>, String> {
+fn live_outputs(root: &Path, errors: &mut Vec<String>) -> BTreeSet<String> {
     let mut pending = vec![root.join(LIVE_OUTPUT)];
     let mut outputs = BTreeSet::new();
     while let Some(directory) = pending.pop() {
-        let entries = fs::read_dir(&directory)
-            .map_err(|error| format!("{}: {error}", directory.display()))?;
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) => {
+                errors.push(format!("{}: {error}", directory.display()));
+                continue;
+            }
+        };
         for entry in entries {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path();
-            let kind = entry.file_type().map_err(|error| error.to_string())?;
+            let (path, kind) = match entry.and_then(|entry| Ok((entry.path(), entry.file_type()?)))
+            {
+                Ok(entry) => entry,
+                Err(error) => {
+                    errors.push(format!("{}: {error}", directory.display()));
+                    continue;
+                }
+            };
             if kind.is_dir() {
                 pending.push(path);
             } else if !kind.is_file() {
-                return Err(format!("non-regular live output {}", path.display()));
+                errors.push(format!("non-regular live output {}", path.display()));
             } else {
-                let relative = path
-                    .strip_prefix(root)
-                    .map_err(|error| error.to_string())?
-                    .to_str()
-                    .ok_or_else(|| format!("invalid live output path {}", path.display()))?;
+                let Some(relative) = path.strip_prefix(root).ok().and_then(Path::to_str) else {
+                    errors.push(format!("invalid live output path {}", path.display()));
+                    continue;
+                };
                 let relative = relative.replace('\\', "/");
                 if relative != LIVE_REPORT && relative != LIVE_OWNERSHIP {
                     outputs.insert(relative);
@@ -499,7 +562,7 @@ fn live_outputs(root: &Path) -> Result<BTreeSet<String>, String> {
             }
         }
     }
-    Ok(outputs)
+    outputs
 }
 
 fn read_file(root: &Path, relative: &str) -> Result<Vec<u8>, String> {
@@ -620,7 +683,7 @@ mod tests {
         )
         .unwrap();
 
-        let run = LiveCorpusRun::collect(&scratch.0)
+        let run = LiveCorpusRun::collect(&scratch.0, None)
             .expect("one missing source must not stop unaffected raw comparisons");
         let raw = run.raw_failures();
         assert!(raw.iter().any(|line| line.contains(missing)));
@@ -736,11 +799,12 @@ mod tests {
                 historical_report_sha256: "historical".into(),
                 live_report_sha256: "live".into(),
                 live_ownership_sha256: "ownership".into(),
-                classifications,
+                classifications: Some(classifications),
                 native_matches: 1,
                 native_nonmatches: Vec::new(),
             },
             errors: Vec::new(),
+            selected: 2,
         };
         assert_eq!(
             run.require_complete().unwrap_err(),

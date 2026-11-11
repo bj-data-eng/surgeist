@@ -3156,16 +3156,18 @@ fn runs_registered_current_browser_parity_qualification() {
 }
 
 #[test]
+#[ignore = "records live Native observations on demand"]
+fn records_live_native_observations() {
+    let output = std::env::var_os("SURGEIST_PARITY_WRITE_LIVE_RECEIPT")
+        .expect("SURGEIST_PARITY_WRITE_LIVE_RECEIPT must name a new receipt file");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    live_parity::LiveCorpusRun::collect(&root, None)
+        .and_then(|run| run.write_receipt(Path::new(&output)))
+        .unwrap_or_else(|error| panic!("{error}"));
+}
+
+#[test]
 fn runs_all_checked_in_browser_parity_xml() {
-    if let Some(output) = std::env::var_os("SURGEIST_PARITY_WRITE_LIVE_RECEIPT") {
-        assert!(std::env::var_os("SURGEIST_PARITY_RAW_EXACT").is_none());
-        assert!(std::env::var_os("SURGEIST_PARITY_FILTER").is_none());
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
-        live_parity::LiveCorpusRun::collect(&root)
-            .and_then(|run| run.write_receipt(Path::new(&output)))
-            .unwrap_or_else(|error| panic!("{error}"));
-        return;
-    }
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     if let Some(mode) = std::env::var_os("SURGEIST_PARITY_RAW_EXACT") {
         assert_eq!(mode, "1", "SURGEIST_PARITY_RAW_EXACT must be 1 when set");
@@ -3454,8 +3456,23 @@ fn collect_browser_parity(
     let mut raw = RawBrowserParity::default();
     let mut qualified = qualify.then(QualifiedBrowserParity::default);
     let edition = registered_current_edition();
-    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter)?;
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    let live = live_parity::LiveCorpusRun::collect(&root, filter);
+    let selection = match select_parity_inventory(fixtures, edition.as_ref().ok(), filter) {
+        Ok(selection) => selection,
+        Err(_)
+            if live
+                .as_ref()
+                .is_ok_and(live_parity::LiveCorpusRun::has_selection) =>
+        {
+            ParitySelection {
+                originals: Vec::new(),
+                current: BTreeSet::new(),
+                historical_inputs: Ok(None),
+            }
+        }
+        Err(error) => return Err(error),
+    };
     let historical_inputs = match selection.historical_inputs {
         Ok(inputs) => inputs,
         Err(error) => {
@@ -3568,26 +3585,25 @@ fn collect_browser_parity(
             }
         }
     }
-    if filter.is_none() {
-        match live_parity::LiveCorpusRun::collect(&root) {
-            Ok(live) => {
-                raw.live.extend(live.raw_failures());
-                if let Some(qualified) = &mut qualified {
-                    match live.check_accounting(&root) {
-                        Ok(()) => qualified.live = Some(live.counts()),
-                        Err(error) => qualified.failures.push(error),
-                    }
-                } else if let Err(error) = live.check_report_identity(&root) {
-                    raw.live.push(error);
+    match live {
+        Ok(live) if filter.is_none() || live.has_selection() => {
+            raw.live.extend(live.raw_failures());
+            if let Some(qualified) = &mut qualified {
+                match live.check_accounting(&root) {
+                    Ok(()) => qualified.live = Some(live.counts()),
+                    Err(error) => qualified.failures.push(error),
                 }
-            }
-            Err(error) => {
-                if let Some(qualified) = &mut qualified {
-                    qualified.failures.push(error.clone());
-                }
+            } else if let Err(error) = live.check_report_identity(&root) {
                 raw.live.push(error);
             }
         }
+        Err(error) if filter.is_none() => {
+            if let Some(qualified) = &mut qualified {
+                qualified.failures.push(error.clone());
+            }
+            raw.live.push(error);
+        }
+        _ => {}
     }
     Ok(BrowserParityRun { raw, qualified })
 }

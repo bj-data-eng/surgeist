@@ -19,7 +19,6 @@ task="$1"
 case "${task}" in
     parity-all)
         unset SURGEIST_PARITY_FILTER
-        unset SURGEIST_PARITY_WRITE_LIVE_RECEIPT
         export SURGEIST_PARITY_RAW_EXACT=1
         exec cargo test --locked -j 1 -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
         ;;
