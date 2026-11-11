@@ -46,6 +46,58 @@ pub(crate) struct VelloScene {
     payloads: PayloadCustody,
 }
 
+/// Draw access for callbacks whose appended image patches are tracked by the scene.
+pub(crate) struct SceneDraws<'scene>(&'scene mut VelloScene);
+
+impl SceneDraws<'_> {
+    pub(crate) fn fill<'a>(
+        &mut self,
+        style: Fill,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        shape: &impl kurbo::Shape,
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .fill(style, transform, brush, brush_transform, shape, account)
+    }
+
+    pub(crate) fn fill_elements<'a>(
+        &mut self,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        elements: &[kurbo::PathEl],
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .fill_elements(transform, brush, brush_transform, elements, account)
+    }
+
+    pub(crate) fn stroke<'a>(
+        &mut self,
+        style: &kurbo::Stroke,
+        transform: kurbo::Affine,
+        brush: impl Into<SceneBrush<'a>>,
+        brush_transform: Option<kurbo::Affine>,
+        shape: &impl kurbo::Shape,
+        account: &Account,
+    ) -> Result<()> {
+        self.0
+            .stroke(style, transform, brush, brush_transform, shape, account)
+    }
+
+    pub(crate) fn draw_image<'a>(
+        &mut self,
+        image: impl Into<ImageBrushRef<'a>>,
+        transform: kurbo::Affine,
+        account: &Account,
+    ) -> Result<()> {
+        self.0.draw_image(image, transform, account)
+    }
+}
+
 impl Drop for VelloScene {
     fn drop(&mut self) {
         std::mem::take(&mut self.backing).dispose(std::mem::take(&mut self.encoding));
@@ -104,6 +156,10 @@ impl<'a> QualifiedStroke<'a> {
 }
 
 impl VelloScene {
+    pub(crate) fn draws(&mut self) -> SceneDraws<'_> {
+        SceneDraws(self)
+    }
+
     pub(crate) fn import_image(&mut self, image: &crate::Image, account: &Account) -> Result<()> {
         self.payloads.keep(account.import_image(image)?, account)
     }
@@ -151,17 +207,17 @@ impl VelloScene {
         &mut self,
         image: &crate::Image,
         source_to_device: kurbo::Affine,
-        encode: impl FnOnce(&mut Self, kurbo::Affine) -> Result<T>,
+        encode: impl FnOnce(&mut SceneDraws<'_>, kurbo::Affine) -> Result<T>,
         account: &Account,
     ) -> Result<T> {
         self.import_image(image, account)?;
         if image.data.width == 0 || image.data.height == 0 {
-            return encode(self, kurbo::Affine::IDENTITY);
+            return encode(&mut self.draws(), kurbo::Affine::IDENTITY);
         }
         let expansion =
             super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device, account)?;
         let first_patch = self.encoding.resources.patches.len();
-        let result = encode(self, expansion.compensation())?;
+        let result = encode(&mut self.draws(), expansion.compensation())?;
         self.mark_image_expansion(first_patch, image.data.data.id(), expansion, account)?;
         Ok(result)
     }
@@ -1646,6 +1702,7 @@ mod pixelated_tests {
             crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 255, 255]).unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
+        scene.import_image(&image, &account).unwrap();
         scene
             .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
             .unwrap();
