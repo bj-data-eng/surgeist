@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "91c3f17214a470691127acf0e681286a228e0c8a03abecfa83a165c8a7d406f4",
+    "xml/subgrid/subgrid_sibling_overflow_footer_second_matches_first__border_box_ltr.xml": "5f8b736a3f1969920b36af33f2276cc1f8d431c43fe08845abf4325a83f2511d",
+    "xml/subgrid/subgrid_sibling_overflow_footer_second_matches_first__border_box_rtl.xml": "3656743554f4e7441b9b6cb86247417222c414acdb1417fbb0c425d252363c71",
+    "xml/subgrid/subgrid_sibling_overflow_footer_second_matches_first__content_box_ltr.xml": "4d40a0cb0e628df14625acacba69dbef9fda8d981596dcf16a6f586b991de8c8",
+    "xml/subgrid/subgrid_sibling_overflow_footer_second_matches_first__content_box_rtl.xml": "04bd3ccf1913e6b36d7ef9cdc80c03dd37d68db2a3a3963c4bc48a80f52ad3f4",
+    "xml/subgrid/subgrid_sibling_overflow_footer_third_matches_first__border_box_ltr.xml": "03e1a00bb99828943f1b027179d5989f5ebc5f9bec95f7a841670fb655f0583d",
+    "xml/subgrid/subgrid_sibling_overflow_footer_third_matches_first__border_box_rtl.xml": "97de0aa7efbc77455ee69aba2143f3e29844bc4f22dd8a8719751f03db34c6eb",
+    "xml/subgrid/subgrid_sibling_overflow_footer_third_matches_first__content_box_ltr.xml": "08f62a7ff6bb007406368bf74bd065d8fc78346c588f6237ff3679b3ba183c36",
+    "xml/subgrid/subgrid_sibling_overflow_footer_third_matches_first__content_box_rtl.xml": "a1cc3a1d943752a2081a1468ce91f31f1fc67150af440cffeb1cc6cda3311d2c"
+  }
+}

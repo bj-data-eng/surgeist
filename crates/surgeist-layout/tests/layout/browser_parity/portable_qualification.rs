@@ -710,6 +710,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "7713cb9500ae75212b84c31bcd4c6b2b6d8e71ee21cf682fd315110cb59d3bbc",
     ),
     (
+        authority::FRI08_WRAPPED_SUBGRID_EDITION,
+        "9b1831ef0bebd3a49eacf3d78df17be19bfa801ec474f944c002410d446c1181",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),
@@ -1765,7 +1769,11 @@ fn admit_matching(
         if &identity != case.identity() {
             return Err(changed("matching capture binding projection"));
         }
-        let golden = if case.category() == authority::MatchingCategory::Fri07IntrinsicFlexText {
+        let golden = if matches!(
+            case.category(),
+            authority::MatchingCategory::Fri07IntrinsicFlexText
+                | authority::MatchingCategory::Fri08WrappedSubgrid
+        ) {
             let source = read_pinned(
                 root,
                 &PathDigest {

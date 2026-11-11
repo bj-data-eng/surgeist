@@ -272,6 +272,9 @@ mod capture_helper_identity;
 #[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_profile.rs"]
 mod fri07_intrinsic_flex_profile;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/fri08_wrapped_subgrid_profile.rs"]
+mod fri08_wrapped_subgrid_profile;
 mod geometry;
 mod grid;
 #[cfg(test)]

@@ -1447,6 +1447,12 @@ pub(crate) fn compare_matching_capture(
         MatchingCategory::Geometry | MatchingCategory::OriginalInlineSubgrid => {
             return compare_matching_geometry(golden);
         }
+        MatchingCategory::Fri08WrappedSubgrid => {
+            if crate::fri08_wrapped_subgrid_profile::source_digest(source).is_none() {
+                return Err(malformed("unexpected original wrapped Subgrid source"));
+            }
+            return super::wrapped_subgrid_text::compare(golden);
+        }
         MatchingCategory::OriginalRelativeRtlSubgrid => {
             if source != crate::original_relative_rtl_subgrid_profile::SOURCE {
                 return Err(malformed("unexpected original relative RTL Subgrid source"));

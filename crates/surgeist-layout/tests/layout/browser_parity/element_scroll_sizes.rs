@@ -285,6 +285,21 @@ fn project_box_input<'a>(path: &str, node: &'a TestNode) -> Result<&'a layout::N
     Ok(input)
 }
 
+pub(super) fn compare_projected_box_sizes(
+    path: &str,
+    node: &TestNode,
+    expected: [u32; 4],
+) -> Result<(), Error> {
+    let actual = project(path, node)?.fields().map(|(_, value)| value);
+    if actual != expected {
+        return Err(invalid(
+            path,
+            &format!("browser sizes {expected:?}, Native {actual:?}"),
+        ));
+    }
+    Ok(())
+}
+
 fn project(path: &str, node: &TestNode) -> Result<Sizes, Error> {
     let input = project_box_input(path, node)?;
     let geometry = node

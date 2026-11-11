@@ -6,6 +6,7 @@ use super::{
     prepared_range_qualification,
 };
 use crate::fri07_intrinsic_flex_profile as intrinsic_flex;
+use crate::fri08_wrapped_subgrid_profile as wrapped_subgrid;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
@@ -305,6 +306,10 @@ pub(crate) fn current_owner_bindings(
                     "fri07_intrinsic_flex_text_request.json",
                     intrinsic_flex::REQUEST,
                 ),
+                (
+                    "fri08_wrapped_subgrid_request.json",
+                    wrapped_subgrid::REQUEST,
+                ),
                 ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
                 (
                     "prepared_atomic_percentage_request.json",
@@ -354,6 +359,8 @@ pub(crate) fn current_owner_bindings(
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
+        } else if name == wrapped_subgrid::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/fri08_wrapped_subgrid.js".to_owned()
         } else if name == intrinsic_flex::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/fri07_intrinsic_flex_text.js".to_owned()
         } else if name == original_flex_parent::SCRIPT_PATH {
@@ -783,6 +790,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "inline Subgrid proof requires its observation request",
         ));
     }
+    if observation_request != FRI08_WRAPPED_SUBGRID_EDITION
+        && full_inputs.contains_key(wrapped_subgrid::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "wrapped Subgrid text proof requires its observation request",
+        ));
+    }
     if observation_request != FRI07_INTRINSIC_FLEX_EDITION
         && full_inputs.contains_key(intrinsic_flex::SCRIPT_PATH)
     {
@@ -860,11 +874,29 @@ pub(crate) fn capture_binding_from_verified_inputs(
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
         }
-        (FRI07_INTRINSIC_FLEX_EDITION, Some(request_sha256)) => {
-            if case.source != intrinsic_flex::SOURCE
-                || artifact.source_sha256 != intrinsic_flex::SOURCE_SHA256
-                || request_sha256 != sha256(intrinsic_flex::REQUEST)
-                || MatchingCategory::Fri07IntrinsicFlexText.observation_input_sha256(full_inputs)
+        (FRI07_INTRINSIC_FLEX_EDITION | FRI08_WRAPPED_SUBGRID_EDITION, Some(request_sha256)) => {
+            let (source_matches, request, inputs, profile) =
+                if observation_request == FRI07_INTRINSIC_FLEX_EDITION {
+                    (
+                        case.source == intrinsic_flex::SOURCE
+                            && artifact.source_sha256 == intrinsic_flex::SOURCE_SHA256,
+                        intrinsic_flex::REQUEST,
+                        flex_content_text::INTRINSIC_CAPTURE_INPUTS,
+                        intrinsic_flex::PROFILE,
+                    )
+                } else {
+                    (
+                        wrapped_subgrid::source_digest(&case.source)
+                            == Some(artifact.source_sha256.as_str()),
+                        wrapped_subgrid::REQUEST,
+                        flex_content_text::WRAPPED_SUBGRID_CAPTURE_INPUTS,
+                        wrapped_subgrid::PROFILE,
+                    )
+                };
+            if !source_matches
+                || request_sha256 != sha256(request)
+                || MatchingCategory::for_edition(observation_request)
+                    .observation_input_sha256(full_inputs)
                     != Some(request_sha256)
                 || excluded_specs.contains(OBSERVATION_REQUEST)
                 || !artifact.linked_resources.is_empty()
@@ -874,19 +906,17 @@ pub(crate) fn capture_binding_from_verified_inputs(
                 || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
             {
-                return Err(changed(
-                    "original intrinsic Flex Text source or capture request",
-                ));
+                return Err(changed("original prepared text source or capture request"));
             }
-            for (name, bytes) in flex_content_text::INTRINSIC_CAPTURE_INPUTS {
+            for (name, bytes) in inputs {
                 if name != OBSERVATION_REQUEST
                     && (full_inputs.get(name) != Some(&sha256(bytes))
                         || excluded_specs.contains(name))
                 {
-                    return Err(changed(format!("intrinsic Flex Text input: {name}")));
+                    return Err(changed(format!("original text input: {name}")));
                 }
             }
-            (FRI07_INTRINSIC_FLEX_EDITION, intrinsic_flex::PROFILE)
+            (observation_request, profile)
         }
         ("original-flex-parent" | "original-percentage-flex-parent", Some(request_sha256)) => {
             let (source_digest, request, script_path, script, profile, font_demand) =
@@ -1857,6 +1887,19 @@ pub(crate) fn matching_metadata_is_valid(
             }
             _ => false,
         },
+        MatchingCategory::Fri08WrappedSubgrid => {
+            wrapped_subgrid::source_digest(source).is_some()
+                && kind == SourceKind::Original
+                && metadata["context"] == "absolute-local"
+                && metadata["hypothetical_display"] == "grid"
+                && metadata["containing_direction"] == "ltr"
+                && metadata["hypothetical_direction"] == "ltr"
+                && metadata["root_direction"] == "variant"
+                && metadata["root_writing_mode"] == "horizontal-tb"
+                && metadata["inline_offset"].as_f64() == Some(0.0)
+                && metadata["block_offset"].is_null()
+                && metadata["root_size"].is_null()
+        }
         MatchingCategory::OriginalRelativeRtlSubgrid => {
             source == relative_rtl_subgrid::SOURCE
                 && kind == SourceKind::Original
@@ -1915,6 +1958,7 @@ pub(crate) const ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION: &str =
     "original-relative-rtl-subgrid-positioned";
 pub(crate) const FRI06_SUBGRID_EDITION: &str = "fri06-subgrid-representatives";
 pub(crate) const FRI07_INTRINSIC_FLEX_EDITION: &str = "fri07-intrinsic-flex-text";
+pub(crate) const FRI08_WRAPPED_SUBGRID_EDITION: &str = "fri08-wrapped-subgrid-text";
 pub(crate) const FRI06_SUBGRID_SOURCES: [&str; 3] = [
     "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html",
     "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html",
@@ -1991,6 +2035,7 @@ pub(crate) enum MatchingCategory {
     Geometry,
     Fri06Subgrid,
     Fri07IntrinsicFlexText,
+    Fri08WrappedSubgrid,
     OriginalInlineSubgrid,
     OriginalRelativeRtlSubgrid,
 }
@@ -2000,6 +2045,7 @@ impl MatchingCategory {
         match edition {
             FRI06_SUBGRID_EDITION => Self::Fri06Subgrid,
             FRI07_INTRINSIC_FLEX_EDITION => Self::Fri07IntrinsicFlexText,
+            FRI08_WRAPPED_SUBGRID_EDITION => Self::Fri08WrappedSubgrid,
             inline_subgrid::EDITION => Self::OriginalInlineSubgrid,
             ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION => Self::OriginalRelativeRtlSubgrid,
             _ => Self::Geometry,
@@ -2011,6 +2057,7 @@ impl MatchingCategory {
             Self::Geometry => "geometry",
             Self::Fri06Subgrid => FRI06_SUBGRID_EDITION,
             Self::Fri07IntrinsicFlexText => FRI07_INTRINSIC_FLEX_EDITION,
+            Self::Fri08WrappedSubgrid => FRI08_WRAPPED_SUBGRID_EDITION,
             Self::OriginalInlineSubgrid => inline_subgrid::EDITION,
             Self::OriginalRelativeRtlSubgrid => ORIGINAL_RELATIVE_RTL_SUBGRID_EDITION,
         }
@@ -2022,6 +2069,7 @@ impl MatchingCategory {
     ) -> Option<&str> {
         match self {
             Self::Fri07IntrinsicFlexText
+            | Self::Fri08WrappedSubgrid
             | Self::OriginalInlineSubgrid
             | Self::OriginalRelativeRtlSubgrid => {
                 inputs.get(OBSERVATION_REQUEST).map(String::as_str)
