@@ -997,6 +997,156 @@ pub(super) fn svg_settings_order_control(svg_first: bool) {
     }
 }
 
+pub(super) fn published_iframe_prefix_closes_after_svg_refusal() {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let parent = body(&session, document);
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let wrapper = batch.create_element_ns(&detached, Namespace::html(), "div");
+    let iframe = batch.create_element_ns(&detached, Namespace::html(), "iframe");
+    let html = make_script(&mut batch, document);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    for child in [&iframe, &html, &svg] {
+        batch.insert_before(child, &wrapper, None);
+    }
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let [wrapper, iframe, html, svg] =
+        [wrapper, iframe, html, svg].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let before = host.snapshot().unwrap();
+    assert_eq!(before.node(wrapper).unwrap().parent(), None);
+    assert_eq!(
+        before.node(wrapper).unwrap().children(),
+        [iframe, html, svg]
+    );
+    let read = request(
+        apply(
+            &mut host,
+            DomSourceEdit::insert_before(wrapper, parent, None),
+        ),
+        DomSourceScriptStep::ReadScripting,
+    );
+    assert_eq!(read.subject(), Some(html));
+    assert_eq!(read.node_document(), Some(document));
+    assert_eq!(read.relevant_global(), Some(top.global()));
+    let operation = read.operation();
+    let prefix = host.snapshot().unwrap();
+    assert_eq!(prefix.stamp(), read.basis());
+    assert_ne!(prefix.stamp(), before.stamp());
+    assert_eq!(prefix.incomplete_source_operation(), Some(operation));
+    let iframe_child = |snapshot: &DomSnapshot| {
+        snapshot
+            .node(iframe)
+            .unwrap()
+            .as_element()
+            .unwrap()
+            .child_navigable()
+            .unwrap()
+            .unwrap()
+    };
+    let navigable = iframe_child(&prefix);
+    let mut child_documents = prefix
+        .nodes()
+        .filter_map(|node| prefix.node(node).unwrap().as_document())
+        .filter(|document| document.navigable() == Some(navigable));
+    let child_document = child_documents.next().unwrap().id();
+    assert!(child_documents.next().is_none());
+    let check_prefix = |snapshot: &DomSnapshot| {
+        assert_eq!(snapshot.node(wrapper).unwrap().parent(), Some(parent));
+        assert_eq!(
+            snapshot.node(wrapper).unwrap().children(),
+            [iframe, html, svg]
+        );
+        assert_eq!(iframe_child(snapshot), navigable);
+        assert_eq!(
+            snapshot.document(child_document).unwrap().navigable(),
+            Some(navigable)
+        );
+        let html = snapshot.node(html).unwrap().as_html_script().unwrap();
+        assert!(!html.flags().already_started());
+        assert_eq!(html.script_type(), None);
+        assert_eq!(html.preparation_document(), None);
+        let svg = snapshot.node(svg).unwrap().as_svg_script().unwrap();
+        assert_eq!(svg.origin(), DomSvgScriptOrigin::Native);
+        assert!(!svg.flags().already_processed());
+    };
+    check_prefix(&prefix);
+    let status = host
+        .with_native(|dom, _, _| dom.pending_source_edit().unwrap())
+        .unwrap();
+    assert_eq!(status.operation(), operation);
+    assert!(status.has_published());
+    assert_eq!(request(resume(&mut host, operation), read.step()), read);
+
+    let mut session = host.stop().into_session().unwrap();
+    assert_eq!(session.snapshot().stamp(), prefix.stamp());
+    let mut source = session.source_execution();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let reached = source.resume(
+        &mut session.dom(),
+        operation,
+        LIMITS,
+        &mut services,
+        &cancel(),
+    );
+    assert!(
+        matches!(
+            reached,
+            Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+                DomError::SvgScriptProcessingUnavailable
+            )))
+        ),
+        "the recovered source must return the actual SVG refusal: {reached:?}"
+    );
+    let closed = session.snapshot();
+    check_prefix(&closed);
+    let pending = session.dom().pending_source_edit();
+    assert!(
+        pending.is_none(),
+        "the published Source must close after its real SVG refusal: {pending:?}"
+    );
+    assert_eq!(closed.incomplete_source_operation(), None);
+    let child = closed.hosted_navigable(navigable).unwrap();
+    assert_eq!(child.parent(), Some(top.navigable()));
+    assert_eq!(child.container(), Some(iframe));
+    assert_eq!(child.active_document(), Some(child_document));
+    let child_entry = child.active_entry();
+
+    let later = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::set_attribute(wrapper, "data-after", "applied"),
+            LIMITS,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(later, DomSourceDriveProgress::Complete(done) if done.operation() != operation)
+    );
+    let edited = session.snapshot();
+    check_prefix(&edited);
+    assert_eq!(
+        edited.hosted_navigable(navigable).unwrap().active_entry(),
+        child_entry
+    );
+    assert_eq!(
+        edited
+            .node(wrapper)
+            .unwrap()
+            .attribute(&"data-after".into()),
+        Some(&"applied".into())
+    );
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
@@ -1005,4 +1155,5 @@ pub(super) fn run() {
     stopped_host_preserves_executable_frontier();
     stopped_script_precedes_replacement_child_service();
     enabled_html_script_precedes_unavailable_svg_processing();
+    published_iframe_prefix_closes_after_svg_refusal();
 }

@@ -1534,6 +1534,9 @@ fn main() {
             "disabled-html-script-before-svg" => {
                 script_preparation::svg_settings_order_control(false)
             }
+            "published-iframe-script-svg-refusal" => {
+                script_preparation::published_iframe_prefix_closes_after_svg_refusal()
+            }
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);
