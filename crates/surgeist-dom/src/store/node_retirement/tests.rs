@@ -495,3 +495,56 @@ fn ordinary_watches_survive_detach_adopt_and_failed_destruction() {
     assert_eq!((notice.node(), notice.custody_key()), (fresh, 73));
     assert!(inbox.take().is_none());
 }
+
+#[test]
+fn independent_inboxes_publish_and_disarm_their_original_watches() {
+    for disarm_first in [false, true] {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, _, node) = fixture(&cancel);
+        let mut first_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+        let mut second_inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+        let mut first = Some(
+            dom.watch_node_retirement(node, &first_inbox, 41, GENEROUS, &cancel)
+                .unwrap(),
+        );
+        let second = dom
+            .watch_node_retirement(node, &second_inbox, 41, GENEROUS, &cancel)
+            .unwrap();
+
+        let mut refused = DomBatch::new();
+        refused.destroy(node);
+        assert!(matches!(
+            dom.apply(refused, &cancel),
+            Err(DomError::InvalidDestruction)
+        ));
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+
+        if disarm_first {
+            drop(first.take());
+        }
+        let mut detach = DomBatch::new();
+        detach.detach(node);
+        dom.apply(detach, &cancel).unwrap();
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+
+        let mut destruction = DomBatch::new();
+        destruction.destroy(node);
+        dom.apply(destruction, &cancel).unwrap();
+        let first_notice = first_inbox.take();
+        assert_eq!(
+            first_notice.map(|notice| (notice.node(), notice.custody_key())),
+            (!disarm_first).then_some((node, 41))
+        );
+        let second_notice = second_inbox.take().unwrap();
+        assert_eq!(
+            (second_notice.node(), second_notice.custody_key()),
+            (node, 41)
+        );
+        assert!(first_inbox.take().is_none());
+        assert!(second_inbox.take().is_none());
+        drop(first);
+        drop(second);
+    }
+}
