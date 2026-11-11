@@ -1463,3 +1463,58 @@ fn positioned_ratio_uses_selected_sizing_box_f32() {
 fn positioned_ratio_uses_selected_sizing_box_f64() {
     assert_positioned_ratio_uses_selected_sizing_box::<f64>();
 }
+
+#[test]
+fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
+    let mode = WritingMode::VerticalRl;
+    let mut root = root_style::<f64>(Direction::Ltr);
+    root.display = Display::Grid;
+    root.writing_mode = mode;
+    root.grid_template_columns = vec![TrackComponentOf::px(30.0), TrackComponentOf::px(40.0)];
+    root.grid_template_rows = vec![TrackComponentOf::px(50.0), TrackComponentOf::px(60.0)];
+    let child = |start| NodeInputOf {
+        display: Display::Flex,
+        writing_mode: mode,
+        grid_column: GridPlacement::try_lines(start, start + 1).unwrap(),
+        grid_row: GridPlacement::try_lines(start, start + 1).unwrap(),
+        ..NodeInputOf::default()
+    };
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1, 2])
+        .children(1, [])
+        .children(2, [])
+        .style(0, root)
+        .style(1, child(1))
+        .style(2, child(2));
+    let size = Size::new(nn(800.0), nn(600.0));
+    let frame = RootLocalPositionedContextOf::horizontal_auto_insets(
+        size,
+        Direction::Ltr,
+        0.0,
+        OrthogonalFallbackOf::new(
+            size.map(Some),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .unwrap()
+    .with_hypothetical_block_offset(0.0)
+    .unwrap();
+    let batch = compute_layout(
+        &tree,
+        0,
+        LayoutRootRequestOf::positioned_root_local(frame).unwrap(),
+    )
+    .unwrap();
+    for finalized in [false, true] {
+        for (node, x, y, width, height) in [
+            (0, 0.0, 0.0, 110.0, 70.0),
+            (1, 60.0, 0.0, 50.0, 30.0),
+            (2, 0.0, 30.0, 60.0, 40.0),
+        ] {
+            let box_output = output(&batch, node, finalized);
+            assert_eq!(box_output.location, Point::new(x, y));
+            assert_eq!(box_output.size, Size::new(width, height));
+        }
+    }
+}
