@@ -1748,12 +1748,16 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     ) -> Result<PlannedGraphParent> {
         let layer_transform = layer.transform.then(state.capture_transform)?;
         let layer_to_surface = layer_transform.then(state.parent_to_surface)?;
-        let layer_to_destination =
-            if state.capture_space == CaptureBoundsCoordinateSpace::FilterLocal {
+        // The shader's destination coordinates belong to the parent image.
+        // Ancestor transforms still determine raster density for local captures.
+        let layer_to_destination = match state.capture_space {
+            CaptureBoundsCoordinateSpace::Local | CaptureBoundsCoordinateSpace::FilterLocal => {
                 layer_transform
-            } else {
-                layer_to_surface
-            };
+            }
+            CaptureBoundsCoordinateSpace::SurfaceGrid => layer_to_surface,
+            #[cfg(test)]
+            CaptureBoundsCoordinateSpace::ForcedMappedForTest => layer_to_surface,
+        };
         let inverse = destination_to_layer_local_mapping(layer_to_destination)?;
         // A singular own geometric clip has no operation coverage. A singular
         // source without that clip remains a transparent source operation.
