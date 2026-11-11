@@ -369,6 +369,12 @@ fn start_descendant() {
         .unwrap();
 }
 
+fn raw_report(version: &str, path: &str) -> String {
+    format!(
+        r#"{{"version":"{version}","fixture":{{"revision":"{REVISION}","path":"{path}","url":"{URL}"}},"result":{{"harness":{{"status":"OK","diagnostic":{{"message":null,"stack":null}},"subtests":[{{"index":0,"name":[55296],"status":"NOTRUN","diagnostic":{{"message":null,"stack":[]}}}}]}}}}}}"#
+    )
+}
+
 fn write_raw(output: &mut impl Write, json: &[u8]) {
     output
         .write_all(&u32::try_from(json.len()).unwrap().to_be_bytes())
@@ -405,24 +411,11 @@ fn worker(mode: &str) {
             )
             .unwrap();
         }
-        "raw-result" => {
-            let json = format!(
-                r#"{{"version":"V1","fixture":{{"revision":"{REVISION}","path":"{FIXTURE}","url":"{URL}"}},"result":{{"harness":{{"status":"OK","diagnostic":{{"message":null,"stack":null}},"subtests":[{{"index":0,"name":[55296],"status":"NOTRUN","diagnostic":{{"message":null,"stack":[]}}}}]}}}}}}"#
-            );
-            write_raw(&mut stdout, json.as_bytes());
-        }
+        "raw-result" => write_raw(&mut stdout, raw_report("V1", FIXTURE).as_bytes()),
         "missing" => {}
         "partial" => stdout.write_all(&[0, 0, 0, 8, b'{']).unwrap(),
-        "version" => write_raw(
-            &mut stdout,
-            br#"{"version":"V2","fixture":null,"result":null}"#,
-        ),
-        "bad-path" => {
-            let json = format!(
-                r#"{{"version":"V1","fixture":{{"revision":"{REVISION}","path":"../bad.js","url":"{URL}"}},"result":null}}"#
-            );
-            write_raw(&mut stdout, json.as_bytes());
-        }
+        "version" => write_raw(&mut stdout, raw_report("V2", FIXTURE).as_bytes()),
+        "bad-path" => write_raw(&mut stdout, raw_report("V1", "../bad.js").as_bytes()),
         "trailing" => {
             write_report(&mut stdout, &identity, &mixed, MAX_FRAME).unwrap();
             stdout.write_all(b"x").unwrap();
