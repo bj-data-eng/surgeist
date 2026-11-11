@@ -675,14 +675,75 @@ pub(crate) struct SweepGradient<'a> {
     stops: &'a [GradientStop],
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum OrdinaryGeometry<'a> {
+    Linear {
+        start: &'a Point,
+        end: &'a Point,
+    },
+    Radial {
+        center: &'a Point,
+        radius_x: &'a f64,
+        radius_y: &'a f64,
+    },
+    HorizontalDistance {
+        origin_x: &'a f64,
+    },
+}
+
+/// An ordinary field with its exact validated, nonempty stop list.
+pub(crate) struct OrdinaryGradient<'a> {
+    geometry: OrdinaryGeometry<'a>,
+    stops: &'a [GradientStop],
+}
+
+impl<'a> OrdinaryGradient<'a> {
+    pub(crate) const fn geometry(&self) -> OrdinaryGeometry<'a> {
+        self.geometry
+    }
+
+    pub(crate) const fn stops(&self) -> &'a [GradientStop] {
+        self.stops
+    }
+}
+
+pub(crate) enum GradientPreparation<'a> {
+    Ordinary(OrdinaryGradient<'a>),
+    Sweep(SweepGradient<'a>),
+}
+
 impl Gradient {
-    pub(crate) fn sweep(&self) -> Option<SweepGradient<'_>> {
+    pub(crate) fn preparation(&self) -> GradientPreparation<'_> {
         match &self.kind {
-            GradientKind::Sweep { center, stops } => Some(SweepGradient {
+            GradientKind::Linear { start, end, stops } => {
+                GradientPreparation::Ordinary(OrdinaryGradient {
+                    geometry: OrdinaryGeometry::Linear { start, end },
+                    stops,
+                })
+            }
+            GradientKind::Radial {
+                center,
+                radius_x,
+                radius_y,
+                stops,
+            } => GradientPreparation::Ordinary(OrdinaryGradient {
+                geometry: OrdinaryGeometry::Radial {
+                    center,
+                    radius_x,
+                    radius_y,
+                },
+                stops,
+            }),
+            GradientKind::HorizontalDistance { origin_x, stops } => {
+                GradientPreparation::Ordinary(OrdinaryGradient {
+                    geometry: OrdinaryGeometry::HorizontalDistance { origin_x },
+                    stops,
+                })
+            }
+            GradientKind::Sweep { center, stops } => GradientPreparation::Sweep(SweepGradient {
                 center: *center,
                 stops,
             }),
-            _ => None,
         }
     }
 }
@@ -784,6 +845,56 @@ mod field_model_tests {
 
     fn stop(position: f64) -> GradientStop {
         GradientStop::try_new(position, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn gradient_projection_borrows_validated_stops_for_each_geometry() {
+        fn ordinary(gradient: &Gradient) -> OrdinaryGradient<'_> {
+            let GradientPreparation::Ordinary(field) = gradient.preparation() else {
+                panic!("expected ordinary field preparation");
+            };
+            assert!(std::ptr::eq(field.stops(), gradient.stops()));
+            assert_eq!(
+                field.stops(),
+                [
+                    stop(1.0),
+                    GradientStop::try_new(5.0, Color::TRANSPARENT).unwrap()
+                ]
+            );
+            field
+        }
+
+        let stops = [
+            stop(1.0),
+            GradientStop::try_new(5.0, Color::TRANSPARENT).unwrap(),
+        ];
+        let start = Point::new(1.0, -2.0);
+        let end = Point::new(3.0, 4.0);
+        let linear = Gradient::try_linear(start, end, stops.to_vec()).unwrap();
+        assert!(matches!(
+            ordinary(&linear).geometry(),
+            OrdinaryGeometry::Linear { start: actual_start, end: actual_end }
+                if *actual_start == start && *actual_end == end
+        ));
+        let radial = Gradient::try_radial(end, 2.0, 5.0, stops.to_vec()).unwrap();
+        assert!(matches!(
+            ordinary(&radial).geometry(),
+            OrdinaryGeometry::Radial { center, radius_x, radius_y }
+                if *center == end && *radius_x == 2.0 && *radius_y == 5.0
+        ));
+        let distance = Gradient::try_horizontal_distance(-7.0, stops.to_vec()).unwrap();
+        assert!(matches!(
+            ordinary(&distance).geometry(),
+            OrdinaryGeometry::HorizontalDistance { origin_x } if *origin_x == -7.0
+        ));
+
+        let sweep = Gradient::try_sweep(start, vec![stop(0.75), stop(0.25)]).unwrap();
+        let GradientPreparation::Sweep(field) = sweep.preparation() else {
+            panic!("expected sweep preparation");
+        };
+        assert_eq!(field.center(), start);
+        assert!(std::ptr::eq(field.stops(), sweep.stops()));
+        assert_eq!(field.stops(), [stop(0.75), stop(0.25)]);
     }
 
     #[test]

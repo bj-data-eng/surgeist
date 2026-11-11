@@ -13,7 +13,7 @@ use super::{
 };
 use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates};
 use crate::{
-    Color, Error, GradientStop, PhysicalSize, RepeatingGradient, Result,
+    Color, Error, GradientStop, PhysicalSize, Point, RepeatingGradient, Result,
     accounting::{Account, RenderPhase, RenderWork},
     color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
@@ -41,20 +41,30 @@ pub(super) fn prepare(
         if scalar(&account, || span == 0.0)? {
             return solid_average(stops, Average::Uniform, &account);
         }
-        if matches!(
-            gradient.geometry(),
-            GradientGeometry::HorizontalDistance { .. }
-        ) {
-            return prepare_horizontal_distance(
-                gradient,
-                first,
-                span,
-                paint_to_device,
-                target_extent,
-                &account,
-            );
-        }
-        let geometry = period_geometry(gradient.geometry(), first, span, &account)?;
+        let field_geometry = match gradient.geometry() {
+            GradientGeometry::HorizontalDistance { origin_x } => {
+                return prepare_horizontal_distance(
+                    gradient,
+                    origin_x,
+                    first,
+                    span,
+                    paint_to_device,
+                    target_extent,
+                    &account,
+                );
+            }
+            GradientGeometry::Linear { start, end } => PeriodFieldGeometry::Linear { start, end },
+            GradientGeometry::Radial {
+                center,
+                radius_x,
+                radius_y,
+            } => PeriodFieldGeometry::Radial {
+                center,
+                radius_x,
+                radius_y,
+            },
+        };
+        let geometry = period_geometry(field_geometry, first, span, &account)?;
         let (field, local) = match geometry {
             PeriodGeometry::RoundedZero => return solid_average(stops, Average::Uniform, &account),
             PeriodGeometry::ZeroHeight => {
@@ -172,6 +182,7 @@ fn horizontal_phase(first: f64, span: f64, account: &Account) -> Result<f32> {
 
 fn prepare_horizontal_distance(
     gradient: &RepeatingGradient,
+    origin_x: f64,
     first: f64,
     span: f64,
     transform: kurbo::Affine,
@@ -196,9 +207,6 @@ fn prepare_horizontal_distance(
     if scalar(account, || period < 2.0)? {
         return solid_average(stops, Average::Weighted(span), account);
     }
-    let GradientGeometry::HorizontalDistance { origin_x } = gradient.geometry() else {
-        unreachable!("distance variant selected by caller")
-    };
     let origin_x = scalar(account, || origin_x)?;
     let phase = horizontal_phase(first, span, account)?;
     let device = ordinary_gradient::horizontal_device(origin_x, span, transform, account)
@@ -250,6 +258,18 @@ enum NativeField {
     Radial { start_radius: f64 },
 }
 
+enum PeriodFieldGeometry {
+    Linear {
+        start: Point,
+        end: Point,
+    },
+    Radial {
+        center: Point,
+        radius_x: f64,
+        radius_y: f64,
+    },
+}
+
 enum PeriodGeometry {
     RoundedZero,
     ZeroHeight,
@@ -260,14 +280,14 @@ enum PeriodGeometry {
 }
 
 fn period_geometry(
-    geometry: GradientGeometry,
+    geometry: PeriodFieldGeometry,
     first: f64,
     span: f64,
     account: &Account,
 ) -> Result<PeriodGeometry> {
     let phase = scalar(account, || first.rem_euclid(span))?;
     let (field, local) = match geometry {
-        GradientGeometry::Linear { start, end } => {
+        PeriodFieldGeometry::Linear { start, end } => {
             account.work(RenderWork::CoordinateVisits, 4)?;
             let (sx, sy, ex, ey) = (start.x(), start.y(), end.x(), end.y());
             let dx = scalar(account, || ex - sx)?;
@@ -292,10 +312,7 @@ fn period_geometry(
                 kurbo::Affine::new([x, y, minus_y, x, ox, oy]),
             )
         }
-        GradientGeometry::HorizontalDistance { .. } => {
-            unreachable!("distance is prepared with its unshifted carrier")
-        }
-        GradientGeometry::Radial {
+        PeriodFieldGeometry::Radial {
             center,
             radius_x,
             radius_y,
