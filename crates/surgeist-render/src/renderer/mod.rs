@@ -495,13 +495,7 @@ impl Renderer {
         scene: &Scene,
         parameters: Parameters,
     ) -> Result<Stats> {
-        self.frame_operation(surface, async |renderer, surface, account| {
-            let (_, publication) = renderer
-                .dispatch_render_frame(surface, scene, parameters, account)
-                .await?;
-            Ok(publication)
-        })
-        .await
+        self.render_frame(surface, scene, parameters).await
     }
 
     /// Resumes a compatible surface, awaiting host-resource recreation when presented.

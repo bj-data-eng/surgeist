@@ -1,13 +1,17 @@
 use super::Renderer;
 use crate::{
-    EffectPrecision, Parameters, RenderRoute, Stats, Surface,
-    accounting::{HistoryCommit, RenderFrameReport},
+    BackendErrorCode, EffectPrecision, Error, Parameters, RenderAccountingOptions, RenderRoute,
+    Result, Scene, Stats, Surface,
+    accounting::{
+        Account, HistoryCommit, RenderFrameReport, RenderPhase, RendererCpu, frame_lifecycle,
+    },
     backend::SurfaceFrameCommit,
+    resource::{FrameCleanup, WorkingFormat},
+    surface::{HeadlessPublication, HeadlessResources, SurfaceBackend},
 };
 
-/// All fallible accounting and metadata preparation precedes this final move.
 pub(super) struct RenderPublication {
-    pub(super) frame: SurfaceFrameCommit,
+    frame: SurfaceFrameCommit,
     parameters: Parameters,
     route: RenderRoute,
 }
@@ -23,19 +27,96 @@ impl RenderPublication {
             route,
         }
     }
-    pub(super) fn route(&self) -> RenderRoute {
-        self.route
-    }
-    pub(super) fn precision(&self) -> Option<EffectPrecision> {
-        self.frame.working_format().map(|format| match format {
-            crate::resource::WorkingFormat::HighPrecision => EffectPrecision::High,
-            crate::resource::WorkingFormat::ReducedPrecision => EffectPrecision::Reduced,
+    fn bind(self, surface: &mut Surface) -> Result<BoundPublication<'_>> {
+        let (headless, cleanup, working_format) = self.frame.into_parts();
+        let headless = match headless {
+            Some(draft) => Some(BoundHeadlessPublication::bind(
+                &mut surface.backend,
+                #[cfg(test)]
+                &mut surface.headless_publication_count,
+                draft,
+            )?),
+            None => None,
+        };
+        Ok(BoundPublication {
+            headless,
+            cleanup,
+            last_parameters: &mut surface.last_parameters,
+            parameters: self.parameters,
+            route: self.route,
+            working_format,
         })
     }
-    pub(super) fn commit(
+}
+
+struct BoundHeadlessPublication<'s> {
+    draft: HeadlessPublication,
+    resources: &'s mut HeadlessResources,
+    #[cfg(test)]
+    count: &'s mut usize,
+}
+impl<'s> BoundHeadlessPublication<'s> {
+    fn bind(
+        backend: &'s mut SurfaceBackend,
+        #[cfg(test)] count: &'s mut usize,
+        draft: HeadlessPublication,
+    ) -> Result<Self> {
+        match backend {
+            SurfaceBackend::Headless { resources, .. } => Ok(Self {
+                draft,
+                resources,
+                #[cfg(test)]
+                count,
+            }),
+            _ => Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "headless publication requires a headless frame surface",
+            )),
+        }
+    }
+
+    fn install(self) {
+        *self.resources = HeadlessResources::Ready {
+            texture: self.draft.texture,
+        };
+        #[cfg(test)]
+        {
+            *self.count = self.count.saturating_add(1);
+        }
+    }
+}
+
+#[cfg(test)]
+impl Surface {
+    pub(crate) fn commit_headless_publication(&mut self, draft: HeadlessPublication) {
+        BoundHeadlessPublication::bind(
+            &mut self.backend,
+            &mut self.headless_publication_count,
+            draft,
+        )
+        .expect("headless publication fixture requires a headless surface")
+        .install();
+    }
+}
+
+struct BoundPublication<'s> {
+    headless: Option<BoundHeadlessPublication<'s>>,
+    cleanup: Option<FrameCleanup>,
+    last_parameters: &'s mut Option<Parameters>,
+    parameters: Parameters,
+    route: RenderRoute,
+    working_format: Option<WorkingFormat>,
+}
+impl BoundPublication<'_> {
+    fn precision(&self) -> Option<EffectPrecision> {
+        self.working_format.map(|format| match format {
+            WorkingFormat::HighPrecision => EffectPrecision::High,
+            WorkingFormat::ReducedPrecision => EffectPrecision::Reduced,
+        })
+    }
+    fn commit(
         self,
         renderer: &mut Renderer,
-        surface: &mut Surface,
         stats: Stats,
         history: HistoryCommit,
         report: RenderFrameReport,
@@ -43,59 +124,63 @@ impl RenderPublication {
         // No setup, fallible extraction, copy, allocation, admission or phase end
         // remains. Later native releases retain their lifetime observation policy.
         history.commit();
-        self.frame.commit(surface);
+        if let Some(headless) = self.headless {
+            headless.install();
+        }
         renderer.stats = stats;
-        surface.last_parameters = Some(self.parameters);
+        *self.last_parameters = Some(self.parameters);
         renderer.frame_reports = Some(report);
         stats
     }
 }
 
-struct FrameContext<'r, 's> {
-    renderer: &'r mut Renderer,
-    surface: &'s mut Surface,
+fn frame_setup(renderer: &Renderer) -> (&RendererCpu, RenderAccountingOptions) {
+    (&renderer.cpu, renderer.options.accounting())
 }
-fn frame_setup<'a>(
-    context: &'a FrameContext<'_, '_>,
-) -> (
-    &'a crate::accounting::RendererCpu,
-    crate::RenderAccountingOptions,
-) {
-    (&context.renderer.cpu, context.renderer.options.accounting())
+fn frame_canceled(renderer: &mut Renderer, report: RenderFrameReport) {
+    renderer.frame_reports = Some(report);
 }
-fn frame_canceled(context: &mut FrameContext<'_, '_>, report: RenderFrameReport) {
-    context.renderer.frame_reports = Some(report);
-}
-struct ReadyFrame {
-    publication: RenderPublication,
+struct ReadyFrame<'s> {
+    publication: BoundPublication<'s>,
     history: HistoryCommit,
-    _account: crate::accounting::Account,
+    _account: Account,
 }
 impl Renderer {
-    /// One shared owning gate for real frame execution, including forced-route
-    /// fixtures. The callback cannot publish; all terminal paths retain reports.
+    pub(super) async fn render_frame(
+        &mut self,
+        surface: &mut Surface,
+        scene: &Scene,
+        parameters: Parameters,
+    ) -> Result<Stats> {
+        self.run_frame(surface, async |renderer, surface, account| {
+            let (_, publication) = renderer
+                .dispatch_render_frame(surface, scene, parameters, account)
+                .await?;
+            Ok(publication)
+        })
+        .await
+    }
+
+    #[cfg(test)]
     pub(super) async fn frame_operation(
         &mut self,
         surface: &mut Surface,
-        run: impl AsyncFnOnce(
-            &mut Self,
-            &mut Surface,
-            &crate::accounting::Account,
-        ) -> crate::Result<RenderPublication>,
-    ) -> crate::Result<Stats> {
-        use crate::accounting::{RenderPhase, frame_lifecycle};
-        let mut context = FrameContext {
-            renderer: self,
-            surface,
-        };
+        run: impl AsyncFnOnce(&mut Self, &mut Surface, &Account) -> Result<RenderPublication>,
+    ) -> Result<Stats> {
+        self.run_frame(surface, run).await
+    }
+
+    async fn run_frame(
+        &mut self,
+        surface: &mut Surface,
+        run: impl AsyncFnOnce(&mut Self, &mut Surface, &Account) -> Result<RenderPublication>,
+    ) -> Result<Stats> {
         let finished = frame_lifecycle(
-            &mut context,
+            self,
             frame_setup,
             frame_canceled,
-            async move |context, mut attempt, account| {
-                let renderer = &mut *context.renderer;
-                let surface = &mut *context.surface;
-                let (mut publication, draft, account) = account
+            async move |renderer, mut attempt, account| {
+                let (publication, draft, account) = account
                     .async_phase(RenderPhase::Frame, async {
                         let identity = renderer.render_device_identity(surface)?;
                         let generation = renderer
@@ -107,14 +192,16 @@ impl Renderer {
                         attempt.attach_generation(&generation)?;
                         let draft = renderer.image_history.begin(attempt.account())?;
                         let account = account.with_history(draft.observer());
-                        let publication = run(renderer, surface, &account).await?;
+                        let publication = run(renderer, &mut *surface, &account).await?;
                         Ok((publication, draft, account))
                     })
                     .await?;
-                // Preparation remains outside Frame and before report extraction.
+                let mut publication = publication.bind(surface)?;
+                // Hold the same surface through preparation. On refusal, the
+                // draft drops after the Publish call returns.
                 let preparation = account.phase(RenderPhase::Publish, || {
                     account.phase(RenderPhase::Cleanup, || {
-                        publication.frame.finish_cpu_cleanup();
+                        drop(publication.cleanup.take());
                         Ok(())
                     })?;
                     let ready = draft.into_publication()?.retire_old()?;
@@ -157,7 +244,7 @@ impl Renderer {
             return Err(fault.into());
         }
         let stats =
-            match Stats::from_frame_report(&report, publication.route(), publication.precision()) {
+            match Stats::from_frame_report(&report, publication.route, publication.precision()) {
                 Ok(stats) => stats,
                 Err(error) => {
                     drop(history);
@@ -167,6 +254,6 @@ impl Renderer {
                     return Err(error);
                 }
             };
-        Ok(publication.commit(self, surface, stats, history, report))
+        Ok(publication.commit(self, stats, history, report))
     }
 }
