@@ -320,6 +320,22 @@ mod tests {
         let (raw, verdict) = compare(&current).unwrap();
         assert!(raw.is_empty() && verdict.is_ok(), "{raw:?}");
         verify_historical(&current, &historical).unwrap();
+
+        let mut fractional = current;
+        let ratio_box = &mut fractional.root.children[0].children[0].children[0];
+        ratio_box.style.attrs.insert("width".into(), "40px".into());
+        ratio_box
+            .style
+            .attrs
+            .insert("height".into(), "39.75px".into());
+        let (raw, verdict) = compare(&fractional).unwrap();
+        assert!(verdict.is_err());
+        assert_eq!(
+            raw,
+            [
+                "chrome_issue_325928327__border_box_ltr/0/0/0: unrounded height, browser 40, Native 39.75"
+            ],
+        );
     }
 
     #[test]
