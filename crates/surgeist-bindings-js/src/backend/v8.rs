@@ -652,6 +652,7 @@ impl Entered<'_, '_, '_> {
             } else {
                 (function.into(), function)
             };
+            let root = roots.retain(scope, realm, value)?;
             let retired = Rc::new(Cell::new(false));
             let retirement_signal = retired.clone();
             let weak = v8::Weak::with_guaranteed_finalizer(
@@ -674,7 +675,7 @@ impl Entered<'_, '_, '_> {
                         lease,
                     },
                 );
-            roots.retain(scope, realm, value)
+            Ok(root)
         })
     }
 }

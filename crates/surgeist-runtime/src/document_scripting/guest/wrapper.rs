@@ -22,6 +22,9 @@ impl GuestEvents {
             _backing: self.reserve(owner, size_of::<DispatchMethod>())?,
         };
         let prototype = scope.object(ObjectPrototype::Default)?;
+        let observed = scope.callback_object(&prototype)?;
+        let retained =
+            scope.retain_callback_object(observed, |bytes| self.reserve(owner, bytes))?;
         let name = b"dispatchEvent".map(u16::from);
         let method = scope.fixed_arity_function(
             &Callback::new(move |scope, arguments| capture.call(scope, arguments)),
@@ -40,9 +43,6 @@ impl GuestEvents {
                 configurable: true,
             },
         )?;
-        let observed = scope.callback_object(&prototype)?;
-        let retained =
-            scope.retain_callback_object(observed, |bytes| self.reserve(owner, bytes))?;
         self.target_prototype
             .set(retained)
             .map_err(|_| DocumentGuestEventError::RegistryState)?;
