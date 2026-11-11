@@ -27,7 +27,7 @@ impl SessionStorage {
             .len();
         payload_write::<Attribute>(c, 1)?;
         payload_write::<[FieldRef; 2]>(c, 2)?;
-        self.construction.acquire_attribute(c)?;
+        self.holds.acquire_attribute(c)?;
         self.payloads.forget_attribute_strings(node);
         self.bind_string(name_slot, FieldRef::AttributeName(node, position))
             .map_err(|_| latch_registry_row(c))?;
@@ -139,9 +139,7 @@ impl SessionStorage {
                 self.retire_field_group(c, *slot)?;
             }
             self.payloads.forget_attribute_strings(node);
-            let old = self
-                .construction
-                .replace_attribute(c, node, position, &mut incoming)?;
+            let old = self.replace_attribute(c, node, position, &mut incoming)?;
             for slot in old_slots.into_iter().flatten() {
                 self.detach_attribute_string(c, slot)?;
             }
@@ -304,9 +302,9 @@ impl SessionStorage {
             }
         }
         self.payloads.forget_attribute_strings(node);
-        let removed = self.construction.remove_attribute(c, node, index)?;
+        let removed = self.remove_attribute(c, node, index)?;
         drop(removed);
-        self.construction.release_attribute(c)?;
+        self.holds.release_attribute(c)?;
         // The rows of the removed attribute keep its strings as history, detached; the rows of
         // the attributes after it follow them to their new positions.
         for slot in removed_rows.into_iter().flatten() {

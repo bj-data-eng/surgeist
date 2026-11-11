@@ -154,11 +154,7 @@ impl SessionStorage {
                         .ok_or(SessionError::ForeignNode)?;
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let element = view.handle();
-                    self.construction.apply(
-                        c,
-                        surgeist_html::bounded::construction::HtmlConstructionCommand::SetLinkFlags { element, flags },
-                        &[],
-                    )?;
+                    self.set_link_flags_record(c, &element, flags)?;
                 }
                 Ok(())
             }

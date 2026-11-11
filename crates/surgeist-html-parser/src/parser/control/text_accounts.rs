@@ -5,15 +5,6 @@ use super::*;
 
 use surgeist_html::bounded::construction::HtmlConstructionTextCapacity as Capacity;
 
-/// What the parse holds for one string of a non-element field: its units, and the bytes of its
-/// capacity and of the shared wrapper that holds it. It replaces the ticket of the string, whose
-/// release the owner of the strings makes once for all of them.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct TextAccount {
-    pub(crate) units: u64,
-    pub(crate) bytes: u64,
-}
-
 impl ParseControl {
     /// The capacity a text of `capacity` units that must hold `minimum` units grows to: the
     /// greater of the minimum and double the capacity, which is clipped to the units of the
@@ -133,45 +124,6 @@ impl ParseControl {
             return self.representation(HtmlParseResource::ManagedUtf16Units);
         };
         self.acquire(HtmlParseResource::ManagedUtf16Units, units)
-    }
-
-    /// Moves a string that the tokenizer buffered to the managed units, as the stored string of a
-    /// record. The ticket stays with the caller.
-    pub(crate) fn manage_text_string(
-        &mut self,
-        allocation: &mut DocumentStringAllocation,
-        value: &surgeist_html::values::DocumentString,
-    ) -> Result<(), HtmlParseStop> {
-        self.move_document_string_to_managed(allocation, value)
-    }
-
-    /// Takes what the ticket of a managed string holds, and ends the ticket: its units and the
-    /// bytes of its capacity and wrapper, which the parse releases with the strings it holds.
-    /// The string is the only holder of its block afterwards, so it can grow in place.
-    pub(crate) fn absorb_text_string(
-        &mut self,
-        allocation: DocumentStringAllocation,
-    ) -> Result<TextAccount, HtmlParseStop> {
-        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ForeignControl,
-            ));
-        }
-        if allocation.resource != HtmlParseResource::ManagedUtf16Units || allocation.shared {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::NonStorageResource,
-            ));
-        }
-        match allocation
-            .vector_admitted
-            .checked_add(allocation.wrapper_bytes)
-        {
-            Some(bytes) => Ok(TextAccount {
-                units: allocation.units,
-                bytes,
-            }),
-            None => self.representation(HtmlParseResource::ManagedCapacityBytes),
-        }
     }
 
     /// Releases the units and the bytes the parse holds for its strings.

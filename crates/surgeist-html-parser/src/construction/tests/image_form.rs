@@ -416,8 +416,8 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     let mut c = ParseControl::new(
         limits()
             .into_builder()
-            .auxiliary_entries(20)
-            .active_formatting_entries(20)
+            .auxiliary_entries(17)
+            .active_formatting_entries(17)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -438,14 +438,14 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
     // Attaching it would require an unrelated temporary child-order entry;
     // the image's actual intended parent is the attached HTML container.
     let _body = session.allocate_implicit_body(&mut c, None).unwrap();
-    // Root/html/body own three actual record tickets, four field payload slots, four document facts, and four nonce slots.
-    // Three append-index entries and two independent creation rows accompany those records.
+    // Root/html/body own three node-join cells, four field payload slots, four document facts, and four nonce slots.
+    // Two independent creation rows accompany those records.
     // No auxiliary entry remains for the image's required metadata slot.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
             .current,
-        20
+        17
     );
     let name_backing = tag.name.value.text().block().address();
     let original_origins: Vec<_> = tag
@@ -462,24 +462,23 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
             )
         })
         .collect();
-    let original_topology: Vec<_> =
-        (0..session.active().unwrap().construction.test_storage().len())
-            .map(|position| {
-                let record = session
-                    .active()
-                    .unwrap()
-                    .construction
-                    .node_at(position)
-                    .unwrap();
-                (
-                    record.parent().map(|node| node.position()),
-                    record
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect();
+    let original_topology: Vec<_> = (0..session.active().unwrap().construction.len())
+        .map(|position| {
+            let record = session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(position)
+                .unwrap();
+            (
+                record.parent().map(|node| node.position()),
+                record
+                    .children()
+                    .map(|node| node.position())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
     let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
     let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
     let mut input = Some(tag);
@@ -512,7 +511,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
                 .collect::<Vec<_>>(),
         )
     });
-    let topology: Vec<_> = (0..session.active().unwrap().construction.test_storage().len())
+    let topology: Vec<_> = (0..session.active().unwrap().construction.len())
         .map(|position| {
             let record = session
                 .active()
@@ -533,9 +532,9 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         result.err(),
         Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
-            limit: 20,
-            current: 20,
-            requested_delta: 3,
+            limit: 17,
+            current: 17,
+            requested_delta: 2,
         }))
     );
     assert_eq!(topology, original_topology);
@@ -656,10 +655,7 @@ fn image_creation_original_rejections_precede_any_metadata_slot_or_capacity() {
         session.active().unwrap().payloads.values.capacity(),
         capacity
     );
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        3
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 3);
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::AuxiliaryEntries)
@@ -745,7 +741,7 @@ fn image_creation_binding_stop_retains_initialized_slot_and_actual_node_for_clea
     ));
     assert!(input.is_none());
     let storage = session.active().unwrap();
-    assert_eq!(storage.construction.test_storage().len(), 4);
+    assert_eq!(storage.construction.len(), 4);
     assert_eq!(
         storage
             .construction
@@ -914,7 +910,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
                 })) if limit == cap && current == cap
             ));
             let storage = session.active().unwrap();
-            assert_eq!(storage.construction.test_storage().len(), 4);
+            assert_eq!(storage.construction.len(), 4);
             assert!(
                 !storage
                     .payloads
@@ -945,10 +941,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             ));
             // Metadata, name and namespace are initialized;
             // the next actual record-ticket entry is the rejected slot.
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                3
-            );
+            assert_eq!(session.active().unwrap().construction.len(), 3);
             assert_eq!(session.active().unwrap().payloads.values.len(), 21);
             assert!(
                 session

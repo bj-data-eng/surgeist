@@ -107,13 +107,13 @@ const OVERFLOW: HtmlConstructionError = HtmlConstructionCause::RepresentationExh
 
 /// The most steps a walk of an arena of `records` can take: each record is
 /// entered and left once, and a record names at most three kinds of edge.
-fn walk_budget(records: usize) -> usize {
+pub(in crate::internal::construction::bounded) fn walk_budget(records: usize) -> usize {
     records.saturating_mul(3).saturating_add(3)
 }
 
 /// The record that owns `record` in its tree: its parent, or the host or
 /// template that owns the fragment.
-pub(super) fn owning_parent(record: &Record) -> Option<NodeIx> {
+pub(in crate::internal::construction::bounded) fn owning_parent(record: &Record) -> Option<NodeIx> {
     record.parent.or(match &record.owner {
         Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
             Some(owner.index)
@@ -126,7 +126,7 @@ pub(super) fn owning_parent(record: &Record) -> Option<NodeIx> {
 /// children in order, then the shadow contents, then the owned template
 /// contents, except `skip`. Advances the node's cursor past every edge it
 /// reports or skips, with one write.
-fn next_edge(
+pub(in crate::internal::construction::bounded) fn next_edge(
     arena: &mut Arena,
     node: NodeIx,
     skip: Option<NodeIx>,
@@ -163,7 +163,12 @@ impl Arena {
     /// Places the subtree rooted at `root` so that the root sits at depth `to`,
     /// leaving out the template contents `skip`. The walk was planned, so it
     /// cannot fail; an inconsistent arena only ends it early.
-    pub(super) fn relocate_subtree(&mut self, root: NodeIx, to: usize, skip: Option<NodeIx>) {
+    pub(in crate::internal::construction::bounded) fn relocate_subtree(
+        &mut self,
+        root: NodeIx,
+        to: usize,
+        skip: Option<NodeIx>,
+    ) {
         let budget = walk_budget(self.records.len());
         let Some(record) = self.records.get_mut(root.position()) else {
             return;

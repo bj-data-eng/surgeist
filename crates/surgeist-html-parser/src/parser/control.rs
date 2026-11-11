@@ -30,8 +30,6 @@ mod css_value;
 pub(crate) use css_value::CssSchemeValue;
 mod string_extension;
 mod text_accounts;
-pub(crate) use construction::ConstructionAllocation;
-pub(crate) use text_accounts::TextAccount;
 
 const WORK_COUNT: usize = 8;
 /// One value per [`HtmlParseWorkCategory`]; a lookup cannot be out of range.

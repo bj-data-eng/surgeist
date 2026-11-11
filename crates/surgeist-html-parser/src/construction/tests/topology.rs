@@ -24,12 +24,7 @@ fn batch_cycle_guard_preserves_earlier_sibling_before_later_ancestor_refusal() {
     session
         .insert(&mut c, &branch, &destination, None, None)
         .unwrap();
-    let before = session
-        .active()
-        .unwrap()
-        .construction
-        .test_storage()
-        .usage();
+    let before = session.active().unwrap().construction.usage();
     assert_eq!(
         session
             .reparent_children(&mut c, &from, &destination, None)
@@ -67,7 +62,7 @@ fn batch_cycle_guard_preserves_earlier_sibling_before_later_ancestor_refusal() {
             .position(),
         branch.index
     );
-    assert_eq!(storage.construction.test_storage().usage(), before);
+    assert_eq!(storage.construction.usage(), before);
     assert!(c.stop().is_none());
     session.release(&mut c).unwrap();
     assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -333,10 +328,7 @@ fn node_and_depth_cap_failures_leave_topology_unmodified_and_cleanup_releases_ca
             ..
         }))
     ));
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     assert_eq!(
         session
             .active()
@@ -641,10 +633,7 @@ fn edge_preflight_and_zero_physical_capacity_reject_before_actual_record_admissi
             ..
         }))
     ));
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     assert_eq!(
         control
             .usage()
@@ -829,10 +818,7 @@ fn final_shared_payload_cap_stop_restores_actual_vectors_and_all_tickets() {
     })) if current == root_capacity as u64 && requested_delta == wrapper_bytes as u64)
     );
     assert_eq!(build_name_address(&session, node.index), records_address);
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        2
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 2);
     assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
     session.release(&mut control).unwrap();
     assert_eq!(control.usage().actual_capacity_bytes, 0);

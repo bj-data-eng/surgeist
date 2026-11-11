@@ -24,6 +24,64 @@ pub(super) fn inject_walk_refusal(
     }
 }
 
+/// The size in bytes of one record of the storage's record bank, as the storage reports it when it
+/// asks for the growth of the bank.
+pub(super) fn record_element_size() -> usize {
+    use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
+    use surgeist_html::bounded::construction::{
+        HtmlConstructionBankGrowth, HtmlConstructionChange, HtmlConstructionGrowthRecord,
+        HtmlConstructionStorage, HtmlRecordAdmission,
+    };
+    use surgeist_ledger::Charge;
+    #[derive(Default)]
+    struct Recorder(usize);
+    impl Charge<HtmlWork, HtmlResource> for Recorder {
+        type Stop = ();
+        fn charge(&mut self, _: &[HtmlChange]) -> Result<(), ()> {
+            Ok(())
+        }
+        fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+    impl HtmlRecordAdmission for Recorder {
+        fn admit_change(
+            &mut self,
+            _: &HtmlConstructionStorage,
+            _: HtmlConstructionChange,
+        ) -> Result<(), ()> {
+            Ok(())
+        }
+        fn admit_growth(&mut self, growth: HtmlConstructionBankGrowth) -> Result<usize, ()> {
+            self.0 = growth.element_size();
+            Ok(growth.minimum_capacity())
+        }
+        fn record_growth(&mut self, _: HtmlConstructionGrowthRecord) -> Result<(), ()> {
+            Ok(())
+        }
+        fn record_change(
+            &mut self,
+            _: &HtmlConstructionStorage,
+            _: HtmlConstructionChange,
+        ) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+    let mut recorder = Recorder::default();
+    if let Ok(mut storage) = HtmlConstructionStorage::new(&mut recorder) {
+        // A reservation asks for the growth of the record bank.
+        let _ = storage.reserve_records(1, &mut recorder);
+    }
+    recorder.0
+}
+
+/// The capacity of the record bank and the size of one record, for a session that has no record
+/// with children: the parse holds the bytes of that bank alone.
+pub(super) fn record_bank(storage: &SessionStorage) -> (usize, usize) {
+    let size = record_element_size();
+    ((storage.holds.bank_bytes as usize) / size, size)
+}
+
 pub(super) fn name_units(
     control: &mut ParseControl,
     name: &QualifiedName,

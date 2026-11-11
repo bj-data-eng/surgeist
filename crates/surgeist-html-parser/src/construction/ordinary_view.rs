@@ -4,6 +4,30 @@ use super::*;
 #[cfg(test)]
 use surgeist_html::construction::ConstructionNodeKind;
 
+/// Borrows the same storage before or after publication; it owns no records or identity.
+#[derive(Clone, Copy)]
+pub(super) enum ConstructionView<'a> {
+    Active(&'a surgeist_html::bounded::construction::HtmlConstructionStorage),
+    Frozen(&'a surgeist_html::construction::HtmlConstructionResult),
+}
+impl<'a> ConstructionView<'a> {
+    pub(super) fn node_at(
+        self,
+        position: usize,
+    ) -> Option<surgeist_html::bounded::construction::HtmlConstructionNode<'a>> {
+        match self {
+            Self::Active(value) => value.node_at(position),
+            Self::Frozen(value) => value.node_at(position),
+        }
+    }
+    pub(super) fn len(self) -> usize {
+        match self {
+            Self::Active(value) => value.len(),
+            Self::Frozen(value) => value.len(),
+        }
+    }
+}
+
 // Shared exact physical traversal used by form views and output reads.
 pub(super) fn ordinary_view_parent(
     records: ConstructionView<'_>,

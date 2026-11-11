@@ -96,7 +96,7 @@ fn implied_head_and_both_root_attribute_paths_keep_order_exact_backing_and_origi
             storage.observed_origins(group, &mut c).unwrap()[0].source,
             expected_origin
         );
-        assert_eq!(storage.construction.test_storage().usage().attributes(), 4);
+        assert_eq!(storage.construction.usage().attributes(), 4);
         t.release(&mut c).unwrap();
         let mut frozen = session.freeze(&mut c).unwrap();
         let document = frozen.document().unwrap();

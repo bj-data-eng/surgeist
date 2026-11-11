@@ -262,8 +262,8 @@ fn output_observations_reject_foreign_destination_and_unavailable_or_foreign_nod
 #[test]
 fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundary() {
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
-    // Three existing native records own three append-index entries.
-    for cap in [20, 21] {
+    // Three existing native records own three node-join cells.
+    for cap in [17, 18] {
         let source = crate::HtmlSource::utf8("<output>");
         let mut c = ParseControl::new(
             limits()
@@ -288,13 +288,13 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
             &[111, 117, 116, 112, 117, 116],
         ));
         session.allocate_implicit_body(&mut c, None).unwrap();
-        // Root/html/body retain two independent creation rows in addition to their previous 18 entries;
+        // Root/html/body retain two independent creation rows in addition to their previous 15 entries;
         // Output next requires document/native preflight3 before its own creation, state and association rows.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            20
+            17
         );
         let backing = tag.as_ref().unwrap().name.value.text().block().address();
         assert!(matches!(

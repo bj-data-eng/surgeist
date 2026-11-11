@@ -1205,7 +1205,7 @@ impl SessionStorage {
         first: usize,
         second: usize,
     ) -> Result<bool, SessionError> {
-        let storage = self.construction.storage(c)?;
+        let storage = &self.construction;
         let parent = |c: &mut ParseControl, node: usize| -> Result<Option<usize>, SessionError> {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             Ok(storage

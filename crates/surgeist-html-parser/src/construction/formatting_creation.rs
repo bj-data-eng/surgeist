@@ -292,7 +292,6 @@ impl ParserArenaSession {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         storage
             .construction
-            .storage(control)?
             .position(&creation.arena)
             .map_err(|_| SessionError::ForeignNode)?;
         control.require_source_range(&creation.source)?;
@@ -470,14 +469,8 @@ impl ParserArenaSession {
             .node_at(destination)
             .ok_or(SessionError::ForeignNode)?
             .handle();
-        self.active_mut()?.construction.apply(
-            control,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::CheckChildTransfer {
-                from: source_handle,
-                to: destination_handle,
-            },
-            &[],
-        )?;
+        self.active()?
+            .check_child_transfer_record(control, &source_handle, &destination_handle)?;
         loop {
             let storage = self.active()?;
             storage.require(control)?;

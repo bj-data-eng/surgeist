@@ -50,26 +50,6 @@ pub(crate) fn through_ledger(
     }
 }
 
-/// As [`through_ledger`], for an operation whose charge can also fault by itself. The fault is a
-/// failure of the test.
-pub(crate) fn through_charged<E: std::fmt::Debug>(
-    charge: impl FnOnce(
-        &mut ScopeCharge<'_, HtmlWork, HtmlResource>,
-    ) -> Result<
-        (),
-        surgeist_html::accounting::HtmlChargedError<Error<HtmlWork, HtmlResource>, E>,
-    >,
-) -> Amounts {
-    through_ledger(|scope| {
-        charge(scope).map_err(|error| match error {
-            surgeist_html::accounting::HtmlChargedError::Stopped(stop) => stop,
-            surgeist_html::accounting::HtmlChargedError::Faulted(fault) => {
-                panic!("the operation faulted: {fault:?}")
-            }
-        })
-    })
-}
-
 /// The amounts a controller has charged so far.
 pub(crate) fn charged(control: &ParseControl) -> Amounts {
     let mut categories = [0; 8];

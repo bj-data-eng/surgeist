@@ -113,13 +113,7 @@ fn appended_text_copies_the_same_work_whatever_the_length_of_the_text_before_it(
             assert_eq!(native_text(&session, &first), expected);
         }
         assert_eq!(
-            session
-                .active()
-                .unwrap()
-                .construction
-                .test_storage()
-                .usage()
-                .utf16_units(),
+            session.active().unwrap().construction.usage().utf16_units(),
             prefix + 5
         );
         // The text holds its own units and nothing more.
@@ -163,13 +157,7 @@ fn character_insertion_merges_preceding_text_keeps_identity_and_the_units_of_its
         [0xd800, 0x20, 0xd83d, 0xde00, 0]
     );
     assert_eq!(
-        session
-            .active()
-            .unwrap()
-            .construction
-            .test_storage()
-            .usage()
-            .utf16_units(),
+        session.active().unwrap().construction.usage().utf16_units(),
         5
     );
     // The merged text holds five units; the two tokens it absorbed are not stored strings.
@@ -332,13 +320,7 @@ fn a_refused_append_leaves_the_text_the_usage_and_the_origins_and_release_leaves
     assert!(input.is_none(), "the token is released with the refusal");
     assert_eq!(native_text(&session, &node), [0x61, 0x62]);
     assert_eq!(
-        session
-            .active()
-            .unwrap()
-            .construction
-            .test_storage()
-            .usage()
-            .utf16_units(),
+        session.active().unwrap().construction.usage().utf16_units(),
         2
     );
     assert_eq!(
@@ -472,13 +454,7 @@ fn a_refused_growth_leaves_the_text_the_usage_and_the_capacity_accounts() {
     );
     assert_eq!(native_text(&session, &node), [0x61]);
     assert_eq!(
-        session
-            .active()
-            .unwrap()
-            .construction
-            .test_storage()
-            .usage()
-            .utf16_units(),
+        session.active().unwrap().construction.usage().utf16_units(),
         1
     );
     for resource in [
@@ -526,13 +502,7 @@ fn every_work_cut_of_a_merge_leaves_the_text_or_the_whole_merge_and_releases_to_
                 expected.extend_from_slice(&incoming);
                 assert_eq!(native_text(&session, &node), expected);
                 assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .test_storage()
-                        .usage()
-                        .utf16_units(),
+                    session.active().unwrap().construction.usage().utf16_units(),
                     302
                 );
                 assert_eq!(
@@ -557,13 +527,7 @@ fn every_work_cut_of_a_merge_leaves_the_text_or_the_whole_merge_and_releases_to_
                 }
                 assert_eq!(native_text(&session, &node), [65, 66]);
                 assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .test_storage()
-                        .usage()
-                        .utf16_units(),
+                    session.active().unwrap().construction.usage().utf16_units(),
                     2
                 );
                 assert_eq!(

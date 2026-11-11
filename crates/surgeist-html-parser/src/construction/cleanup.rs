@@ -1,7 +1,6 @@
 //! Shared release and cleanup accounting for retained storage.
 
 use super::*;
-use surgeist_html::construction::HtmlConstructionUsage;
 
 /// Running cleanup admits its actual bounded metadata/provider inspections.
 /// After a latched stop, only ownership disposal over already-admitted entries
@@ -60,20 +59,16 @@ pub(super) fn release_parts(
 ) -> Result<(), SessionError> {
     let ReleasedStorage {
         construction,
+        holds,
         payloads,
     } = parts;
-    // Retirement consumes the owner and may refuse; the logical counts it held
-    // are read first so they are released either way.
+    // Releasing what the parse holds for the storage refuses without ending the walk; the logical
+    // counts the storage holds are read first so they are released either way.
     let mut refused = None;
-    let usage = construction.usage(control).unwrap_or_else(|error| {
-        // Storage that is not at rest holds counts nothing can name.
-        refused = Some(error);
-        HtmlConstructionUsage::default()
-    });
-    let (edges, nodes) = (usage.edges() as u64, usage.nodes() as u64);
-    if let Err(error) = construction.retire(control) {
-        refused.get_or_insert(error);
-    }
+    let usage = construction.usage();
+    let edges = usage.edges() as u64;
+    drop(construction);
+    keep_first(&mut refused, holds.release(control, owner));
     for (resource, units) in [
         (HtmlParseResource::ManagedEdges, edges),
         (
@@ -84,7 +79,6 @@ pub(super) fn release_parts(
             HtmlParseResource::ManagedUtf16Units,
             payloads.preexisting_units as u64,
         ),
-        (HtmlParseResource::AuxiliaryEntries, nodes),
     ] {
         if control.stop().is_none() && control.release(resource, units).is_ok() {
             continue;

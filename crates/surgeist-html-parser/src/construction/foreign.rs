@@ -502,10 +502,7 @@ mod tests {
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
-                    assert_eq!(
-                        session.active().unwrap().construction.test_storage().len(),
-                        2
-                    );
+                    assert_eq!(session.active().unwrap().construction.len(), 2);
                 }
                 let mut pending = input.map(TokenKind::Tag);
                 if pending.is_some() {
@@ -561,10 +558,7 @@ mod tests {
                 _ => assert!(matches!(result, Err(SessionError::Stop(_)))),
             }
             assert!(input.is_some());
-            assert_eq!(
-                session.active().unwrap().construction.test_storage().len(),
-                2
-            );
+            assert_eq!(session.active().unwrap().construction.len(), 2);
             drop(alias);
             let mut pending = input.map(TokenKind::Tag);
             release_token_kind(&mut pending, &mut c).unwrap();
@@ -852,8 +846,7 @@ mod tests {
                             ..
                         }
                     ));
-                    stopped_after_element |=
-                        session.active().unwrap().construction.test_storage().len() > 3;
+                    stopped_after_element |= session.active().unwrap().construction.len() > 3;
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
@@ -1068,7 +1061,7 @@ impl SessionStorage {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
             // The record this creation makes is the next one, and names its attributes' strings.
-            let node_index = self.construction.len(control)?;
+            let node_index = self.construction.len();
             let first_row = self.payloads.values.len();
             let staged = (|| {
                 while let Some(attribute) = attributes.try_pop(control)? {
@@ -1097,7 +1090,7 @@ impl SessionStorage {
                         .ok_or_else(|| {
                             control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                         })?;
-                    self.construction.acquire_attribute(control)?;
+                    self.holds.acquire_attribute(control)?;
                     stage.push_plain(control, Attribute::new(qualified, value), original_len)?;
                     payload_write::<[FieldRef; 2]>(control, 2)?;
                     if namespace_ticket.is_some() {
@@ -1149,7 +1142,7 @@ impl SessionStorage {
                             // the owner for its release.
                             let (_, backing, shared) = refused.into_parts();
                             drop(backing);
-                            self.construction
+                            self.holds
                                 .absorb_attribute_list(control, allocation, shared)?;
                             Err(latch_registry_row(control))
                         }
@@ -1158,7 +1151,7 @@ impl SessionStorage {
             };
             // The list belongs to the record from here on, and the parse accounts for it with
             // the other lists of its storage.
-            self.construction
+            self.holds
                 .absorb_attribute_list(control, allocation, shared)?;
             control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
@@ -1180,10 +1173,7 @@ impl SessionStorage {
             }
             let node = self.allocate_prepared_owned(
                 control,
-                creation_command(NewRecord::Element(
-                    QualifiedName::new(namespace, None, name),
-                    attributes,
-                )),
+                NewRecord::Element(QualifiedName::new(namespace, None, name), attributes, None),
                 template,
                 0,
                 0,

@@ -103,7 +103,7 @@ impl SessionStorage {
                     // writes. The actual detached construction view stays here.
                     let mut ancestor = Some(index);
                     let mut connected = false;
-                    for _ in 0..self.construction.storage(control)?.len() {
+                    for _ in 0..self.construction.len() {
                         let Some(current) = ancestor else { break };
                         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         let record = self

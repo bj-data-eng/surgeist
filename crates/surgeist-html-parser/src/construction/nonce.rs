@@ -197,7 +197,7 @@ impl SessionStorage {
             HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C,
         };
         let mut root = self.ordinary_root(c, node, None)?;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if matches!(
                 self.construction
@@ -218,7 +218,6 @@ impl SessionStorage {
                 c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -464,7 +463,6 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             return Ok(Some(
                 self.construction
-                    .storage(c)?
                     .node_by_result_id(&shadow.contents())
                     .map_err(|_| SessionError::ForeignNode)?
                     .position(),
@@ -480,7 +478,7 @@ impl SessionStorage {
             return Ok(Some(child.position()));
         }
         let mut cursor = node;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if cursor == root {
                 return Ok(None);
@@ -555,7 +553,6 @@ impl SessionStorage {
                 c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -1060,7 +1057,7 @@ mod tests {
     }
     #[test]
     fn nonce_empty_backing_and_slot_have_two_actual_auxiliary_admissions() {
-        for cap in [2, 3, 4] {
+        for cap in [1, 2, 3] {
             let limits = super::super::tests::limits()
                 .into_builder()
                 .auxiliary_entries(cap)
@@ -1069,21 +1066,20 @@ mod tests {
                 .unwrap();
             let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-            // The actual fragment root owns one node ticket and one append-field
-            // index entry, with no Document metadata. The nonce producer
-            // still adds exactly its empty backing and metadata slot.
+            // The actual fragment root owns one node-join cell, with no Document metadata. The
+            // nonce producer adds exactly its empty backing and metadata slot.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2
+                1
             );
             let name = QualifiedName::new(Namespace::html(), None, "p");
             let result = session
                 .active_mut()
                 .unwrap()
                 .prepare_nonce(&mut c, Some(&name));
-            if cap == 4 {
+            if cap == 3 {
                 let slot = result.unwrap().unwrap();
                 let storage = session.active().unwrap();
                 let RetainedPayload::Nonce { node, raw } = storage.payloads.values[slot] else {
@@ -1098,7 +1094,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    4
+                    3
                 );
             } else {
                 let first = c.stop().unwrap();
@@ -1107,7 +1103,7 @@ mod tests {
                     matches!(first, HtmlParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, current, requested_delta: 1 } if limit == cap && current == cap)
                 );
                 let storage = session.active().unwrap();
-                assert_eq!(storage.payloads.values.len(), (cap - 2) as usize);
+                assert_eq!(storage.payloads.values.len(), (cap - 1) as usize);
                 assert!(
                     !storage
                         .payloads
@@ -1115,7 +1111,7 @@ mod tests {
                         .iter()
                         .any(|entry| matches!(entry, RetainedPayload::Nonce { .. }))
                 );
-                if cap == 3 {
+                if cap == 2 {
                     assert!(
                         matches!(&storage.payloads.values[0], RetainedPayload::String { value, .. } if value.is_empty())
                     );
@@ -1211,7 +1207,7 @@ mod tests {
     }
     fn p_node(c: &mut ParseControl, session: &ParserArenaSession) -> ParserNode {
         let storage = session.active().unwrap();
-        let index = (0..storage.construction.test_storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),ConstructionNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
+        let index = (0..storage.construction.len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),ConstructionNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
         storage.node(c, index).unwrap()
     }
     #[test]

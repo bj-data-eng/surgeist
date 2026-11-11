@@ -3,7 +3,7 @@
 
 use super::*;
 use surgeist_html::{
-    construction::{ConstructionNodeKind, HtmlProcessingInstruction, HtmlShadowRootProperties},
+    construction::{ConstructionNodeKind, HtmlShadowRootProperties},
     elements::{
         form::HtmlTextareaFlags,
         script::{HtmlScriptFlags, HtmlScriptResult},
@@ -62,7 +62,6 @@ impl SessionStorage {
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
                         .construction
-                        .storage(c)?
                         .node_by_result_id(&shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -295,22 +294,28 @@ impl SessionStorage {
                 } else {
                     FieldRef::Comment(source)
                 };
-                let FieldString { value, group } = self.copy_record_field(c, location)?;
+                let field = self.copy_record_field(c, location)?;
                 // The binding of the field follows the record's creation; a refusal of it stops
                 // the parse, which publishes no record.
-                payload_write::<FieldRef>(c, 1)?;
-                let node = self.allocate_in_document_owned(
-                    c,
-                    if text {
-                        NewRecord::Text(value)
-                    } else {
-                        NewRecord::Comment(value)
-                    },
-                    false,
-                    0,
-                    0,
-                    Some(document),
-                )?;
+                let created = (|| {
+                    payload_write::<FieldRef>(c, 1)?;
+                    self.allocate_in_document_owned(
+                        c,
+                        if text {
+                            NewRecord::Text(field.units())
+                        } else {
+                            NewRecord::Comment(field.units())
+                        },
+                        false,
+                        0,
+                        field.units().len(),
+                        Some(document),
+                    )
+                })();
+                let FieldString { value, group } = field;
+                let released = value.release(c);
+                let node = created?;
+                released?;
                 self.bind_field(
                     c,
                     if text {
@@ -328,24 +333,40 @@ impl SessionStorage {
             ConstructionNodeKind::ProcessingInstruction(_) => {
                 let map = self.prepare_pi_map(c)?;
                 payload_write::<Option<usize>>(c, 1)?;
+                let target =
+                    self.copy_record_field(c, FieldRef::ProcessingInstructionTarget(source))?;
+                let data =
+                    match self.copy_record_field(c, FieldRef::ProcessingInstructionData(source)) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            target.value.release(c)?;
+                            return Err(error);
+                        }
+                    };
+                let created = (|| {
+                    payload_write::<[FieldRef; 2]>(c, 2)?;
+                    self.allocate_in_document_owned(
+                        c,
+                        NewRecord::ProcessingInstruction(target.units(), data.units()),
+                        false,
+                        0,
+                        target.units().len().saturating_add(data.units().len()),
+                        Some(document),
+                    )
+                })();
                 let FieldString {
                     value: target,
                     group: target_group,
-                } = self.copy_record_field(c, FieldRef::ProcessingInstructionTarget(source))?;
+                } = target;
                 let FieldString {
                     value: data,
                     group: data_group,
-                } = self.copy_record_field(c, FieldRef::ProcessingInstructionData(source))?;
-
-                payload_write::<[FieldRef; 2]>(c, 2)?;
-                let node = self.allocate_in_document_owned(
-                    c,
-                    NewRecord::ProcessingInstruction(HtmlProcessingInstruction::new(target, data)),
-                    false,
-                    0,
-                    0,
-                    Some(document),
-                )?;
+                } = data;
+                let released = target.release(c);
+                let released_data = data.release(c);
+                let node = created?;
+                released?;
+                released_data?;
                 self.bind_field(
                     c,
                     FieldRef::ProcessingInstructionTarget(node.index),
@@ -419,15 +440,13 @@ impl SessionStorage {
                     Err(refused) => {
                         let (_, backing, shared) = refused.into_parts();
                         drop(backing);
-                        self.construction
-                            .absorb_attribute_list(c, allocation, shared)?;
+                        self.holds.absorb_attribute_list(c, allocation, shared)?;
                         Err(latch_registry_row(c))
                     }
                 };
             }
         };
-        self.construction
-            .absorb_attribute_list(c, allocation, shared)?;
+        self.holds.absorb_attribute_list(c, allocation, shared)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         payload_write::<OrderedAttributes>(c, 1)?;
         let attributes = ordered;
@@ -441,11 +460,11 @@ impl SessionStorage {
             .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
         let node = self.allocate_prepared_owned(
             c,
-            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
-                link_flags,
-                name: QualifiedName::new(namespace, None, name),
+            NewRecord::Element(
+                QualifiedName::new(namespace, None, name),
                 attributes,
-            },
+                link_flags,
+            ),
             template,
             0,
             0,
@@ -482,7 +501,7 @@ impl SessionStorage {
             .attributes()
             .len();
         // The clone's attributes are appended in one list, grown once to the source's length.
-        self.construction.reserve_attributes(c, node.index, count)?;
+        self.reserve_attributes(c, node.index, count)?;
         for position in 0..count {
             let name_slot = self.field_slot(c, FieldRef::AttributeName(source, position))?;
             let (name, name_slot) = self.copy_registered_field(c, name_slot)?;
@@ -516,7 +535,7 @@ impl SessionStorage {
             if prefix_slot.is_some() {
                 payload_write::<FieldRef>(c, 1)?;
             }
-            self.construction.acquire_attribute(c)?;
+            self.holds.acquire_attribute(c)?;
             self.bind_string(name_slot, FieldRef::AttributeName(node.index, position))
                 .map_err(|_| latch_registry_row(c))?;
             self.bind_string(value_slot, FieldRef::AttributeValue(node.index, position))
@@ -1063,7 +1082,7 @@ impl SessionStorage {
         let mut buffer = Utf16Buffer::new(c)?;
         let result = (|| {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let records = ConstructionView::Active(self.construction.storage(c)?);
+            let records = ConstructionView::Active(&self.construction);
             let Some(units) = field.units(records) else {
                 return Err(latch_registry_row(c));
             };
@@ -1078,7 +1097,10 @@ impl SessionStorage {
             }
         };
         let frozen = buffer.freeze(c)?;
-        self.absorb_group_string(c, frozen, group)
+        Ok(FieldString {
+            value: frozen,
+            group,
+        })
     }
     /// Copies a registered field without aliasing its native backing or ticket.
     pub(super) fn copy_registered_field(

@@ -2005,7 +2005,7 @@ impl SessionStorage {
         original: Option<&ConstructionCauseRef>,
         intended_parent: Option<usize>,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        let records = self.construction.len(c)?;
+        let records = self.construction.len();
         if intended_parent.is_some_and(|parent| parent >= records) {
             return Err(SessionError::ForeignNode);
         }
@@ -2581,7 +2581,7 @@ impl SessionStorage {
             let identical = if let Some(original) = &original {
                 let strings = LeafStrings::with_records(
                     &self.payloads,
-                    ConstructionView::Active(self.construction.storage(c)?),
+                    ConstructionView::Active(&self.construction),
                 );
                 evidence.group_value_equal(c, strings, value.text().code_units(), original)?
                     && evidence.origin_rows_equal(c, original, &origins)?
@@ -3036,7 +3036,7 @@ impl ParserArenaSession {
         // including retired versions that are no longer a native destination.
         let strings = LeafStrings::with_records(
             &storage.payloads,
-            ConstructionView::Active(storage.construction.storage(c)?),
+            ConstructionView::Active(&storage.construction),
         );
         for group in evidence.native.groups.as_slice() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -3075,7 +3075,7 @@ impl ParserArenaSession {
                 _ => None,
             };
             if let Some((node, slot, kind)) = raw {
-                if node >= storage.construction.storage(c)?.len() {
+                if node >= storage.construction.len() {
                     return Err(SessionError::WrongToken);
                 }
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -3122,7 +3122,7 @@ impl ParserArenaSession {
             {
                 cleanup_owner(c, &cause.control)?;
                 if cause.issuer.as_ptr() != Arc::as_ptr(&evidence.identity)
-                    || *node >= storage.construction.storage(c)?.len()
+                    || *node >= storage.construction.len()
                 {
                     return Err(SessionError::WrongToken);
                 }
@@ -3166,7 +3166,7 @@ impl ParserArenaSession {
             };
             c.require_document_string(allocation, value)?;
             let Some(native) = location.value(
-                ConstructionView::Active(storage.construction.storage(c)?),
+                ConstructionView::Active(&storage.construction),
                 &storage.payloads.values,
                 c,
             )?
@@ -3201,7 +3201,7 @@ impl ParserArenaSession {
         }
         // The strings of the non-element fields belong to their records, which are walked in
         // order; their groups are in the table of origins.
-        let records = storage.construction.storage(c)?;
+        let records = &storage.construction;
         for node in 0..records.len() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let fields: &[FieldRef] = match records.node_at(node).map(|record| record.kind()) {
@@ -3433,7 +3433,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        if source >= self.construction.storage(c)?.len() {
+        if source >= self.construction.len() {
             return Err(SessionError::ForeignNode);
         }
         let Some(evidence) = self.graph() else {

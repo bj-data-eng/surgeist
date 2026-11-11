@@ -74,7 +74,7 @@ fn input_type_recognition_charges_what_the_stock_ledger_charger_records() {
 fn attribute_validation_charges_what_the_stock_ledger_charger_records() {
     // A short list compares every pair. A list of at least the index threshold
     // validates through a table of names, which also copies and writes slots.
-    let indexed = super::super::construction_owner::NAME_INDEX_MIN_ENTRIES + 3;
+    let indexed = super::super::storage_holds::NAME_INDEX_MIN_ENTRIES + 3;
     for count in [2, 5, indexed] {
         let backing: Vec<Attribute> = (0..count)
             .map(|index| {
@@ -89,7 +89,7 @@ fn attribute_validation_charges_what_the_stock_ledger_charger_records() {
         validate_parser_attributes(backing.clone(), &mut c).unwrap();
         let storage = HtmlAttributeStorage::from_shared_attributes(backing);
         let mut validation = match HtmlAttributeNameIndex::slots_required(count) {
-            Some(slots) if count >= super::super::construction_owner::NAME_INDEX_MIN_ENTRIES => {
+            Some(slots) if count >= super::super::storage_holds::NAME_INDEX_MIN_ENTRIES => {
                 storage.validate_indexed(HtmlAttributeNameIndex::new(Vec::with_capacity(slots)))
             }
             _ => storage.validate(),
@@ -105,7 +105,7 @@ fn attribute_validation_charges_what_the_stock_ledger_charger_records() {
             Ok(())
         });
         if let Some(slots) = HtmlAttributeNameIndex::slots_required(count)
-            .filter(|_| count >= super::super::construction_owner::NAME_INDEX_MIN_ENTRIES)
+            .filter(|_| count >= super::super::storage_holds::NAME_INDEX_MIN_ENTRIES)
         {
             // The name table's vector is reserved and released around the loop;
             // those charges are not part of any validation action.

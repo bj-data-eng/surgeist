@@ -156,7 +156,7 @@ impl ParserArenaSession {
             }
         } else {
             let mut ancestor = Some(target);
-            for _ in 0..storage.construction.storage(control)?.len() {
+            for _ in 0..storage.construction.len() {
                 let Some(index) = ancestor else { break };
                 control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if index == element {
@@ -174,7 +174,6 @@ impl ParserArenaSession {
                     control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let owner_position = storage
                         .construction
-                        .storage(control)?
                         .node_by_result_id(owner)
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -422,7 +421,19 @@ impl ParserArenaSession {
             .node_at(root_position)
             .ok_or(SessionError::ForeignNode)?
             .handle();
-        let (result, lease) = self.active_mut()?.construction.publish(control, root)?;
+        // Publication consumes the records. A refusal hands them back, and the session storage
+        // goes back to its place with them.
+        let mut taken = self.storage.take().ok_or(SessionError::Consumed)?;
+        let records = taken.construction;
+        let published = publish_records(control, &taken.control, &mut taken.holds, records, &root);
+        let (result, lease) = match published {
+            Ok(published) => published,
+            Err((records, error)) => {
+                taken.construction = records;
+                self.storage = Some(taken);
+                return Err(error);
+            }
+        };
         let SessionStorage {
             csp_slot: _,
             control: owner,
@@ -446,7 +457,8 @@ impl ParserArenaSession {
             #[cfg(test)]
                 cancel_after_range_ingress: _,
             standalone_ineligibility: _,
-            construction,
+            construction: _,
+            holds,
             payloads,
             appended_units: _,
             style_order_floor: _,
@@ -456,7 +468,7 @@ impl ParserArenaSession {
             style_subtree: _,
             detached_order: _,
             meta_batches: _,
-        } = self.storage.take().ok_or(SessionError::Consumed)?;
+        } = taken;
         let view = match result {
             surgeist_html::construction::HtmlConstructionResult::Document(value) => {
                 HtmlConstructionResult::Document(value)
@@ -469,7 +481,7 @@ impl ParserArenaSession {
             storage: Some(FrozenStorage {
                 view,
                 control: owner,
-                construction,
+                holds,
                 lease: Some(lease),
                 payloads,
                 effects,

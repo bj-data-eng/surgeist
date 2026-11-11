@@ -84,7 +84,7 @@ impl ParserArenaSession {
         qualify(
             provenance::LeafStrings::with_records(
                 &storage.payloads,
-                ConstructionView::Active(storage.construction.storage(c)?),
+                ConstructionView::Active(&storage.construction),
             ),
             &data,
             c,
@@ -872,12 +872,7 @@ mod tests {
         // The leaves are ranges of the text's own units, which no copy holds.
         let text_range = {
             let storage = session.active().unwrap();
-            let ConstructionNodeKind::Text(text) = storage
-                .construction
-                .test_storage()
-                .node_at(1)
-                .unwrap()
-                .kind()
+            let ConstructionNodeKind::Text(text) = storage.construction.node_at(1).unwrap().kind()
             else {
                 panic!("native text")
             };

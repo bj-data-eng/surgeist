@@ -466,7 +466,6 @@ impl SessionStorage {
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     let contents = self
                         .construction
-                        .storage(c)?
                         .node_by_result_id(&shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -837,7 +836,7 @@ impl SessionStorage {
                 );
             next = if excluded {
                 next_ordinary_view_after_subtree(
-                    ConstructionView::Active(self.construction.storage(c)?),
+                    ConstructionView::Active(&self.construction),
                     c,
                     root,
                     node,

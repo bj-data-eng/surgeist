@@ -26,7 +26,7 @@ allocation tickets, cancellation, first failure and stopped-owner cleanup.
 HTML owns the actual shared immutable tree storage and its generic invariants. Its
 [direct text append](../../docs/reference/html-crate-contracts.md#direct-text-appends)
 grows the text of a record in place; the parser holds the units and capacity bytes of
-the strings of non-element fields in two counters of its construction owner, and the
+the strings of non-element fields in counters of its session storage, and the
 origin groups of those fields in its table of origins.
 
 A parse keeps each attribute bank, element-name component and Text datum as the

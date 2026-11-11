@@ -59,7 +59,7 @@ impl ParserArenaSession {
         let state = self.input_state(control, node)?;
         let storage = self.active()?;
         append_native_input_value(
-            ConstructionView::Active(storage.construction.test_storage()),
+            ConstructionView::Active(&storage.construction),
             &storage.payloads,
             control,
             node.index,
@@ -77,7 +77,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.input_state(control, node)?;
         append_input_content(
-            ConstructionView::Active(self.active()?.construction.test_storage()),
+            ConstructionView::Active(&self.active()?.construction),
             control,
             node.index,
             destination,
@@ -124,7 +124,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.output_state(control, node)?;
         append_descendant_text(
-            ConstructionView::Active(self.active()?.construction.test_storage()),
+            ConstructionView::Active(&self.active()?.construction),
             control,
             node.index,
             destination,

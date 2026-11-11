@@ -44,12 +44,7 @@ impl ParserArenaSession {
         if let Some(reason) = storage.standalone_ineligibility {
             return Err(c.stop_unsupported_standalone(reason).into());
         }
-        if storage
-            .construction
-            .storage(c)?
-            .position(&document.handle)
-            .ok()
-            != Some(0)
+        if storage.construction.position(&document.handle).ok() != Some(0)
             || !matches!(
                 storage
                     .construction

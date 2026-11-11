@@ -10,12 +10,8 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
     )
     .unwrap();
     let initial = baseline.usage().actual_capacity_bytes;
-    let (capacity, element_size) = original
-        .active()
-        .unwrap()
-        .construction
-        .actual_record_layout();
-    let required = original.active().unwrap().construction.test_storage().len() + 3; // inert Document + template + contents
+    let (capacity, element_size) = test_support::record_bank(original.active().unwrap());
+    let required = original.active().unwrap().construction.len() + 3; // inert Document + template + contents
     assert!(required > capacity);
     let one_short =
         initial - (capacity * element_size) as u64 + (required * element_size) as u64 - 1;
@@ -39,7 +35,7 @@ fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_
         matches!(error,Some(SessionError::Stop(HtmlParseStop::LimitExceeded{resource:HtmlParseResource::ManagedCapacityBytes,limit,..})) if limit==one_short)
     );
     let storage = session.active().unwrap();
-    assert_eq!(storage.construction.test_storage().len(), 1);
+    assert_eq!(storage.construction.len(), 1);
     assert_eq!(storage.payloads.values.len(), payloads);
     assert!(storage.payloads.values.iter().any(|payload| matches!(
         payload,
@@ -70,16 +66,13 @@ fn record_reserve_grows_the_bank_geometrically_and_keeps_the_exact_layout_gate()
     let mut session =
         ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks)).unwrap();
     let storage = session.active_mut().unwrap();
-    let held = storage.construction.test_storage().len();
-    let mut capacities = vec![storage.construction.actual_record_layout().0];
+    let held = storage.construction.len();
+    let mut capacities = vec![test_support::record_bank(storage).0];
     // Ask for ever more records, as a growing document does. An exact
     // policy changes the bank for every larger request.
     for additional in 1..=40 {
-        storage
-            .construction
-            .reserve_records(&mut c, additional)
-            .unwrap();
-        let capacity = storage.construction.actual_record_layout().0;
+        storage.reserve_records(&mut c, additional).unwrap();
+        let capacity = test_support::record_bank(storage).0;
         assert!(capacity >= held + additional);
         if capacities.last() != Some(&capacity) {
             capacities.push(capacity);
@@ -100,15 +93,15 @@ fn record_reserve_admits_the_doubled_target_and_a_limit_below_it_refuses_the_res
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let storage = session.active_mut().unwrap();
-        storage.construction.reserve_records(&mut c, 7).unwrap();
-        assert_eq!(storage.construction.actual_record_layout().0, 8);
+        storage.reserve_records(&mut c, 7).unwrap();
+        assert_eq!(test_support::record_bank(storage).0, 8);
         (c, session)
     };
     let (mut baseline, mut original) = session_at_eight(limits());
     let at_eight = baseline.usage().actual_capacity_bytes;
     let storage = original.active().unwrap();
-    let (capacity, element_size) = storage.construction.actual_record_layout();
-    let required = storage.construction.test_storage().len() + 9;
+    let (capacity, element_size) = test_support::record_bank(storage);
+    let required = storage.construction.len() + 9;
     assert!(capacity < required && required < 2 * capacity);
     let exact_fit = at_eight - (capacity * element_size) as u64 + (required * element_size) as u64;
     let doubled_fit =
@@ -125,8 +118,8 @@ fn record_reserve_admits_the_doubled_target_and_a_limit_below_it_refuses_the_res
             .unwrap(),
     );
     let storage = session.active_mut().unwrap();
-    storage.construction.reserve_records(&mut fits, 9).unwrap();
-    assert_eq!(storage.construction.actual_record_layout().0, 2 * capacity);
+    storage.reserve_records(&mut fits, 9).unwrap();
+    assert_eq!(test_support::record_bank(storage).0, 2 * capacity);
     assert_eq!(fits.usage().actual_capacity_bytes, doubled_fit);
     session.release(&mut fits).unwrap();
 
@@ -143,7 +136,6 @@ fn record_reserve_admits_the_doubled_target_and_a_limit_below_it_refuses_the_res
         let error = session
             .active_mut()
             .unwrap()
-            .construction
             .reserve_records(&mut refuses, 9)
             .err();
         assert!(

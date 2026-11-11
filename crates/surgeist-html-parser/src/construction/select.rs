@@ -312,7 +312,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(ancestor) = next else {
                 return Ok(false);
             };
@@ -480,7 +480,7 @@ impl SessionStorage {
         let mut decisions = surgeist_html::bounded::select::HtmlSelectedcontentAncestors::default();
         let mut nearest = None;
         let mut next = self.ordinary_parent(c, node, None)?;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(ancestor) = next else {
                 return Ok(nearest);
             };
@@ -642,7 +642,7 @@ impl SessionStorage {
         let mut next = self.ordinary_parent(c, node, detached)?;
         payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
         let mut decisions = surgeist_html::bounded::select::HtmlOptionSelectAncestors::default();
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(node) = next else {
                 payload_write::<surgeist_html::bounded::select::HtmlOptionSelectAncestors>(c, 1)?;
                 return match decisions.finish_complete() {
@@ -700,7 +700,7 @@ impl SessionStorage {
             return Ok(true);
         }
         let mut next = self.ordinary_parent(c, node, detached)?;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(node) = next else { return Ok(false) };
             for kind in [
                 KnownHtmlElement::Option,

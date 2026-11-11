@@ -466,8 +466,8 @@ reached while the consumer holds the capacity it recorded before; and when the c
 record the units, the text keeps the room it reserved. No unit of the text changed.
 
 The parser's admission acquires the appended units as `ManagedUtf16Units` and holds them, with
-the bytes of every non-element string, in two counters of its construction owner, released once
-with the owner. The parser appends to the text of its record in place, so a text holds the units
+the bytes of every non-element string, in two counters of its session storage, released once
+with the storage. The parser appends to the text of its record in place, so a text holds the units
 of its data and nothing else: the tokens it absorbed are not stored strings, and the history of
 the text refers to their units as ranges of the text. A refusal of the append releases the
 token's string and leaves the text, the usage and the units the parser holds as they were. Three
@@ -480,6 +480,82 @@ the merge made and the retirement of the replaced group, which no field names. T
 token's group in the merged group names units the text does not hold, because the refused append
 would have written them; the history readers refuse such a leaf as the wrong token. A parse that
 refuses an append stops and publishes none of them.
+
+#### Direct record operations
+
+The operations that make and connect records are methods of `HtmlConstructionStorage`, reached
+through `bounded::construction`. Their inputs are node handles, `&QualifiedName` and units
+(`&[u16]`): no `DocumentString` and no record crosses the boundary, so the operations survive any
+storage layout. `create_element` also takes the validated `OrderedAttributes` of the element by
+value, because an element's attribute list is still stored as the list its owner validated.
+
+| Method | Operation |
+| --- | --- |
+| `new` | Makes an empty storage with zero usage and the next process-wide serial. |
+| `reserve_records` | Reserves room for further records; nothing is admitted when the bank has it. |
+| `create_document`, `create_fragment`, `create_shadow_contents` | Create a detached root record. |
+| `create_element` | Creates a detached element; an HTML `template` also creates its owned contents fragment, which follows it among the records. Link construction flags may be given only for an HTML `link` element, or the creation is refused with the wrong-node-kind cause. |
+| `create_text`, `create_comment`, `create_processing_instruction`, `create_doctype` | Create a detached leaf holding copies of the units given; an absent doctype identifier stays absent and an empty one is kept. |
+| `insert` | Inserts a node into the ordinary children of a parent, before a reference child or last. |
+| `detach` | Removes a node from its parent. |
+| `check_child_transfer` | Checks, without changing anything, that the children of one record can move into another. |
+| `attach_shadow`, `attach_template_shadow`, `set_template_shadow_contents` | Associate shadow contents with a host or a template. |
+| `set_document_mode`, `set_link_flags` | Set the mode of a Document and the link flags of an HTML `link` element. |
+| `publish` | Validates every record and publishes the tree as an immutable result with the lease that takes the storage back. |
+
+Every method qualifies its operands, charges its consumer for its work before the work runs, and
+changes the storage last. The consumer implements `HtmlRecordAdmission`: a `Charge` for the work and
+four calls, made in this order. `admit_change` receives the usage before and after and checks its
+limits, once, before anything changes or is reserved; the operation has already recorded the depth
+and the layout it reaches as the largest of their resources, and the charge of its writes follows
+the admission, before any bank grows. `admit_growth` receives the growth of
+a bank (the records, the child order of one record, one string of a leaf, the shared arena of a
+publication) and returns the capacity to reserve, at least the minimum the operation needs; every
+growth of an operation is admitted before the first is recorded. `record_growth` records the capacity
+chosen before the bank is reserved, and a second time with the capacity reached when it differs,
+which includes the unchanged capacity of a reservation the allocator refused. `record_change`
+records the usage and is the last step that can refuse. The writes that follow reserve and allocate
+nothing, except that the shared arena of a publication allocates its handle: stable Rust has no
+fallible constructor for it, so an allocator failure there aborts, as any infallible allocation
+does. The strings of a leaf are built where they are reserved, before `record_change`. A write that
+names a record qualification read cannot fail to find it; were one missing, the unknown-node defect
+is returned and no write is skipped.
+
+A refusal at any step before the writes leaves the records, the order of the children, the cached
+depths and the usage as they were. Three residues remain. A bank that grew keeps the room it
+reserved, and a refusal that follows leaves the consumer holding the capacity it last recorded for
+that bank. A string that a leaf creation reserved and then dropped is such a bank. Walk scratch (the
+cursors and level counts of a subtree walk, and the membership counts of a publication's validation
+pass) is not state and may be left written. A refused publication hands the storage back with the
+records, their order, depths and usage as they were, and with no capacity of the arena recorded.
+A refused reservation of spare room is retried with the room that is needed, and the retry is one
+provider call.
+
+The work is counted in the records an operation writes, the bytes of rows and units it copies, one
+provider call for every request to the allocator, and the records it visits. A creation writes two fields for
+each record it makes and one for the usage, copies each row, the usage and the units of a leaf in
+runs of at most 256 bytes, and inspects twice the length of an element's local name to classify it.
+An insertion visits its operands, the entries of the child orders it walks and, for a node that has
+something below it, the owners above the parent. A fresh childless node needs no walk of the owners
+and no walk of its subtree, and a new last child shifts no entry, so its work does not depend on the
+fanout of its parent or the depth of the tree. Locating a reference child or the old place of a moved
+node costs about twice its distance from the nearer end of the order. A publication visits each
+record and each child entry a constant number of times.
+
+The parser is the consumer of these operations. The session storage holds the construction
+storage itself, and beside it the bytes the parse holds for the banks of the records, the child
+orders and the published arena, which are credited once when the storage is released; there is no
+ticket for a bank, no per-record registry of banks and no custody state in which the records are
+lent. A record bank and a child order that has capacity grow to the greater of the capacity needed
+and double the capacity, within the limits; one that has none takes exactly the room needed. The
+units of a leaf record are copied from the token's string, which the parser releases once the
+record exists or its creation is refused, and the units are acquired as `ManagedUtf16Units` with
+the record, in the last admission of the creation, so a refused creation holds none. Each record
+holds one `AuxiliaryEntries` entry, its node-join cell. An insertion's depth, standalone-document
+and edge checks run in `admit_change` in this order: the depth observation (the library records it
+before the call), one record visit, the standalone-document revocation, and the edge check, against the lent
+storage. Publication consumes the storage and a refusal hands it back; the parser's frozen arena
+recovers it through the lease at release.
 
 #### Origins of record strings
 

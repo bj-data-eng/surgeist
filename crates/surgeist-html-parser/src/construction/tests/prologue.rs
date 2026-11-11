@@ -555,10 +555,7 @@ fn recovered_pi_preflights_both_field_owners_before_consuming_any_input() {
     let (target, data) = input.take().expect("both original fields retained");
     assert_eq!(target.value.text().code_units(), [0x78]);
     assert_eq!(data.value.text().code_units(), [0xd800]);
-    assert_eq!(
-        session.active().unwrap().construction.test_storage().len(),
-        1
-    );
+    assert_eq!(session.active().unwrap().construction.len(), 1);
     target.release(&mut c).unwrap();
     data.release(&mut foreign).unwrap();
     session.release(&mut c).unwrap();

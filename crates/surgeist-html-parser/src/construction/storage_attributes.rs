@@ -224,21 +224,15 @@ impl SessionStorage {
         }
         let start = element.attributes().len();
         let entries = start.saturating_add(tag.attributes.len());
-        if entries >= construction_owner::NAME_INDEX_MIN_ENTRIES {
+        if entries >= NAME_INDEX_MIN_ENTRIES {
             // The table also serves the effects of the attributes the merge installs, and stays
             // for the next merge into this element.
-            self.construction.provide_name_index(
-                control,
-                entries.saturating_add(construction_owner::NAME_INDEX_SPARE_ENTRIES),
-            )?;
+            self.holds
+                .provide_name_index(control, entries.saturating_add(NAME_INDEX_SPARE_ENTRIES))?;
         }
         let mut kept = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        let planned = self.construction.plan_attribute_merge(
-            control,
-            target,
-            tag.attributes.as_slice(),
-            &mut kept,
-        );
+        let planned =
+            self.plan_attribute_merge(control, target, tag.attributes.as_slice(), &mut kept);
         let count = match planned {
             Ok(count) => count,
             Err(error) => {
@@ -392,7 +386,7 @@ impl SessionStorage {
                 candidate.name = Some(local.clone());
             }
             let (value, value_ticket) = self.register_text(control, attribute.value)?;
-            self.construction.acquire_attribute(control)?;
+            self.holds.acquire_attribute(control)?;
             stage.push(
                 control,
                 Attribute::new(QualifiedName::new(Namespace::none(), None, local), value),
@@ -433,8 +427,7 @@ impl SessionStorage {
         self.payloads.forget_attribute_strings(prepared.target);
         // The list reserves room for every kept candidate once, so that no append of the merge
         // grows it and one wide merge leaves it with no spare room.
-        self.construction
-            .reserve_attributes(control, prepared.target, prepared.count)?;
+        self.reserve_attributes(control, prepared.target, prepared.count)?;
         for rank in 0..prepared.count {
             let candidate = prepared
                 .kept
@@ -535,9 +528,7 @@ impl SessionStorage {
         if form_effects.is_some() {
             payload_write::<Option<FormEffects>>(control, 1)?;
         }
-        let position = self
-            .construction
-            .append_attribute(control, target, incoming, planned)?;
+        let position = self.append_attribute(control, target, incoming, planned)?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }

@@ -205,7 +205,7 @@ impl SessionStorage {
             return Ok(Reroot::Bare(node));
         }
         if let Some(destination) = destination {
-            let storage = self.construction.storage(control)?;
+            let storage = &self.construction;
             let below = self.payloads.tree_root(control, storage, destination)?;
             let moved = self.payloads.tree_root(control, storage, node)?;
             if below == moved {

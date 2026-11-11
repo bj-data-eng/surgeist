@@ -59,7 +59,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(control, node, detached)?;
-        for _ in 0..self.construction.storage(control)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(node) = next else { return Ok(None) };
             if self.html_local(control, node, "form")? {
                 return Ok(Some(node));

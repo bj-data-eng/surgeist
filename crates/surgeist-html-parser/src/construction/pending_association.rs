@@ -258,7 +258,7 @@ impl SessionStorage {
         let mut buffer = Utf16Buffer::new(c)?;
         let read = (|| {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let records = ConstructionView::Active(self.construction.storage(c)?);
+            let records = ConstructionView::Active(&self.construction);
             let Some(units) = FieldRef::Text(node).units(records) else {
                 return Err(latch_registry_row(c));
             };

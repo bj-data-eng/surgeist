@@ -30,7 +30,7 @@ impl SessionStorage {
             .node_at(index)
             .ok_or(SessionError::ForeignNode)?
             .check_container()
-            .map_err(|error| construction_owner::construction_error(control, error))
+            .map_err(|error| construction_error(control, error))
     }
 
     /// Qualifies the intended parent of an element being created. Creation
@@ -65,46 +65,13 @@ impl SessionStorage {
         control: &mut ParseControl,
         index: usize,
     ) -> Result<bool, SessionError> {
-        let storage = self.construction.storage(control)?;
-        let root = self.payloads.tree_root(control, storage, index)?;
-        self.associated_root_in(control, storage, root)
-    }
-    pub(super) fn associated_document_parent_in(
-        &mut self,
-        control: &mut ParseControl,
-        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
-        index: usize,
-    ) -> Result<bool, SessionError> {
-        let root = self.payloads.tree_root(control, storage, index)?;
-        self.associated_root_in(control, storage, root)
-    }
-    /// Whether the tree rooted at `root`, found along parent edges, is a
-    /// fragment that an associated document owns. Only a fragment has an
-    /// owner, and an owned fragment has no parent, so the root decides.
-    pub(super) fn associated_root_in(
-        &self,
-        control: &mut ParseControl,
-        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
-        root: usize,
-    ) -> Result<bool, SessionError> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let record = storage.node_at(root).ok_or(SessionError::ForeignNode)?;
-        match record.fragment_owner() {
-            None => Ok(false),
-            Some(HtmlFragmentOwner::ShadowHost(_)) => Ok(self.fragment.is_none()),
-            Some(HtmlFragmentOwner::Template(template)) => {
-                control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                let template_position = storage
-                    .node_by_result_id(template)
-                    .map_err(|_| SessionError::ForeignNode)?
-                    .position();
-                let (_, state) = self.template_slot_in(control, storage, template_position)?;
-                if state.contents != root {
-                    return Err(SessionError::TemplateMetadataUnavailable);
-                }
-                Ok(false)
-            }
-        }
+        let Self {
+            construction,
+            payloads,
+            fragment,
+            ..
+        } = self;
+        associated_document_parent_of(payloads, fragment, control, construction, index)
     }
 
     /// Only ordinary parents participate in form association. The single
@@ -117,7 +84,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         ordinary_view_parent(
-            ConstructionView::Active(self.construction.storage(control)?),
+            ConstructionView::Active(&self.construction),
             control,
             node,
             detached,
@@ -131,10 +98,10 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<usize, SessionError> {
         if detached.is_none() {
-            let storage = self.construction.storage(control)?;
+            let storage = &self.construction;
             return self.payloads.tree_root_uncached(control, storage, node);
         }
-        for _ in 0..self.construction.storage(control)?.len() {
+        for _ in 0..self.construction.len() {
             match self.ordinary_parent(control, node, detached)? {
                 Some(parent) => node = parent,
                 None => return Ok(node),
@@ -149,7 +116,7 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<bool, SessionError> {
-        let storage = self.construction.storage(control)?;
+        let storage = &self.construction;
         Self::html_local_in(control, storage, node, local)
     }
     pub(super) fn html_local_in(
@@ -181,7 +148,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         next_ordinary_view_node(
-            ConstructionView::Active(self.construction.storage(control)?),
+            ConstructionView::Active(&self.construction),
             control,
             root,
             node,
@@ -199,7 +166,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<bool, SessionError> {
         let mut node = node;
-        for _ in 0..self.construction.storage(c)?.len() {
+        for _ in 0..self.construction.len() {
             let Some(parent) = self.ordinary_parent(c, node, None)? else {
                 return Ok(false);
             };
@@ -258,7 +225,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut root = self.ordinary_root(control, node, detached)?;
-        'roots: for _ in 0..self.construction.storage(control)?.len() {
+        'roots: for _ in 0..self.construction.len() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(
                 self.construction
@@ -283,7 +250,6 @@ impl SessionStorage {
                 control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage(control)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
