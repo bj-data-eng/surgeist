@@ -4,6 +4,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use surgeist_bindings_js::dom_exception::DomExceptionName;
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, Primitive, Process, PropertyKey, Scope, ValueKind,
 };
@@ -139,6 +140,343 @@ fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &s
         assert_script_number(scope, script, expected)
     })
     .unwrap();
+}
+
+fn native_window_exposes_dom_exception() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(permit.document(), top.document());
+
+    let kind = host
+        .in_document(&permit, |scope| {
+            let script: Vec<_> = "typeof globalThis.DOMException".encode_utf16().collect();
+            let value = scope.evaluate(&script)?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&kind).unwrap(),
+        "function",
+        "native Window DOMException constructor is missing"
+    );
+
+    // The selected Web IDL DOMException IDL and the pinned WPT custom bindings
+    // define these descriptor, default and receiver observations.
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const constructor = DOMException;
+            const prototype = constructor.prototype;
+            const global = Object.getOwnPropertyDescriptor(globalThis, "DOMException");
+            const exception = new constructor(undefined, undefined);
+            const descriptor = Object.getOwnPropertyDescriptor(prototype, "name");
+            let brandRefused = false;
+            try { descriptor.get.call(Object.create(prototype)); }
+            catch (error) { brandRefused = error instanceof TypeError; }
+            let callRefused = false;
+            try { constructor(); }
+            catch (error) { callRefused = error instanceof TypeError; }
+            return global.value === constructor && global.writable && global.configurable
+                && !global.enumerable && constructor.length === 0
+                && Object.getPrototypeOf(constructor) === Function.prototype
+                && Object.getPrototypeOf(prototype) === Error.prototype
+                && typeof descriptor.get === "function" && descriptor.set === undefined
+                && descriptor.enumerable && descriptor.configurable
+                && exception.message === "" && exception.name === "Error" && exception.code === 0
+                && !Object.hasOwn(exception, "message") && !Object.hasOwn(exception, "name")
+                && !Object.hasOwn(exception, "code") && brandRefused && callRefused
+                && Object.prototype.toString.call(exception) === "[object DOMException]";
+        })())"#,
+        1.0,
+    );
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const exception = new DOMException("\ud800", "InvalidCharacterError");
+            Object.defineProperty(exception, "name", {value: "WrongDocumentError"});
+            return exception.message === "\ud800"
+                && DOMException.INVALID_CHARACTER_ERR === 5
+                && DOMException.prototype.INVALID_CHARACTER_ERR === 5
+                && exception.code === 5;
+        })())"#,
+        1.0,
+    );
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            class Derived extends DOMException {
+                constructor(message) { super(message, "InvalidStateError"); }
+            }
+            const exception = new Derived("derived");
+            const name = Object.getOwnPropertyDescriptor(DOMException.prototype, "name").get;
+            return exception instanceof Derived
+                && exception instanceof DOMException && exception instanceof Error
+                && Object.getPrototypeOf(exception) === Derived.prototype
+                && Error.isError(exception) && name.call(exception) === "InvalidStateError"
+                && exception.message === "derived" && exception.code === 11;
+        })())"#,
+        1.0,
+    );
+}
+
+fn native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let callback = Callback::new(|scope, _| {
+            Ok(Completion::Throw(scope.dom_exception(
+                DomExceptionName::InvalidStateError,
+                &[0xd800, 0, 0xdc00],
+            )?))
+        });
+        let function = scope.function(&callback)?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&"throwNative".encode_utf16().collect::<Vec<_>>()),
+            &function,
+        )
+    })
+    .unwrap();
+
+    // The selected Web IDL exception binding requires ErrorData/Stack and an
+    // implementation-checked receiver. V8's Error.isError checks ErrorData.
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const Constructor = DOMException;
+            const prototype = Constructor.prototype;
+            const errorIsError = Error.isError;
+            const stackType = typeof new Error().stack;
+            const exception = new Constructor("message", "TimeoutError");
+            const own = Object.getOwnPropertyDescriptor;
+            const data = (object, key, value, w, e, c) => {
+                const d = own(object, key);
+                return d.value === value && d.writable === w && d.enumerable === e
+                    && d.configurable === c;
+            };
+            const accessors = ["name", "message", "code"].map(key => own(prototype, key));
+            const refuses = (getter, receiver) => {
+                try { getter.call(receiver); return false; }
+                catch (error) { return error instanceof TypeError; }
+            };
+            if (!errorIsError(new Error()) || !errorIsError(prototype)
+                || !errorIsError(exception) || errorIsError(Object.create(prototype))
+                || errorIsError(new Proxy(exception, {}))
+                || typeof exception.stack !== stackType || typeof prototype.stack !== stackType
+                || Reflect.ownKeys(exception).some(key => key !== "stack")
+                || !data(Constructor, "name", "DOMException", false, false, true)
+                || !data(Constructor, "length", 0, false, false, true)
+                || !data(Constructor, "prototype", prototype, false, false, false)
+                || Object.hasOwn(Constructor, "arguments") || Object.hasOwn(Constructor, "caller")
+                || Object.getOwnPropertyNames(prototype).at(-1) !== "constructor"
+                || Object.keys(prototype).slice(0, 3).join(",") !== "name,message,code"
+                || !data(prototype, "constructor", Constructor, true, false, true)
+                || !data(prototype, Symbol.toStringTag, "DOMException", false, false, true)
+                || !data(Constructor, "DATA_CLONE_ERR", 25, false, true, false)
+                || !data(prototype, "DOMSTRING_SIZE_ERR", 2, false, true, false)
+                || new Constructor("", "DOMStringSizeError").code !== 0
+                || new Constructor("", "NoDataAllowedError").code !== 0
+                || new Constructor("", "ValidationError").code !== 0
+                || new Constructor("", "OperationError").code !== 0
+                || new Constructor("", "timeoutError").code !== 0) return false;
+
+            const attempted = [];
+            const proxy = new Proxy(exception, {
+                get() { attempted.push("proxy get"); },
+                getOwnPropertyDescriptor() { attempted.push("proxy descriptor"); }
+            });
+            for (const [index, key] of ["name", "message", "code"].entries()) {
+                const {get, set, enumerable, configurable} = accessors[index];
+                if (get.name !== "get " + key || get.length !== 0 || set !== undefined
+                    || !enumerable || !configurable
+                    || !refuses(get, prototype) || !refuses(get, new Error())
+                    || !refuses(get, Object.create(exception)) || !refuses(get, proxy)
+                    || !refuses(get, null)) return false;
+                try { new get(); return false; }
+                catch (error) { if (!(error instanceof TypeError)) return false; }
+            }
+            if (attempted.length !== 0) return false;
+            Object.setPrototypeOf(exception, null);
+            if (accessors[2].get.call(exception) !== 23) return false;
+
+            const abrupt = {};
+            const log = [];
+            const get = (label, value) => ({toString() {
+                log.push(label);
+                if (value === abrupt) throw abrupt;
+                return value;
+            }});
+            let failPrototype = false;
+            const custom = {};
+            const target = new Proxy(function Target(){}, {
+                get(object, key, receiver) {
+                    if (key !== "prototype") return Reflect.get(object, key, receiver);
+                    log.push("prototype");
+                    if (failPrototype) throw abrupt;
+                    return custom;
+                }
+            });
+            const construct = (...args) => Reflect.construct(Constructor, args, target);
+            const result = construct(get("message", "\udc00"), get("name", "\ud800"), get("unused", abrupt));
+            if (log.join(",") !== "message,name,prototype" || !errorIsError(result)
+                || Object.getPrototypeOf(result) !== custom
+                || accessors[0].get.call(result) !== "\ud800"
+                || accessors[1].get.call(result) !== "\udc00"
+                || accessors[2].get.call(result) !== 0) return false;
+            for (const [message, name, fail, expected] of [
+                [abrupt, "n", false, "message"],
+                ["m", abrupt, false, "message,name"],
+                ["m", "n", true, "message,name,prototype"]
+            ]) {
+                log.length = 0;
+                failPrototype = fail;
+                try { construct(get("message", message), get("name", name)); return false; }
+                catch (error) { if (error !== abrupt || log.join(",") !== expected) return false; }
+            }
+            log.length = 0;
+            try { Constructor(get("message", abrupt)); return false; }
+            catch (error) { if (!(error instanceof TypeError) || log.length !== 0) return false; }
+
+            const reentered = new Constructor({toString() {
+                return new Constructor("inner", "AbortError").message;
+            }}, "NotFoundError");
+            if (reentered.message !== "inner" || reentered.code !== 8) return false;
+
+            let lookups = 0;
+            const trap = {get() { lookups++; throw abrupt; }};
+            Object.defineProperty(globalThis, "Error", trap);
+            Object.defineProperty(globalThis, "DOMException", trap);
+            const ownInstance = new Constructor(null, "SyntaxError");
+            if (ownInstance.message !== "null" || ownInstance.code !== 12) return false;
+            try { throwNative(); return false; }
+            catch (error) {
+                return errorIsError(error) && Object.getPrototypeOf(error) === prototype
+                    && error.name === "InvalidStateError" && error.code === 11
+                    && error.message === "\ud800\0\udc00" && lookups === 0;
+            }
+        })())"#,
+        1.0,
+    );
+}
+
+fn native_window_dom_exception_admission_and_hook_collision() {
+    let (session, top) = setup();
+    let before = session.snapshot();
+    let mut prepared = prepare(session, Arc::new(cancel()));
+    let name: Vec<_> = "DOMException".encode_utf16().collect();
+    for names in [
+        hooks(&name),
+        DocumentScriptHooks {
+            child_count: &[65],
+            detach_source_node_if: &name,
+        },
+    ] {
+        let failure = match prepared.enable(top, ALLOW, names) {
+            Err(failure) => failure,
+            Ok(_) => panic!("DOMException hook collision published the Window"),
+        };
+        assert!(matches!(
+            failure.error,
+            DocumentScriptError::Script(Error::PropertyRejected)
+        ));
+        prepared = failure.owner;
+    }
+    let recovered = prepared.into_session().unwrap();
+    assert_eq!(recovered.snapshot().revision(), before.revision());
+
+    // Default "Error" is five UTF-16 units and ten live Rust bytes. The
+    // two-unit message and default name cost seven units inward, then five
+    // and two outward. Both Rust buffers remain live during the output copies.
+    for (limits, accepted) in [
+        (DomExceptionLimits::new(2, 14, 14), true),
+        (DomExceptionLimits::new(1, 14, 14), false),
+        (DomExceptionLimits::new(2, 6, 14), false),
+        (DomExceptionLimits::new(2, 11, 14), false),
+        (DomExceptionLimits::new(2, 13, 14), false),
+        (DomExceptionLimits::new(2, 14, 13), false),
+    ] {
+        let (session, top) = setup();
+        let mut host = prepare(session, Arc::new(cancel()))
+            .with_dom_exception_limits(limits)
+            .enable(top, ALLOW, hooks(&hook()))
+            .unwrap();
+        let permit = host.permit().unwrap();
+        if accepted {
+            eval(
+                &mut host,
+                &permit,
+                r#"Number(new DOMException("\ud800a", undefined, Symbol()).name === "Error")"#,
+                1.0,
+            );
+        }
+        let failure = host.in_document(&permit, |scope| {
+            let source: Vec<_> = r#"try { new DOMException("\ud800a"); } catch (_) {} 42"#
+                .encode_utf16()
+                .collect();
+            scope.evaluate(&source).map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::ConversionLedger(first))) = failure else {
+            panic!("constructor did not report the configured conversion refusal");
+        };
+        let Err(DocumentScriptError::Script(Error::ConversionLedger(checkpoint))) =
+            host.checkpoint()
+        else {
+            panic!("checkpoint did not retain the terminal conversion refusal");
+        };
+        assert_eq!(checkpoint, first);
+        host.stop().into_session().unwrap();
+    }
+}
+
+fn native_window_dom_exception_meters_typed_diagnostics() {
+    // Ten UTF-16 units for AbortError and three for the typed message.
+    for (units, accepted) in [(13, true), (12, false), (9, false)] {
+        let (session, top) = setup();
+        let mut host = prepare(session, Arc::new(cancel()))
+            .with_dom_exception_limits(DomExceptionLimits::new(0, units, 0))
+            .enable(top, ALLOW, hooks(&hook()))
+            .unwrap();
+        let permit = host.permit().unwrap();
+        if accepted {
+            host.in_document(&permit, |scope| {
+                let error =
+                    scope.dom_exception(DomExceptionName::AbortError, &[0xd800, 0, 0xdc00])?;
+                let message = scope.get(
+                    &error,
+                    PropertyKey::String(&[109, 101, 115, 115, 97, 103, 101]),
+                )?;
+                assert_eq!(scope.to_utf16(&message)?, [0xd800, 0, 0xdc00]);
+                Ok(())
+            })
+            .unwrap();
+        }
+        let failure = host.in_document(&permit, |scope| {
+            scope
+                .dom_exception(DomExceptionName::AbortError, &[0xd800, 0, 0xdc00])
+                .map(drop)
+        });
+        let Err(DocumentScriptError::Script(Error::ConversionLedger(first))) = failure else {
+            panic!("typed diagnostic did not report the configured conversion refusal");
+        };
+        let Err(DocumentScriptError::Script(Error::ConversionLedger(checkpoint))) =
+            host.checkpoint()
+        else {
+            panic!("checkpoint did not retain the typed diagnostic refusal");
+        };
+        assert_eq!(checkpoint, first);
+        host.stop().into_session().unwrap();
+    }
 }
 
 fn native_window_exposes_css_escape() {
@@ -1101,6 +1439,14 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
+            "dom-exception-error-data" => {
+                native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion()
+            }
+            "dom-exception-admission" => {
+                native_window_dom_exception_admission_and_hook_collision();
+                native_window_dom_exception_meters_typed_diagnostics();
+            }
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
@@ -1123,6 +1469,10 @@ fn main() {
         }
         return;
     }
+    native_window_exposes_dom_exception();
+    native_window_dom_exception_uses_error_data_and_preserves_abrupt_completion();
+    native_window_dom_exception_admission_and_hook_collision();
+    native_window_dom_exception_meters_typed_diagnostics();
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();

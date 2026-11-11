@@ -1,5 +1,6 @@
 pub(crate) mod v8;
 
+use crate::conversion::ConversionAccount;
 use crate::{
     Callback, ConstructorCallback, Error, FunctionMetadata, Intrinsic, Primitive,
     PrototypeResolver, Realm, RealmKey, Root, ValueKind, WellKnownSymbol,
@@ -80,6 +81,11 @@ pub(crate) trait Engine {
     fn reap(&mut self);
 }
 
+pub(crate) struct DomExceptionProfile {
+    pub(crate) prototype: Root,
+    pub(crate) account: std::rc::Rc<ConversionAccount>,
+}
+
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
@@ -90,11 +96,33 @@ pub(crate) trait Operations {
     fn check_active(&self) -> Result<(), Error>;
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
+    fn validate_string_length(&self, units: usize) -> Result<(), Error>;
     fn string(&mut self, units: &[u16]) -> Result<Root, Error>;
     fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
+    fn native_error(&mut self) -> Result<Root, Error>;
+    fn dom_exception_profile(&mut self) -> Result<Option<DomExceptionProfile>, Error>;
+    fn publish_dom_exception(
+        &mut self,
+        key: &[u16],
+        constructor: &Root,
+        prototype: &Root,
+        account: std::rc::Weak<ConversionAccount>,
+    ) -> Result<(), Error>;
+    fn create_dom_exception(
+        &mut self,
+        prototype: &Root,
+        name: &Root,
+        message: &Root,
+        code: u16,
+    ) -> Result<Root, Error>;
+    fn dom_exception_slot(
+        &mut self,
+        receiver: &Root,
+        slot: crate::dom_exception::Slot,
+    ) -> Result<Option<Root>, Error>;
     fn function(
         &mut self,
         callback: &Callback,

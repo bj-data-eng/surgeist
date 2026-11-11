@@ -215,16 +215,7 @@ impl<'scope> Conversion<'_, 'scope> {
     fn string_units(&mut self, value: &Value<'scope>) -> Result<Converted<Vec<u16>>, Failure> {
         let result = self.scope.operations.coerce_string(&value.root);
         let string = self.core(result)?;
-        let units = u64::try_from(string.len()).map_err(|_| self.host(Error::StringTooLong))?;
-        let bytes = units
-            .checked_mul(2)
-            .ok_or_else(|| self.host(Error::StringTooLong))?;
-        let storage = self.reserve(bytes).map_err(Failure)?;
-        let mut output = Vec::new();
-        output
-            .try_reserve_exact(string.len())
-            .map_err(|_| self.host(Error::Allocation))?;
-        self.work(Work::CodeUnit, units).map_err(Failure)?;
+        let (mut output, storage) = self.string_buffer(string.len())?;
         output.resize(string.len(), 0);
         let result = self.scope.operations.copy_string(&string, &mut output);
         self.core(result)?;
@@ -232,6 +223,40 @@ impl<'scope> Conversion<'_, 'scope> {
             value: output,
             storage,
         })
+    }
+
+    /// Admit one explicit Rust-to-JavaScript payload copy before entering the
+    /// SDK. The meter counts code units submitted to the backend, independently
+    /// of the engine's internal representation and allocation.
+    pub(crate) fn copy_to_js(&mut self, units: &[u16]) -> Result<Value<'scope>, Failure> {
+        self.core(self.scope.operations.validate_string_length(units.len()))?;
+        let length = u64::try_from(units.len()).map_err(|_| self.host(Error::StringTooLong))?;
+        self.work(Work::CodeUnit, length).map_err(Failure)?;
+        let result = self.scope.string(units);
+        self.core(result)
+    }
+
+    fn default_dom_string(&mut self, units: &[u16]) -> Result<Converted<DomString>, Failure> {
+        let (mut output, storage) = self.string_buffer(units.len())?;
+        output.extend_from_slice(units);
+        Ok(Converted {
+            value: DomString::new(output),
+            storage,
+        })
+    }
+
+    fn string_buffer(&mut self, length: usize) -> Result<(Vec<u16>, Storage), Failure> {
+        let units = u64::try_from(length).map_err(|_| self.host(Error::StringTooLong))?;
+        let bytes = units
+            .checked_mul(2)
+            .ok_or_else(|| self.host(Error::StringTooLong))?;
+        let storage = self.reserve(bytes).map_err(Failure)?;
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(length)
+            .map_err(|_| self.host(Error::Allocation))?;
+        self.work(Work::CodeUnit, units).map_err(Failure)?;
+        Ok((output, storage))
     }
 
     pub fn value<D: Descriptor>(

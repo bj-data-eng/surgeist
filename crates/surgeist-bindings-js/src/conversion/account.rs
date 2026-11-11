@@ -117,6 +117,11 @@ impl Account {
 pub struct ConversionAccount(pub(super) Rc<Account>);
 
 impl ConversionAccount {
+    /// Requested allocation body retained by the account's Rc.
+    pub(crate) const fn retained_body_bytes() -> usize {
+        size_of::<Account>()
+    }
+
     pub fn new(
         scope: &mut Scope<'_>,
         mut ledger: SharedOperation<Work, Resource>,

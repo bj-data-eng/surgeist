@@ -1,3 +1,5 @@
+#[path = "execution/dom_exception.rs"]
+mod dom_exception;
 #[path = "execution/host.rs"]
 mod host;
 
@@ -2207,6 +2209,15 @@ fn declared_constructor_host_refusals_are_terminal() -> Result<(), Error> {
 fn main() -> Result<(), Error> {
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
+    if std::env::args().nth(1).as_deref() == Some("dom-exception-cross-realm") {
+        let drops =
+            dom_exception::profile_survives_guest_global_replacement_and_cross_realm_construction(
+                &mut process,
+            )?;
+        drop(process);
+        assert_eq!(drops.get(), 1, "the retired profile retained its backing");
+        return Ok(());
+    }
     if std::env::args().nth(1).as_deref() == Some("--constructor-length") {
         return declared_constructor_length_is_exact_u32(&mut process);
     }
@@ -2247,6 +2258,10 @@ fn main() -> Result<(), Error> {
         &mut process,
     )?;
     declared_constructor_revocation_stops_before_fallback_and_native_action(&mut process)?;
+    let dom_exception_drops =
+        dom_exception::profile_survives_guest_global_replacement_and_cross_realm_construction(
+            &mut process,
+        )?;
 
     scalar_construction_preserves_javascript_values(&mut process)?;
     value_classification_uses_language_types_without_guest_hooks(&mut process)?;
@@ -2264,6 +2279,11 @@ fn main() -> Result<(), Error> {
         (realm, value)
     };
     drop(process);
+    assert_eq!(
+        dom_exception_drops.get(),
+        1,
+        "the retired profile retained its backing"
+    );
     let mut next = Process::bootstrap(EngineKind::V8)?;
     let mut execution = next.execution();
     assert!(matches!(
