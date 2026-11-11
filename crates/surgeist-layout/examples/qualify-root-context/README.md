@@ -234,6 +234,16 @@ rectangle trees.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri07-ordinary-flex-boxes
 ~~~
 
+The [FRI07 intrinsic Flex Text edition](../../tests/layout/browser_parity/captured/fri07-intrinsic-flex-text/qualification.json)
+covers the original column and both row Flex containers in both box modes and
+directions. Its four labels use the stylesheet's embedded Ahem WOFF2 for
+intrinsic sizing and multiline placement. Replay compares every source box and
+the 48 source-bound word rectangles in the rounded root-border-local frame.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri07-intrinsic-flex-text
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
