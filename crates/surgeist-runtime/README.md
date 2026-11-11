@@ -277,8 +277,9 @@ operation.
 Hosts can claim the original empty listener registry with
 `DomEventDispatcher::bind` and transfer it through
 `PreparedDocumentScriptHost::enable_with_guest_event_registry`. Runtime
-installs `Event` and standalone `EventTarget` before the Window becomes
-visible. The constructors use the native creation Global and clock.
+installs `Window`, `Event`, and `EventTarget` before the attached realm becomes
+visible. The Event and EventTarget constructors use the native creation
+Global and clock.
 Standalone dispatch uses the original registry for duplicate, capture, once
 and passive behavior. Target and path observations preserve the exact
 guest wrapper, and ordinary callback throws remain available for host
@@ -290,10 +291,11 @@ The Window's readonly own `document` getter returns its canonical Document
 wrapper. The Document exposes the base Node reads for identity, connectivity,
 parent, owner and root. The standard Document constructor uses the original
 native Global and retains each created Document in its creation realm.
-Document and Window listeners share the native registry. Borrowed
-`EventTarget.prototype` methods authenticate the exact Window, and dispatch
-through a Document uses the canonical Window capture and bubble path.
-AbortSignal and descendant Node projections are separate capabilities.
+Document and Window listeners share the native registry. Window inherits
+the EventTarget operations through its immutable prototype chain.
+Dispatch through a Document uses the canonical Window capture and bubble
+path. Live named and indexed Window properties, AbortSignal, and descendant
+Node projections are separate capabilities.
 
 An attachment can enable callable Window timers with `WindowTimerLimits`.
 `setTimeout` keeps the callable and arguments in the attached Window's realm.

@@ -557,8 +557,11 @@ pub struct surgeist_bindings_js::Execution<'process>
 impl surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Execution<'_>::checkpoint(&mut self) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::create_realm(&mut self) -> core::result::Result<surgeist_bindings_js::Realm, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Execution<'_>::finish_window_realm<T, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, pending: surgeist_bindings_js::PendingWindowRealm, install: impl for<'scope> core::ops::function::FnOnce(&mut surgeist_bindings_js::Scope<'scope>, &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(surgeist_bindings_js::Value<'scope>, T), E>) -> core::result::Result<(surgeist_bindings_js::Realm, T), E>
+pub fn surgeist_bindings_js::Execution<'_>::in_pending_window_realm<T>(&mut self, pending: &surgeist_bindings_js::PendingWindowRealm, install: impl for<'scope> core::ops::function::FnOnce(&mut surgeist_bindings_js::Scope<'scope>) -> core::result::Result<T, surgeist_bindings_js::Error>) -> core::result::Result<T, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::in_realm<T>(&mut self, realm: &surgeist_bindings_js::Realm, action: impl for<'scope> core::ops::function::FnOnce(&mut surgeist_bindings_js::Scope<'scope>) -> core::result::Result<T, surgeist_bindings_js::Error>) -> core::result::Result<T, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::memory_pressure(&mut self)
+pub fn surgeist_bindings_js::Execution<'_>::prepare_window_realm(&mut self) -> core::result::Result<surgeist_bindings_js::PendingWindowRealm, surgeist_bindings_js::Error>
 impl core::ops::drop::Drop for surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Execution<'_>::drop(&mut self)
 pub struct surgeist_bindings_js::FunctionMetadata<'name>
@@ -583,6 +586,7 @@ pub struct surgeist_bindings_js::NativeObject<T>
 impl<T> surgeist_bindings_js::NativeObject<T>
 pub fn surgeist_bindings_js::NativeObject<T>::payload(&self) -> &T
 pub struct surgeist_bindings_js::NativeObjectToken<T>
+pub struct surgeist_bindings_js::PendingWindowRealm(_)
 pub struct surgeist_bindings_js::Process
 impl surgeist_bindings_js::Process
 pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::EngineKind) -> core::result::Result<Self, surgeist_bindings_js::Error>

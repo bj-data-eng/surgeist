@@ -15,6 +15,11 @@ The [Runtime adapter](../surgeist-runtime/README.md) uses this boundary
 for attached Window services and standalone Event dispatch. Native owners
 retain their own interface state and execution authority.
 
+Window setup uses a pending realm so the backend can establish the immutable
+global prototype chain when it creates the actual global. The host installs
+the native EventTarget interface on the reserved prototype before obtaining
+the ordinary realm capability.
+
 ## Ownership
 
 Bootstrap on the worker's entry thread. Only that thread can reacquire the
