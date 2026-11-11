@@ -21,7 +21,10 @@ fn surgeist_blend_color_burn(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f32
 
 fn surgeist_blend_soft_light(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f32> {
     let quarter = vec3<f32>(0.25);
-    let polynomial = ((16.0 * backdrop - 12.0) * backdrop + 4.0) * backdrop;
+    // The fine raster path can supply extended color after local Plus.
+    // Bound the eagerly evaluated cubic to the range that selects it.
+    let low = min(backdrop, quarter);
+    let polynomial = ((16.0 * low - 12.0) * low + 4.0) * low;
     let d = select(sqrt(max(backdrop, quarter)), polynomial, backdrop <= quarter);
     let dark = backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop);
     let light = backdrop + (2.0 * source - 1.0) * (d - backdrop);
