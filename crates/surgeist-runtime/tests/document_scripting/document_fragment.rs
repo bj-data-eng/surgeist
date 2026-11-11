@@ -114,6 +114,25 @@ pub(super) fn fragment_projection_observes_adoption_dispatch_and_native_retireme
     );
     host.with_native(|dom, _, _| {
         let mut batch = DomBatch::new();
+        let native_document = batch.create_document();
+        batch.adopt(original, &native_document);
+        dom.apply(batch, &cancel()).unwrap();
+    })
+    .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const projected = original.ownerDocument;
+            return projected instanceof Document && projected !== destination
+                && projected !== window.document && projected === original.ownerDocument
+                && projected.ownerDocument === null && projected.nodeType === 9
+                && projected.getRootNode() === projected;
+        })())"#,
+        1.0,
+    );
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
         batch.destroy(original);
         dom.apply(batch, &cancel()).unwrap();
     })
