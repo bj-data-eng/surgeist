@@ -998,7 +998,7 @@ impl Origin {
                     | SpecializedProfile::OriginalFlexAxes
                     | SpecializedProfile::OriginalGridAxes
                     | SpecializedProfile::OriginalSubgridAxes
-            )
+            ) | Edition::Matching(crate::original_inline_subgrid_profile::EDITION)
         ) {
             None
         } else {

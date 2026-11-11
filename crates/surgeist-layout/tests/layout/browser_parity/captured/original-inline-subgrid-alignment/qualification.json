@@ -60,11 +60,11 @@
   "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
   "report": {
     "path": "xml/generation-reports/all.json",
-    "sha256": "4105b64c7b18f09fb32e7561eb876a35481d2ed4417f53884fd249ba15a40dc6"
+    "sha256": "c69e49402f9e1ded8e15c72891c1b776ce6379fa5d78b50795222ea922fd1aea"
   },
   "ownership": {
     "path": "xml/generation-ownership.json",
-    "sha256": "39dce2957421124de2d5bc54da6a57c98532ca83d088b653ad8da58fffbe6956"
+    "sha256": "ae0c5a13704d4205dfa08c4f5e9c6d780235ecae33c7070fae7e9ae6e2903d63"
   },
   "cases": [
     {
@@ -99,7 +99,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -154,7 +153,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -209,7 +207,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -264,7 +261,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -319,7 +315,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -374,7 +369,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -429,7 +423,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -484,7 +477,6 @@
         "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "inputs": {
           "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
           "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
           "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -511,7 +503,6 @@
   "retained_inputs": {
     "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
     "corpus.toml": "768e8b18e763b8adf2b6db55b6277ac5cfb255c8b873a35c9db72b37dd2c9563",
-    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
     "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_ltr.xml": "24fff7b006bfb05c91a0523e37d4a029a111b3d96fdb881789872f002048361a",
     "historical/subgrid/subgrid_alignment_002_center_start_item__border_box_rtl.xml": "7c4b73e70090ab09d7f6beb12763ccc0fcc76b40f417810f2b55f55b08d0b088",
     "historical/subgrid/subgrid_alignment_002_center_start_item__content_box_ltr.xml": "575d82526bead9cd7daf51e17bbe8579c3b34029a39ac52ee75205d8734a78e8",
@@ -534,7 +525,6 @@
     "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid.js": "ec2df45aae902bb69c9767ae6599b576138bdf4b397d0ce94f90b274494e8cb0",
     "tests/bin/surgeist-layout-generate/measurement/original_inline_subgrid_request.json": "31904d164db6ff36d47565ae0579a79fdc587a4b3760207adfe36cadeee1201a",
     "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
-    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
     "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
     "tests/layout/browser_parity/html/subgrid/subgrid_alignment_002_center_start_item.html": "5d8a3620a4e98eb6779e4c5dffa3ca8a9fe732751564e7dd48c16d4c63875b1f",
     "tests/layout/browser_parity/html/subgrid/subgrid_alignment_002_center_start_orthogonal_item.html": "23c1d0a7df422aa43f565cecd3f04af49ab03411d4c2d1521d624c96ba0871d6",
