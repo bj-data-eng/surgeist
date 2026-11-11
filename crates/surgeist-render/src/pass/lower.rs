@@ -179,8 +179,11 @@ fn lower_runtime_passes(
             }
             dependencies.append_slot()?.write(dependency);
         }
-        let kind = runtime_pass_kind(pass.kind(account)?, working_format, account)?;
-        let reads = lower_read_bindings(&pass.reads(account)?, resources, resource_index, account)?;
+        let (kind, input_reads) = pass.project(account, |kind| {
+            runtime_pass_kind(kind, working_format, account)
+        })?;
+        let reads = lower_read_bindings(&input_reads, resources, resource_index, account)?;
+        drop(input_reads);
         let result = lower_runtime_result(
             pass.result(),
             &kind,
@@ -427,7 +430,7 @@ pub(super) const fn runtime_resource_format(
 }
 
 fn runtime_pass_kind(
-    kind: GraphLoweringPassKind,
+    kind: &GraphLoweringPassKind,
     working_format: WorkingFormat,
     account: &Account,
 ) -> Result<RuntimePassKind> {
@@ -442,16 +445,18 @@ fn runtime_pass_kind(
                 }
                 GraphLoweringInitialization::Transparent => RuntimeInitialization::Transparent,
             },
-            color,
+            color: *color,
         },
         GraphLoweringPassKind::VelloCapture(work) => RuntimePassKind::VelloCapture(
-            work.map(|work| runtime_vello_capture(work, account))
+            work.as_ref()
+                .map(|work| runtime_vello_capture(work, account))
                 .transpose()?,
         ),
         GraphLoweringPassKind::CanonicalizeCapture => RuntimePassKind::CanonicalizeCapture,
         GraphLoweringPassKind::CopyBackdrop => RuntimePassKind::CopyBackdrop,
         GraphLoweringPassKind::ColorFilter(filter) => RuntimePassKind::ColorFilter(
             filter
+                .as_ref()
                 .map(|filter| runtime_color_filter(filter, account))
                 .transpose()?,
         ),
@@ -466,6 +471,7 @@ fn runtime_pass_kind(
         }
         GraphLoweringPassKind::Composite(composite) => RuntimePassKind::Composite(
             composite
+                .as_ref()
                 .map(|composite| runtime_composite(composite, account))
                 .transpose()?,
         ),
@@ -474,7 +480,7 @@ fn runtime_pass_kind(
 }
 
 fn runtime_vello_capture(
-    capture: GraphLoweringVelloCapture,
+    capture: &GraphLoweringVelloCapture,
     account: &Account,
 ) -> Result<RuntimeVelloCapture> {
     Ok(match capture {
@@ -487,7 +493,7 @@ fn runtime_vello_capture(
     })
 }
 
-fn runtime_vello_span(span: GraphLoweringVelloSpan) -> RuntimeVelloSpan {
+fn runtime_vello_span(span: &GraphLoweringVelloSpan) -> RuntimeVelloSpan {
     RuntimeVelloSpan {
         scope: match span.scope() {
             GraphLoweringVelloSpanScope::CurrentParent => RuntimeVelloSpanScope::CurrentParent,
@@ -503,7 +509,7 @@ fn runtime_vello_span(span: GraphLoweringVelloSpan) -> RuntimeVelloSpan {
 }
 
 fn runtime_clip_coverage(
-    coverage: GraphLoweringClipCoverage,
+    coverage: &GraphLoweringClipCoverage,
     account: &Account,
 ) -> Result<RuntimeClipCoverage> {
     let mut elements = account.retained(coverage.elements().len())?;
@@ -540,7 +546,7 @@ fn runtime_edge(edge: GraphLoweringEdgePolicy) -> RuntimeSamplingEdge {
 }
 
 fn runtime_color_filter(
-    filter: GraphLoweringColorFilter,
+    filter: &GraphLoweringColorFilter,
     account: &Account,
 ) -> Result<RuntimeColorFilter> {
     let mut operations = account.retained(filter.operations().len())?;
@@ -639,7 +645,7 @@ fn runtime_drop_shadow(shadow: GraphLoweringDropShadow) -> RuntimeDropShadow {
 }
 
 fn runtime_composite(
-    composite: GraphLoweringComposite,
+    composite: &GraphLoweringComposite,
     account: &Account,
 ) -> Result<RuntimeComposite> {
     let kind = match composite.kind() {
@@ -1052,9 +1058,10 @@ mod terminal_accounting_tests {
         .unwrap();
         let graph = crate::frame::forced_base_graph_for_test(commands, context).unwrap();
         // The real empty-scene graph contains one resource and Clear/Present.
-        // Its validation, views, indexes and lowering require 29 node visits;
-        // independently checking the terminal runtime record adds the thirtieth.
-        for limit in [30, 29] {
+        // Its validation, views, indexes and lowering require 25 node visits
+        // after removing four duplicate projections of Clear and Present.
+        // The terminal runtime record requires a separate visit.
+        for limit in [26, 25] {
             let (result, report) = crate::pass::test_support::measure_proof_work(
                 RenderWork::GraphNodeVisits,
                 limit,
@@ -1074,9 +1081,9 @@ mod terminal_accounting_tests {
                 },
             );
             let attempt = report.attempt().unwrap();
-            if limit == 30 {
+            if limit == 26 {
                 result.unwrap();
-                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 30);
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 26);
             } else {
                 assert!(
                     result.is_err(),
@@ -1088,7 +1095,7 @@ mod terminal_accounting_tests {
                     refusal.quantity,
                     crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
                 );
-                assert_eq!((refusal.current, refusal.amount), (29, 1));
+                assert_eq!((refusal.current, refusal.amount), (25, 1));
             }
         }
     }

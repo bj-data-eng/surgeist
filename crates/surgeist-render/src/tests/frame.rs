@@ -1612,8 +1612,8 @@ fn color_filter_graph_preserves_authored_order_clamps_and_exact_lifetimes() {
 #[test]
 fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
     use crate::{
-        RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity, RenderResource,
-        RenderWork,
+        RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope, RenderLimits, RenderQuantity,
+        RenderResource, RenderWork,
         accounting::{Account, FrameFixture, RendererCpu},
         resource::WorkingFormat,
     };
@@ -1626,12 +1626,12 @@ fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
     )
     .unwrap();
     let capabilities = DeviceCapabilities::from_test_facts(true, true, 4_096);
+    let cpu = RendererCpu::new(RenderAccountingOptions::new()).unwrap();
     let lower = |limit| {
         let limits = RenderLimits::new()
             .with_work_limit(RenderWork::FilterOperationVisits, limit)
             .unwrap();
         let options = RenderAccountingOptions::new().with_limits(limits);
-        let cpu = RendererCpu::new(options).unwrap();
         let (result, _, report, fault) = FrameFixture::new(&cpu, options)
             .run_sync(|attempt| {
                 crate::pass::LoweredGraphPlan::try_lower_validated_graph(
@@ -1654,6 +1654,7 @@ fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
     result.unwrap();
     let visit = RenderWork::FilterOperationVisits;
     assert_eq!(report.attempt().unwrap().usage().work(visit), 18);
+    drop(report);
 
     let (result, report) = lower(17);
     assert!(result.unwrap_err().accounting_diagnostic().is_some());
@@ -1663,8 +1664,19 @@ fn runtime_lowering_projects_color_filter_operations_once_per_visit() {
     assert_eq!(refusal.quantity(), RenderQuantity::Work(visit));
     assert_eq!((refusal.current(), refusal.amount()), (17, 1));
     assert_eq!(attempt.usage().work(visit), 17);
-    assert_eq!(attempt.usage().live(RenderResource::RetainedCpuBytes), 0);
-    assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+    let backing = report
+        .renderer_cpu()
+        .unwrap()
+        .scope_usage(RenderCpuScope::FrameBacking);
+    for resource in [
+        RenderResource::RetainedCpuBytes,
+        RenderResource::ScratchCpuBytes,
+    ] {
+        assert!(backing.peak(resource) > 0);
+        assert_eq!(backing.live(resource), 0);
+    }
+    assert_eq!(cpu.fault(), None);
+    drop(report);
 
     let (retry, report) = lower(18);
     retry.unwrap();
