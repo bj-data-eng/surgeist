@@ -195,6 +195,64 @@ fn watched_creation_refuses_cancelled_foreign_and_destroyed_tickets() {
 }
 
 #[test]
+fn watched_creation_reuses_a_slot_retired_by_the_same_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, original) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let original_watch = dom
+        .watch_node_retirement(original, &inbox, 11, GENEROUS, &cancel)
+        .unwrap();
+    let before = dom.snapshot();
+    dom.custody_registry.reconcile_releases();
+    let baseline = bytes(&dom);
+    let replace = || {
+        let mut batch = DomBatch::new();
+        batch.destroy(original);
+        let ticket = batch.create_fragment(document);
+        (batch, ticket)
+    };
+
+    let (batch, ticket) = replace();
+    let result = dom.apply_with_node_retirement_watch(
+        batch,
+        &ticket,
+        &inbox,
+        13,
+        DomNodeRetirementLimits::new(16_000_000, 0),
+        &cancel,
+    );
+    assert!(matches!(
+        result,
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert!(dom.snapshot().node(original).is_ok());
+    assert_eq!(bytes(&dom), baseline);
+    assert!(inbox.take().is_none());
+
+    let (batch, ticket) = replace();
+    let (_, successor, successor_watch) = dom
+        .apply_with_node_retirement_watch(batch, &ticket, &inbox, 13, GENEROUS, &cancel)
+        .unwrap()
+        .into_parts();
+    assert_eq!(successor.slot, original.slot);
+    assert_ne!(successor.generation, original.generation);
+    assert!(dom.snapshot().node(original).is_err());
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (original, 11));
+    assert!(inbox.take().is_none());
+    drop(original_watch);
+
+    let mut destroy = DomBatch::new();
+    destroy.destroy(successor);
+    dom.apply(destroy, &cancel).unwrap();
+    let notice = inbox.take().unwrap();
+    assert_eq!((notice.node(), notice.custody_key()), (successor, 13));
+    assert!(inbox.take().is_none());
+    drop(successor_watch);
+}
+
+#[test]
 fn exact_inbox_and_watch_admission_and_cancelled_disarm() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, node) = fixture(&cancel);
