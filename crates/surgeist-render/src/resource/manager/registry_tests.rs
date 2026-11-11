@@ -41,7 +41,7 @@ fn registry_facts(manager: &ResourceManager) -> (usize, usize, u64, u64) {
     (
         state.entries.len(),
         state.active_frames.len(),
-        state.next_frame,
+        state.active_frames.last_identity(),
         state.next_resource,
     )
 }
@@ -89,6 +89,99 @@ fn active_frame_admission_refuses_unfunded_index_without_advancing_identity() {
     assert_eq!(usage.live(RenderResource::RetainedCpuBytes), opening);
     assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), opening);
     cpu.ensure_healthy().unwrap();
+}
+
+#[test]
+fn active_frame_index_growth_refusal_preserves_live_scope_and_retry_identity() {
+    use crate::accounting::{RenderCpuScope, RenderProfile, RendererCpu};
+
+    let bytes = std::mem::size_of::<(FrameIdentity, crate::resource::lease::FrameScratch)>() as u64;
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let opening = RendererCpu::new(options)
+        .unwrap()
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    let options = options.with_limits(RenderLimits::new().with_retained_bytes(opening + bytes));
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let first = manager.begin_frame(None).unwrap();
+    assert_eq!(first.frame, FrameIdentity(1));
+    let error = manager
+        .begin_frame(None)
+        .err()
+        .expect("replacement overlaps the first allocation");
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::CpuRefused {
+            quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+            current,
+            amount,
+            ..
+        }) if current == opening + bytes && amount == 2 * bytes
+    ));
+    assert_eq!(registry_facts(&manager), (0, 1, 1, 0));
+    drop(first.finish_checked().unwrap());
+    let retry = manager.begin_frame(None).unwrap();
+    assert_eq!(retry.frame, FrameIdentity(2));
+    drop(retry);
+    let snapshot = cpu.snapshot().unwrap();
+    let backing = snapshot.scope_usage(RenderCpuScope::DeviceBacking).unwrap();
+    assert_eq!(backing.live(RenderResource::RetainedCpuBytes), bytes);
+    assert_eq!(backing.peak(RenderResource::RetainedCpuBytes), bytes);
+    assert_eq!(registry_facts(&manager), (0, 0, 2, 0));
+    drop(manager);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        opening
+    );
+    cpu.ensure_healthy().unwrap();
+}
+
+#[test]
+fn active_frame_index_growth_charges_overlap_and_ordered_removal() {
+    use crate::accounting::{RenderCpuScope, RenderProfile, RendererCpu};
+
+    let bytes = std::mem::size_of::<(FrameIdentity, crate::resource::lease::FrameScratch)>() as u64;
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let first = manager.begin_frame(None).unwrap();
+    let second = manager.begin_frame(None).unwrap();
+    let snapshot = cpu.snapshot().unwrap();
+    let backing = snapshot.scope_usage(RenderCpuScope::DeviceBacking).unwrap();
+    assert_eq!(backing.live(RenderResource::RetainedCpuBytes), 2 * bytes);
+    assert_eq!(backing.peak(RenderResource::RetainedCpuBytes), 3 * bytes);
+    assert_eq!(backing.work(RenderWork::StorageRelocations), 1);
+    let third = manager.begin_frame(None).unwrap();
+    drop(second.finish_checked().unwrap());
+    let frames: Vec<_> = lock_state(&manager.state)
+        .active_frames
+        .iter()
+        .map(|(&frame, _)| frame)
+        .collect();
+    assert_eq!(frames, [first.frame, third.frame]);
+    drop(third);
+    drop(first.finish_checked().unwrap());
+    assert_eq!(registry_facts(&manager), (0, 0, 3, 0));
+    let snapshot = cpu.snapshot().unwrap();
+    let cleanup = snapshot.scope_usage(RenderCpuScope::Cleanup).unwrap();
+    assert_eq!(cleanup.work(RenderWork::ActiveFrameRecordMoves), 1);
+    assert_eq!(cleanup.live(RenderResource::ScratchCpuBytes), 0);
 }
 
 #[test]

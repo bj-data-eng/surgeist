@@ -702,6 +702,7 @@ pub surgeist_render::RenderSurfaceAvailability::Occluded
 pub surgeist_render::RenderSurfaceAvailability::Suspended
 pub surgeist_render::RenderSurfaceAvailability::Uninitialized
 #[non_exhaustive] pub enum surgeist_render::RenderWork
+pub surgeist_render::RenderWork::ActiveFrameRecordMoves
 pub surgeist_render::RenderWork::AtlasTexels
 pub surgeist_render::RenderWork::AuthoredCommands
 pub surgeist_render::RenderWork::AuthoredFills
@@ -1780,6 +1781,7 @@ pub fn surgeist_render::RenderUsage::live(self, resource: surgeist_render::Rende
 pub fn surgeist_render::RenderUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
 pub fn surgeist_render::RenderUsage::work(self, work: surgeist_render::RenderWork) -> u64
 pub struct surgeist_render::RenderWorkTable<T>
+pub surgeist_render::RenderWorkTable::ActiveFrameRecordMoves: T
 pub surgeist_render::RenderWorkTable::AtlasTexels: T
 pub surgeist_render::RenderWorkTable::AuthoredCommands: T
 pub surgeist_render::RenderWorkTable::AuthoredFills: T

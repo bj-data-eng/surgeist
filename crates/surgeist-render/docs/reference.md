@@ -920,6 +920,13 @@ unit. Both provisional and committed capacity count while their backings coexist
 Growth admits the replacement before relocating records. Publication uses
 the capacity reserved by the checked cache update.
 
+The active resource frame index admits its usable record capacity under
+`DeviceBacking` before publishing a frame identity. Growth charges old and
+replacement capacity together. The index keeps ascending frame-identity order
+and retains capacity for later frames until manager disposal. Cleanup removes
+records in place and records shifted entries as `ActiveFrameRecordMoves`.
+Frame cleanup scratch has its own separate backing.
+
 Native Vello recordings use consecutive typed resource handles. Render
 validates the intent order and reserves one scratch table under
 `FrameBacking` before requesting any native buffer or texture. Each

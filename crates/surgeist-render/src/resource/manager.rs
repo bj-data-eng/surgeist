@@ -1,4 +1,7 @@
-use super::gaussian::{GaussianKernelKey, GaussianKernelPlan};
+use super::{
+    active_frames::ActiveFrames,
+    gaussian::{GaussianKernelKey, GaussianKernelPlan},
+};
 use crate::{
     BackendErrorCode, Error, RenderAccountingError, RenderQuantity, RenderRefusalReason,
     RenderResource, ResourceCacheBudget, Result,
@@ -236,10 +239,9 @@ pub(super) struct ResourceManagerState {
     pub(super) cpu: CpuAccount,
     pub(super) identity: ManagerIdentity,
     pub(super) budget: ResourceCacheBudget,
-    pub(super) next_frame: u64,
     pub(super) next_resource: u64,
     pub(super) accounting_fault: Option<ResourceAccountingFault>,
-    pub(super) active_frames: BTreeMap<FrameIdentity, super::lease::FrameScratch>,
+    pub(super) active_frames: ActiveFrames,
     pub(super) entries: BTreeMap<ResourceIdentity, ResourceEntry>,
     pub(super) pending_vello_atlas_recovery: Option<VelloAtlasOutcome>,
     #[cfg(test)]

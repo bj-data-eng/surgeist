@@ -1,3 +1,4 @@
+mod active_frames;
 mod gaussian;
 mod lease;
 mod manager;
@@ -79,10 +80,9 @@ impl ResourceManager {
                 cpu,
                 identity: ManagerIdentity::new(),
                 budget,
-                next_frame: 0,
                 next_resource: 0,
                 accounting_fault: None,
-                active_frames: BTreeMap::new(),
+                active_frames: active_frames::ActiveFrames::default(),
                 entries: BTreeMap::new(),
                 pending_vello_atlas_recovery: None,
                 #[cfg(test)]
@@ -111,17 +111,13 @@ impl ResourceManager {
         let mut state = lock_state(&self.state);
         state.cpu.ensure_healthy()?;
         state.ensure_accounting_exact(observer)?;
-        let next_frame = state.next_frame.checked_add(1).ok_or_else(|| {
-            Error::invalid_value(
-                "resource frame identity",
-                state.next_frame,
-                "must have remaining identity space",
-            )
-        })?;
-        let frame = FrameIdentity(next_frame);
-        let scratch = lease::FrameScratch::new(&state.cpu, state.entries.len())?;
-        state.next_frame = next_frame;
-        state.active_frames.insert(frame, scratch);
+        let ResourceManagerState {
+            active_frames,
+            entries,
+            cpu,
+            ..
+        } = &mut *state;
+        let frame = active_frames.open(entries.len(), cpu)?;
         Ok(FrameResourceScope::new(
             Arc::clone(&self.state),
             state.identity.clone(),
