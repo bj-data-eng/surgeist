@@ -201,6 +201,7 @@ fn sort_proof_entries<K: Ord, V>(entries: &mut [(K, Option<V>)], account: &Accou
             if entries[root].0.cmp(&entries[child].0).is_ge() {
                 break;
             }
+            account.work(RenderWork::GraphProofSortMoves, 2)?;
             entries.swap(root, child);
             root = child;
         }
@@ -212,6 +213,7 @@ fn sort_proof_entries<K: Ord, V>(entries: &mut [(K, Option<V>)], account: &Accou
         sift_down(entries, root, len, account)?;
     }
     for end in (1..len).rev() {
+        account.work(RenderWork::GraphProofSortMoves, 2)?;
         entries.swap(0, end);
         sift_down(entries, 0, end, account)?;
     }
@@ -5326,6 +5328,82 @@ mod accounting_tests {
         RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
         RenderLimits,
     };
+
+    #[test]
+    fn proof_sort_admits_each_swap_without_charging_a_refused_move() {
+        use crate::{RenderAccountingError, RenderPhase, RenderQuantity};
+
+        let work = RenderWork::GraphProofSortMoves;
+        for (limit, moves, probes, order) in [
+            (0, 0, 2, [1, 2, 3]),
+            (3, 2, 2, [3, 2, 1]),
+            (4, 4, 3, [1, 2, 3]),
+            (6, 6, 3, [2, 1, 3]),
+            (8, 8, 3, [1, 2, 3]),
+        ] {
+            let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let mut entries = [1, 2, 3].map(|key| (key, None::<()>));
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                sort_proof_entries(&mut entries, account)
+            });
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(entries.map(|entry| entry.0), order, "move limit {limit}");
+            assert_eq!(attempt.usage().work(work), moves);
+            assert_eq!(attempt.phase_usage(RenderPhase::Lower).work(work), moves);
+            assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), probes);
+            if limit == 8 {
+                result.unwrap();
+                assert_eq!(attempt.status(), RenderAttemptStatus::Succeeded);
+            } else {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+                assert_eq!((refusal.current(), refusal.amount()), (moves, 2));
+                assert_eq!(
+                    result.unwrap_err().accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn proof_map_drops_sort_backing_after_refusal_and_allows_retry() {
+        use crate::{RenderAccountingError, RenderPhase, RenderQuantity};
+
+        let work = RenderWork::GraphProofSortMoves;
+        let limits = RenderLimits::new().with_work_limit(work, 2).unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                let proof = ProofContext::new(account);
+                ProofMap::<_, u32>::new([1, 2, 3], 3, &proof).map(drop)
+            })
+            .unwrap_err();
+        let attempt = context.last_attempt().unwrap().attempt().unwrap();
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+        assert_eq!((refusal.current(), refusal.amount()), (2, 2));
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(refusal))
+        );
+        let usage = attempt.usage();
+        assert_eq!(usage.work(work), 2);
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 2);
+        assert_eq!(usage.work(RenderWork::GraphNodeVisits), 3);
+        assert!(usage.peak(RenderResource::ScratchCpuBytes) > 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+
+        let account = Account::for_test();
+        let proof = ProofContext::new(&account);
+        let mut map = ProofMap::new([1, 2, 3], 3, &proof).unwrap();
+        assert_eq!(map.insert(2, 7), None);
+        assert_eq!(map.get(&2), Some(&7));
+        proof.finish().unwrap();
+    }
 
     #[test]
     fn proof_map_refuses_a_key_without_reserved_backing() {

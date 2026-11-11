@@ -181,6 +181,9 @@ dimensions! {
         /// Render-owned raster source/index records copied or shifted, including
         /// insertion shifts; excludes replacement relocation and eleven streams.
         RasterResourceCopies,
+        /// Graph proof records moved by in-place ordering, two per executed swap.
+        /// Comparisons and replacement-backing relocations have separate dimensions.
+        GraphProofSortMoves,
     }
 }
 impl RenderWork {
@@ -292,6 +295,7 @@ impl RenderWork {
                         | Self::RasterCommandsEmitted
                         | Self::RasterCommandVisits
                         | Self::RasterResourceCopies
+                        | Self::GraphProofSortMoves
                 ) || (cfg!(any(
                     feature = "render-window",
                     all(feature = "render-web", target_arch = "wasm32")
