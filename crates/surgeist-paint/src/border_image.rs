@@ -1382,6 +1382,69 @@ mod tests {
         }
     }
 
+    fn auto_width_request(distance: f64, source: f64, natural: f64) -> BorderImageRequest {
+        let mut input = partition_request(0.0, 1.0, 0.0, 0.0);
+        input.source.coordinate_size.width = source;
+        input.source.natural_size.width = Some(natural);
+        input.slices.left = BorderImageSlice::SourceUnits(distance);
+        input.slices.right = BorderImageSlice::SourceUnits(0.0);
+        input.widths.left = BorderImageWidth::Auto;
+        input
+    }
+
+    #[test]
+    fn natural_auto_width_survives_a_quotient_rounded_to_zero() {
+        let distance = 2.0_f64.powi(-200);
+        let input = auto_width_request(distance, 2.0_f64.powi(900), 2.0_f64.powi(899));
+        let plan = geometry(input);
+        assert_eq!(plan.used_widths().left, 2.0_f64.powi(-201));
+        assert_eq!(plan.regions()[0][0].source().unwrap().max().x, distance);
+        assert_eq!(
+            plan.regions()[0][0].destination().unwrap().max().x,
+            2.0_f64.powi(-201)
+        );
+    }
+
+    #[test]
+    fn natural_auto_width_avoids_rounding_a_subnormal_source_quotient() {
+        let distance = 3.0 * 2.0_f64.powi(-201);
+        let input = auto_width_request(distance, 2.0_f64.powi(874), 2.0_f64.powi(873));
+        let plan = geometry(input);
+        assert_eq!(plan.used_widths().left, 3.0 * 2.0_f64.powi(-202));
+    }
+
+    #[test]
+    fn natural_auto_width_rounds_with_a_non_power_of_two_source() {
+        let distance = 2.0_f64.powi(-200);
+        let unit = 2.0_f64.powi(899);
+        let input = auto_width_request(distance, 3.0 * unit, unit);
+        // The common power of two cancels before division by three.
+        assert_eq!(geometry(input).used_widths().left, distance / 3.0);
+    }
+
+    #[test]
+    fn natural_auto_width_rounds_once_at_the_final_subnormal_boundary() {
+        let distance = 2.0_f64.powi(-600);
+        let source = 2.0_f64.powi(900);
+        let tie = auto_width_request(distance, source, 2.0_f64.powi(425));
+        assert_eq!(
+            resolve_border_image(tie, options(PaintLimits::unlimited())).result,
+            Err(geometry_error())
+        );
+        let above_tie = auto_width_request(distance, source, 3.0 * 2.0_f64.powi(424));
+        let plan = geometry(above_tie);
+        assert_eq!(plan.used_widths().left, f64::from_bits(1));
+        assert_eq!(
+            plan.regions()[0][0].destination().unwrap().max().x,
+            f64::from_bits(1)
+        );
+        // Both halfway cases round to the even significand of two units.
+        for natural in [3.0 * 2.0_f64.powi(425), 5.0 * 2.0_f64.powi(425)] {
+            let plan = geometry(auto_width_request(distance, source, natural));
+            assert_eq!(plan.used_widths().left, f64::from_bits(2));
+        }
+    }
+
     #[test]
     fn partition_keeps_zero_width_side_empty_when_opposite_side_is_reduced() {
         let result = geometry(partition_request(0.0, 1.0, 49.0, 0.0));
