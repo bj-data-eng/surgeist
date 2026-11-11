@@ -132,8 +132,9 @@ pub use compound::DomNodeOrString;
 mod element;
 mod event;
 pub use event::{
-    DomEventParent, DomEventParentQuery, DomEventRecipient, DomEventRecipientLimits,
-    DomEventRegistryAssociation, DomEventRegistryPreparation, DomEventTarget, DomEventType,
+    DomEventParent, DomEventParentQuery, DomEventPayloadRetention, DomEventRecipient,
+    DomEventRecipientLimits, DomEventRegistryAssociation, DomEventRegistryPreparation,
+    DomEventTarget,
 };
 mod fieldset;
 mod form;

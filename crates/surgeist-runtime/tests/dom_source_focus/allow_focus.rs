@@ -129,13 +129,15 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.calls += 1;
                 context.path = event.composed_path().collect();
@@ -508,13 +510,15 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, delivery: &mut Delivery, event| {
                 delivery.calls += 1;
                 delivery.target = event.target();
@@ -567,7 +571,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert_eq!(delivered_task, original_task);
     assert!(displaced_owner.is_none());
     assert_eq!(receipt.original_target(), subject);
-    assert_eq!(receipt.event_type(), DomEventType::Toggle);
+    assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());
     assert!(!receipt.default_prevented());

@@ -204,7 +204,7 @@ impl HostedRuntime {
                 } => {
                     // This qualification belongs to the current live Document,
                     // independently of the queue Global or remembered Host.
-                    let (gh, gt, gc, g) = match state.find_global(global, cancel, || {
+                    let (gh, gt, gc, g) = match state.find_global(global, cancel, |_| {
                         lease
                             .admit_hosted_runtime_work(1, cancel)
                             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))

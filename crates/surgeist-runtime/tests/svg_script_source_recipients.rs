@@ -25,6 +25,10 @@ fn dispatch_limits() -> DomEventDispatchLimits {
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
@@ -63,6 +67,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 8,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -191,7 +197,7 @@ fn parked_style_source_refuses_new_svg_recipients_without_resetting_the_original
     let parked_snapshot = session.snapshot();
     let usage = session.dom().usage();
     let mut recipients = dispatcher::<()>();
-    for event_type in [DomEventType::Load, DomEventType::Error] {
+    for event_type in [DomEventType::LOAD, DomEventType::ERROR] {
         assert!(matches!(
             recipients.add_listener(
                 &mut session.dom(),
@@ -269,7 +275,7 @@ fn parked_style_source_refuses_new_svg_recipients_without_resetting_the_original
     assert_detached_script(&current, script, document);
     // Neither refused attempt installed a hidden listener; registration is now
     // possible on the same dispatcher after the original operation completes.
-    for event_type in [DomEventType::Load, DomEventType::Error] {
+    for event_type in [DomEventType::LOAD, DomEventType::ERROR] {
         let id = recipients
             .add_listener(
                 &mut session.dom(),
@@ -306,11 +312,11 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, listeners, context: &mut Reentry, event| {
                 context.callbacks += 1;
                 event.prevent_default();
-                for event_type in [DomEventType::Load, DomEventType::Error] {
+                for event_type in [DomEventType::LOAD, DomEventType::ERROR] {
                     let id = listeners
                         .add_listener(
                             dom,
@@ -401,7 +407,7 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
         panic!("original real observer delivery must finish")
     };
     assert_eq!(receipt.original_target(), dialog);
-    assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
+    assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
     assert!(receipt.default_prevented());
@@ -506,9 +512,9 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
         .add_listener(
             &mut session.dom(),
             parent,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut OnceLoad, event| {
-                assert_eq!(event.event_type(), DomEventType::Load);
+                assert_eq!(event.event_type(), DomEventType::LOAD);
                 assert_eq!(event.target(), Some(style));
                 context.calls += 1;
                 Ok(())
@@ -576,7 +582,7 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
         panic!("the queued real Style load must be delivered")
     };
     assert_eq!(receipt.original_target(), style);
-    assert_eq!(receipt.event_type(), DomEventType::Load);
+    assert_eq!(receipt.event_type(), DomEventType::LOAD);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
     assert!(!receipt.default_prevented());

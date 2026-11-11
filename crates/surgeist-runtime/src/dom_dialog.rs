@@ -6,7 +6,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    DomEventType, NativeDomEvent, NativeDomEventOwner,
+    EventInvocationOwner, NativeDomEvent, NativeEventCause,
 };
 use std::{
     cell::RefCell,
@@ -118,7 +118,7 @@ enum Phase {
 struct Job {
     next: Option<Rc<RefCell<Job>>>,
     request: DomSourceEventRequest,
-    event: NativeDomEventOwner,
+    event: EventInvocationOwner,
     phase: Phase,
     // The original Source receipt for the job header only. Event bodies and
     // dispatch backing carry their own transferred receipts.
@@ -244,6 +244,7 @@ impl State {
         dom: &Dom,
         request: &DomSourceEventRequest,
         cancel: &AtomicBool,
+        storage: crate::dom_event::EventStorage,
     ) -> Result<Rc<RefCell<Job>>, DomSourceEventRuntimeError> {
         self.step(1, cancel)?;
         let lookup = self.find(request.identity(), cancel)?;
@@ -255,7 +256,7 @@ impl State {
                 DomSourceEventResource::Jobs,
             ));
         }
-        let payload = NativeDomEventOwner::initial_payload_bytes().ok_or(
+        let payload = EventInvocationOwner::initial_payload_bytes().ok_or(
             DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
         )?;
         let job_bytes = size_of::<RefCell<Job>>().checked_add(payload).ok_or(
@@ -266,7 +267,8 @@ impl State {
         // One actual formation/link step admits the new original node before
         // allocation. All old nodes and their Source debits remain live.
         self.step(1, cancel)?;
-        let backing = crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes)?;
+        let backing =
+            crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes, storage)?;
         let job = Rc::new(RefCell::new(Job {
             next: None,
             request: request.clone(),
@@ -324,10 +326,12 @@ impl Drop for State {
 
 pub(crate) struct SourceEventOwner {
     state: Rc<RefCell<State>>,
+    storage: crate::dom_event::EventStorage,
 }
 #[derive(Clone)]
 pub(crate) struct SourceEventRuntime {
     state: Weak<RefCell<State>>,
+    pub(crate) storage: crate::dom_event::EventStorage,
 }
 impl SourceEventOwner {
     pub(crate) fn admit_initial(
@@ -349,8 +353,10 @@ impl SourceEventOwner {
         owner: DomOwnerId,
         executor: DomSourceEventExecutor,
         limits: DomSourceEventRuntimeLimits,
+        storage: crate::dom_event::EventStorage,
     ) -> Self {
         Self {
+            storage,
             state: Rc::new(RefCell::new(State {
                 owner,
                 executor,
@@ -366,6 +372,7 @@ impl SourceEventOwner {
     pub(crate) fn execution(&self) -> SourceEventRuntime {
         SourceEventRuntime {
             state: Rc::downgrade(&self.state),
+            storage: self.storage.clone(),
         }
     }
     pub(crate) fn pending(&self) -> Result<Option<DomSourceEventId>, DomSourceEventRuntimeError> {
@@ -552,7 +559,9 @@ impl SourceEventRuntime {
             dom.raw_mut()
                 .resume_source_edit(request.operation(), limits.source, cancel)?,
         );
-        let job = original.borrow_mut().job(dom.raw(), request, cancel)?;
+        let job = original
+            .borrow_mut()
+            .job(dom.raw(), request, cancel, self.storage.clone())?;
         let delivered = matches!(job.borrow().phase, Phase::Delivered { .. });
         if !delivered {
             let (event, scope, funding) = {
@@ -663,15 +672,15 @@ impl SourceEventRuntime {
                 return Err(DomSourceEventRuntimeError::Protocol);
             };
             if receipt.original_target() != request.subject()
-                || receipt.event_type()
-                    != match request.kind() {
+                || receipt.native_cause()
+                    != Some(match request.kind() {
                         surgeist_dom::DomSourceEventKind::BeforeToggle => {
-                            DomEventType::BeforeToggle
+                            NativeEventCause::DialogBeforeToggle
                         }
-                        surgeist_dom::DomSourceEventKind::Toggle => DomEventType::Toggle,
-                        surgeist_dom::DomSourceEventKind::Close => DomEventType::Close,
-                        surgeist_dom::DomSourceEventKind::Cancel => DomEventType::Cancel,
-                    }
+                        surgeist_dom::DomSourceEventKind::Toggle => NativeEventCause::DialogToggle,
+                        surgeist_dom::DomSourceEventKind::Close => NativeEventCause::DialogClose,
+                        surgeist_dom::DomSourceEventKind::Cancel => NativeEventCause::DialogCancel,
+                    })
             {
                 return Err(DomSourceEventRuntimeError::Protocol);
             }
@@ -722,6 +731,7 @@ impl SourceEventRuntime {
 #[cfg(test)]
 mod payload_tests {
     use super::*;
+    use crate::DomEventType;
     use crate::{
         DomEventCallback, DomEventCallbackError, DomEventListenerFailure, DomEventListenerOptions,
         DomEventRegistryLimits, DomEventResource,
@@ -790,12 +800,23 @@ mod payload_tests {
                 work: 1_000_000,
             };
             SourceEventOwner::admit_initial(policy).unwrap();
-            let owner = SourceEventOwner::new(dom.owner(), executor, policy);
+            let storage = crate::dom_event::EventStorage::session(
+                &mut DomEventDom::borrow(&mut dom),
+                crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                &cancel,
+            )
+            .unwrap();
+            let owner = SourceEventOwner::new(dom.owner(), executor, policy, storage);
             let runtime = owner.execution();
             let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
                 registrations: LISTENERS,
                 pending_events: 1,
                 nested_dispatches: 1,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
             })
             .unwrap();
             for index in 0..LISTENERS {
@@ -803,7 +824,7 @@ mod payload_tests {
                     .add_listener(
                         &mut DomEventDom::borrow(&mut dom),
                         subject,
-                        DomEventType::BeforeToggle,
+                        DomEventType::BEFORE_TOGGLE,
                         DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, event| {
                             calls.push(index);
                             event.prevent_default();

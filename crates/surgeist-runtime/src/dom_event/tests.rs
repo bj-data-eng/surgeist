@@ -51,6 +51,10 @@ impl<C> DomEventDispatcher<C> {
         self.pending.capacity() * std::mem::size_of::<ContinuationObservation>()
     }
 
+    pub(crate) fn inspect_registration_bytes(&self) -> usize {
+        self.slots.capacity() * std::mem::size_of::<Slot<C>>()
+    }
+
     /// Test-only raw backing observation. Empty and actively removed entries
     /// retain no body; an expired nonempty Weak still retains its target area.
     pub(crate) fn inspect_retired_continuation_storage(&self) -> (usize, usize) {
@@ -73,13 +77,13 @@ impl NativeDomEvent {
     fn dispatch_observation(&self) -> EventDispatchObservation {
         EventDispatchObservation {
             event: self.clone(),
-            continuation: self.0.continuation.clone(),
+            continuation: self.0.invocation().unwrap(),
         }
     }
 
     pub(crate) fn inspect_continuation_body_bytes(&self) -> usize {
         std::mem::size_of::<EventContinuation>()
-            + std::mem::size_of_val(self.0.continuation.state.as_ref())
+            + std::mem::size_of_val(self.0.invocation().unwrap().state.as_ref())
     }
 
     pub(crate) fn inspect_retained_dispatch_banks(&self) -> (usize, usize, usize) {
@@ -127,7 +131,7 @@ impl NativeDomEvent {
     }
 }
 
-impl NativeDomEventOwner {
+impl EventInvocationOwner {
     pub(crate) fn inspect_element_task_source_bytes(&self) -> usize {
         let mut source = EventBodyCustody::event_bytes() + EventBodyCustody::continuation_bytes();
         if let Some(dispatch) = self._custody.borrow().as_ref() {
@@ -169,13 +173,15 @@ fn registry<C>() -> DomEventDispatcher<C> {
         registrations: 64,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
 fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
     dom.apply(batch, &AtomicBool::new(false)).unwrap()
 }
-fn dom() -> Dom {
+pub(super) fn dom() -> Dom {
     Dom::new(
         DomLimits::new(
             128,
@@ -247,7 +253,7 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
         dispatcher.add_listener(
             &mut DomEventDom::borrow(&mut fixture.dom),
             fixture.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
             DomEventListenerOptions::default(),
         ),
@@ -273,7 +279,7 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
         dispatcher.add_listener(
             &mut DomEventDom::borrow(&mut fixture.dom),
             fixture.target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
             DomEventListenerOptions::default(),
         ),
@@ -286,7 +292,7 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
         .add_listener(
             &mut DomEventDom::borrow(&mut fixture.dom),
             fixture.target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, _: &mut (), _| Ok(())),
             DomEventListenerOptions::default(),
         )
@@ -320,7 +326,7 @@ fn observer() -> DomEventCallback<Vec<Observation>> {
 }
 #[test]
 fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
-    for kind in [DomEventType::Load, DomEventType::Error] {
+    for kind in [DomEventType::LOAD, DomEventType::ERROR] {
         let mut f = ordinary();
         let mut listeners = registry();
         let mut log = Vec::new();
@@ -330,7 +336,7 @@ fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
                     .add_listener(
                         &mut DomEventDom::borrow(&mut f.dom),
                         node,
-                        kind,
+                        &kind,
                         observer(),
                         DomEventListenerOptions {
                             capture,
@@ -340,7 +346,7 @@ fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
                     .unwrap();
             }
         }
-        let event = if kind == DomEventType::Load {
+        let event = if kind == DomEventType::LOAD {
             NativeDomEvent::style_load(f.target, test_event_backing())
         } else {
             NativeDomEvent::style_error(f.target, test_event_backing())
@@ -419,7 +425,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             callback.clone(),
             DomEventListenerOptions::default(),
         )
@@ -428,7 +434,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             callback.clone(),
             DomEventListenerOptions {
                 capture: false,
@@ -441,7 +447,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             callback.clone(),
             DomEventListenerOptions {
                 capture: true,
@@ -470,7 +476,7 @@ fn duplicate_key_ignores_once_change_but_capture_is_distinct_and_ids_do_not_alia
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             callback,
             DomEventListenerOptions::default(),
         )
@@ -488,28 +494,28 @@ fn additions_are_snapshotted_at_each_invoke_and_not_at_dispatch_start() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.document.node(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, log: &mut Vec<&'static str>, _| {
                 log.push("document");
                 listeners
                     .add_listener(
                         dom,
                         target,
-                        DomEventType::Load,
+                        DomEventType::LOAD,
                         DomEventCallback::new(move |dom, listeners, log: &mut Vec<&'static str>, _| {
                             log.push("target capture");
                             listeners
                                 .add_listener(
                                     dom,
                                     target,
-                                    DomEventType::Load,
+                                    DomEventType::LOAD,
                                     DomEventCallback::new(move |dom, listeners, log: &mut Vec<&'static str>, _| {
                                         log.push("target noncapture");
                                         listeners
                                             .add_listener(
                                                 dom,
                                                 target,
-                                                DomEventType::Load,
+                                                DomEventType::LOAD,
                                                 DomEventCallback::new(|_, _, log: &mut Vec<&'static str>, _| {
                                                     log.push("too late");
                                                     Ok(())
@@ -566,7 +572,7 @@ fn removed_snapshot_entry_is_skipped_even_when_its_slot_is_reused() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, c: &mut Removal, _| {
                 c.log.push("first");
                 if let Some(id) = c.remove.take() {
@@ -575,7 +581,7 @@ fn removed_snapshot_entry_is_skipped_even_when_its_slot_is_reused() {
                         .add_listener(
                             dom,
                             target,
-                            DomEventType::Load,
+                            DomEventType::LOAD,
                             DomEventCallback::new(|_, _, c: &mut Removal, _| {
                                 c.log.push("replacement");
                                 Ok(())
@@ -593,7 +599,7 @@ fn removed_snapshot_entry_is_skipped_even_when_its_slot_is_reused() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, c: &mut Removal, _| {
                 c.log.push("removed");
                 Ok(())
@@ -639,7 +645,7 @@ fn once_is_removed_before_nested_dispatch_and_same_event_redispatch_is_rejected(
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, c: &mut Vec<&'static str>, event| {
                 c.push("once");
                 assert!(matches!(
@@ -679,7 +685,7 @@ fn once_is_removed_before_nested_dispatch_and_same_event_redispatch_is_rejected(
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, c: &mut Vec<&'static str>, _| {
                 c.push("ordinary");
                 Ok(())
@@ -710,7 +716,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<&'static str>, event| {
                     c.push("first capture");
                     if immediate {
@@ -731,7 +737,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
                 .add_listener(
                     &mut DomEventDom::borrow(&mut f.dom),
                     f.target,
-                    DomEventType::Load,
+                    DomEventType::LOAD,
                     DomEventCallback::new(move |_, _, c: &mut Vec<&'static str>, _| {
                         c.push(label);
                         Ok(())
@@ -775,7 +781,7 @@ fn stop_controls_apply_at_source_invoke_boundaries_including_target_second_invok
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 node,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<NodeId>, event| {
                     c.push(event.current_target().unwrap().node().unwrap());
                     if stop {
@@ -824,7 +830,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.document.node(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, c: &mut Edits, event| {
                 c.log.push(event.current_target().unwrap().node().unwrap());
                 let mut b = DomBatch::new();
@@ -857,7 +863,7 @@ fn callback_edits_real_dom_and_adopts_target_while_outer_path_stays_fixed_and_ne
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 node,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, c: &mut Edits, event| {
                     if c.nested {
                         c.nested_log
@@ -948,7 +954,7 @@ fn noncomposed_shadow_origin_stops_at_its_first_target_root_in_both_modes_and_cl
                 .add_listener(
                     &mut DomEventDom::borrow(&mut f.dom),
                     node,
-                    DomEventType::Load,
+                    DomEventType::LOAD,
                     observer(),
                     DomEventListenerOptions {
                         capture: true,
@@ -1009,7 +1015,7 @@ fn slotted_light_origin_crosses_shadow_host_and_closed_composed_path_hides_only_
                 .add_listener(
                     &mut DomEventDom::borrow(&mut f.dom),
                     node,
-                    DomEventType::Error,
+                    DomEventType::ERROR,
                     observer(),
                     DomEventListenerOptions {
                         capture: true,
@@ -1097,7 +1103,7 @@ fn stored_assignment_not_fresh_slot_query_controls_event_path() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.slot,
-            DomEventType::Load,
+            DomEventType::LOAD,
             observer(),
             DomEventListenerOptions {
                 capture: true,
@@ -1122,14 +1128,14 @@ fn stored_assignment_not_fresh_slot_query_controls_event_path() {
 }
 #[test]
 fn document_load_and_error_stop_at_actual_native_no_browsing_context_boundary() {
-    for kind in [DomEventType::Load, DomEventType::Error] {
+    for kind in [DomEventType::LOAD, DomEventType::ERROR] {
         let mut f = ordinary();
         let mut listeners = registry();
         listeners
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.document.node(),
-                kind,
+                &kind,
                 observer(),
                 DomEventListenerOptions {
                     capture: true,
@@ -1137,7 +1143,7 @@ fn document_load_and_error_stop_at_actual_native_no_browsing_context_boundary() 
                 },
             )
             .unwrap();
-        let event = if kind == DomEventType::Load {
+        let event = if kind == DomEventType::LOAD {
             NativeDomEvent::style_load(f.document.node(), test_event_backing())
         } else {
             NativeDomEvent::style_error(f.document.node(), test_event_backing())
@@ -1173,7 +1179,7 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, _: &mut (), event| {
                 let mut b = DomBatch::new();
                 b.set_attribute(
@@ -1191,7 +1197,7 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, _, _| panic!("listener unwind")),
             DomEventListenerOptions::default(),
         )
@@ -1200,7 +1206,7 @@ fn callback_failure_and_unwind_are_reported_separately_while_later_real_edits_co
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, _, event| {
                 let mut b = DomBatch::new();
                 b.set_attribute(
@@ -1278,7 +1284,7 @@ fn admission_before_delivery_preserves_event_and_after_delivery_resumes_without_
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<u8>, _| {
                     c.push(label);
                     Ok(())
@@ -1362,7 +1368,7 @@ fn retained_current_snapshot_continues_after_stop_propagation_and_does_not_repla
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<u8>, event| {
                     c.push(n);
                     event.stop_propagation();
@@ -1379,7 +1385,7 @@ fn retained_current_snapshot_continues_after_stop_propagation_and_does_not_repla
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, c: &mut Vec<u8>, _| {
                 c.push(3);
                 Ok(())
@@ -1430,7 +1436,7 @@ fn per_invoke_snapshot_and_failure_output_admission_are_retained_before_callback
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, count: &mut usize, _| {
                     *count += 1;
                     Err(DomEventCallbackError { code: 9 })
@@ -1529,6 +1535,8 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
         registrations: 4,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let target = f.target;
@@ -1536,7 +1544,7 @@ fn dropping_retained_event_releases_pending_admission_and_nested_limits_reject_b
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, count: &mut usize, _| {
                 *count += 1;
                 assert!(matches!(
@@ -1633,7 +1641,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.document.node(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, c: &mut Vec<NodeId>, _| {
                 let mut b = DomBatch::new();
                 b.detach(target);
@@ -1649,7 +1657,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
                     .add_listener(
                         dom,
                         replacement,
-                        DomEventType::Load,
+                        DomEventType::LOAD,
                         DomEventCallback::new(|_, _, _, _| {
                             panic!("reused generation received old dispatch")
                         }),
@@ -1668,7 +1676,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, c: &mut Vec<NodeId>, event| {
                 assert_eq!(event.current_target(), Some(target.into()));
                 assert_eq!(event.target(), Some(target));
@@ -1782,7 +1790,7 @@ fn incomplete_source_before_dispatch_refuses_delivery_then_same_ready_event_can_
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, n: &mut usize, _| {
                 *n += 1;
                 Ok(())
@@ -1829,7 +1837,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(
                 move |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
                     c.push(park_real_style_tail(dom.raw_mut(), document));
@@ -1843,7 +1851,7 @@ fn callback_published_source_tail_blocks_later_listener_until_exact_tail_finishe
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(
                 |dom, _, c: &mut Vec<surgeist_dom::DomSourceOperationId>, _| {
                     assert_eq!(dom.snapshot().incomplete_source_operation(), None);
@@ -1898,7 +1906,7 @@ fn unfinished_hook_tail_after_last_listener_retains_event_cleanup_and_receipt() 
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, count: &mut usize, event| {
                 *count += 1;
                 park_real_style_tail(dom.raw_mut(), document);
@@ -1948,7 +1956,7 @@ fn failure_output_after_delivered_callback_is_retained_then_completed_without_re
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<u8>, _| {
                     c.push(n);
                     Err(DomEventCallbackError { code: u64::from(n) })
@@ -1999,7 +2007,7 @@ fn finite_work_exhaustion_after_callback_keeps_exact_next_listener_without_repla
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, c: &mut Vec<u8>, _| {
                     c.push(n);
                     Ok(())
@@ -2063,7 +2071,7 @@ fn panic_payload_cleanup_unwind_retains_next_listener_and_unstrands_running_guar
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, c: &mut Vec<u8>, _| {
                 c.push(1);
                 std::panic::panic_any(PanicWhenDropped)
@@ -2075,7 +2083,7 @@ fn panic_payload_cleanup_unwind_retains_next_listener_and_unstrands_running_guar
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, c: &mut Vec<u8>, _| {
                 c.push(2);
                 Ok(())
@@ -2127,7 +2135,7 @@ fn retained_dispatch_refuses_foreign_canonical_owner_without_losing_progress() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, n: &mut usize, _| {
                 *n += 1;
                 Ok(())
@@ -2192,7 +2200,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             f.document.node(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, listeners, c: &mut RegistryReplacement, _| {
                 c.calls.push("document capture");
                 let mut b = DomBatch::new();
@@ -2203,7 +2211,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
                     .add_listener(
                         dom,
                         target,
-                        DomEventType::Load,
+                        DomEventType::LOAD,
                         DomEventCallback::new(move |dom, _, c: &mut RegistryReplacement, _| {
                             c.calls.push("replacement");
                             let mut b = DomBatch::new();
@@ -2230,7 +2238,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, c: &mut RegistryReplacement, _| {
                 c.calls.push("original target");
                 let mut b = DomBatch::new();
@@ -2321,7 +2329,7 @@ fn callback_registry_replacement_retains_original_dispatch_and_restored_registry
     );
 }
 
-mod hosted_style_parent_tests;
+pub(super) mod hosted_style_parent_tests;
 
 #[path = "beforetoggle_tests.rs"]
 mod beforetoggle;
@@ -2379,6 +2387,10 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
     let mut session = DomSession::new(
         owner,
         DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 1_000_000,
@@ -2430,7 +2442,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     let payload = event.toggle_event().unwrap();
                     context
@@ -2445,7 +2457,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 host_callback.clone(),
                 DomEventListenerOptions {
                     capture: false,
@@ -2457,7 +2469,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     let payload = event.toggle_event().unwrap();
                     context
@@ -2540,7 +2552,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
         };
         assert_eq!(Some(task.id()), original_task);
         assert_eq!(receipt.original_target(), target);
-        assert_eq!(receipt.event_type(), DomEventType::Toggle);
+        assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
         assert_eq!(
             receipt.callbacks(),
             2,

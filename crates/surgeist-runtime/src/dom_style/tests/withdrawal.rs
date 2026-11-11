@@ -211,13 +211,15 @@ impl Fixture {
             registrations: 1,
             pending_events: 1,
             nested_dispatches: 1,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 style,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, context: &mut Context, event| {
                     context.events.push((style, event.target().unwrap()));
                     Ok(())

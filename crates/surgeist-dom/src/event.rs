@@ -79,41 +79,66 @@ impl From<DomHostedGlobalId> for DomEventTarget {
     }
 }
 
-/// The native event classes currently admitted by the DOM/Runtime integration.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum DomEventType {
-    /// Native load notification.
+pub(crate) const LOAD_EVENT: &[u16] = &[108, 111, 97, 100];
+pub(crate) const ERROR_EVENT: &[u16] = &[101, 114, 114, 111, 114];
+
+#[derive(Clone, Copy)]
+pub(crate) enum Notification {
     Load,
-    /// Native error notification.
     Error,
-    /// Queued Details/Dialog state change.
-    Toggle,
-    /// Synchronous Dialog state-change observation.
-    BeforeToggle,
-    /// Queued Dialog close notification.
-    Close,
-    /// Synchronous close-watcher cancellation observation.
-    Cancel,
 }
-impl DomEventType {
-    /// Standard event type spelling.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Load => "load",
-            Self::Error => "error",
-            Self::Toggle => "toggle",
-            Self::BeforeToggle => "beforetoggle",
-            Self::Close => "close",
-            Self::Cancel => "cancel",
+impl Notification {
+    pub(crate) fn from_type(event_type: &[u16]) -> Option<Self> {
+        if event_type == LOAD_EVENT {
+            Some(Self::Load)
+        } else if event_type == ERROR_EVENT {
+            Some(Self::Error)
+        } else {
+            None
         }
     }
-    pub(crate) const fn notification(self) -> Option<usize> {
+    pub(crate) const fn event_type(self) -> &'static [u16] {
         match self {
-            Self::Load => Some(0),
-            Self::Error => Some(1),
-            _ => None,
+            Self::Load => LOAD_EVENT,
+            Self::Error => ERROR_EVENT,
         }
+    }
+    pub(crate) const fn index(self) -> usize {
+        match self {
+            Self::Load => 0,
+            Self::Error => 1,
+        }
+    }
+}
+
+/// Affine backing custody for actual Runtime event values and dispatch storage.
+/// This accounting receipt retains no tree, callback, registry or execution scope.
+#[derive(Debug)]
+pub struct DomEventPayloadRetention {
+    pub(crate) debit: crate::store::custody::Debit,
+}
+impl DomEventPayloadRetention {
+    /// Actual retained bytes, including any represented fixed targets.
+    pub fn retained_bytes(&self) -> usize {
+        self.debit.usage().bytes()
+    }
+    /// Actual retained UTF-16 capacity.
+    pub fn retained_units(&self) -> usize {
+        self.debit.usage().units()
+    }
+    /// Transfer part of this already-admitted backing into its actual holder.
+    pub fn split(&mut self, bytes: usize, units: usize) -> Result<Self, DomError> {
+        Ok(Self {
+            debit: self
+                .debit
+                .split(crate::store::custody::Usage::new(bytes, units))?,
+        })
+    }
+    /// Merge same-owner extents. A foreign extent is returned intact.
+    pub fn absorb(&mut self, other: Self) -> Result<(), Self> {
+        self.debit
+            .absorb(other.debit)
+            .map_err(|debit| Self { debit })
     }
 }
 
@@ -187,26 +212,35 @@ impl std::fmt::Debug for DomEventRecipient {
 /// Inputs to one current canonical parent/ancestry observation. These are query
 /// operands, not a caller-supplied no-recipient qualification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomEventParentQuery {
+pub struct DomEventParentQuery<'event> {
     pub(crate) current: NodeId,
     pub(crate) first_root: NodeId,
     pub(crate) adjusted_target: NodeId,
-    pub(crate) event_type: DomEventType,
+    pub(crate) event: EventParentFacts<'event>,
 }
-impl DomEventParentQuery {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct EventParentFacts<'event> {
+    pub(crate) event_type: &'event [u16],
+    pub(crate) composed: bool,
+}
+impl<'event> DomEventParentQuery<'event> {
     /// Query operands must name this issuing DOM's current snapshot. They do
     /// not grant permission to execute a dispatch or change processing history.
     pub const fn new(
         current: NodeId,
         first_root: NodeId,
         adjusted_target: NodeId,
-        event_type: DomEventType,
+        event_type: &'event [u16],
+        composed: bool,
     ) -> Self {
         Self {
             current,
             first_root,
             adjusted_target,
-            event_type,
+            event: EventParentFacts {
+                event_type,
+                composed,
+            },
         }
     }
 }
@@ -214,23 +248,18 @@ impl DomEventParentQuery {
 /// Current event-parent topology. Runtime retains path construction, target
 /// adjustment, invocation and closed-tree visibility rules.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DomEventParent {
-    pub(crate) parent: Option<DomEventTarget>,
-    pub(crate) assigned: bool,
-    pub(crate) in_target_tree: Option<bool>,
-}
-impl DomEventParent {
-    /// Actual parent endpoint; None terminates this path.
-    pub const fn parent(self) -> Option<DomEventTarget> {
-        self.parent
-    }
-    /// Whether the parent step follows stored assigned-slot state.
-    pub const fn via_assigned_slot(self) -> bool {
-        self.assigned
-    }
-    /// Present only for a Node parent. Its negation is Runtime's existing
-    /// at-target condition; a Global parent is never at-target.
-    pub const fn parent_in_adjusted_target_tree(self) -> Option<bool> {
-        self.in_target_tree
-    }
+pub enum DomEventParent {
+    /// The path ends here.
+    None,
+    /// A parent reached within the canonical node topology.
+    Node {
+        /// Exact current Node endpoint.
+        parent: NodeId,
+        /// Whether the step follows stored assigned-slot state.
+        via_assigned_slot: bool,
+        /// Whether the adjusted target's root is an inclusive shadow ancestor.
+        in_adjusted_target_tree: bool,
+    },
+    /// The live Global at the end of a qualifying Document path.
+    Global(DomHostedGlobalId),
 }

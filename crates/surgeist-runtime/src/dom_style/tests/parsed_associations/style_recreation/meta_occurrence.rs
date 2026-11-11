@@ -152,6 +152,8 @@ fn dispatcher() -> DomEventDispatcher<Context> {
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -259,7 +261,7 @@ fn original_utf16_b_then_a_then_a_preserves_owned_history_and_releases_real_fifo
         .add_listener(
             &mut session.dom(),
             sheet.association().element(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
                     event.target().unwrap(),

@@ -8,7 +8,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    EventDispatchObservation, NativeDomEvent, NativeDomEventOwner,
+    EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
 };
 use std::cell::{Cell, RefCell};
 use std::fmt;
@@ -382,7 +382,7 @@ impl Drop for TaskPayload {
 }
 struct Task {
     value: DomElementTask,
-    event: Option<NativeDomEventOwner>,
+    event: Option<EventInvocationOwner>,
     receipt: Option<DomEventDispatchReceipt>,
     running: bool,
     dialog: Option<surgeist_dom::DomDialogTask>,
@@ -1304,8 +1304,8 @@ impl ElementTaskState {
             (event.dispatch_formation(limits.dispatch), 0)
         } else {
             (
-                NativeDomEventOwner::fresh_dispatch_formation(limits.dispatch),
-                NativeDomEventOwner::initial_payload_bytes()
+                EventInvocationOwner::fresh_dispatch_formation(limits.dispatch),
+                EventInvocationOwner::initial_payload_bytes()
                     .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
             )
         };
@@ -1332,7 +1332,13 @@ impl ElementTaskState {
             TaskPayload::new(self.payload_bytes.clone(), extra, source_bytes, retained)?;
         let task = &mut self.tasks[index];
         if task.event.is_none() {
-            let backing = crate::dom_event::EventBodyCustody::element(&mut retained)?;
+            let storage = self
+                .hosted
+                .as_ref()
+                .ok_or(DomElementTaskRuntimeError::Binding)?
+                .event_storage
+                .clone();
+            let backing = crate::dom_event::EventBodyCustody::element(&mut retained, storage)?;
             task.event = Some(match value {
                 DomElementTask::DetailsToggle(details) => {
                     NativeDomEvent::details_toggle(value.id().target(), details.event(), backing)

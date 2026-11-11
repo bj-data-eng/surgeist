@@ -5,7 +5,7 @@ use std::mem::size_of;
 fn retained_failure() -> (
     Ordinary,
     DomEventDispatcher<Vec<usize>>,
-    NativeDomEventOwner,
+    EventInvocationOwner,
     Vec<usize>,
 ) {
     let mut fixture = ordinary();
@@ -16,7 +16,7 @@ fn retained_failure() -> (
             .add_listener(
                 &mut DomEventDom::borrow(&mut fixture.dom),
                 fixture.target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, _| {
                     calls.push(index);
                     Err(DomEventCallbackError { code })

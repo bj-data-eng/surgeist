@@ -119,7 +119,7 @@ fn fixture_with_setup<T>(
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(ROUTE),
             DomEventListenerOptions {
                 once: true,
@@ -131,7 +131,7 @@ fn fixture_with_setup<T>(
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, trace: &mut NativeTrace, event| {
                 assert_eq!(event.target(), Some(dialog));
                 let snapshot = dom.snapshot();

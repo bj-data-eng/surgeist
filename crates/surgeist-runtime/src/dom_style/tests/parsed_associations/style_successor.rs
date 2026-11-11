@@ -282,6 +282,8 @@ fn queued_predecessor_keeps_exact_task_and_blocks_on_the_new_original_invocation
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(

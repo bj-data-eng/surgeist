@@ -282,6 +282,8 @@ fn receipt_uses_actual_runtime_storage_and_is_not_a_networking_or_critical_wait(
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(
@@ -420,13 +422,15 @@ fn native_wait_and_delivery_remain_distinct_beside_original_processing_rows() {
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
                     event.target().unwrap(),

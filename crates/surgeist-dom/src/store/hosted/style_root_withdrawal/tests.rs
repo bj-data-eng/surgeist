@@ -182,32 +182,26 @@ fn publish_style_sheet(
 
 #[test]
 fn exact_document_load_stops_before_looking_up_the_expired_global() {
-    use crate::{DomEventParentQuery, DomEventTarget, DomEventType};
+    use crate::event::{ERROR_EVENT, LOAD_EVENT};
+    use crate::{DomEventParent, DomEventParentQuery};
 
     let (dom, source, document) = constructor();
     let node = document.node();
     let parent = |kind| {
         dom.dispatch_event_parent(
             &dom.snapshot(),
-            DomEventParentQuery::new(node, node, node, kind),
+            DomEventParentQuery::new(node, node, node, kind, false),
             &cancel(),
             &mut || Ok::<(), DomHostedError>(()),
         )
-        .map(|step| step.parent())
     };
     let global = dom.relevant_global(node).unwrap().unwrap();
-    assert_eq!(
-        parent(DomEventType::Error).unwrap(),
-        Some(DomEventTarget::Global(global)),
-    );
+    assert_eq!(parent(ERROR_EVENT).unwrap(), DomEventParent::Global(global),);
 
     drop(source);
 
-    assert_eq!(
-        parent(DomEventType::Error),
-        Err(DomHostedError::SourceExpired)
-    );
-    assert_eq!(parent(DomEventType::Load), Ok(None));
+    assert_eq!(parent(ERROR_EVENT), Err(DomHostedError::SourceExpired));
+    assert_eq!(parent(LOAD_EVENT), Ok(DomEventParent::None));
 }
 
 fn style_resource(

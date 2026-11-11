@@ -24,7 +24,7 @@ fn dialog() -> Ordinary {
         dom,
     }
 }
-fn show_event(target: NodeId) -> NativeDomEventOwner {
+fn show_event(target: NodeId) -> EventInvocationOwner {
     NativeDomEvent::dialog_before_toggle(
         target,
         HtmlDialogState::Closed,
@@ -86,7 +86,7 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
                 .add_listener(
                     &mut DomEventDom::borrow(&mut f.dom),
                     node,
-                    DomEventType::BeforeToggle,
+                    DomEventType::BEFORE_TOGGLE,
                     listener(label, label == cancel_at),
                     DomEventListenerOptions {
                         capture,
@@ -97,7 +97,10 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
         }
         let mut log = Vec::new();
         let event = show_event(f.target);
-        assert_eq!(event.event_type().as_str(), "beforetoggle");
+        assert_eq!(
+            event.event_type().code_units(),
+            "beforetoggle".encode_utf16().collect::<Vec<_>>()
+        );
         assert!(!event.default_prevented());
         let receipt = complete(
             registry
@@ -110,7 +113,7 @@ fn show_beforetoggle_capture_and_both_target_invocations_can_cancel() {
                 )
                 .unwrap(),
         );
-        assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
+        assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
         assert_eq!(receipt.callbacks(), 3);
         assert!(receipt.failures().is_empty());
         assert!(receipt.default_prevented() && event.default_prevented());
@@ -142,7 +145,7 @@ fn noncancelable_details_toggle_ignores_prevention_and_keeps_exact_payload() {
         .add_listener(
             &mut DomEventDom::borrow(&mut f.dom),
             details,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             listener(0, true),
             DomEventListenerOptions::default(),
         )
@@ -187,7 +190,7 @@ fn retained_beforetoggle_keeps_cancellation_and_never_replays_delivered_capture(
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 node,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 listener(label, label == 0),
                 DomEventListenerOptions {
                     capture,
@@ -260,7 +263,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |_, _, _: &mut Vec<Seen>, event| {
                     if cancel {
                         event.prevent_default();
@@ -274,7 +277,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, _: &mut Vec<Seen>, _| {
                     panic!("actual listener unwind")
                 }),
@@ -285,7 +288,7 @@ fn beforetoggle_listener_error_and_unwind_are_independent_from_cancellation() {
             .add_listener(
                 &mut DomEventDom::borrow(&mut f.dom),
                 f.target,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 listener(2, false),
                 DomEventListenerOptions::default(),
             )

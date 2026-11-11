@@ -215,12 +215,13 @@ pub use dom_dialog::{
     DomSourceEventServiceLimits, DomSourceEventServiceProgress,
 };
 pub use dom_event::{
-    DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventDispatchError,
-    DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
-    DomEventDom, DomEventHostError, DomEventHostInvocation, DomEventListenerFailure,
+    DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventConstructionError,
+    DomEventCreationObservation, DomEventDispatch, DomEventDispatchError, DomEventDispatchLimits,
+    DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
+    DomEventHostError, DomEventHostInvocation, DomEventInit, DomEventListenerFailure,
     DomEventListenerFailureKind, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId,
-    DomEventRegistryLimits, DomEventResource, DomEventTarget, DomEventType, DomToggleEvent,
-    NativeDomEvent,
+    DomEventRegistryLimits, DomEventResource, DomEventStorageLimits, DomEventTarget,
+    DomEventTimestampUnavailable, DomEventType, DomToggleEvent, NativeDomEvent,
 };
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,

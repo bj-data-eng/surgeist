@@ -96,6 +96,8 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let mut context = Cleanup {
@@ -156,7 +158,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|dom: &mut DomEventDom<'_>, _, context: &mut Cleanup, _| {
                 context.calls += 1;
                 let owner = context.hosted.state().unwrap();

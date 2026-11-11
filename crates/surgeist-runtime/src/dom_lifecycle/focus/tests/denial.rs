@@ -165,11 +165,13 @@ fn parked(
         registrations: simultaneous,
         pending_events: simultaneous,
         nested_dispatches: simultaneous,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })?;
     registry.add_listener(
         &mut session.dom(),
         subject,
-        DomEventType::BeforeToggle,
+        DomEventType::BEFORE_TOGGLE,
         DomEventCallback::new(move |dom, _, context: &mut Delivery, _| {
             let Delivery::Adopt(context) = context else {
                 panic!("actual child adoption context required")
@@ -189,7 +191,7 @@ fn parked(
         registry.add_listener(
             &mut session.dom(),
             parent_subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut Delivery, _| {
                 let Delivery::Child(context) = context else {
                     panic!("actual parent callback context required")

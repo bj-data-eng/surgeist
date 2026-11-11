@@ -119,7 +119,7 @@ impl HostedState {
             }
         }
         let index = selected.ok_or(DomHostedRuntimeError::OperationPending)?;
-        let (h, t, c, g) = self.find_global(info.global, cancel, || Ok(()))?;
+        let (h, t, c, g) = self.find_global(info.global, cancel, |_| Ok(()))?;
         let frame = size_of::<StyleCleanupSelection>()
             + size_of::<StyleCleanupContext<'_>>()
             + size_of::<StyleCleanupTask<'_>>();

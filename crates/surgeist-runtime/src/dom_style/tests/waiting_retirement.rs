@@ -67,6 +67,8 @@ fn pump(
         registrations: 0,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     DomStyleRuntime::run_networking(

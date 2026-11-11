@@ -15,6 +15,10 @@ fn source_limits(work: u64) -> DomSourceLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: crate::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
@@ -115,6 +119,8 @@ fn parked(work: u64) -> (DomSession, DomHostedHostId, NodeId, DomFocusRequest) {
         registrations: 0,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(

@@ -141,6 +141,10 @@ mod tests {
         let mut session = DomSession::new(
             dom,
             DomSessionLimits {
+                authored_events: crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,
                     storage_bytes: 16_000_000,
@@ -462,6 +466,10 @@ mod tests {
                     )
                     .unwrap(),
                     DomSessionLimits {
+                        authored_events: crate::DomEventStorageLimits {
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
                         source_events: crate::DomSourceEventRuntimeLimits {
                             jobs: 0,
                             storage_bytes: 16_000_000,
@@ -584,6 +592,62 @@ mod tests {
                 );
                 let commit = session.dom().apply(batch, &AtomicBool::new(false)).unwrap();
                 (body, commit.created(&iframe).unwrap().unwrap())
+            }
+
+            #[test]
+            fn event_projection_preserves_an_earlier_occurrence_in_the_actual_global_domain() {
+                let cancel = AtomicBool::new(false);
+                let mut session = session();
+                let mut hosted = session.hosted_execution();
+                script(
+                    &hosted,
+                    &[Ok(199_999), Ok(350_001), Ok(700_001), Ok(900_001)],
+                );
+                let owner = hosted.state().unwrap();
+                let earlier = owner.borrow_mut().clock.sample().unwrap();
+                let mut dom = session.dom();
+                let host = hosted.create_host(&mut dom, &cancel).unwrap();
+                let top = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+                let settings = hosted.settings(&dom, top.global(), &cancel).unwrap();
+                let origin = owner.borrow().hosts[0].top_levels[0]
+                    .group
+                    .as_ref()
+                    .unwrap()
+                    .global()
+                    .unwrap()
+                    .settings
+                    .navigation_start;
+                let observation = crate::dom_lifecycle::event::creation_observation(
+                    top.global(),
+                    origin,
+                    earlier,
+                )
+                .unwrap();
+                assert_eq!(observation.global(), top.global());
+                assert_eq!(observation.clock_source(), settings.clock_source());
+                assert_eq!(observation.time_origin_microseconds(), 300);
+                assert_eq!(observation.occurrence_microseconds(), 100);
+                assert_eq!(observation.relative_microseconds(), -200);
+                assert_eq!(observation.milliseconds(), -0.2);
+                let (_foreign_session, foreign) = foreign_sample();
+                assert!(matches!(
+                    crate::dom_lifecycle::event::creation_observation(
+                        top.global(),
+                        origin,
+                        foreign
+                    ),
+                    Err(DomHostedRuntimeError::Protocol)
+                ));
+                let event = hosted
+                    .create_event(
+                        &mut dom,
+                        top.global(),
+                        &[],
+                        crate::DomEventInit::default(),
+                        &cancel,
+                    )
+                    .unwrap();
+                assert_eq!(event.time_stamp().unwrap(), 0.6);
             }
 
             #[test]

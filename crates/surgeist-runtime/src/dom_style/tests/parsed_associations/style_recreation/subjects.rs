@@ -202,6 +202,8 @@ fn events(session: &DomSession) -> (DomEventDispatcher<Context>, Context) {
             registrations: 16,
             pending_events: 16,
             nested_dispatches: 8,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap(),
         Context {
@@ -230,7 +232,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
                     event.target().unwrap(),
@@ -395,7 +397,7 @@ fn queued_a_old_and_late_a_final_survive_output_drop_subject_retirement_and_sess
         };
         assert_eq!(actual, task);
         assert_eq!(receipt.original_target(), target);
-        assert_eq!(receipt.event_type(), DomEventType::Load);
+        assert_eq!(receipt.event_type(), DomEventType::LOAD);
     }
     assert!(matches!(
         run(&mut session, &mut dispatcher, &mut context),

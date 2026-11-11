@@ -55,6 +55,8 @@ fn recipients() -> Recipients {
         registrations: 8,
         pending_events: 8,
         nested_dispatches: 2,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -63,7 +65,7 @@ fn register(
     dom: &mut Dom,
     recipients: &mut Recipients,
     target: NodeId,
-    kind: DomEventType,
+    kind: impl AsRef<[u16]>,
     capture: bool,
 ) -> DomEventRegistrationId {
     register_callback(
@@ -86,7 +88,7 @@ fn register_callback(
     dom: &mut Dom,
     recipients: &mut Recipients,
     target: NodeId,
-    kind: DomEventType,
+    kind: impl AsRef<[u16]>,
     callback: DomEventCallback<Vec<DomEventType>>,
     options: DomEventListenerOptions,
 ) -> DomEventRegistrationId {
@@ -260,42 +262,42 @@ fn move_under_registered_ancestor(kind: DomEventType) {
 
 #[test]
 fn direct_load_recipient_refuses_connected_svg_processing_atomically() {
-    direct_recipient(DomEventType::Load);
+    direct_recipient(DomEventType::LOAD);
 }
 
 #[test]
 fn direct_error_recipient_refuses_connected_svg_processing_atomically() {
-    direct_recipient(DomEventType::Error);
+    direct_recipient(DomEventType::ERROR);
 }
 
 #[test]
 fn prior_ancestor_load_capture_refuses_later_svg_processing_atomically() {
-    capture_before_creation(DomEventType::Load, CaptureTarget::Ancestor);
+    capture_before_creation(DomEventType::LOAD, CaptureTarget::Ancestor);
 }
 
 #[test]
 fn prior_ancestor_error_capture_refuses_later_svg_processing_atomically() {
-    capture_before_creation(DomEventType::Error, CaptureTarget::Ancestor);
+    capture_before_creation(DomEventType::ERROR, CaptureTarget::Ancestor);
 }
 
 #[test]
 fn prior_document_load_capture_refuses_later_svg_processing_atomically() {
-    capture_before_creation(DomEventType::Load, CaptureTarget::Document);
+    capture_before_creation(DomEventType::LOAD, CaptureTarget::Document);
 }
 
 #[test]
 fn prior_document_error_capture_refuses_later_svg_processing_atomically() {
-    capture_before_creation(DomEventType::Error, CaptureTarget::Document);
+    capture_before_creation(DomEventType::ERROR, CaptureTarget::Document);
 }
 
 #[test]
 fn moving_unprocessed_svg_under_load_capture_refuses_atomically() {
-    move_under_registered_ancestor(DomEventType::Load);
+    move_under_registered_ancestor(DomEventType::LOAD);
 }
 
 #[test]
 fn moving_unprocessed_svg_under_error_capture_refuses_atomically() {
-    move_under_registered_ancestor(DomEventType::Error);
+    move_under_registered_ancestor(DomEventType::ERROR);
 }
 
 fn refuse_insertion(dom: &mut Dom, script: NodeId, parent: NodeId, prefix: NodeId) {
@@ -366,12 +368,38 @@ fn connect_without_recipient(dom: &mut Dom, script: NodeId, document: DocumentId
 }
 
 #[test]
+fn case_distinct_names_do_not_claim_native_svg_notification_recipients() {
+    let (mut dom, document, root) = native_owner();
+    let mut recipients = recipients();
+    let script = detached_script(&mut dom, document, None);
+    register(&mut dom, &mut recipients, script, [76, 111, 97, 100], false);
+    register(
+        &mut dom,
+        &mut recipients,
+        root,
+        [69, 114, 114, 111, 114],
+        true,
+    );
+    connect_without_recipient(&mut dom, script, document, root);
+
+    let control = detached_script(&mut dom, document, None);
+    register(
+        &mut dom,
+        &mut recipients,
+        control,
+        DomEventType::LOAD,
+        false,
+    );
+    refuse_insertion(&mut dom, control, root, root);
+}
+
+#[test]
 fn removing_one_registry_recipient_keeps_the_other_until_its_exact_removal() {
     let (mut dom, document, root) = native_owner();
     let script = detached_script(&mut dom, document, None);
     let mut first = recipients();
-    let first_id = register(&mut dom, &mut first, script, DomEventType::Load, false);
-    let second_id = register(&mut dom, &mut first, script, DomEventType::Error, false);
+    let first_id = register(&mut dom, &mut first, script, DomEventType::LOAD, false);
+    let second_id = register(&mut dom, &mut first, script, DomEventType::ERROR, false);
     refuse_insertion(&mut dom, script, root, root);
     assert!(first.remove_listener(first_id));
     refuse_insertion(&mut dom, script, root, root);
@@ -384,11 +412,11 @@ fn dropping_registry_releases_only_its_own_ancestor_recipients() {
     let (mut dom, document, root) = native_owner();
     let script = detached_script(&mut dom, document, None);
     let mut first = recipients();
-    register(&mut dom, &mut first, root, DomEventType::Load, true);
+    register(&mut dom, &mut first, root, DomEventType::LOAD, true);
     let second = dom
         .retain_event_recipient(
             root.into(),
-            DomEventType::Error,
+            DomEventType::ERROR.code_units(),
             true,
             &AtomicBool::new(false),
         )
@@ -413,7 +441,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         &mut dom,
         &mut recipients,
         script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         callback.clone(),
         DomEventListenerOptions {
             capture: false,
@@ -424,7 +452,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         &mut dom,
         &mut recipients,
         script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         callback.clone(),
         DomEventListenerOptions {
             capture: false,
@@ -436,7 +464,7 @@ fn duplicate_registration_has_one_lifetime_and_capture_remains_distinct() {
         &mut dom,
         &mut recipients,
         script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         callback,
         DomEventListenerOptions {
             capture: true,
@@ -456,9 +484,9 @@ fn stale_registration_removal_cannot_release_its_replacement_generation() {
     let (mut dom, document, root) = native_owner();
     let script = detached_script(&mut dom, document, None);
     let mut recipients = recipients();
-    let old = register(&mut dom, &mut recipients, script, DomEventType::Load, false);
+    let old = register(&mut dom, &mut recipients, script, DomEventType::LOAD, false);
     assert!(recipients.remove_listener(old));
-    let replacement = register(&mut dom, &mut recipients, script, DomEventType::Load, false);
+    let replacement = register(&mut dom, &mut recipients, script, DomEventType::LOAD, false);
     assert_ne!(replacement, old);
     assert!(!recipients.remove_listener(old));
     refuse_insertion(&mut dom, script, root, root);
@@ -471,7 +499,7 @@ fn retired_node_recipient_does_not_qualify_the_replacement_node_generation() {
     let (mut dom, document, root) = native_owner();
     let old = detached_script(&mut dom, document, None);
     let mut recipients = recipients();
-    let registration = register(&mut dom, &mut recipients, old, DomEventType::Load, false);
+    let registration = register(&mut dom, &mut recipients, old, DomEventType::LOAD, false);
     let retained = dom.snapshot();
     let mut batch = DomBatch::new();
     batch.destroy(old);
@@ -488,10 +516,10 @@ fn retired_node_recipient_does_not_qualify_the_replacement_node_generation() {
 
 #[test]
 fn ordinary_noncapture_ancestor_recipients_do_not_apply_to_nonbubbling_svg_events() {
-    for kind in [DomEventType::Load, DomEventType::Error] {
+    for kind in [DomEventType::LOAD, DomEventType::ERROR] {
         let (mut dom, document, root) = native_owner();
         let mut recipients = recipients();
-        register(&mut dom, &mut recipients, root, kind, false);
+        register(&mut dom, &mut recipients, root, &kind, false);
         register(&mut dom, &mut recipients, document.node(), kind, false);
         let script = detached_script(&mut dom, document, None);
         connect_without_recipient(&mut dom, script, document, root);
@@ -538,10 +566,10 @@ fn shadow_owner(mode: HtmlShadowRootMode, connected: bool) -> ShadowOwner {
 #[test]
 fn noncomposed_shadow_origin_excludes_outside_capture_in_open_and_closed_roots() {
     for mode in [HtmlShadowRootMode::Open, HtmlShadowRootMode::Closed] {
-        for kind in [DomEventType::Load, DomEventType::Error] {
+        for kind in [DomEventType::LOAD, DomEventType::ERROR] {
             let mut owner = shadow_owner(mode, true);
             let mut recipients = recipients();
-            register(&mut owner.dom, &mut recipients, owner.host, kind, true);
+            register(&mut owner.dom, &mut recipients, owner.host, &kind, true);
             register(
                 &mut owner.dom,
                 &mut recipients,
@@ -558,12 +586,12 @@ fn noncomposed_shadow_origin_excludes_outside_capture_in_open_and_closed_roots()
 #[test]
 fn shadow_origin_capture_inside_its_root_refuses_in_open_and_closed_roots() {
     for mode in [HtmlShadowRootMode::Open, HtmlShadowRootMode::Closed] {
-        for kind in [DomEventType::Load, DomEventType::Error] {
+        for kind in [DomEventType::LOAD, DomEventType::ERROR] {
             for at_root in [false, true] {
                 let mut owner = shadow_owner(mode, true);
                 let mut recipients = recipients();
                 let target = if at_root { owner.shadow } else { owner.inside };
-                register(&mut owner.dom, &mut recipients, target, kind, true);
+                register(&mut owner.dom, &mut recipients, target, &kind, true);
                 let script = detached_script(&mut owner.dom, owner.document, None);
                 refuse_insertion(&mut owner.dom, script, owner.inside, owner.host);
                 unprocessed(&owner.dom.snapshot(), script, owner.document, None);
@@ -582,7 +610,7 @@ fn stored_slotted_light_origin_reaches_each_capture_segment_across_the_shadow_ho
         Document,
     }
     for mode in [HtmlShadowRootMode::Open, HtmlShadowRootMode::Closed] {
-        for kind in [DomEventType::Load, DomEventType::Error] {
+        for kind in [DomEventType::LOAD, DomEventType::ERROR] {
             for segment in [
                 CaptureSegment::Slot,
                 CaptureSegment::ShadowRoot,
@@ -611,7 +639,7 @@ fn stored_slotted_light_origin_reaches_each_capture_segment_across_the_shadow_ho
                     CaptureSegment::Document => owner.document.node(),
                 };
                 let mut recipients = recipients();
-                register(&mut owner.dom, &mut recipients, target, kind, true);
+                register(&mut owner.dom, &mut recipients, target, &kind, true);
                 let before = owner.dom.snapshot();
                 let usage = owner.dom.usage();
                 let mut insertion = DomBatch::new();
@@ -656,8 +684,8 @@ fn registration_after_processing_does_not_replay_the_processed_svg_transition() 
     connect_without_recipient(&mut dom, script, document, root);
     let retained = dom.snapshot();
     let mut recipients = recipients();
-    register(&mut dom, &mut recipients, script, DomEventType::Load, false);
-    register(&mut dom, &mut recipients, root, DomEventType::Error, true);
+    register(&mut dom, &mut recipients, script, DomEventType::LOAD, false);
+    register(&mut dom, &mut recipients, root, DomEventType::ERROR, true);
     let mut batch = DomBatch::new();
     batch.detach(script);
     batch.insert_before(script, destination, None);
@@ -675,7 +703,7 @@ fn canceled_mutation_keeps_recipient_and_false_history_for_the_uncanceled_retry(
         &mut dom,
         &mut recipients,
         script,
-        DomEventType::Error,
+        DomEventType::ERROR,
         false,
     );
     let before = dom.snapshot();
@@ -712,7 +740,7 @@ fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_ori
         &mut dom,
         &mut first,
         first_script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         callback.clone(),
         DomEventListenerOptions::default(),
     );
@@ -720,7 +748,7 @@ fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_ori
         &mut dom,
         &mut first,
         first_script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         callback.clone(),
         DomEventListenerOptions {
             capture: false,
@@ -736,7 +764,7 @@ fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_ori
             .add_listener(
                 &mut DomEventDom::borrow(&mut dom),
                 second_script,
-                DomEventType::Error,
+                DomEventType::ERROR,
                 callback.clone(),
                 DomEventListenerOptions::default(),
             )
@@ -758,7 +786,7 @@ fn one_dom_recipient_slot_is_shared_by_registrations_and_duplicate_keeps_its_ori
         &mut dom,
         &mut first,
         second_script,
-        DomEventType::Error,
+        DomEventType::ERROR,
         callback,
         DomEventListenerOptions::default(),
     );
@@ -784,20 +812,22 @@ fn runtime_registration_refusal_does_not_consume_the_other_dom_recipient_slot() 
         registrations: 1,
         pending_events: 8,
         nested_dispatches: 2,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let first_id = register(
         &mut dom,
         &mut first,
         first_script,
-        DomEventType::Load,
+        DomEventType::LOAD,
         false,
     );
     let error = first
         .add_listener(
             &mut DomEventDom::borrow(&mut dom),
             second_script,
-            DomEventType::Error,
+            DomEventType::ERROR,
             DomEventCallback::new(|_, _, observed: &mut Vec<DomEventType>, event| {
                 observed.push(event.event_type());
                 Ok(())
@@ -813,7 +843,7 @@ fn runtime_registration_refusal_does_not_consume_the_other_dom_recipient_slot() 
     let second = dom
         .retain_event_recipient(
             second_script.into(),
-            DomEventType::Error,
+            DomEventType::ERROR.code_units(),
             false,
             &AtomicBool::new(false),
         )
@@ -827,7 +857,7 @@ fn runtime_registration_refusal_does_not_consume_the_other_dom_recipient_slot() 
         &mut dom,
         &mut first,
         second_script,
-        DomEventType::Error,
+        DomEventType::ERROR,
         false,
     );
     assert_ne!(replacement, first_id);

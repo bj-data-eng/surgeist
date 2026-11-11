@@ -835,7 +835,7 @@ impl HostedState {
         cancel: &AtomicBool,
     ) -> Result<DomHostedTaskProgress, DomHostedRuntimeError> {
         let info = self.destruction.cleanups[index].info;
-        let (h, t, c, _) = self.find_global(info.global, cancel, || Ok(()))?;
+        let (h, t, c, _) = self.find_global(info.global, cancel, |_| Ok(()))?;
         let loop_owner = self.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -872,7 +872,7 @@ impl HostedState {
         }
         let info = self.destruction.cleanups[index].info;
         let (selected_h, selected_t, selected_c, _) =
-            self.find_global(info.global, cancel, || Ok(()))?;
+            self.find_global(info.global, cancel, |_| Ok(()))?;
         let selected_loop = &self.hosts[selected_h].top_levels[selected_t]
             .group
             .as_ref()
@@ -1474,6 +1474,10 @@ mod completion_retention_tests {
             )
             .unwrap(),
             DomSessionLimits {
+                authored_events: crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,
                     storage_bytes: 16_000_000,

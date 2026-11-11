@@ -28,6 +28,8 @@ use surgeist_dom::{
     DomHostedHostId, DomHostedLimits, DomHostedNavigableId, DomHostedPolicyPublication,
     DomHostedPreparedTopLevel, DomHostedSource, DomHostedTopLevelPreparation, DomOwnerId,
 };
+mod event;
+pub(crate) use event::EventCreation;
 
 /// Finite native orchestration bounds, separate from canonical DOM admission.
 #[derive(Clone, Copy, Debug)]
@@ -371,6 +373,7 @@ impl DomHostedHistoryEntry {
 
 pub(crate) struct HostedOwner {
     state: Rc<RefCell<HostedState>>,
+    event_storage: crate::dom_event::EventStorage,
 }
 pub(crate) struct HostedState {
     dom: DomOwnerId,
@@ -398,6 +401,7 @@ impl HostedOwner {
     pub(crate) fn new(
         dom: &mut Dom,
         limits: DomHostedRuntimeLimits,
+        event_storage: crate::dom_event::EventStorage,
     ) -> Result<Self, DomHostedRuntimeError> {
         Self::admit_initial_headers(limits)?;
         let source = dom
@@ -412,6 +416,7 @@ impl HostedOwner {
             )
             .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
         Ok(Self {
+            event_storage,
             state: Rc::new(RefCell::new(HostedState {
                 dom: dom.owner(),
                 source,
@@ -430,6 +435,7 @@ impl HostedOwner {
     pub(crate) fn execution(&self) -> HostedRuntime {
         HostedRuntime {
             state: Rc::downgrade(&self.state),
+            event_storage: self.event_storage.clone(),
         }
     }
 }
@@ -439,6 +445,7 @@ impl HostedOwner {
 #[derive(Clone)]
 pub struct HostedRuntime {
     state: Weak<RefCell<HostedState>>,
+    pub(crate) event_storage: crate::dom_event::EventStorage,
 }
 impl fmt::Debug for HostedRuntime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -666,21 +673,21 @@ impl HostedState {
         &mut self,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
-        mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
+        mut admit: impl FnMut(&DomHostedSource) -> Result<(), DomHostedRuntimeError>,
     ) -> Result<(usize, usize, usize, usize), DomHostedRuntimeError> {
         for h in 0..self.hosts.len() {
             self.step(cancel)?;
-            admit()?;
+            admit(&self.source)?;
             for t in 0..self.hosts[h].top_levels.len() {
                 self.step(cancel)?;
-                admit()?;
+                admit(&self.source)?;
                 let clusters = self.hosts[h].top_levels[t]
                     .group
                     .as_ref()
                     .map_or(0, |group| group.clusters.len());
                 for c in 0..clusters {
                     self.step(cancel)?;
-                    admit()?;
+                    admit(&self.source)?;
                     let count = self.hosts[h].top_levels[t]
                         .group
                         .as_ref()
@@ -691,7 +698,7 @@ impl HostedState {
                         .len();
                     for g in 0..count {
                         self.step(cancel)?;
-                        admit()?;
+                        admit(&self.source)?;
                         let group = self.hosts[h].top_levels[t]
                             .group
                             .as_ref()
@@ -710,6 +717,25 @@ impl HostedState {
             }
         }
         Err(DomHostedRuntimeError::TargetNotFound)
+    }
+
+    fn settings_at(
+        &self,
+        (h, t, c, g): (usize, usize, usize, usize),
+        document: surgeist_dom::DocumentId,
+    ) -> Result<&records::Settings, DomHostedRuntimeError> {
+        let native = self
+            .hosts
+            .get(h)
+            .and_then(|host| host.top_levels.get(t))
+            .and_then(|top| top.group.as_ref())
+            .and_then(|group| group.clusters.get(c))
+            .and_then(|cluster| cluster.agent.globals.get(g))
+            .ok_or(DomHostedRuntimeError::Protocol)?;
+        if native.settings.document != Some(document) {
+            return Err(DomHostedRuntimeError::Protocol);
+        }
+        Ok(&native.settings)
     }
 }
 
@@ -977,26 +1003,17 @@ impl HostedRuntime {
             .global_document(global)
             .map_err(DomHostedRuntimeError::Dom)?;
         let cross_site = state.capture_cross_site(dom, document, cancel)?;
-        let (h, t, c, g) = state.find_global(global, cancel, || Ok(()))?;
-        let native = &state.hosts[h].top_levels[t]
-            .group
-            .as_ref()
-            .ok_or(DomHostedRuntimeError::Protocol)?
-            .clusters[c]
-            .agent
-            .globals[g];
-        if native.settings.document != Some(document) {
-            return Err(DomHostedRuntimeError::Protocol);
-        }
+        let (h, t, c, g) = state.find_global(global, cancel, |_| Ok(()))?;
+        let settings = state.settings_at((h, t, c, g), document)?;
         Ok(DomHostedSettings {
             snapshot,
             global,
             document,
-            ready: native.settings.ready,
-            time_origin: native.settings.navigation_start,
-            creation_url: native.settings.creation_url.clone(),
-            top_level_creation_url: native.settings.top_level_creation_url.clone(),
-            top_level_origin: native.settings.top_level_origin.clone(),
+            ready: settings.ready,
+            time_origin: settings.navigation_start,
+            creation_url: settings.creation_url.clone(),
+            top_level_creation_url: settings.top_level_creation_url.clone(),
+            top_level_origin: settings.top_level_origin.clone(),
             cross_site,
         })
     }
@@ -1872,7 +1889,7 @@ impl HostedRuntime {
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
         let document = association.document();
-        let (h, t, c, g) = state.find_global(association.global(), cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(association.global(), cancel, |_| Ok(()))?;
         let cluster = &state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -2057,7 +2074,7 @@ impl HostedRuntime {
             .relevant_global(document.node())
             .map_err(DomHostedRuntimeError::Dom)?
             .ok_or(DomHostedRuntimeError::Binding)?;
-        state.find_global(global, cancel, || Ok(()))?;
+        state.find_global(global, cancel, |_| Ok(()))?;
         if dom
             .raw()
             .global_document(global)
@@ -2126,6 +2143,10 @@ mod constructor_settings_tests {
             )
             .unwrap(),
             DomSessionLimits {
+                authored_events: crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,
                     storage_bytes: 16_000_000,

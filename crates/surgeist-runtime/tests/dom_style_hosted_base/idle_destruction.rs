@@ -198,13 +198,15 @@ fn idle_native_document() -> IdleDocument {
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let listener = dispatcher
         .add_listener(
             &mut session.dom(),
             style,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Notifications, event| {
                 context.delivered.push(event.target().unwrap());
                 Ok(())
@@ -233,7 +235,7 @@ fn idle_native_document() -> IdleDocument {
     let DomStyleNetworkingProgress::Complete { receipt, .. } = delivery else {
         panic!("real no-import Load must dispatch and finish cleanup")
     };
-    assert_eq!(receipt.event_type(), DomEventType::Load);
+    assert_eq!(receipt.event_type(), DomEventType::LOAD);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());
     assert_eq!(notifications.delivered, [style]);

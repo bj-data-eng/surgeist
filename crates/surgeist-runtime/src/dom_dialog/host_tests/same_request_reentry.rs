@@ -18,13 +18,15 @@ fn attempt(storage_bytes: usize, repeat_request: bool) -> bool {
         registrations: 2,
         pending_events: 1,
         nested_dispatches: 2,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, dispatcher, context: &mut Context, event| {
                 let first = context.calls.is_empty();
                 context.calls.push("prefix");
@@ -60,7 +62,7 @@ fn attempt(storage_bytes: usize, repeat_request: bool) -> bool {
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.calls.push("suffix");
                 assert!(event.default_prevented());

@@ -572,6 +572,8 @@ fn queued_old_and_new_invocations_preserve_fifo_names_and_precise_later_meta_req
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     for _ in 0..2 {

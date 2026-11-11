@@ -29,13 +29,15 @@ fn escaped_style_path_retains_exact_storage_after_task_and_event_disposal() {
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Observations, event| {
                 context.event = Some(event.clone());
                 context.paths = Some([event.composed_path(), event.composed_path()]);
@@ -56,7 +58,7 @@ fn escaped_style_path_retains_exact_storage_after_task_and_event_disposal() {
     };
     assert_eq!(receipt.callbacks(), 1);
     assert_eq!(receipt.original_target(), target);
-    assert_eq!(receipt.event_type(), DomEventType::Load);
+    assert_eq!(receipt.event_type(), DomEventType::LOAD);
     assert!(context.styles.pending_sheet(0).unwrap().is_none());
     assert_eq!(
         context

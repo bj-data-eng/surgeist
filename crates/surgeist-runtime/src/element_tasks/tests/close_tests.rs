@@ -83,6 +83,8 @@ fn close_queue(
         registrations: 0,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(
@@ -334,7 +336,7 @@ fn final_close_queue_exact_overlap_refusal_and_affine_retry_preserve_toggle_trac
             panic!("actual plain Close delivery")
         };
         assert_eq!(task, close);
-        assert_eq!(receipt.event_type(), DomEventType::Close);
+        assert_eq!(receipt.event_type(), DomEventType::CLOSE);
         assert_eq!(owner.borrow().tasks.len(), 1);
         assert_eq!(owner.borrow().tasks[0].value, toggle);
         assert_eq!(

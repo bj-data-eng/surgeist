@@ -95,7 +95,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Cleanup, event| {
                     context.calls.push("first");
                     context.delivered.push(observe(event));
@@ -147,7 +147,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Cleanup, event| {
                     context.calls.push("late");
                     context.delivered.push(observe(event));
@@ -197,7 +197,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
         assert_eq!(context.calls, ["first", "late"]);
         assert!(!registry.remove_listener(late));
         for event in &context.delivered {
-            assert_eq!(event.kind, DomEventType::Toggle);
+            assert_eq!(event.kind, DomEventType::TOGGLE);
             assert_eq!(event.target, Some(subject));
             assert_eq!(event.current, Some(DomEventTarget::Node(subject)));
             let payload = event.payload.unwrap();
@@ -301,7 +301,7 @@ fn toggle_retired_before_dispatch_is_skipped_without_postdispatch_result_or_call
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Cleanup, _| {
                 context.calls.push("unexpected");
                 Ok(())

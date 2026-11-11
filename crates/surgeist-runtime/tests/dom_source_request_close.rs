@@ -60,6 +60,10 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -246,6 +250,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -338,9 +344,9 @@ fn authentic_uncanceled_request_closes_with_omitted_empty_and_supplied_results_a
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Cancel,
+                DomEventType::CANCEL,
                 DomEventCallback::new(|_, _, _, event| {
-                    assert_eq!(event.event_type(), DomEventType::Cancel);
+                    assert_eq!(event.event_type(), DomEventType::CANCEL);
                     assert!(event.cancelable());
                     assert!(event.toggle_event().is_none());
                     assert!(!event.bubbles());
@@ -391,7 +397,7 @@ fn canceled_cancel_keeps_open_and_real_original_guard_is_reset_for_the_next_requ
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 if *calls == 1 {
@@ -493,7 +499,7 @@ fn mutation_registry(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(move |dom, _, context: &mut MutationContext, event| {
                 context.calls.push("first");
                 if context.prevent {
@@ -727,7 +733,7 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Cancel,
+                DomEventType::CANCEL,
                 DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                     context.calls.push("late");
                     assert_eq!(event.target(), Some(subject));
@@ -820,7 +826,7 @@ fn cancel_dispatch_suspension_drop_and_canceled_attempt_preserve_once_and_origin
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, calls: &mut Vec<&'static str>, event| {
                 calls.push("first");
                 event.prevent_default();
@@ -836,7 +842,7 @@ fn cancel_dispatch_suspension_drop_and_canceled_attempt_preserve_once_and_origin
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, calls: &mut Vec<&'static str>, _| {
                 calls.push("late");
                 Ok(())
@@ -913,7 +919,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut MutationContext, event| {
                 context.calls.push("nested first");
                 assert!(!event.cancelable());
@@ -954,7 +960,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                 context.calls.push("nested late");
                 assert_eq!(event.target(), Some(subject));
@@ -1029,7 +1035,7 @@ fn attempted_window_retirement_during_cancel_refuses_and_preserves_actual_live_r
         refused: false,
     };
     let mut registry = dispatcher::<InactivityContext>();
-    registry.add_listener(&mut session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(|dom,_,context: &mut InactivityContext,event| {
+    registry.add_listener(&mut session.dom(), subject, DomEventType::CANCEL, DomEventCallback::new(|dom,_,context: &mut InactivityContext,event| {
         event.prevent_default();
         let retirement = context.hosted.destroy_top_level(dom, context.top.navigable(), &cancel());
         assert!(matches!(retirement, Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceOperationPending)))), "ordinary hosted destruction cannot start during Source dispatch: {retirement:?}");
@@ -1209,23 +1215,23 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
         delivered: Vec::new(),
     };
     let mut registry = dispatcher::<QueueContext>();
-    for kind in [DomEventType::Close, DomEventType::Toggle] {
+    for kind in [DomEventType::CLOSE, DomEventType::TOGGLE] {
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                kind,
+                kind.clone(),
                 DomEventCallback::new(move |_, _, context: &mut QueueContext, event| {
                     assert_eq!(event.event_type(), kind);
                     assert!(!event.cancelable());
-                    if kind == DomEventType::Close {
+                    if kind == DomEventType::CLOSE {
                         assert!(event.toggle_event().is_none());
                     } else {
                         let payload = event.toggle_event().unwrap();
                         assert_eq!(payload.old_state(), "open");
                         assert_eq!(payload.new_state(), "closed");
                     }
-                    context.delivered.push(kind);
+                    context.delivered.push(kind.clone());
                     Ok(())
                 }),
                 DomEventListenerOptions::default(),
@@ -1279,7 +1285,7 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
     }
     assert_eq!(
         context.delivered,
-        [DomEventType::Close, DomEventType::Toggle]
+        [DomEventType::CLOSE, DomEventType::TOGGLE]
     );
     assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
     assert!(session.dom().pending_source_edit().is_none());
@@ -1330,7 +1336,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         .add_listener(
             &mut session.dom(),
             child,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|dom, _, context: &mut TerminalChildContext, event| {
                 context.calls.push("child first");
                 event.prevent_default();
@@ -1377,7 +1383,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         .add_listener(
             &mut session.dom(),
             child,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {
                 context.calls.push("child late");
                 assert_eq!(event.target(), Some(context.child));
@@ -1390,7 +1396,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             },
         )
         .unwrap();
-    registry.add_listener(&mut session.dom(), parent, DomEventType::Cancel, DomEventCallback::new(|dom,listeners,context: &mut TerminalChildContext,event| {
+    registry.add_listener(&mut session.dom(), parent, DomEventType::CANCEL, DomEventCallback::new(|dom,listeners,context: &mut TerminalChildContext,event| {
         context.calls.push("parent first");
         event.prevent_default();
         if context.child_invocations != 0 { return Ok(()); }
@@ -1435,7 +1441,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
         .add_listener(
             &mut session.dom(),
             parent,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {
                 context.calls.push("parent late");
                 assert_eq!(event.target(), Some(context.parent));

@@ -43,6 +43,10 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -142,6 +146,8 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     {
@@ -150,7 +156,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .add_listener(
                 &mut dom,
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
@@ -170,7 +176,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .add_listener(
                 &mut dom,
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
@@ -360,6 +366,8 @@ fn reentry_registry(
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let mut dom = session.dom();
@@ -367,7 +375,7 @@ fn reentry_registry(
         .add_listener(
             &mut dom,
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
                 context
                     .observations
@@ -408,7 +416,7 @@ fn reentry_registry(
         .add_listener(
             &mut dom,
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
                 context
                     .observations
@@ -793,6 +801,8 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(
@@ -840,7 +850,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         .add_listener(
             &mut session.dom(),
             replacement,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut ReentryContext, _| {
                 context.replacement_callbacks += 1;
                 Ok(())
@@ -852,7 +862,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         registry.add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, _: &mut ReentryContext, _| Ok(())),
             DomEventListenerOptions::default()
         ),

@@ -37,6 +37,8 @@ fn networking(session: &mut DomSession) -> DomStyleNetworkingProgress {
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let mut context = Context {
@@ -122,7 +124,7 @@ fn real_end_releases_old_and_recreated_tasks_in_fifo_without_repeating_processin
             panic!("actual end permits real delivery")
         };
         assert_eq!(task, expected);
-        assert_eq!(receipt.event_type(), DomEventType::Load);
+        assert_eq!(receipt.event_type(), DomEventType::LOAD);
         assert_eq!(receipt.original_target(), new_sheet.association().element());
     }
     assert!(matches!(

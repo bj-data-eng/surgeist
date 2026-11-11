@@ -111,7 +111,7 @@ fn accept_block(lease: &mut crate::DomSourceLease<'_>, request: &crate::DomStyle
 fn retain(dom: &mut Dom, target: NodeId, capture: bool) -> DomEventRecipient {
     dom.retain_event_recipient(
         target.into(),
-        DomEventType::Error,
+        Notification::Error.event_type(),
         capture,
         &AtomicBool::new(false),
     )
@@ -124,7 +124,7 @@ fn has(dom: &Dom, target: NodeId, at_target: bool) -> bool {
     dom.event_recipients
         .as_ref()
         .unwrap()
-        .has_recipient(target.into(), DomEventType::Error, at_target, &processing)
+        .has_recipient(target.into(), Notification::Error, at_target, &processing)
         .unwrap()
 }
 // Independent raw backing enumeration: no cached receipt or aggregate counter
@@ -158,7 +158,7 @@ fn zero_policy_is_lazy_and_unrelated_classes_need_no_recipient_capacity() {
     assert!(
         dom.retain_event_recipient(
             target.into(),
-            DomEventType::Toggle,
+            &[116, 111, 103, 103, 108, 101],
             true,
             &AtomicBool::new(false)
         )
@@ -168,7 +168,7 @@ fn zero_policy_is_lazy_and_unrelated_classes_need_no_recipient_capacity() {
     assert!(matches!(
         dom.retain_event_recipient(
             target.into(),
-            DomEventType::Load,
+            Notification::Load.event_type(),
             true,
             &AtomicBool::new(false)
         ),
@@ -234,7 +234,7 @@ fn exact_occurrence_boundary_refuses_one_byte_short_without_changing_index_or_co
     dom.set_limits(limits().with_event_recipients(policy(2, exact - 1, 1_000_000)))
         .unwrap();
     assert!(
-        matches!(dom.retain_event_recipient(target.into(), DomEventType::Error, false, &AtomicBool::new(false)),
+        matches!(dom.retain_event_recipient(target.into(), Notification::Error.event_type(), false, &AtomicBool::new(false)),
         Err(crate::DomHostedError::Dom(DomError::ResourceLimit { resource: DomResource::EventRecipientRetainedBytes, limit })) if limit == exact - 1)
     );
     assert_eq!(ledger.total(), before);
@@ -317,7 +317,7 @@ fn cancellation_and_caller_unwind_leave_no_positive_capability() {
     assert!(matches!(
         dom.retain_event_recipient(
             target.into(),
-            DomEventType::Load,
+            Notification::Load.event_type(),
             false,
             &AtomicBool::new(true)
         ),
@@ -386,14 +386,24 @@ fn parked_source_rejects_positive_admission_before_allocating_but_keeps_other_cl
     let cancel = AtomicBool::new(false);
     let parked = park_before_svg(&mut dom, document);
     assert!(matches!(
-        dom.retain_event_recipient(target.into(), DomEventType::Error, true, &cancel),
+        dom.retain_event_recipient(
+            target.into(),
+            Notification::Error.event_type(),
+            true,
+            &cancel
+        ),
         Err(crate::DomHostedError::Dom(DomError::SourceOperationPending))
     ));
     assert!(dom.event_recipients.is_none());
     assert!(
-        dom.retain_event_recipient(target.into(), DomEventType::Toggle, false, &cancel)
-            .unwrap()
-            .is_none()
+        dom.retain_event_recipient(
+            target.into(),
+            &[116, 111, 103, 103, 108, 101],
+            false,
+            &cancel
+        )
+        .unwrap()
+        .is_none()
     );
     let mut lease = dom
         .resume_source_edit(parked.operation, source_limits(), &cancel)

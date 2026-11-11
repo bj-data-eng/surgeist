@@ -1,6 +1,7 @@
 //! Positive recipient ownership, independent of callbacks and immutable State.
 use super::*;
-use crate::{DomEventRecipient, DomEventRecipientLimits, DomEventTarget, DomEventType};
+use crate::event::Notification;
+use crate::{DomEventPayloadRetention, DomEventRecipient, DomEventRecipientLimits, DomEventTarget};
 use source::formation::Formation;
 use std::{cell::Cell, sync::Mutex};
 
@@ -493,7 +494,7 @@ impl Owner {
     pub(super) fn has_recipient(
         &self,
         target: DomEventTarget,
-        event_type: DomEventType,
+        event_type: Notification,
         at_target: bool,
         processing: &Processing<'_>,
     ) -> Result<bool, DomError> {
@@ -504,9 +505,7 @@ impl Owner {
         if owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
-        let Some(event) = event_type.notification() else {
-            return Ok(false);
-        };
+        let event = event_type.index();
         if !self.has_live() {
             return Ok(false);
         }
@@ -621,11 +620,11 @@ impl Dom {
     pub fn retain_event_recipient(
         &mut self,
         target: DomEventTarget,
-        event_type: DomEventType,
+        event_type: &[u16],
         capture: bool,
         cancel: &AtomicBool,
     ) -> Result<Option<DomEventRecipient>, crate::DomHostedError> {
-        let Some(event) = event_type.notification() else {
+        let Some(event) = Notification::from_type(event_type).map(Notification::index) else {
             check_cancel(cancel)?;
             return Ok(None);
         };
@@ -660,5 +659,30 @@ impl Dom {
         let recipient = owner.retain(target, event, capture, &processing)?;
         self.event_recipients = Some(owner);
         Ok(Some(recipient))
+    }
+
+    /// Admit actual event backing into this canonical owner's custody and every
+    /// observing Source before the Runtime consumer allocates it.
+    pub fn retain_event_payload(
+        &mut self,
+        bytes: usize,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventPayloadRetention, DomError> {
+        self.require_source_entry()?;
+        check_cancel(cancel)?;
+        let formation = self.source_observation_formation(cancel)?;
+        source::formation::step(formation.as_ref(), cancel)?;
+        let debit =
+            self.custody_registry
+                .ledger()
+                .retain(
+                    custody::Usage::new(bytes, units),
+                    |usage| match &formation {
+                        Some(formation) => formation.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                )?;
+        Ok(DomEventPayloadRetention { debit })
     }
 }

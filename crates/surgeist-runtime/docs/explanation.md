@@ -207,6 +207,17 @@ The durable job preserves the actual event, dispatch permit and completion recei
 across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
 
+`HostedRuntime::create_event` constructs an Event using the supplied current
+Global, its original navigation-start origin and the shared native clock. The
+session's `authored_events` limits fund the body and exact UTF-16 type. Creation
+leaves the canonical registry unclaimed. `prepare_node_dispatch` selects one
+exact Event, Node and dispatcher. Its first admitted `advance` starts the shared
+dispatch algorithm. Eligible Node paths reach Global listeners and honor
+capture, bubbling and the originating ShadowRoot's composed boundary. After
+cleanup, the Event can be used again on the same DOM with the current registry.
+The canceled flag remains sticky across dispatch. Idle `init_event` clears it
+and preserves the original creation time and composed flag.
+
 `DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
 accepted registration or dispatch claims the canonical DOM's one registry
 association; another dispatcher cannot select a parallel Node or Global list,
@@ -232,8 +243,10 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Arbitrary Event construction and signal integration remain separate
-capabilities.
+task State. Direct dispatch to Global and standalone EventTargets, legacy
+uninitialized Event construction, passive and signal listener integration,
+callback realms, and authenticated creation observations for selected producers
+remain separate work.
 
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;

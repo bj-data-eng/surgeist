@@ -1,17 +1,15 @@
 //! Synchronous native DOM event dispatch over the canonical DOM owner.
 //!
 //! Implements the pinned DOM3071 dispatch/invoke and parent algorithms for the
-//! ordinary nonbubbling, noncomposed Style load/error, Details toggle and Dialog
-//! beforetoggle events. Details preserves its queued state; Dialog supplies its
-//! source-selected cancelability. Both admitted ToggleEvent sources are null.
-//! Registration supports capture and once, borrowed Rust callbacks and owned
-//! host invocations at the Source event front. JS, AbortSignal, passive listeners,
-//! arbitrary event construction and activation are not offered. A hosted
-//! Document's non-load parent is its actual native Global; this is no JS Window
-//! or ECMAScript realm implementation. Family owners validate their actual
-//! source operation before creating an event and advance only after a receipt.
-//! Event creation/execution is crate-private: the public callback view cannot
-//! consume a feature task's continuation or completion receipt out of its owner.
+//! ordinary Node dispatch and selected Style, Details and Dialog delivery.
+//! Authored Event bodies retain their exact UTF-16 type and creation observation.
+//! The affine dispatch owns one invocation's path, cursor and admission. Details
+//! preserves its queued state and Dialog supplies its source-selected cancelability.
+//! Both selected ToggleEvent sources are null. Registration supports capture and
+//! once, borrowed Rust callbacks and owned host invocations at the Source front.
+//! A qualifying hosted Document's parent is its actual native Global. Selected
+//! family owners validate the actual Source operation and advance only on a
+//! matching one-shot receipt. Callback observations confer no producer authority.
 //!
 //! A started path retains exact identities even if callbacks detach, adopt or
 //! destroy its nodes. Retirement does not redirect a listener to a reused slot;
@@ -31,11 +29,23 @@ use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+pub use surgeist_dom::DomEventTarget;
 use surgeist_dom::{
-    Dom, DomDispatchCustody, DomError, DomEventParentQuery, DomEventRecipient, DomHostedError,
-    DomParsedHtmlStyleNotificationRequirement, DomSnapshot, HtmlShadowRootMode, NodeId,
+    Dom, DomDispatchCustody, DomError, DomEventParent, DomEventParentQuery, DomEventRecipient,
+    DomHostedError, DomParsedHtmlStyleNotificationRequirement, DomSnapshot, HtmlShadowRootMode,
+    NodeId,
 };
-pub use surgeist_dom::{DomEventTarget, DomEventType};
+mod storage;
+pub(crate) use storage::EventStorage;
+pub use storage::{DomEventStorageLimits, DomEventType};
+use storage::{EventAllocation, equal_units};
+mod objects;
+pub use objects::{
+    DomEventConstructionError, DomEventCreationObservation, DomEventInit,
+    DomEventTimestampUnavailable,
+};
+mod node;
+pub use node::DomEventDispatch;
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
@@ -151,7 +161,7 @@ pub enum DomEventPhase {
     Capturing,
     /// A path item with a non-null shadow-adjusted target.
     AtTarget,
-    /// Ancestor bubbling (reserved for a future source-qualified event).
+    /// Ancestor bubbling.
     Bubbling,
 }
 /// All registration options this native boundary supports.
@@ -171,6 +181,10 @@ pub struct DomEventRegistryLimits {
     pub pending_events: usize,
     /// Simultaneously executing nested dispatch calls.
     pub nested_dispatches: usize,
+    /// Actual listener, type, index and ordinary invocation backing.
+    pub storage_bytes: usize,
+    /// Cumulative registration and ordinary preparation work.
+    pub work: u64,
 }
 /// Per-call admission. Resume may supply more capacity without rebuilding a path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -220,6 +234,8 @@ pub struct DomEventListenerFailure {
 /// A finite resource whose admission refused further work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomEventResource {
+    /// Actual retained event, listener and invocation backing.
+    Storage,
     /// Listener registration storage.
     Registrations,
     /// Running and retained dispatch state.
@@ -256,9 +272,9 @@ pub enum DomEventDispatchError {
     },
     /// This same event is already executing or retained.
     AlreadyDispatching,
-    /// This event already produced its one completion receipt.
+    /// This invocation already produced its one completion receipt.
     AlreadyCompleted,
-    /// The actual source task owner terminally abandoned this event.
+    /// The affine invocation was terminally abandoned.
     Abandoned,
     /// Resume requires an event retained by this exact registry.
     WrongContinuation,
@@ -323,12 +339,16 @@ impl From<DomHostedError> for DomEventDispatchError {
 pub struct DomEventDispatchReceipt {
     target: NodeId,
     event_type: DomEventType,
+    cause: Option<NativeEventCause>,
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
     default_prevented: bool,
     funding: Option<DispatchFunding>,
 }
 impl DomEventDispatchReceipt {
+    pub(crate) fn native_cause(&self) -> Option<NativeEventCause> {
+        self.cause
+    }
     pub(crate) fn release_producer_retention(&mut self) {
         self.funding.take();
     }
@@ -338,7 +358,7 @@ impl DomEventDispatchReceipt {
     }
     /// Type that was actually dispatched.
     pub fn event_type(&self) -> DomEventType {
-        self.event_type
+        self.event_type.clone()
     }
     /// Number of callbacks actually entered, including failures.
     pub fn callbacks(&self) -> usize {
@@ -560,6 +580,7 @@ impl DomEventHostInvocation {
             HostResult::Refused(error) => {
                 state.status.set(Status::HostRefused(error));
                 drop(parked.take());
+                custody.finish_dispatch(state);
             }
         }
         self.reported = true;
@@ -601,8 +622,9 @@ impl Drop for DomEventHostInvocation {
                 // source owner is already disposing it, its own drop owns
                 // the same dispatch cleanup.
                 if let Ok(mut dispatch) = custody.dispatch.try_borrow_mut() {
-                    dispatch.take();
+                    drop(dispatch.take());
                 }
+                custody.finish_dispatch(&self.custody.state);
             } else {
                 custody.host.set(frame);
             }
@@ -659,6 +681,7 @@ enum RegistryAssociation {
 struct PreparedRegistry {
     // Backing is released before its provisional canonical debit.
     pending: Vec<ContinuationObservation>,
+    funding: EventAllocation,
     association: surgeist_dom::DomEventRegistryPreparation,
 }
 impl RegistryAssociation {
@@ -672,6 +695,7 @@ impl RegistryAssociation {
         &self,
         dom: &mut Dom,
         pending_events: usize,
+        storage: &EventStorage,
         cancel: &AtomicBool,
     ) -> Result<Option<PreparedRegistry>, DomEventDispatchError> {
         match self {
@@ -682,6 +706,8 @@ impl RegistryAssociation {
                         DomEventResource::Allocation,
                     ))?;
                 let association = dom.prepare_event_registry(bytes, cancel)?;
+                let funding =
+                    storage.reserve(&mut DomEventDom::borrow(dom), bytes, 0, 0, cancel)?;
                 let mut pending = Vec::new();
                 pending
                     .try_reserve_exact(pending_events)
@@ -693,6 +719,7 @@ impl RegistryAssociation {
                 }
                 Ok(Some(PreparedRegistry {
                     pending,
+                    funding,
                     association,
                 }))
             }
@@ -703,23 +730,27 @@ impl RegistryAssociation {
         &mut self,
         prepared: Option<PreparedRegistry>,
         pending: &mut Vec<ContinuationObservation>,
+        pending_funding: &mut Option<EventAllocation>,
         dom: &mut Dom,
         cancel: &AtomicBool,
     ) -> Result<(), DomEventDispatchError> {
         if let Some(prepared) = prepared {
             let PreparedRegistry {
                 pending: backing,
+                funding,
                 association,
             } = prepared;
             let association = match association.commit(dom, cancel) {
                 Ok(association) => association,
                 Err((error, preparation)) => {
                     drop(backing);
+                    drop(funding);
                     drop(preparation);
                     return Err(error.into());
                 }
             };
             *pending = backing;
+            *pending_funding = Some(funding);
             *self = Self::Bound(association);
         }
         Ok(())
@@ -734,6 +765,9 @@ pub struct DomEventDispatcher<C> {
     slots: Vec<Slot<C>>,
     next_order: u64,
     pending: Vec<ContinuationObservation>,
+    storage: EventStorage,
+    slots_funding: Option<EventAllocation>,
+    pending_funding: Option<EventAllocation>,
     // Drops after the actual callback list. Dispatch reservations hold no lease:
     // abandoning this dispatcher withdraws its canonical association immediately.
     association: RegistryAssociation,
@@ -744,6 +778,10 @@ impl<C> DomEventDispatcher<C> {
     /// listener owner. A second live owner cannot select a parallel listener list.
     /// Zero bounds intentionally admit no work.
     pub fn new(limits: DomEventRegistryLimits) -> Result<Self, DomEventDispatchError> {
+        let storage = EventStorage::registry(DomEventStorageLimits {
+            storage_bytes: limits.storage_bytes,
+            work: limits.work,
+        })?;
         let id = NEXT_REGISTRY
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| DomEventDispatchError::IdentityExhausted)?;
@@ -757,6 +795,9 @@ impl<C> DomEventDispatcher<C> {
             slots: Vec::new(),
             next_order: 0,
             pending: Vec::new(),
+            storage,
+            slots_funding: None,
+            pending_funding: None,
             association: RegistryAssociation::Unbound,
         })
     }
@@ -768,11 +809,14 @@ impl<C> DomEventDispatcher<C> {
         &mut self,
         dom: &mut DomEventDom<'_>,
         target: impl Into<DomEventTarget>,
-        event_type: DomEventType,
+        event_type: impl AsRef<[u16]>,
         callback: DomEventCallback<C>,
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DomEventDispatchError> {
         self.association.validate(dom.raw())?;
+        // Public registration is a synchronous noncancellable call.
+        let synchronous = AtomicBool::new(false);
+        let event_type = event_type.as_ref();
         let target = target.into();
         match target {
             DomEventTarget::Node(node) => {
@@ -781,19 +825,28 @@ impl<C> DomEventDispatcher<C> {
                     .map_err(DomEventDispatchError::Dom)?;
             }
             DomEventTarget::Global(global) => {
-                // Public registration is a synchronous noncancellable call.
-                let synchronous = AtomicBool::new(false);
                 dom.raw()
                     .dispatch_global_document(global, &synchronous)
                     .map_err(DomEventDispatchError::from)?;
             }
         }
+        let mut registrations = 0;
+        let mut reusable = None;
         for (slot, entry) in self.slots.iter().enumerate() {
-            if let Some(r) = &entry.registration
-                && r.target == target
-                && r.event_type == event_type
+            self.storage.step(1, &synchronous)?;
+            let Some(r) = &entry.registration else {
+                if reusable.is_none() && entry.generation < u64::MAX {
+                    reusable = Some(slot);
+                }
+                continue;
+            };
+            registrations += 1;
+            if r.target == target
                 && r.options.capture == options.capture
                 && r.callback.same_identity(&callback)
+                && equal_units(r.event_type.code_units(), event_type, || {
+                    self.storage.step(1, &synchronous)
+                })?
             {
                 return Ok(DomEventRegistrationId {
                     registry: self.owner.id,
@@ -802,13 +855,7 @@ impl<C> DomEventDispatcher<C> {
                 });
             }
         }
-        if self
-            .slots
-            .iter()
-            .filter(|s| s.registration.is_some())
-            .count()
-            >= self.limits.registrations
-        {
+        if registrations >= self.limits.registrations {
             return Err(DomEventDispatchError::Admission(
                 DomEventResource::Registrations,
             ));
@@ -817,33 +864,60 @@ impl<C> DomEventDispatcher<C> {
             .next_order
             .checked_add(1)
             .ok_or(DomEventDispatchError::IdentityExhausted)?;
-        let reusable = self
-            .slots
-            .iter()
-            .position(|s| s.registration.is_none() && s.generation < u64::MAX);
+        let event_type = DomEventType::retain(&self.storage, dom, event_type, &synchronous)?;
+        let mut replacement = None;
         if reusable.is_none() {
             if self.slots.len() >= self.limits.registrations {
                 return Err(DomEventDispatchError::IdentityExhausted);
             }
-            self.slots
-                .try_reserve_exact(1)
-                .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+            if self.slots.len() == self.slots.capacity() {
+                self.storage.step(self.slots.len(), &synchronous)?;
+                let capacity = self
+                    .slots
+                    .len()
+                    .checked_add(1)
+                    .ok_or(DomEventDispatchError::IdentityExhausted)?;
+                let bytes = capacity
+                    .checked_mul(std::mem::size_of::<Slot<C>>())
+                    .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
+                let funding = self.storage.reserve(dom, bytes, bytes, 0, &synchronous)?;
+                let mut slots = Vec::new();
+                slots
+                    .try_reserve_exact(capacity)
+                    .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+                if slots.capacity() != capacity {
+                    return Err(DomEventDispatchError::Admission(DomEventResource::Storage));
+                }
+                replacement = Some((slots, funding));
+            }
         }
         // Every fallible Runtime preparation precedes acquiring the canonical
         // registration. A refused first registration drops its provisional
         // association; duplicates retain their original association and lease.
-        let synchronous = AtomicBool::new(false);
-        let association =
-            self.association
-                .prepare(dom.raw_mut(), self.limits.pending_events, &synchronous)?;
+        let association = self.association.prepare(
+            dom.raw_mut(),
+            self.limits.pending_events,
+            &self.storage,
+            &synchronous,
+        )?;
         let recipient = dom.raw_mut().retain_event_recipient(
             target,
-            event_type,
+            event_type.code_units(),
             options.capture,
             &synchronous,
         )?;
-        self.association
-            .commit(association, &mut self.pending, dom.raw_mut(), &synchronous)?;
+        self.association.commit(
+            association,
+            &mut self.pending,
+            &mut self.pending_funding,
+            dom.raw_mut(),
+            &synchronous,
+        )?;
+        if let Some((mut slots, funding)) = replacement.take() {
+            slots.append(&mut self.slots);
+            drop(std::mem::replace(&mut self.slots, slots));
+            self.slots_funding = Some(funding);
+        }
         let slot = if let Some(slot) = reusable {
             slot
         } else {
@@ -935,6 +1009,13 @@ impl<C> DomEventDispatcher<C> {
             Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             _ => return Err(DomEventDispatchError::AlreadyDispatching),
         }
+        if event.is_dispatching() {
+            return Err(DomEventDispatchError::AlreadyDispatching);
+        }
+        if event.0.owner != dom.owner() {
+            return Err(DomError::ForeignOwner.into());
+        }
+        let event_type = event.event_type();
         self.admit_running()?;
         if self.owner.pending.get() >= self.limits.pending_events {
             return Err(DomEventDispatchError::Admission(
@@ -961,19 +1042,23 @@ impl<C> DomEventDispatcher<C> {
         if matches!(self.association, RegistryAssociation::Unbound) {
             budget.tick().map_err(DomEventDispatchError::Admission)?;
         }
-        let association = self
-            .association
-            .prepare(dom, self.limits.pending_events, cancel)?;
+        let association =
+            self.association
+                .prepare(dom, self.limits.pending_events, &self.storage, cancel)?;
         let mut path = build_path(
             dom,
             &snapshot,
             state.original,
-            event.0.event_type(),
+            &event_type,
+            event.composed(),
+            state.cause,
             &mut budget,
         )?;
         let final_root = root(
             &snapshot,
-            path.last().expect("nonempty path").target,
+            path.last()
+                .ok_or(DomEventDispatchError::WrongContinuation)?
+                .target,
             &mut budget,
         )?;
         let clear_target = snapshot
@@ -1002,7 +1087,7 @@ impl<C> DomEventDispatcher<C> {
             }
         }
         let association_custody = dom
-            .register_dispatch_custody(&invocation_nodes, &AtomicBool::new(false))
+            .register_dispatch_custody(&invocation_nodes, cancel)
             .map_err(DomEventDispatchError::Dom)?;
         drop(invocation_nodes);
         let path_bytes = std::mem::size_of::<EventPath>()
@@ -1021,6 +1106,7 @@ impl<C> DomEventDispatcher<C> {
         let mut dispatch = Dispatch {
             association_custody,
             _reservation: PendingReservation(self.owner.clone()),
+            event_type,
             path: Rc::new(EventPath {
                 items: path,
                 _funding: path_funding,
@@ -1030,7 +1116,6 @@ impl<C> DomEventDispatcher<C> {
             listener: 0,
             callbacks: 0,
             failures: Vec::new(),
-            clear_target,
             funding,
         };
         dispatch
@@ -1062,9 +1147,19 @@ impl<C> DomEventDispatcher<C> {
                 DomEventResource::PendingEvents,
             ));
         }
-        self.association
-            .commit(association, &mut self.pending, dom, cancel)?;
+        self.association.commit(
+            association,
+            &mut self.pending,
+            &mut self.pending_funding,
+            dom,
+            cancel,
+        )?;
         self.pending.push(event.continuation.clone());
+        event.0.continuation.set(Some(event.continuation.clone()));
+        _custody.clear_target.set(clear_target);
+        if state.cause.is_none() {
+            event.0.trusted.set(false);
+        }
         self.execute(dom, context, event, dispatch, budget, host)
     }
     /// Continue exactly where admission stopped, without entering a delivered listener again.
@@ -1109,19 +1204,20 @@ impl<C> DomEventDispatcher<C> {
         if dom.source_dispatch_blocker().is_none()
             && dom.snapshot().incomplete_hosted_operation().is_none()
         {
-            match parsed_dispatch_requirement(dom, cancel, || budget.tick().map_err(RunStop::from))
-            {
+            match parsed_dispatch_requirement(dom, cancel, || {
+                budget.tick().map_err(DomEventDispatchError::Admission)
+            }) {
                 Ok(None) => (),
                 Ok(Some(requirement)) => {
                     return Ok(DomEventDispatchOutcome::RetainedParsedSynchronous { requirement });
                 }
-                Err(RunStop::ParsedAdmission(error)) => {
+                Err(DomEventDispatchError::Dom(error)) => {
                     return Ok(DomEventDispatchOutcome::RetainedParsedAdmission(error));
                 }
-                Err(RunStop::Resource(resource)) => {
+                Err(DomEventDispatchError::Admission(resource)) => {
                     return Ok(DomEventDispatchOutcome::Retained(resource));
                 }
-                Err(_) => unreachable!("frontier scan only returns admission failures"),
+                Err(error) => return Err(error),
             }
         }
         // The parked receipt still covers the old banks. The newly admitted
@@ -1177,6 +1273,7 @@ impl<C> DomEventDispatcher<C> {
         self.owner.running.set(self.owner.running.get() + 1);
         let running = RunningReservation(self.owner.clone());
         state.status.set(Status::Running);
+        custody.lifetime.set(InvocationLifetime::Executing);
         custody.path.set(Some(dispatch.path.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| {
             self.run(dom, context, event, &mut dispatch, &mut budget, host)
@@ -1190,6 +1287,7 @@ impl<C> DomEventDispatcher<C> {
             let sequence = dispatch.callbacks;
             if let Err(error) = dispatch.settle_funding() {
                 custody.abandon(state);
+                custody.finish_dispatch(state);
                 return Err(error.into());
             }
             *custody.borrow_mut() = Some(dispatch);
@@ -1202,6 +1300,7 @@ impl<C> DomEventDispatcher<C> {
                 scope: None,
             }));
             state.status.set(Status::HostPending);
+            custody.lifetime.set(InvocationLifetime::Parked);
             return Ok(DomEventDispatchOutcome::HostInvocation(
                 DomEventHostInvocation {
                     event: event.event.clone(),
@@ -1216,28 +1315,27 @@ impl<C> DomEventDispatcher<C> {
         drop(running);
         custody.clear_invocation();
         if state.status.get() == Status::Abandoned {
+            custody.finish_dispatch(state);
             return Err(DomEventDispatchError::Abandoned);
         }
         match result {
             Ok(Ok(())) => {
-                if dispatch.clear_target {
-                    event.0.target.set(None);
-                }
-                event.0.stop.set(false);
-                event.0.immediate.set(false);
                 let failure_bytes =
                     dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>();
                 let funding = match dispatch.funding.split(failure_bytes, failure_bytes) {
                     Ok(funding) => funding,
                     Err(error) => {
                         custody.abandon(state);
+                        custody.finish_dispatch(state);
                         return Err(error.into());
                     }
                 };
                 state.status.set(Status::Complete);
+                custody.finish_dispatch(state);
                 let receipt = DomEventDispatchReceipt {
                     target: state.original,
-                    event_type: event.0.event_type(),
+                    event_type: dispatch.event_type.clone(),
+                    cause: state.cause,
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
                     default_prevented: event.default_prevented(),
@@ -1246,13 +1344,20 @@ impl<C> DomEventDispatcher<C> {
                 drop(dispatch);
                 Ok(DomEventDispatchOutcome::Complete(receipt))
             }
+            Ok(Err(RunStop::WrongContinuation)) => {
+                custody.abandon(state);
+                custody.finish_dispatch(state);
+                Err(DomEventDispatchError::WrongContinuation)
+            }
             other => {
                 if let Err(error) = dispatch.settle_funding() {
                     custody.abandon(state);
+                    custody.finish_dispatch(state);
                     return Err(error.into());
                 }
                 *custody.borrow_mut() = Some(dispatch);
                 state.status.set(Status::Retained);
+                custody.lifetime.set(InvocationLifetime::Parked);
                 Ok(match other {
                     Ok(Err(RunStop::Resource(resource))) => {
                         DomEventDispatchOutcome::Retained(resource)
@@ -1275,7 +1380,8 @@ impl<C> DomEventDispatcher<C> {
                     Ok(Err(RunStop::HostUnavailable)) => {
                         DomEventDispatchOutcome::RetainedHostUnavailable
                     }
-                    Ok(Err(RunStop::HostInvocation { .. })) => {
+                    Ok(Err(RunStop::HostInvocation { .. } | RunStop::WrongContinuation))
+                    | Ok(Ok(())) => {
                         return Err(DomEventDispatchError::WrongContinuation);
                     }
                     Ok(Err(RunStop::ForeignOwner)) => DomEventDispatchOutcome::RetainedForeignOwner,
@@ -1284,7 +1390,6 @@ impl<C> DomEventDispatcher<C> {
                     }
                     Err(_) => DomEventDispatchOutcome::RetainedAfterUnwind,
                     Ok(Err(RunStop::Abandoned)) => return Err(DomEventDispatchError::Abandoned),
-                    Ok(Ok(())) => unreachable!("completed branch"),
                 })
             }
         }
@@ -1300,6 +1405,7 @@ impl<C> DomEventDispatcher<C> {
     ) -> Result<(), RunStop> {
         let custody = event.custody().map_err(|_| RunStop::Abandoned)?;
         let state = event.state();
+        let event_type = dispatch.event_type.clone();
         let count = dispatch.path.len();
         while dispatch.invoke < count * 2 {
             dispatch_ready(&self.owner, dispatch, dom, state, budget)?;
@@ -1313,7 +1419,7 @@ impl<C> DomEventDispatcher<C> {
             let item = dispatch.path[index];
             // Nonbubbling ancestor items are skipped by dispatch before invoke;
             // they must not perform invoke's target adjustment as a side effect.
-            if !capture && !item.at_target {
+            if !capture && !item.at_target && !event.bubbles() {
                 dispatch.next_invoke();
                 continue;
             }
@@ -1352,9 +1458,9 @@ impl<C> DomEventDispatcher<C> {
                         let mut position = snapshot.len();
                         for (index, id) in snapshot.iter().enumerate() {
                             budget.tick()?;
-                            if self.registration(*id).expect("snapshot registration").order
-                                > r.order
-                            {
+                            let registration =
+                                self.registration(*id).ok_or(RunStop::WrongContinuation)?;
+                            if registration.order > r.order {
                                 position = index;
                                 break;
                             }
@@ -1375,15 +1481,21 @@ impl<C> DomEventDispatcher<C> {
                 }
                 dispatch.snapshot = Some(snapshot);
             }
-            while dispatch.listener < dispatch.snapshot.as_ref().expect("snapshot").len() {
+            while let Some(&id) = dispatch
+                .snapshot
+                .as_ref()
+                .and_then(|s| s.get(dispatch.listener))
+            {
                 dispatch_ready(&self.owner, dispatch, dom, state, budget)?;
                 budget.tick()?;
-                let id = dispatch.snapshot.as_ref().expect("snapshot")[dispatch.listener];
                 let Some(r) = self.registration(id) else {
                     dispatch.listener += 1;
                     continue;
                 };
-                if r.event_type != event.0.event_type() || r.options.capture != capture {
+                if !equal_units(r.event_type.code_units(), event_type.code_units(), || {
+                    budget.tick()
+                })? || r.options.capture != capture
+                {
                     dispatch.listener += 1;
                     continue;
                 }
@@ -1471,7 +1583,11 @@ impl<C> Drop for DomEventDispatcher<C> {
                 if let Ok(mut slot) = custody.dispatch.try_borrow_mut() {
                     // Its receipts drop with the actual backing. A dispatch
                     // running on the stack still owns its own funding.
-                    drop(slot.take());
+                    let parked = slot.take();
+                    if parked.is_some() {
+                        custody.finish_dispatch(&entry.state);
+                    }
+                    drop(parked);
                 }
             }
         }
@@ -1486,6 +1602,13 @@ enum Status {
     HostRefused(DomEventHostError),
     Retained,
     Complete,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum InvocationLifetime {
+    Idle,
+    Executing,
+    Parked,
 }
 
 impl Status {
@@ -1532,28 +1655,55 @@ enum EventData {
         cancelable: bool,
     },
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeEventCause {
+    StyleLoad,
+    StyleError,
+    DetailsToggle,
+    DialogBeforeToggle,
+    DialogToggle,
+    DialogCancel,
+    DialogClose,
+}
+impl NativeEventCause {
+    fn event_type(self) -> DomEventType {
+        match self {
+            Self::StyleLoad => DomEventType::LOAD,
+            Self::StyleError => DomEventType::ERROR,
+            Self::DetailsToggle | Self::DialogToggle => DomEventType::TOGGLE,
+            Self::DialogBeforeToggle => DomEventType::BEFORE_TOGGLE,
+            Self::DialogCancel => DomEventType::CANCEL,
+            Self::DialogClose => DomEventType::CLOSE,
+        }
+    }
+}
 struct Event {
-    data: EventData,
+    owner: surgeist_dom::DomOwnerId,
+    event_type: RefCell<DomEventType>,
+    init: Cell<DomEventInit>,
+    trusted: Cell<bool>,
+    creation: Option<DomEventCreationObservation>,
+    toggle: Option<DomToggleEvent>,
+    storage: EventStorage,
     target: Cell<Option<NodeId>>,
     stop: Cell<bool>,
     immediate: Cell<bool>,
     canceled: Cell<bool>,
-    continuation: ContinuationObservation,
+    continuation: Cell<Option<ContinuationObservation>>,
 }
 impl Event {
     fn event_type(&self) -> DomEventType {
-        match self.data {
-            EventData::StyleLoad => DomEventType::Load,
-            EventData::StyleError => DomEventType::Error,
-            EventData::DialogClose => DomEventType::Close,
-            EventData::DialogCancel { .. } => DomEventType::Cancel,
-            EventData::DetailsToggle(_) | EventData::DialogToggle(_) => DomEventType::Toggle,
-            EventData::DialogBeforeToggle { .. } => DomEventType::BeforeToggle,
-        }
+        self.event_type.borrow().clone()
+    }
+    fn invocation(&self) -> Option<ContinuationObservation> {
+        let invocation = self.continuation.take();
+        self.continuation.set(invocation.clone());
+        invocation
     }
 }
-/// A shared native event identity. Clones refer to the same event and cannot
-/// redispatch it while running/retained or obtain a second completion receipt.
+/// A shared native Event body. Clones refer to the same type, flags and target.
+/// Ordinary reuse requires actual cleanup of its previous invocation. Each
+/// selected producer's continuation and completion receipt remain affine.
 #[derive(Clone)]
 pub struct NativeDomEvent(Rc<Event>, Rc<BodyCustody>);
 /// Accounting only. No event, continuation, guard or execution authority is
@@ -1562,6 +1712,9 @@ struct BodyCustody {
     _storage: BodyStorage,
 }
 enum BodyStorage {
+    Owned {
+        _retained: EventAllocation,
+    },
     Element {
         _retained: crate::element_tasks::TaskPayload,
     },
@@ -1601,6 +1754,7 @@ impl Drop for BodyExtent {
 pub(crate) struct DispatchFunding(Funding);
 
 enum Funding {
+    Owned(EventAllocation),
     Element(crate::element_tasks::TaskPayload),
     Source {
         extent: BodyExtent,
@@ -1613,6 +1767,9 @@ enum Funding {
 }
 
 enum PathFunding {
+    Owned {
+        _retained: EventAllocation,
+    },
     Element {
         _retained: crate::element_tasks::TaskPayload,
     },
@@ -1650,6 +1807,9 @@ impl DispatchFunding {
 
     fn split_path(&mut self, bytes: usize) -> Result<PathFunding, DomError> {
         Ok(match &mut self.0 {
+            Funding::Owned(retained) => PathFunding::Owned {
+                _retained: retained.split(bytes, bytes, 0)?,
+            },
             Funding::Element(retained) => PathFunding::Element {
                 _retained: retained.split(bytes, bytes).map_err(task_funding_error)?,
             },
@@ -1688,6 +1848,9 @@ impl DispatchFunding {
 
     fn split(&mut self, full: usize, source: usize) -> Result<Self, DomError> {
         match &mut self.0 {
+            Funding::Owned(retained) => retained
+                .split(full, source, 0)
+                .map(|retained| Self(Funding::Owned(retained))),
             Funding::Element(retained) => retained
                 .split(full, source)
                 .map(Self::element)
@@ -1726,6 +1889,7 @@ impl DispatchFunding {
 
     fn absorb(&mut self, other: Self) -> Result<(), DomError> {
         match (&mut self.0, other.0) {
+            (Funding::Owned(retained), Funding::Owned(other)) => retained.absorb(other),
             (Funding::Element(retained), Funding::Element(other)) => {
                 retained.absorb(other).map_err(task_funding_error)
             }
@@ -1764,6 +1928,7 @@ impl DispatchFunding {
 
     fn shrink(&mut self, full: usize, source: usize) -> Result<(), DomError> {
         let (old_full, old_source) = match &mut self.0 {
+            Funding::Owned(retained) => return retained.shrink(full, source),
             Funding::Element(retained) => (retained.full(), retained.source()),
             Funding::Source {
                 extent,
@@ -1820,6 +1985,7 @@ fn task_funding_error(error: crate::DomElementTaskRuntimeError) -> DomError {
 pub(crate) struct EventBodyCustody {
     event: Rc<BodyCustody>,
     continuation: BodyCustody,
+    storage: EventStorage,
 }
 impl EventBodyCustody {
     fn event_bytes() -> usize {
@@ -1830,11 +1996,13 @@ impl EventBodyCustody {
     }
     pub(crate) fn element(
         retained: &mut crate::element_tasks::TaskPayload,
+        storage: EventStorage,
     ) -> Result<Self, crate::DomElementTaskRuntimeError> {
         let event = retained.split(Self::event_bytes(), Self::event_bytes())?;
         let continuation =
             retained.split(Self::continuation_bytes(), Self::continuation_bytes())?;
         Ok(Self {
+            storage,
             event: Rc::new(BodyCustody {
                 _storage: BodyStorage::Element { _retained: event },
             }),
@@ -1848,10 +2016,12 @@ impl EventBodyCustody {
     pub(crate) fn source(
         retained: &mut surgeist_dom::DomSourceEventRetention,
         live: &Rc<Cell<usize>>,
+        storage: EventStorage,
     ) -> Result<Self, DomError> {
         let event = retained.split(Self::event_bytes(), 0)?;
         let continuation = retained.split(Self::continuation_bytes(), 0)?;
         Ok(Self {
+            storage,
             event: Rc::new(BodyCustody {
                 _storage: BodyStorage::Source {
                     _retained: event,
@@ -1866,8 +2036,9 @@ impl EventBodyCustody {
             },
         })
     }
-    pub(crate) fn style(live: &Rc<Cell<usize>>) -> Self {
+    pub(crate) fn style(live: &Rc<Cell<usize>>, storage: EventStorage) -> Self {
         Self {
+            storage,
             event: Rc::new(BodyCustody {
                 _storage: BodyStorage::Style {
                     _extent: BodyExtent::new(live, Self::event_bytes()),
@@ -1886,6 +2057,11 @@ fn test_event_backing() -> EventBodyCustody {
     // Kernel fixtures supply host-formed inputs. Real producer/accounting
     // regressions obtain their receipts through Source, tasks or Style.
     EventBodyCustody {
+        storage: EventStorage::registry(DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        })
+        .unwrap(),
         event: Rc::new(BodyCustody {
             _storage: BodyStorage::Fixture,
         }),
@@ -1898,6 +2074,7 @@ fn test_event_backing() -> EventBodyCustody {
 /// Its storage receipt retains no continuation, callback or execution scope.
 struct ContinuationState {
     original: NodeId,
+    cause: Option<NativeEventCause>,
     status: Cell<Status>,
     _body: BodyCustody,
 }
@@ -1954,7 +2131,7 @@ impl std::ops::Deref for EventDispatchObservation {
 /// The actual source task owns active dispatch custody. Observation clones
 /// retain fixed backing charges through weak continuation observations; the
 /// active frame, guards and reservations end with this owner.
-pub(crate) struct NativeDomEventOwner {
+pub(crate) struct EventInvocationOwner {
     event: NativeDomEvent,
     // Sole persistent strong custody; active private jobs upgrade temporarily.
     _custody: Rc<EventContinuation>,
@@ -1982,10 +2159,66 @@ fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
     )
 }
 
-impl NativeDomEventOwner {
+impl EventInvocationOwner {
     fn new(original: NodeId, data: EventData, backing: EventBodyCustody) -> Self {
+        let (cause, toggle, cancelable) = match data {
+            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false),
+            EventData::StyleError => (NativeEventCause::StyleError, None, false),
+            EventData::DialogClose => (NativeEventCause::DialogClose, None, false),
+            EventData::DialogCancel { cancelable } => {
+                (NativeEventCause::DialogCancel, None, cancelable)
+            }
+            EventData::DetailsToggle(payload) => {
+                (NativeEventCause::DetailsToggle, Some(payload), false)
+            }
+            EventData::DialogToggle(payload) => {
+                (NativeEventCause::DialogToggle, Some(payload), false)
+            }
+            EventData::DialogBeforeToggle {
+                payload,
+                cancelable,
+            } => (
+                NativeEventCause::DialogBeforeToggle,
+                Some(payload),
+                cancelable,
+            ),
+        };
+        let event = NativeDomEvent(
+            Rc::new(Event {
+                owner: original.owner(),
+                event_type: RefCell::new(cause.event_type()),
+                init: Cell::new(DomEventInit {
+                    bubbles: false,
+                    cancelable,
+                    composed: false,
+                }),
+                trusted: Cell::new(true),
+                creation: None,
+                toggle,
+                storage: backing.storage,
+                target: Cell::new(None),
+                stop: Cell::new(false),
+                immediate: Cell::new(false),
+                canceled: Cell::new(false),
+                continuation: Cell::new(None),
+            }),
+            backing.event,
+        );
+        let owner = Self::from_event(event, original, Some(cause), backing.continuation);
+        owner.attach();
+        owner
+    }
+
+    fn from_event(
+        event: NativeDomEvent,
+        original: NodeId,
+        cause: Option<NativeEventCause>,
+        backing: BodyCustody,
+    ) -> Self {
         let custody = Rc::new(EventContinuation {
             event: Cell::new(None),
+            lifetime: Cell::new(InvocationLifetime::Idle),
+            clear_target: Cell::new(false),
             current: Cell::new(None),
             phase: Cell::new(DomEventPhase::None),
             path: Cell::new(None),
@@ -1994,23 +2227,10 @@ impl NativeDomEventOwner {
         });
         let state = Rc::new(ContinuationState {
             original,
+            cause,
             status: Cell::new(Status::Ready),
-            _body: backing.continuation,
+            _body: backing,
         });
-        let event = NativeDomEvent(
-            Rc::new(Event {
-                data,
-                target: Cell::new(None),
-                stop: Cell::new(false),
-                immediate: Cell::new(false),
-                canceled: Cell::new(false),
-                continuation: ContinuationObservation {
-                    value: Rc::downgrade(&custody),
-                    state: state.clone(),
-                },
-            }),
-            backing.event,
-        );
         custody.event.set(Some(EventObservation {
             value: Rc::downgrade(&event.0),
             body: event.1.clone(),
@@ -2020,6 +2240,13 @@ impl NativeDomEventOwner {
             _custody: custody,
             state,
         }
+    }
+
+    fn attach(&self) {
+        self.event.0.continuation.set(Some(ContinuationObservation {
+            value: Rc::downgrade(&self._custody),
+            state: self.state.clone(),
+        }));
     }
 
     pub(crate) fn dispatch_observation(&self) -> EventDispatchObservation {
@@ -2174,17 +2401,20 @@ pub(crate) fn manipulation_observation_layout(
     });
     (event, path)
 }
-impl std::ops::Deref for NativeDomEventOwner {
+impl std::ops::Deref for EventInvocationOwner {
     type Target = NativeDomEvent;
     fn deref(&self) -> &Self::Target {
         &self.event
     }
 }
-impl Drop for NativeDomEventOwner {
+impl Drop for EventInvocationOwner {
     fn drop(&mut self) {
         if self.state.status.get() != Status::Complete {
             self._custody.abandon(&self.state);
             self._custody.host.take();
+            if self._custody.lifetime.get() != InvocationLifetime::Executing {
+                self._custody.finish_dispatch(&self.state);
+            }
         }
         // Ordinary field drop releases the actual continuation directly; it
         // never borrows a RefCell, calls user code, or manufactures completion.
@@ -2192,25 +2422,27 @@ impl Drop for NativeDomEventOwner {
 }
 impl std::fmt::Debug for NativeDomEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let state = &self.0.continuation.state;
-        f.debug_struct("NativeDomEvent")
-            .field("original_target", &state.original)
-            .field("event_type", &self.0.event_type())
-            .field("status", &state.status.get())
-            .finish()
+        let mut debug = f.debug_struct("NativeDomEvent");
+        debug.field("event_type", &self.event_type());
+        if let Some(invocation) = self.0.invocation() {
+            debug
+                .field("original_target", &invocation.state.original)
+                .field("status", &invocation.state.status.get());
+        }
+        debug.finish()
     }
 }
 impl NativeDomEvent {
     fn continuation(&self) -> Option<Rc<EventContinuation>> {
-        self.0.continuation.upgrade()
+        self.0.invocation()?.upgrade()
     }
     /// Construct the load event for an actual owning Style completion operation.
-    pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::StyleLoad, backing)
+    pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::StyleLoad, backing)
     }
     /// Construct the error event for an actual owning Style completion operation.
-    pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::StyleError, backing)
+    pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::StyleError, backing)
     }
     /// The actual Details task owner supplies its exact queued/coalesced data.
     /// The selected HTML firing clause supplies no source Element. Equal states
@@ -2219,8 +2451,8 @@ impl NativeDomEvent {
         target: NodeId,
         payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
         backing: EventBodyCustody,
-    ) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(
             target,
             EventData::DetailsToggle(DomToggleEvent {
                 old_state: payload.old_state().as_str(),
@@ -2234,12 +2466,12 @@ impl NativeDomEvent {
         target: NodeId,
         cancelable: bool,
         backing: EventBodyCustody,
-    ) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::DialogCancel { cancelable }, backing)
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::DialogCancel { cancelable }, backing)
     }
 
-    pub(crate) fn dialog_close(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(target, EventData::DialogClose, backing)
+    pub(crate) fn dialog_close(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::DialogClose, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.
@@ -2248,8 +2480,8 @@ impl NativeDomEvent {
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
         backing: EventBodyCustody,
-    ) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(
             target,
             EventData::DialogToggle(DomToggleEvent {
                 old_state: old.as_str(),
@@ -2267,8 +2499,8 @@ impl NativeDomEvent {
         new: surgeist_html::elements::dialog::HtmlDialogState,
         cancelable: bool,
         backing: EventBodyCustody,
-    ) -> NativeDomEventOwner {
-        NativeDomEventOwner::new(
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(
             target,
             EventData::DialogBeforeToggle {
                 payload: DomToggleEvent {
@@ -2288,15 +2520,7 @@ impl NativeDomEvent {
     /// Immutable state strings from the actual Details task or Dialog firing
     /// clause. Attribute edits during delivery cannot change this payload.
     pub fn toggle_event(&self) -> Option<&DomToggleEvent> {
-        match &self.0.data {
-            EventData::DetailsToggle(payload)
-            | EventData::DialogToggle(payload)
-            | EventData::DialogBeforeToggle { payload, .. } => Some(payload),
-            EventData::StyleLoad
-            | EventData::StyleError
-            | EventData::DialogClose
-            | EventData::DialogCancel { .. } => None,
-        }
+        self.0.toggle.as_ref()
     }
     /// Current shadow-adjusted target; cleanup clears shadow-internal targets.
     pub fn target(&self) -> Option<NodeId> {
@@ -2314,22 +2538,16 @@ impl NativeDomEvent {
             .map_or(DomEventPhase::None, |invocation| invocation.phase.get())
     }
     /// Source default: these events do not bubble.
-    pub const fn bubbles(&self) -> bool {
-        false
+    pub fn bubbles(&self) -> bool {
+        self.0.init.get().bubbles
     }
     /// The actual firing clause's cancelability. Style and Details are false.
     pub fn cancelable(&self) -> bool {
-        matches!(
-            self.0.data,
-            EventData::DialogBeforeToggle {
-                cancelable: true,
-                ..
-            } | EventData::DialogCancel { cancelable: true }
-        )
+        self.0.init.get().cancelable
     }
     /// Source default: these events are noncomposed.
-    pub const fn composed(&self) -> bool {
-        false
+    pub fn composed(&self) -> bool {
+        self.0.init.get().composed
     }
     /// Sticky canceled flag retained with the same actual event identity.
     pub fn default_prevented(&self) -> bool {
@@ -2464,6 +2682,8 @@ impl std::ops::Deref for EventPath {
 }
 struct EventContinuation {
     event: Cell<Option<EventObservation>>,
+    lifetime: Cell<InvocationLifetime>,
+    clear_target: Cell<bool>,
     current: Cell<Option<DomEventTarget>>,
     phase: Cell<DomEventPhase>,
     path: Cell<Option<Rc<EventPath>>>,
@@ -2477,6 +2697,22 @@ impl std::ops::Deref for EventContinuation {
     }
 }
 impl EventContinuation {
+    fn finish_dispatch(&self, state: &ContinuationState) {
+        self.clear_invocation();
+        if let Some(event) = self.event()
+            && event
+                .0
+                .invocation()
+                .is_some_and(|latest| std::ptr::eq(latest.state.as_ref(), state))
+        {
+            if self.clear_target.get() {
+                event.0.target.set(None);
+            }
+            event.0.stop.set(false);
+            event.0.immediate.set(false);
+        }
+        self.lifetime.set(InvocationLifetime::Idle);
+    }
     fn clear_invocation(&self) {
         self.current.set(None);
         self.phase.set(DomEventPhase::None);
@@ -2503,13 +2739,13 @@ impl EventContinuation {
 struct Dispatch {
     association_custody: DomDispatchCustody,
     _reservation: PendingReservation,
+    event_type: DomEventType,
     path: Rc<EventPath>,
     invoke: usize,
     snapshot: Option<Vec<DomEventRegistrationId>>,
     listener: usize,
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
-    clear_target: bool,
     // Declared after the banks and scope so their backing drops first.
     funding: DispatchFunding,
 }
@@ -2587,6 +2823,7 @@ impl Dispatch {
 }
 enum RunStop {
     Abandoned,
+    WrongContinuation,
     HostUnavailable,
     HostInvocation {
         registration: DomEventRegistrationId,
@@ -2768,7 +3005,9 @@ fn build_path(
     dom: &Dom,
     snapshot: &DomSnapshot,
     original: NodeId,
-    event_type: DomEventType,
+    event_type: &DomEventType,
+    composed: bool,
+    native: Option<NativeEventCause>,
     budget: &mut Budget<'_>,
 ) -> Result<Vec<PathItem>, DomEventDispatchError> {
     snapshot
@@ -2817,13 +3056,17 @@ fn build_path(
         let cancel = budget.cancel;
         let next = dom.dispatch_event_parent(
             snapshot,
-            DomEventParentQuery::new(node, first_root, target, event_type),
+            DomEventParentQuery::new(node, first_root, target, event_type.code_units(), composed),
             cancel,
             &mut || source_tick(budget),
         )?;
-        let parent = match next.parent() {
-            Some(DomEventTarget::Node(parent)) => parent,
-            Some(DomEventTarget::Global(global)) => {
+        let (parent, via_assigned_slot, in_adjusted_target_tree) = match next {
+            DomEventParent::Node {
+                parent,
+                via_assigned_slot,
+                in_adjusted_target_tree,
+            } => (parent, via_assigned_slot, in_adjusted_target_tree),
+            DomEventParent::Global(global) => {
                 source_tick(budget)?;
                 if path.len() >= budget.limits.path_items {
                     return Err(DomEventDispatchError::Admission(
@@ -2841,14 +3084,15 @@ fn build_path(
                 // A native Global's default EventTarget parent is null.
                 break;
             }
-            None => {
+            DomEventParent::None => {
                 // Selected native delivery needs current hosted authority even
                 // where the standard parent stops at this Document.
                 if let Some(document) = view.as_document().filter(|document| {
-                    document
-                        .metadata()
-                        .document_environment()
-                        .has_ever_had_navigable()
+                    native.is_some()
+                        && document
+                            .metadata()
+                            .document_environment()
+                            .has_ever_had_navigable()
                 }) {
                     dom.qualify_native_dispatch_document(document.id(), cancel, &mut || {
                         source_tick(budget)
@@ -2857,15 +3101,13 @@ fn build_path(
                 break;
             }
         };
-        closed_slot = next.via_assigned_slot()
+        closed_slot = via_assigned_slot
             && snapshot
                 .node(root(snapshot, parent, budget)?)
                 .map_err(DomEventDispatchError::Dom)?
                 .as_shadow_root()
                 .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
-        at_target = !next
-            .parent_in_adjusted_target_tree()
-            .expect("a canonical Node parent includes its target-tree relationship");
+        at_target = !in_adjusted_target_tree;
         if at_target {
             target = parent;
         }

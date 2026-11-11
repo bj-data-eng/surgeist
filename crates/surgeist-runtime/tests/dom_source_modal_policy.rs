@@ -52,6 +52,10 @@ fn headless_top() -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -193,13 +197,15 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, calls: &mut usize, event| {
                 *calls += 1;
                 assert_eq!(event.target(), Some(subject));

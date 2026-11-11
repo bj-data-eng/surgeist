@@ -12,6 +12,10 @@ use surgeist_dom::{
 
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: crate::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
@@ -267,7 +271,7 @@ fn dropping_real_prepared_handoff_preserves_the_exposed_request_and_retries_once
             // publish fence. No positive service receipt is supplied.
             let mut state = owner.borrow_mut();
             let (h, t, c, g) = state
-                .find_global(request.global(), &cancel, || source_work(&lease, &cancel))
+                .find_global(request.global(), &cancel, |_| source_work(&lease, &cancel))
                 .unwrap();
             assert_eq!(state.hosts[h].id, request.host());
             let group = state.hosts[h].top_levels[t].group.as_ref().unwrap();

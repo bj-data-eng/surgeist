@@ -57,6 +57,10 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -216,6 +220,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -317,7 +323,7 @@ fn listeners(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 event.prevent_default();
                 context.before.push(observe(event));
@@ -326,18 +332,18 @@ fn listeners(
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    for kind in [DomEventType::Close, DomEventType::Toggle] {
+    for kind in [DomEventType::CLOSE, DomEventType::TOGGLE] {
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                kind,
+                kind.clone(),
                 DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                     context.delivered.push(observe(event));
                     let mut batch = DomBatch::new();
                     batch.set_attribute(
                         body,
-                        if kind == DomEventType::Close {
+                        if kind == DomEventType::CLOSE {
                             "data-close"
                         } else {
                             "data-toggle"
@@ -400,9 +406,9 @@ fn run(
             assert_eq!(
                 receipt.event_type(),
                 if source == DomElementTaskSourceKind::UserInteraction {
-                    DomEventType::Close
+                    DomEventType::CLOSE
                 } else {
-                    DomEventType::Toggle
+                    DomEventType::TOGGLE
                 }
             );
             assert_eq!(receipt.callbacks(), 1);
@@ -414,7 +420,7 @@ fn run(
     }
 }
 fn assert_before(event: &EventObservation, subject: NodeId) {
-    assert_eq!(event.kind, DomEventType::BeforeToggle);
+    assert_eq!(event.kind, DomEventType::BEFORE_TOGGLE);
     assert_eq!(event.target, Some(subject));
     assert_eq!(event.current, Some(DomEventTarget::Node(subject)));
     assert!(!event.cancelable);
@@ -560,7 +566,7 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
         );
         assert_eq!(context.delivered.len(), 1);
         let observed = &context.delivered[0];
-        assert_eq!(observed.kind, DomEventType::Close);
+        assert_eq!(observed.kind, DomEventType::CLOSE);
         assert_eq!(observed.target, Some(subject));
         assert_eq!(observed.current, Some(DomEventTarget::Node(subject)));
         assert_eq!(observed.payload, None);
@@ -609,7 +615,7 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
         );
         assert_eq!(context.delivered.len(), 2);
         let observed = &context.delivered[1];
-        assert_eq!(observed.kind, DomEventType::Toggle);
+        assert_eq!(observed.kind, DomEventType::TOGGLE);
         let event = observed.payload.unwrap();
         assert_eq!(event.old_state(), "open");
         assert_eq!(event.new_state(), "closed");
@@ -789,7 +795,7 @@ fn reopening_between_closes_retains_each_plain_close_in_its_source_order() {
         context
             .delivered
             .iter()
-            .all(|event| event.kind == DomEventType::Close && event.payload.is_none())
+            .all(|event| event.kind == DomEventType::CLOSE && event.payload.is_none())
     );
     assert_eq!(
         session
@@ -885,7 +891,7 @@ fn mutation_registry(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             mutate_before_close(subject),
             DomEventListenerOptions::default(),
         )
@@ -956,7 +962,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                 context.calls.push("late");
                 assert_eq!(event.target(), Some(subject));
@@ -1204,7 +1210,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, adoption: &mut Adoption, event| {
                 adoption.calls += 1;
                 adoption.path = event.composed_path().collect();
@@ -1441,7 +1447,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         equal
     );
     assert_eq!(context.delivered.len(), 1);
-    assert_eq!(context.delivered[0].kind, DomEventType::Toggle);
+    assert_eq!(context.delivered[0].kind, DomEventType::TOGGLE);
     let event = context.delivered[0].payload.unwrap();
     assert_eq!(event.old_state(), "closed");
     assert_eq!(event.new_state(), "closed");
@@ -1472,7 +1478,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         plain
     );
     assert_eq!(context.delivered.len(), 2);
-    assert_eq!(context.delivered[1].kind, DomEventType::Close);
+    assert_eq!(context.delivered[1].kind, DomEventType::CLOSE);
     assert_eq!(context.delivered[1].payload, None);
     let html_a = closed.node(a.document().node()).unwrap().children()[0];
     let path = [
@@ -1594,7 +1600,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             &mut method_context,
         );
         assert_eq!(method_context.delivered.len(), 1);
-        assert_eq!(method_context.delivered[0].kind, DomEventType::Toggle);
+        assert_eq!(method_context.delivered[0].kind, DomEventType::TOGGLE);
         assert!(method_context.edits.iter().all(Result::is_ok));
         let tasks = session.element_task_execution();
         let close = tasks
@@ -1635,7 +1641,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Close,
+                DomEventType::CLOSE,
                 DomEventCallback::new(
                     move |dom, _, context: &mut CloseRetirementContext, event| {
                         context.calls.push("first");
@@ -1655,7 +1661,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Close,
+                DomEventType::CLOSE,
                 DomEventCallback::new(move |_, _, context: &mut CloseRetirementContext, event| {
                     context.calls.push("late");
                     context.delivered.push(observe(event));
@@ -1717,7 +1723,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             assert_eq!(dialog_toggle_disposition, None);
             assert!(displaced_owner.is_none());
             assert_eq!(receipt.original_target(), subject);
-            assert_eq!(receipt.event_type(), DomEventType::Close);
+            assert_eq!(receipt.event_type(), DomEventType::CLOSE);
             assert_eq!(receipt.callbacks(), 2);
             assert!(receipt.failures().is_empty());
             assert!(!receipt.default_prevented());
@@ -1725,7 +1731,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             assert!(context.destruction.as_ref().unwrap().is_ok());
             assert!(!registry.remove_listener(late));
             for delivered in &context.delivered {
-                assert_eq!(delivered.kind, DomEventType::Close);
+                assert_eq!(delivered.kind, DomEventType::CLOSE);
                 assert_eq!(delivered.target, Some(subject));
                 assert_eq!(delivered.current, Some(DomEventTarget::Node(subject)));
                 assert!(delivered.payload.is_none());

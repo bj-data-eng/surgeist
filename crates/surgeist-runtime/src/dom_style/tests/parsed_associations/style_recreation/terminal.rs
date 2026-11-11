@@ -178,6 +178,8 @@ fn events(session: &DomSession) -> (DomEventDispatcher<Context>, Context) {
             registrations: 32,
             pending_events: 16,
             nested_dispatches: 8,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap(),
         Context {
@@ -192,7 +194,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
                     event.target().unwrap(),
@@ -817,13 +819,15 @@ fn inflight_then_delivered_cleanup_refusal_cannot_ack_or_replay_callbacks() {
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             sheet.association().element(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut RetryContext, _| {
                 context.calls.push("a");
                 Ok(())
@@ -838,7 +842,7 @@ fn inflight_then_delivered_cleanup_refusal_cannot_ack_or_replay_callbacks() {
         .add_listener(
             &mut session.dom(),
             sheet.association().element(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, context: &mut RetryContext, _| {
                 context.calls.push("b");
                 let owner = context.styles.original().unwrap();

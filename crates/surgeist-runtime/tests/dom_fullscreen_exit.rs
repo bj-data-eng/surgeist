@@ -58,6 +58,10 @@ fn session(exits: usize, events: usize) -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -1156,13 +1160,15 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
         registrations: 8,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     listeners
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.calls += 1;
                 assert_eq!(
