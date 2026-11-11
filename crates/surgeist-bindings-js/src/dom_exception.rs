@@ -10,9 +10,9 @@ use crate::conversion::{
     declarations::{dom_exception_constructor_0_message, dom_exception_constructor_0_name},
 };
 use crate::{
-    Callback, Completion, ConstructorArguments, ConstructorCallback, ConstructorCompletion, Error,
-    FunctionMetadata, Primitive, PropertyDescriptor, PropertyKey, Root, Scope, Value,
-    WellKnownSymbol,
+    Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
+    ConstructorCompletion, Error, FunctionMetadata, Primitive, PropertyDescriptor, PropertyKey,
+    Root, Scope, Value, WellKnownSymbol,
 };
 
 mod declarations;
@@ -96,13 +96,14 @@ impl<Storage> ConstructorState<Storage> {
     }
 }
 
-/// Requested Rust constructor body and profile account references. The native
-/// adapter keeps this backing admitted while the realm profile or constructor
-/// remains reachable.
+/// Requested Rust constructor and conversion account bodies, including the
+/// profile's account reference. The native adapter keeps this backing admitted
+/// while the realm profile or constructor remains reachable.
 pub const fn constructor_storage_bytes<Storage>() -> usize {
     size_of::<ConstructorState<Storage>>()
         + size_of::<ConversionAccount>()
         + size_of::<Weak<ConversionAccount>>()
+        + ConversionAccount::retained_body_bytes()
 }
 
 /// Installs DOMException before a host exposes an authenticated realm to guest
@@ -143,8 +144,11 @@ pub fn install<Storage: 'static>(
         limits,
         Tariffs::identity(),
     )?);
+    // The constructor owns the account and its debit together. Publication
+    // only needs a weak reference, including on an early installation refusal.
+    let account = Rc::downgrade(&conversion);
     let state = ConstructorState {
-        conversion: conversion.clone(),
+        conversion,
         _backing: backing,
     };
     let prototype_root = scope.operations.native_error()?;
@@ -171,21 +175,25 @@ pub fn install<Storage: 'static>(
             configurable: false,
         },
     )?;
-    for (key, getter, slot) in [
-        (NAME, GET_NAME, Slot::Name),
-        (MESSAGE, GET_MESSAGE, Slot::Message),
-        (CODE, GET_CODE, Slot::Code),
+    for (key, getter, callback) in [
+        (
+            NAME,
+            GET_NAME,
+            Callback::new(|scope, arguments| read_slot(scope, arguments, Slot::Name)),
+        ),
+        (
+            MESSAGE,
+            GET_MESSAGE,
+            Callback::new(|scope, arguments| read_slot(scope, arguments, Slot::Message)),
+        ),
+        (
+            CODE,
+            GET_CODE,
+            Callback::new(|scope, arguments| read_slot(scope, arguments, Slot::Code)),
+        ),
     ] {
         let getter = scope.fixed_arity_function(
-            &Callback::new(move |scope, arguments| {
-                match scope
-                    .operations
-                    .dom_exception_slot(&arguments.receiver().root, slot)?
-                {
-                    Some(value) => Ok(Completion::Return(scope.value(value))),
-                    None => Ok(Completion::Throw(scope.type_error(&[])?)),
-                }
-            }),
+            &callback,
             FunctionMetadata {
                 name: getter,
                 length: 0,
@@ -239,12 +247,23 @@ pub fn install<Storage: 'static>(
             configurable: true,
         },
     )?;
-    scope.operations.publish_dom_exception(
-        INTERFACE,
-        &constructor.root,
-        &prototype.root,
-        &conversion,
-    )
+    scope
+        .operations
+        .publish_dom_exception(INTERFACE, &constructor.root, &prototype.root, account)
+}
+
+fn read_slot<'scope>(
+    scope: &mut Scope<'scope>,
+    arguments: Arguments<'scope>,
+    slot: Slot,
+) -> Result<Completion<'scope>, Error> {
+    match scope
+        .operations
+        .dom_exception_slot(&arguments.receiver().root, slot)?
+    {
+        Some(value) => Ok(Completion::Return(scope.value(value))),
+        None => Ok(Completion::Throw(scope.type_error(&[])?)),
+    }
 }
 
 fn interface_prototype<'scope>(scope: &mut Scope<'scope>) -> Result<Value<'scope>, Error> {

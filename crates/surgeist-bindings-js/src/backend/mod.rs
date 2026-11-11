@@ -109,7 +109,7 @@ pub(crate) trait Operations {
         key: &[u16],
         constructor: &Root,
         prototype: &Root,
-        account: &std::rc::Rc<ConversionAccount>,
+        account: std::rc::Weak<ConversionAccount>,
     ) -> Result<(), Error>;
     fn create_dom_exception(
         &mut self,

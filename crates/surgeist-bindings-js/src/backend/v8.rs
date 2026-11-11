@@ -931,7 +931,7 @@ impl Operations for Entered<'_, '_, '_> {
         key: &[u16],
         constructor: &Root,
         prototype: &Root,
-        account: &Rc<ConversionAccount>,
+        account: Weak<ConversionAccount>,
     ) -> Result<(), Error> {
         self.validate_root(constructor)?;
         self.validate_root(prototype)?;
@@ -943,7 +943,9 @@ impl Operations for Entered<'_, '_, '_> {
                 if !previous.is_undefined() {
                     return Err(Error::PropertyRejected);
                 }
-                if context.get_slot::<Weak<ConversionAccount>>().is_some() {
+                if account.strong_count() == 0
+                    || context.get_slot::<Weak<ConversionAccount>>().is_some()
+                {
                     return Err(roots.fail(Error::BackendUnavailable));
                 }
                 let constructor = roots.local(scope, constructor)?;
@@ -964,7 +966,7 @@ impl Operations for Entered<'_, '_, '_> {
                 if !intrinsics.set_internal_field(DOM_EXCEPTION_PROFILE_FIELD, profile.into()) {
                     return Err(roots.fail(Error::BackendUnavailable));
                 }
-                if context.set_slot(Rc::new(Rc::downgrade(account))).is_some() {
+                if context.set_slot(Rc::new(account)).is_some() {
                     return Err(roots.fail(Error::BackendUnavailable));
                 }
                 // The backend creates this context's native global without guest
