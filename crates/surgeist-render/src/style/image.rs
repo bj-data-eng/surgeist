@@ -1235,16 +1235,118 @@ fn first_repeated_tile_origin(
     tile_axis: f64,
     account: &Account,
 ) -> Result<f64> {
-    let delta = account.coordinate(|| clip_origin - tile_origin)?;
-    let quotient = account.coordinate(|| delta / tile_axis)?;
-    let index = account.coordinate(|| quotient.floor())?;
-    let offset = account.coordinate(|| index * tile_axis)?;
-    let origin = account.coordinate(|| tile_origin + offset)?;
-    let end = account.coordinate(|| origin + tile_axis)?;
-    if account.coordinate(|| end <= clip_origin)? {
-        return Ok(end);
+    let mut origin = if account.coordinate(|| clip_origin == tile_origin)? {
+        clip_origin
+    } else {
+        let clip = centered_repeat_remainder(clip_origin, tile_axis, account)?;
+        let anchor = centered_repeat_remainder(tile_origin, tile_axis, account)?;
+        let negative_anchor = account.coordinate(|| -anchor)?;
+        let (delta, tail) = repeat_sum(clip, negative_anchor, account)?;
+        // Centered residues bound their difference by one period. Retain the
+        // residual until the origin is formed so rounding at a seam cannot
+        // discard a phase that is still representable near the clip.
+        let (phase, residuals) =
+            if account.coordinate(|| delta.abs() == tile_axis && tail == 0.0)? {
+                (0.0, [0.0, 0.0])
+            } else if account.coordinate(|| delta < 0.0)? {
+                let (phase, wrapped_tail) = repeat_sum(tile_axis, delta, account)?;
+                (phase, [tail, wrapped_tail])
+            } else {
+                (delta, [tail, 0.0])
+            };
+        repeat_origin_from_phase(clip_origin, phase, residuals, account)?
+    };
+    let mut end = account.coordinate(|| origin + tile_axis)?;
+    if account.coordinate(|| end == clip_origin && origin < clip_origin)? {
+        // The preceding tile has no visible width at the published precision.
+        origin = clip_origin;
+        end = account.coordinate(|| origin + tile_axis)?;
+    }
+    if account.coordinate(|| {
+        !origin.is_finite() || !end.is_finite() || origin > clip_origin || end <= clip_origin
+    })? {
+        return Err(Error::invalid_value(
+            "image repeat geometry",
+            origin,
+            "first tile must have a finite origin and reach past the clip start",
+        ));
     }
     Ok(origin)
+}
+
+fn repeat_origin_from_phase(
+    clip_origin: f64,
+    phase: f64,
+    [phase_tail, wrap_tail]: [f64; 2],
+    account: &Account,
+) -> Result<f64> {
+    let negative_phase = account.coordinate(|| -phase)?;
+    let (left, left_tail) = repeat_sum(clip_origin, negative_phase, account)?;
+    let origin = if account.coordinate(|| left.is_finite())? {
+        let correction = account.coordinate(|| phase_tail + wrap_tail)?;
+        let adjustment = account.coordinate(|| left_tail - correction)?;
+        account.coordinate(|| left + adjustment)?
+    } else {
+        left
+    };
+    if account.coordinate(|| origin.is_finite())? {
+        return Ok(origin);
+    }
+
+    // The leading operands at the overflow boundary halve exactly.
+    // Find the distance from the overflow midpoint in original units so
+    // even a subnormal phase correction can decide the rounding direction.
+    const HALF_MAX: f64 = f64::MAX * 0.5;
+    const HALF_OVERFLOW: f64 = HALF_MAX.next_up();
+    const MIDPOINT_OFFSET: f64 = (HALF_OVERFLOW - HALF_MAX) * 0.5;
+    let half_clip = account.coordinate(|| clip_origin * 0.5)?;
+    let half_phase = account.coordinate(|| negative_phase * 0.5)?;
+    let (half, tail) = repeat_sum(half_clip, half_phase, account)?;
+    let offset = if account.coordinate(|| half == -HALF_OVERFLOW)? {
+        -MIDPOINT_OFFSET
+    } else if account.coordinate(|| half == -HALF_MAX)? {
+        MIDPOINT_OFFSET
+    } else {
+        return Ok(origin);
+    };
+    let (margin, margin_tail) = repeat_sum(tail, offset, account)?;
+    let margin = account.coordinate(|| margin * 2.0)?;
+    let margin_tail = account.coordinate(|| margin_tail * 2.0)?;
+    let (correction, correction_tail) = repeat_sum(phase_tail, wrap_tail, account)?;
+    // The phase corrections together are smaller than one ulp at MAX,
+    // so crossing the overflow midpoint can only round to -MAX.
+    if account.coordinate(|| {
+        margin > correction || (margin == correction && margin_tail > correction_tail)
+    })? {
+        return Ok(-f64::MAX);
+    }
+    Ok(origin)
+}
+
+fn centered_repeat_remainder(value: f64, period: f64, account: &Account) -> Result<f64> {
+    let remainder = account.coordinate(|| value % period)?;
+    let magnitude = account.coordinate(|| remainder.abs())?;
+    let complement = account.coordinate(|| period - magnitude)?;
+    // Comparing against the complement avoids rounding a subnormal midpoint.
+    if account.coordinate(|| magnitude > complement)? {
+        let period = account.coordinate(|| period.copysign(remainder))?;
+        account.coordinate(|| remainder - period)
+    } else {
+        Ok(remainder)
+    }
+}
+
+fn repeat_sum(left: f64, right: f64, account: &Account) -> Result<(f64, f64)> {
+    let sum = account.coordinate(|| left + right)?;
+    let (larger, smaller) = if account.coordinate(|| left.abs() >= right.abs())? {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    // Magnitude ordering makes this residual exact for a finite sum.
+    let rounded_smaller = account.coordinate(|| sum - larger)?;
+    let tail = account.coordinate(|| smaller - rounded_smaller)?;
+    Ok((sum, tail))
 }
 
 fn repeat_position_count(

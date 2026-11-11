@@ -312,6 +312,223 @@ fn image_repeat_plan_includes_tiles_before_the_anchor_when_visible() {
 }
 
 #[test]
+fn image_repeat_keeps_phase_from_distant_signed_anchors() {
+    let anchor = 2.0_f64.powi(54) + 4.0;
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    // The positive anchor is two modulo three and the negative one is one.
+    for (anchor, origin, width, expected) in [
+        (anchor, 0.0, 8.0, &[-1.0, 2.0, 5.0][..]),
+        (-anchor, 0.0, 8.0, &[-2.0, 1.0, 4.0, 7.0][..]),
+        (anchor, -4.0, 9.0, &[-4.0, -1.0, 2.0][..]),
+        (-anchor, -4.0, 9.0, &[-5.0, -2.0, 1.0, 4.0][..]),
+    ] {
+        let placement = ResolvedImagePlacement::from_parts(
+            Rect::new(origin, 0.0, width, 1.0),
+            Rect::new(anchor, 0.0, 3.0, 1.0),
+        )
+        .unwrap();
+        let repeated = repeat
+            .resolve(placement, &mut crate::RenderAccountingContext::default())
+            .unwrap();
+        let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
+        assert_eq!(positions, expected, "anchor {anchor}, clip {origin}");
+    }
+}
+
+#[test]
+fn image_repeat_does_not_need_the_full_distance_between_origins() {
+    let anchor = 2.0_f64.powi(1023);
+    let period = 2.0_f64.powi(972);
+    let origin = -anchor;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(origin, 0.0, 2.0 * period, 1.0),
+        Rect::new(anchor, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [
+            Rect::new(origin, 0.0, period, 1.0),
+            Rect::new(origin + period, 0.0, period, 1.0),
+        ]
+    );
+}
+
+#[test]
+fn image_repeat_restores_a_finite_origin_after_phase_rounding() {
+    let high = 2.0_f64.powi(1023);
+    let step = 2.0_f64.powi(971);
+    let period = 1.5 * high;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(-high + 2.5 * step, 0.0, 0.25 * high, 1.0),
+        Rect::new(-0.5 * high + step, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [Rect::new(-f64::MAX, 0.0, period, 1.0)]
+    );
+}
+
+#[test]
+fn image_repeat_keeps_a_subnormal_correction_at_the_overflow_boundary() {
+    let origin = (-f64::MAX).next_up();
+    let step = f64::MAX - f64::MAX.next_down();
+    let period = 1.5 * step;
+    // The clip is a multiple of the period. The positive anchor shifts the
+    // preceding tile just inside the finite-rounding boundary at -MAX.
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(origin, 0.0, step, 1.0),
+        Rect::new(f64::from_bits(1), 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    // The preceding tile's represented end is the clip start.
+    assert_eq!(repeated.tile_rects(), [Rect::new(origin, 0.0, period, 1.0)]);
+}
+
+#[test]
+fn image_repeat_retains_both_phase_residuals_at_the_overflow_midpoint() {
+    let high = 2.0_f64.powi(1023);
+    let step = 2.0_f64.powi(971);
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let resolve = |anchor| {
+        let placement = ResolvedImagePlacement::from_parts(
+            Rect::new(-0.5 * high, 0.0, 0.25 * high, 1.0),
+            Rect::new(anchor, 0.0, f64::MAX, 1.0),
+        )
+        .unwrap();
+        repeat.resolve(placement, &mut crate::RenderAccountingContext::default())
+    };
+    let tie = -0.5 * step;
+    let repeated = resolve(tie.next_up()).unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [Rect::new(-f64::MAX, 0.0, f64::MAX, 1.0)]
+    );
+    let error = resolve(tie).unwrap_err();
+    assert_eq!(
+        error.invalid_value_diagnostic().map(InvalidValue::field),
+        Some("image repeat geometry")
+    );
+}
+
+#[test]
+fn image_repeat_resolves_an_odd_subnormal_period() {
+    let unit = f64::from_bits(1);
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(2.0 * unit, 0.0, 6.0 * unit, 1.0),
+        Rect::new(-2.0 * unit, 0.0, 3.0 * unit, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
+    assert_eq!(positions, [unit, 4.0 * unit, 7.0 * unit]);
+}
+
+#[test]
+fn image_repeat_refuses_an_unrepresentable_first_tile() {
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(2.0_f64.powi(54), 0.0, 8.0, 1.0),
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let mut accounting = crate::RenderAccountingContext::default();
+    let error = repeat.resolve(placement, &mut accounting).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    assert_eq!(
+        error.invalid_value_diagnostic().map(InvalidValue::field),
+        Some("image repeat geometry")
+    );
+    assert_style_failure_releases_backing(accounting.last_attempt().unwrap());
+}
+
+#[test]
+fn background_repeat_preserves_distant_tile_phase_after_budget_retry() {
+    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+
+    let rect = Rect::new(0.0, 0.0, 8.0, 1.0);
+    let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(3.0, 1.0)).unwrap();
+    let layer = StyleImageLayer::try_new(StyleImageSource::resolved(image))
+        .unwrap()
+        .with_position(BackgroundPosition::length(2.0_f64.powi(54) + 4.0, 0.0).unwrap())
+        .with_repeat(BackgroundRepeat::repeat_x());
+    let stack = BackgroundStack::try_new(None, vec![BackgroundLayer::new(layer)]).unwrap();
+    let input = BackgroundNormalizationInput::try_new(
+        stack,
+        BackgroundAreas::try_new(rect, rect, rect).unwrap(),
+    )
+    .unwrap();
+    let cap = 14;
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, cap);
+    let error = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Attempt,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: cap,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: cap },
+        },
+    );
+    let attempt = report.attempt().unwrap();
+    assert_eq!(
+        attempt
+            .phase_usage(RenderPhase::Repeat)
+            .work(RenderWork::CoordinateVisits),
+        12
+    );
+    assert_eq!(attempt.usage().work(RenderWork::RepeatTiles), 0);
+    assert_eq!(attempt.usage().work(RenderWork::CommandsEmitted), 0);
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(crate::RenderAccountingOptions::default());
+    let normalized = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap();
+    let [command] = normalized.commands() else {
+        panic!("expected one normalized background command");
+    };
+    let NormalizedBackgroundCommandKind::Layer { layer } = command.kind() else {
+        panic!("expected a normalized layer");
+    };
+    let positions: Vec<_> = layer
+        .repeat()
+        .tile_rects()
+        .iter()
+        .map(|tile| tile.x())
+        .collect();
+    assert_eq!(positions, [-1.0, 2.0, 5.0]);
+}
+
+#[test]
 fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
     let placement = ResolvedImagePlacement::from_parts(
         Rect::new(0.0, 0.0, 40.0, 10.0),
