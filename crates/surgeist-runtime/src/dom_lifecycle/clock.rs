@@ -836,6 +836,330 @@ mod tests {
             }
 
             #[test]
+            fn synchronous_dialog_events_keep_their_distinct_reached_clock_samples() {
+                use crate::{
+                    DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
+                    DomEventDispatchOutcome, DomEventDispatcher, DomEventListenerOptions,
+                    DomEventPhase, DomEventRegistryLimits, DomEventResource, DomEventTarget,
+                    DomEventType, DomSourceEventRuntimeLimits, DomSourceEventServiceLimits,
+                    DomSourceEventServiceProgress, DomSourceUnavailable,
+                };
+                use surgeist_dom::{DomError, DomSourceEventKind, DomSourceEventRequest};
+
+                struct Observation {
+                    kind: DomEventType,
+                    phase: DomEventPhase,
+                    current: Option<DomEventTarget>,
+                    operation: Option<DomSourceOperationId>,
+                    creation: Option<DomEventCreationObservation>,
+                    edit: Result<(), DomError>,
+                }
+                let cancel = AtomicBool::new(false);
+                let mut session = session_with_dom_limits(|limits| {
+                    limits.with_dispatch_custody(
+                        surgeist_dom::DomDispatchCustodyLimits::new(
+                            16, 128, 2_000_000, 2_000_000, 100_000,
+                        )
+                        .unwrap(),
+                    )
+                });
+                let mut hosted = session.hosted_execution();
+                script(
+                    &hosted,
+                    &[
+                        Ok(150_001),
+                        Ok(260_001),
+                        Ok(545_001),
+                        Ok(845_001),
+                        Ok(1_125_001),
+                        Ok(1_605_001),
+                        Ok(2_075_001),
+                        Ok(2_605_001),
+                    ],
+                );
+                let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, &cancel)
+                    .unwrap();
+                let settings = hosted
+                    .settings(&session.dom(), top.global(), &cancel)
+                    .unwrap();
+                let native_clock_control = || {
+                    hosted
+                        .state()
+                        .unwrap()
+                        .borrow_mut()
+                        .clock
+                        .sample()
+                        .unwrap()
+                        .coarsen()
+                        .unwrap()
+                        .microseconds
+                };
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(top.document())
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut batch = DomBatch::new();
+                let target = batch.create_element_ns(
+                    top.document(),
+                    surgeist_html::values::Namespace::html(),
+                    "dialog",
+                );
+                batch.insert_before(&target, body, None);
+                let target = session
+                    .dom()
+                    .apply(batch, &cancel)
+                    .unwrap()
+                    .created(&target)
+                    .unwrap()
+                    .unwrap();
+                let mut source = session.source_execution();
+                let mut services = DomSourceServices {
+                    meta: None,
+                    execution_scope: None,
+                    style_policy: &mut |_| None,
+                    url: None,
+                };
+                assert!(matches!(
+                    source
+                        .apply(
+                            &mut session.dom(),
+                            DomSourceEdit::set_attribute(target, "open", ""),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(_)
+                ));
+                let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 4,
+                    pending_events: 2,
+                    nested_dispatches: 2,
+                    storage_bytes: 2_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                for kind in [DomEventType::CANCEL, DomEventType::BEFORE_TOGGLE] {
+                    for _ in 0..2 {
+                        registry
+                            .add_listener(
+                                &mut session.dom(),
+                                target,
+                                kind.clone(),
+                                DomEventCallback::new(
+                                    move |dom, _, seen: &mut Vec<Observation>, event| {
+                                        let operation = dom
+                                            .pending_source_edit()
+                                            .map(|status| status.operation());
+                                        let mut edit = DomBatch::new();
+                                        edit.set_attribute(body, "data-clock-probe", "");
+                                        seen.push(Observation {
+                                            kind: event.event_type(),
+                                            phase: event.phase(),
+                                            current: event.current_target(),
+                                            operation,
+                                            creation: event.creation().copied(),
+                                            edit: dom
+                                                .apply(edit, &AtomicBool::new(false))
+                                                .map(drop),
+                                        });
+                                        Ok(())
+                                    },
+                                ),
+                                DomEventListenerOptions::default(),
+                            )
+                            .unwrap();
+                    }
+                }
+                let pending = |progress, kind| {
+                    let DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Event(request),
+                        reason: DomSourceUnavailable::Event,
+                    } = progress
+                    else {
+                        panic!("expected an actual synchronous Dialog event request");
+                    };
+                    assert_eq!(request.kind(), kind);
+                    assert_eq!(request.subject(), target);
+                    request
+                };
+                // The original reached occurrence precedes Event Job admission.
+                // This fixture starts with zero Jobs; raise only after exposure.
+                let cancel_request = pending(
+                    source
+                        .apply(
+                            &mut session.dom(),
+                            DomSourceEdit::request_close_dialog(target, None),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceEventKind::Cancel,
+                );
+                let operation = cancel_request.operation();
+                let after_cancel_exposure = native_clock_control();
+                let repeated = pending(
+                    source
+                        .resume(
+                            &mut session.dom(),
+                            operation,
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceEventKind::Cancel,
+                );
+                assert_eq!(repeated.identity(), cancel_request.identity());
+                let after_repeated_exposure = native_clock_control();
+                source
+                    .raise_event_runtime_limits(
+                        &session.dom(),
+                        DomSourceEventRuntimeLimits {
+                            jobs: 2,
+                            storage_bytes: 16_000_000,
+                            work: 1_000_000,
+                        },
+                        &cancel,
+                    )
+                    .unwrap();
+
+                let mut seen = Vec::new();
+                let mut deliver = |source: &crate::DomSourceRuntime,
+                                   session: &mut DomSession,
+                                   request: &DomSourceEventRequest,
+                                   kind| {
+                    let mut service = |callbacks| {
+                        source
+                            .service_event(
+                                &mut session.dom(),
+                                request,
+                                &mut registry,
+                                &mut seen,
+                                DomSourceEventServiceLimits {
+                                    source: source_limits(),
+                                    dispatch: DomEventDispatchLimits {
+                                        path_items: 16,
+                                        snapshot_listeners: 4,
+                                        failure_records: 4,
+                                        callbacks,
+                                        work: 100_000,
+                                    },
+                                },
+                                &cancel,
+                            )
+                            .unwrap()
+                    };
+                    assert!(matches!(
+                        service(1),
+                        DomSourceEventServiceProgress::Retained {
+                            dispatch: DomEventDispatchOutcome::Retained(
+                                DomEventResource::Callbacks
+                            ),
+                        }
+                    ));
+                    let DomSourceEventServiceProgress::Serviced { receipt } = service(2) else {
+                        panic!("the same original synchronous Event must finish dispatch");
+                    };
+                    assert_eq!(receipt.event_type(), kind);
+                    assert_eq!(receipt.original_target(), target.into());
+                    assert_eq!(receipt.callbacks(), 2);
+                    assert!(receipt.failures().is_empty());
+                    assert!(!receipt.default_prevented());
+                };
+                deliver(&source, &mut session, &cancel_request, DomEventType::CANCEL);
+                let before_request = pending(
+                    source
+                        .resume(
+                            &mut session.dom(),
+                            operation,
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap(),
+                    DomSourceEventKind::BeforeToggle,
+                );
+                assert_eq!(before_request.operation(), operation);
+                assert_ne!(before_request.identity(), cancel_request.identity());
+                let after_beforetoggle_exposure = native_clock_control();
+                deliver(
+                    &source,
+                    &mut session,
+                    &before_request,
+                    DomEventType::BEFORE_TOGGLE,
+                );
+                assert!(matches!(
+                    source.resume(&mut session.dom(), operation, source_limits(), &mut services, &cancel)
+                        .unwrap(),
+                    DomSourceDriveProgress::Complete(done) if done.operation() == operation
+                ));
+                let after_close = native_clock_control();
+                assert!(session.dom().pending_source_edit().is_none());
+                assert!(
+                    session
+                        .snapshot()
+                        .node(target)
+                        .unwrap()
+                        .attribute(&"open".into())
+                        .is_none()
+                );
+
+                let [first_cancel, resumed_cancel, first_before, resumed_before] = seen.as_slice()
+                else {
+                    panic!("expected two actual callbacks for each original Event");
+                };
+                for (observations, kind) in [
+                    ([first_cancel, resumed_cancel], DomEventType::CANCEL),
+                    ([first_before, resumed_before], DomEventType::BEFORE_TOGGLE),
+                ] {
+                    for observation in observations {
+                        assert_eq!(observation.kind, kind);
+                        assert_eq!(observation.phase, DomEventPhase::AtTarget);
+                        assert_eq!(observation.current, Some(target.into()));
+                        assert_eq!(observation.operation, Some(operation));
+                        assert_eq!(observation.edit, Ok(()));
+                    }
+                }
+                let creations = [first_cancel, resumed_cancel, first_before, resumed_before]
+                    .map(|observed| observed.creation);
+                let [
+                    Some(first_cancel),
+                    Some(resumed_cancel),
+                    Some(first_before),
+                    Some(resumed_before),
+                ] = creations
+                else {
+                    panic!(
+                        "both original synchronous Dialog occurrences need creation timing: {creations:?}"
+                    );
+                };
+                assert_eq!(first_cancel, resumed_cancel);
+                assert_eq!(first_before, resumed_before);
+                for (creation, occurrence) in [(first_cancel, 500), (first_before, 1600)] {
+                    assert_eq!(creation.global(), top.global());
+                    assert_eq!(creation.clock_source(), settings.clock_source());
+                    assert_eq!(creation.time_origin_microseconds(), 100);
+                    assert_eq!(creation.occurrence_microseconds(), occurrence);
+                }
+                assert_eq!(
+                    [
+                        after_cancel_exposure,
+                        after_repeated_exposure,
+                        after_beforetoggle_exposure,
+                        after_close
+                    ],
+                    [800, 1100, 2000, 2600]
+                );
+            }
+
+            #[test]
             fn top_level_timing_survives_real_admission_domain_and_loading_refusals() {
                 let cancel = AtomicBool::new(false);
                 let mut session = session();
