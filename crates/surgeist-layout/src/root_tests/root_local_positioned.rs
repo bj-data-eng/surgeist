@@ -1638,3 +1638,40 @@ fn root_local_auto_grid_refuses_leaf_measurement() {
         ))
     ));
 }
+
+#[test]
+fn root_local_auto_grid_refuses_nonfixed_implicit_track() {
+    let mut root = auto_fixed_grid::<f64>(WritingMode::HorizontalTb);
+    root.grid_template_columns.truncate(1);
+    let child = NodeInputOf {
+        display: Display::Flex,
+        size: Size::new(PreferredSizeOf::px(10.0), PreferredSizeOf::px(10.0)),
+        grid_column: GridPlacement::try_lines(2, 3).unwrap(),
+        grid_row: GridPlacement::try_lines(1, 2).unwrap(),
+        ..NodeInputOf::default()
+    };
+    for auto_columns in [
+        Vec::new(),
+        vec![TrackComponentOf::flex(
+            TrackFlexFactorOf::try_new(1.0).unwrap(),
+        )],
+    ] {
+        root.grid_auto_columns = auto_columns;
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(0, root.clone())
+            .style(1, child.clone());
+
+        let result = compute_layout(&tree, 0, auto_grid_request(0.0, 0.0));
+        let error = result.err().expect("the implicit column is not fixed");
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+        assert_eq!(error.operation(), LayoutOperation::RootLayout);
+        assert!(matches!(
+            error.kind(),
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
+                RootContextMismatch::WritingMode
+            ))
+        ));
+    }
+}
