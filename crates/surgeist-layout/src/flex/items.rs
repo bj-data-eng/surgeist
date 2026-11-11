@@ -531,7 +531,11 @@ where
     let output = tree.compute_child(
         node,
         ComputeInputOf::for_child(
-            run_mode,
+            if basis_is_preferred_max_content {
+                RunMode::ComputeSize
+            } else {
+                run_mode
+            },
             if use_content_sizing_for_base {
                 SizingMode::ContentSize
             } else {
