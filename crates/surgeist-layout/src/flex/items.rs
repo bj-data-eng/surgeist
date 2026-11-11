@@ -634,6 +634,19 @@ where
             .main_size_from_cross_in_sizing_box(cross, ratio, box_sizing_adjustment)
             .map_err(|error| sizing_resolution_error(node, error.into()))?
     } else {
+        let basis_available = constants.axes.with_main_size(
+            child_available,
+            constants
+                .axes
+                .main_size(child_available)
+                .with_operation(content_basis_operation),
+        );
+        let basis_available = super::child_preferred_probe_axes(
+            constants.axes,
+            basis_available,
+            child_known_for_base,
+            child_owned_axes,
+        );
         constants.axes.main_size(
             tree.compute_child(
                 node,
@@ -647,15 +660,7 @@ where
                         constants.flow_axes,
                         ParentFormattingContext::Flex,
                     ),
-                    constants.sizing_request.with_axes(
-                        constants.axes.with_main_size(
-                            child_available,
-                            constants
-                                .axes
-                                .main_size(child_available)
-                                .with_operation(content_basis_operation),
-                        ),
-                    ),
+                    constants.sizing_request.with_axes(basis_available),
                 )
                 .with_border_box_offer_axis(border_box_offer_axis)
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
