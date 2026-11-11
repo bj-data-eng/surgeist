@@ -36,7 +36,14 @@ fn bytes(dom: &Dom) -> usize {
 #[test]
 fn exact_inbox_and_watch_admission_and_cancelled_disarm() {
     let cancel = AtomicBool::new(false);
-    let (mut dom, _, node) = fixture(&cancel);
+    let (mut dom, document, node) = fixture(&cancel);
+    // Cross the bank's 16-slot leaf width while keeping this exact node in
+    // the first leaf. A lookup reaches the outer page and that original leaf.
+    let mut expand = DomBatch::new();
+    for _ in 0..32 {
+        expand.create_comment(document.node(), "");
+    }
+    dom.apply(expand, &cancel).unwrap();
     let baseline = bytes(&dom);
     let inbox_bytes = baseline + size_of::<Mutex<Queue>>();
     assert!(matches!(
@@ -57,9 +64,10 @@ fn exact_inbox_and_watch_admission_and_cancelled_disarm() {
         .unwrap();
     assert_eq!(bytes(&dom), inbox_bytes);
     let exact = inbox_bytes + size_of::<Index>() + size_of::<Armed>() + size_of::<Notice>();
-    // Entry, index formation and custody admission each take one step. Every
-    // possible slot bit can be visited on descent and unwind, plus the leaf.
-    let work = 3 + 2 * u64::from(usize::BITS) + 1;
+    // Entry, canonical lookup, its two radix pages, index formation and
+    // custody admission each take one step. Disarm can visit every possible
+    // slot bit on descent and unwind, plus the exact leaf.
+    let work = 6 + 2 * u64::from(usize::BITS) + 1;
     assert!(matches!(
         dom.watch_node_retirement(node, &inbox, 14, DomNodeRetirementLimits::new(exact, work - 1), &cancel),
         Err(DomError::NodeRetirementWorkLimit { limit }) if limit == work - 1
