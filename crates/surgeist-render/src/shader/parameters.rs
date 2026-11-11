@@ -927,6 +927,7 @@ const fn operator_parameter_code(operator: Option<PorterDuffOperator>) -> u32 {
         Some(PorterDuffOperator::SourceAtop) => 9,
         Some(PorterDuffOperator::DestinationAtop) => 10,
         Some(PorterDuffOperator::Xor) => 11,
+        Some(PorterDuffOperator::PlusLighter) => 12,
     }
 }
 

@@ -367,7 +367,7 @@ pub enum BlendMode {
     Plus,
 }
 
-/// One of the twelve basic Porter-Duff region selections.
+/// One of the twelve basic Porter-Duff region selections or saturating PlusLighter.
 ///
 /// These operators have bounded premultiplied color and alpha for valid inputs.
 /// Normative lighter's unresolved output range is outside this set; the existing
@@ -399,11 +399,14 @@ pub enum PorterDuffOperator {
     DestinationAtop,
     /// Keep the non-overlapping source and destination contributions.
     Xor,
+    /// Sum the premultiplied source and destination, capping RGB and alpha at one.
+    PlusLighter,
 }
 
 /// One validated complete layer composition operation.
 ///
 /// A basic Porter-Duff operation pairs one mixing function with one operator.
+/// PlusLighter is a complete operation with no additional color mixing.
 /// Local Plus is a separate complete operation, selected through [`Layer::blend`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LayerComposition {
@@ -417,13 +420,16 @@ enum LayerCompositionKind {
         blend: BlendMode,
     },
     Plus,
+    PlusLighter,
 }
 
 impl LayerComposition {
-    /// Pairs a basic operator with one of the sixteen mixing functions.
+    /// Pairs a basic operator with one of the sixteen mixing functions, or
+    /// selects [`PorterDuffOperator::PlusLighter`] with [`BlendMode::Normal`].
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for [`BlendMode::Plus`], which
-    /// is a complete operation rather than a color mixing function.
+    /// is a complete operation rather than a color mixing function, or when
+    /// PlusLighter is paired with any additional mixing function.
     pub fn try_porter_duff(operator: PorterDuffOperator, blend: BlendMode) -> Result<Self> {
         if blend == BlendMode::Plus {
             return Err(Error::invalid_value(
@@ -432,26 +438,39 @@ impl LayerComposition {
                 "must be a color mixing function; Plus is a complete operation",
             ));
         }
-        Ok(Self {
-            kind: LayerCompositionKind::Basic { operator, blend },
-        })
+        let kind = if operator == PorterDuffOperator::PlusLighter {
+            if blend != BlendMode::Normal {
+                return Err(Error::invalid_value(
+                    "PlusLighter mixing function",
+                    format_args!("{blend:?}"),
+                    "must be Normal; PlusLighter is a complete operation",
+                ));
+            }
+            LayerCompositionKind::PlusLighter
+        } else {
+            LayerCompositionKind::Basic { operator, blend }
+        };
+        Ok(Self { kind })
     }
 
-    /// Returns the basic operator, or `None` for the separate local Plus operation.
+    /// Returns the selected operator, or `None` for the separate local Plus operation.
     #[must_use]
     pub const fn operator(self) -> Option<PorterDuffOperator> {
         match self.kind {
             LayerCompositionKind::Basic { operator, .. } => Some(operator),
             LayerCompositionKind::Plus => None,
+            LayerCompositionKind::PlusLighter => Some(PorterDuffOperator::PlusLighter),
         }
     }
 
-    /// Returns the mixing function, or [`BlendMode::Plus`] for local Plus.
+    /// Returns the mixing function, [`BlendMode::Normal`] for PlusLighter,
+    /// or [`BlendMode::Plus`] for local Plus.
     #[must_use]
     pub const fn blend_mode(self) -> BlendMode {
         match self.kind {
             LayerCompositionKind::Basic { blend, .. } => blend,
             LayerCompositionKind::Plus => BlendMode::Plus,
+            LayerCompositionKind::PlusLighter => BlendMode::Normal,
         }
     }
 
@@ -495,6 +514,7 @@ impl LayerComposition {
         matches!(
             self.kind,
             LayerCompositionKind::Plus
+                | LayerCompositionKind::PlusLighter
                 | LayerCompositionKind::Basic {
                     operator: PorterDuffOperator::Destination
                         | PorterDuffOperator::SourceOver
