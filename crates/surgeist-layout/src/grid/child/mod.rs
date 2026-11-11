@@ -903,9 +903,9 @@ pub(super) struct PendingGridItem<'input, Node, S: LayoutScalar = Scalar> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct GridItemSizing<S: LayoutScalar = Scalar> {
+pub(super) struct GridItemSizing<S: LayoutScalar = Scalar, Available = S> {
     pub(super) known: Size<Option<S>>,
-    pub(super) available: Size<S>,
+    pub(super) available: Size<Available>,
     pub(super) unresolved_margin: Edges<Option<S>>,
     pub(super) justify_self: AlignItems,
     pub(super) align_self: AlignItems,
@@ -1129,6 +1129,34 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     containing_physical_size: Size<Option<S>>,
     grid_flow_axes: FlowAxes,
 ) -> Result<GridItemSizing<S>, SizingResolutionError<S>> {
+    let sizing = grid_item_sizing_with_optional_alignment(
+        child_style,
+        container_style,
+        subgrid_requests,
+        area_size.map(Some),
+        containing_physical_size,
+        grid_flow_axes,
+    )?;
+    Ok(GridItemSizing {
+        known: sizing.known,
+        available: sizing
+            .available
+            .map(|extent| extent.expect("both final Grid alignment extents are available")),
+        unresolved_margin: sizing.unresolved_margin,
+        justify_self: sizing.justify_self,
+        align_self: sizing.align_self,
+        standalone_intrinsic_minimum: sizing.standalone_intrinsic_minimum,
+    })
+}
+
+pub(super) fn grid_item_sizing_with_optional_alignment<'input, S: LayoutScalar>(
+    child_style: &GridItemProjection<'input, S>,
+    container_style: &GridContainerProjection<'_, S>,
+    subgrid_requests: Size<bool>,
+    area_size: Size<Option<S>>,
+    containing_physical_size: Size<Option<S>>,
+    grid_flow_axes: FlowAxes,
+) -> Result<GridItemSizing<S, Option<S>>, SizingResolutionError<S>> {
     let container_flow_axes =
         crate::geometry::FlowAxes::new(container_style.writing_mode, container_style.direction);
     let unresolved_margin =
@@ -1140,15 +1168,13 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     let margin = unresolved_margin.map(|margin| margin.unwrap_or(S::ZERO));
     let logical_area_size = grid_flow_axes.logical_size(area_size);
     let logical_margin = grid_flow_axes.logical_edges(margin);
+    let remaining = |area: Option<S>, margin| {
+        area.map(|extent| crate::layout_math::remaining_available_extent(extent, margin))
+            .transpose()
+    };
     let logical_available = LogicalSizeOf::new(
-        crate::layout_math::remaining_available_extent(
-            logical_area_size.inline,
-            logical_margin.inline_sum(),
-        )?,
-        crate::layout_math::remaining_available_extent(
-            logical_area_size.block,
-            logical_margin.block_sum(),
-        )?,
+        remaining(logical_area_size.inline, logical_margin.inline_sum())?,
+        remaining(logical_area_size.block, logical_margin.block_sum())?,
     );
     let available = grid_flow_axes.physical_size(logical_available);
     let GridItemBoxEdges {
@@ -1290,10 +1316,10 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
     let logical_known = LogicalSizeOf::new(
         logical_inherent_size
             .inline
-            .or_else(|| inline_stretches.then_some(logical_available.inline)),
+            .or(logical_available.inline.filter(|_| inline_stretches)),
         logical_inherent_size
             .block
-            .or_else(|| block_stretches.then_some(logical_available.block)),
+            .or(logical_available.block.filter(|_| block_stretches)),
     );
     let known = if preferred_ratio.is_some()
         && logical_inherent_size.inline.is_none()
