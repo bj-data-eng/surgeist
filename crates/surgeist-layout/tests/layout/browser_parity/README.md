@@ -381,14 +381,12 @@ To regenerate the comparison, run the focused capture with the pinned browser
 available in the Layout cache. It writes the comparison records to standard
 output.
 
-The current focused environment is calibrated by its byte-authenticated
-[report](flex_composition_focused_report.json),
-[derived declaration](flex_composition_focused_declaration.json) and
-[artifact ownership](flex_composition_focused_ownership.json). Its complete
-input map, contract, browser and source-import lineage must match one qualified
-environment row. Retained catalogue reports authenticate their original input
-bytes, and observed XML is immutable. Published admission uses its separately
-verified publication contract.
+The [current focused report](flex_composition_computed_margin_report.json) and
+[focused declaration](flex_composition_fixed_orthogonal_declaration.json) bind
+the captured helper, inherited Ahem typography, browser, and original source
+to the collapse-disabled gutter control. Admission checks the complete
+environment and its exact per-variant input projections. Published replay
+checks its separate publication contract and producing inputs.
 
 ```sh
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html

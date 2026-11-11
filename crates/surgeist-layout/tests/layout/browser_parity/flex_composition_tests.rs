@@ -75,6 +75,64 @@ fn replaced_image_capture_refuses_changed_source_output_or_natural_dimensions() 
 }
 
 #[test]
+fn current_flex_composition_capture_admits_exact_inherited_typography() {
+    const CURRENT: &str = include_str!("flex_composition_computed_margin_border_box_rtl.xml");
+    const CURRENT_REPORT: &str = include_str!("flex_composition_computed_margin_report.json");
+    let (variant, retained_xml) = VARIANTS[1];
+    let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");
+    let retained =
+        Golden::parse_with_flex_composition(retained_xml, REPORT, SOURCE, SOURCE_BYTES, &output)
+            .unwrap();
+    let fresh =
+        Golden::parse_with_flex_composition(CURRENT, CURRENT_REPORT, SOURCE, SOURCE_BYTES, &output)
+            .expect("admit current captured typography and its qualified environment");
+
+    assert_eq!(fresh.expectations, retained.expectations);
+    assert_eq!(fresh.viewport, retained.viewport);
+    assert_eq!(
+        fresh.world_rounding_diagnostics,
+        retained.world_rounding_diagnostics
+    );
+    let mut tree = TestTree::from_golden(&fresh.root, Some(&fresh.viewport.root_context)).unwrap();
+    flex_composition::lower(
+        &mut tree,
+        &fresh,
+        fresh.flex_composition_image.as_ref().unwrap(),
+    )
+    .unwrap();
+    let image = tree.nodes[0].children[1];
+    assert!(
+        tree.nodes[image]
+            .layout_input
+            .as_box()
+            .unwrap()
+            .item_is_replaced
+    );
+    assert!(tree.has_leaf_measurement(image));
+
+    for (original, replacement) in [
+        (" font-size=\"10px\"", ""),
+        ("line-height=\"10px\"", "line-height=\"20px\""),
+        ("font-family=\"ahem\"", "font-family=\"serif\""),
+        ("order=\"-1\"", "order=\"99\""),
+    ] {
+        let altered = CURRENT.replacen(original, replacement, 1);
+        assert_ne!(altered, CURRENT);
+        let forged =
+            CURRENT_REPORT.replace(&sha256(CURRENT.as_bytes()), &sha256(altered.as_bytes()));
+        let error =
+            Golden::parse_with_flex_composition(&altered, &forged, SOURCE, SOURCE_BYTES, &output)
+                .expect_err("a reissued report cannot change the current source projection");
+        assert!(
+            error
+                .to_string()
+                .contains("normalized source projection changed"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn reissued_capture_cannot_change_source_projection() {
     let (variant, xml) = VARIANTS[0];
     let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");

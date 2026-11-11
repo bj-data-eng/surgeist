@@ -89,7 +89,7 @@ fn script_custody_flex_terminal_admits_the_current_prepared_range_producer() {
 fn computed_margin_helper_preserves_prepared_range_custody() {
     let helper = crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256;
     script_custody_flex_terminal_helper_controls("prepared-ranges", &[(helper, true)]);
-    script_custody_flex_terminal_helper_controls("flex-composition", &[(helper, false)]);
+    script_custody_flex_terminal_helper_controls("flex-composition", &[(helper, true)]);
 }
 
 #[test]

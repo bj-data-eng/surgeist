@@ -10,6 +10,9 @@ const RETAINED_REPORT: &str =
 const SCRIPT_CUSTODY_REPORT: &str = include_str!("flex_composition_script_custody_report.json");
 const FOCUSED_REPORT: &str = include_str!("flex_composition_focused_report.json");
 const FIXED_ORTHOGONAL_REPORT: &str = include_str!("flex_composition_fixed_orthogonal_report.json");
+const COMPUTED_MARGIN_REPORT: &str = include_str!("flex_composition_computed_margin_report.json");
+const COMPUTED_MARGIN_REPORT_SHA256: &str =
+    "b7b9dfd49cacdecb54aae3c032365dcec5e6ac9c4939a1228ee45fef08307066";
 const FIXED_ORTHOGONAL_REPORT_SHA256: &str =
     "f69ebad7fd090c3b8c2ba1a4978d361baf21f75ab946efb6b300c212d6f4e862";
 const FOCUSED_REPORT_SHA256: &str =
@@ -28,6 +31,7 @@ pub(crate) fn accepts_helper(digest: &str) -> bool {
     digest == RETAINED_HELPER_SHA256
         || digest == crate::capture_helper_identity::SCRIPT_CUSTODY_HELPER_SHA256
         || digest == crate::capture_helper_identity::FIXED_ORTHOGONAL_HELPER_SHA256
+        || digest == crate::capture_helper_identity::COMPUTED_MARGIN_HELPER_SHA256
 }
 
 pub(super) struct Capture<'a> {
@@ -62,7 +66,8 @@ pub(super) fn bind(
     let report = capture_authority::unique_json(capture.report).map_err(invalid)?;
     let current = &report["metadata"];
     let metadata: CaptureMetadata = serde_json::from_value(current.clone()).map_err(invalid)?;
-    require_control_environment(current, &metadata, RETAINED_REPORT, capture.published)?;
+    let projection =
+        require_control_environment(current, &metadata, RETAINED_REPORT, capture.published)?;
     if metadata.schema_version != 4
         || metadata.inputs.get(SOURCE) != Some(&source_digest)
         || metadata.inputs.get("observation-request.json")
@@ -105,15 +110,11 @@ pub(super) fn bind(
         return Err(invalid("capture source or output binding changed"));
     }
 
-    // The retained capture pins the complete normalized input independently of
-    // the supplied report. Browser expectations remain separate from admission.
-    let projection_digest = match artifact.variant.as_str() {
-        "border_box_ltr" => "f873c4fc20217022deb5cc35c9e5443010e83e3490f7493a3ac1a6e4d4979fa4",
-        "border_box_rtl" => "3ea6eeecce0b70bbf559e7846480b39aaddc7d44c636b16ab8f3ebdc0a11fc46",
-        "content_box_ltr" => "dee73b0201e80c039add5f9ddfa1fa2c6359d6d27d296b64fb2c28025352b63d",
-        "content_box_rtl" => "017839898a38e0f3dc708643167392995020218ae86d1903ffd027bc325d5f36",
-        _ => return Err(invalid("unregistered variant")),
-    };
+    // Each qualified environment pins the complete normalized input.
+    // Browser expectations are compared after admission.
+    let projection_digest = projection
+        .digest(&artifact.variant)
+        .ok_or_else(|| invalid("unregistered variant"))?;
     let viewport = one_child(test, "viewport")?;
     let input = one_child(test, "input")?;
     if !xml
@@ -149,29 +150,81 @@ pub(super) fn bind(
     })
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceProjection {
+    Retained,
+    InheritedTypography,
+}
+
+impl SourceProjection {
+    fn digest(self, variant: &str) -> Option<&'static str> {
+        Some(match (self, variant) {
+            (Self::Retained, "border_box_ltr") => {
+                "f873c4fc20217022deb5cc35c9e5443010e83e3490f7493a3ac1a6e4d4979fa4"
+            }
+            (Self::Retained, "border_box_rtl") => {
+                "3ea6eeecce0b70bbf559e7846480b39aaddc7d44c636b16ab8f3ebdc0a11fc46"
+            }
+            (Self::Retained, "content_box_ltr") => {
+                "dee73b0201e80c039add5f9ddfa1fa2c6359d6d27d296b64fb2c28025352b63d"
+            }
+            (Self::Retained, "content_box_rtl") => {
+                "017839898a38e0f3dc708643167392995020218ae86d1903ffd027bc325d5f36"
+            }
+            (Self::InheritedTypography, "border_box_ltr") => {
+                "fa5fa96b819ec7c75af5ca1b15dffe67d117cf411119372e7b6fc59dd02e3a8d"
+            }
+            (Self::InheritedTypography, "border_box_rtl") => {
+                "deab14baed8c2eb7d01622f35d9c0937f0242581a5fa415315e77dc6f3f994b1"
+            }
+            (Self::InheritedTypography, "content_box_ltr") => {
+                "f0bbfe27f75f8c2714abfc461e92498103ca894abe698c7679c066d043425909"
+            }
+            (Self::InheritedTypography, "content_box_rtl") => {
+                "dedcdce4d246d7dd66b468c03b11a9ab281663fe057c6527a0ee097f285416cb"
+            }
+            _ => return None,
+        })
+    }
+}
+
 fn require_control_environment(
     current: &serde_json::Value,
     metadata: &CaptureMetadata,
     control_report: &str,
     published: bool,
-) -> Result<(), Error> {
-    let mut admitted = false;
-    for (report, digest, declaration) in [
-        (control_report, RETAINED_REPORT_SHA256, "corpus.toml"),
+) -> Result<SourceProjection, Error> {
+    let mut admitted = None;
+    for (report, digest, declaration, projection) in [
+        (
+            control_report,
+            RETAINED_REPORT_SHA256,
+            "corpus.toml",
+            SourceProjection::Retained,
+        ),
         (
             SCRIPT_CUSTODY_REPORT,
             SCRIPT_CUSTODY_REPORT_SHA256,
             "corpus.toml",
+            SourceProjection::Retained,
         ),
         (
             FOCUSED_REPORT,
             FOCUSED_REPORT_SHA256,
             "focused-declaration.json",
+            SourceProjection::Retained,
         ),
         (
             FIXED_ORTHOGONAL_REPORT,
             FIXED_ORTHOGONAL_REPORT_SHA256,
             "focused-declaration.json",
+            SourceProjection::Retained,
+        ),
+        (
+            COMPUTED_MARGIN_REPORT,
+            COMPUTED_MARGIN_REPORT_SHA256,
+            "focused-declaration.json",
+            SourceProjection::InheritedTypography,
         ),
     ] {
         if sha256(report.as_bytes()) != digest {
@@ -179,12 +232,15 @@ fn require_control_environment(
         }
         let witness = capture_authority::unique_json(report).map_err(invalid)?;
         let sealed = &witness["metadata"];
-        admitted |= environment_matches(current, metadata, sealed, declaration, published);
+        if environment_matches(current, metadata, sealed, declaration, published)
+            && admitted
+                .replace(projection)
+                .is_some_and(|previous| previous != projection)
+        {
+            return Err(invalid("capture environment has conflicting projections"));
+        }
     }
-    if !admitted {
-        return Err(invalid("capture environment changed"));
-    }
-    Ok(())
+    admitted.ok_or_else(|| invalid("capture environment changed"))
 }
 
 fn environment_matches(
