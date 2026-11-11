@@ -3,7 +3,7 @@ use crate::accounting::{
     Account, AccountedVec, RenderResource, RenderWork, SharedValue, StorageAccount,
 };
 use crate::{
-    Color, Error, Point, Rect, Result,
+    BackendErrorCode, Color, Error, Point, Rect, Result,
     frame::CompositeSourceSpace,
     layer::{BlendMode, LayerComposition, PorterDuffOperator},
     pass::{
@@ -15,8 +15,10 @@ use crate::{
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use crate::image::{Extend, ImageQuality};
 
-const COLOR_FILTER_OPERATION_HEADER_BYTE_LEN: u64 = 16;
-const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: u64 = 32;
+const COLOR_FILTER_OPERATION_HEADER_BYTE_LEN: usize = 16;
+const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: usize = 32;
+type ColorFilterOperationHeader = [u8; COLOR_FILTER_OPERATION_HEADER_BYTE_LEN];
+type ColorFilterOperationRecord = [u8; COLOR_FILTER_OPERATION_RECORD_BYTE_LEN];
 
 /// Exact 32-byte WGSL drop-shadow parameter block.
 ///
@@ -135,23 +137,29 @@ impl ColorFilterOperationBytes {
         // The sole serializer owns a 16-byte header followed by complete
         // 32-byte operation records. Compare their exact bytes, including pads,
         // while admitting each reached operation separately from serialization.
-        let (header, records) = self.bytes.split_at(16);
-        let (other_header, other_records) = other.bytes.split_at(16);
+        let (header, records) = self.wire_parts()?;
+        let (other_header, other_records) = other.wire_parts()?;
         if header != other_header {
             return Ok(false);
         }
-        for (actual, expected) in records
-            .as_chunks::<32>()
-            .0
-            .iter()
-            .zip(other_records.as_chunks::<32>().0)
-        {
+        for (actual, expected) in records.iter().zip(other_records) {
             account.work(RenderWork::FilterOperationVisits, 1)?;
             if actual != expected {
                 return Ok(false);
             }
         }
         Ok(true)
+    }
+
+    fn wire_parts(&self) -> Result<(&ColorFilterOperationHeader, &[ColorFilterOperationRecord])> {
+        let (header, body) = self
+            .bytes
+            .split_first_chunk::<COLOR_FILTER_OPERATION_HEADER_BYTE_LEN>()
+            .ok_or_else(color_filter_wire_partition_error)?;
+        let (records, []) = body.as_chunks::<COLOR_FILTER_OPERATION_RECORD_BYTE_LEN>() else {
+            return Err(color_filter_wire_partition_error());
+        };
+        Ok((header, records))
     }
 
     pub(crate) fn try_from_runtime_operations_with_limits(
@@ -179,15 +187,33 @@ impl ColorFilterOperationBytes {
 
         let mut bytes = AccountedVec::new_in(storage, byte_len, RenderResource::RetainedCpuBytes)?;
         bytes.resize(byte_len, 0)?;
-        serialization_work(storage, observer, RenderWork::SerializedBytes, 16)?;
-        bytes[0..4].copy_from_slice(&operation_count.to_le_bytes());
+        let (header, body) = bytes
+            .split_first_chunk_mut::<COLOR_FILTER_OPERATION_HEADER_BYTE_LEN>()
+            .ok_or_else(color_filter_wire_partition_error)?;
+        let (records, []) = body.as_chunks_mut::<COLOR_FILTER_OPERATION_RECORD_BYTE_LEN>() else {
+            return Err(color_filter_wire_partition_error());
+        };
+        if records.len() != operations.len() {
+            return Err(color_filter_wire_partition_error());
+        }
+        serialization_work(
+            storage,
+            observer,
+            RenderWork::SerializedBytes,
+            COLOR_FILTER_OPERATION_HEADER_BYTE_LEN,
+        )?;
+        header[..4].copy_from_slice(&operation_count.to_le_bytes());
 
-        for (index, operation) in operations.iter().copied().enumerate() {
+        for (slot, operation) in records.iter_mut().zip(operations.iter().copied()) {
             serialization_work(storage, observer, RenderWork::FilterOperationVisits, 1)?;
             let record = serialize_color_filter_operation(operation)?;
-            serialization_work(storage, observer, RenderWork::SerializedBytes, 32)?;
-            let offset = 16 + index * 32;
-            bytes[offset..offset + 32].copy_from_slice(&record);
+            serialization_work(
+                storage,
+                observer,
+                RenderWork::SerializedBytes,
+                COLOR_FILTER_OPERATION_RECORD_BYTE_LEN,
+            )?;
+            *slot = record;
         }
         Ok(Self {
             bytes: SharedValue::from_accounted(bytes, storage)?,
@@ -208,6 +234,13 @@ impl ColorFilterOperationBytes {
         let storage = StorageAccount::Renderer(owner.at(crate::RenderCpuScope::DeviceBacking));
         Self::serialize(&storage, None, operations, limits)
     }
+}
+
+fn color_filter_wire_partition_error() -> Error {
+    Error::new(
+        BackendErrorCode::RenderFailed,
+        "color filter storage must contain one header and complete operation records",
+    )
 }
 
 fn serialization_work(
@@ -236,7 +269,7 @@ fn checked_color_filter_operation_byte_len(
     operation_count: u32,
     limits: ColorFilterOperationBufferLimits,
 ) -> Result<u64> {
-    let records = COLOR_FILTER_OPERATION_RECORD_BYTE_LEN
+    let records = (COLOR_FILTER_OPERATION_RECORD_BYTE_LEN as u64)
         .checked_mul(u64::from(operation_count))
         .ok_or_else(|| {
             color_filter_operation_byte_len_error(
@@ -244,7 +277,7 @@ fn checked_color_filter_operation_byte_len(
                 "must produce a checked u64 record byte length",
             )
         })?;
-    let byte_len = COLOR_FILTER_OPERATION_HEADER_BYTE_LEN
+    let byte_len = (COLOR_FILTER_OPERATION_HEADER_BYTE_LEN as u64)
         .checked_add(records)
         .ok_or_else(|| {
             color_filter_operation_byte_len_error(
@@ -261,7 +294,9 @@ fn checked_color_filter_operation_byte_len(
     Ok(byte_len)
 }
 
-fn serialize_color_filter_operation(operation: RuntimeColorOperation) -> Result<[u8; 32]> {
+fn serialize_color_filter_operation(
+    operation: RuntimeColorOperation,
+) -> Result<ColorFilterOperationRecord> {
     if operation.clamp_boundary()
         != RuntimeColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply
     {
@@ -316,7 +351,7 @@ fn serialize_color_filter_operation(operation: RuntimeColorOperation) -> Result<
         ),
     };
 
-    let mut bytes = [0_u8; 32];
+    let mut bytes = [0_u8; COLOR_FILTER_OPERATION_RECORD_BYTE_LEN];
     bytes[0..4].copy_from_slice(&tag.to_le_bytes());
     bytes[4..8].copy_from_slice(&zero.to_le_bytes());
     bytes[8..12].copy_from_slice(&exponent.to_le_bytes());
@@ -1022,10 +1057,196 @@ mod surface_grid_parameter_tests {
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
+    use crate::accounting::{FrameFixture, RendererCpu};
+    use crate::filter::RuntimeUnitFilterAmount;
     use crate::{
-        GlyphRunLimits, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-        RenderAttemptStatus, RenderLimits,
+        GlyphRunLimits, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptKind, RenderAttemptStatus, RenderChangeKind, RenderCpuEvent, RenderCpuScope,
+        RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
+        RenderRefusal, RenderRefusalReason, UnitFilterAmount,
     };
+
+    fn ordered_color_operations() -> [RuntimeColorOperation; 2] {
+        let unit = |value| {
+            RuntimeUnitFilterAmount::try_from_algorithm(UnitFilterAmount::try_new(value).unwrap())
+                .unwrap()
+        };
+        [
+            RuntimeColorOperation::for_test(RuntimeColorOperationKind::Invert(unit(0.25))),
+            RuntimeColorOperation::for_test(RuntimeColorOperationKind::Opacity(unit(0.75))),
+        ]
+    }
+
+    #[test]
+    fn color_filter_serialization_writes_exact_header_and_ordered_records() {
+        // WGSL wire words in little-endian order: count and header padding,
+        // then tag, zero flag, exponent, alignment and four payload words.
+        const EMPTY: [u32; 4] = [0, 0, 0, 0];
+        const ONE: [u32; 12] = [1, 0, 0, 0, 4, 0, 0, 0, 0x3e80_0000, 0, 0, 0];
+        const TWO: [u32; 20] = [
+            2,
+            0,
+            0,
+            0,
+            4,
+            0,
+            0,
+            0,
+            0x3e80_0000,
+            0,
+            0,
+            0,
+            5,
+            0,
+            0,
+            0,
+            0x3f40_0000,
+            0,
+            0,
+            0,
+        ];
+        let operations = ordered_color_operations();
+        let account = Account::for_test();
+        for (source, expected) in [
+            (&operations[..0], EMPTY.as_slice()),
+            (&operations[..1], ONE.as_slice()),
+            (operations.as_slice(), TWO.as_slice()),
+        ] {
+            let bytes = ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+                &account,
+                source,
+                ColorFilterOperationBufferLimits::for_test(80, 80),
+            )
+            .unwrap();
+            let expected = expected
+                .iter()
+                .flat_map(|word| word.to_le_bytes())
+                .collect::<Vec<_>>();
+            assert_eq!(bytes.as_bytes(), expected, "{} records", source.len());
+        }
+    }
+
+    #[test]
+    fn color_filter_serialization_respects_exact_work_prefix_and_backing_custody() {
+        use RenderWork::{FilterOperationVisits, SerializedBytes};
+
+        let operations = ordered_color_operations();
+        let phase = RenderPhase::GpuPrepare;
+        let retained = RenderResource::RetainedCpuBytes;
+        let owner_scope = RenderCpuScope::FrameBacking;
+        // The header admits 16 bytes. Each operation admits one visit before
+        // its 32 bytes. The refusal tuple is (current usage, requested work).
+        for (work, limit, bytes, visits, refusal) in [
+            (SerializedBytes, 15, 0, 0, Some((0, 16))),
+            (SerializedBytes, 16, 16, 1, Some((16, 32))),
+            (SerializedBytes, 48, 48, 2, Some((48, 32))),
+            (SerializedBytes, 80, 80, 2, None),
+            (FilterOperationVisits, 0, 16, 0, Some((0, 1))),
+            (FilterOperationVisits, 1, 48, 1, Some((1, 1))),
+            (FilterOperationVisits, 2, 80, 2, None),
+        ] {
+            let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
+            let options = RenderAccountingOptions::new()
+                .with_limits(limits)
+                .with_profile(RenderProfile::Detailed {
+                    timing: false,
+                    event_limit: 64,
+                    filter: RenderPhaseFilter::All,
+                });
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let account = attempt.account().at(phase);
+                    account.phase(phase, || {
+                        ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+                            &account,
+                            &operations,
+                            ColorFilterOperationBufferLimits::for_test(80, 80),
+                        )
+                    })
+                })
+                .unwrap()
+                .into_parts();
+            assert!(started);
+            assert_eq!(fault, None);
+
+            let attempt = report.attempt().unwrap();
+            let usage = attempt.phase_usage(phase);
+            assert_eq!(usage.work(SerializedBytes), bytes, "{work:?} cap {limit}");
+            assert_eq!(
+                usage.work(FilterOperationVisits),
+                visits,
+                "{work:?} cap {limit}"
+            );
+
+            let cpu_interval = report.renderer_cpu().unwrap();
+            let backing = cpu_interval.scope_usage(owner_scope);
+            let opening = backing.opening_live(retained);
+            let changes = cpu_interval.events().filter_map(|event| match event {
+                RenderCpuEvent::Change {
+                    scope,
+                    quantity: RenderQuantity::Resource(resource),
+                    amount,
+                    kind,
+                    ..
+                } if scope == owner_scope && resource == retained => Some((kind, amount)),
+                _ => None,
+            });
+            let changes = changes.collect::<Vec<_>>();
+            if let Some((current, amount)) = refusal {
+                let refusal = RenderRefusal {
+                    phase: RenderPhase::Attempt,
+                    quantity: RenderQuantity::Work(work),
+                    current,
+                    amount,
+                    reason: RenderRefusalReason::Limit { limit },
+                };
+                let diagnostic = Some(RenderAccountingError::Refused(refusal));
+                assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+                assert_eq!(attempt.refusal(), Some(refusal));
+                assert_eq!(report.accounting_diagnostic(), diagnostic);
+                assert_eq!(result.unwrap_err().accounting_diagnostic(), diagnostic);
+                assert!(attempt.events().any(|event| matches!(
+                    event,
+                    RenderEvent::Refused { phase: origin, .. } if origin == phase
+                )));
+                let allocated = backing.peak(retained) - opening;
+                assert!(allocated >= 80);
+                assert_eq!(backing.live(retained), opening);
+                assert_eq!(
+                    changes,
+                    [
+                        (RenderChangeKind::Acquire, allocated),
+                        (RenderChangeKind::Release, allocated),
+                    ]
+                );
+            } else {
+                assert_eq!(attempt.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(attempt.refusal(), None);
+                let bytes = result.unwrap();
+                assert_eq!(bytes.as_bytes().len(), 80);
+                let capacity = bytes.bytes.capacity() as u64;
+                let owner = SharedValue::<Vec<u8>>::allocation_size_for_test() as u64;
+                assert_eq!(backing.live(retained), opening + capacity + owner);
+                assert_eq!(backing.peak(retained), backing.live(retained));
+                assert_eq!(
+                    changes,
+                    [
+                        (RenderChangeKind::Acquire, capacity),
+                        (RenderChangeKind::Acquire, owner),
+                    ]
+                );
+                drop(bytes);
+            }
+
+            let after = cpu.snapshot().unwrap();
+            assert_eq!(
+                after.scope_usage(owner_scope).unwrap().live(retained),
+                opening
+            );
+            assert_eq!(after.fault(), None);
+        }
+    }
 
     #[test]
     fn exact_color_records_preserve_content_and_charge_only_reached_comparisons() {

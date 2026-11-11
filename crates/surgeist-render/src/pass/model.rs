@@ -194,6 +194,14 @@ pub(crate) struct RuntimeColorOperation {
 }
 
 impl RuntimeColorOperation {
+    #[cfg(test)]
+    pub(crate) const fn for_test(operation: RuntimeColorOperationKind) -> Self {
+        Self {
+            operation,
+            clamp_boundary: RuntimeColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply,
+        }
+    }
+
     #[must_use]
     pub(crate) const fn operation(self) -> RuntimeColorOperationKind {
         self.operation
