@@ -264,6 +264,37 @@ pub(super) fn window_resolves_the_inherited_event_target_operations() {
             || Reflect.setPrototypeOf(window, {})) {
             return "Window must inherit EventTarget through its immutable global prototype";
         }
+        const descriptor = Object.getOwnPropertyDescriptor(window, "Window");
+        const prototype = Object.getOwnPropertyDescriptor(Window, "prototype");
+        if (!descriptor.writable || descriptor.enumerable || !descriptor.configurable
+            || prototype.writable || prototype.enumerable || prototype.configurable
+            || Window.prototype.constructor !== Window || Window.name !== "Window"
+            || Window.length !== 0 || Object.prototype.toString.call(window) !== "[object Window]") {
+            return "Window must expose the standard interface descriptors";
+        }
+        let prototypeReads = 0;
+        const newTarget = new Proxy(function () {}, {
+            get(target, key) {
+                if (key === "prototype") prototypeReads++;
+                return Reflect.get(target, key);
+            }
+        });
+        for (const invoke of [() => Window(), () => new Window(),
+            () => Reflect.construct(Window, [], newTarget)]) {
+            let refused = false;
+            try { invoke(); } catch (error) { refused = error instanceof TypeError; }
+            if (!refused) return "Window must reject direct calls and construction";
+        }
+        if (prototypeReads !== 0) return "Window must refuse before reading NewTarget.prototype";
+        const names = Object.getPrototypeOf(Window.prototype);
+        if (Object.getPrototypeOf(names) !== target || Object.hasOwn(names, "constructor")
+            || Object.prototype.toString.call(names) !== "[object WindowProperties]"
+            || Reflect.setPrototypeOf(Window.prototype, {}) || Reflect.setPrototypeOf(target, {})
+            || Reflect.setPrototypeOf(names, {}) || Reflect.preventExtensions(names)
+            || Reflect.defineProperty(names, "absent", { value: 1 })
+            || Reflect.deleteProperty(names, "absent")) {
+            return "the Window named-properties layer must preserve standard reflection";
+        }
         for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
             if (Object.hasOwn(window, key) || window[key] !== target[key]) {
                 return "Window must resolve the original inherited EventTarget operations";
