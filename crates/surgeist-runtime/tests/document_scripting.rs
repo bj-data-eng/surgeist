@@ -976,6 +976,128 @@ fn stopped_session_reattaches_with_a_new_scripting_basis() {
     let _session = replacement.stop().into_session().unwrap();
 }
 
+fn enable_at_host_work(
+    work: u64,
+    child_count: &[u16],
+    detach: &[u16],
+) -> Result<DocumentScriptHost, DocumentScriptError> {
+    let (mut session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let stamp = session.snapshot().stamp();
+    let mut hosted = session.hosted_execution();
+    let mut policy = limits().hosted;
+    policy.work = work;
+    hosted
+        .set_limits(&mut session.dom(), policy, &cancellation)
+        .map_err(DocumentScriptNativeError::from)?;
+    let prepared = PreparedDocumentScriptHost::prepare(session, STORAGE, cancellation)
+        .map_err(|failure| failure.error)?;
+    match prepared.enable(
+        top,
+        ALLOW,
+        DocumentScriptHooks {
+            child_count,
+            detach_source_node_if: detach,
+        },
+    ) {
+        Ok(host) => Ok(host),
+        Err(failure) => {
+            let snapshot = failure.owner.into_session().unwrap().snapshot();
+            assert_eq!(snapshot.stamp(), stamp);
+            assert_eq!(
+                snapshot.document(top.document()).unwrap().scripting(),
+                HtmlScriptingStatus::Disabled
+            );
+            Err(failure.error)
+        }
+    }
+}
+
+fn hook_work_refused(result: Result<DocumentScriptHost, DocumentScriptError>) -> bool {
+    match result {
+        Ok(_) => false,
+        Err(DocumentScriptError::Native(DocumentScriptNativeError::Hosted(
+            DomHostedRuntimeError::Admission,
+        ))) => true,
+        Err(error) => panic!("unexpected hook setup result: {error:?}"),
+    }
+}
+
+fn verify_hook_keys(mut host: DocumentScriptHost, child: &[u16], detach: &[u16]) {
+    use std::fmt::Write as _;
+
+    fn literal(units: &[u16]) -> String {
+        let mut text = String::new();
+        text.push('"');
+        for unit in units {
+            write!(text, r"\u{unit:04x}").unwrap();
+        }
+        text.push('"');
+        text
+    }
+
+    // The exact enable allowance is spent. Raise the same native owner's work
+    // before entering V8. JS escapes read the authored keys independently of
+    // the bindings' PropertyKey::String path that installed them.
+    host.with_native(|dom, mut hosted, _| hosted.set_limits(dom, limits().hosted, &cancel()))
+        .unwrap()
+        .unwrap();
+    host.in_document(&host.permit().unwrap(), |scope| {
+        assert_script_number(scope, &format!("globalThis[{}]()", literal(child)), 1.0)?;
+        let inspect = format!("typeof globalThis[{}] === 'function'", literal(detach));
+        let result = scope.evaluate(&inspect.encode_utf16().collect::<Vec<_>>())?;
+        assert!(scope.boolean(&result)?);
+        Ok(())
+    })
+    .unwrap();
+}
+
+fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
+    let mut refused = 0;
+    let mut baseline = limits().hosted.work;
+    let ascii = [u16::from(b'r'), u16::from(b'1')];
+    let lone = [0xd800, 0];
+    assert!(!hook_work_refused(enable_at_host_work(
+        baseline, &ascii, &lone
+    )));
+    while baseline - refused > 1 {
+        let probe = refused + (baseline - refused) / 2;
+        if hook_work_refused(enable_at_host_work(probe, &ascii, &lone)) {
+            refused = probe;
+        } else {
+            baseline = probe;
+        }
+    }
+    // Equal-length independent keys control for V8 representation, including
+    // NUL and isolated surrogates. Only the authored UTF-16 extent varies.
+    let other_ascii = [u16::from(b'r'), u16::from(b'2')];
+    let other_lone = [0, 0xdc00];
+    verify_hook_keys(
+        enable_at_host_work(baseline, &other_lone, &other_ascii).unwrap(),
+        &other_lone,
+        &other_ascii,
+    );
+    assert!(hook_work_refused(enable_at_host_work(
+        baseline - 1,
+        &other_lone,
+        &other_ascii
+    )));
+
+    let child = [0xd800, 0, u16::from(b'a'), 0xdc00, u16::from(b'r')].repeat(7);
+    let detach = [u16::from(b'd'), u16::from(b'e'), u16::from(b't')].repeat(11);
+    let exact =
+        baseline + u64::try_from(child.len() + detach.len() - ascii.len() - lone.len()).unwrap();
+    verify_hook_keys(
+        enable_at_host_work(exact, &child, &detach).unwrap(),
+        &child,
+        &detach,
+    );
+    assert!(
+        hook_work_refused(enable_at_host_work(exact - 1, &child, &detach)),
+        "one UTF-16 unit short must refuse the authored hook keys"
+    );
+}
+
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
@@ -986,6 +1108,7 @@ fn main() {
             }
             "conversion-revocation" => source_events::run(),
             "creation-realms" => source_events::run_creation_realms(),
+            "hook-utf16-work" => explicit_hook_keys_require_each_authored_utf16_work_unit(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);
@@ -1004,6 +1127,7 @@ fn main() {
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();
     failed_enable_preserves_original_owner();
+    explicit_hook_keys_require_each_authored_utf16_work_unit();
     let expired_permit = native_read_snapshot_and_explicit_queue();
     stopped_host_captures_known_no_engine();
     stopped_host_rejects_the_last_live_observation();

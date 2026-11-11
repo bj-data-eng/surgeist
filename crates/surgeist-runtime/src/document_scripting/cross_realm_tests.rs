@@ -1,16 +1,18 @@
 use super::*;
 use crate::{
-    DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchLimits, DomEventDispatcher,
-    DomEventListenerOptions, DomEventRegistryLimits, DomEventType, DomHostedRuntimeLimits,
-    DomHostedTaskProgress, DomSessionLimits, DomSourceDriveProgress, DomSourceEventRuntimeLimits,
-    DomSourceEventServiceLimits, DomSourceEventServiceProgress, DomSourceExecutionScope,
-    DomSourceServices, DomSourceUnavailable, DomStyleRuntimeLimits,
+    DomElementTaskRuntimeLimits, DomEventCallback, DomEventDispatchError, DomEventDispatchLimits,
+    DomEventDispatcher, DomEventHostError, DomEventListenerOptions, DomEventRegistryLimits,
+    DomEventType, DomHostedRuntimeLimits, DomHostedTaskProgress, DomSessionLimits,
+    DomShutdownOutcome, DomSourceDriveProgress, DomSourceEventRuntimeError,
+    DomSourceEventRuntimeLimits, DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+    DomSourceExecutionScope, DomSourceRuntimeError, DomSourceServices, DomSourceUnavailable,
+    DomStyleRuntimeLimits,
 };
 use surgeist_bindings_js::{Root, Value};
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::{
     Dom, DomBatch, DomDispatchCustodyLimits, DomHostedLimits, DomHostedRecordLimits, DomLimits,
-    DomNameLimits, DomSourceEdit, DomSourceLimits, DomSourceRequest, NodeId,
+    DomNameLimits, DomSourceEdit, DomSourceEventRequest, DomSourceLimits, DomSourceRequest, NodeId,
 };
 use surgeist_html::values::Namespace;
 
@@ -184,6 +186,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     );
     drop(session);
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
+    rejected_comment_requires_each_diagnostic_utf16_work_unit();
 }
 
 fn enable(
@@ -231,6 +234,22 @@ struct Projection {
 
 impl Projection {
     fn expose(&mut self, handler: &str, cancel: &AtomicBool) {
+        let (request, ()) = self.invoke(handler, SOURCE, cancel, |outcome| {
+            assert!(
+                matches!(outcome, DocumentScriptGuestResult::Returned),
+                "{outcome:?}"
+            );
+        });
+        self.finish(&request, cancel);
+    }
+
+    fn invoke<T>(
+        &mut self,
+        handler: &str,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+        observe: impl FnOnce(&DocumentScriptGuestResult) -> T,
+    ) -> (DomSourceEventRequest, T) {
         let handler: Root = self
             .host
             .in_document(&self.permit, |scope| {
@@ -263,7 +282,7 @@ impl Projection {
                     .apply(
                         dom,
                         DomSourceEdit::close_dialog(self.dialog, None),
-                        SOURCE,
+                        limits,
                         &mut services,
                         cancel,
                     )
@@ -278,26 +297,33 @@ impl Projection {
                 request
             })
             .unwrap();
+        let progress = self
+            .host
+            .select_source_event(
+                &self.permit,
+                &request,
+                &mut self.dispatcher,
+                &mut (),
+                DomSourceEventServiceLimits {
+                    source: limits,
+                    ..EVENT
+                },
+            )
+            .unwrap();
+        let DocumentScriptEventProgress::Selected(selected) = progress else {
+            panic!("actual native listener must be selected");
+        };
+        let mut report = selected.invoke(&handler, self.comment, limits);
+        let outcome = observe(report.outcome());
+        report.report(&self.dispatcher).unwrap();
+        (request, outcome)
+    }
+
+    fn finish(&mut self, request: &DomSourceEventRequest, cancel: &AtomicBool) {
         {
             let progress = self
                 .host
-                .select_source_event(&self.permit, &request, &mut self.dispatcher, &mut (), EVENT)
-                .unwrap();
-            let DocumentScriptEventProgress::Selected(selected) = progress else {
-                panic!("actual native listener must be selected");
-            };
-            let mut report = selected.invoke(&handler, self.comment, SOURCE);
-            assert!(
-                matches!(report.outcome(), DocumentScriptGuestResult::Returned),
-                "{:?}",
-                report.outcome()
-            );
-            report.report(&self.dispatcher).unwrap();
-        }
-        {
-            let progress = self
-                .host
-                .select_source_event(&self.permit, &request, &mut self.dispatcher, &mut (), EVENT)
+                .select_source_event(&self.permit, request, &mut self.dispatcher, &mut (), EVENT)
                 .unwrap();
             let DocumentScriptEventProgress::Native(DomSourceEventServiceProgress::Serviced {
                 receipt,
@@ -307,6 +333,12 @@ impl Projection {
             };
             assert!(receipt.failures().is_empty());
         }
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: Some(&self.execution),
+            style_policy: &mut |_| None,
+            url: None,
+        };
         self.host
             .with_native(|dom, _, mut source| {
                 let progress = source
@@ -642,4 +674,182 @@ fn projected_comment_custody_outlives_collection_and_the_origin_realm_token() {
             Ok(())
         })
         .unwrap();
+}
+
+fn install_brand_work_control(
+    projection: &mut Projection,
+    work: u64,
+    remaining: u64,
+) -> Rc<Cell<(usize, usize)>> {
+    let native = Rc::downgrade(&projection.host.native);
+    let hits = Rc::new(Cell::new((0, 0)));
+    let witness = hits.clone();
+    projection
+        .host
+        .in_document(&projection.permit, |scope| {
+            let burn = Callback::new(move |_, _| {
+                let native = native.upgrade().unwrap();
+                let active = native.active_source().unwrap();
+                let mut session = native.session.borrow_mut();
+                let dom = session.dom();
+                let status = dom.pending_source_edit().unwrap();
+                assert_eq!(status.operation(), active.request().operation());
+                assert!(status.spent_work() < work - remaining);
+                for _ in status.spent_work()..work - remaining {
+                    dom.raw()
+                        .source_event_step(active.request(), &native.cancellation)
+                        .unwrap();
+                }
+                Ok(Completion::Undefined)
+            });
+            let mark = Callback::new(move |scope, args| {
+                let (diagnostic, coercion) = witness.get();
+                witness.set(if scope.boolean(args.get(0).unwrap())? {
+                    (diagnostic + 1, coercion)
+                } else {
+                    (diagnostic, coercion + 1)
+                });
+                Ok(Completion::Undefined)
+            });
+            let global = scope.global()?;
+            for (name, callback) in [("limitBrandWork", burn), ("recordBrandResult", mark)] {
+                let function = scope.function(&callback)?;
+                scope.set(
+                    &global,
+                    PropertyKey::String(&name.encode_utf16().collect::<Vec<_>>()),
+                    &function,
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    hits
+}
+
+fn rejected_comment_requires_each_diagnostic_utf16_work_unit() {
+    const LIMIT: DomSourceLimits =
+        DomSourceLimits::new(32_000_000, 1_000_000, 8_192, 128, 4096, 4096, 8);
+    const MESSAGE: &str = "Delegated Comment required";
+    const HANDLER: &str = "(comment) => {
+        const forged = Object.create(Object.getPrototypeOf(comment));
+        limitBrandWork();
+        try {
+            detachIf({ valueOf() { recordBrandResult(false); return 1; } }, forged);
+        } catch (error) {
+            if (!(error instanceof TypeError) || error.message !== 'Delegated Comment required')
+                throw error;
+            recordBrandResult(true);
+            return;
+        }
+        throw Error('forged Comment accepted');
+    }";
+    // The existing entry spends one step. The diagnostic's authored UTF-16
+    // code units each need a step before the V8 TypeError can be allocated.
+    let exact = 1 + u64::try_from(MESSAGE.encode_utf16().count()).unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    for remaining in [exact, exact - 1] {
+        let (mut projection, _) = native_projection(cancel.clone());
+        let hits = install_brand_work_control(&mut projection, LIMIT.work(), remaining);
+        let (request, failure) = projection.invoke(HANDLER, LIMIT, &cancel, |outcome| {
+            if remaining == exact {
+                assert!(
+                    matches!(outcome, DocumentScriptGuestResult::Returned),
+                    "{outcome:?}"
+                );
+                return None;
+            }
+            let DocumentScriptGuestResult::Refused(Error::HostFailure(failure)) = outcome else {
+                panic!("one diagnostic UTF-16 unit short must refuse before throwing: {outcome:?}");
+            };
+            let cause = failure.cause::<DocumentScriptNativeError>().unwrap();
+            assert!(
+                matches!(
+                    cause,
+                    DocumentScriptNativeError::Dom(DomError::SourceWorkLimit { limit })
+                        if *limit == LIMIT.work()
+                ),
+                "{cause:?}"
+            );
+            Some(failure.clone())
+        });
+        assert_eq!(hits.get(), (usize::from(remaining == exact), 0));
+        assert!(projection.host.native.active_source().is_none());
+        let document = projection.permit.document();
+        assert_eq!(projection.parent(), Some(document.node()));
+        projection
+            .host
+            .with_native(|dom, _, _| {
+                assert_eq!(
+                    dom.pending_source_edit().unwrap().operation(),
+                    request.operation()
+                );
+                dom.raw_mut()
+                    .raise_source_event_limits(&request, SOURCE, &cancel)
+                    .unwrap();
+            })
+            .unwrap();
+
+        if let Some(failure) = failure {
+            let Err(DocumentScriptError::Script(Error::HostFailure(checkpoint))) =
+                projection.host.checkpoint()
+            else {
+                panic!("the original sticky refusal must survive cleanup");
+            };
+            assert!(std::ptr::eq(
+                failure.cause::<DocumentScriptNativeError>().unwrap(),
+                checkpoint.cause::<DocumentScriptNativeError>().unwrap(),
+            ));
+            assert_eq!(projection.host.engine.as_ref().unwrap().comments.len(), 0);
+            projection
+                .host
+                .with_native(|dom, _, source| {
+                    assert!(matches!(
+                        source.service_event(
+                            dom,
+                            &request,
+                            &mut projection.dispatcher,
+                            &mut (),
+                            EVENT,
+                            &cancel
+                        ),
+                        Err(DomSourceRuntimeError::SourceEvent(
+                            DomSourceEventRuntimeError::Dispatch(
+                                DomEventDispatchError::HostRefused(DomEventHostError { code: 77 })
+                            )
+                        ))
+                    ));
+                    assert_eq!(
+                        dom.pending_source_edit().unwrap().operation(),
+                        request.operation()
+                    );
+                    assert!(
+                        dom.snapshot()
+                            .node(projection.dialog)
+                            .unwrap()
+                            .attribute(&"open".into())
+                            .is_some()
+                    );
+                })
+                .unwrap();
+            drop(failure);
+            drop(checkpoint);
+            let mut session = projection.host.stop().into_session().unwrap();
+            assert_eq!(
+                session.snapshot().document(document).unwrap().scripting(),
+                HtmlScriptingStatus::Disabled
+            );
+            assert_eq!(
+                session.dom().pending_source_edit().unwrap().operation(),
+                request.operation()
+            );
+            assert_eq!(Rc::strong_count(&hits), 1);
+            assert!(matches!(
+                session.try_shutdown(),
+                DomShutdownOutcome::Pending { .. }
+            ));
+        } else {
+            projection.finish(&request, &cancel);
+            assert_eq!(projection.parent(), Some(document.node()));
+        }
+    }
 }
