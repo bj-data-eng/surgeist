@@ -237,7 +237,8 @@ impl Execution<'_> {
 
     /// Bind the installed EventTarget constructor to the Window interface.
     /// The installer receives the reserved EventTarget prototype and must
-    /// return its constructor. A failed installation drops the pending realm.
+    /// return the same-realm constructor it installed on the global. A failed
+    /// installation does not yield a realm capability.
     pub fn finish_window_realm<T, E: From<Error>>(
         &mut self,
         pending: PendingWindowRealm,
@@ -254,9 +255,21 @@ impl Execution<'_> {
                 Ok(result) => result,
                 Err(error) => return Ok(Err(error)),
             };
+            if !scope.operations.is_constructor(&parent.root)?
+                || scope
+                    .callback_object(&parent)?
+                    .associated_realm()
+                    .identity()
+                    != scope.realm_authority()?.identity()
+            {
+                return Err(Error::PropertyRejected);
+            }
+            let global = scope.global()?;
+            let installed =
+                scope.get(&global, PropertyKey::String(&b"EventTarget".map(u16::from)))?;
             let prototype_key = &b"prototype".map(u16::from);
             let parent_prototype = scope.get(&parent, PropertyKey::String(prototype_key))?;
-            if !scope.is_callable(&parent)?
+            if !scope.strict_equals(&installed, &parent)?
                 || !scope.strict_equals(&parent_prototype, &prototype)?
             {
                 return Err(Error::PropertyRejected);
@@ -294,7 +307,6 @@ impl Execution<'_> {
                     configurable: true,
                 },
             )?;
-            let global = scope.global()?;
             scope.define_new_property(
                 &global,
                 PropertyKey::String(name),

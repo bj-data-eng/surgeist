@@ -958,6 +958,18 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
+    fn is_constructor(&mut self, value: &Root) -> Result<bool, Error> {
+        self.validate_root(value)?;
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let value = roots.local(scope, value)?;
+                Ok(v8::Local::<v8::Object>::try_from(value)
+                    .is_ok_and(|object| object.is_constructor()))
+            },
+        )
+    }
+
     fn callback_object_realm(&mut self, value: &Root) -> Result<RealmKey, Error> {
         self.observe_callback_object(value)
     }
