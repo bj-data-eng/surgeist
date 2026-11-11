@@ -545,3 +545,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "qualify-root-context/font_inheritance_tests.rs"]
+mod font_inheritance_tests;

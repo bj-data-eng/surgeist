@@ -1929,25 +1929,6 @@ impl WireNode {
             viewport.validate(context)?;
         }
         prepare_control_expectations(&writing_mode, &mut children, context)?;
-        if let Some(capture) = &self.grid_alignment_reference {
-            attrs.extend([
-                ("font-family", capture.font.family.clone()),
-                ("font-size", format!("{}px", number(capture.font.size))),
-            ]);
-        }
-        if let Some(capture) = &self.atomic_paragraph_metrics {
-            // validate_wire bound these exact font facts to the paragraph and
-            // all three actual occurrences. Default compression must not erase
-            // authority required by the independent certificate reader.
-            let font_attrs = [
-                ("font-family", capture.font.family.clone()),
-                ("font-size", format!("{}px", number(capture.font.size))),
-            ];
-            attrs.extend(font_attrs.clone());
-            for child in &mut children {
-                child.attrs.extend(font_attrs.clone());
-            }
-        }
         Ok(Node {
             kind,
             prepared_paragraph,

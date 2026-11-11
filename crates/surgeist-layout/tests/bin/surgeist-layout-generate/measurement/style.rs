@@ -1428,6 +1428,7 @@ impl Style {
             self.vertical_align.clone(),
             Some("baseline"),
         );
+        // Omitted typography is inherited by the Native reader.
         if let Some(family) = &self.font_family {
             let family = family.replace('"', "");
             let primary = family
@@ -1437,20 +1438,20 @@ impl Style {
                 .trim()
                 .to_ascii_lowercase();
             if matches!(primary.as_str(), "ahem" | "monospace") {
-                add(&mut attrs, "font-family", Some(primary), Some("ahem"));
+                add(&mut attrs, "font-family", Some(primary), None);
             }
         }
         add(
             &mut attrs,
             "font-size",
             optional_dimension(self.font_size.as_ref(), context, "style.fontSize")?,
-            Some("10px"),
+            None,
         );
         add(
             &mut attrs,
             "line-height",
             optional_dimension(self.line_height.as_ref(), context, "style.lineHeight")?,
-            Some("10px"),
+            None,
         );
         if let Some(metrics) = &self.inline_metrics {
             nonnegative(metrics.baseline, context, "style.inlineMetrics.baseline")?;
