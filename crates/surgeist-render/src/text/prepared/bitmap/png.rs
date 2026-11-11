@@ -322,8 +322,16 @@ mod tests {
     }
 
     fn image(stream: &[u8], split: bool) -> Vec<u8> {
+        image_with_height(stream, split, 2)
+    }
+
+    fn image_with_height(stream: &[u8], split: bool, height: u8) -> Vec<u8> {
         let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
-        append(&mut out, b"IHDR", &[0, 0, 0, 2, 0, 0, 0, 2, 8, 6, 0, 0, 0]);
+        append(
+            &mut out,
+            b"IHDR",
+            &[0, 0, 0, 2, 0, 0, 0, height, 8, 6, 0, 0, 0],
+        );
         if split {
             append(&mut out, b"IDAT", &stream[..3]);
             append(&mut out, b"IDAT", &[]);
@@ -391,6 +399,69 @@ mod tests {
                 })
             },
         )
+    }
+
+    #[test]
+    fn mixed_scanlines_preserve_pixels_and_the_accepted_work_prefix() {
+        use crate::{RenderAccountingOptions, RenderLimits};
+
+        let filtered = [
+            1, 10, 20, 30, 255, 30, 30, 30, 0, 2, 40, 40, 40, 0, 40, 40, 40, 0, 4, 50, 50, 50, 0,
+            30, 30, 30, 0,
+        ];
+        let expected = [
+            10, 20, 30, 255, 40, 50, 60, 255, 50, 60, 70, 255, 80, 90, 100, 255, 100, 110, 120,
+            255, 130, 140, 150, 255,
+        ];
+        for (split, exact) in [(false, 150), (true, 166)] {
+            let bytes = image_with_height(&zlib(&filtered), split, 3);
+            let mut malformed = filtered;
+            malformed[18] = 5;
+            let malformed = image_with_height(&zlib(&malformed), split, 3);
+            for limit in [exact - 1, exact] {
+                let mut context = RenderAccountingContext::new(
+                    RenderAccountingOptions::new().with_limits(
+                        RenderLimits::new()
+                            .with_work_limit(RenderWork::PngByteVisits, limit)
+                            .unwrap(),
+                    ),
+                );
+
+                let error = decode_in(&malformed, 1 << 20, &mut context).err().unwrap();
+                assert_eq!(
+                    error.glyph_preparation_diagnostic(),
+                    Some(&GlyphPreparationError::InvalidFont)
+                );
+                // The third tag refuses before visiting its eight payload bytes.
+                assert_scanline_usage(&context, exact - 8);
+
+                let result = decode_in(&bytes, 1 << 20, &mut context);
+                if limit == exact {
+                    let decoded = result.ok().unwrap();
+                    assert_eq!((decoded.width, decoded.height), (2, 3));
+                    assert_eq!(decoded.pixels, expected);
+                } else {
+                    assert!(result.err().unwrap().accounting_diagnostic().is_some());
+                }
+                assert_scanline_usage(&context, limit);
+
+                let smaller = image(&zlib(&FILTERED[0]), split);
+                assert_eq!(
+                    decode_in(&smaller, 1 << 20, &mut context).unwrap().pixels,
+                    PIXELS
+                );
+            }
+        }
+    }
+
+    fn assert_scanline_usage(context: &RenderAccountingContext, expected_visits: u64) {
+        let terminal = context.last_attempt().unwrap();
+        assert_eq!(terminal.cleanup_fault(), None);
+        let usage = terminal.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PngByteVisits), expected_visits);
+        assert!(usage.peak(RenderResource::ScratchCpuBytes) > 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
     #[test]
