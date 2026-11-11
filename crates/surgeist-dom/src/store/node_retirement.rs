@@ -78,7 +78,7 @@ impl<'a> OrdinaryAdmission<'a> {
 
 struct Queue {
     open: bool,
-    head: Option<Box<Notice>>,
+    head: Option<RetainedNotice>,
     _backing: Debit,
 }
 
@@ -95,7 +95,7 @@ impl DomNodeRetirementInbox {
     pub fn take(&mut self) -> Option<DomNodeRetirementNotice> {
         let mut queue = lock(&self.queue);
         let mut notice = queue.head.take()?;
-        queue.head = notice.next.take();
+        queue.head = notice.allocation.next.take();
         Some(DomNodeRetirementNotice(notice))
     }
 }
@@ -109,22 +109,27 @@ impl Drop for DomNodeRetirementInbox {
 
 /// A committed destruction of the exact watched generation. This notice
 /// conveys no access or execution authority.
-pub struct DomNodeRetirementNotice(Box<Notice>);
+pub struct DomNodeRetirementNotice(RetainedNotice);
+
+struct RetainedNotice {
+    // Drop the allocation before returning its retained bytes.
+    allocation: Box<Notice>,
+    _backing: Debit,
+}
 
 struct Notice {
     node: NodeId,
     custody_key: usize,
-    next: Option<Box<Notice>>,
-    _backing: Debit,
+    next: Option<RetainedNotice>,
 }
 
 impl DomNodeRetirementNotice {
     pub const fn node(&self) -> NodeId {
-        self.0.node
+        self.0.allocation.node
     }
 
     pub const fn custody_key(&self) -> usize {
-        self.0.custody_key
+        self.0.allocation.custody_key
     }
 }
 
@@ -148,7 +153,7 @@ impl DomWatchedCreation {
 }
 
 struct Armed {
-    notice: Box<Notice>,
+    notice: RetainedNotice,
     queue: Arc<Mutex<Queue>>,
     backing: Debit,
 }
@@ -284,7 +289,7 @@ impl Row {
                 let index = side(node.slot, branch.bit);
                 let removed = Self::disarm(&mut branch.children[index], node, slot);
                 if removed.is_some() && branch.children[index].is_none() {
-                    *root = branch.children[1 - index].take();
+                    Self::prune_branch(root, index);
                 }
                 removed
             }
@@ -306,11 +311,22 @@ impl Row {
                 let index = side(node.slot, branch.bit);
                 let removed = Self::take_node(&mut branch.children[index], node);
                 if removed.is_some() && branch.children[index].is_none() {
-                    *root = branch.children[1 - index].take();
+                    Self::prune_branch(root, index);
                 }
                 removed
             }
         }
+    }
+
+    fn prune_branch(root: &mut Option<Self>, vacant: usize) {
+        let mut branch = match root.take() {
+            Some(Self::Branch(allocation)) => *allocation,
+            other => {
+                *root = other;
+                return;
+            }
+        };
+        *root = branch.children[1 - vacant].take();
     }
 
     fn collapse_pair(root: &mut Option<Self>, remove_retiring: bool) -> Option<Watches> {
@@ -494,7 +510,7 @@ impl WatchAdmission<'_> {
         }
     }
 
-    fn form(&self, extra: usize) -> Result<(Box<Armed>, Reserved), DomError> {
+    fn form(&self, extra: usize) -> Result<(Armed, Reserved), DomError> {
         let leaf = size_of::<Armed>();
         let notice = size_of::<Notice>();
         let bytes = leaf
@@ -513,17 +529,20 @@ impl WatchAdmission<'_> {
             }
         };
         let backing = retained.take(leaf)?;
-        let notice = Box::new(Notice {
-            node: self.node,
-            custody_key: self.custody_key,
-            next: None,
-            _backing: retained.take(notice)?,
-        });
-        let armed = Box::new(Armed {
+        let notice_backing = retained.take(notice)?;
+        let notice = RetainedNotice {
+            allocation: Box::new(Notice {
+                node: self.node,
+                custody_key: self.custody_key,
+                next: None,
+            }),
+            _backing: notice_backing,
+        };
+        let armed = Armed {
             notice,
             queue: self.inbox.queue.clone(),
             backing,
-        });
+        };
         Ok((armed, retained))
     }
 
@@ -547,11 +566,11 @@ impl WatchAdmission<'_> {
         let branch_bytes = bit.map_or(0, |_| size_of::<Branch>());
         let (armed, mut retained) = self.form(branch_bytes)?;
         let branch = if let Some(bit) = bit {
-            Some(Box::new(Branch {
+            Some(Branch {
                 bit,
                 children: [None, None],
                 _backing: retained.take(branch_bytes)?,
-            }))
+            })
         } else {
             None
         };
@@ -561,7 +580,7 @@ impl WatchAdmission<'_> {
             let index = side(self.node.slot, branch.bit);
             branch.children[1 - index] = root.take();
             branch.children[index] = Some(Row::Leaf(Watches::one(armed)));
-            Row::Branch(branch)
+            Row::Branch(Box::new(branch))
         } else {
             Row::Leaf(Watches::one(armed))
         });
@@ -815,11 +834,11 @@ fn arm(
     let (armed, mut retained) = admission.form(header)?;
     let backing = retained.take(header)?;
     drop(retained);
+    check_cancel(admission.cancel)?;
     let index = Arc::new(Index {
         armed: Mutex::new(Some(Row::Leaf(Watches::one(armed)))),
         _backing: backing,
     });
-    check_cancel(admission.cancel)?;
     Ok(PreparedWatch {
         index,
         slot: WatchSlot::FIRST,

@@ -29,13 +29,13 @@ pub(super) enum Entry {
 }
 
 impl Watches {
-    pub(super) fn one(armed: Box<Armed>) -> Self {
-        Self::Single(Some(armed))
+    pub(super) fn one(armed: Armed) -> Self {
+        Self::Single(Some(Box::new(armed)))
     }
 
     pub(super) fn node(&self) -> Option<NodeId> {
         match self {
-            Self::Single(armed) => armed.as_ref().map(|armed| armed.notice.node),
+            Self::Single(armed) => armed.as_ref().map(|armed| armed.notice.allocation.node),
             Self::Shared(shared) => Some(shared.node),
         }
     }
@@ -61,6 +61,9 @@ impl Watches {
                 if Arc::ptr_eq(&current.queue, &admission.inbox.queue) {
                     return Err(DomError::NodeRetirementAlreadyWatched);
                 }
+                // Promotion gives both watches an indexed unlink to fund.
+                admission.step()?;
+                admission.step()?;
                 let bytes = slot_bytes(2)?;
                 let total = bytes
                     .checked_add(size_of::<Shared>())
@@ -72,7 +75,7 @@ impl Watches {
                 check_cancel(admission.cancel)?;
                 let old = original.take().ok_or(DomError::RepresentationExhausted)?;
                 slots.push(Entry::Armed(old));
-                slots.push(Entry::Armed(armed));
+                slots.push(Entry::Armed(Box::new(armed)));
                 *self = Self::Shared(Box::new(Shared {
                     node: admission.node,
                     slots,
@@ -158,6 +161,8 @@ impl Shared {
             .live
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
+        // A fresh watch must fund its unlink even if it reuses a free slot.
+        admission.step()?;
         if let Some(slot) = self.free {
             let entry = self
                 .slots
@@ -169,7 +174,7 @@ impl Shared {
             let (armed, _) = admission.form(0)?;
             check_cancel(admission.cancel)?;
             self.free = *next;
-            *entry = Entry::Armed(armed);
+            *entry = Entry::Armed(Box::new(armed));
             self.live = live;
             return Ok(slot);
         }
@@ -189,13 +194,13 @@ impl Shared {
             }
             check_cancel(admission.cancel)?;
             replacement.append(&mut self.slots);
-            replacement.push(Entry::Armed(armed));
+            replacement.push(Entry::Armed(Box::new(armed)));
             drop(std::mem::replace(&mut self.slots, replacement));
             self.slots_backing = backing;
         } else {
             let (armed, _) = admission.form(0)?;
             check_cancel(admission.cancel)?;
-            self.slots.push(Entry::Armed(armed));
+            self.slots.push(Entry::Armed(Box::new(armed)));
         }
         self.live = live;
         Ok(slot)
@@ -246,7 +251,7 @@ fn publish_notice(armed: Armed) {
     drop(backing);
     let mut queue = lock(&queue);
     if queue.open {
-        notice.next = queue.head.take();
+        notice.allocation.next = queue.head.take();
         queue.head = Some(notice);
     }
 }
