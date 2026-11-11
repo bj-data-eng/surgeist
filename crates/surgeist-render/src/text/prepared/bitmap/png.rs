@@ -20,12 +20,23 @@ pub(super) struct Decoded {
 }
 
 struct Header {
+    layout: ScanlineLayout,
+    idat: usize,
+}
+
+struct ScanlineLayout {
     width: u32,
     height: u32,
     row: usize,
-    len: usize,
-    filtered: usize,
-    idat: usize,
+    rows: usize,
+    stride: usize,
+    packed_len: usize,
+    filtered_len: usize,
+}
+
+struct InflatedScanlines {
+    layout: ScanlineLayout,
+    bytes: AccountedVec<u8>,
 }
 
 fn overflow() -> Error {
@@ -118,11 +129,9 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
         .checked_mul(4)
         .ok_or_else(overflow)?;
     let rows = usize::try_from(height).map_err(|_| overflow())?;
-    let len = row.checked_mul(rows).ok_or_else(overflow)?;
-    let filtered = row
-        .checked_add(1)
-        .and_then(|n| n.checked_mul(rows))
-        .ok_or_else(overflow)?;
+    let packed_len = row.checked_mul(rows).ok_or_else(overflow)?;
+    let stride = row.checked_add(1).ok_or_else(overflow)?;
+    let filtered_len = stride.checked_mul(rows).ok_or_else(overflow)?;
     let mut idat = 0usize;
     let mut seen = false;
     loop {
@@ -140,17 +149,21 @@ fn header(data: &[u8], account: &Account) -> Result<Header> {
         }
     }
     Ok(Header {
-        width,
-        height,
-        row,
-        len,
-        filtered,
+        layout: ScanlineLayout {
+            width,
+            height,
+            row,
+            rows,
+            stride,
+            packed_len,
+            filtered_len,
+        },
         idat,
     })
 }
 
 pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
-    let h = header(data, account)?;
+    let Header { layout, idat } = header(data, account)?;
     // core.rs init_tree's only temporary arrays: total_symbols and next_code.
     let fixed = sum(&[
         size_of::<DecompressorOxide>(),
@@ -159,10 +172,10 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
     ])?;
     account.preview(
         RenderResource::ScratchCpuBytes,
-        sum(&[fixed, h.idat, h.filtered])?,
+        sum(&[fixed, idat, layout.filtered_len])?,
     )?;
-    let mut compressed = account.temporary::<u8>(h.idat)?;
-    let mut pixels = account.temporary::<u8>(h.filtered)?;
+    let mut compressed = account.temporary::<u8>(idat)?;
+    let mut pixels = account.temporary::<u8>(layout.filtered_len)?;
     let mut at = 8;
     // This second bounded pass copies only already-validated IDAT payloads.
     while at < data.len() {
@@ -174,8 +187,8 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
             compressed.extend_from_slice(c.data)?;
         }
     }
-    pixels.resize(h.filtered, 0)?;
-    {
+    pixels.resize(layout.filtered_len, 0)?;
+    let scanlines = {
         let _workspace = account.acquire(RenderResource::ScratchCpuBytes, fixed)?;
         let mut state = DecompressorOxide::new();
         let (status, consumed, produced) = decompress(
@@ -188,18 +201,19 @@ pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
         );
         // The core verifies the zlib header and Adler checksum. Neither trailing
         // compressed bytes nor a shorter/longer image stream is accepted.
-        if status != TINFLStatus::Done || consumed != compressed.len() || produced != h.filtered {
+        if status != TINFLStatus::Done
+            || consumed != compressed.len()
+            || produced != layout.filtered_len
+        {
             return Err(invalid());
         }
-    }
+        InflatedScanlines {
+            layout,
+            bytes: pixels,
+        }
+    };
     drop(compressed);
-    unfilter(&mut pixels, h.row, account)?;
-    pixels.truncate(h.len);
-    Ok(Decoded {
-        width: h.width,
-        height: h.height,
-        pixels,
-    })
+    scanlines.reconstruct(account)
 }
 
 enum ScanlineFilter {
@@ -225,34 +239,47 @@ impl TryFrom<u8> for ScanlineFilter {
     }
 }
 
-fn unfilter(bytes: &mut [u8], row: usize, account: &Account) -> Result<()> {
-    let stride = row.checked_add(1).ok_or_else(overflow)?;
-    for y in 0..bytes.len() / stride {
-        let from = y * stride;
-        let to = y * row;
-        let filter = ScanlineFilter::try_from(bytes[from])?;
-        for x in 0..row {
-            account
-                .at(RenderPhase::Png)
-                .work(RenderWork::PngByteVisits, 1)?;
-            let left = if x >= 4 { bytes[to + x - 4] } else { 0 };
-            let up = if y > 0 { bytes[to + x - row] } else { 0 };
-            let corner = if x >= 4 && y > 0 {
-                bytes[to + x - row - 4]
-            } else {
-                0
-            };
-            let predictor = match filter {
-                ScanlineFilter::None => 0,
-                ScanlineFilter::Sub => left,
-                ScanlineFilter::Up => up,
-                ScanlineFilter::Average => ((u16::from(left) + u16::from(up)) / 2) as u8,
-                ScanlineFilter::Paeth => paeth(left, up, corner),
-            };
-            bytes[to + x] = bytes[from + 1 + x].wrapping_add(predictor);
+impl InflatedScanlines {
+    fn reconstruct(self, account: &Account) -> Result<Decoded> {
+        let Self { layout, mut bytes } = self;
+        let ScanlineLayout {
+            row, rows, stride, ..
+        } = layout;
+        // The checked stride times the row count equals the exact inflated
+        // length. Packed writes trail the filtered reads, and predictors read
+        // only previously reconstructed bytes.
+        for y in 0..rows {
+            let from = y * stride;
+            let to = y * row;
+            let filter = ScanlineFilter::try_from(bytes[from])?;
+            for x in 0..row {
+                account
+                    .at(RenderPhase::Png)
+                    .work(RenderWork::PngByteVisits, 1)?;
+                let left = if x >= 4 { bytes[to + x - 4] } else { 0 };
+                let up = if y > 0 { bytes[to + x - row] } else { 0 };
+                let corner = if x >= 4 && y > 0 {
+                    bytes[to + x - row - 4]
+                } else {
+                    0
+                };
+                let predictor = match filter {
+                    ScanlineFilter::None => 0,
+                    ScanlineFilter::Sub => left,
+                    ScanlineFilter::Up => up,
+                    ScanlineFilter::Average => ((u16::from(left) + u16::from(up)) / 2) as u8,
+                    ScanlineFilter::Paeth => paeth(left, up, corner),
+                };
+                bytes[to + x] = bytes[from + 1 + x].wrapping_add(predictor);
+            }
         }
+        bytes.truncate(layout.packed_len);
+        Ok(Decoded {
+            width: layout.width,
+            height: layout.height,
+            pixels: bytes,
+        })
     }
-    Ok(())
 }
 
 fn paeth(a: u8, b: u8, c: u8) -> u8 {
@@ -322,8 +349,16 @@ mod tests {
     }
 
     fn image(stream: &[u8], split: bool) -> Vec<u8> {
+        image_with_height(stream, split, 2)
+    }
+
+    fn image_with_height(stream: &[u8], split: bool, height: u8) -> Vec<u8> {
         let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
-        append(&mut out, b"IHDR", &[0, 0, 0, 2, 0, 0, 0, 2, 8, 6, 0, 0, 0]);
+        append(
+            &mut out,
+            b"IHDR",
+            &[0, 0, 0, 2, 0, 0, 0, height, 8, 6, 0, 0, 0],
+        );
         if split {
             append(&mut out, b"IDAT", &stream[..3]);
             append(&mut out, b"IDAT", &[]);
@@ -391,6 +426,69 @@ mod tests {
                 })
             },
         )
+    }
+
+    #[test]
+    fn mixed_scanlines_preserve_pixels_and_the_accepted_work_prefix() {
+        use crate::{RenderAccountingOptions, RenderLimits};
+
+        let filtered = [
+            1, 10, 20, 30, 255, 30, 30, 30, 0, 2, 40, 40, 40, 0, 40, 40, 40, 0, 4, 50, 50, 50, 0,
+            30, 30, 30, 0,
+        ];
+        let expected = [
+            10, 20, 30, 255, 40, 50, 60, 255, 50, 60, 70, 255, 80, 90, 100, 255, 100, 110, 120,
+            255, 130, 140, 150, 255,
+        ];
+        for (split, exact) in [(false, 150), (true, 166)] {
+            let bytes = image_with_height(&zlib(&filtered), split, 3);
+            let mut malformed = filtered;
+            malformed[18] = 5;
+            let malformed = image_with_height(&zlib(&malformed), split, 3);
+            for limit in [exact - 1, exact] {
+                let mut context = RenderAccountingContext::new(
+                    RenderAccountingOptions::new().with_limits(
+                        RenderLimits::new()
+                            .with_work_limit(RenderWork::PngByteVisits, limit)
+                            .unwrap(),
+                    ),
+                );
+
+                let error = decode_in(&malformed, 1 << 20, &mut context).err().unwrap();
+                assert_eq!(
+                    error.glyph_preparation_diagnostic(),
+                    Some(&GlyphPreparationError::InvalidFont)
+                );
+                // The third tag refuses before visiting its eight payload bytes.
+                assert_scanline_usage(&context, exact - 8);
+
+                let result = decode_in(&bytes, 1 << 20, &mut context);
+                if limit == exact {
+                    let decoded = result.ok().unwrap();
+                    assert_eq!((decoded.width, decoded.height), (2, 3));
+                    assert_eq!(decoded.pixels, expected);
+                } else {
+                    assert!(result.err().unwrap().accounting_diagnostic().is_some());
+                }
+                assert_scanline_usage(&context, limit);
+
+                let smaller = image(&zlib(&FILTERED[0]), split);
+                assert_eq!(
+                    decode_in(&smaller, 1 << 20, &mut context).unwrap().pixels,
+                    PIXELS
+                );
+            }
+        }
+    }
+
+    fn assert_scanline_usage(context: &RenderAccountingContext, expected_visits: u64) {
+        let terminal = context.last_attempt().unwrap();
+        assert_eq!(terminal.cleanup_fault(), None);
+        let usage = terminal.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PngByteVisits), expected_visits);
+        assert!(usage.peak(RenderResource::ScratchCpuBytes) > 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
     #[test]
