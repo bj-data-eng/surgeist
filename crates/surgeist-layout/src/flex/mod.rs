@@ -514,27 +514,38 @@ impl<S: LayoutScalar> Constants<S> {
             Size::<S>::ZERO
         };
 
+        let preferred = Size::new(&style.common.size.width, &style.common.size.height);
+        let max_content_cross = input.sizing_mode() == SizingMode::InherentSize
+            && axes.main_logical_axis() == LogicalAxis::Inline
+            && axes.cross_size(preferred).is_max_content();
         let (style_size, min_size, max_size) = match input.sizing_mode() {
             SizingMode::ContentSize => (Size::NONE, Size::NONE, Size::NONE),
             SizingMode::InherentSize => {
+                let resolve_preferred = |value, axis, basis| {
+                    if max_content_cross && axis == axes.cross_physical_axis() {
+                        Ok(None)
+                    } else {
+                        resolve_preferred_optional(value, SizingAlgorithm::Flex, axis, basis, true)
+                    }
+                };
                 let style_size = Size::new(
-                    resolve_preferred_optional(
-                        &style.common.size.width,
-                        SizingAlgorithm::Flex,
+                    resolve_preferred(
+                        preferred.width,
                         PhysicalAxis::Horizontal,
                         input.parent().width,
-                        true,
                     ),
-                    resolve_preferred_optional(
-                        &style.common.size.height,
-                        SizingAlgorithm::Flex,
+                    resolve_preferred(
+                        preferred.height,
                         PhysicalAxis::Vertical,
                         input.parent().height,
-                        true,
                     ),
                 )
-                .transpose_with_node(tree, node)?
-                .apply_aspect_ratio(*style.common.aspect_ratio)
+                .transpose_with_node(tree, node)?;
+                let style_size = if max_content_cross {
+                    style_size
+                } else {
+                    style_size.apply_aspect_ratio(*style.common.aspect_ratio)
+                }
                 .add_optional(box_sizing_adjustment);
                 let min_size = Size::new(
                     resolve_minimum_optional(
@@ -588,6 +599,19 @@ impl<S: LayoutScalar> Constants<S> {
             .max_optional(padding_border.map(Some));
         let node_outer_size = contained_size.or(definite_outer_size);
         let entry_axes = input.sizing_request().axes();
+        let entry_axes = if max_content_cross && axes.cross_size(node_outer_size).is_none() {
+            // The preferred intrinsic size uses the row's cross contributions.
+            // A finite containing offer does not bound that contribution.
+            axes.with_cross_size(
+                entry_axes,
+                AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                ),
+            )
+        } else {
+            entry_axes
+        };
         let margin_debit = if input.run_mode() == RunMode::PerformRootLayout
             && input.parent_formatting_context() == ParentFormattingContext::NoParent
         {
