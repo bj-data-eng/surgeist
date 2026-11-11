@@ -440,10 +440,7 @@ where
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
     let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
-    if has_block_offset && !orthogonal_auto_inline {
-        return Err(writing_mode_error());
-    }
-    if !horizontal {
+    if !horizontal || has_block_offset {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
         // original preferred dimensions and owns their min/max constraints.

@@ -471,6 +471,59 @@ fn fixed_orthogonal_root<S: LayoutScalar>() {
     }
 }
 
+fn fixed_root_with_static_top<S: LayoutScalar>() {
+    let containing = context::<S>(70.0, Direction::Ltr);
+    let request = LayoutRootRequestOf::positioned_root_local(containing).unwrap();
+    for mode in [
+        WritingMode::HorizontalTb,
+        WritingMode::VerticalRl,
+        WritingMode::VerticalLr,
+        WritingMode::SidewaysRl,
+        WritingMode::SidewaysLr,
+    ] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            let mut root = root_style::<S>(direction);
+            root.writing_mode = mode;
+            root.size = Size::new(
+                PreferredSizeOf::percent(n(0.75)),
+                PreferredSizeOf::percent(n(0.5)),
+            );
+            root.max_size.width = MaxSizeOf::percent(n(0.5));
+            let child = NodeInputOf {
+                display: Display::Block,
+                writing_mode: mode,
+                direction,
+                size: Size::new(PreferredSizeOf::px(n(12.0)), PreferredSizeOf::px(n(10.0))),
+                ..NodeInputOf::default()
+            };
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1])
+                .children(1, [])
+                .style(0, root)
+                .style(1, child);
+            let baseline = compute_layout(&tree, 0, request).unwrap();
+            for top in [0.0, 70.0] {
+                let positioned = LayoutRootRequestOf::positioned_root_local(
+                    containing.with_hypothetical_block_offset(n(top)).unwrap(),
+                )
+                .unwrap();
+                let batch = compute_layout(&tree, 0, positioned).unwrap_or_else(|error| {
+                    panic!("{mode:?}/{direction:?} at top {top}: {error:?}")
+                });
+                for finalized in [false, true] {
+                    let root = output(&batch, 0, finalized);
+                    assert_eq!(root.location, Point::ZERO);
+                    // The actual containing block is 100×80 despite the offsets.
+                    assert_eq!(root.size, Size::new(n(50.0), n(40.0)));
+                    let child = output(&batch, 1, finalized);
+                    assert_eq!(child.size, Size::new(n(12.0), n(10.0)));
+                    assert_eq!(child.location, output(&baseline, 1, finalized).location);
+                }
+            }
+        }
+    }
+}
+
 fn orthogonal_root_clamps_definite_calculation<S: LayoutScalar>() {
     let mut style = root_style::<S>(Direction::Rtl);
     style.display = Display::Flex;
@@ -878,6 +931,11 @@ lanes!(
     root_local_fixed_orthogonal_f32,
     root_local_fixed_orthogonal_f64,
     fixed_orthogonal_root
+);
+lanes!(
+    root_local_fixed_static_top_f32,
+    root_local_fixed_static_top_f64,
+    fixed_root_with_static_top
 );
 lanes!(
     root_local_fixed_orthogonal_calculation_f32,
