@@ -168,7 +168,10 @@ impl QualificationMode {
             | Self::DeriveSpecialized(SpecializedProfile::OriginalFlexParent) => {
                 BoxObservationRequest::OriginalFlexParent
             }
-            Self::OriginalPercentageFlexParentCapture => {
+            Self::OriginalPercentageFlexParentCapture
+            | Self::PublishSpecialized(SpecializedProfile::OriginalPercentageFlexParent)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalPercentageFlexParent)
+            | Self::DeriveSpecialized(SpecializedProfile::OriginalPercentageFlexParent) => {
                 BoxObservationRequest::OriginalPercentageFlexParent
             }
             Self::OriginalSubgridBodyCapture
@@ -1892,6 +1895,7 @@ fn inventory_with_retained_helper(
         }
         Some(
             SpecializedProfile::OriginalFlexParent
+            | SpecializedProfile::OriginalPercentageFlexParent
             | SpecializedProfile::OriginalSubgridBody
             | SpecializedProfile::PreparedAtomicPercentage
             | SpecializedProfile::HorizontalBrFontBand

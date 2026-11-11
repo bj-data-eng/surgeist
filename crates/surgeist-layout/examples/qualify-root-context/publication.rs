@@ -302,9 +302,7 @@ fn finish(
     invocation: PublicationInvocation<'_>,
 ) -> Result<()> {
     let PublicationInvocation { mode, output } = invocation;
-    if edition == Edition::Specialized(SpecializedProfile::OriginalFlexParent) {
-        require_original_flex_parent_inputs(owner)?;
-    }
+    require_original_flex_parent_inputs(owner, edition)?;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -407,9 +405,7 @@ fn finish(
     // Catch source/input changes during the invocation, as well as stale binaries
     // whose include_bytes resources differ from the current handwritten owner.
     require_current_inputs(owner)?;
-    if edition == Edition::Specialized(SpecializedProfile::OriginalFlexParent) {
-        require_original_flex_parent_inputs(owner)?;
-    }
+    require_original_flex_parent_inputs(owner, edition)?;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
@@ -561,12 +557,26 @@ fn require_current_inputs(owner: &Path) -> Result<()> {
     Ok(())
 }
 
-fn require_original_flex_parent_inputs(owner: &Path) -> Result<()> {
+fn require_original_flex_parent_inputs(owner: &Path, edition: Edition) -> Result<()> {
     use crate::original_flex_parent_profile as profile;
-    for (name, bytes) in [
-        ("original_flex_parent.js", profile::SCRIPT.as_bytes()),
-        ("original_flex_parent_request.json", profile::REQUEST),
-    ] {
+    let inputs = match edition {
+        Edition::Specialized(SpecializedProfile::OriginalFlexParent) => [
+            ("original_flex_parent.js", profile::SCRIPT.as_bytes()),
+            ("original_flex_parent_request.json", profile::REQUEST),
+        ],
+        Edition::Specialized(SpecializedProfile::OriginalPercentageFlexParent) => [
+            (
+                "original_percentage_flex_parent.js",
+                profile::percentage::SCRIPT.as_bytes(),
+            ),
+            (
+                "original_percentage_flex_parent_request.json",
+                profile::percentage::REQUEST,
+            ),
+        ],
+        _ => return Ok(()),
+    };
+    for (name, bytes) in inputs {
         let path = RelativePath::new(format!(
             "tests/bin/surgeist-layout-generate/measurement/{name}"
         ))?;
@@ -892,14 +902,19 @@ impl Origin {
                 sha256: &record.source_sha256,
             });
         }
-        let font_provenance =
-            if edition != Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
-                let path = RelativePath::new("fonts/PROVENANCE.md")?;
-                require_regular_input(&original, &path)?;
-                Some(fs::read(original.join(path.as_str()))?)
-            } else {
-                None
-            };
+        let font_provenance = if matches!(
+            edition,
+            Edition::Specialized(
+                SpecializedProfile::EmptyLineBrFontBand
+                    | SpecializedProfile::OriginalPercentageFlexParent
+            )
+        ) {
+            None
+        } else {
+            let path = RelativePath::new("fonts/PROVENANCE.md")?;
+            require_regular_input(&original, &path)?;
+            Some(fs::read(original.join(path.as_str()))?)
+        };
         Ok(Self {
             receipt,
             provenance: serde_json::to_vec(&provenance)?,
@@ -1445,6 +1460,9 @@ fn specialized_cases(
                 }
                 SpecializedProfile::OriginalFlexParent => {
                     authority::original_flex_parent_evidence()
+                }
+                SpecializedProfile::OriginalPercentageFlexParent => {
+                    authority::original_percentage_flex_parent_evidence()
                 }
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
                 SpecializedProfile::PreparedAtomicPercentage => {

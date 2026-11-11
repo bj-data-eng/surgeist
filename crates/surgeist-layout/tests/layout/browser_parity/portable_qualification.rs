@@ -1747,6 +1747,7 @@ fn admit_specialized(
     let flex_inputs = match profile {
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalFlexParent
+        | SpecializedProfile::OriginalPercentageFlexParent
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
@@ -1794,7 +1795,8 @@ fn admit_specialized(
                     support::Golden::parse(xml),
                     AdmittedComparison::PreparedRange { variant },
                 ),
-                SpecializedProfile::OriginalFlexParent => {
+                SpecializedProfile::OriginalFlexParent
+                | SpecializedProfile::OriginalPercentageFlexParent => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
