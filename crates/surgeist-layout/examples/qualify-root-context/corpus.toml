@@ -4783,3 +4783,11 @@ root_writing_mode = "horizontal-tb"
 [[matching_publications]]
 edition = "original-relative-rtl-subgrid-positioned"
 sources = ["html/subgrid/subgrid_abspos_relative_rtl_column_3_to_5.html"]
+
+[[matching_publications]]
+edition = "fri08-manifest-plain-box-predecessors"
+sources = [
+  "html/grid/fri08_auto_fit_occupied_track_collapse.html",
+  "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html",
+  "html/subgrid/subgrid_standalone_axis_column_autoflow.html",
+]

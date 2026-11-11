@@ -271,6 +271,15 @@ control for the same geometry.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry original-relative-rtl-subgrid-positioned
 ~~~
 
+The [FRI08 plain-box manifest edition](../../tests/layout/browser_parity/captured/fri08-manifest-plain-box-predecessors/qualification.json)
+covers occupied auto-fit collapse, hidden Subgrid overflow, and standalone
+column autoflow. The focused manifest test checks active membership and
+replays all twelve source-bound historical rectangle trees.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-matching-geometry fri08-manifest-plain-box-predecessors
+~~~
+
 ## Grid Lanes original diagnostics
 
 The [Grid Lanes diagnostic receipt](../../tests/layout/browser_parity/captured/grid-lanes-axis-original-diagnostics/diagnostics.json)

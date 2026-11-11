@@ -281,6 +281,31 @@ fn manifest_active_output_paths() -> BTreeSet<PathBuf> {
 }
 
 #[test]
+fn fri08_manifest_plain_box_predecessors_replay_registered_geometry() {
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml");
+    let sources = [
+        "grid/fri08_auto_fit_occupied_track_collapse",
+        "subgrid/subgrid_overflow_hidden_does_not_prohibit",
+        "subgrid/subgrid_standalone_axis_column_autoflow",
+    ];
+    let active = manifest_active_output_paths();
+    let originals: Vec<_> = sources
+        .into_iter()
+        .flat_map(|source| {
+            crate::fixture_variants::fixture_cases()
+                .into_iter()
+                .map(move |(variant, _)| format!("{source}__{variant}.xml"))
+        })
+        .map(|relative| corpus.join(relative))
+        .collect();
+    assert_eq!(originals.len(), 12);
+    for original in &originals {
+        assert!(active.contains(original), "{}", original.display());
+    }
+    assert_registered_originals_match(&originals);
+}
+
+#[test]
 fn manifest_active_outputs_match_layout() {
     let mut paths = manifest_active_output_paths().into_iter();
     let first = paths

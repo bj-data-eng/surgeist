@@ -108,6 +108,10 @@ compares the four historical Grid trees beneath the actual Body. The focused
 caller checks all registered variants, including the absolute child's local
 rectangle in the relative RTL Subgrid.
 
+The [FRI08 plain-box manifest edition](captured/fri08-manifest-plain-box-predecessors/qualification.json)
+qualifies twelve active Grid and Subgrid variants. The focused manifest test
+checks their exact historical associations and complete geometry.
+
 The [Grid Lanes original diagnostic receipt](captured/grid-lanes-axis-original-diagnostics/diagnostics.json)
 records the complete raw numeric differences from all 36 source-qualified
 original axis captures. It is separate from matching editions. Use the
