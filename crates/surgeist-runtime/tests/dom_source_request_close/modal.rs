@@ -35,7 +35,7 @@ fn shown_and_initial_toggle_delivered(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 assert!(event.cancelable());
                 *calls += 1;
@@ -44,6 +44,7 @@ fn shown_and_initial_toggle_delivered(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -106,18 +107,19 @@ fn shown_and_initial_toggle_delivered(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut QueueContext, event| {
                 let payload = event.toggle_event().unwrap();
                 assert_eq!(payload.old_state(), "closed");
                 assert_eq!(payload.new_state(), "open");
                 assert_eq!(payload.source(), None);
-                context.delivered.push(DomEventType::Toggle);
+                context.delivered.push(DomEventType::TOGGLE);
                 Ok(())
             }),
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -147,7 +149,7 @@ fn shown_and_initial_toggle_delivered(
     assert!(displaced_owner.is_none());
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
-    assert_eq!(context.delivered, [DomEventType::Toggle]);
+    assert_eq!(context.delivered, [DomEventType::TOGGLE]);
     assert!(!registry.remove_listener(once));
     assert_eq!(tasks.pending_total_tasks().unwrap(), 0);
     assert!(session.dom().pending_source_edit().is_none());
@@ -201,17 +203,17 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
         assert_eq!(task.queue_association().unwrap().global(), top.global());
     }
     let mut registry = dispatcher::<QueueContext>();
-    for kind in [DomEventType::Toggle, DomEventType::Close] {
+    for kind in [DomEventType::TOGGLE, DomEventType::CLOSE] {
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                kind,
+                kind.clone(),
                 DomEventCallback::new(move |_, _, context: &mut QueueContext, event| {
                     assert_eq!(event.event_type(), kind);
                     assert!(!event.cancelable());
                     assert!(!event.bubbles());
-                    if kind == DomEventType::Close {
+                    if kind == DomEventType::CLOSE {
                         assert!(event.toggle_event().is_none());
                     } else {
                         let payload = event.toggle_event().unwrap();
@@ -219,12 +221,13 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
                         assert_eq!(payload.new_state(), "closed");
                         assert_eq!(payload.source(), None);
                     }
-                    context.delivered.push(kind);
+                    context.delivered.push(kind.clone());
                     Ok(())
                 }),
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -258,14 +261,14 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
                 .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
         );
         assert!(displaced_owner.is_none());
-        assert_eq!(receipt.original_target(), subject);
+        assert_eq!(receipt.original_target(), subject.into());
         assert_eq!(receipt.callbacks(), 1);
         assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
         assert!(!receipt.default_prevented());
     }
     assert_eq!(
         context.delivered,
-        [DomEventType::Close, DomEventType::Toggle]
+        [DomEventType::CLOSE, DomEventType::TOGGLE]
     );
     assert_eq!(context.tasks.pending_total_tasks().unwrap(), 0);
     assert!(session.dom().pending_source_edit().is_none());
@@ -306,7 +309,7 @@ fn canceled_modal_request_keeps_layer_then_uncanceled_request_closes_with_real_p
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 assert!(event.cancelable());

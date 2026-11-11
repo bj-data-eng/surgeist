@@ -12,6 +12,10 @@ fn session(dom: Dom) -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: crate::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -135,6 +139,8 @@ fn registry() -> DomEventDispatcher<Context> {
         registrations: 64,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -223,11 +229,12 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
         .add_listener(
             &mut dom.dom(),
             document.node(),
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             record(),
             DomEventListenerOptions {
                 capture: true,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -236,7 +243,7 @@ fn coalescing_preserves_first_old_latest_new_and_requeues_after_other_targets() 
             .add_listener(
                 &mut dom.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 record(),
                 DomEventListenerOptions::default(),
             )
@@ -324,7 +331,7 @@ fn completed_details_dispatch_retains_dead_index_backing_in_its_actual_storage_c
         .add_listener(
             &mut dom.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             record(),
             DomEventListenerOptions::default(),
         )
@@ -373,7 +380,7 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
         .add_listener(
             &mut dom.dom(),
             a,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
                 c.log.push((
                     event.current_target().unwrap().node().unwrap(),
@@ -492,6 +499,45 @@ fn reentrant_replacement_is_untracked_by_postdispatch_clear_but_still_delivers()
 }
 
 #[test]
+fn never_hosted_details_delivers_with_an_unavailable_creation_clock() {
+    let (mut dom, document, target, _) = fixture();
+    assert_eq!(
+        dom.snapshot().relevant_global(document.node()).unwrap(),
+        None
+    );
+    let mut context = context(&mut dom);
+    let mut registry = registry();
+    let observed = Rc::new(Cell::new(None));
+    let listener = observed.clone();
+    registry
+        .add_listener(
+            &mut dom.dom(),
+            target,
+            DomEventType::TOGGLE,
+            DomEventCallback::new(move |_, _, _, event| {
+                listener.set(Some((event.creation().copied(), event.time_stamp())));
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    open(&mut dom, target);
+    ingest(&mut dom, &mut context);
+    let (task, receipt) = complete(&mut dom, &mut registry, &mut context);
+    assert_eq!(task.queue_association(), None);
+    assert_eq!(receipt.original_target(), target.into());
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert_eq!(
+        observed.get(),
+        Some((
+            None,
+            Err(crate::DomEventTimestampUnavailable::NoAuthenticatedClock)
+        ))
+    );
+}
+
+#[test]
 fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
     let (mut dom, _, a, b) = fixture();
     let mut c = context(&mut dom);
@@ -501,7 +547,7 @@ fn detach_and_adopt_preserve_target_but_retired_generation_is_skipped() {
             .add_listener(
                 &mut dom.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 record(),
                 DomEventListenerOptions::default(),
             )
@@ -563,7 +609,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
         .add_listener(
             &mut dom.dom(),
             a,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, c: &mut Context, event| {
                 c.log
                     .push((a, *event.toggle_event().unwrap(), event.phase()));
@@ -580,7 +626,7 @@ fn destruction_during_actual_listener_preserves_delivery_and_callback_failure_cl
         .add_listener(
             &mut dom.dom(),
             a,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             record(),
             DomEventListenerOptions::default(),
         )
@@ -751,7 +797,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .add_listener(
             &mut dom.dom(),
             a,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |_dom, _, c: &mut Context, event| {
                 c.log
                     .push((a, *event.toggle_event().unwrap(), event.phase()));
@@ -764,6 +810,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -771,7 +818,7 @@ fn retained_dispatch_survives_callback_coordinator_replacement_and_resumes_once(
         .add_listener(
             &mut dom.dom(),
             a,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             record(),
             DomEventListenerOptions::default(),
         )
@@ -1021,7 +1068,7 @@ fn accessor_unwind_after_completed_dispatch_keeps_actual_receipt_and_releases_ru
         .add_listener(
             &mut dom.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.log.push((
                     event.current_target().unwrap().node().unwrap(),
@@ -1088,7 +1135,7 @@ fn target_destroyed_after_prestart_dispatch_refusal_is_skipped_without_delivery(
         .add_listener(
             &mut dom.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             record(),
             DomEventListenerOptions::default(),
         )
@@ -1194,6 +1241,10 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
         let stamp = dom.snapshot().stamp();
         let pending = dom.pending_details_toggle_intentions();
         let limits = DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: crate::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,

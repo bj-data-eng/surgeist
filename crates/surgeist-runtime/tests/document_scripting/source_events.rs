@@ -113,17 +113,20 @@ fn fixture_with_setup<T>(
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let registration = dispatcher
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(ROUTE),
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -131,9 +134,9 @@ fn fixture_with_setup<T>(
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, trace: &mut NativeTrace, event| {
-                assert_eq!(event.target(), Some(dialog));
+                assert_eq!(event.target(), Some(dialog.into()));
                 let snapshot = dom.snapshot();
                 assert_eq!(snapshot.node(comment).unwrap().parent(), None);
                 assert!(
@@ -262,6 +265,8 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
             registrations: 0,
             pending_events: 0,
             nested_dispatches: 0,
+            storage_bytes: 16_000_000,
+            work: 0,
         })
         .unwrap();
         assert!(matches!(
@@ -701,11 +706,12 @@ fn open_and_close(
                 .add_listener(
                     dom,
                     fixture.dialog,
-                    DomEventType::BeforeToggle,
+                    DomEventType::BEFORE_TOGGLE,
                     DomEventCallback::host(ROUTE),
                     DomEventListenerOptions {
                         once: true,
                         capture: false,
+                        passive: None,
                     },
                 )
                 .unwrap();

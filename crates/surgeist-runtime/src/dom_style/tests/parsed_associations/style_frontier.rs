@@ -23,6 +23,8 @@ fn dispatcher() -> DomEventDispatcher<FrontierContext> {
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -30,6 +32,7 @@ fn options() -> DomEventListenerOptions {
     DomEventListenerOptions {
         capture: false,
         once: false,
+        passive: None,
     }
 }
 fn other_document(session: &DomSession, parsed: DocumentId) -> NodeId {
@@ -63,7 +66,7 @@ fn accepted_original_execution_survives_command_drop_and_blocks_other_document_t
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut FrontierContext, _| {
                 context.calls.push("native");
                 Ok(())
@@ -137,7 +140,7 @@ fn listener_activation_retains_dispatch_before_the_next_listener_and_never_repea
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, context: &mut FrontierContext, _| {
                 context.calls.push("A");
                 let phase = context
@@ -161,7 +164,7 @@ fn listener_activation_retains_dispatch_before_the_next_listener_and_never_repea
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut FrontierContext, _| {
                 context.calls.push("B");
                 Ok(())
@@ -249,7 +252,7 @@ fn forgotten_unstarted_request_guard_allows_other_document_delivery_but_not_its_
     let native_document = other_document(&session, installation.document());
     let target = append_style(&mut session, native_document, None);
     let mut dispatcher = dispatcher();
-    dispatcher.add_listener(&mut session.dom(), target, DomEventType::Load,
+    dispatcher.add_listener(&mut session.dom(), target, DomEventType::LOAD,
         DomEventCallback::new(move |dom, _, context: &mut FrontierContext, _| {
             let mut batch = DomBatch::new();
             batch.set_attribute(element, "title", "attempt");
@@ -364,7 +367,7 @@ fn delivered_cleanup_retains_receipt_across_work_refusal_activation_and_real_end
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, context: &mut FrontierContext, _| {
                 context.calls.push("delivered");
                 // Measure the real unchanged policy-admission walk, then set an
@@ -465,7 +468,7 @@ fn activated_forgotten_read_guard_retains_exact_admission_error_without_listener
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|dom, _, context: &mut FrontierContext, _| {
                 context.calls.push("A");
                 context
@@ -488,7 +491,7 @@ fn activated_forgotten_read_guard_retains_exact_admission_error_without_listener
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut FrontierContext, _| {
                 context.calls.push("B");
                 Ok(())

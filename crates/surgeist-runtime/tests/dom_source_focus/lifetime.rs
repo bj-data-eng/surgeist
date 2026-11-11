@@ -94,8 +94,8 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
     );
     let event = start(&mut session, subject, Some(&scope));
     let receipt = dispatch(&mut session, &event);
-    assert_eq!(receipt.original_target(), subject);
-    assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
+    assert_eq!(receipt.original_target(), subject.into());
+    assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
     assert_eq!(receipt.callbacks(), 0);
     assert!(!receipt.default_prevented());
     assert!(receipt.failures().is_empty());

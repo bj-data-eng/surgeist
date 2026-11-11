@@ -72,6 +72,15 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
     // Use the actual constituent owners and their normal bindings, with
     // distinct Rust lifetimes so the native DOM outlives the task owner.
     let owner = ElementTaskOwner::new(dom.owner(), limits()).unwrap();
+    let event_storage = crate::dom_event::EventStorage::session(
+        &mut DomEventDom::borrow(&mut dom),
+        crate::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        &cancel(),
+    )
+    .unwrap();
     let hosted = crate::dom_lifecycle::HostedOwner::new(
         &mut dom,
         DomHostedRuntimeLimits {
@@ -86,6 +95,7 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
             scratch_bytes: 16_000_000,
             work: 1_000_000,
         },
+        event_storage,
     )
     .unwrap();
     owner.bind_hosted(hosted.execution());
@@ -99,13 +109,15 @@ fn disposed_details_owner_counter_backing_remains_in_runtime_and_source_custody(
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut DomEventDom::borrow(&mut dom),
             details,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Observations, event| {
                 context.event = Some(event.clone());
                 Ok(())

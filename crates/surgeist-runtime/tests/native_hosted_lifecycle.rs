@@ -20,6 +20,10 @@ fn cancel() -> AtomicBool {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
@@ -123,6 +127,8 @@ fn registry() -> DomEventDispatcher<Context> {
         registrations: 32,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -137,12 +143,12 @@ fn listen(
         .add_listener(
             dom,
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut Context, event| {
                 context.seen.push(Observation {
                     label,
                     current: event.current_target(),
-                    target: event.target(),
+                    target: event.target().and_then(|target| target.node()),
                     phase: event.phase(),
                     payload: event.toggle_event().copied(),
                     bubbles: event.bubbles(),
@@ -152,6 +158,7 @@ fn listen(
             DomEventListenerOptions {
                 capture,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -1634,30 +1641,37 @@ fn live_original_task_refuses_a_retired_adoption_destination_before_callbacks() 
         .unwrap();
     assert_eq!(retained.id(), queued.id());
     assert_eq!(retained.queue_association(), queued.queue_association());
-    // DOM's null-BC parent branch cannot supply fresh closed-native authority:
-    // this current node Document has an actual retired Global. The bounded
-    // native path must qualify it before invoking Rust callbacks (innerinvoke).
-    {
-        let mut dom = session.dom();
-        assert!(matches!(
-            DomElementTaskRuntime::run_next(
-                &mut dom,
-                surgeist_dom::DomElementTaskSourceKind::DomManipulation,
-                &mut registry,
-                &mut context,
-                crate::DomElementTaskRunLimits {
-                    dispatch: event_limits(),
-                    source: surgeist_dom::DomSourceLimits::new(
-                        16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64
-                    )
-                },
-                &cancel()
+    let retired = before.document(second.document()).unwrap();
+    let environment = retired.metadata().document_environment();
+    assert!(environment.has_ever_had_navigable());
+    assert_eq!(
+        environment.browsing_context(),
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
+    );
+    // The standard parent is null, but the selected native task must still
+    // qualify the actual retired destination before invoking Rust callbacks.
+    let result = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        surgeist_dom::DomElementTaskSourceKind::DomManipulation,
+        &mut registry,
+        &mut context,
+        crate::DomElementTaskRunLimits {
+            dispatch: event_limits(),
+            source: surgeist_dom::DomSourceLimits::new(
+                16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64,
             ),
+        },
+        &cancel(),
+    );
+    assert!(
+        matches!(
+            result,
             Err(DomElementTaskRuntimeError::Dispatch(
                 DomEventDispatchError::Hosted(DomHostedError::StaleIdentity)
             ))
-        ));
-    }
+        ),
+        "the retired destination must refuse before the original task starts: {result:?}"
+    );
     assert!(context.seen.is_empty());
     assert_eq!(session.snapshot().stamp(), before.stamp());
     assert_eq!(
@@ -1721,6 +1735,8 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
         registrations: 32,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let (target, queued) = {
@@ -1752,7 +1768,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
             .add_listener(
                 &mut dom,
                 DomEventTarget::Global(second.global()),
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut RetireContext, event| {
                     context.seen.push("destination-global");
                     context.observed.push(event.clone());
@@ -1774,6 +1790,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1789,7 +1806,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                 .add_listener(
                     &mut dom,
                     recipient,
-                    DomEventType::Toggle,
+                    DomEventType::TOGGLE,
                     DomEventCallback::new(move |_, _, context: &mut RetireContext, _| {
                         context.seen.push(label);
                         Ok(())
@@ -1797,6 +1814,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
@@ -1851,7 +1869,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     );
     assert_eq!(context.seen, ["destination-global"]);
     assert_eq!(context.observed.len(), 1);
-    assert_eq!(context.observed[0].target(), Some(target));
+    assert_eq!(context.observed[0].target(), Some(target.into()));
     assert_eq!(
         context.observed[0].toggle_event().unwrap().new_state(),
         "open"
@@ -1944,6 +1962,8 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
         registrations: 32,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let target_once = {
@@ -1952,7 +1972,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
             .add_listener(
                 &mut dom,
                 DomEventTarget::Global(second.global()),
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut DestroyTargetContext, _| {
                     context.seen.push("destination-global");
                     let mut batch = DomBatch::new();
@@ -1964,6 +1984,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
                 DomEventListenerOptions {
                     capture: true,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1971,7 +1992,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
             .add_listener(
                 &mut dom,
                 DomEventTarget::Node(target),
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut DestroyTargetContext, _| {
                     context.seen.push("destroyed-target");
                     Ok(())
@@ -1979,6 +2000,7 @@ fn adopted_target_retirement_delivers_once_using_its_active_destination_document
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap()

@@ -1,6 +1,7 @@
 //! Real direct-DOM composition. Trusted publications model the host's existing
 //! native protocol; no Runtime Window/task bank or event receipt is fabricated.
 use super::*;
+use crate::DomSourceEventClockMode::ContextFree;
 use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest};
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
@@ -178,6 +179,30 @@ fn publish_style_sheet(
         .unwrap()
         .unwrap();
     (sheet, notification)
+}
+
+#[test]
+fn exact_document_load_stops_before_looking_up_the_expired_global() {
+    use crate::event::{ERROR_EVENT, LOAD_EVENT};
+    use crate::{DomEventParent, DomEventParentQuery};
+
+    let (dom, source, document) = constructor();
+    let node = document.node();
+    let parent = |kind| {
+        dom.dispatch_event_parent(
+            &dom.snapshot(),
+            DomEventParentQuery::new(node, node, node, kind, false),
+            &cancel(),
+            &mut || Ok::<(), DomHostedError>(()),
+        )
+    };
+    let global = dom.relevant_global(node).unwrap().unwrap();
+    assert_eq!(parent(ERROR_EVENT).unwrap(), DomEventParent::Global(global),);
+
+    drop(source);
+
+    assert_eq!(parent(ERROR_EVENT), Err(DomHostedError::SourceExpired));
+    assert_eq!(parent(LOAD_EVENT), Ok(DomEventParent::None));
 }
 
 fn style_resource(
@@ -1368,7 +1393,7 @@ fn check_published_style_across_script_yield(scenario: StyleClose) {
                 crate::DomMetaAtomicLimits::new(64_000_000, 1_000_000, 4_000_000, 256).unwrap();
             let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
             assert!(matches!(
-                hold.prepare(&[&root], None, &cancel),
+                hold.prepare(&[&root], None, ContextFree, &cancel),
                 Err(crate::DomMetaAtomicError::Dom(
                     DomError::StyleReceiptMismatch
                 ))
@@ -1387,7 +1412,7 @@ fn check_published_style_across_script_yield(scenario: StyleClose) {
         let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
         let caps = [&root];
         let crate::DomMetaSourceStep::Progress(progress) =
-            hold.prepare(&caps, None, &cancel).unwrap()
+            hold.prepare(&caps, None, ContextFree, &cancel).unwrap()
         else {
             panic!("the exact restored effect must leave the original Script read parked");
         };
@@ -2311,7 +2336,7 @@ fn empty_meta_source_closes_accepted_cssom_sheet_after_svg_refusal() {
         let advance = |lease: &mut crate::DomSourceLease<'_>| {
             let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
             let crate::DomMetaSourceStep::Progress(progress) =
-                hold.prepare(&caps, None, &cancel).unwrap()
+                hold.prepare(&caps, None, ContextFree, &cancel).unwrap()
             else {
                 panic!("an empty Meta recording must not produce a Meta boundary");
             };
@@ -2365,7 +2390,7 @@ fn empty_meta_source_closes_accepted_cssom_sheet_after_svg_refusal() {
         {
             let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
             assert!(
-                matches!(hold.prepare(&[], None, &cancel), Err(crate::DomMetaAtomicError::MissingOwner { root }) if root == document.node())
+                matches!(hold.prepare(&[], None, ContextFree, &cancel), Err(crate::DomMetaAtomicError::MissingOwner { root }) if root == document.node())
             );
         }
         assert_eq!(lease.snapshot().stamp(), prefix.stamp());
@@ -2374,7 +2399,7 @@ fn empty_meta_source_closes_accepted_cssom_sheet_after_svg_refusal() {
             crate::DomSourcePhase::ScriptPreparation
         );
         let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
-        match hold.prepare(&caps, None, &cancel) {
+        match hold.prepare(&caps, None, ContextFree, &cancel) {
             Err(crate::DomMetaAtomicError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
             Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
             Ok(_) => panic!("the actual SVG requirement must refuse"),
@@ -2561,7 +2586,7 @@ fn rejected_svg_suffix_does_not_publish_private_meta_recording() {
     let advance = |lease: &mut crate::DomSourceLease<'_>| {
         let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
         let crate::DomMetaSourceStep::Progress(progress) =
-            hold.prepare(&caps, None, &cancel).unwrap()
+            hold.prepare(&caps, None, ContextFree, &cancel).unwrap()
         else {
             panic!("a private rejected suffix must not expose a Meta producer preparation");
         };
@@ -2629,7 +2654,7 @@ fn rejected_svg_suffix_does_not_publish_private_meta_recording() {
             .resume_source_edit(read.operation(), with_outputs(spent + 1), &cancel)
             .unwrap();
         let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
-        match hold.prepare(&caps, None, &cancel) {
+        match hold.prepare(&caps, None, ContextFree, &cancel) {
             Err(crate::DomMetaAtomicError::Dom(DomError::SourceOutputLimit)) => {}
             Err(error) => {
                 panic!("one missing closing output must retain the selected SVG failure: {error:?}")
@@ -2651,7 +2676,7 @@ fn rejected_svg_suffix_does_not_publish_private_meta_recording() {
             .resume_source_edit(read.operation(), with_outputs(spent + 2), &cancel)
             .unwrap();
         let mut hold = lease.begin_meta_runtime(limits, &cancel).unwrap();
-        match hold.prepare(&caps, None, &cancel) {
+        match hold.prepare(&caps, None, ContextFree, &cancel) {
             Err(crate::DomMetaAtomicError::Dom(DomError::SvgScriptProcessingUnavailable)) => {}
             Err(error) => panic!("expected the original SVG refusal, got {error:?}"),
             Ok(_) => {

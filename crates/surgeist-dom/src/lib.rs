@@ -132,8 +132,9 @@ pub use compound::DomNodeOrString;
 mod element;
 mod event;
 pub use event::{
-    DomEventParent, DomEventParentQuery, DomEventRecipient, DomEventRecipientLimits,
-    DomEventRegistryAssociation, DomEventRegistryPreparation, DomEventTarget, DomEventType,
+    DomEventParent, DomEventParentQuery, DomEventPayloadRetention, DomEventRecipient,
+    DomEventRecipientLimits, DomEventRecipientTarget, DomEventRegistryAssociation,
+    DomEventRegistryPreparation,
 };
 mod fieldset;
 mod form;
@@ -333,13 +334,13 @@ pub use button::{DomButton, DomButtonState};
 pub use fieldset::{DomFieldset, DomFieldsetState};
 pub use form::DomForm;
 
-pub use store::source::operation::DomSourceLease;
 pub use store::source::operation::fullscreen::{
     DomFullscreenExitHandoffCommit, DomFullscreenExitJob, DomSourceFullscreenExitHandoffRequest,
 };
 pub use store::source::operation::meta::{
     DomMetaSourcePreparation, DomMetaSourcePublished, DomMetaSourceRuntimeHold, DomMetaSourceStep,
 };
+pub use store::source::operation::{DomSourceEventFiringLoan, DomSourceLease};
 pub use style::{
     DomStyle, DomStyleAction, DomStyleAssociationId, DomStyleCssomOwnerBinding,
     DomStyleCssomPublicationRejection, DomStyleCssomRoot, DomStyleCssomRootError,

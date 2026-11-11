@@ -944,13 +944,15 @@ fn actual_networking_callback_can_select_a_set_without_bypassing_source_custody(
         registrations: 4,
         pending_events: 2,
         nested_dispatches: 2,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             a,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 let basis = context.styles.sheet_sets(dom, document, &flag()).unwrap();
                 context
@@ -958,7 +960,7 @@ fn actual_networking_callback_can_select_a_set_without_bypassing_source_custody(
                     .select_sheet_set(dom, &basis, &"B".into(), 1, &flag())
                     .unwrap();
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())

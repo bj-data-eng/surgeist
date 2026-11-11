@@ -29,6 +29,10 @@ fn service_limits() -> DomSourceEventServiceLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
@@ -142,6 +146,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 8,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -165,7 +171,7 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             callback.clone(),
             DomEventListenerOptions::default(),
         )
@@ -176,11 +182,12 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
             .add_listener(
                 &mut session.dom(),
                 alias,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 callback.clone(),
                 DomEventListenerOptions {
                     capture: false,
-                    once: true
+                    once: true,
+                    passive: None,
                 }
             )
             .unwrap(),
@@ -191,7 +198,7 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 callback,
                 DomEventListenerOptions::default()
             )
@@ -203,7 +210,7 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
             .add_listener(
                 &mut foreign.dom(),
                 foreign_subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, _: &mut Vec<NodeId>, _| Ok(())),
                 DomEventListenerOptions::default()
             )
@@ -215,7 +222,7 @@ fn canonical_registry_claim_rejects_parallel_lists_and_preserves_actual_delivery
         .add_listener(
             &mut foreign.dom(),
             foreign_subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<NodeId>, event| {
                 calls.push(event.current_target().unwrap().node().unwrap());
                 event.prevent_default();
@@ -319,6 +326,8 @@ fn failed_first_registration_and_path_admission_leave_registry_claim_available()
         registrations: 0,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert_eq!(
@@ -326,7 +335,7 @@ fn failed_first_registration_and_path_admission_leave_registry_claim_available()
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, _, _| Ok(())),
                 DomEventListenerOptions::default()
             )
@@ -339,7 +348,7 @@ fn failed_first_registration_and_path_admission_leave_registry_claim_available()
         rejected.add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, _, _| Ok(())),
             DomEventListenerOptions::default()
         ),
@@ -445,7 +454,7 @@ fn show_publishes_open_and_retains_queued_task(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, _| {
                 context.beforetoggle_calls += 1;
                 let mut batch = DomBatch::new();
@@ -460,7 +469,7 @@ fn show_publishes_open_and_retains_queued_task(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Context, _| {
                 context.toggle_calls += 1;
                 Ok(())
@@ -664,21 +673,27 @@ fn native_show_publishes_empty_open_before_waiting_for_remembered_focus() {
 fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running_tail() {
     let cancel = AtomicBool::new(false);
     let (mut session, subject) = fixture(session_limits());
+    assert_eq!(session.snapshot().relevant_global(subject).unwrap(), None);
     let mut listeners = dispatcher();
     listeners
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, observed: &mut (usize, bool), event| {
                 observed.0 += 1;
                 observed.1 = event.cancelable();
+                assert_eq!(
+                    event.time_stamp(),
+                    Err(DomEventTimestampUnavailable::NoAuthenticatedClock)
+                );
                 event.prevent_default();
                 Err(DomEventCallbackError { code: 91 })
             }),
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -729,8 +744,8 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
     );
     assert_eq!(receipt.callbacks(), 1);
     assert_eq!(observed, (1, true));
-    assert_eq!(receipt.original_target(), subject);
-    assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
+    assert_eq!(receipt.original_target(), subject.into());
+    assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
     assert_eq!(session.snapshot().stamp(), before);
     let DomSourceDriveProgress::Complete(done) = resume(&mut session, request.operation()) else {
         panic!("canceled beforetoggle returns normally");
@@ -769,7 +784,7 @@ fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callbac
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, calls: &mut usize, _| {
                 *calls += 1;
                 let mut batch = DomBatch::new();
@@ -780,6 +795,7 @@ fn uncanceled_resume_publishes_open_and_toggle_tracker_without_replaying_callbac
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -957,7 +973,7 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(
                 move |dom, _, observed: &mut (usize, Vec<DomEventTarget>), event| {
                     observed.0 += 1;
@@ -971,6 +987,7 @@ fn hosted_uncanceled_resume_publishes_open_and_toggle_tracker_then_parks_at_reme
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -1383,7 +1400,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, _| {
                 context.beforetoggle_calls += 1;
                 let mut batch = DomBatch::new();
@@ -1402,7 +1419,7 @@ fn hosted_details_intake_precedes_dialog_queue_and_unfinished_show_blocks_all_de
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|_, _, context: &mut Context, _| {
                     context.toggle_calls += 1;
                     Ok(())
@@ -1618,7 +1635,7 @@ fn hosted_dialog_queue_uses_original_relevant_global_after_beforetoggle_adoption
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.calls += 1;
                 context.path = event.composed_path().collect();
@@ -1778,7 +1795,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Context, _| {
                     context.calls.push(label);
                     let mut policy = |_: &DomStyleSource| None;
@@ -1817,7 +1834,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
         .add_listener(
             &mut session.dom(),
             child,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.calls.push("C");
                 let mut batch = DomBatch::new();
@@ -2109,7 +2126,7 @@ fn retained_dispatch_survives_permission_replacement_and_never_repeats_listeners
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, event| {
                     calls.push(number);
                     event.prevent_default();
@@ -2118,6 +2135,7 @@ fn retained_dispatch_survives_permission_replacement_and_never_repeats_listeners
                 DomEventListenerOptions {
                     capture: false,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -2178,7 +2196,7 @@ fn callback_cancellation_retains_frontier_before_acceptance_without_listener_rep
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut (usize, Arc<AtomicBool>), event| {
                 context.0 += 1;
                 event.prevent_default();
@@ -2188,6 +2206,7 @@ fn callback_cancellation_retains_frontier_before_acceptance_without_listener_rep
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2304,7 +2323,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, source: &mut DomSourceRuntime, _| {
                 let mut policy = |_: &DomStyleSource| None;
                 assert!(matches!(
@@ -2329,6 +2348,7 @@ fn callback_open_is_observed_by_separate_resume_without_queueing_toggle() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2377,7 +2397,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
         .add_listener(
             &mut session.dom(),
             first,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Nested, event| {
                 context.log.push("outer");
                 event.prevent_default();
@@ -2411,6 +2431,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2418,7 +2439,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
         .add_listener(
             &mut session.dom(),
             second,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Nested, event| {
                 context.log.push("child");
                 event.prevent_default();
@@ -2427,6 +2448,7 @@ fn pending_nested_request_parks_original_dispatch_and_resumes_without_replay() {
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2521,11 +2543,12 @@ fn canceled_beforetoggle_completes_normally_after_actual_receiver_destruction() 
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             receiver_destroyer(subject),
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2574,11 +2597,12 @@ fn uncanceled_beforetoggle_reports_precise_retired_receiver_after_actual_receipt
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             receiver_destroyer(subject),
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2655,7 +2679,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
         .add_listener(
             &mut session.dom(),
             first,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut AncestorRecovery, event| {
                 context.calls.push("outer");
                 event.prevent_default();
@@ -2677,6 +2701,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2684,7 +2709,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
         .add_listener(
             &mut session.dom(),
             second,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut AncestorRecovery, event| {
                 context.calls.push("child");
                 event.prevent_default();
@@ -2713,6 +2738,7 @@ fn replacement_permission_raises_exhausted_ancestor_without_replaying_retained_c
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -2858,7 +2884,7 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 event.prevent_default();
@@ -2867,6 +2893,7 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -3059,7 +3086,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
         .add_listener(
             &mut control.dom(),
             control_subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 event.prevent_default();
@@ -3068,6 +3095,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -3104,7 +3132,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
             .add_listener(
                 &mut session.dom(),
                 first,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut ByteOverlap, event| {
                     context.log.push(("outer", number));
                     event.prevent_default();
@@ -3126,6 +3154,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
                 DomEventListenerOptions {
                     capture: false,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -3134,7 +3163,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
         .add_listener(
             &mut session.dom(),
             second,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut ByteOverlap, event| {
                 context.children += 1;
                 context.log.push(("child", context.children));
@@ -3144,6 +3173,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

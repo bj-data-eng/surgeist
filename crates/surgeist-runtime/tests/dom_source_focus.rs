@@ -39,6 +39,10 @@ fn session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -151,6 +155,8 @@ fn dispatch(session: &mut DomSession, request: &DomSourceEventRequest) -> DomEve
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatch_with(session, request, &mut registry, &mut ())
@@ -456,13 +462,15 @@ fn callback_adoption_preserves_original_host_scope_in_both_dispositions() {
             registrations: 4,
             pending_events: 4,
             nested_dispatches: 4,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Context, _| {
                     let mut batch = DomBatch::new();
                     batch.insert_before(subject, destination, None);
@@ -627,13 +635,15 @@ fn nested_native_show_selects_its_own_scope_instead_of_inheriting_parent_absence
             registrations: 4,
             pending_events: 4,
             nested_dispatches: 4,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         registry
             .add_listener(
                 &mut session.dom(),
                 parent,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                     context.calls += 1;
                     event.prevent_default();

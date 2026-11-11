@@ -8,8 +8,9 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    NativeDomEvent, NativeDomEventOwner,
+    DomEventTimestampUnavailable, EventDispatchObservation, EventInvocationOwner, NativeDomEvent,
 };
+use crate::dom_lifecycle::NativeTaskRunning;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::mem::size_of;
@@ -382,7 +383,7 @@ impl Drop for TaskPayload {
 }
 struct Task {
     value: DomElementTask,
-    event: Option<NativeDomEventOwner>,
+    event: Option<EventInvocationOwner>,
     receipt: Option<DomEventDispatchReceipt>,
     running: bool,
     dialog: Option<surgeist_dom::DomDialogTask>,
@@ -1207,7 +1208,7 @@ enum PreparedEvent {
     Destroyed,
     Delivered,
     Dispatch(
-        NativeDomEvent,
+        EventDispatchObservation,
         Option<surgeist_dom::DomSourceEventDispatchGuard>,
         DispatchFunding,
     ),
@@ -1218,6 +1219,7 @@ impl ElementTaskState {
         dom: &mut DomEventDom<'_>,
         dispatcher: &DomEventDispatcher<C>,
         value: DomElementTask,
+        native_task: Option<&NativeTaskRunning>,
         limits: DomElementTaskRunLimits,
         cancel: &AtomicBool,
     ) -> Result<PreparedEvent, DomElementTaskRuntimeError> {
@@ -1304,8 +1306,8 @@ impl ElementTaskState {
             (event.dispatch_formation(limits.dispatch), 0)
         } else {
             (
-                NativeDomEventOwner::fresh_dispatch_formation(limits.dispatch),
-                NativeDomEventOwner::initial_payload_bytes()
+                EventInvocationOwner::fresh_dispatch_formation(limits.dispatch),
+                EventInvocationOwner::initial_payload_bytes()
                     .ok_or(DomElementTaskRuntimeError::IdentityExhausted)?,
             )
         };
@@ -1332,18 +1334,34 @@ impl ElementTaskState {
             TaskPayload::new(self.payload_bytes.clone(), extra, source_bytes, retained)?;
         let task = &mut self.tasks[index];
         if task.event.is_none() {
-            let backing = crate::dom_event::EventBodyCustody::element(&mut retained)?;
+            let storage = self
+                .hosted
+                .as_ref()
+                .ok_or(DomElementTaskRuntimeError::Binding)?
+                .event_storage
+                .clone();
+            let backing = crate::dom_event::EventBodyCustody::element(&mut retained, storage)?;
+            let creation = match native_task {
+                Some(task) => task
+                    .sample_event_creation(dom, cancel)
+                    .map_err(DomElementTaskRuntimeError::Hosted)?,
+                None => Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+            };
             task.event = Some(match value {
-                DomElementTask::DetailsToggle(details) => {
-                    NativeDomEvent::details_toggle(value.id().target(), details.event(), backing)
-                }
+                DomElementTask::DetailsToggle(details) => NativeDomEvent::details_toggle(
+                    value.id().target(),
+                    details.event(),
+                    creation,
+                    backing,
+                ),
                 DomElementTask::DialogClose(_) => {
-                    NativeDomEvent::dialog_close(value.id().target(), backing)
+                    NativeDomEvent::dialog_close(value.id().target(), creation, backing)
                 }
                 DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
                     value.id().target(),
                     dialog.old_state(),
                     dialog.new_state(),
+                    creation,
                     backing,
                 ),
             });
@@ -1366,7 +1384,7 @@ impl ElementTaskState {
             None
         };
         Ok(PreparedEvent::Dispatch(
-            (**event).clone(),
+            event.dispatch_observation(),
             scope,
             DispatchFunding::element(retained),
         ))
@@ -1552,7 +1570,7 @@ impl DomElementTaskRuntime {
         let result = (|| {
             let prepared = {
                 let mut owner = state.borrow_mut();
-                owner.prepare_event(dom, dispatcher, value, limits, cancel)?
+                owner.prepare_event(dom, dispatcher, value, native_task.as_ref(), limits, cancel)?
             };
             let (event, _scope, funding) = match prepared {
                 PreparedEvent::Destroyed => return Ok(ElementTaskStep::Destroyed),

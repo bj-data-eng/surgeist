@@ -8,7 +8,7 @@ fn show(session: &mut DomSession, subject: NodeId) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 assert!(event.cancelable());
                 *calls += 1;
@@ -17,6 +17,7 @@ fn show(session: &mut DomSession, subject: NodeId) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -211,13 +212,13 @@ fn check_delivery(progress: DomElementTaskProgress, expected: DomElementTask, ca
                     .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
             );
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), expected.id().target());
+            assert_eq!(receipt.original_target(), expected.id().target().into());
             assert_eq!(
                 receipt.event_type(),
                 if expected.dialog_close().is_some() {
-                    DomEventType::Close
+                    DomEventType::CLOSE
                 } else {
-                    DomEventType::Toggle
+                    DomEventType::TOGGLE
                 }
             );
             assert_eq!(receipt.callbacks(), callbacks);
@@ -295,7 +296,7 @@ fn exercise(retain: bool) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Reentry, event| {
                 context.before_calls += 1;
                 assert!(!event.cancelable());
@@ -306,6 +307,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -326,7 +328,7 @@ fn exercise(retain: bool) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, registry, context: &mut Reentry, event| {
                 context.callbacks.push("first");
                 context.delivered.push(observe(event));
@@ -336,6 +338,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -343,7 +346,7 @@ fn exercise(retain: bool) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
                 context.callbacks.push("later");
                 context.delivered.push(observe(event));
@@ -364,7 +367,7 @@ fn exercise(retain: bool) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Close,
+            DomEventType::CLOSE,
             DomEventCallback::new(move |dom, _, context: &mut Reentry, event| {
                 context.callbacks.push("close");
                 context.delivered.push(observe(event));
@@ -376,6 +379,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -483,7 +487,7 @@ fn exercise(retain: bool) {
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, _: &mut Reentry, event| {
                 assert!(event.cancelable());
                 observed.set(observed.get() + 1);
@@ -492,6 +496,7 @@ fn exercise(retain: bool) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -625,7 +630,7 @@ fn exercise(retain: bool) {
     let toggles: Vec<_> = context
         .delivered
         .iter()
-        .filter(|event| event.kind == DomEventType::Toggle)
+        .filter(|event| event.kind == DomEventType::TOGGLE)
         .collect();
     let html = ready.node(top.document().node()).unwrap().children()[0];
     let expected_path = [
@@ -659,7 +664,7 @@ fn exercise(retain: bool) {
     let close: Vec<_> = context
         .delivered
         .iter()
-        .filter(|event| event.kind == DomEventType::Close)
+        .filter(|event| event.kind == DomEventType::CLOSE)
         .collect();
     assert_eq!(close.len(), 1);
     assert_eq!(close[0].payload, None);

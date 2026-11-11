@@ -43,6 +43,10 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -340,6 +344,8 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
         registrations: 8,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     {
@@ -354,7 +360,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
             .add_listener(
                 &mut dom,
                 details,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, _| {
                     let mut policy = |_: &DomStyleSource| None;
                     let mut services = DomSourceServices {
@@ -376,6 +382,7 @@ fn details_callback_inserts_both_siblings_without_waiting_on_its_own_window_loop
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1786,6 +1793,8 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
         registrations: 8,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     {
@@ -1800,7 +1809,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
             .add_listener(
                 &mut dom,
                 details,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, _| {
                     for traversable in context.traversables {
                         context
@@ -1812,6 +1821,7 @@ fn child_details_blocks_shared_parent_loop_but_not_another_group_in_same_host() 
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

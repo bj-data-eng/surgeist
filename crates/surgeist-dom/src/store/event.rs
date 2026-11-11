@@ -1,6 +1,9 @@
 //! Positive recipient ownership, independent of callbacks and immutable State.
 use super::*;
-use crate::{DomEventRecipient, DomEventRecipientLimits, DomEventTarget, DomEventType};
+use crate::event::Notification;
+use crate::{
+    DomEventPayloadRetention, DomEventRecipient, DomEventRecipientLimits, DomEventRecipientTarget,
+};
 use source::formation::Formation;
 use std::{cell::Cell, sync::Mutex};
 
@@ -162,7 +165,7 @@ impl Drop for LocalDebit {
 }
 
 struct Bucket {
-    target: DomEventTarget,
+    target: DomEventRecipientTarget,
     counts: [AtomicUsize; 4],
     _storage: LocalDebit,
 }
@@ -239,9 +242,9 @@ struct Address {
     len: usize,
 }
 impl Address {
-    fn new(target: DomEventTarget) -> Self {
+    fn new(target: DomEventRecipientTarget) -> Self {
         let mut value = Self {
-            global: matches!(target, DomEventTarget::Global(_)),
+            global: matches!(target, DomEventRecipientTarget::Global(_)),
             parts: [0; MAX_PARTS],
             len: 0,
         };
@@ -253,12 +256,12 @@ impl Address {
             }
         };
         match target {
-            DomEventTarget::Node(node) => {
+            DomEventRecipientTarget::Node(node) => {
                 value.parts[0] = node.slot;
                 value.len = 1;
                 number(node.generation, &mut value);
             }
-            DomEventTarget::Global(global) => {
+            DomEventRecipientTarget::Global(global) => {
                 number(global.source.serial, &mut value);
                 value.parts[value.len] = global.slot;
                 value.len += 1;
@@ -492,21 +495,19 @@ impl Owner {
     }
     pub(super) fn has_recipient(
         &self,
-        target: DomEventTarget,
-        event_type: DomEventType,
+        target: DomEventRecipientTarget,
+        event_type: Notification,
         at_target: bool,
         processing: &Processing<'_>,
     ) -> Result<bool, DomError> {
         let owner = match target {
-            DomEventTarget::Node(node) => node.owner,
-            DomEventTarget::Global(global) => global.source.owner,
+            DomEventRecipientTarget::Node(node) => node.owner,
+            DomEventRecipientTarget::Global(global) => global.source.owner,
         };
         if owner != self.owner {
             return Err(DomError::ForeignOwner);
         }
-        let Some(event) = event_type.notification() else {
-            return Ok(false);
-        };
+        let event = event_type.index();
         if !self.has_live() {
             return Ok(false);
         }
@@ -532,7 +533,7 @@ impl Owner {
     }
     fn retain(
         &self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         event: usize,
         capture: bool,
         processing: &Processing<'_>,
@@ -615,33 +616,109 @@ impl Owner {
 }
 
 impl Dom {
+    /// Whether this current Node is its Document, the document element, or the
+    /// first direct HTML body or frameset. The caller qualifies the event type.
+    /// Each observation charges the caller and any enclosing Source scope.
+    pub fn is_default_passive_listener_node<E>(
+        &self,
+        node: NodeId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E>
+    where
+        E: From<DomError>,
+    {
+        use surgeist_html::elements::style::{
+            HtmlDocumentBodyRole as Role, document_body_role_with,
+        };
+
+        if node.owner() != self.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        let mut tick = || -> Result<(), E> {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        };
+        tick()?;
+        let target = self.state.node(self.owner, node)?;
+        let document = target.document().node();
+        if node == document {
+            return Ok(true);
+        }
+        let (Some(parent), DomNodeKind::Element(element)) = (target.parent(), target.kind()) else {
+            return Ok(false);
+        };
+        // Canonical Document insertion permits only one Element child.
+        if parent == document {
+            return Ok(true);
+        }
+        if document_body_role_with(element.name(), |_| tick())? != Role::Body {
+            return Ok(false);
+        }
+        tick()?;
+        let root = self.state.node(self.owner, parent)?;
+        let DomNodeKind::Element(element) = root.kind() else {
+            return Ok(false);
+        };
+        if root.parent() != Some(document)
+            || document_body_role_with(element.name(), |_| tick())? != Role::Html
+        {
+            return Ok(false);
+        }
+        for &child in root.children() {
+            tick()?;
+            if child == node {
+                return Ok(true);
+            }
+            let sibling = self.state.node(self.owner, child)?;
+            if let DomNodeKind::Element(element) = sibling.kind()
+                && document_body_role_with(element.name(), |_| tick())? == Role::Body
+            {
+                return Ok(false);
+            }
+        }
+        Ok(false)
+    }
+
     /// Retain a positive native Load/Error recipient. Other event classes need
     /// no closure capability and return None. Dropping the affine result ends
     /// this occurrence. It grants no dispatch, callback or execution authority.
     pub fn retain_event_recipient(
         &mut self,
-        target: DomEventTarget,
-        event_type: DomEventType,
+        target: DomEventRecipientTarget,
+        event_type: &[u16],
         capture: bool,
         cancel: &AtomicBool,
     ) -> Result<Option<DomEventRecipient>, crate::DomHostedError> {
-        let Some(event) = event_type.notification() else {
+        let Some(event) = Notification::from_type(event_type).map(Notification::index) else {
             check_cancel(cancel)?;
             return Ok(None);
         };
         self.require_source_entry()?;
         check_cancel(cancel)?;
+        let processing = Processing::new(self.limits.event_recipients(), None, cancel);
         match target {
-            DomEventTarget::Node(node) => {
+            DomEventRecipientTarget::Node(node) => {
                 self.state.node(self.owner, node)?;
             }
-            DomEventTarget::Global(global) => {
-                self.dispatch_global_document(global, cancel)?;
+            DomEventRecipientTarget::Global(global) => {
+                // The association lookup charges the active Source itself.
+                // Attach the formation only after that lookup.
+                self.dispatch_global_document_with(global, cancel, &mut || {
+                    processing.step().map_err(crate::DomHostedError::from)
+                })?;
             }
         }
         let formation = self.source_observation_formation(cancel)?;
-        let processing =
-            Processing::new(self.limits.event_recipients(), formation.as_ref(), cancel);
+        let processing = Processing {
+            formation: formation.as_ref(),
+            ..processing
+        };
         let next = self
             .event_recipients
             .as_ref()
@@ -660,5 +737,30 @@ impl Dom {
         let recipient = owner.retain(target, event, capture, &processing)?;
         self.event_recipients = Some(owner);
         Ok(Some(recipient))
+    }
+
+    /// Admit actual event backing into this canonical owner's custody and every
+    /// observing Source before the Runtime consumer allocates it.
+    pub fn retain_event_payload(
+        &mut self,
+        bytes: usize,
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<DomEventPayloadRetention, DomError> {
+        self.require_source_entry()?;
+        check_cancel(cancel)?;
+        let formation = self.source_observation_formation(cancel)?;
+        source::formation::step(formation.as_ref(), cancel)?;
+        let debit =
+            self.custody_registry
+                .ledger()
+                .retain(
+                    custody::Usage::new(bytes, units),
+                    |usage| match &formation {
+                        Some(formation) => formation.admit_custody_usage(usage, cancel),
+                        None => check_cancel(cancel),
+                    },
+                )?;
+        Ok(DomEventPayloadRetention { debit })
     }
 }

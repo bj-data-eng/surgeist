@@ -73,6 +73,10 @@ fn source_limits() -> DomSourceLimits {
 
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 8,
             storage_bytes: 64_000_000,
@@ -357,6 +361,8 @@ fn production_session_parked_source_reentry_scale() {
             registrations: 1,
             pending_events: 1,
             nested_dispatches: 4,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         struct Callback {
@@ -369,7 +375,7 @@ fn production_session_parked_source_reentry_scale() {
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, context: &mut Callback, _| {
                     context.calls += 1;
                     let mut services = DomSourceServices {
@@ -519,8 +525,8 @@ fn production_session_parked_source_reentry_scale() {
             assert_eq!(receipt.callbacks(), 1);
             assert!(receipt.failures().is_empty());
             assert!(!receipt.default_prevented());
-            assert_eq!(receipt.original_target(), subject);
-            assert_eq!(receipt.event_type(), DomEventType::BeforeToggle);
+            assert_eq!(receipt.original_target(), subject.into());
+            assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
             assert_eq!(callback.calls, sample + 1);
             let id = callback.created.take().unwrap();
             let published = session.snapshot();

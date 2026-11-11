@@ -12,6 +12,10 @@ fn cancel() -> AtomicBool {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
@@ -193,12 +197,14 @@ fn registry() -> DomEventDispatcher<Context> {
         registrations: 32,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
 fn listener() -> DomEventCallback<Context> {
     DomEventCallback::new(|dom, _, context: &mut Context, event| {
-        let target = event.target().unwrap();
+        let target = event.target().and_then(|target| target.node()).unwrap();
         context.events.push((
             event.event_type(),
             target,
@@ -212,7 +218,7 @@ fn listener() -> DomEventCallback<Context> {
     })
 }
 fn listen(dom: &mut DomEventDom<'_>, dispatcher: &mut DomEventDispatcher<Context>, target: NodeId) {
-    for kind in [DomEventType::Load, DomEventType::Error] {
+    for kind in [DomEventType::LOAD, DomEventType::ERROR] {
         dispatcher
             .add_listener(
                 dom,
@@ -235,7 +241,7 @@ fn delivered(
         DomStyleNetworkingProgress::Complete { task, receipt } => {
             // Assert outside callbacks: caught listener unwinds cannot hide a bad fixture.
             assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
-            assert_eq!(receipt.event_type(), DomEventType::Load);
+            assert_eq!(receipt.event_type(), DomEventType::LOAD);
             assert!(!receipt.default_prevented());
             task
         }
@@ -557,7 +563,7 @@ fn live_import_waits_survive_exact_retirement_and_do_not_overtake_queued_fifo() 
                 assert_eq!(context.events.len(), before_callbacks);
             }
             DomStyleNetworkingProgress::Complete { task, receipt } => {
-                assert_eq!(receipt.event_type(), DomEventType::Load);
+                assert_eq!(receipt.event_type(), DomEventType::LOAD);
                 assert!(receipt.failures().is_empty());
                 deliveries.push(task);
             }
@@ -571,8 +577,8 @@ fn live_import_waits_survive_exact_retirement_and_do_not_overtake_queued_fifo() 
     assert_eq!(
         context.events,
         vec![
-            (DomEventType::Load, queued_a, document),
-            (DomEventType::Load, queued_b, document)
+            (DomEventType::LOAD, queued_a, document),
+            (DomEventType::LOAD, queued_b, document)
         ]
     );
     assert_eq!(context.styles.waiting_resources().unwrap(), 2);
@@ -751,19 +757,40 @@ fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_object
     let (style, _) = detached(&mut dom, document, "@unknown x; p { color: red }");
     connect(&mut dom, &mut context, style, parent);
     let old_dom = dom.snapshot();
+    assert_eq!(old_dom.relevant_global(style).unwrap(), None);
     let old = association(&old_dom, style).unwrap();
     let old_cssom = cssom(&context, document);
     assert_eq!(old_cssom.sheet(old.id()).unwrap().diagnostics().len(), 1);
     assert_eq!(context.styles.waiting_resources().unwrap(), 0);
     let mut dispatcher = registry();
     listen(&mut dom, &mut dispatcher, style);
+    dispatcher
+        .add_listener(
+            &mut dom,
+            style,
+            DomEventType::LOAD,
+            DomEventCallback::new(|_, _, context: &mut Context, event| {
+                context.observations.push(event.clone());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
     drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let removed = cssom(&context, document);
     assert!(removed.sheets().is_empty());
     assert!(removed.sheet(old.id()).unwrap().inputs().owner.is_none());
     assert!(association(&dom.snapshot(), style).is_none());
     delivered(&mut dom, &mut dispatcher, &mut context);
-    assert_eq!(context.events, vec![(DomEventType::Load, style, document)]);
+    assert_eq!(context.events, vec![(DomEventType::LOAD, style, document)]);
+    let [event] = context.observations.as_slice() else {
+        panic!("one real unhosted Load observation");
+    };
+    assert!(event.creation().is_none());
+    assert_eq!(
+        event.time_stamp(),
+        Err(DomEventTimestampUnavailable::NoAuthenticatedClock)
+    );
     empty(&mut dom, &mut dispatcher, &mut context);
     assert_eq!(association(&old_dom, style).unwrap(), old);
     assert!(old_cssom.sheet(old.id()).unwrap().inputs().owner.is_some());
@@ -801,8 +828,8 @@ fn queued_old_and_replacement_sheets_each_deliver_without_replacing_current_asso
     assert_eq!(
         context.events,
         vec![
-            (DomEventType::Load, style, document),
-            (DomEventType::Load, style, document)
+            (DomEventType::LOAD, style, document),
+            (DomEventType::LOAD, style, document)
         ]
     );
     empty(&mut dom, &mut dispatcher, &mut context);
@@ -849,7 +876,7 @@ fn queued_historical_load_uses_the_same_live_element_after_adoption() {
     );
     assert!(cssom(&context, other).sheets().is_empty());
     delivered(&mut dom, &mut dispatcher, &mut context);
-    assert_eq!(context.events, vec![(DomEventType::Load, style, other)]);
+    assert_eq!(context.events, vec![(DomEventType::LOAD, style, other)]);
     empty(&mut dom, &mut dispatcher, &mut context);
 }
 
@@ -992,7 +1019,7 @@ fn callback_replacing_execution_access_recovers_exact_session_without_replaying_
         .add_listener(
             &mut dom,
             style,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.events.push((
                     event.event_type(),
@@ -1024,7 +1051,7 @@ fn callback_replacing_execution_access_recovers_exact_session_without_replaying_
         DomStyleNetworkingProgress::RetainedAccess { task, owner } => (task, owner),
         other => panic!("{other:?}"),
     };
-    assert_eq!(context.events, vec![(DomEventType::Load, style, document)]);
+    assert_eq!(context.events, vec![(DomEventType::LOAD, style, document)]);
     assert!(context.styles.snapshot(document.node()).unwrap().is_none());
     assert_eq!(owner.pending_sheet(0).unwrap(), Some(pending));
     context.styles = owner;
@@ -1089,7 +1116,7 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
             .add_listener(
                 &mut dom,
                 style,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.observations.push(event.clone());
                     Ok(())
@@ -1101,7 +1128,7 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
             .add_listener(
                 &mut dom,
                 style,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 listener(),
                 DomEventListenerOptions::default(),
             )
@@ -1122,8 +1149,8 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
         };
         assert_eq!(context.observations.len(), 1);
         assert!(context.events.is_empty());
-        assert_eq!(context.observations[0].event_type(), DomEventType::Load);
-        assert_eq!(context.observations[0].target(), Some(style));
+        assert_eq!(context.observations[0].event_type(), DomEventType::LOAD);
+        assert_eq!(context.observations[0].target(), Some(style.into()));
         (style, old_dom, sheet, old_cssom, task)
     };
     let session = match session.try_shutdown() {

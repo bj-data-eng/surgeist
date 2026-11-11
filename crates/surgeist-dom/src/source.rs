@@ -103,6 +103,8 @@ pub struct DomSourceOperationId {
 pub enum DomSourcePhase {
     /// Original private canonical segment.
     Staging,
+    /// A reached synchronous firing awaits its original clock observation.
+    EventFiring,
     /// Coherent current-state observation awaiting actual event dispatch.
     EventObservation,
     /// Qualified event outcome retained before current-state rebase.

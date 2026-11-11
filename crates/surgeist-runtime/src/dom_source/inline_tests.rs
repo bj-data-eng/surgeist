@@ -25,6 +25,10 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,

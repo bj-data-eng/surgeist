@@ -572,6 +572,7 @@ use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot};
 pub enum DomMetaSourceStep<'hold, 'dom, 'caps> {
     Prepared(DomMetaSourcePreparation<'hold, 'dom, 'caps>),
     Progress(crate::DomInlineStyleSourceProgress),
+    EventFiring(crate::DomSourceEventFiring),
 }
 /// An exclusive loan of a phase already owned by the original Operation.
 #[must_use = "commit or drop this original native Source preparation"]
@@ -712,6 +713,7 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
         &'hold mut self,
         caps: &'caps [&'caps crate::DomStyleCssomRoot],
         mut resolver: Option<&mut DomMetaInlineResolver<'_>>,
+        clock: crate::DomSourceEventClockMode,
         cancel: &AtomicBool,
     ) -> Result<DomMetaSourceStep<'hold, 'dom, 'caps>, DomMetaAtomicError> {
         self.require_prefix()?;
@@ -746,18 +748,26 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
                         limits: self.limits,
                         runtime: self.usage,
                     }),
+                    hosted_events: clock == crate::DomSourceEventClockMode::Hosted,
                 };
                 // Receipt validation already holds this exact producer lock
                 // through the Source advance and its publication fence.
                 let cssom = receipt.as_ref().and_then(|loan| loan.guard.as_ref());
                 match self.lease.advance_execution(&mut execution, cssom, cancel) {
                     Ok(source) => {
-                        return Ok(Err(crate::DomInlineStyleSourceProgress {
-                            source,
-                            inline: execution.publication,
-                        }));
+                        return Ok(Err(crate::DomSourceAdvance::Progress(
+                            crate::DomInlineStyleSourceProgress {
+                                source,
+                                inline: execution.publication,
+                            },
+                        )));
                     }
                     Err(AdvanceError::NativePrepared) => (),
+                    Err(AdvanceError::EventFiring) => {
+                        return Ok(Err(crate::DomSourceAdvance::EventFiring(
+                            self.lease.prepared_event_firing()?,
+                        )));
+                    }
                     Err(AdvanceError::Dom(error)) => return Err(error.into()),
                     Err(AdvanceError::Inline(error)) => return Err(error.into()),
                     Err(AdvanceError::Unwind(payload)) => std::panic::resume_unwind(payload),
@@ -1007,7 +1017,14 @@ impl<'lease, 'dom> DomMetaSourceRuntimeHold<'lease, 'dom> {
             }
             Ok(Ok(Err(progress))) => {
                 self.state = HoldUse::Closed;
-                Ok(DomMetaSourceStep::Progress(progress))
+                Ok(match progress {
+                    crate::DomSourceAdvance::Progress(progress) => {
+                        DomMetaSourceStep::Progress(progress)
+                    }
+                    crate::DomSourceAdvance::EventFiring(firing) => {
+                        DomMetaSourceStep::EventFiring(firing)
+                    }
+                })
             }
             Ok(Err(error)) => {
                 self.state = HoldUse::Closed;

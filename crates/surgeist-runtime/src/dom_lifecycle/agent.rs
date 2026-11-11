@@ -189,7 +189,7 @@ impl HostedState {
             {
                 return Err(DomHostedRuntimeError::Binding);
             }
-            let (h, t, c, g) = self.find_global(global, cancel, || Ok(()))?;
+            let (h, t, c, g) = self.find_global(global, cancel, |_| Ok(()))?;
             let native = &self.hosts[h].top_levels[t]
                 .group
                 .as_ref()

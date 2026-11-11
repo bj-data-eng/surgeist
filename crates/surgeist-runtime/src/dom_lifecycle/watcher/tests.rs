@@ -18,6 +18,10 @@ fn source_limits() -> DomSourceLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: crate::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 4,
             storage_bytes: 16_000_000,
@@ -348,7 +352,7 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     assert!(
         owner
             .borrow_mut()
-            .find_global(top.global(), &cancel, || Ok(()))
+            .find_global(top.global(), &cancel, |_| Ok(()))
             .is_err()
     );
     assert!(
@@ -899,6 +903,8 @@ fn dispatcher<C>() -> crate::DomEventDispatcher<C> {
         registrations: 8,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -965,7 +971,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             .add_listener(
                 &mut session.dom(),
                 subject,
-                crate::DomEventType::BeforeToggle,
+                crate::DomEventType::BEFORE_TOGGLE,
                 crate::DomEventCallback::new(|_, _, calls: &mut usize, _| {
                     *calls += 1;
                     Ok(())
@@ -1149,7 +1155,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
         .add_listener(
             &mut session.dom(),
             parent,
-            crate::DomEventType::BeforeToggle,
+            crate::DomEventType::BEFORE_TOGGLE,
             crate::DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 context.calls += 1;
                 event.prevent_default();
@@ -1630,7 +1636,7 @@ fn ancestor_removal_attempt(
         .add_listener(
             &mut session.dom(),
             parent,
-            crate::DomEventType::BeforeToggle,
+            crate::DomEventType::BEFORE_TOGGLE,
             crate::DomEventCallback::new(move |dom, _, context: &mut AncestorRemoval, event| {
                 context.calls += 1;
                 event.prevent_default();

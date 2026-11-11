@@ -207,6 +207,38 @@ The durable job preserves the actual event, dispatch permit and completion recei
 across refusal or replacement of a weak execution permission. Servicing accepts
 the event result; ordinary `resume` then runs the remaining Source cursor.
 
+`HostedRuntime::create_event` constructs an Event using the supplied current
+Global, its original navigation-start origin and the shared native clock. The
+session's `authored_events` limits fund the body and exact UTF-16 type. Creation
+leaves the canonical registry unclaimed. `prepare_dispatch` selects one exact
+Event, target and dispatcher. Its first admitted `advance` starts the shared
+dispatch algorithm. Eligible Node paths reach Global listeners and honor
+capture, bubbling and the originating ShadowRoot's composed boundary. After
+cleanup, the Event can be used again on the same DOM with the current registry.
+The canceled flag remains sticky across dispatch. Idle `init_event` clears it
+and preserves the original creation time and composed flag.
+
+`HostedRuntime::create_legacy_event` uses the receiving Document's live relevant
+Global and accepts the base Event aliases `Event`, `Events`, `HTMLEvents` and
+`SVGEvents` with ASCII-insensitive matching. The Event starts with an empty type
+and must be initialized with `init_event` before dispatch. Its original
+creation time remains available before and after initialization.
+
+`HostedRuntime::create_event_target` constructs a standalone target using its
+own authenticated relevant Global. The supplied dispatcher owns its listener
+list. Direct Global and standalone dispatch each have one at-target path item
+and invoke capture before noncapture. A standalone target holds its original
+registry identity through escaped observations. Dropping the dispatcher closes
+its listener list, and the last target observation releases its backing.
+
+Listener registration resolves omitted passive policy for exact `touchstart`,
+`touchmove`, `wheel`, and `mousewheel` on a native Window, Document, document
+element, or the first direct HTML body or frameset. Explicit policy overrides
+that default. Duplicate registration preserves the original policy. While a
+passive listener runs, `prevent_default` and `set_return_value(false)` leave
+the canceled flag unchanged. The policy remains in effect until the borrowed
+callback returns or the original owned host frame closes.
+
 `DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
 accepted registration or dispatch claims the canonical DOM's one registry
 association; another dispatcher cannot select a parallel Node or Global list,
@@ -232,8 +264,13 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Arbitrary Event construction and signal integration remain separate
-capabilities.
+task State.
+
+Hosted Style load and synchronous Dialog `beforetoggle` and `cancel` record the
+original Global's clock when the Event body is first admitted. The same
+observation survives retained delivery and retry. Missing or retired clocks
+produce typed unavailability. Provider failure remains distinct. Signal listener
+integration and standard callback Realm qualification remain separate work.
 
 For an external synchronous host, register `DomEventCallback::host(key)` instead
 of a borrowed Rust callback. The key is routing data owned by the application;
@@ -539,7 +576,10 @@ Source continuation. Toggle coalescing removes the tracked task and appends its
 replacement at that source's current tail, retaining first old and latest new
 state. Close tasks have no tracker and do not coalesce. Tasks preserve their
 original queued Document and Global across adoption; dispatch builds its path
-from the current tree. After a Toggle dispatch, the surviving Dialog's current
+from the current tree. Hosted Details and Dialog tasks sample that Global's
+clock when the task first constructs the funded Event and preserve the
+observation across dispatch retries. Tasks without a hosted association have
+unavailable creation timing. After a Toggle dispatch, the surviving Dialog's current
 tracker is cleared even when a callback replaced it; that clear does not remove
 the newer queued task. Close dispatch performs no toggle-tracker write and
 replays none of the initiating method's effects. A retired target never redirects

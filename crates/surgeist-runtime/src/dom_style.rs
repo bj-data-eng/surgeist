@@ -34,7 +34,7 @@ pub use withdrawal::{
 
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchLimits, DomEventDispatchOutcome,
-    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, NativeDomEvent, NativeDomEventOwner,
+    DomEventDispatchReceipt, DomEventDispatcher, DomEventDom, EventInvocationOwner, NativeDomEvent,
 };
 use std::sync::{
     Arc,
@@ -162,6 +162,8 @@ pub enum DomStyleRuntimeError {
     Resource(DomStyleCssomRootError),
     /// Actual bound trusted event executor refused Style attestation.
     EventExecutor(crate::DomSourceEventRuntimeError),
+    /// The original hosted issuer refused Style event timing qualification.
+    EventClock(crate::DomHostedRuntimeError),
 }
 impl std::fmt::Display for DomStyleRuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -177,6 +179,7 @@ impl std::error::Error for DomStyleRuntimeError {
             Self::Dispatch(error) => Some(error),
             Self::Resource(error) => Some(error),
             Self::EventExecutor(error) => Some(error),
+            Self::EventClock(error) => Some(error),
             _ => None,
         }
     }
@@ -189,6 +192,14 @@ impl From<DomStyleCssomRootError> for DomStyleRuntimeError {
 impl From<DomError> for DomStyleRuntimeError {
     fn from(e: DomError) -> Self {
         Self::Dom(e)
+    }
+}
+impl From<surgeist_dom::DomHostedError> for DomStyleRuntimeError {
+    fn from(error: surgeist_dom::DomHostedError) -> Self {
+        match error {
+            surgeist_dom::DomHostedError::Dom(error) => Self::Dom(error),
+            error => Self::EventClock(crate::DomHostedRuntimeError::Dom(error)),
+        }
     }
 }
 impl From<surgeist_cssom::CssomError> for DomStyleRuntimeError {
@@ -344,7 +355,7 @@ struct Publication {
 }
 enum Delivery {
     NotStarted,
-    Dispatching(NativeDomEventOwner),
+    Dispatching(EventInvocationOwner),
     Delivered(DomEventDispatchReceipt),
 }
 struct Task {
@@ -542,8 +553,12 @@ struct StyleState {
     next_task: u64,
     work: std::cell::Cell<u64>,
     dom: DomOwnerId,
-    events: Option<crate::dom_dialog::SourceEventRuntime>,
+    events: Option<StyleEvents>,
     body_bytes: std::rc::Rc<std::cell::Cell<usize>>,
+}
+struct StyleEvents {
+    source: crate::dom_dialog::SourceEventRuntime,
+    clock: crate::dom_lifecycle::HostedEventClock,
 }
 // The current storage observation already includes the old backing. A full
 // persistent bank additionally needs its entire requested replacement; spare
@@ -1635,6 +1650,8 @@ impl StyleState {
 /// Finite admission for each actual owner in the same durable composition.
 #[derive(Clone, Copy, Debug)]
 pub struct DomSessionLimits {
+    /// Persistent authored Event bodies and exact type values.
+    pub authored_events: crate::DomEventStorageLimits,
     /// Durable Source event jobs and actual adapter admission work.
     pub source_events: crate::dom_dialog::DomSourceEventRuntimeLimits,
     /// Style source/resource/task orchestration admission.
@@ -1647,6 +1664,8 @@ pub struct DomSessionLimits {
 /// The owner which refused construction, with the original DOM still returned.
 #[derive(Debug)]
 pub enum DomSessionCreateFailure {
+    /// The shared Event object storage could not be admitted.
+    Events(crate::DomEventDispatchError),
     /// The original Source event executor or its fixed owner was not admitted.
     SourceEvents(crate::dom_dialog::DomSourceEventRuntimeError),
     /// Existing Style source/resource custody prevents adoption or admission.
@@ -1661,6 +1680,7 @@ pub enum DomSessionCreateFailure {
 impl std::fmt::Display for DomSessionCreateFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Events(error) => std::fmt::Display::fmt(error, f),
             Self::SourceEvents(error) => std::fmt::Display::fmt(error, f),
             Self::Style(error) => std::fmt::Display::fmt(error, f),
             Self::Parsed(error) => std::fmt::Display::fmt(error, f),
@@ -1672,6 +1692,7 @@ impl std::fmt::Display for DomSessionCreateFailure {
 impl std::error::Error for DomSessionCreateFailure {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Events(error) => Some(error),
             Self::SourceEvents(error) => Some(error),
             Self::Style(error) => Some(error),
             Self::Parsed(error) => Some(error),
@@ -1873,6 +1894,12 @@ impl DomSession {
                 error: DomSessionCreateFailure::Hosted(error),
             });
         }
+        if let Err(error) = crate::dom_event::EventStorage::validate(limits.authored_events) {
+            return Err(DomSessionCreateError {
+                dom,
+                error: DomSessionCreateFailure::Events(error),
+            });
+        }
         let parsed_work = if let Some((processing, cancel)) = parsed {
             match meta::parsed::admit(&mut dom, limits.style, processing, cancel) {
                 Ok(work) => work,
@@ -1887,6 +1914,19 @@ impl DomSession {
             0
         };
         let owner = dom.owner();
+        let event_storage = match crate::dom_event::EventStorage::session(
+            &mut DomEventDom::borrow(&mut dom),
+            limits.authored_events,
+            &AtomicBool::new(false),
+        ) {
+            Ok(storage) => storage,
+            Err(error) => {
+                return Err(DomSessionCreateError {
+                    dom,
+                    error: DomSessionCreateFailure::Events(error),
+                });
+            }
+        };
         let details = match crate::element_tasks::ElementTaskOwner::new(owner, limits.element_tasks)
         {
             Ok(details) => details,
@@ -1897,7 +1937,11 @@ impl DomSession {
                 });
             }
         };
-        let hosted = match crate::dom_lifecycle::HostedOwner::new(&mut dom, limits.hosted) {
+        let hosted = match crate::dom_lifecycle::HostedOwner::new(
+            &mut dom,
+            limits.hosted,
+            event_storage.clone(),
+        ) {
             Ok(hosted) => hosted,
             Err(error) => {
                 return Err(DomSessionCreateError {
@@ -1914,11 +1958,18 @@ impl DomSession {
         let executor = dom
             .bind_source_event_executor(&AtomicBool::new(false))
             .expect("exclusive preflighted Source event binding");
-        let events =
-            crate::dom_dialog::SourceEventOwner::new(owner, executor, limits.source_events);
+        let events = crate::dom_dialog::SourceEventOwner::new(
+            owner,
+            executor,
+            limits.source_events,
+            event_storage,
+        );
         details.bind_events(events.execution());
         let mut state = StyleState::new(owner, limits.style);
-        state.events = Some(events.execution());
+        state.events = Some(StyleEvents {
+            source: events.execution(),
+            clock: hosted.event_clock(),
+        });
         state.work.set(parsed_work);
         Ok(Self {
             dom,
@@ -2517,25 +2568,48 @@ impl DomStyleRuntime {
                             Delivery::NotStarted
                         ) {
                             state.admit(
-                                NativeDomEventOwner::initial_payload_bytes()
+                                EventInvocationOwner::initial_payload_bytes()
                                     .ok_or(DomStyleRuntimeError::Admission)?,
                                 cancel,
                             )?;
-                            let backing =
-                                crate::dom_event::EventBodyCustody::style(&state.body_bytes);
-                            let target = state.completions[index].task().token.target();
-                            let event = if action == HtmlStyleNotificationAction::DispatchLoad {
-                                NativeDomEvent::style_load(target, backing)
-                            } else {
-                                NativeDomEvent::style_error(target, backing)
+                            let events = state
+                                .events
+                                .as_ref()
+                                .ok_or(DomStyleRuntimeError::SessionUnavailable)?;
+                            let token = &state.completions[index].task().token;
+                            let origin = dom.raw().style_event_creation_origin(
+                                token,
+                                cancel,
+                                &mut || state.step(cancel),
+                            )?;
+                            // The original task admitted its body. Qualification
+                            // and clock work finish before its single sample.
+                            let creation = match origin {
+                                Some((global, origin)) => events
+                                    .clock
+                                    .sample(dom, global, origin, cancel)
+                                    .map_err(DomStyleRuntimeError::EventClock)?,
+                                None => {
+                                    Err(crate::DomEventTimestampUnavailable::NoAuthenticatedClock)
+                                }
                             };
+                            let backing = crate::dom_event::EventBodyCustody::style(
+                                &state.body_bytes,
+                                events.source.storage.clone(),
+                            );
+                            let event = NativeDomEvent::style_notification(
+                                token.target(),
+                                action == HtmlStyleNotificationAction::DispatchLoad,
+                                creation,
+                                backing,
+                            );
                             state.completions[index].task_mut().delivery =
                                 Delivery::Dispatching(event);
                         }
                         match &state.completions[index].task().delivery {
-                            Delivery::Dispatching(event) => Some((**event).clone()),
+                            Delivery::Dispatching(event) => Some(event.dispatch_observation()),
                             Delivery::Delivered(_) => None,
-                            Delivery::NotStarted => unreachable!(),
+                            Delivery::NotStarted => return Err(DomStyleRuntimeError::Protocol),
                         }
                     };
                     if let Some(event) = event {
@@ -2672,14 +2746,15 @@ impl DomStyleRuntime {
                             state.step(cancel)?;
                         }
                     }
-                    let events = state.events.clone();
+                    let events = state.events.as_ref().map(|events| events.source.clone());
                     let task = state.completions[index].task_mut();
                     let Delivery::Delivered(receipt) = &task.delivery else {
                         return Err(DomStyleRuntimeError::Protocol);
                     };
                     if parsed_cleanup
-                        && (receipt.original_target() != task.token.target()
-                            || receipt.event_type() != surgeist_dom::DomEventType::Load)
+                        && (receipt.original_target().node() != Some(task.token.target())
+                            || receipt.native_cause()
+                                != Some(crate::dom_event::NativeEventCause::StyleLoad))
                     {
                         return Err(DomStyleRuntimeError::Protocol);
                     }
@@ -2805,6 +2880,10 @@ mod tests {
     mod withdrawal;
     pub(super) fn session_limits(style: super::DomStyleRuntimeLimits) -> super::DomSessionLimits {
         super::DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: crate::dom_dialog::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -3338,16 +3417,18 @@ mod tests {
             registrations: 16,
             pending_events: 16,
             nested_dispatches: 8,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut dom,
                 document,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(move |dom, _dispatcher, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     let edit = DomSourceEdit::detach(style);
@@ -3372,6 +3453,7 @@ mod tests {
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -3488,13 +3570,15 @@ mod tests {
                 registrations: 4,
                 pending_events: 1,
                 nested_dispatches: 1,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
             })
             .unwrap();
             dispatcher
                 .add_listener(
                     &mut session.dom(),
                     target,
-                    DomEventType::Load,
+                    DomEventType::LOAD,
                     DomEventCallback::new(|_, _, context: &mut ObservationContext, event| {
                         context.observations.push(event.clone());
                         Ok(())
@@ -3704,16 +3788,18 @@ mod tests {
             registrations: 4,
             pending_events: 2,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -4371,16 +4457,18 @@ mod tests {
             registrations: 4,
             pending_events: 1,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -5251,16 +5339,18 @@ mod tests {
             registrations: 4,
             pending_events: 1,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -5334,16 +5424,18 @@ mod tests {
             registrations: 4,
             pending_events: 1,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -5455,13 +5547,15 @@ mod tests {
             registrations: 4,
             pending_events: 2,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|dom, _, context: &mut NestedContext, _| {
                     let cancel = AtomicBool::new(false);
                     let mut raised = limits();
@@ -5652,6 +5746,8 @@ mod tests {
             registrations: 4,
             pending_events: 2,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         assert!(
@@ -5708,13 +5804,15 @@ mod tests {
             registrations: 4,
             pending_events: 1,
             nested_dispatches: 2,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut PanicContext, _| {
                     context.calls += 1;
                     context.panic_next = true;
@@ -6138,13 +6236,15 @@ mod replacement_test {
             registrations: 8,
             pending_events: 8,
             nested_dispatches: 4,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut dom,
                 style,
-                DomEventType::Load,
+                DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, _| {
                     context.calls += 1;
                     // Drop the only public old owner handle. The active

@@ -6,7 +6,7 @@
 use crate::dom_event::{
     DispatchCall, DispatchFunding, DomEventDispatchError, DomEventDispatchLimits,
     DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher, DomEventDom,
-    DomEventType, NativeDomEvent, NativeDomEventOwner,
+    DomEventTimestampUnavailable, EventInvocationOwner, NativeDomEvent, NativeEventCause,
 };
 use std::{
     cell::RefCell,
@@ -118,7 +118,7 @@ enum Phase {
 struct Job {
     next: Option<Rc<RefCell<Job>>>,
     request: DomSourceEventRequest,
-    event: NativeDomEventOwner,
+    event: EventInvocationOwner,
     phase: Phase,
     // The original Source receipt for the job header only. Event bodies and
     // dispatch backing carry their own transferred receipts.
@@ -244,6 +244,7 @@ impl State {
         dom: &Dom,
         request: &DomSourceEventRequest,
         cancel: &AtomicBool,
+        storage: crate::dom_event::EventStorage,
     ) -> Result<Rc<RefCell<Job>>, DomSourceEventRuntimeError> {
         self.step(1, cancel)?;
         let lookup = self.find(request.identity(), cancel)?;
@@ -255,7 +256,7 @@ impl State {
                 DomSourceEventResource::Jobs,
             ));
         }
-        let payload = NativeDomEventOwner::initial_payload_bytes().ok_or(
+        let payload = EventInvocationOwner::initial_payload_bytes().ok_or(
             DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
         )?;
         let job_bytes = size_of::<RefCell<Job>>().checked_add(payload).ok_or(
@@ -266,7 +267,10 @@ impl State {
         // One actual formation/link step admits the new original node before
         // allocation. All old nodes and their Source debits remain live.
         self.step(1, cancel)?;
-        let backing = crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes)?;
+        let backing =
+            crate::dom_event::EventBodyCustody::source(&mut retained, &self.body_bytes, storage)?;
+        let creation =
+            crate::dom_lifecycle::EventCreation::from_source(dom.source_event_time(request)?);
         let job = Rc::new(RefCell::new(Job {
             next: None,
             request: request.clone(),
@@ -280,6 +284,7 @@ impl State {
                         payload.old_state(),
                         payload.new_state(),
                         request.cancelable(),
+                        creation,
                         backing,
                     )
                 }
@@ -291,15 +296,21 @@ impl State {
                         request.subject(),
                         payload.old_state(),
                         payload.new_state(),
+                        Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
                         backing,
                     )
                 }
-                surgeist_dom::DomSourceEventKind::Cancel => {
-                    NativeDomEvent::dialog_cancel(request.subject(), request.cancelable(), backing)
-                }
-                surgeist_dom::DomSourceEventKind::Close => {
-                    NativeDomEvent::dialog_close(request.subject(), backing)
-                }
+                surgeist_dom::DomSourceEventKind::Cancel => NativeDomEvent::dialog_cancel(
+                    request.subject(),
+                    request.cancelable(),
+                    creation,
+                    backing,
+                ),
+                surgeist_dom::DomSourceEventKind::Close => NativeDomEvent::dialog_close(
+                    request.subject(),
+                    Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+                    backing,
+                ),
             },
             phase: Phase::Ready,
             _retained: retained,
@@ -324,10 +335,12 @@ impl Drop for State {
 
 pub(crate) struct SourceEventOwner {
     state: Rc<RefCell<State>>,
+    storage: crate::dom_event::EventStorage,
 }
 #[derive(Clone)]
 pub(crate) struct SourceEventRuntime {
     state: Weak<RefCell<State>>,
+    pub(crate) storage: crate::dom_event::EventStorage,
 }
 impl SourceEventOwner {
     pub(crate) fn admit_initial(
@@ -349,8 +362,10 @@ impl SourceEventOwner {
         owner: DomOwnerId,
         executor: DomSourceEventExecutor,
         limits: DomSourceEventRuntimeLimits,
+        storage: crate::dom_event::EventStorage,
     ) -> Self {
         Self {
+            storage,
             state: Rc::new(RefCell::new(State {
                 owner,
                 executor,
@@ -366,6 +381,7 @@ impl SourceEventOwner {
     pub(crate) fn execution(&self) -> SourceEventRuntime {
         SourceEventRuntime {
             state: Rc::downgrade(&self.state),
+            storage: self.storage.clone(),
         }
     }
     pub(crate) fn pending(&self) -> Result<Option<DomSourceEventId>, DomSourceEventRuntimeError> {
@@ -552,7 +568,9 @@ impl SourceEventRuntime {
             dom.raw_mut()
                 .resume_source_edit(request.operation(), limits.source, cancel)?,
         );
-        let job = original.borrow_mut().job(dom.raw(), request, cancel)?;
+        let job = original
+            .borrow_mut()
+            .job(dom.raw(), request, cancel, self.storage.clone())?;
         let delivered = matches!(job.borrow().phase, Phase::Delivered { .. });
         if !delivered {
             let (event, scope, funding) = {
@@ -586,7 +604,7 @@ impl SourceEventRuntime {
                 let retained =
                     dom.raw()
                         .retain_source_event_payload(request, formation.source, 0, cancel)?;
-                let funding = DispatchFunding::source(&state.body_bytes, retained, formation);
+                let funding = DispatchFunding::source(&state.body_bytes, retained, formation.full);
                 if matches!(job.borrow().phase, Phase::Ready) {
                     let permit = state.executor.begin_dispatch(dom.raw(), request, cancel)?;
                     job.borrow_mut().phase = Phase::Dispatching {
@@ -601,7 +619,7 @@ impl SourceEventRuntime {
                     return Err(DomSourceEventRuntimeError::Protocol);
                 };
                 let scope = state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
-                (std::ops::Deref::deref(&row.event).clone(), scope, funding)
+                (row.event.dispatch_observation(), scope, funding)
             };
             let outcome = dispatcher
                 .deliver(
@@ -662,16 +680,16 @@ impl SourceEventRuntime {
             else {
                 return Err(DomSourceEventRuntimeError::Protocol);
             };
-            if receipt.original_target() != request.subject()
-                || receipt.event_type()
-                    != match request.kind() {
+            if receipt.original_target().node() != Some(request.subject())
+                || receipt.native_cause()
+                    != Some(match request.kind() {
                         surgeist_dom::DomSourceEventKind::BeforeToggle => {
-                            DomEventType::BeforeToggle
+                            NativeEventCause::DialogBeforeToggle
                         }
-                        surgeist_dom::DomSourceEventKind::Toggle => DomEventType::Toggle,
-                        surgeist_dom::DomSourceEventKind::Close => DomEventType::Close,
-                        surgeist_dom::DomSourceEventKind::Cancel => DomEventType::Cancel,
-                    }
+                        surgeist_dom::DomSourceEventKind::Toggle => NativeEventCause::DialogToggle,
+                        surgeist_dom::DomSourceEventKind::Close => NativeEventCause::DialogClose,
+                        surgeist_dom::DomSourceEventKind::Cancel => NativeEventCause::DialogCancel,
+                    })
             {
                 return Err(DomSourceEventRuntimeError::Protocol);
             }
@@ -722,6 +740,7 @@ impl SourceEventRuntime {
 #[cfg(test)]
 mod payload_tests {
     use super::*;
+    use crate::DomEventType;
     use crate::{
         DomEventCallback, DomEventCallbackError, DomEventListenerFailure, DomEventListenerOptions,
         DomEventRegistryLimits, DomEventResource,
@@ -790,12 +809,23 @@ mod payload_tests {
                 work: 1_000_000,
             };
             SourceEventOwner::admit_initial(policy).unwrap();
-            let owner = SourceEventOwner::new(dom.owner(), executor, policy);
+            let storage = crate::dom_event::EventStorage::session(
+                &mut DomEventDom::borrow(&mut dom),
+                crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
+                &cancel,
+            )
+            .unwrap();
+            let owner = SourceEventOwner::new(dom.owner(), executor, policy, storage);
             let runtime = owner.execution();
             let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
                 registrations: LISTENERS,
                 pending_events: 1,
                 nested_dispatches: 1,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
             })
             .unwrap();
             for index in 0..LISTENERS {
@@ -803,7 +833,7 @@ mod payload_tests {
                     .add_listener(
                         &mut DomEventDom::borrow(&mut dom),
                         subject,
-                        DomEventType::BeforeToggle,
+                        DomEventType::BEFORE_TOGGLE,
                         DomEventCallback::new(move |_, _, calls: &mut Vec<usize>, event| {
                             calls.push(index);
                             event.prevent_default();
@@ -812,6 +842,7 @@ mod payload_tests {
                         DomEventListenerOptions {
                             capture: false,
                             once: false,
+                            passive: None,
                         },
                     )
                     .unwrap();
@@ -958,7 +989,7 @@ mod payload_tests {
         assert_eq!(calls, (0..LISTENERS).collect::<Vec<_>>());
         assert_eq!(receipt.callbacks(), LISTENERS);
         assert_eq!(receipt.failures().len(), LISTENERS);
-        assert_eq!(receipt.original_target(), request.subject());
+        assert_eq!(receipt.original_target(), request.subject().into());
         assert!(receipt.default_prevented());
         assert!(owner.state.borrow().jobs.is_none());
         let mut lease = dom

@@ -42,6 +42,10 @@ fn hosted_limits(registries: usize, tasks: usize) -> DomHostedRuntimeLimits {
 }
 fn session_limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 32_000_000,
@@ -528,6 +532,8 @@ fn deliver_load(fixture: &mut Fixture) {
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let style = fixture.style;
@@ -535,10 +541,10 @@ fn deliver_load(fixture: &mut Fixture) {
         .add_listener(
             &mut fixture.session.dom(),
             style,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut Networking, event| {
-                assert_eq!(event.event_type(), DomEventType::Load);
-                assert_eq!(event.target(), Some(style));
+                assert_eq!(event.event_type(), DomEventType::LOAD);
+                assert_eq!(event.target(), Some(style.into()));
                 assert!(!event.cancelable());
                 context.delivered.push((event.event_type(), style));
                 Ok(())
@@ -546,6 +552,7 @@ fn deliver_load(fixture: &mut Fixture) {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -569,7 +576,7 @@ fn deliver_load(fixture: &mut Fixture) {
     };
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
-    assert_eq!(context.delivered, [(DomEventType::Load, style)]);
+    assert_eq!(context.delivered, [(DomEventType::LOAD, style)]);
     assert!(!registry.remove_listener(once));
     assert!(matches!(
         DomStyleRuntime::run_networking(

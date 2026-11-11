@@ -37,7 +37,7 @@ fn close_at_removal() -> (
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 event.prevent_default();

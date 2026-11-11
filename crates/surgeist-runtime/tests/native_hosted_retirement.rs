@@ -43,6 +43,10 @@ fn session() -> DomSession {
     DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -142,6 +146,8 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     {
@@ -150,11 +156,11 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .add_listener(
                 &mut dom,
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
-                        event.target(),
+                        event.target().and_then(|target| target.node()),
                         event.phase(),
                     ));
                     let mut batch = DomBatch::new();
@@ -170,11 +176,11 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
             .add_listener(
                 &mut dom,
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
-                        event.target(),
+                        event.target().and_then(|target| target.node()),
                         event.phase(),
                     ));
                     let mut batch = DomBatch::new();
@@ -352,6 +358,209 @@ fn queue_details(
     (target, details, queued)
 }
 
+#[test]
+fn adopted_hosted_details_keeps_its_original_creation_time_across_dispatch_resume() {
+    struct Observation {
+        event: NativeDomEvent,
+        creation: Option<DomEventCreationObservation>,
+        current_target: Option<DomEventTarget>,
+        phase: DomEventPhase,
+        path: Vec<DomEventTarget>,
+    }
+    struct Context {
+        element_tasks: DomElementTaskRuntime,
+        seen: Vec<Observation>,
+    }
+    impl DomElementTaskEventContext for Context {
+        fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+            &mut self.element_tasks
+        }
+    }
+
+    let mut session = session();
+    let original = create_top(&mut session);
+    let destination = create_top(&mut session);
+    let original_body = body(&session, original.document());
+    let destination_body = body(&session, destination.document());
+    let (target, details, queued) = queue_details(&mut session, original.document(), original_body);
+    let association = queued.queue_association().unwrap();
+    assert_eq!(association.document(), original.document());
+    assert_eq!(association.global(), original.global());
+    assert_ne!(original.global(), destination.global());
+
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    batch.insert_before(target, destination_body, None);
+    session.dom().apply(batch, &cancel()).unwrap();
+    let snapshot = session.snapshot();
+    let adopted = snapshot.node(target).unwrap();
+    assert_eq!(adopted.owner_document(), Some(destination.document()));
+    assert_eq!(adopted.parent(), Some(destination_body));
+    assert_eq!(
+        snapshot.relevant_global(target).unwrap(),
+        Some(original.global())
+    );
+    let destination_root = snapshot
+        .document(destination.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+
+    let mut hosted = session.hosted_execution();
+    let original_settings = hosted
+        .settings(&session.dom(), original.global(), &cancel())
+        .unwrap();
+    let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 16,
+        pending_events: 4,
+        nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
+    })
+    .unwrap();
+    let observe = DomEventCallback::new(|_, _, context: &mut Context, event| {
+        context.seen.push(Observation {
+            event: event.clone(),
+            creation: event.creation().copied(),
+            current_target: event.current_target(),
+            phase: event.phase(),
+            path: event.composed_path().collect(),
+        });
+        Ok(())
+    });
+    for (node, capture) in [(destination.document().node(), true), (target, false)] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                node,
+                DomEventType::TOGGLE,
+                observe.clone(),
+                DomEventListenerOptions {
+                    capture,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+    }
+    let mut context = Context {
+        element_tasks: details,
+        seen: Vec::new(),
+    };
+    let mut clock_bracket = |session: &mut DomSession| {
+        hosted
+            .create_event(
+                &mut session.dom(),
+                original.global(),
+                &[],
+                DomEventInit::default(),
+                &cancel(),
+            )
+            .unwrap()
+            .creation()
+            .unwrap()
+            .occurrence_microseconds()
+    };
+    let before_first_run = clock_bracket(&mut session);
+    let source = DomElementTaskSourceKind::DomManipulation;
+    let source_limits =
+        DomSourceLimits::new(16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64);
+    let run = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: DomEventDispatchLimits {
+                callbacks: 1,
+                ..dispatch_limits()
+            },
+            source: source_limits,
+        },
+        &cancel(),
+    )
+    .unwrap();
+    assert!(matches!(
+        run,
+        DomElementTaskProgress::Retained {
+            task,
+            dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+            displaced_owner: None,
+        } if task == queued
+    ));
+    assert_eq!(context.seen.len(), 1);
+    assert_eq!(
+        context.element_tasks.pending_task(source, 0).unwrap(),
+        Some(queued)
+    );
+    let before_resume = clock_bracket(&mut session);
+
+    let DomElementTaskProgress::Complete { task, receipt, .. } = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        source,
+        &mut registry,
+        &mut context,
+        DomElementTaskRunLimits {
+            dispatch: dispatch_limits(),
+            source: source_limits,
+        },
+        &cancel(),
+    )
+    .unwrap() else {
+        panic!("original queued Details dispatch must complete");
+    };
+    assert_eq!(task, queued);
+    assert_eq!(receipt.original_target(), target.into());
+    assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
+    assert_eq!(receipt.callbacks(), 2);
+    assert!(receipt.failures().is_empty());
+    assert_eq!(context.element_tasks.pending_task(source, 0).unwrap(), None);
+    let [first, second] = context.seen.as_slice() else {
+        panic!("expected exactly the capture and target callbacks");
+    };
+    assert_eq!(
+        first.current_target,
+        Some(destination.document().node().into())
+    );
+    assert_eq!(first.phase, DomEventPhase::Capturing);
+    assert_eq!(second.current_target, Some(target.into()));
+    assert_eq!(second.phase, DomEventPhase::AtTarget);
+    let path = [
+        target.into(),
+        destination_body.into(),
+        destination_root.into(),
+        destination.document().node().into(),
+        destination.global().into(),
+    ];
+    assert_eq!(first.path, path);
+    assert_eq!(second.path, path);
+    assert!(first.event.is_trusted());
+    assert!(second.event.is_trusted());
+    let creation = first
+        .creation
+        .expect("hosted Details firing must carry its original creation Global and clock");
+    assert_eq!(second.creation, Some(creation));
+    assert_eq!(first.event.creation(), Some(&creation));
+    assert_eq!(second.event.creation(), Some(&creation));
+    assert_eq!(creation.global(), original.global());
+    assert_eq!(creation.clock_source(), original_settings.clock_source());
+    assert_eq!(
+        creation.time_origin_microseconds(),
+        original_settings.time_origin_microseconds()
+    );
+    let occurrence = creation.occurrence_microseconds();
+    assert!((before_first_run..=before_resume).contains(&occurrence));
+    assert_eq!(occurrence % 100, 0);
+    assert_eq!(first.event.time_stamp(), second.event.time_stamp());
+    assert_eq!(
+        first.event.time_stamp(),
+        Ok(
+            (i128::from(occurrence) - i128::from(original_settings.time_origin_microseconds()))
+                as f64
+                / 1000.0
+        )
+    );
+}
+
 fn reentry_registry(
     session: &mut DomSession,
     target: NodeId,
@@ -360,6 +569,8 @@ fn reentry_registry(
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     let mut dom = session.dom();
@@ -367,11 +578,13 @@ fn reentry_registry(
         .add_listener(
             &mut dom,
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
-                context
-                    .observations
-                    .push((event.current_target(), event.target(), event.phase()));
+                context.observations.push((
+                    event.current_target(),
+                    event.target().and_then(|target| target.node()),
+                    event.phase(),
+                ));
                 let mut batch = DomBatch::new();
                 batch.detach(context.target);
                 match context.edit {
@@ -401,6 +614,7 @@ fn reentry_registry(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -408,11 +622,13 @@ fn reentry_registry(
         .add_listener(
             &mut dom,
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
-                context
-                    .observations
-                    .push((event.current_target(), event.target(), event.phase()));
+                context.observations.push((
+                    event.current_target(),
+                    event.target().and_then(|target| target.node()),
+                    event.phase(),
+                ));
                 let mut batch = DomBatch::new();
                 batch.set_attribute(context.target, "later-listener", "delivered");
                 context.edits.push(dom.apply(batch, &cancel()));
@@ -421,6 +637,7 @@ fn reentry_registry(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -793,6 +1010,8 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         registrations: 16,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(
@@ -840,7 +1059,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         .add_listener(
             &mut session.dom(),
             replacement,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut ReentryContext, _| {
                 context.replacement_callbacks += 1;
                 Ok(())
@@ -852,7 +1071,7 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         registry.add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, _: &mut ReentryContext, _| Ok(())),
             DomEventListenerOptions::default()
         ),
@@ -912,4 +1131,148 @@ fn retained_retirement_resumes_without_replay_or_replacement_delivery_after_wron
         .unwrap(),
         DomElementTaskProgress::Empty
     ));
+}
+
+#[test]
+fn adopted_dialog_fires_without_timing_after_its_original_global_retires() {
+    let mut session = session();
+    let original = create_top(&mut session);
+    let destination = create_top(&mut session);
+    let original_body = body(&session, original.document());
+    let destination_body = body(&session, destination.document());
+    let mut batch = DomBatch::new();
+    let target = batch.create_element_ns(original.document(), Namespace::html(), "dialog");
+    batch.insert_before(&target, original_body, None);
+    let target = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&target)
+        .unwrap()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    batch.adopt(target, destination.document());
+    batch.insert_before(target, destination_body, None);
+    session.dom().apply(batch, &cancel()).unwrap();
+    retire_top(&mut session, original);
+    let snapshot = session.snapshot();
+    assert_eq!(
+        snapshot.node(target).unwrap().parent(),
+        Some(destination_body)
+    );
+    assert_eq!(
+        snapshot.relevant_global(target).unwrap(),
+        Some(original.global())
+    );
+    assert!(
+        snapshot
+            .document(destination.document())
+            .unwrap()
+            .is_fully_active()
+            .unwrap()
+    );
+
+    let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+        registrations: 1,
+        pending_events: 1,
+        nested_dispatches: 1,
+        storage_bytes: 1_000_000,
+        work: 100_000,
+    })
+    .unwrap();
+    dispatcher
+        .add_listener(
+            &mut session.dom(),
+            target,
+            DomEventType::BEFORE_TOGGLE,
+            DomEventCallback::new(|_, _, seen: &mut Vec<_>, event| {
+                seen.push((event.current_target(), event.phase(), event.time_stamp()));
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let source_limits =
+        DomSourceLimits::new(16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 64);
+    let mut source = session.source_execution();
+    source
+        .raise_event_runtime_limits(
+            &session.dom(),
+            DomSourceEventRuntimeLimits {
+                jobs: 1,
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let mut services = DomSourceServices {
+        meta: None,
+        execution_scope: None,
+        style_policy: &mut |_| None,
+        url: None,
+    };
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(request),
+        reason: DomSourceUnavailable::Event,
+    } = source
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_dialog(target),
+            source_limits,
+            &mut services,
+            &cancel(),
+        )
+        .unwrap()
+    else {
+        panic!("a selected beforetoggle still reaches its actual adopted target");
+    };
+    let mut seen = Vec::new();
+    let serviced = source
+        .service_event(
+            &mut session.dom(),
+            &request,
+            &mut dispatcher,
+            &mut seen,
+            DomSourceEventServiceLimits {
+                source: source_limits,
+                dispatch: dispatch_limits(),
+            },
+            &cancel(),
+        )
+        .unwrap();
+    assert!(
+        matches!(serviced, DomSourceEventServiceProgress::Serviced { ref receipt }
+        if receipt.callbacks() == 1 && receipt.default_prevented())
+    );
+    assert_eq!(
+        seen,
+        [(
+            Some(target.into()),
+            DomEventPhase::AtTarget,
+            Err(DomEventTimestampUnavailable::NoAuthenticatedClock),
+        )]
+    );
+    assert!(matches!(
+        source
+            .resume(
+                &mut session.dom(),
+                request.operation(),
+                source_limits,
+                &mut services,
+                &cancel()
+            )
+            .unwrap(),
+        DomSourceDriveProgress::Complete(_),
+    ));
+    assert!(session.dom().pending_source_edit().is_none());
+    assert!(
+        session
+            .snapshot()
+            .node(target)
+            .unwrap()
+            .attribute(&"open".into())
+            .is_none()
+    );
 }

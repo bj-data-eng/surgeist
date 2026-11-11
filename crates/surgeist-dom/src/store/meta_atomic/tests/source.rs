@@ -1,5 +1,6 @@
 //! Actual original Source invocations; no status/receipt fabrication.
 use super::*;
+use crate::DomSourceEventClockMode::ContextFree;
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(64_000_000, 1_000_000, 10_000_000, 64, 4096, 4096, 4)
 }
@@ -31,7 +32,8 @@ fn original_source_prepares_actual_meta_and_publishes_once_with_original_complet
         .unwrap();
     let operation = lease.operation();
     let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-    let DomMetaSourceStep::Prepared(mut prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+    let DomMetaSourceStep::Prepared(mut prepared) =
+        hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
     else {
         panic!("actual native boundary");
     };
@@ -98,7 +100,8 @@ fn normal_preparation_drop_parks_real_phase_and_raises_preserve_original_operati
             .unwrap();
         operation = lease.operation();
         let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-        let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Prepared(prepared) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("actual native phase");
         };
@@ -122,7 +125,9 @@ fn normal_preparation_drop_parks_real_phase_and_raises_preserve_original_operati
         Err(DomError::SourceLimitReduction)
     ));
     let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-    let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap() else {
+    let DomMetaSourceStep::Prepared(prepared) =
+        hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
+    else {
         panic!("same parked native phase");
     };
     assert_eq!(prepared.occurrences().len(), 1);
@@ -175,7 +180,8 @@ fn bound_policy_survives_drop_before_prepare_and_forgotten_hold_cannot_be_reacqu
             ));
         } else {
             let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-            let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+            let DomMetaSourceStep::Prepared(prepared) =
+                hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
             else {
                 panic!("original retained invocation");
             };
@@ -211,7 +217,9 @@ fn forgotten_preparation_keeps_real_graph_debit_and_seals_every_public_hold_entr
     )
     .unwrap();
     let units = external.capacity();
-    let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap() else {
+    let DomMetaSourceStep::Prepared(prepared) =
+        hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
+    else {
         panic!("real phase before forgetting");
     };
     let retained = ledger.total();
@@ -225,7 +233,7 @@ fn forgotten_preparation_keeps_real_graph_debit_and_seals_every_public_hold_entr
         Err(DomError::SourceOperationPending)
     ));
     assert!(matches!(
-        hold.prepare(&caps, None, &flag()),
+        hold.prepare(&caps, None, ContextFree, &flag()),
         Err(DomMetaAtomicError::Dom(DomError::SourceOperationPending))
     ));
     hold.request_cancel().unwrap();
@@ -290,7 +298,8 @@ fn actual_late_producer_refusal_keeps_the_original_source_pending_and_all_owners
             .unwrap();
         operation = lease.operation();
         let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-        let DomMetaSourceStep::Prepared(mut prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Prepared(mut prepared) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("actual second owner");
         };
@@ -322,7 +331,8 @@ fn source_retries_require_the_actual_retained_producer_basis() {
             .unwrap();
         operation = lease.operation();
         let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-        let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Prepared(prepared) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("real private basis");
         };
@@ -347,7 +357,7 @@ fn source_retries_require_the_actual_retained_producer_basis() {
         .unwrap();
     let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
     assert!(
-        matches!(hold.prepare(&caps, None, &flag()), Err(DomMetaAtomicError::StaleProducer { root }) if root == f.docs[0].node())
+        matches!(hold.prepare(&caps, None, ContextFree, &flag()), Err(DomMetaAtomicError::StaleProducer { root }) if root == f.docs[0].node())
     );
     drop(hold);
     drop(lease);
@@ -383,7 +393,8 @@ fn authentic_observed_ancestor_pays_child_native_prefix_and_original_parent_prog
             .begin_source_edit(DomSourceEdit::show_dialog(dialog), source_limits(), &flag())
             .unwrap();
         let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-        let DomMetaSourceStep::Progress(progress) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Progress(progress) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("no Meta in the original event prefix");
         };
@@ -413,7 +424,8 @@ fn authentic_observed_ancestor_pays_child_native_prefix_and_original_parent_prog
         let before = request.work.work.load(Ordering::Relaxed);
         hold.step(&flag()).unwrap();
         assert_eq!(request.work.work.load(Ordering::Relaxed), before + 1);
-        let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Prepared(prepared) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("actual observer-created Meta child");
         };
@@ -475,7 +487,7 @@ fn authentic_observed_ancestor_pays_child_native_prefix_and_original_parent_prog
         assert_eq!(request.work.units.load(Ordering::Relaxed), observed_units);
     }
     let before = request.work.work.load(Ordering::Relaxed);
-    let progress = hold.prepare(&caps, None, &flag()).unwrap();
+    let progress = hold.prepare(&caps, None, ContextFree, &flag()).unwrap();
     assert!(matches!(progress, DomMetaSourceStep::Progress(_)));
     assert!(request.work.work.load(Ordering::Relaxed) > before);
     drop(progress);
@@ -526,7 +538,9 @@ fn finite_native_prefix_refusal_preserves_spent_source_work_for_a_raised_retry()
     // Reacquisition itself is admitted by the same original controller.
     assert!(lease.status().spent_work() >= spent);
     let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-    let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap() else {
+    let DomMetaSourceStep::Prepared(prepared) =
+        hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
+    else {
         panic!("same actual invocation after raising native work");
     };
     let (result, dead) = prepared.commit(&flag()).unwrap().into_parts();
@@ -561,7 +575,7 @@ fn actual_late_cancel_and_zero_output_refusal_preserve_the_original_phase_withou
             };
             let mut hold = lease.begin_meta_runtime(policy, &flag()).unwrap();
             let DomMetaSourceStep::Prepared(mut prepared) =
-                hold.prepare(&caps, None, &flag()).unwrap()
+                hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
             else {
                 panic!("actual Meta phase before output admission");
             };
@@ -591,7 +605,8 @@ fn actual_late_cancel_and_zero_output_refusal_preserve_the_original_phase_withou
             .resume_source_edit(operation, source_limits(), &flag())
             .unwrap();
         let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-        let DomMetaSourceStep::Prepared(prepared) = hold.prepare(&caps, None, &flag()).unwrap()
+        let DomMetaSourceStep::Prepared(prepared) =
+            hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
         else {
             panic!("original pending native invocation");
         };
@@ -709,7 +724,7 @@ fn accepted_style_receipt_holder_is_admitted_before_busy_owner_access_and_retry_
     let small = DomMetaAtomicLimits::new(bytes, 1_000_000, 1_000_000, 128).unwrap();
     let mut hold = lease.begin_meta_runtime(small, &flag()).unwrap();
     assert!(
-        matches!(hold.prepare(&caps, None, &flag()), Err(DomMetaAtomicError::Dom(DomError::ResourceLimit { resource: DomResource::MetaAtomicRetainedBytes, limit })) if limit == bytes)
+        matches!(hold.prepare(&caps, None, ContextFree, &flag()), Err(DomMetaAtomicError::Dom(DomError::ResourceLimit { resource: DomResource::MetaAtomicRetainedBytes, limit })) if limit == bytes)
     );
     drop(hold);
     drop(busy);
@@ -725,7 +740,9 @@ fn accepted_style_receipt_holder_is_admitted_before_busy_owner_access_and_retry_
         .resume_source_edit(operation, source_limits(), &flag())
         .unwrap();
     let mut hold = lease.begin_meta_runtime(limits(), &flag()).unwrap();
-    let DomMetaSourceStep::Progress(progress) = hold.prepare(&caps, None, &flag()).unwrap() else {
+    let DomMetaSourceStep::Progress(progress) =
+        hold.prepare(&caps, None, ContextFree, &flag()).unwrap()
+    else {
         panic!("actual no-Meta Style completion");
     };
     assert!(

@@ -43,13 +43,15 @@ fn observed_beforetoggle_child_meta_completes_and_preserves_the_canceled_parent_
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     listeners
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut Context, event| {
                 event.prevent_default();
                 let parent_marker = dom.snapshot().incomplete_source_operation();

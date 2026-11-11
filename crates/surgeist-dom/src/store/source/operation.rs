@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod design_mode_tests;
 mod dialog;
+pub use dialog::DomSourceEventFiringLoan;
 pub(crate) mod dialog_queue;
 #[cfg(test)]
 pub(in crate::store) mod empty_policy_tests;
@@ -169,8 +170,10 @@ impl Drop for DomSourceLease<'_> {
                 !o.published
                     && !o.event_exposed
                     && !o.script_parked
-                    && o.draft.compound_failure().is_none()
-                    && o.observation().is_none()
+                    && matches!(
+                        &o.draft,
+                        dialog::OperationDraft::Segment(draft) if draft.compound_failure().is_none()
+                    )
                     && o.meta_policy.is_none()
             })
         {
@@ -1781,6 +1784,7 @@ impl DomSourceLease<'_> {
         match self.advance_execution(&mut Execution::disabled(), None, cancel) {
             Ok(progress) => Ok(progress),
             Err(AdvanceError::Dom(error)) => Err(error),
+            Err(AdvanceError::EventFiring) => Err(DomError::HostedSourceUnavailable),
             Err(
                 AdvanceError::Inline(_) | AdvanceError::Unwind(_) | AdvanceError::NativePrepared,
             ) => {
@@ -1788,6 +1792,26 @@ impl DomSourceLease<'_> {
             }
         }
     }
+    /// Advance through the original Runtime's clock-aware adapter. A reached
+    /// firing remains private until its original issuer supplies the outcome.
+    pub fn advance_for_runtime(
+        &mut self,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceAdvance<DomSourceProgress>, DomError> {
+        let mut execution = Execution::disabled();
+        execution.hosted_events = true;
+        match self.advance_execution(&mut execution, None, cancel) {
+            Ok(progress) => Ok(DomSourceAdvance::Progress(progress)),
+            Err(AdvanceError::EventFiring) => self
+                .prepared_event_firing()
+                .map(DomSourceAdvance::EventFiring),
+            Err(AdvanceError::Dom(error)) => Err(error),
+            Err(
+                AdvanceError::Inline(_) | AdvanceError::Unwind(_) | AdvanceError::NativePrepared,
+            ) => Err(DomError::InvalidSourceOperation),
+        }
+    }
+
     fn advance_execution(
         &mut self,
         execution: &mut Execution<'_>,
@@ -1921,9 +1945,7 @@ impl DomSourceLease<'_> {
             && let OperationRoot::DialogTask(task) = op.commands
         {
             op.refresh_admission(cancel)?;
-            return op
-                .observe_dialog_task(self.dom, task, cancel)
-                .map_err(Into::into);
+            return op.observe_dialog_task(self.dom, task, cancel);
         }
         if op.cancelled
             && !op.published
@@ -2036,7 +2058,8 @@ impl DomSourceLease<'_> {
             }
             if op.request_close.is_some()
                 && !op.request_close.as_ref().is_some_and(|call| call.nested)
-                && let Some(progress) = self.advance_request_close(op, cancel)?
+                && let Some(progress) =
+                    self.advance_request_close(op, execution.hosted_events, cancel)?
             {
                 return Ok(progress);
             }
@@ -2323,12 +2346,18 @@ impl DomSourceLease<'_> {
                     subject: Some(subject),
                     action,
                 }) => {
-                    let observed = op.observe_dialog_method(self.dom, subject, action, cancel);
-                    if observed.is_err() {
+                    let observed = op.observe_dialog_method(
+                        self.dom,
+                        subject,
+                        action,
+                        execution.hosted_events,
+                        cancel,
+                    );
+                    if observed.is_err() && !matches!(observed, Err(AdvanceError::EventFiring)) {
                         checkpoint.restore(&mut op.draft);
                         op.restore_external_receipt(external_applied);
                     }
-                    return observed.map_err(Into::into);
+                    return observed;
                 }
                 Err(DomError::DialogProcessingUnavailable {
                     action:

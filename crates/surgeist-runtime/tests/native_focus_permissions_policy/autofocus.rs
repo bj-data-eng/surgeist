@@ -24,6 +24,10 @@ fn fixture(candidates: usize) -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,

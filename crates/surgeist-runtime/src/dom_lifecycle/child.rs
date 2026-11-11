@@ -116,7 +116,7 @@ impl HostedRuntime {
         if state.dom != lease.snapshot().owner() {
             return Err(DomHostedRuntimeError::Binding);
         }
-        let (h, t, c, g) = state.find_global(request.parent_global(), cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(request.parent_global(), cancel, |_| Ok(()))?;
         let group = state.hosts[h].top_levels[t]
             .group
             .as_ref()
@@ -206,7 +206,7 @@ impl HostedRuntime {
         if parent != child_request.parent_global() {
             return Err(DomHostedRuntimeError::Protocol);
         }
-        let (h, t, _, _) = state.find_global(parent, cancel, || Ok(()))?;
+        let (h, t, _, _) = state.find_global(parent, cancel, |_| Ok(()))?;
         let index = state.child_index(child_request, cancel, || Ok(()))?;
         if state.children[index].publication.is_some() {
             return Ok(());
@@ -342,7 +342,7 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         let index = state.child_index(child_request, cancel, || Ok(()))?;
-        let (h, t, c, g) = state.find_global(request.global(), cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(request.global(), cancel, |_| Ok(()))?;
         state.step(cancel)?;
         let HostedState {
             hosts,
@@ -379,7 +379,7 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         let index = state.child_index(child_request, cancel, || Ok(()))?;
-        let (h, t, c, g) = state.find_global(request.global(), cancel, || Ok(()))?;
+        let (h, t, c, g) = state.find_global(request.global(), cancel, |_| Ok(()))?;
         state.step(cancel)?;
         let HostedState {
             hosts,
@@ -775,7 +775,7 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         let (h, t, parent_cluster, _) =
-            state.find_global(child.parent_global(), cancel, || Ok(()))?;
+            state.find_global(child.parent_global(), cancel, |_| Ok(()))?;
         let mut queued_index = None;
         {
             let HostedState {
@@ -928,7 +928,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let (h, t, c, _) = state.find_global(child.parent_global(), cancel, || Ok(()))?;
+        let (h, t, c, _) = state.find_global(child.parent_global(), cancel, |_| Ok(()))?;
         let mut found = None;
         {
             let HostedState {
@@ -1101,6 +1101,10 @@ mod url_configuration_tests {
             )
             .unwrap(),
             DomSessionLimits {
+                authored_events: crate::DomEventStorageLimits {
+                    storage_bytes: 16_000_000,
+                    work: 1_000_000,
+                },
                 source_events: crate::DomSourceEventRuntimeLimits {
                     jobs: 0,
                     storage_bytes: 16_000_000,
@@ -1511,7 +1515,7 @@ impl HostedRuntime {
         let mut state = owner
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
-        let (h, t, _, _) = state.find_global(parent, cancel, || {
+        let (h, t, _, _) = state.find_global(parent, cancel, |_| {
             lease
                 .admit_hosted_runtime_work(1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))

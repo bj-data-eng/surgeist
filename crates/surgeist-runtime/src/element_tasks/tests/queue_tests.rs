@@ -57,6 +57,8 @@ fn queue_request(prior: bool) -> (DomSession, NodeId, DomSourceDialogRequest) {
         registrations: 0,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     match source
@@ -297,13 +299,15 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut HeldObservations, event| {
                 context.event = Some(event.clone());
                 context.path = Some(event.composed_path());
@@ -312,6 +316,7 @@ fn actual_details_observations_outlive_row_and_receipt_output_transfers_its_back
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -466,6 +471,8 @@ fn details_drop_registry() -> DomEventDispatcher<DispatchDropObservation> {
         registrations: 3,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -497,7 +504,7 @@ fn details_dispatch_drop_fixture(drop_while_running: bool) -> DetailsDispatchDro
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(
                 move |dom, listeners, context: &mut DispatchDropObservation, event| {
                     context.calls.push("prefix");
@@ -506,7 +513,8 @@ fn details_dispatch_drop_fixture(drop_while_running: bool) -> DetailsDispatchDro
                     if drop_while_running {
                         let state = context.held.owner.state().unwrap();
                         let (runtime, _, canonical) = details_dispatch_funding(&state, dom.raw());
-                        let registry_bytes = listeners.inspect_pending_index_bytes();
+                        let registry_bytes = listeners.inspect_pending_index_bytes()
+                            + listeners.inspect_registration_bytes();
                         let before = (
                             runtime,
                             details_source_admission_cut(dom.raw_mut(), target) - registry_bytes,
@@ -532,7 +540,7 @@ fn details_dispatch_drop_fixture(drop_while_running: bool) -> DetailsDispatchDro
             .add_listener(
                 &mut session.dom(),
                 target,
-                DomEventType::Toggle,
+                DomEventType::TOGGLE,
                 DomEventCallback::host(17),
                 DomEventListenerOptions::default(),
             )
@@ -557,7 +565,7 @@ fn add_details_suffix(
         .add_listener(
             &mut session.dom(),
             target,
-            DomEventType::Toggle,
+            DomEventType::TOGGLE,
             DomEventCallback::new(|_, _, context: &mut DispatchDropObservation, _| {
                 context.calls.push("suffix");
                 Ok(())
@@ -604,7 +612,7 @@ fn assert_abandoned_details_row(
     assert_eq!(toggle.new_state(), "open");
     assert_eq!(
         held.path.as_mut().unwrap().by_ref().collect::<Vec<_>>(),
-        expected_path.map(surgeist_dom::DomEventTarget::Node),
+        expected_path.map(crate::DomEventTarget::Node),
     );
 }
 

@@ -29,6 +29,10 @@ fn cancel() -> AtomicBool {
 
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: surgeist_runtime::DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,

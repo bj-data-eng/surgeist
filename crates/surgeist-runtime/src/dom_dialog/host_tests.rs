@@ -1,6 +1,7 @@
 //! Requirements: a selected host invocation retains actual event/Source custody,
 //! releases all caller loans, and advances only after one authentic completion.
 use super::*;
+use crate::DomEventType;
 use crate::{
     DomEventCallback, DomEventCallbackError, DomEventHostError, DomEventHostInvocation,
     DomEventListenerFailureKind, DomEventListenerOptions, DomEventPhase, DomEventRegistryLimits,
@@ -67,6 +68,10 @@ fn fixture_with_source_storage(storage_bytes: usize) -> (DomSession, NodeId, Nod
     let session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes,
@@ -107,8 +112,116 @@ fn dispatcher() -> DomEventDispatcher<Vec<u64>> {
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
+}
+
+#[test]
+fn passive_host_frame_guards_cancellation_until_the_original_scope_closes() {
+    #[derive(Clone, Copy)]
+    enum End {
+        Return,
+        Refuse,
+        TokenDrop,
+        RegistryDrop,
+    }
+    let cancel = AtomicBool::new(false);
+    for end in [End::Return, End::Refuse, End::TokenDrop, End::RegistryDrop] {
+        let (mut session, _, dialog, _) = fixture();
+        let mut source = session.source_execution();
+        let mut owner = dispatcher();
+        let registration = owner
+            .add_listener(
+                &mut session.dom(),
+                dialog,
+                DomEventType::BEFORE_TOGGLE,
+                DomEventCallback::host(17),
+                DomEventListenerOptions {
+                    once: true,
+                    passive: Some(true),
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+        let request = show(&mut source, &mut session, dialog);
+        let mut calls = Vec::new();
+        let mut invocation = pending(service(
+            &source,
+            &mut session,
+            &request,
+            &mut owner,
+            &mut calls,
+        ));
+        let event = invocation.event().clone();
+        assert_eq!(event.current_target(), Some(dialog.into()));
+        assert_eq!(event.phase(), DomEventPhase::AtTarget);
+        assert!(event.cancelable());
+        assert!(!owner.remove_listener(registration));
+        event.prevent_default();
+        assert!(!event.default_prevented());
+        assert!(matches!(
+            invocation.complete(&dispatcher(), Ok(())),
+            Err(DomEventDispatchError::WrongContinuation)
+        ));
+        event.set_return_value(false);
+        assert!(!event.default_prevented());
+
+        match end {
+            End::Return => invocation.complete(&owner, Ok(())).unwrap(),
+            End::Refuse => invocation
+                .refuse(&owner, DomEventHostError { code: 70 })
+                .unwrap(),
+            End::TokenDrop => drop(invocation),
+            End::RegistryDrop => {
+                drop(std::mem::replace(&mut owner, dispatcher()));
+                assert!(matches!(
+                    invocation.complete(&owner, Ok(())),
+                    Err(DomEventDispatchError::Abandoned)
+                ));
+            }
+        }
+        assert_eq!(event.current_target(), None);
+        assert_eq!(event.phase(), DomEventPhase::None);
+        assert!(!event.default_prevented());
+        event.set_return_value(false);
+        assert!(event.default_prevented());
+        let outcome = source.service_event(
+            &mut session.dom(),
+            &request,
+            &mut owner,
+            &mut calls,
+            limits(),
+            &cancel,
+        );
+        match end {
+            End::Return => {
+                let DomSourceEventServiceProgress::Serviced { receipt } = outcome.unwrap() else {
+                    panic!("the original returned callback must produce its receipt");
+                };
+                assert_eq!(receipt.callbacks(), 1);
+                assert!(receipt.default_prevented());
+                assert!(receipt.failures().is_empty());
+                canceled_tail(&mut source, &mut session, &request);
+            }
+            End::Refuse => assert!(matches!(
+                outcome,
+                Err(crate::DomSourceRuntimeError::SourceEvent(
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::HostRefused(
+                        DomEventHostError { code: 70 }
+                    ))
+                ))
+            )),
+            End::TokenDrop | End::RegistryDrop => assert!(matches!(
+                outcome,
+                Err(crate::DomSourceRuntimeError::SourceEvent(
+                    DomSourceEventRuntimeError::Dispatch(DomEventDispatchError::Abandoned)
+                ))
+            )),
+        }
+        assert!(calls.is_empty());
+    }
 }
 
 #[test]
@@ -121,7 +234,7 @@ fn completed_source_body_custody_covers_host_event_and_index_observers_once() {
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::host(17),
                 DomEventListenerOptions::default(),
             )
@@ -198,11 +311,12 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(41),
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -210,7 +324,7 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                 calls.push(99);
                 Ok(())
@@ -294,7 +408,7 @@ fn dispatcher_drop_abandons_pending_host_and_closes_the_original_source_scope() 
         .add_listener(
             &mut fresh.dom(),
             target,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<u64>, event| {
                 calls.push(7);
                 event.prevent_default();
@@ -441,11 +555,12 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(7),
             DomEventListenerOptions {
                 once: true,
                 capture: false,
+                passive: None,
             },
         )
         .unwrap();
@@ -453,7 +568,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
         .add_listener(
             &mut session.dom(),
             child,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(8),
             DomEventListenerOptions::default(),
         )
@@ -462,7 +577,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<u64>, event| {
                 calls.push(9);
                 assert!(event.default_prevented());
@@ -489,7 +604,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
     let event = invocation.event().clone();
     assert_eq!(invocation.key(), 7);
     assert_eq!(invocation.registration(), once);
-    assert_eq!(event.target(), Some(dialog));
+    assert_eq!(event.target(), Some(dialog.into()));
     assert_eq!(event.current_target(), Some(dialog.into()));
     assert_eq!(event.phase(), DomEventPhase::AtTarget);
     assert_eq!(
@@ -632,7 +747,7 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             callback.clone(),
             DomEventListenerOptions::default(),
         )
@@ -642,7 +757,7 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 callback,
                 DomEventListenerOptions::default()
             )
@@ -653,7 +768,7 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(7),
             DomEventListenerOptions::default(),
         )
@@ -663,7 +778,7 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                 calls.push(3);
                 Ok(())
@@ -684,6 +799,8 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     assert!(matches!(
@@ -699,7 +816,7 @@ fn equal_host_keys_have_distinct_identity_and_foreign_duplicate_completion_canno
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(99),
             DomEventListenerOptions::default(),
         )
@@ -748,11 +865,12 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
             .add_listener(
                 &mut session.dom(),
                 document,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::host(1),
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -760,7 +878,7 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
             .add_listener(
                 &mut session.dom(),
                 document,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                     calls.push(2);
                     Ok(())
@@ -768,6 +886,7 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
                 DomEventListenerOptions {
                     capture: true,
                     once: false,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -775,7 +894,7 @@ fn host_propagation_controls_stop_later_invocations_and_preserve_canceled_source
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                     calls.push(3);
                     Ok(())
@@ -821,7 +940,7 @@ fn cancellation_preserves_reported_guest_result_and_host_refusal_never_becomes_r
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::host(5),
                 DomEventListenerOptions::default(),
             )
@@ -830,7 +949,7 @@ fn cancellation_preserves_reported_guest_result_and_host_refusal_never_becomes_r
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                     calls.push(6);
                     Ok(())
@@ -918,13 +1037,15 @@ fn abandonment_and_session_drop_close_active_observation_without_successful_sour
             registrations: 16,
             pending_events: 1,
             nested_dispatches: 1,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         dispatcher
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::host(1),
                 DomEventListenerOptions::default(),
             )
@@ -1033,6 +1154,8 @@ fn abandonment_and_session_drop_close_active_observation_without_successful_sour
             registrations: 16,
             pending_events: 1,
             nested_dispatches: 1,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         assert!(matches!(
@@ -1066,11 +1189,12 @@ fn one_short_callback_or_failure_admission_preserves_once_until_exact_host_selec
             .add_listener(
                 &mut session.dom(),
                 dialog,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::host(3),
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1143,7 +1267,7 @@ fn uncanceled_host_delivery_defers_show_publication_until_original_source_tail_i
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(1),
             DomEventListenerOptions::default(),
         )
@@ -1222,7 +1346,7 @@ fn dispatcher_drop_preserves_the_reported_host_refusal() {
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(5),
             DomEventListenerOptions::default(),
         )
@@ -1231,7 +1355,7 @@ fn dispatcher_drop_preserves_the_reported_host_refusal() {
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut Vec<u64>, _| {
                 calls.push(6);
                 Ok(())

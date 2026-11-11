@@ -217,7 +217,7 @@ impl HostedState {
                 continue;
             }
             let global = row.global;
-            let (route_h, route_t, _, _) = self.find_global(global, cancel, || Ok(()))?;
+            let (route_h, route_t, _, _) = self.find_global(global, cancel, |_| Ok(()))?;
             if (route_h, route_t) != (h, t) {
                 return Err(DomHostedRuntimeError::Binding);
             }
@@ -328,7 +328,7 @@ impl HostedRuntime {
             return Err(DomHostedRuntimeError::Binding.into());
         }
         let (h, t, c, g) = state
-            .find_global(request.global(), cancel, || source_work(lease, cancel))
+            .find_global(request.global(), cancel, |_| source_work(lease, cancel))
             .map_err(E::from)?;
         let group = state.hosts[h].top_levels[t]
             .group

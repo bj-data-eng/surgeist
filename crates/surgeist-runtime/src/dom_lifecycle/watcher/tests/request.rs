@@ -49,7 +49,7 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
         global_callbacks: 0,
     };
     let mut registry = dispatcher();
-    registry.add_listener(&mut session.dom(), subject, DomEventType::Cancel, DomEventCallback::new(move |dom,listeners,context: &mut Context,event| {
+    registry.add_listener(&mut session.dom(), subject, DomEventType::CANCEL, DomEventCallback::new(move |dom,listeners,context: &mut Context,event| {
         event.prevent_default();
         let published_parent = dom.snapshot().incomplete_source_operation();
         assert!(published_parent.is_some());
@@ -59,9 +59,9 @@ fn removed_record_stays_in_original_invocation_and_resets_without_touching_repla
         assert!(matches!(dom.snapshot().document(document).unwrap().is_fully_active(), Err(DomHostedError::Dom(DomError::IncompleteSourceOperation))));
         // Real callback registration uses the dispatch-only association front;
         // ordinary current-owner reads above remain strict during publication.
-        listeners.add_listener(dom, context.old_id.global(), DomEventType::Cancel,
+        listeners.add_listener(dom, context.old_id.global(), DomEventType::CANCEL,
             DomEventCallback::new(|_,_,context: &mut Context,_| {context.global_callbacks += 1; Ok(())}),
-            DomEventListenerOptions {capture: true, once: true}).unwrap();
+            DomEventListenerOptions {capture: true, once: true, passive: None,}).unwrap();
         assert!(context.original.borrow().state.running_cancel_action());
         for edit in [DomSourceEdit::remove_attribute(subject, "open"), DomSourceEdit::set_attribute(subject, "open", "")] {
             let progress = context.source.apply(dom, edit, source_limits(), &mut DomSourceServices {meta: None,execution_scope: None, style_policy: &mut |_| None, url: None}, &AtomicBool::new(false)).unwrap();
@@ -188,7 +188,7 @@ fn source_cancellation_after_force_publication_still_finishes_authentic_cancel_a
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 event.prevent_default();
@@ -343,7 +343,7 @@ fn history_consumption_prepays_both_actual_window_walks_and_write_before_effect(
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Cancel,
+                DomEventType::CANCEL,
                 DomEventCallback::new(|_, _, _, event| {
                     event.prevent_default();
                     Ok(())
@@ -532,7 +532,7 @@ fn canceled_request_history_capture_uses_shadow_tree_order_and_actual_child_docu
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, _, event| {
                 event.prevent_default();
                 Ok(())
@@ -657,7 +657,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut RetirementContext, event| {
                 context.calls.push("first");
                 assert!(!event.cancelable());
@@ -693,15 +693,16 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut RetirementContext, event| {
                 context.calls.push("late");
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 Ok(())
             }),
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -928,7 +929,7 @@ fn first_native_request() -> (
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::Cancel,
+            DomEventType::CANCEL,
             DomEventCallback::new(|_, _, _, event| {
                 event.prevent_default();
                 Ok(())

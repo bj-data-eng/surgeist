@@ -57,6 +57,10 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -216,6 +220,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -271,6 +277,7 @@ struct EventObservation {
     target: Option<NodeId>,
     current: Option<DomEventTarget>,
     payload: Option<DomToggleEvent>,
+    creation: Option<DomEventCreationObservation>,
     path: Vec<DomEventTarget>,
     bubbles: bool,
     cancelable: bool,
@@ -279,9 +286,10 @@ struct EventObservation {
 fn observe(event: &NativeDomEvent) -> EventObservation {
     EventObservation {
         kind: event.event_type(),
-        target: event.target(),
+        target: event.target().and_then(|target| target.node()),
         current: event.current_target(),
         payload: event.toggle_event().copied(),
+        creation: event.creation().copied(),
         path: event.composed_path().collect(),
         bubbles: event.bubbles(),
         cancelable: event.cancelable(),
@@ -317,7 +325,7 @@ fn listeners(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 event.prevent_default();
                 context.before.push(observe(event));
@@ -326,18 +334,18 @@ fn listeners(
             DomEventListenerOptions::default(),
         )
         .unwrap();
-    for kind in [DomEventType::Close, DomEventType::Toggle] {
+    for kind in [DomEventType::CLOSE, DomEventType::TOGGLE] {
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                kind,
+                kind.clone(),
                 DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                     context.delivered.push(observe(event));
                     let mut batch = DomBatch::new();
                     batch.set_attribute(
                         body,
-                        if kind == DomEventType::Close {
+                        if kind == DomEventType::CLOSE {
                             "data-close"
                         } else {
                             "data-toggle"
@@ -396,13 +404,13 @@ fn run(
                     .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
             );
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), task.id().target());
+            assert_eq!(receipt.original_target(), task.id().target().into());
             assert_eq!(
                 receipt.event_type(),
                 if source == DomElementTaskSourceKind::UserInteraction {
-                    DomEventType::Close
+                    DomEventType::CLOSE
                 } else {
-                    DomEventType::Toggle
+                    DomEventType::TOGGLE
                 }
             );
             assert_eq!(receipt.callbacks(), 1);
@@ -414,7 +422,7 @@ fn run(
     }
 }
 fn assert_before(event: &EventObservation, subject: NodeId) {
-    assert_eq!(event.kind, DomEventType::BeforeToggle);
+    assert_eq!(event.kind, DomEventType::BEFORE_TOGGLE);
     assert_eq!(event.target, Some(subject));
     assert_eq!(event.current, Some(DomEventTarget::Node(subject)));
     assert!(!event.cancelable);
@@ -560,7 +568,7 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
         );
         assert_eq!(context.delivered.len(), 1);
         let observed = &context.delivered[0];
-        assert_eq!(observed.kind, DomEventType::Close);
+        assert_eq!(observed.kind, DomEventType::CLOSE);
         assert_eq!(observed.target, Some(subject));
         assert_eq!(observed.current, Some(DomEventTarget::Node(subject)));
         assert_eq!(observed.payload, None);
@@ -609,7 +617,7 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
         );
         assert_eq!(context.delivered.len(), 2);
         let observed = &context.delivered[1];
-        assert_eq!(observed.kind, DomEventType::Toggle);
+        assert_eq!(observed.kind, DomEventType::TOGGLE);
         let event = observed.payload.unwrap();
         assert_eq!(event.old_state(), "open");
         assert_eq!(event.new_state(), "closed");
@@ -695,6 +703,210 @@ fn close_result_matrix_and_user_interaction_first_delivery_preserve_toggle_track
             ));
         }
         assert_eq!(context.delivered.len(), 2);
+    }
+}
+
+#[test]
+fn hosted_dialog_toggle_and_close_keep_original_creation_across_retained_delivery() {
+    let (mut session, original, _, subject) = fixture();
+    let mut hosted = session.hosted_execution();
+    let destination = hosted
+        .create_top_level(&mut session.dom(), original.host(), &cancel())
+        .unwrap();
+    let snapshot = session.snapshot();
+    let destination_root = snapshot
+        .document(destination.document())
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let destination_body = snapshot.node(destination_root).unwrap().children()[1];
+
+    let mut context = context(&session);
+    let mut registry = listeners(&mut session, subject, destination_body);
+    open(&mut session, subject);
+    let close = start_close(&mut session, subject, None);
+    finish_close(&mut session, &close, &mut registry, &mut context);
+    assert_eq!(context.before.len(), 1);
+
+    let sources = [
+        (
+            DomElementTaskSourceKind::DomManipulation,
+            DomEventType::TOGGLE,
+        ),
+        (
+            DomElementTaskSourceKind::UserInteraction,
+            DomEventType::CLOSE,
+        ),
+    ];
+    let mut queued = Vec::new();
+    for (source, kind) in &sources {
+        let task = context.owner.pending_task(*source, 0).unwrap().unwrap();
+        let association = task.queue_association().unwrap();
+        assert_eq!(association.global(), original.global());
+        assert_eq!(association.document(), original.document());
+        assert_eq!(task.id().target(), subject);
+        queued.push(task);
+        registry
+            .add_listener(
+                &mut session.dom(),
+                destination.document().node(),
+                kind.clone(),
+                DomEventCallback::new(|_, _, context: &mut Context, event| {
+                    context.delivered.push(observe(event));
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture: true,
+                    ..DomEventListenerOptions::default()
+                },
+            )
+            .unwrap();
+    }
+    assert!(queued[0].dialog_toggle().is_some());
+    assert!(queued[1].dialog_close().is_some());
+
+    drop(complete(apply(
+        &mut session,
+        DomSourceEdit::insert_before(subject, destination_body, None),
+    )));
+    let snapshot = session.snapshot();
+    let node = snapshot.node(subject).unwrap();
+    assert_eq!(node.owner_document(), Some(destination.document()));
+    assert_eq!(node.parent(), Some(destination_body));
+    assert_eq!(
+        snapshot.relevant_global(subject).unwrap(),
+        Some(original.global())
+    );
+    let settings = hosted
+        .settings(&session.dom(), original.global(), &cancel())
+        .unwrap();
+    let mut clock = |session: &mut DomSession| {
+        hosted
+            .create_event(
+                &mut session.dom(),
+                original.global(),
+                &[],
+                DomEventInit::default(),
+                &cancel(),
+            )
+            .unwrap()
+            .creation()
+            .unwrap()
+            .occurrence_microseconds()
+    };
+
+    let mut clock_bounds = vec![clock(&mut session)];
+    for (index, ((source, kind), expected)) in sources.into_iter().zip(queued).enumerate() {
+        let progress = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            source,
+            &mut registry,
+            &mut context,
+            DomElementTaskRunLimits {
+                dispatch: DomEventDispatchLimits {
+                    callbacks: 1,
+                    ..dispatch_limits()
+                },
+                ..run_limits()
+            },
+            &cancel(),
+        )
+        .unwrap();
+        assert!(matches!(
+            progress,
+            DomElementTaskProgress::Retained {
+                task,
+                dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                displaced_owner: None,
+            } if task == expected
+        ));
+        assert_eq!(context.delivered.len(), index * 2 + 1);
+        assert_eq!(
+            context.owner.pending_task(source, 0).unwrap(),
+            Some(expected)
+        );
+        let DomElementTaskProgress::Complete {
+            task,
+            receipt,
+            dialog_toggle_disposition,
+            displaced_owner: None,
+        } = DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            source,
+            &mut registry,
+            &mut context,
+            run_limits(),
+            &cancel(),
+        )
+        .unwrap()
+        else {
+            panic!("the retained Dialog task must deliver its original receipt");
+        };
+        assert_eq!(task, expected);
+        assert_eq!(receipt.original_target(), subject.into());
+        assert_eq!(receipt.event_type(), kind);
+        assert_eq!(receipt.callbacks(), 2);
+        assert!(receipt.failures().is_empty());
+        assert_eq!(
+            dialog_toggle_disposition,
+            expected
+                .dialog_toggle()
+                .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
+        );
+        assert_eq!(context.delivered.len(), index * 2 + 2);
+        assert_eq!(context.owner.pending_task(source, 0).unwrap(), None);
+        clock_bounds.push(clock(&mut session));
+    }
+
+    assert!(context.edits.iter().all(Result::is_ok));
+    let path = [
+        subject.into(),
+        destination_body.into(),
+        destination_root.into(),
+        destination.document().node().into(),
+        destination.global().into(),
+    ];
+    for pair in context.delivered.as_chunks::<2>().0 {
+        assert_eq!(pair[0].current, Some(destination.document().node().into()));
+        assert_eq!(pair[1].current, Some(subject.into()));
+        for observation in pair {
+            assert_eq!(observation.target, Some(subject));
+            assert_eq!(observation.path, path);
+        }
+    }
+    let [toggle_capture, toggle_target, close_capture, close_target] = context.delivered.as_slice()
+    else {
+        panic!("expected both actual callback pairs");
+    };
+    assert_eq!(toggle_capture.kind, DomEventType::TOGGLE);
+    assert_eq!(toggle_target.kind, DomEventType::TOGGLE);
+    assert_eq!(toggle_target.payload.unwrap().old_state(), "open");
+    assert_eq!(toggle_target.payload.unwrap().new_state(), "closed");
+    assert_eq!(close_capture.kind, DomEventType::CLOSE);
+    assert_eq!(close_target.kind, DomEventType::CLOSE);
+    assert_eq!(close_target.payload, None);
+
+    let [
+        Some(toggle),
+        Some(toggle_after_resume),
+        Some(close),
+        Some(close_after_resume),
+    ] = [toggle_capture, toggle_target, close_capture, close_target].map(|event| event.creation)
+    else {
+        panic!("queued hosted Dialog toggle and close must both carry authenticated creation");
+    };
+    assert_eq!(toggle, toggle_after_resume);
+    assert_eq!(close, close_after_resume);
+    for (index, creation) in [toggle, close].into_iter().enumerate() {
+        assert_eq!(creation.global(), original.global());
+        assert_eq!(creation.clock_source(), settings.clock_source());
+        assert_eq!(
+            creation.time_origin_microseconds(),
+            settings.time_origin_microseconds()
+        );
+        let occurrence = creation.occurrence_microseconds();
+        assert!((clock_bounds[index]..=clock_bounds[index + 1]).contains(&occurrence));
+        assert_eq!(occurrence % 100, 0);
     }
 }
 
@@ -789,7 +1001,7 @@ fn reopening_between_closes_retains_each_plain_close_in_its_source_order() {
         context
             .delivered
             .iter()
-            .all(|event| event.kind == DomEventType::Close && event.payload.is_none())
+            .all(|event| event.kind == DomEventType::CLOSE && event.payload.is_none())
     );
     assert_eq!(
         session
@@ -885,7 +1097,7 @@ fn mutation_registry(
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             mutate_before_close(subject),
             DomEventListenerOptions::default(),
         )
@@ -956,10 +1168,10 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                 context.calls.push("late");
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 assert!(!event.cancelable());
                 event.prevent_default();
                 assert!(!event.default_prevented());
@@ -968,6 +1180,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -1204,7 +1417,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, adoption: &mut Adoption, event| {
                 adoption.calls += 1;
                 adoption.path = event.composed_path().collect();
@@ -1441,7 +1654,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         equal
     );
     assert_eq!(context.delivered.len(), 1);
-    assert_eq!(context.delivered[0].kind, DomEventType::Toggle);
+    assert_eq!(context.delivered[0].kind, DomEventType::TOGGLE);
     let event = context.delivered[0].payload.unwrap();
     assert_eq!(event.old_state(), "closed");
     assert_eq!(event.new_state(), "closed");
@@ -1472,7 +1685,7 @@ fn completed_show_then_close_replaces_toggle_with_equal_states_but_keeps_plain_c
         plain
     );
     assert_eq!(context.delivered.len(), 2);
-    assert_eq!(context.delivered[1].kind, DomEventType::Close);
+    assert_eq!(context.delivered[1].kind, DomEventType::CLOSE);
     assert_eq!(context.delivered[1].payload, None);
     let html_a = closed.node(a.document().node()).unwrap().children()[0];
     let path = [
@@ -1594,7 +1807,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             &mut method_context,
         );
         assert_eq!(method_context.delivered.len(), 1);
-        assert_eq!(method_context.delivered[0].kind, DomEventType::Toggle);
+        assert_eq!(method_context.delivered[0].kind, DomEventType::TOGGLE);
         assert!(method_context.edits.iter().all(Result::is_ok));
         let tasks = session.element_task_execution();
         let close = tasks
@@ -1635,7 +1848,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Close,
+                DomEventType::CLOSE,
                 DomEventCallback::new(
                     move |dom, _, context: &mut CloseRetirementContext, event| {
                         context.calls.push("first");
@@ -1655,7 +1868,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::Close,
+                DomEventType::CLOSE,
                 DomEventCallback::new(move |_, _, context: &mut CloseRetirementContext, event| {
                     context.calls.push("late");
                     context.delivered.push(observe(event));
@@ -1664,6 +1877,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -1716,8 +1930,8 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             assert_eq!(task, close);
             assert_eq!(dialog_toggle_disposition, None);
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), subject);
-            assert_eq!(receipt.event_type(), DomEventType::Close);
+            assert_eq!(receipt.original_target(), subject.into());
+            assert_eq!(receipt.event_type(), DomEventType::CLOSE);
             assert_eq!(receipt.callbacks(), 2);
             assert!(receipt.failures().is_empty());
             assert!(!receipt.default_prevented());
@@ -1725,7 +1939,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             assert!(context.destruction.as_ref().unwrap().is_ok());
             assert!(!registry.remove_listener(late));
             for delivered in &context.delivered {
-                assert_eq!(delivered.kind, DomEventType::Close);
+                assert_eq!(delivered.kind, DomEventType::CLOSE);
                 assert_eq!(delivered.target, Some(subject));
                 assert_eq!(delivered.current, Some(DomEventTarget::Node(subject)));
                 assert!(delivered.payload.is_none());

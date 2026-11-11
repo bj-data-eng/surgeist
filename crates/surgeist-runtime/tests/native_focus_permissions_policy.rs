@@ -51,6 +51,10 @@ fn headless_top() -> (DomSession, DomHostedTopLevel) {
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -203,13 +207,15 @@ fn drive(
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, calls: &mut Vec<bool>, event| {
                 assert_eq!(event.cancelable(), cancelable);
                 calls.push(event.cancelable());
@@ -218,6 +224,7 @@ fn drive(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -832,13 +839,15 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, context: &mut Context, event| {
                 assert!(event.cancelable());
                 context.calls += 1;
@@ -859,6 +868,7 @@ fn beforetoggle_removing_actual_own_inert_preserves_called_focusing_wait_and_exa
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

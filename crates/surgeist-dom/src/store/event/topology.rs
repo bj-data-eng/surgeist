@@ -1,10 +1,11 @@
 //! One event-parent algorithm for canonical dispatch and staged SVG closure.
 use super::{Owner, Processing};
+use crate::event::{EventParentFacts, LOAD_EVENT, Notification};
 use crate::store::source::formation::Formation;
 use crate::store::{Draft, Key, check_cancel, transaction};
 use crate::{
-    Dom, DomError, DomEventParent, DomEventParentQuery, DomEventTarget, DomEventType,
-    DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot, NodeId,
+    Dom, DomError, DomEventParent, DomEventParentQuery, DomEventRecipientTarget, DomHostedError,
+    DomHostedGlobalId, DomNodeKind, DomSnapshot, NodeId,
 };
 use std::sync::atomic::AtomicBool;
 use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
@@ -25,15 +26,14 @@ struct Facts<K> {
 }
 
 #[derive(Clone, Copy)]
-enum Endpoint<K> {
-    Node(K),
+enum Parent<K> {
+    None,
+    Node {
+        parent: K,
+        assigned: bool,
+        in_target_tree: bool,
+    },
     Global(DomHostedGlobalId),
-}
-
-struct Parent<K> {
-    endpoint: Option<Endpoint<K>>,
-    assigned: bool,
-    in_target_tree: Option<bool>,
 }
 
 fn ordinary_root<K: Copy, E>(
@@ -50,63 +50,48 @@ fn ordinary_root<K: Copy, E>(
 
 fn parent<K: Copy + Eq, E: From<DomHostedError>>(
     current: K,
+    facts: Facts<K>,
     first_root: K,
     adjusted_target: K,
-    event_type: DomEventType,
+    event: EventParentFacts<'_>,
     read: &mut impl FnMut(K) -> Result<Facts<K>, E>,
     global: &mut impl FnMut(K) -> Result<Option<DomHostedGlobalId>, E>,
 ) -> Result<Parent<K>, E> {
-    let facts = read(current)?;
     let assigned = facts.assigned.is_some();
-    let endpoint = if let Some(slot) = facts.assigned {
-        Some(Endpoint::Node(slot))
+    let parent = if let Some(slot) = facts.assigned {
+        Some(slot)
     } else if let Some(document) = facts.document {
-        // Current issuer qualification precedes even Load's Document stop.
-        // A retained historical association never supplies fresh authority.
-        let global = if document.hosted {
-            global(current)?
-        } else {
-            None
-        };
-        if document.hosted && global.is_none() {
-            return Err(DomHostedError::UnsupportedProfile.into());
+        if event.event_type != LOAD_EVENT && document.context {
+            return Ok(Parent::Global(
+                global(current)?.ok_or(DomHostedError::UnsupportedProfile)?,
+            ));
         }
-        if event_type != DomEventType::Load && document.context {
-            Some(Endpoint::Global(
-                global.ok_or(DomHostedError::UnsupportedProfile)?,
-            ))
-        } else {
-            None
-        }
+        return Ok(Parent::None);
     } else if facts.shadow {
-        // Native Load/Error are not composed. A slotted light-tree target can
-        // nevertheless cross a shadow root whose identity is not first_root.
-        if current == first_root {
+        if !event.composed && current == first_root {
             None
         } else {
-            facts.shadow_host.map(Endpoint::Node)
+            facts.shadow_host
         }
     } else {
-        facts.parent.map(Endpoint::Node)
+        facts.parent
     };
-    let in_target_tree = if let Some(Endpoint::Node(parent)) = endpoint {
-        let target_root = ordinary_root(adjusted_target, read)?;
-        let mut ancestor = Some(parent);
-        let mut contains = false;
-        while let Some(key) = ancestor {
-            let facts = read(key)?;
-            if key == target_root {
-                contains = true;
-                break;
-            }
-            ancestor = facts.parent.or(facts.shadow_host);
+    let Some(parent) = parent else {
+        return Ok(Parent::None);
+    };
+    let target_root = ordinary_root(adjusted_target, read)?;
+    let mut ancestor = Some(parent);
+    let mut in_target_tree = false;
+    while let Some(key) = ancestor {
+        let facts = read(key)?;
+        if key == target_root {
+            in_target_tree = true;
+            break;
         }
-        Some(contains)
-    } else {
-        None
-    };
-    Ok(Parent {
-        endpoint,
+        ancestor = facts.parent.or(facts.shadow_host);
+    }
+    Ok(Parent::Node {
+        parent,
         assigned,
         in_target_tree,
     })
@@ -119,7 +104,7 @@ impl Dom {
     pub fn dispatch_event_parent<E>(
         &self,
         snapshot: &DomSnapshot,
-        query: DomEventParentQuery,
+        query: DomEventParentQuery<'_>,
         cancel: &AtomicBool,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<DomEventParent, E>
@@ -175,22 +160,28 @@ impl Dom {
         read(query.adjusted_target)?;
         let next = parent(
             query.current,
+            read(query.current)?,
             query.first_root,
             query.adjusted_target,
-            query.event_type,
+            query.event,
             &mut read,
             &mut |document| {
                 self.dispatch_relevant_global_with(document, cancel, &mut || (tick.borrow_mut())())
             },
         )?;
         check_cancel(cancel)?;
-        Ok(DomEventParent {
-            parent: next.endpoint.map(|endpoint| match endpoint {
-                Endpoint::Node(node) => DomEventTarget::Node(node),
-                Endpoint::Global(global) => DomEventTarget::Global(global),
-            }),
-            assigned: next.assigned,
-            in_target_tree: next.in_target_tree,
+        Ok(match next {
+            Parent::None => DomEventParent::None,
+            Parent::Global(global) => DomEventParent::Global(global),
+            Parent::Node {
+                parent,
+                assigned,
+                in_target_tree,
+            } => DomEventParent::Node {
+                parent,
+                via_assigned_slot: assigned,
+                in_adjusted_target_tree: in_target_tree,
+            },
         })
     }
 }
@@ -253,7 +244,7 @@ impl Draft {
         processing.scratch(std::mem::size_of::<RouteCycle<Key>>())?;
         // Load and Error have different Document parents, but the same target
         // flags: capture everywhere and noncapture only at retargeted targets.
-        for event_type in [DomEventType::Load, DomEventType::Error] {
+        for event_type in [Notification::Load, Notification::Error] {
             self.require_svg_route_closed(key, event_type, owner, &processing)?;
         }
         check_cancel(cancel)
@@ -326,13 +317,13 @@ impl Draft {
 
     fn event_recipient_active(
         &self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         processing: &Processing<'_>,
     ) -> Result<bool, DomError> {
         processing.step()?;
         let document = match target {
-            DomEventTarget::Node(node) => self.node(Key::Existing(node))?.document(),
-            DomEventTarget::Global(global) => {
+            DomEventRecipientTarget::Node(node) => self.node(Key::Existing(node))?.document(),
+            DomEventRecipientTarget::Global(global) => {
                 let document = self
                     .hosted_globals
                     .as_ref()
@@ -356,11 +347,11 @@ impl Draft {
             return Ok(false);
         }
         let global = match target {
-            DomEventTarget::Node(_) => self
+            DomEventRecipientTarget::Node(_) => self
                 .event_global(document, processing)
                 .map_err(svg_error)?
                 .ok_or(DomError::SvgScriptProcessingUnavailable)?,
-            DomEventTarget::Global(global) => global,
+            DomEventRecipientTarget::Global(global) => global,
         };
         let associated = self
             .hosted_globals
@@ -386,7 +377,7 @@ impl Draft {
     fn require_svg_route_closed(
         &self,
         original: Key,
-        event_type: DomEventType,
+        event_type: Notification,
         owner: &Owner,
         processing: &Processing<'_>,
     ) -> Result<(), DomError> {
@@ -402,26 +393,36 @@ impl Draft {
             // Only a real published identity can have an indexed registration.
             // New staged keys still participate in every topology decision.
             if let Some(node) = self.published_id(current) {
-                let target = DomEventTarget::Node(node);
+                let target = DomEventRecipientTarget::Node(node);
                 if owner.has_recipient(target, event_type, at_target, processing)?
                     && self.event_recipient_active(target, processing)?
                 {
                     return Err(DomError::SvgScriptProcessingUnavailable);
                 }
             }
+            let facts = read(current).map_err(svg_error)?;
+            // An SVG no-recipient proof also needs live issuer authority on a
+            // hosted Document where the standard event path stops.
+            let global =
+                svg_document_global(facts.document, || self.event_global(current, processing))
+                    .map_err(svg_error)?;
             let next = parent(
                 current,
+                facts,
                 first_root,
                 adjusted_target,
-                event_type,
+                EventParentFacts {
+                    event_type: event_type.event_type(),
+                    composed: false,
+                },
                 &mut read,
-                &mut |document| self.event_global(document, processing),
+                &mut |_| Ok(global),
             )
             .map_err(svg_error)?;
-            match next.endpoint {
-                None => return Ok(()),
-                Some(Endpoint::Global(global)) => {
-                    let target = DomEventTarget::Global(global);
+            match next {
+                Parent::None => return Ok(()),
+                Parent::Global(global) => {
+                    let target = DomEventRecipientTarget::Global(global);
                     if owner.has_recipient(target, event_type, false, processing)?
                         && self.event_recipient_active(target, processing)?
                     {
@@ -429,12 +430,14 @@ impl Draft {
                     }
                     return Ok(());
                 }
-                Some(Endpoint::Node(node)) => {
+                Parent::Node {
+                    parent: node,
+                    in_target_tree,
+                    ..
+                } => {
                     processing.step()?;
                     cycle.advance(node)?;
-                    at_target = !next
-                        .in_target_tree
-                        .expect("a Node parent has a target-tree relationship");
+                    at_target = !in_target_tree;
                     if at_target {
                         adjusted_target = node;
                     }
@@ -443,6 +446,18 @@ impl Draft {
             }
         }
     }
+}
+
+fn svg_document_global(
+    document: Option<Document>,
+    resolve: impl FnOnce() -> Result<Option<DomHostedGlobalId>, DomHostedError>,
+) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
+    if document.is_some_and(|document| document.hosted) {
+        return resolve()?
+            .ok_or(DomHostedError::UnsupportedProfile)
+            .map(Some);
+    }
+    Ok(None)
 }
 
 fn svg_error(error: DomHostedError) -> DomError {
@@ -455,6 +470,13 @@ fn svg_error(error: DomHostedError) -> DomError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn noncomposed(notification: Notification) -> EventParentFacts<'static> {
+        EventParentFacts {
+            event_type: notification.event_type(),
+            composed: false,
+        }
+    }
 
     fn node(parent: Option<usize>) -> Facts<usize> {
         Facts {
@@ -481,16 +503,22 @@ mod tests {
         nodes[3].shadow_host = Some(1);
         let next = parent(
             2,
+            nodes[2],
             0,
             2,
-            DomEventType::Load,
+            noncomposed(Notification::Load),
             &mut |key| Ok::<_, DomHostedError>(nodes[key]),
             &mut |_| Ok(None),
         )
         .unwrap();
-        assert!(matches!(next.endpoint, Some(Endpoint::Node(4))));
-        assert!(next.assigned);
-        assert_eq!(next.in_target_tree, Some(true));
+        assert!(matches!(
+            next,
+            Parent::Node {
+                parent: 4,
+                assigned: true,
+                in_target_tree: true
+            }
+        ));
     }
 
     #[test]
@@ -500,45 +528,44 @@ mod tests {
         nodes[2].shadow_host = Some(1);
         let stopped = parent(
             2,
+            nodes[2],
             2,
             2,
-            DomEventType::Error,
+            noncomposed(Notification::Error),
             &mut |key| Ok::<_, DomHostedError>(nodes[key]),
             &mut |_| Ok(None),
         )
         .unwrap();
-        assert!(stopped.endpoint.is_none());
-        assert_eq!(stopped.in_target_tree, None);
+        assert!(matches!(stopped, Parent::None));
         let crossed = parent(
             2,
+            nodes[2],
             0,
             2,
-            DomEventType::Error,
+            noncomposed(Notification::Error),
             &mut |key| Ok::<_, DomHostedError>(nodes[key]),
             &mut |_| Ok(None),
         )
         .unwrap();
-        assert!(matches!(crossed.endpoint, Some(Endpoint::Node(1))));
         // Root 2 is not an inclusive shadow ancestor of host 1: Runtime must
         // retarget to the host and invoke its noncapture at-target listeners.
-        assert_eq!(crossed.in_target_tree, Some(false));
+        assert!(matches!(
+            crossed,
+            Parent::Node {
+                parent: 1,
+                in_target_tree: false,
+                ..
+            }
+        ));
     }
 
     #[test]
-    fn hosted_document_load_qualifies_current_authority_before_stopping() {
-        let mut document = node(None);
-        document.document = Some(Document {
+    fn svg_document_proof_requires_current_authority_even_when_load_stops() {
+        let document = Some(Document {
             hosted: true,
             context: true,
         });
-        let result = parent(
-            0,
-            0,
-            0,
-            DomEventType::Load,
-            &mut |_| Ok(document),
-            &mut |_| Err::<_, DomHostedError>(DomHostedError::SourceExpired),
-        );
+        let result = svg_document_global(document, || Err(DomHostedError::SourceExpired));
         assert!(matches!(result, Err(DomHostedError::SourceExpired)));
     }
 }

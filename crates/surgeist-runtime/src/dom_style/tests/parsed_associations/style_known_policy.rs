@@ -402,16 +402,18 @@ fn original_allow_policy_drives_both_invocations_despite_final_canonical_deny() 
         registrations: 16,
         pending_events: 16,
         nested_dispatches: 8,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             first_sheet.association().element(),
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())
@@ -419,6 +421,7 @@ fn original_allow_policy_drives_both_invocations_despite_final_canonical_deny() 
             DomEventListenerOptions {
                 capture: false,
                 once: false,
+                passive: None,
             },
         )
         .unwrap();

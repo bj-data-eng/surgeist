@@ -379,8 +379,9 @@ impl DomSourceLease<'_> {
     pub(super) fn advance_request_close(
         &mut self,
         op: &mut Operation,
+        hosted_events: bool,
         cancel: &AtomicBool,
-    ) -> Result<Option<DomSourceProgress>, DomError> {
+    ) -> Result<Option<DomSourceProgress>, AdvanceError> {
         loop {
             op.refresh_admission(cancel)?;
             if op.receipt.is_some() {
@@ -406,7 +407,10 @@ impl DomSourceLease<'_> {
                     });
                 }
                 if op.failure.is_some() {
-                    return self.finish_source_failure(op, cancel).map(Some);
+                    return self
+                        .finish_source_failure(op, cancel)
+                        .map(Some)
+                        .map_err(Into::into);
                 }
                 call.outer
                     .cursor
@@ -447,7 +451,12 @@ impl DomSourceLease<'_> {
                     }
                     A::RunCancelAction { can_prevent_close } => {
                         return op
-                            .observe_request_close_cancel(self.dom, can_prevent_close, cancel)
+                            .observe_request_close_cancel(
+                                self.dom,
+                                can_prevent_close,
+                                hosted_events,
+                                cancel,
+                            )
                             .map(Some);
                     }
                     A::RunCloseAction => {
@@ -458,7 +467,8 @@ impl DomSourceLease<'_> {
                                 action: D::RequestWatcherClose {
                                     require_history_action_activation: false,
                                 },
-                            });
+                            }
+                            .into());
                         }
                         let formation = formation::Formation::new(&op.draft, cancel)?;
                         let result = state
@@ -502,11 +512,9 @@ impl DomSourceLease<'_> {
                 }
             }
             if call.occurrence.is_some() {
-                return call.request(op.failure).map(|request| {
-                    Some(DomSourceProgress::Request(DomSourceRequest::CloseWatcher(
-                        request,
-                    )))
-                });
+                return Ok(Some(DomSourceProgress::Request(
+                    DomSourceRequest::CloseWatcher(call.request(op.failure)?),
+                )));
             }
             let occurrence = op
                 .draft

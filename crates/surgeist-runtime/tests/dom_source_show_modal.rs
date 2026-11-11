@@ -51,6 +51,10 @@ fn fixture_with_profile(headless: bool) -> (DomSession, DomHostedTopLevel, NodeI
     let mut session = DomSession::new(
         dom,
         DomSessionLimits {
+            authored_events: surgeist_runtime::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
                 storage_bytes: 32_000_000,
@@ -167,6 +171,8 @@ fn dispatcher<C>() -> DomEventDispatcher<C> {
         registrations: 16,
         pending_events: 8,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap()
 }
@@ -349,7 +355,7 @@ fn active_show_modal_publishes_structural_phase_then_waits_for_unobserved_rememb
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 *calls += 1;
                 assert!(event.cancelable());
@@ -435,7 +441,7 @@ fn canceled_or_post_event_disconnected_show_modal_completes_without_open_or_task
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, calls: &mut usize, event| {
                     *calls += 1;
                     if disconnect {
@@ -570,7 +576,7 @@ fn callback_adoption_into_inactive_document_keeps_open_and_queue_then_fails_asse
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, calls: &mut usize, event| {
                 *calls += 1;
                 assert_eq!(
@@ -748,7 +754,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |dom, _, calls: &mut Vec<&'static str>, event| {
                     calls.push("retire");
                     if prevent {
@@ -772,16 +778,17 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
             .add_listener(
                 &mut session.dom(),
                 subject,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<&'static str>, event| {
                     calls.push("late");
-                    assert_eq!(event.target(), Some(subject));
+                    assert_eq!(event.target(), Some(subject.into()));
                     assert_eq!(event.default_prevented(), prevent);
                     Ok(())
                 }),
                 DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();
@@ -837,7 +844,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {
                 *calls += 1;
                 Ok(())
@@ -845,6 +852,7 @@ fn canceled_and_callback_refused_service_retain_actual_dispatch_then_retry_witho
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

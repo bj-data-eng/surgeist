@@ -61,11 +61,13 @@ fn ancestor(cap: u64) -> Result<Ancestor, Failure> {
         registrations: 1,
         pending_events: 2,
         nested_dispatches: 2,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })?;
     registry.add_listener(
         &mut session.dom(),
         parent,
-        DomEventType::BeforeToggle,
+        DomEventType::BEFORE_TOGGLE,
         DomEventCallback::new(|dom, _, context: &mut Child, _| {
             context.calls += 1;
             match context.source.apply(

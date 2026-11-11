@@ -330,13 +330,15 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
             registrations: 1,
             pending_events: 1,
             nested_dispatches: 1,
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
         })
         .unwrap();
         registry
             .add_listener(
                 &mut session.dom(),
                 subject,
-                crate::DomEventType::BeforeToggle,
+                crate::DomEventType::BEFORE_TOGGLE,
                 crate::DomEventCallback::new(|_, _, calls: &mut usize, event| {
                     assert!(event.cancelable());
                     *calls += 1;
@@ -345,6 +347,7 @@ fn same_origin_autofocus_tail_output_is_preadmitted_before_actual_toggle_queue_e
                 crate::DomEventListenerOptions {
                     capture: false,
                     once: true,
+                    passive: None,
                 },
             )
             .unwrap();

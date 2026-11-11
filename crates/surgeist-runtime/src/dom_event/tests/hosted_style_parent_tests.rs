@@ -30,7 +30,7 @@ fn observer(capture_listener: bool) -> DomEventCallback<Vec<Recorded>> {
     DomEventCallback::new(move |_, _, seen: &mut Vec<Recorded>, event| {
         seen.push(Recorded {
             current: event.current_target(),
-            target: event.target(),
+            target: event.target().and_then(|target| target.node()),
             phase: event.phase(),
             capture_listener,
             path: event.composed_path().collect(),
@@ -39,7 +39,7 @@ fn observer(capture_listener: bool) -> DomEventCallback<Vec<Recorded>> {
     })
 }
 
-fn hosted_session() -> DomSession {
+pub(in crate::dom_event) fn hosted_session() -> DomSession {
     DomSession::new(
         Dom::new(
             DomLimits::new(
@@ -66,6 +66,10 @@ fn hosted_session() -> DomSession {
         )
         .unwrap(),
         DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
             source_events: crate::DomSourceEventRuntimeLimits {
                 jobs: 0,
                 storage_bytes: 16_000_000,
@@ -102,7 +106,7 @@ fn hosted_session() -> DomSession {
 }
 
 fn dispatch_hosted(kind: DomEventType) {
-    assert!(matches!(kind, DomEventType::Load | DomEventType::Error));
+    assert!(kind == DomEventType::LOAD || kind == DomEventType::ERROR);
     let cancel = AtomicBool::new(false);
     let mut session = hosted_session();
     let mut hosted = session.hosted_execution();
@@ -138,25 +142,26 @@ fn dispatch_hosted(kind: DomEventType) {
     let ancestor = DomEventTarget::Node(html);
     let target_endpoint = DomEventTarget::Node(target);
     let mut listeners = registry::<Vec<Recorded>>();
-    for endpoint in [target_endpoint, ancestor, document, global] {
+    for endpoint in [&target_endpoint, &ancestor, &document, &global] {
         // Opposite registration order must not turn capture traversal into
         // registration order or give nonbubbling ancestors a bubble visit.
         for capture in [false, true] {
             listeners
                 .add_listener(
                     &mut session.dom(),
-                    endpoint,
-                    kind,
+                    endpoint.clone(),
+                    &kind,
                     observer(capture),
                     DomEventListenerOptions {
                         capture,
                         once: false,
+                        passive: None,
                     },
                 )
                 .unwrap();
         }
     }
-    let event = if kind == DomEventType::Error {
+    let event = if kind == DomEventType::ERROR {
         NativeDomEvent::style_error(target, test_event_backing())
     } else {
         NativeDomEvent::style_load(target, test_event_backing())
@@ -174,16 +179,16 @@ fn dispatch_hosted(kind: DomEventType) {
             )
             .unwrap(),
     );
-    let mut path = vec![target_endpoint, ancestor, document];
+    let mut path = vec![target_endpoint.clone(), ancestor.clone(), document.clone()];
     let mut expected = Vec::new();
-    if kind == DomEventType::Error {
-        path.push(global);
-        expected.push((global, DomEventPhase::Capturing, true));
+    if kind == DomEventType::ERROR {
+        path.push(global.clone());
+        expected.push((global.clone(), DomEventPhase::Capturing, true));
     }
     expected.extend([
         (document, DomEventPhase::Capturing, true),
         (ancestor, DomEventPhase::Capturing, true),
-        (target_endpoint, DomEventPhase::AtTarget, true),
+        (target_endpoint.clone(), DomEventPhase::AtTarget, true),
         (target_endpoint, DomEventPhase::AtTarget, false),
     ]);
     assert_eq!(
@@ -201,9 +206,9 @@ fn dispatch_hosted(kind: DomEventType) {
     );
     assert_eq!(
         receipt.callbacks(),
-        if kind == DomEventType::Error { 5 } else { 4 }
+        if kind == DomEventType::ERROR { 5 } else { 4 }
     );
-    assert_eq!(receipt.original_target(), target);
+    assert_eq!(receipt.original_target(), target.into());
     assert_eq!(receipt.event_type(), kind);
     assert!(receipt.failures().is_empty());
     assert!(!receipt.default_prevented());
@@ -214,20 +219,20 @@ fn dispatch_hosted(kind: DomEventType) {
     assert!(
         !seen
             .iter()
-            .any(|entry| entry.current == Some(global) && !entry.capture_listener)
+            .any(|entry| entry.current.as_ref() == Some(&global) && !entry.capture_listener)
     );
     assert_eq!(event.current_target(), None);
     assert_eq!(event.phase(), DomEventPhase::None);
-    assert_eq!(event.target(), Some(target));
+    assert_eq!(event.target(), Some(target.into()));
     assert_eq!(event.composed_path().count(), 0);
 }
 
 #[test]
 fn hosted_style_error_kernel_captures_global_document_ancestor_then_target_without_bubbling() {
-    dispatch_hosted(DomEventType::Error);
+    dispatch_hosted(DomEventType::ERROR);
 }
 
 #[test]
 fn hosted_style_load_kernel_excludes_global_but_captures_document_and_ancestor() {
-    dispatch_hosted(DomEventType::Load);
+    dispatch_hosted(DomEventType::LOAD);
 }

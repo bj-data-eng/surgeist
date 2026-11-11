@@ -39,9 +39,18 @@ fn actual_source_owner() -> (Dom, SourceEventOwner, [NodeId; 2]) {
         work: 1_000_000,
     };
     SourceEventOwner::admit_initial(policy).unwrap();
+    let storage = crate::dom_event::EventStorage::session(
+        &mut DomEventDom::borrow(&mut dom),
+        crate::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
+        &cancel,
+    )
+    .unwrap();
     (
         dom,
-        SourceEventOwner::new(targets[0].owner(), executor, policy),
+        SourceEventOwner::new(targets[0].owner(), executor, policy, storage),
         targets,
     )
 }
@@ -99,7 +108,7 @@ fn parked_source_dispatch_releases_dynamic_custody(withdraw_dispatcher: bool) {
             .add_listener(
                 &mut DomEventDom::borrow(&mut dom),
                 target,
-                DomEventType::BeforeToggle,
+                DomEventType::BEFORE_TOGGLE,
                 callback,
                 DomEventListenerOptions::default(),
             )
@@ -140,7 +149,9 @@ fn parked_source_dispatch_releases_dynamic_custody(withdraw_dispatcher: bool) {
 
     let mut registry = Some(registry);
     let registry_release = if withdraw_dispatcher {
-        let bytes = registry.as_ref().unwrap().inspect_pending_index_bytes();
+        let dispatcher = registry.as_ref().unwrap();
+        let bytes =
+            dispatcher.inspect_pending_index_bytes() + dispatcher.inspect_registration_bytes();
         drop(registry.take());
         bytes
     } else {
@@ -235,7 +246,7 @@ fn escaped_source_path_retains_original_debit_after_job_and_event_disposal() {
         .add_listener(
             &mut DomEventDom::borrow(&mut dom),
             target,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(17),
             DomEventListenerOptions::default(),
         )

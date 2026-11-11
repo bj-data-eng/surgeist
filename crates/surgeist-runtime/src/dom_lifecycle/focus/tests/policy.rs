@@ -85,13 +85,15 @@ fn parked_live(denied: bool) -> LiveCase {
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut session.dom(),
             subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, _| {
                 *calls += 1;
                 Ok(())
@@ -99,6 +101,7 @@ fn parked_live(denied: bool) -> LiveCase {
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -593,13 +596,15 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     registry
         .add_listener(
             &mut case.session.dom(),
             case.subject,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(|_, _, calls: &mut usize, event| {
                 assert!(!event.cancelable());
                 *calls += 1;
@@ -608,6 +613,7 @@ fn real_modal_close_reserves_its_post_watcher_pending_removal_output_before_queu
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();

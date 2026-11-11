@@ -334,7 +334,7 @@ impl HostedRuntime {
                 global: job.global,
             });
         }
-        let (gh, gt, c, g) = match state.find_global(job.global, cancel, || Ok(())) {
+        let (gh, gt, c, g) = match state.find_global(job.global, cancel, |_| Ok(())) {
             Ok(value) => value,
             Err(DomHostedRuntimeError::TargetNotFound) => {
                 if let Some(progress) =

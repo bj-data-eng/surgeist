@@ -27,6 +27,10 @@ fn source_limits() -> DomSourceLimits {
 }
 fn limits() -> DomSessionLimits {
     DomSessionLimits {
+        authored_events: surgeist_runtime::DomEventStorageLimits {
+            storage_bytes: 16_000_000,
+            work: 1_000_000,
+        },
         source_events: DomSourceEventRuntimeLimits {
             jobs: 0,
             storage_bytes: 16_000_000,
@@ -147,10 +151,10 @@ fn deliver_load(
         .add_listener(
             &mut session.dom(),
             style,
-            DomEventType::Load,
+            DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut Notifications, event| {
-                assert_eq!(event.target(), Some(style));
-                assert_eq!(event.event_type(), DomEventType::Load);
+                assert_eq!(event.target(), Some(style.into()));
+                assert_eq!(event.event_type(), DomEventType::LOAD);
                 assert!(!event.cancelable());
                 context.delivered.push(style);
                 Ok(())
@@ -158,6 +162,7 @@ fn deliver_load(
             DomEventListenerOptions {
                 capture: false,
                 once: true,
+                passive: None,
             },
         )
         .unwrap();
@@ -447,6 +452,8 @@ fn hosted_style_uses_current_constructor_base(child: bool) {
         registrations: 1,
         pending_events: 1,
         nested_dispatches: 1,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     deliver_load(&mut session, style, &mut dispatcher, &mut context);

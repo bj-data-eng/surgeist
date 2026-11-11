@@ -132,6 +132,17 @@ struct DialogFiring {
     kind: DomSourceEventKind,
     frame: Option<crate::store::dialog::MethodFrame>,
 }
+#[derive(Clone, Copy)]
+enum FiringTime {
+    Unavailable,
+    Pending {
+        global: crate::DomHostedGlobalId,
+        document: crate::DocumentId,
+        origin: crate::DomHostedMoment,
+    },
+    Observed(Result<DomSourceEventTime, DomSourceEventClockFailure>),
+}
+
 pub(super) struct DialogObservation {
     request: DomSourceEventRequest,
     owner: Arc<BatchIdentity>,
@@ -142,6 +153,7 @@ pub(super) struct DialogObservation {
     accepted: Option<DomSourceEventOutcome>,
     inputs: storage::Payload,
     receiver: crate::DomDispatchCustody,
+    time: FiringTime,
 }
 impl DialogObservation {
     pub(super) fn status(&self, operation: &Operation) -> DomSourceStatus {
@@ -155,6 +167,8 @@ impl DialogObservation {
             parent: self.request.parent_operation(),
             phase: if operation.failure.is_some() {
                 DomSourcePhase::PendingCleanup
+            } else if matches!(self.time, FiringTime::Pending { .. }) {
+                DomSourcePhase::EventFiring
             } else if self.accepted.is_some() {
                 DomSourcePhase::EventReceiptAccepted
             } else {
@@ -250,8 +264,9 @@ impl Operation {
         dom: &mut Dom,
         subject: NodeId,
         action: HtmlDialogAction,
+        hosted_events: bool,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let HtmlDialogAction::FireBeforeToggle {
             old,
             new,
@@ -259,7 +274,7 @@ impl Operation {
             source,
         } = action
         else {
-            return Err(DomError::InvalidSourceEvent);
+            return Err(DomError::InvalidSourceEvent.into());
         };
         if !matches!(&self.commands, OperationRoot::Edit([Command::ShowDialog { node: NodeOperand::Existing(actual) } | Command::ShowModalDialog { node: NodeOperand::Existing(actual) } | Command::CloseDialog { node: NodeOperand::Existing(actual), .. } | Command::RequestCloseDialog { node: NodeOperand::Existing(actual), .. }]) if *actual == subject)
             || !matches!(
@@ -271,10 +286,10 @@ impl Operation {
             || !self.draft.tickets.is_empty()
             || !self.draft.effects.is_empty()
         {
-            return Err(DomError::InvalidSourceEvent);
+            return Err(DomError::InvalidSourceEvent.into());
         }
         let Some(crate::store::method::Frame::Dialog(frame)) = self.draft.method.as_ref() else {
-            return Err(DomError::InvalidSourceEvent);
+            return Err(DomError::InvalidSourceEvent.into());
         };
         let frame = frame.before_focusing()?;
         self.observe_dialog_event(
@@ -288,6 +303,7 @@ impl Operation {
                 kind: DomSourceEventKind::BeforeToggle,
                 frame: Some(frame),
             },
+            hosted_events,
             cancel,
         )
     }
@@ -296,7 +312,7 @@ impl Operation {
         dom: &mut Dom,
         task: crate::DomDialogTaskInfo,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         self.observe_dialog_event(
             dom,
             DialogFiring {
@@ -321,6 +337,7 @@ impl Operation {
                 },
                 frame: None,
             },
+            false,
             cancel,
         )
     }
@@ -328,8 +345,9 @@ impl Operation {
         &mut self,
         dom: &mut Dom,
         cancelable: bool,
+        hosted_events: bool,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let call = self
             .request_close
             .as_ref()
@@ -343,6 +361,7 @@ impl Operation {
                 kind: DomSourceEventKind::Cancel,
                 frame: Some(call.outer.before_focusing()?),
             },
+            hosted_events,
             cancel,
         )
     }
@@ -350,8 +369,9 @@ impl Operation {
         &mut self,
         dom: &mut Dom,
         firing: DialogFiring,
+        hosted_events: bool,
         cancel: &AtomicBool,
-    ) -> Result<DomSourceProgress, DomError> {
+    ) -> Result<DomSourceProgress, AdvanceError> {
         let DialogFiring {
             subject,
             payload,
@@ -378,7 +398,7 @@ impl Operation {
             {
                 headroom::FINAL_PUBLICATION
             }
-            _ => return Err(DomError::InvalidSourceEvent),
+            _ => return Err(DomError::InvalidSourceEvent.into()),
         };
         let remaining = self.headroom.as_ref().map_or(possible, |reservation| {
             possible.max(reservation.remaining_phases)
@@ -391,7 +411,7 @@ impl Operation {
             .checked_add(headroom::FINAL_PUBLICATION)
             .ok_or(DomError::RepresentationExhausted)?;
         if close > self.limits.phases {
-            return Err(DomError::SourcePublicationLimit);
+            return Err(DomError::SourcePublicationLimit.into());
         }
         let protected = dom.source_reserved_closing(cancel)?;
         dom.revision
@@ -449,6 +469,16 @@ impl Operation {
         let receiver =
             dom.register_dispatch_custody_with_formation(&[subject], formation.as_ref(), cancel)?;
         let autofocus = self.draft.autofocus_count(cancel)?;
+        let mut inputs = self.command_storage;
+        if let Some(value) = &self.request_close_result {
+            inputs.string(value)?;
+        }
+        let time = if hosted_events {
+            self.firing_time(dom, subject, cancel)?
+        } else {
+            FiringTime::Unavailable
+        };
+        let prepared = matches!(time, FiringTime::Pending { .. });
         let usage = Usage {
             autofocus,
             work: self.draft.source_work.source_arc().clone(),
@@ -463,10 +493,6 @@ impl Operation {
                 input_processing::InputProcessing::new(0, 0),
             ),
         };
-        let mut inputs = self.command_storage;
-        if let Some(value) = &self.request_close_result {
-            inputs.string(value)?;
-        }
         let observation = DialogObservation {
             receiver,
             request: request.clone(),
@@ -481,21 +507,155 @@ impl Operation {
             limits,
             accepted: None,
             inputs,
+            time,
         };
         self.event_custody = Some(event_custody);
         self.draft = OperationDraft::Observed(observation);
         self.headroom = Some(headroom::Reservation {
             remaining_phases: remaining,
         });
-        self.event_exposed = true;
-        self.event_work = Arc::downgrade(&request.work);
+        if !prepared {
+            self.event_exposed = true;
+            self.event_work = Arc::downgrade(&request.work);
+        }
         drop(formation); // Work is now owned by the admitted observation.
         self.command_storage = storage::Payload::default();
         self.custody_bytes = 0;
         self.custody_units = 0;
+        if prepared {
+            Err(AdvanceError::EventFiring)
+        } else {
+            Ok(DomSourceProgress::Request(DomSourceRequest::Event(request)))
+        }
+    }
+
+    fn firing_time(
+        &self,
+        dom: &Dom,
+        subject: NodeId,
+        cancel: &AtomicBool,
+    ) -> Result<FiringTime, DomError> {
+        let origin = dom
+            .selected_event_creation_origin(subject, &mut || {
+                self.draft
+                    .source_step(cancel)
+                    .map_err(crate::DomHostedError::from)
+            })
+            .map_err(|error| match error {
+                crate::DomHostedError::Dom(error) => error,
+                _ => DomError::HostedSourceUnavailable,
+            })?;
+        Ok(match origin {
+            Some((global, document, origin)) => FiringTime::Pending {
+                global,
+                document,
+                origin,
+            },
+            None => FiringTime::Unavailable,
+        })
+    }
+}
+/// Exclusive acknowledgment of the original issuer's prepared firing.
+#[must_use = "finish the firing or leave its exact observation parked"]
+pub struct DomSourceEventFiringLoan<'a> {
+    observation: &'a mut DialogObservation,
+    event_exposed: &'a mut bool,
+    event_work: &'a mut Weak<EventWork>,
+    source: &'a crate::DomHostedSource,
+    origin: crate::DomHostedMoment,
+    global: crate::DomHostedGlobalId,
+}
+
+impl DomSourceEventFiringLoan<'_> {
+    /// Supply the original issuer's single native clock result. No Event Job or
+    /// dispatch scope exists here. Only the actual retained request is exposed.
+    pub fn finish(
+        self,
+        occurrence: Result<u64, DomSourceEventClockFailure>,
+    ) -> Result<DomSourceProgress, crate::DomHostedError> {
+        if occurrence.is_ok_and(|microseconds| !microseconds.is_multiple_of(100)) {
+            return Err(crate::DomHostedError::InvalidClockSample);
+        }
+        self.observation.time =
+            FiringTime::Observed(occurrence.map(|microseconds| DomSourceEventTime {
+                global: self.global,
+                origin: self.origin,
+                occurrence: crate::DomHostedMoment {
+                    source: self.source.id(),
+                    microseconds,
+                },
+            }));
+        let request = self.observation.request.clone();
+        *self.event_exposed = true;
+        *self.event_work = Arc::downgrade(&request.work);
         Ok(DomSourceProgress::Request(DomSourceRequest::Event(request)))
     }
 }
+
+impl DomSourceLease<'_> {
+    pub(super) fn prepared_event_firing(&self) -> Result<DomSourceEventFiring, DomError> {
+        let observation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .filter(|operation| operation.id == self.id)
+            .and_then(|operation| operation.observation())
+            .ok_or(DomError::InvalidSourceEvent)?;
+        let FiringTime::Pending {
+            global,
+            document,
+            origin,
+        } = observation.time
+        else {
+            return Err(DomError::InvalidSourceEvent);
+        };
+        Ok(DomSourceEventFiring {
+            identity: observation.request.identity(),
+            global,
+            document,
+            origin,
+        })
+    }
+
+    /// Qualify this still-private firing against the exact original issuer and
+    /// admit the actual clock observation against its Source and ancestors.
+    pub fn begin_event_firing<'a>(
+        &'a mut self,
+        firing: DomSourceEventFiring,
+        source: &'a crate::DomHostedSource,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceEventFiringLoan<'a>, crate::DomHostedError> {
+        let actual = self.prepared_event_firing()?;
+        if actual.identity != firing.identity
+            || actual.global != firing.global
+            || actual.document != firing.document
+            || actual.origin != firing.origin
+            || source.id() != actual.origin.source()
+            || source.id() != actual.global.source()
+        {
+            return Err(DomError::InvalidSourceEvent.into());
+        }
+        self.dom.validate_hosted_source(source)?;
+        let operation = self
+            .dom
+            .source_operation
+            .as_mut()
+            .ok_or(DomError::InvalidSourceEvent)?;
+        let OperationDraft::Observed(observation) = &mut operation.draft else {
+            return Err(DomError::InvalidSourceEvent.into());
+        };
+        observation.request.work.step(cancel)?;
+        Ok(DomSourceEventFiringLoan {
+            observation,
+            event_exposed: &mut operation.event_exposed,
+            event_work: &mut operation.event_work,
+            source,
+            origin: actual.origin,
+            global: actual.global,
+        })
+    }
+}
+
 impl Dom {
     pub(in crate::store) fn admit_source_owner_payload(
         &mut self,
@@ -931,6 +1091,7 @@ impl Dom {
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
         if request.subject().owner() != self.owner
+            || matches!(observation.time, FiringTime::Pending { .. })
             || !Arc::ptr_eq(&observation.request.work, &request.work)
             || request.work.stage.load(Ordering::Relaxed) != stage
         {
@@ -938,6 +1099,25 @@ impl Dom {
         }
         Ok(())
     }
+    /// Read the original retained firing observation for the exact real request
+    /// before its executor starts dispatch. Unhosted requests can lack timing.
+    pub fn source_event_time(
+        &self,
+        request: &DomSourceEventRequest,
+    ) -> Result<Option<Result<DomSourceEventTime, DomSourceEventClockFailure>>, DomError> {
+        self.qualify_source_event(request, 0)?;
+        let observation = self
+            .source_operation
+            .as_ref()
+            .and_then(|operation| operation.observation())
+            .ok_or(DomError::InvalidSourceEvent)?;
+        Ok(match observation.time {
+            FiringTime::Observed(result) => Some(result),
+            FiringTime::Unavailable => None,
+            FiringTime::Pending { .. } => return Err(DomError::InvalidSourceEvent),
+        })
+    }
+
     /// Raise the allowances of this exact retained event observation, including
     /// an ancestor beneath a pending child. All seven fields must be monotonic.
     /// This changes policy only: it does not resume a cursor, dispatch, replace a
@@ -1488,6 +1668,18 @@ impl DomSourceLease<'_> {
         let observation = operation
             .observation()
             .ok_or(DomError::InvalidSourceEvent)?;
+        if matches!(observation.time, FiringTime::Pending { .. }) {
+            if operation.request_close.is_none() && operation.cancelled {
+                return self
+                    .finish_dialog_noop(true, None, cancel)
+                    .map_err(Into::into);
+            }
+            return Err(if execution.hosted_events {
+                AdvanceError::EventFiring
+            } else {
+                DomError::HostedSourceUnavailable.into()
+            });
+        }
         self.dom.source_event_step(&observation.request, cancel)?;
         if operation.request_close.is_none()
             && operation.cancelled

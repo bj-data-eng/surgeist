@@ -1302,6 +1302,89 @@ impl Dom {
 }
 
 impl Dom {
+    /// Original clock origin of the exact Style notification receiver. A
+    /// never-hosted receiver or retired origin has no available clock. The
+    /// receiver's current node document cannot substitute its Global. An
+    /// enclosing active Source dispatch also pays for each origin read.
+    pub fn style_event_creation_origin<E>(
+        &self,
+        token: &crate::DomStyleNotificationToken,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(DomHostedGlobalId, DomHostedMoment)>, E>
+    where
+        E: From<DomHostedError> + From<DomError>,
+    {
+        if token.complete || token.origin.is_none() {
+            return Err(DomError::StyleProtocol.into());
+        }
+        if token.owner() != self.owner {
+            return Err(DomError::ForeignOwner.into());
+        }
+        let work = if self
+            .source_operation
+            .as_ref()
+            .is_some_and(|operation| operation.permits_reentry())
+        {
+            self.dispatch_hosted_read_work(cancel)?
+        } else {
+            None
+        };
+        self.selected_event_creation_origin(token.target(), &mut || {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })
+        .map(|origin| origin.map(|(global, _, moment)| (global, moment)))
+    }
+
+    pub(in crate::store) fn selected_event_creation_origin<E>(
+        &self,
+        subject: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<(DomHostedGlobalId, DocumentId, DomHostedMoment)>, E>
+    where
+        E: From<DomHostedError> + From<DomError>,
+    {
+        step()?;
+        let Some(global) = self.state.node(self.owner, subject)?.relevant_global() else {
+            return Ok(None);
+        };
+        let document = self
+            .state
+            .hosted_globals
+            .as_ref()
+            .ok_or(DomHostedError::StaleIdentity)?
+            .document_with(global, step)?;
+        step()?;
+        let node = match self.state.node(self.owner, document.node()) {
+            Ok(node) => node,
+            // The exact historical mapping still names this retired generation.
+            Err(DomError::StaleNode) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let DomNodeKind::Document(metadata) = node.kind() else {
+            return Err(DomError::WrongDocument.into());
+        };
+        let environment = metadata.document_environment();
+        let association = environment
+            .hosted
+            .as_ref()
+            .filter(|association| association.global == global)
+            .ok_or(DomHostedError::StaleIdentity)?;
+        if matches!(association.phase, DocumentPhase::Retired { .. }) {
+            return Ok(None);
+        }
+        match association.validate_live() {
+            Ok(_) => Ok(Some((global, document, association.navigation_start))),
+            Err(DomHostedError::SourceExpired) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Current Global association for an actual native dispatcher. An unfinished
     /// Source requires its exact active dispatch scope; snapshots stay incomplete.
     pub fn dispatch_relevant_global(
@@ -1321,12 +1404,61 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let _work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_relevant_global_current_with(node, step)
+    }
+    fn dispatch_relevant_global_current_with<E>(
+        &self,
+        node: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         step()?;
         let global = self.snapshot().relevant_global(node)?;
         if let Some(global) = global {
             self.dispatch_global_document_current_with(global, step)?;
         }
         Ok(global)
+    }
+    /// Qualify the actual current issuer for a hosted Document reached during
+    /// selected native dispatch preparation, independently of its event parent.
+    /// The work hook meters current association reads alongside any active
+    /// Source dispatch scope. The observation grants no execution authority.
+    pub fn qualify_native_dispatch_document<E>(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        self.dispatch_document_relevant_global_with(document, cancel, step)?
+            .ok_or(DomHostedError::UnsupportedProfile)?;
+        check_cancel(cancel)?;
+        Ok(())
+    }
+    /// Observe the Document's actual relevant Global, if any, charging the
+    /// caller and the active Source event scope for each association read.
+    pub fn dispatch_document_relevant_global_with<E>(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_relevant_global_current_with(document.node(), &mut || -> Result<(), E> {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })
     }
     /// Current issuer/role-qualified Document of a dispatcher Global endpoint.
     pub fn dispatch_global_document(
@@ -1336,6 +1468,27 @@ impl Dom {
     ) -> Result<DocumentId, DomHostedError> {
         let _work = self.dispatch_hosted_read_work(cancel)?;
         self.dispatch_global_document_current(global)
+    }
+    /// Qualify a direct Global dispatch and meter its current association reads
+    /// against both caller work and any enclosing Source event scope.
+    pub fn dispatch_global_document_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_global_document_current_with(global, &mut || {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })
     }
     fn dispatch_global_document_current(
         &self,
