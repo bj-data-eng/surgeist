@@ -96,7 +96,48 @@ fn formatting_deep_scenes_writes_all_layers_and_leaves() {
                 (1 + u64::from(siblings) * DEPTH) as usize
             );
         }
+
+        // Pretty output itself grows with the indentation, so use a shorter
+        // chain and check the leaf's full indentation independently.
+        let pretty_depth = 256;
+        let scene = nest(filled(Color::BLACK), pretty_depth, false);
+        let pretty = format!("{scene:#?}");
+        let leaf = pretty
+            .lines()
+            .find(|line| line.trim_start() == "Fill {")
+            .unwrap();
+        assert_eq!(
+            leaf.len() - leaf.trim_start().len(),
+            (2 + 2 * pretty_depth as usize) * 4
+        );
     });
+}
+
+#[test]
+fn equality_distinguishes_order_and_layer_boundaries() {
+    let mut left = Scene::new();
+    left.layer(Layer::new(), |child| {
+        child.fill(rect(0.0), Color::BLACK);
+        child.fill(rect(2.0), Color::TRANSPARENT);
+    });
+    let mut reordered = Scene::new();
+    reordered.layer(Layer::new(), |child| {
+        child.fill(rect(2.0), Color::TRANSPARENT);
+        child.fill(rect(0.0), Color::BLACK);
+    });
+    let mut isolated = Scene::new();
+    isolated.layer(Layer::new().isolated(), |child| {
+        child.fill(rect(0.0), Color::BLACK);
+        child.fill(rect(2.0), Color::TRANSPARENT);
+    });
+    let mut split = Scene::new();
+    split.layer(Layer::new(), |child| {
+        child.fill(rect(0.0), Color::BLACK);
+    });
+    split.fill(rect(2.0), Color::TRANSPARENT);
+    assert!(left != reordered);
+    assert!(left != isolated);
+    assert!(left != split);
 }
 
 #[test]
@@ -118,16 +159,33 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
             Layer { layer: Layer, children: Vec<Self> },
         }
     }
-    let mut scene = nest(filled(Color::BLACK), 1, true);
+    let mut nested = filled(Color::BLACK);
+    nested.layer(Layer::new(), |_| {});
+    let mut scene = nest(nested, 2, true);
     scene.layer(Layer::new(), |_| {});
     let reference = expected::Scene {
         commands: vec![
             expected::Command::Layer {
                 layer: Layer::new(),
-                children: vec![expected::Command::Fill {
-                    shape: rect(0.0).into(),
-                    paint: Color::BLACK.into(),
-                }],
+                children: vec![
+                    expected::Command::Layer {
+                        layer: Layer::new(),
+                        children: vec![
+                            expected::Command::Fill {
+                                shape: rect(0.0).into(),
+                                paint: Color::BLACK.into(),
+                            },
+                            expected::Command::Layer {
+                                layer: Layer::new(),
+                                children: Vec::new(),
+                            },
+                        ],
+                    },
+                    expected::Command::Fill {
+                        shape: rect(2.0).into(),
+                        paint: Color::TRANSPARENT.into(),
+                    },
+                ],
             },
             expected::Command::Fill {
                 shape: rect(2.0).into(),
@@ -140,7 +198,8 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
         ],
     };
     assert_eq!(format!("{scene:?}"), format!("{reference:?}"));
-    assert_eq!(format!("{scene:#?}"), format!("{reference:#?}"));
+    let pretty = format!("{scene:#?}");
+    assert_eq!(pretty, format!("{reference:#?}"));
 
     struct ShortWriter(usize);
     impl Write for ShortWriter {
@@ -149,6 +208,6 @@ fn ordinary_debug_preserves_derived_structure_and_writer_errors() {
             Ok(())
         }
     }
-    let mut writer = ShortWriter(format!("{scene:#?}").len() - 1);
+    let mut writer = ShortWriter(pretty.find("Fill {").unwrap() + 4);
     assert_eq!(write!(&mut writer, "{scene:#?}"), Err(fmt::Error));
 }
