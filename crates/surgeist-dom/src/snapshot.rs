@@ -85,6 +85,33 @@ impl DomSnapshot {
         }
         Ok(DomDocument { snapshot: self, id })
     }
+
+    /// Find the first Element child of the exact captured Document.
+    ///
+    /// Admit the bank entry and each actual lookup page for the Document and
+    /// each inspected child. Return the caller's first admission failure.
+    pub fn document_element_with<E: From<DomError>>(
+        &self,
+        id: DocumentId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<NodeId>, E> {
+        let document = self.state.node_with(self.owner, id.node(), &mut step)?;
+        if !matches!(document.kind(), DomNodeKind::Document(_)) {
+            return Err(DomError::WrongNodeKind.into());
+        }
+        for &child in document.children() {
+            if self
+                .state
+                .node_with(self.owner, child, &mut step)?
+                .element()
+                .is_some()
+            {
+                return Ok(Some(child));
+            }
+        }
+        Ok(None)
+    }
+
     /// Every managed node, including detached nodes. Arena order is unspecified.
     pub fn nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.state.slots.iter().filter_map(|(slot, value)| {

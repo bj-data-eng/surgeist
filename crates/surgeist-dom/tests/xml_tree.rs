@@ -22,6 +22,58 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> surgeist_dom::DomCommit {
 }
 
 #[test]
+fn document_element_read_admits_only_the_exact_selected_prefix() {
+    #[derive(Debug, Eq, PartialEq)]
+    enum ReadError {
+        Dom(DomError),
+        WorkLimit,
+    }
+
+    impl From<DomError> for ReadError {
+        fn from(error: DomError) -> Self {
+            Self::Dom(error)
+        }
+    }
+
+    let mut owner = dom();
+    let mut batch = DomBatch::new();
+    let empty = batch.create_document();
+    let document = batch.create_document();
+    let doctype = batch.create_document_type(&document, "root", "", "");
+    let before = batch.create_comment(&document, "before");
+    let root = batch.create_element(&document, "root");
+    let after = batch.create_comment(&document, "after");
+    for child in [&doctype, &before, &root, &after] {
+        batch.insert_before(child, &document, None);
+    }
+    let commit = apply(&mut owner, batch);
+    let document = commit.document(&document).unwrap();
+    let empty = commit.document(&empty).unwrap();
+    let root = commit.created(&root).unwrap().unwrap();
+    let snapshot = owner.snapshot();
+
+    let read = |document, mut remaining: u32| {
+        let result = snapshot.document_element_with(document, || {
+            remaining = remaining.checked_sub(1).ok_or(ReadError::WorkLimit)?;
+            Ok(())
+        });
+        (result, remaining)
+    };
+    // A bank entry and one actual page for each of the Document, doctype,
+    // leading Comment and matching Element. The trailing Comment is unread.
+    assert_eq!(read(document, 7), (Err(ReadError::WorkLimit), 0));
+    assert_eq!(read(document, 8), (Ok(Some(root)), 0));
+    assert_eq!(read(empty, 2), (Ok(None), 0));
+    assert_eq!(snapshot.stamp(), owner.snapshot().stamp());
+    assert_eq!(
+        dom()
+            .snapshot()
+            .document_element_with(document, || Err(ReadError::WorkLimit)),
+        Err(ReadError::Dom(DomError::ForeignOwner))
+    );
+}
+
+#[test]
 fn documents_enforce_single_element_doctype_order_and_invalid_reference_before_mutation() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
