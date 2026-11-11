@@ -4,7 +4,7 @@ use super::graph::{
     SemanticPassResult, SemanticResourceId, SemanticResourceProducer, SemanticResourceRole,
     WorkingImageInitialization, graph_build,
 };
-use super::lower::validate_pass_projection;
+use super::lower::QualifiedFilterSteps;
 use crate::accounting::{Account, AccountedVec, RenderWork, StorageContractError};
 
 pub(super) fn validate_semantic_frame_graph(
@@ -153,16 +153,18 @@ fn validate_import_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphB
     Ok(())
 }
 
-pub(super) fn validate_lowering_graph(
-    graph: &GpuRenderGraph,
+pub(super) fn validate_lowering_graph<'graph>(
+    graph: &'graph GpuRenderGraph,
     account: &Account,
-) -> crate::Result<()> {
+) -> crate::Result<QualifiedFilterSteps<'graph>> {
     let mut validation = graph_build(LoweringValidationState::begin(graph, account))?;
+    let filter_steps = graph_build(QualifiedFilterSteps::try_new(graph, account))?;
     for (index, pass) in graph.passes.iter().enumerate() {
         graph_build(validation.validate_pass(index, pass))?;
-        validate_pass_projection(graph, pass, account)?;
+        filter_steps.validate_pass_projection(pass, account)?;
     }
-    graph_build(validation.finish())
+    graph_build(validation.finish())?;
+    Ok(filter_steps)
 }
 
 struct LoweringValidationState<'graph, 'account> {
