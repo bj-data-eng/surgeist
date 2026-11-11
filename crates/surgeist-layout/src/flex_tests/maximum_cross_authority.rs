@@ -766,3 +766,33 @@ fn flex_preferred_max_content_cross_size_respects_imposed_allocation() {
     preferred_max_content_cross_size::<f32>();
     preferred_max_content_cross_size::<f64>();
 }
+
+#[test]
+fn flex_preferred_max_content_cross_ratio_bounds_preserve_definite_main_size() {
+    for (minimum, maximum, child_cross, expected_cross) in [
+        (None, Some(15.0), 30.0, 15.0),
+        (Some(50.0), None, 30.0, 50.0),
+    ] {
+        let tree = maximum_cross_source::<f32>(
+            PreferredSize::MAX_CONTENT,
+            maximum,
+            PreferredSize::px(child_cross),
+            AlignItems::Start,
+        );
+        let mut style = tree.node_input(0).clone();
+        style.size.width = PreferredSize::px(80.0);
+        style.aspect_ratio = Some(AspectRatio::new(2.0).unwrap());
+        if let Some(minimum) = minimum {
+            style.min_size.height = MinSize::px(minimum);
+        }
+        let batch = compute_layout(&tree.style(0, style), 0, unbounded_normal_request()).unwrap();
+        for phase in [Phase::Unrounded, Phase::Final] {
+            let root = readback::single_box_output(&batch, 0, phase);
+            assert_eq!(
+                root.size,
+                Size::new(80.0, expected_cross),
+                "minimum {minimum:?}, maximum {maximum:?}"
+            );
+        }
+    }
+}
