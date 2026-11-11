@@ -51,6 +51,10 @@ mod flex_composition_tests;
 mod flex_content_text;
 #[path = "flex_text_projection.rs"]
 mod flex_text_projection;
+#[path = "grid_lanes_native_pair.rs"]
+pub(crate) mod grid_lanes_native_pair;
+#[path = "grid_lanes_source_delta.rs"]
+mod grid_lanes_source_delta;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 #[path = "original_subgrid_body.rs"]
@@ -962,7 +966,8 @@ impl ComparisonResult {
 }
 
 /// One requested numeric field in source-order box comparison.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum NumericComparisonField {
     X,
     Y,

@@ -70,6 +70,8 @@ pub(super) enum QualificationMode {
     CheckPublishedSpecialized(SpecializedProfile),
     PublishMatching(&'static str),
     CheckPublishedMatching(&'static str),
+    PublishGridLanesDiagnostics,
+    CheckGridLanesDiagnostics,
 }
 
 impl Serialize for QualificationMode {
@@ -344,6 +346,8 @@ fn select_records(
                 | QualificationMode::PublishSpecialized(_)
                 | QualificationMode::PublishMatching(_)
                 | QualificationMode::CheckPublishedMatching(_)
+                | QualificationMode::PublishGridLanesDiagnostics
+                | QualificationMode::CheckGridLanesDiagnostics
                 | QualificationMode::CheckPublishedSpecialized(_) => {
                     return Err("durable modes require the complete inventory".into());
                 }
@@ -474,7 +478,7 @@ pub(super) fn declared_matching_edition(name: &str) -> Option<&'static str> {
         .as_ref()?
         .records
         .iter()
-        .filter_map(|r| r.matching_publication.as_deref())
+        .filter_map(Record::matching_edition)
         .find(|edition| *edition == name)
 }
 const CUSTODY_HELPER: &[u8] = include_bytes!("custody.js");
@@ -646,6 +650,8 @@ impl<'a> DeclarationInput<'a> {
                 | QualificationMode::CheckPublishedSpecialized(_)
                 | QualificationMode::PublishMatching(_)
                 | QualificationMode::CheckPublishedMatching(_)
+                | QualificationMode::PublishGridLanesDiagnostics
+                | QualificationMode::CheckGridLanesDiagnostics
         ) {
             return Err("focused declarations require a focused qualification mode".into());
         }
@@ -796,6 +802,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::PublishSpecialized(_)
             | QualificationMode::PublishMatching(_)
             | QualificationMode::CheckPublishedMatching(_)
+            | QualificationMode::PublishGridLanesDiagnostics
+            | QualificationMode::CheckGridLanesDiagnostics
             | QualificationMode::CheckPublishedSpecialized(_)
     ) {
         if fixture.is_some() {
@@ -923,6 +931,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            diagnostic_raw: None,
             geometry_predecessors,
             policy_raw: &mut std::io::stdout(),
         },
@@ -1031,6 +1040,8 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+    diagnostic_raw:
+        Option<&'a mut BTreeMap<String, Vec<capture_authority::OriginalDiagnosticDifference>>>,
     geometry_predecessors: BTreeMap<String, String>,
     policy_raw: &'a mut dyn Write,
 }
@@ -1063,6 +1074,14 @@ fn validate_corpus(
     let mode = validation.mode;
     if mode != inventory.mode {
         return Err("inventory mode differs from validation mode".into());
+    }
+    if matches!(
+        mode,
+        QualificationMode::PublishGridLanesDiagnostics
+            | QualificationMode::CheckGridLanesDiagnostics
+    ) != validation.diagnostic_raw.is_some()
+    {
+        return Err("diagnostic comparison output differs from validation mode".into());
     }
     let prepared_range_policy = if mode.box_observations() == BoxObservationRequest::PreparedRanges
     {
@@ -1124,7 +1143,9 @@ fn validate_corpus(
         assert_eq!(artifact.variant(), case.case.variant());
         let bytes = fs::read(root.join(artifact.output().as_str()))?;
         assert_eq!(Sha256Digest::from_bytes(&bytes), *artifact.output_sha256());
-        if let Some(historical) = &case.historical {
+        if let Some(historical) = &case.historical
+            && validation.diagnostic_raw.is_none()
+        {
             let historical = fs::read_to_string(root.join(historical.as_str()))?;
             let current = std::str::from_utf8(&bytes)?;
             if mode.box_observations() == BoxObservationRequest::OriginalSubgridBody {
@@ -1150,14 +1171,16 @@ fn validate_corpus(
             }
         }
     }
-    eprintln!(
-        "qualify-root-context: all {} source-bound historical expectation trees preserved",
-        inventory
-            .cases
-            .iter()
-            .filter(|case| case.historical.is_some())
-            .count()
-    );
+    if validation.diagnostic_raw.is_none() {
+        eprintln!(
+            "qualify-root-context: all {} source-bound historical expectation trees preserved",
+            inventory
+                .cases
+                .iter()
+                .filter(|case| case.historical.is_some())
+                .count()
+        );
+    }
     let mut terminal_cases = Vec::new();
     let observation = mode.box_observations();
     let bound_report = if matches!(
@@ -1246,7 +1269,12 @@ fn validate_corpus(
             qualify_grid_reference_census(&golden.root, owners)?;
             crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
         }
-        if let Some(policy) = &prepared_range_policy {
+        if let Some(raw) = &mut validation.diagnostic_raw {
+            let differences = capture_authority::original_diagnostic_differences(&golden)?;
+            if raw.insert(case.case.id().to_owned(), differences).is_some() {
+                return Err("duplicate original diagnostic comparison".into());
+            }
+        } else if let Some(policy) = &prepared_range_policy {
             if let Err(error) = prepared_range::qualify(
                 &golden,
                 case.source.as_str(),
@@ -1390,6 +1418,12 @@ fn validate_corpus(
         browser::check_corpus(corpus, &QualificationAdapter::for_mode(mode))?.to_bytes()?,
         report.to_bytes()?
     );
+    if let Some(raw) = validation.diagnostic_raw {
+        if raw.len() != inventory.cases.len() || raw.len() != report.generated().len() {
+            return Err("incomplete original diagnostic comparisons".into());
+        }
+        return Ok(());
+    }
     if mode.collects_numeric_differences() {
         eprintln!(
             "qualify-root-context: raw numeric diagnostics: {} of {} Generated cases completed, {} mismatches, {} fatal comparison failures; source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; no classification or conformance approval",
@@ -1448,6 +1482,8 @@ fn validate_corpus(
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::PublishMatching(_)
         | QualificationMode::CheckPublishedMatching(_)
+        | QualificationMode::PublishGridLanesDiagnostics
+        | QualificationMode::CheckGridLanesDiagnostics
         | QualificationMode::CheckPublishedSpecialized(_) => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
@@ -1678,6 +1714,8 @@ fn inventory_with_retained_helper(
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::PublishMatching(_)
         | QualificationMode::CheckPublishedMatching(_)
+        | QualificationMode::PublishGridLanesDiagnostics
+        | QualificationMode::CheckGridLanesDiagnostics
         | QualificationMode::CheckPublishedSpecialized(_) => None,
     };
     for (name, bytes) in INPUTS
@@ -1781,13 +1819,9 @@ fn inventory_with_retained_helper(
         | None => {}
     }
     let original = owner.join("tests/layout/browser_parity");
-    let authored = owner.join("examples/qualify-root-context");
     for record in records {
-        let source_owner = match record.source_kind {
-            SourceKind::Original => &original,
-            SourceKind::Authored => &authored,
-        };
-        publication::require_regular_input(source_owner, &record.source)?;
+        let source_owner = owner.join(record.source_kind.owner_directory());
+        publication::require_regular_input(&source_owner, &record.source)?;
         let source = fs::read(source_owner.join(record.source.as_str()))?;
         if Sha256Digest::from_bytes(&source) != record.source_sha256 {
             return Err(format!("declared source changed: {}", record.source.as_str()).into());

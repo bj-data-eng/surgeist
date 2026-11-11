@@ -1148,10 +1148,53 @@ fn runs_fri_02_grid_axis_families_against_surgeist_layout() {
 
 #[test]
 fn runs_fri_02_grid_lanes_axis_families_against_surgeist_layout() {
-    assert_axis_fixture_family_matches(
-        grid_lanes_axis_fixture_paths,
-        assert_grid_lanes_axis_fixture_topology,
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let corpus = owner.join("tests/layout/browser_parity");
+    let originals = grid_lanes_axis_fixture_paths(browser_parity_fixture_paths()).unwrap();
+    assert_eq!(originals.len(), 36);
+    let mut controls = BTreeSet::new();
+    for path in originals {
+        let original = support::Golden::parse_file(corpus.join(&path)).unwrap();
+        assert_grid_lanes_axis_fixture_topology(&original, &path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        let stem = path.file_stem().and_then(|name| name.to_str()).unwrap();
+        let (family, variant) = stem.split_once("__").unwrap();
+        let control = support::capture_authority::grid_lanes_control_source(&format!(
+            "html/grid-lanes/{family}.html"
+        ))
+        .expect("each original has exactly one source-equivalent control");
+        let control = control
+            .strip_prefix("html/")
+            .unwrap()
+            .strip_suffix(".html")
+            .unwrap();
+        assert!(controls.insert(format!("xml/{control}__{variant}.xml")));
+    }
+    let edition = portable_qualification::admit_grid_lanes_axis_controls(owner).unwrap();
+    assert_eq!(
+        edition
+            .outputs()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>(),
+        controls
     );
+    let result = edition.execute_selected(&controls).unwrap();
+    assert_eq!(result.cases.len(), 36);
+    for case in &result.cases {
+        assert!(
+            case.raw.as_ref().unwrap().is_empty(),
+            "{}: {:?}",
+            case.output,
+            case.raw
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+    assert!(result.registered_coverage_complete());
 }
 
 #[test]

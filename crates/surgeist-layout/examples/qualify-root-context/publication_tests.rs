@@ -771,8 +771,10 @@ fn terminal_output_has_explicit_exact_byte_custody_outside_the_input_map() {
     let bytes = b"derived terminal bytes\n";
     fs::write(root.0.join(authority::TERMINAL), bytes).unwrap();
     assert!(check_input_census(&root.0, &expected, None).is_err());
-    check_input_census(&root.0, &expected, Some(bytes)).unwrap();
-    assert!(check_input_census(&root.0, &expected, Some(b"changed")).is_err());
+    check_input_census(&root.0, &expected, Some((authority::TERMINAL, bytes))).unwrap();
+    assert!(
+        check_input_census(&root.0, &expected, Some((authority::TERMINAL, b"changed"))).is_err()
+    );
     assert_eq!(fs::read(root.0.join(authority::TERMINAL)).unwrap(), bytes);
 }
 #[test]
@@ -815,14 +817,30 @@ fn official_browser_settings_witness_keeps_focused_profile_serialization_exact()
 fn late_terminal_census_failure_removes_only_the_owned_terminal_output() {
     let root = Directory::new();
     fs::write(root.0.join("unexpected-input"), b"late input").unwrap();
-    assert!(emit_terminal(&root.0, &BTreeMap::new(), b"terminal bytes").is_err());
+    assert!(
+        emit_terminal(
+            &root.0,
+            &BTreeMap::new(),
+            authority::TERMINAL,
+            b"terminal bytes"
+        )
+        .is_err()
+    );
     assert!(!root.0.join(authority::TERMINAL).exists());
     assert_eq!(
         fs::read(root.0.join("unexpected-input")).unwrap(),
         b"late input"
     );
     fs::write(root.0.join(authority::TERMINAL), b"preexisting authority").unwrap();
-    assert!(emit_terminal(&root.0, &BTreeMap::new(), b"replacement").is_err());
+    assert!(
+        emit_terminal(
+            &root.0,
+            &BTreeMap::new(),
+            authority::TERMINAL,
+            b"replacement"
+        )
+        .is_err()
+    );
     assert_eq!(
         fs::read(root.0.join(authority::TERMINAL)).unwrap(),
         b"preexisting authority"
@@ -977,6 +995,9 @@ fn generic_derivation_dispatches_every_stored_terminal_category_and_request() {
             Edition::Exact(exact) => canonical_input(&root, &retained, exact, access).unwrap(),
             Edition::Specialized(profile) => specialized_input(&retained, profile).unwrap(),
             Edition::Matching(edition) => matching_input(&retained, edition).unwrap(),
+            Edition::GridLanesDiagnostics => {
+                unreachable!("the diagnostic bundle is separately checked")
+            }
             Edition::RootContextV4 => unreachable!("root-context-v4 has no terminal"),
         };
         assert_eq!(input.declaration.expected().unwrap().generated(), count);
@@ -1018,6 +1039,7 @@ fn generic_derivation_emits_exact_candidate_without_installing_or_changing_captu
     publish_terminal(
         &root.0,
         &expected,
+        authority::TERMINAL,
         TerminalPublication::Derive(stored),
         candidate,
         &mut output,
@@ -1033,6 +1055,7 @@ fn generic_derivation_emits_exact_candidate_without_installing_or_changing_captu
         publish_terminal(
             &root.0,
             &expected,
+            authority::TERMINAL,
             TerminalPublication::Check(stored),
             candidate,
             &mut output
@@ -1049,6 +1072,7 @@ fn generic_derivation_emits_exact_candidate_without_installing_or_changing_captu
         publish_terminal(
             &root.0,
             &expected,
+            authority::TERMINAL,
             TerminalPublication::Derive(stored),
             candidate,
             &mut output
@@ -1062,6 +1086,7 @@ fn generic_derivation_emits_exact_candidate_without_installing_or_changing_captu
         publish_terminal(
             &root.0,
             &expected,
+            authority::TERMINAL,
             TerminalPublication::Derive(stored),
             candidate,
             &mut output
@@ -1089,6 +1114,7 @@ fn generic_derivation_output_failure_preserves_existing_terminal() {
         publish_terminal(
             &root.0,
             &BTreeMap::new(),
+            authority::TERMINAL,
             TerminalPublication::Derive(stored),
             b"candidate",
             &mut BrokenOutput

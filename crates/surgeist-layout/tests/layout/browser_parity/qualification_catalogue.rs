@@ -6,7 +6,11 @@ use std::error::Error;
 use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
-pub(crate) use super::capture_authority::SpecializedProfile;
+use super::capture_authority::{
+    DiagnosticReference, GRID_LANES_AXIS_ORIGINAL_SOURCES, MatchingMembership, MatchingProvenance,
+    PathDigest, SourceEquivalentMatching, grid_lanes_control_source,
+};
+pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
 use crate::fixture_variants::fixture_cases;
 
 pub(crate) struct Declaration {
@@ -35,10 +39,32 @@ struct SemanticPublication {
 }
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum MatchingPublication {
+    Independent(IndependentMatchingPublication),
+    SourceEquivalent(SourceEquivalentPublication),
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct MatchingPublication {
+struct IndependentMatchingPublication {
     edition: String,
     sources: Vec<RelativePath>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceEquivalentPublication {
+    edition: String,
+    diagnostics: DiagnosticReference,
+    pairs: Vec<SourcePair>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourcePair {
+    original: RelativePath,
+    control: RelativePath,
 }
 
 #[derive(Deserialize)]
@@ -62,19 +88,13 @@ pub(crate) struct Record {
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub(crate) specialized_publication: Option<SpecializedProfile>,
     #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
-    pub(crate) matching_publication: Option<String>,
+    pub(crate) matching_publication: Option<MatchingMembership>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SemanticReference {
     pub(crate) path: RelativePath,
     pub(crate) sha256: Sha256Digest,
-}
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum SourceKind {
-    Original,
-    Authored,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
@@ -118,6 +138,35 @@ pub(crate) struct PairedObservation {
     pub(crate) world_phase_change: bool,
 }
 impl Declaration {
+    pub(crate) fn select_original_diagnostics(
+        &mut self,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let sources = super::capture_authority::GRID_LANES_AXIS_ORIGINAL_SOURCES;
+        self.records
+            .retain(|record| sources.contains(&record.source.as_str()));
+        if self.records.len() != sources.len()
+            || self.records.iter().any(|record| {
+                record.source_kind != SourceKind::Original
+                    || !matches!(
+                        record.expected,
+                        ExpectedDisposition::Generated {
+                            metadata: ExpectedMetadata::AbsoluteLocal {
+                                root_size: None,
+                                ..
+                            }
+                        }
+                    )
+                    || record.relation.is_some()
+                    || record.semantic_specifications.is_some()
+                    || record.specialized_publication.is_some()
+                    || record.matching_publication.is_some()
+            })
+        {
+            return Err("original diagnostics require the complete unqualified Grid Lanes axis source cohort".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn parse(bytes: &[u8]) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mut catalogue: Catalogue =
             surgeist_generator::parse_manifest(std::str::from_utf8(bytes)?, "corpus.toml")?;
@@ -260,34 +309,79 @@ impl Declaration {
         }
         let mut editions = BTreeSet::new();
         for publication in catalogue.matching_publications {
-            super::capture_authority::validate_matching_edition(&publication.edition)?;
-            if publication.sources.is_empty() || !editions.insert(publication.edition.clone()) {
+            let (edition, members) = match publication {
+                MatchingPublication::Independent(publication) => {
+                    let membership = MatchingMembership::Independent(publication.edition.clone());
+                    (
+                        publication.edition,
+                        publication
+                            .sources
+                            .into_iter()
+                            .map(|source| (source, membership.clone()))
+                            .collect::<Vec<_>>(),
+                    )
+                }
+                MatchingPublication::SourceEquivalent(publication) => {
+                    let mut originals = BTreeSet::new();
+                    if publication.pairs.len() != GRID_LANES_AXIS_ORIGINAL_SOURCES.len() {
+                        return Err(
+                            "source-equivalent matching requires exactly nine source pairs".into(),
+                        );
+                    }
+                    let mut members = Vec::new();
+                    for pair in publication.pairs {
+                        if grid_lanes_control_source(pair.original.as_str()).as_deref()
+                            != Some(pair.control.as_str())
+                            || !originals.insert(pair.original.clone())
+                            || !catalogue.records.iter().any(|record| {
+                                record.source == pair.original
+                                    && record.source_kind == SourceKind::Original
+                            })
+                        {
+                            return Err(
+                                "source-equivalent matching original/control association changed"
+                                    .into(),
+                            );
+                        }
+                        members.push((
+                            pair.control,
+                            MatchingMembership::SourceEquivalent(SourceEquivalentMatching {
+                                edition: publication.edition.clone(),
+                                original: pair.original.as_str().to_owned(),
+                                diagnostics: publication.diagnostics.clone(),
+                            }),
+                        ));
+                    }
+                    (publication.edition, members)
+                }
+            };
+            super::capture_authority::validate_matching_edition(&edition)?;
+            if members.is_empty() || !editions.insert(edition) {
                 return Err("matching publication requires a unique nonempty edition".into());
             }
-            for source in publication.sources {
+            for (source, membership) in members {
                 let record = catalogue
                     .records
                     .iter_mut()
                     .find(|record| record.source == source)
                     .ok_or("matching publication requires a declared source")?;
-                if !matches!(record.source_kind, SourceKind::Original)
-                    || !matches!(
-                        record.expected,
-                        ExpectedDisposition::Generated {
-                            metadata: ExpectedMetadata::AbsoluteLocal {
-                                root_size: None,
-                                ..
-                            }
+                if !matches!(
+                    record.expected,
+                    ExpectedDisposition::Generated {
+                        metadata: ExpectedMetadata::AbsoluteLocal {
+                            root_size: None,
+                            ..
                         }
-                    )
-                    || record.relation.is_some()
+                    }
+                ) || record.relation.is_some()
                     || record.semantic_specifications.is_some()
                     || record.specialized_publication.is_some()
                     || record.matching_publication.is_some()
                 {
-                    return Err("matching publication requires unique unpaired original box sources without other authority".into());
+                    return Err("matching publication requires unique unpaired box sources without other authority".into());
                 }
-                record.matching_publication = Some(publication.edition.clone());
+                membership.validate(record.source.as_str(), record.source_kind)?;
+                record.matching_publication = Some(membership);
             }
         }
         Ok(Self {
@@ -298,14 +392,13 @@ impl Declaration {
         &self,
         selected: &BTreeMap<String, serde_json::Value>,
     ) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
-        let matching_editions: BTreeSet<_> = selected
-            .values()
-            .filter_map(|record| {
-                record
-                    .get("matching_publication")
-                    .and_then(serde_json::Value::as_str)
-            })
-            .collect();
+        let mut matching_editions = BTreeSet::new();
+        for record in selected.values() {
+            if let Some(wire) = record.get("matching_publication") {
+                let membership: MatchingMembership = serde_json::from_value(wire.clone())?;
+                matching_editions.insert(membership.edition().to_owned());
+            }
+        }
         let mut matched = 0;
         let mut uncovered = Vec::new();
         for record in &self.records {
@@ -316,8 +409,7 @@ impl Declaration {
                 }
                 matched += 1;
             } else if record
-                .matching_publication
-                .as_deref()
+                .matching_edition()
                 .is_some_and(|edition| matching_editions.contains(edition))
             {
                 return Err("selected matching edition membership changed".into());
@@ -367,6 +459,18 @@ fn validate_semantic_references(
 }
 
 impl Record {
+    pub(crate) fn matching_edition(&self) -> Option<&str> {
+        self.matching_publication
+            .as_ref()
+            .map(MatchingMembership::edition)
+    }
+
+    pub(crate) fn source_equivalent_matching(&self) -> Option<&SourceEquivalentMatching> {
+        match &self.matching_publication {
+            Some(MatchingMembership::SourceEquivalent(pair)) => Some(pair),
+            _ => None,
+        }
+    }
     pub(crate) fn source_names(&self) -> Result<(&str, &str), Box<dyn Error + Send + Sync>> {
         let family = self
             .source
@@ -538,23 +642,79 @@ pub(crate) fn verify_absolute_metadata(
 }
 
 impl Record {
+    pub(crate) fn verify_original_diagnostic_capture(
+        &self,
+        current: &str,
+        name: &str,
+        variant: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        if !matches!(
+            self.matching_provenance(variant)?,
+            MatchingProvenance::Original { .. }
+        ) {
+            return Err("diagnostic capture requires an original source".into());
+        }
+        let ExpectedDisposition::Generated { metadata } = &self.expected else {
+            return Err("diagnostic capture requires a Generated source".into());
+        };
+        verify_absolute_metadata(current, metadata, name, variant)
+    }
+
+    pub(crate) fn matching_provenance(
+        &self,
+        variant: &str,
+    ) -> Result<MatchingProvenance, Box<dyn Error + Send + Sync>> {
+        if !fixture_cases().iter().any(|(known, _)| *known == variant) {
+            return Err("unknown matching variant".into());
+        }
+        match self.source_kind {
+            SourceKind::Original => {
+                let (family, _) = self.source_names()?;
+                let sha256 = self
+                    .historical_sha256
+                    .get(variant)
+                    .ok_or("missing matching historical variant")?;
+                Ok(MatchingProvenance::Original {
+                    historical: PathDigest {
+                        path: format!("historical/{family}__{variant}.xml"),
+                        sha256: sha256.as_str().to_owned(),
+                    },
+                })
+            }
+            SourceKind::Authored if self.historical_sha256.is_empty() => {
+                Ok(MatchingProvenance::Authored)
+            }
+            SourceKind::Authored => Err("authored matching source has historical pins".into()),
+        }
+    }
+
     pub(crate) fn verify_matching_capture(
         &self,
         current: &str,
-        historical: &str,
+        historical: Option<&str>,
         name: &str,
         variant: &str,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let ExpectedDisposition::Generated { metadata } = &self.expected else {
             return Err("matching output must be Generated".into());
         };
-        verify_historical_geometry(current, historical, name)?;
+        match (self.matching_provenance(variant)?, historical) {
+            (MatchingProvenance::Original { historical }, Some(bytes)) => {
+                if super::capture_authority::sha256(bytes.as_bytes()) != historical.sha256 {
+                    return Err("matching historical bytes changed".into());
+                }
+                verify_historical_geometry(current, bytes, name)?;
+            }
+            (MatchingProvenance::Authored, None) => {}
+            _ => return Err("matching capture history disagrees with its source".into()),
+        }
         verify_absolute_metadata(current, metadata, name, variant)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::capture_authority::GRID_LANES_PAIRED_EDITION;
     use super::*;
 
     fn unannotated_catalogue() -> &'static [u8] {
@@ -791,6 +951,81 @@ sources = [
         }
     }
 
+    const AUTHORED_MATCHING_SOURCE: &str = "html/qualification/physical-border-descendant.html";
+    const ORIGINAL_MATCHING_SOURCE: &str = "html/grid/grid_fit_content_points_argument.html";
+
+    fn matching_source_declaration(source: &str) -> String {
+        let record = include_str!("../../../examples/qualify-root-context/corpus.toml")
+            .split("\n[[")
+            .filter_map(|section| section.strip_prefix("records]]\n"))
+            .find(|record| record.starts_with(&format!("source = {source:?}\n")))
+            .expect("the source has a real catalogue record");
+        format!(
+            "schema_version = 3\n\n[[records]]\n{record}\n\n[[matching_publications]]\nedition = \"source-controls\"\nsources = [{source:?}]\n"
+        )
+    }
+
+    #[test]
+    fn matching_source_declaration_accepts_authored_source_without_history() {
+        let input = matching_source_declaration(AUTHORED_MATCHING_SOURCE);
+        let parsed = Declaration::parse(input.as_bytes())
+            .expect("a Generated authored matching source needs no historical predecessor");
+        let [record] = parsed.records.as_slice() else {
+            panic!("the matching declaration must bind exactly one source");
+        };
+        assert_eq!(record.source.as_str(), AUTHORED_MATCHING_SOURCE);
+        assert!(matches!(record.source_kind, SourceKind::Authored));
+        assert!(record.historical_sha256.is_empty());
+        assert_eq!(record.matching_edition(), Some("source-controls"));
+        assert!(matches!(
+            record.expected,
+            ExpectedDisposition::Generated { .. }
+        ));
+    }
+
+    #[test]
+    fn matching_source_declaration_rejects_authored_history() {
+        let original = matching_source_declaration(ORIGINAL_MATCHING_SOURCE);
+        let historical = original
+            .lines()
+            .find(|line| line.starts_with("border_box_ltr = "))
+            .expect("the original has a pinned historical variant");
+        let input = matching_source_declaration(AUTHORED_MATCHING_SOURCE).replacen(
+            "[records.expected]",
+            &format!("[records.historical_sha256]\n{historical}\n[records.expected]"),
+            1,
+        );
+        let error = Declaration::parse(input.as_bytes())
+            .err()
+            .expect("authored sources must refuse historical pins");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "authored source cannot declare historical variants: {AUTHORED_MATCHING_SOURCE}"
+            )
+        );
+    }
+
+    #[test]
+    fn matching_source_declaration_rejects_missing_original_history() {
+        let original = matching_source_declaration(ORIGINAL_MATCHING_SOURCE);
+        Declaration::parse(original.as_bytes()).expect("the original with all variants is valid");
+        let input = original
+            .lines()
+            .filter(|line| !line.starts_with("border_box_ltr = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let error = Declaration::parse(input.as_bytes())
+            .err()
+            .expect("original sources must declare every historical variant");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "original source requires a Generated disposition and every historical variant: {ORIGINAL_MATCHING_SOURCE}"
+            )
+        );
+    }
+
     #[test]
     fn matching_publications_reject_ambiguous_membership_and_other_capture_authority() {
         let prior = Declaration::parse(unannotated_catalogue()).unwrap();
@@ -856,7 +1091,7 @@ sources = [
         let historical =
             include_str!("xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml");
         record
-            .verify_matching_capture(current, historical, NAME, "border_box_ltr")
+            .verify_matching_capture(current, Some(historical), NAME, "border_box_ltr")
             .unwrap();
         let changed_context = current.replace(
             "hypothetical-display=\"flex\"",
@@ -865,30 +1100,39 @@ sources = [
         assert_ne!(changed_context, current);
         assert!(
             record
-                .verify_matching_capture(&changed_context, historical, NAME, "border_box_ltr")
+                .verify_matching_capture(&changed_context, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
-        let (prefix, observations) = historical.split_once("<expectations>").unwrap();
+        let changed_history = format!("{historical}\n");
+        assert!(
+            record
+                .verify_matching_capture(current, Some(&changed_history), NAME, "border_box_ltr")
+                .is_err()
+        );
+        let (prefix, observations) = current.split_once("<expectations>").unwrap();
         let changed = format!(
             "{prefix}<expectations>{}",
             observations.replacen("<node ", "<node extra-observation=\"changed\" ", 1)
         );
-        assert_ne!(changed, historical);
+        assert_ne!(changed, current);
         assert!(
             record
-                .verify_matching_capture(current, &changed, NAME, "border_box_ltr")
+                .verify_matching_capture(&changed, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
-        let dropped = historical.replacen(" x=\"0\"", "", 1);
-        assert_ne!(dropped, historical);
+        let dropped = format!(
+            "{prefix}<expectations>{}",
+            observations.replacen(" x=\"0\"", "", 1)
+        );
+        assert_ne!(dropped, current);
         assert!(
             record
-                .verify_matching_capture(current, &dropped, NAME, "border_box_ltr")
+                .verify_matching_capture(&dropped, Some(historical), NAME, "border_box_ltr")
                 .is_err()
         );
         assert!(
             record
-                .verify_matching_capture(current, historical, NAME, "border_box_rtl")
+                .verify_matching_capture(current, Some(historical), NAME, "border_box_rtl")
                 .is_err()
         );
     }
@@ -932,5 +1176,79 @@ sources = [
                 .into_iter()
                 .collect()
         );
+    }
+
+    #[test]
+    fn paired_matching_requires_the_exact_complete_source_association() {
+        let live = include_str!("../../../examples/qualify-root-context/corpus.toml");
+        let (prefix, publication) = live.rsplit_once("\n[[matching_publications]]\n").unwrap();
+        let parse = |publication: &str| {
+            Declaration::parse(
+                format!("{prefix}\n[[matching_publications]]\n{publication}").as_bytes(),
+            )
+        };
+        let valid = parse(publication).unwrap();
+        let selected: BTreeMap<_, _> = valid
+            .records
+            .iter()
+            .filter(|record| record.matching_edition() == Some(GRID_LANES_PAIRED_EDITION))
+            .map(|record| {
+                assert!(record.source_equivalent_matching().is_some());
+                (
+                    record.source.as_str().to_owned(),
+                    serde_json::to_value(record).unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(selected.len(), 9);
+        valid.check_live_records(&selected).unwrap();
+        let unpaired = Declaration::parse(prefix.as_bytes()).unwrap();
+        assert!(unpaired.check_live_records(&selected).is_err());
+
+        let mut rows = publication
+            .lines()
+            .filter(|line| line.contains("{ original ="));
+        let first = rows.next().unwrap();
+        let second = rows.next().unwrap();
+        let missing = publication.replacen(first, "", 1);
+        let duplicate = publication.replacen(second, first, 1);
+        let (first_original, first_control) = first.split_once(", control =").unwrap();
+        let (second_original, second_control) = second.split_once(", control =").unwrap();
+        let swapped = publication
+            .replace(
+                first,
+                &format!("{first_original}, control ={second_control}"),
+            )
+            .replace(
+                second,
+                &format!("{second_original}, control ={first_control}"),
+            );
+        let unlinked = publication
+            .lines()
+            .filter(|line| !line.starts_with("diagnostics = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for (name, invalid) in [
+            ("missing", missing),
+            ("duplicate", duplicate),
+            ("swapped", swapped),
+            ("unlinked", unlinked),
+        ] {
+            assert!(
+                parse(&invalid).is_err(),
+                "accepted {name} source association"
+            );
+        }
+
+        let independent = format!(
+            "edition = {:?}\nsources = [{}]\n",
+            GRID_LANES_PAIRED_EDITION,
+            selected
+                .keys()
+                .map(|source| format!("{source:?}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        assert!(parse(&independent).is_err());
     }
 }

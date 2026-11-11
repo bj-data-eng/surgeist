@@ -27,6 +27,96 @@ const WRAPPING_WORLD_CORNER_EDITION: &str = "wrapping-world-corner-differences";
 pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
+pub(crate) const ORIGINAL_DIAGNOSTIC_EDITION: &str = "grid-lanes-axis-original-diagnostics";
+pub(crate) const ORIGINAL_DIAGNOSTIC_RECEIPT: &str = "diagnostics.json";
+pub(crate) const GRID_LANES_PAIRED_EDITION: &str = "grid-lanes-axis-controls";
+pub(crate) const GRID_LANES_SHARED_INPUTS: [&str; 7] = [
+    "browser-owner.toml",
+    "fonts/Ahem.ttf",
+    "fonts/PROVENANCE.md",
+    "origin/source-provenance.json",
+    "origin/source-receipt.json",
+    "scripts/gentest/test_base_style.css",
+    ROOT_HELPER_INPUT,
+];
+pub(crate) const GRID_LANES_AXIS_ORIGINAL_SOURCES: [&str; 9] = [
+    "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+    "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+    "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+];
+
+pub(crate) fn grid_lanes_control_source(original: &str) -> Option<String> {
+    let source = GRID_LANES_AXIS_ORIGINAL_SOURCES
+        .iter()
+        .find(|source| **source == original)?;
+    let stem = source
+        .strip_prefix("html/grid-lanes/")?
+        .strip_suffix(".html")?;
+    Some(format!("html/qualification/{stem}_control.html"))
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DiagnosticReference {
+    pub(crate) edition: String,
+    pub(crate) sha256: String,
+}
+
+impl DiagnosticReference {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if self.edition != ORIGINAL_DIAGNOSTIC_EDITION {
+            return Err(malformed("wrong paired original diagnostic edition"));
+        }
+        digest(&self.sha256)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SourceEquivalentMatching {
+    pub(crate) edition: String,
+    pub(crate) original: String,
+    pub(crate) diagnostics: DiagnosticReference,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub(crate) enum MatchingMembership {
+    Independent(String),
+    SourceEquivalent(SourceEquivalentMatching),
+}
+
+impl MatchingMembership {
+    pub(crate) fn edition(&self) -> &str {
+        match self {
+            Self::Independent(edition) => edition,
+            Self::SourceEquivalent(pair) => &pair.edition,
+        }
+    }
+
+    pub(crate) fn validate(&self, source: &str, kind: SourceKind) -> Result<()> {
+        validate_matching_edition(self.edition())?;
+        match self {
+            Self::Independent(edition) if edition != GRID_LANES_PAIRED_EDITION => Ok(()),
+            Self::SourceEquivalent(pair)
+                if pair.edition == GRID_LANES_PAIRED_EDITION
+                    && kind == SourceKind::Authored
+                    && grid_lanes_control_source(&pair.original).as_deref() == Some(source) =>
+            {
+                pair.diagnostics.validate()
+            }
+            _ => Err(malformed(
+                "matching membership requires its declared source-equivalent association",
+            )),
+        }
+    }
+}
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
 const ROOT_HELPER_OWNER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
 const ROOT_HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
@@ -97,6 +187,28 @@ pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     }
 }
 
+fn verify_grid_lanes_producing_helper(inputs: &BTreeMap<String, String>) -> Result<()> {
+    if inputs.get(ROOT_HELPER_INPUT).map(String::as_str) != Some(FIXED_ORTHOGONAL_HELPER_SHA256) {
+        return Err(changed("source-equivalent Grid Lanes producing helper"));
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_grid_lanes_shared_inputs(
+    original: &BTreeMap<String, String>,
+    control: &BTreeMap<String, String>,
+) -> Result<()> {
+    for path in GRID_LANES_SHARED_INPUTS {
+        if original
+            .get(path)
+            .is_none_or(|digest| control.get(path) != Some(digest))
+        {
+            return Err(changed(format!("Grid Lanes pair shared input: {path}")));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CaptureValidation {
@@ -143,11 +255,15 @@ pub(crate) fn semantic_record_digest(record: &Value) -> Result<String> {
 /// are retained values; the verified source receipt itself has one live owner.
 pub(crate) fn current_owner_bindings(
     retained: &BTreeMap<String, String>,
+    sources: &BTreeMap<&str, SourceKind>,
     semantic_paths: &BTreeSet<&str>,
     receipt_sidecar: &str,
 ) -> Result<BTreeMap<String, String>> {
     const ORIGINAL: &str = "tests/layout/browser_parity";
     path(receipt_sidecar)?;
+    if sources.keys().any(|source| !retained.contains_key(*source)) {
+        return Err(malformed("declared source is missing from retained inputs"));
+    }
     let mut bindings = BTreeMap::new();
     for (name, hash) in retained {
         let mut owner_hash = hash.clone();
@@ -209,10 +325,12 @@ pub(crate) fn current_owner_bindings(
             } else {
                 format!("{ORIGINAL}/xml/{tail}")
             }
-        } else if name.starts_with("scripts/")
-            || name.starts_with("fonts/")
-            || name.starts_with("html/")
-        {
+        } else if name.starts_with("html/") {
+            let kind = sources
+                .get(name.as_str())
+                .ok_or_else(|| malformed("retained HTML has no declared source owner"))?;
+            kind.owner_path(name)
+        } else if name.starts_with("scripts/") || name.starts_with("fonts/") {
             format!("{ORIGINAL}/{name}")
         } else if name == prepared_range_qualification::RETAINED_POLICY {
             if hash != prepared_range_qualification::POLICY_SHA256 {
@@ -1041,6 +1159,33 @@ pub(crate) struct RecordProjection {
     pub(crate) sha256: String,
     pub(crate) value: Value,
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SourceKind {
+    Original,
+    Authored,
+}
+
+impl SourceKind {
+    pub(crate) const fn owner_directory(self) -> &'static str {
+        match self {
+            Self::Original => "tests/layout/browser_parity",
+            Self::Authored => "examples/qualify-root-context",
+        }
+    }
+
+    fn owner_path(self, source: &str) -> String {
+        format!("{}/{source}", self.owner_directory())
+    }
+}
+
+impl RecordProjection {
+    pub(crate) fn source_kind(&self) -> Result<SourceKind> {
+        serde_json::from_value(self.value["source_kind"].clone())
+            .map_err(|_| malformed("invalid retained source kind"))
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExactCase {
@@ -1249,6 +1394,7 @@ pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
         || matches!(
             edition,
             "root-context-v4"
+                | ORIGINAL_DIAGNOSTIC_EDITION
                 | EDITION
                 | MEASURED_GRID_EDITION
                 | FLEX_TEXT_EDITION
@@ -1268,16 +1414,111 @@ pub(crate) enum MatchingCategory {
     Geometry,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MatchingCase {
-    pub(crate) case: CaseDescriptor,
-    pub(crate) historical: PathDigest,
-    pub(crate) matching: MatchingCategory,
-    pub(crate) identity: IdentityProjection,
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MatchingProvenance {
+    Original { historical: PathDigest },
+    Authored,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+impl MatchingProvenance {
+    fn bind(kind: SourceKind, historical: Option<PathDigest>) -> Result<Self> {
+        match (kind, historical) {
+            (SourceKind::Original, Some(historical)) => Ok(Self::Original { historical }),
+            (SourceKind::Authored, None) => Ok(Self::Authored),
+            _ => Err(malformed(
+                "matching history disagrees with the declared source kind",
+            )),
+        }
+    }
+
+    pub(crate) const fn historical(&self) -> Option<&PathDigest> {
+        match self {
+            Self::Original { historical } => Some(historical),
+            Self::Authored => None,
+        }
+    }
+
+    fn serialize_history<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        self.historical().serialize(serializer)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub(crate) struct MatchingCase {
+    pub(crate) case: CaseDescriptor,
+    #[serde(
+        rename = "historical",
+        serialize_with = "MatchingProvenance::serialize_history"
+    )]
+    provenance: MatchingProvenance,
+    matching: MatchingCategory,
+    identity: IdentityProjection,
+}
+
+impl MatchingCase {
+    pub(crate) fn new(
+        case: CaseDescriptor,
+        provenance: MatchingProvenance,
+        matching: MatchingCategory,
+        identity: IdentityProjection,
+    ) -> Result<Self> {
+        if identity.historical_sha256.as_deref()
+            != provenance.historical().map(|entry| entry.sha256.as_str())
+        {
+            return Err(malformed(
+                "matching predecessor identity disagrees with source provenance",
+            ));
+        }
+        Ok(Self {
+            case,
+            provenance,
+            matching,
+            identity,
+        })
+    }
+
+    pub(crate) const fn provenance(&self) -> &MatchingProvenance {
+        &self.provenance
+    }
+
+    pub(crate) const fn identity(&self) -> &IdentityProjection {
+        &self.identity
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchingCaseWire {
+    case: CaseDescriptor,
+    #[serde(deserialize_with = "super::exact_differences::explicit_nullable")]
+    historical: Option<PathDigest>,
+    matching: MatchingCategory,
+    identity: IdentityProjection,
+}
+
+impl MatchingCaseWire {
+    fn bind(self, kind: SourceKind) -> Result<MatchingCase> {
+        MatchingCase::new(
+            self.case,
+            MatchingProvenance::bind(kind, self.historical)?,
+            self.matching,
+            self.identity,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum QualifiedCaseWire {
+    Exact(ExactCase),
+    Specialized(SpecializedCase),
+    Matching(MatchingCaseWire),
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(untagged)]
 pub(crate) enum QualifiedCase {
     Exact(ExactCase),
@@ -1298,14 +1539,14 @@ impl QualifiedCase {
         match self {
             Self::Exact(case) => &case.identity,
             Self::Specialized(case) => &case.identity,
-            Self::Matching(case) => &case.identity,
+            Self::Matching(case) => case.identity(),
         }
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Qualification {
+pub(crate) struct QualificationData<Case> {
     pub(crate) schema_version: u8,
     pub(crate) edition: String,
     pub(crate) declaration: PathDigest,
@@ -1313,11 +1554,233 @@ pub(crate) struct Qualification {
     pub(crate) browser_settings: BrowserSettingsWitness,
     pub(crate) report: PathDigest,
     pub(crate) ownership: PathDigest,
-    pub(crate) cases: Vec<QualifiedCase>,
+    pub(crate) cases: Vec<Case>,
     pub(crate) retained_inputs: BTreeMap<String, String>,
     pub(crate) current_owner_inputs: BTreeMap<String, String>,
     pub(crate) capture_validation: CaptureValidation,
 }
+pub(crate) type Qualification = QualificationData<QualifiedCase>;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OriginalDiagnosticDifference {
+    path: String,
+    field: super::NumericComparisonField,
+    browser: super::Scalar,
+    native: super::Scalar,
+}
+
+pub(crate) fn original_diagnostic_differences(
+    golden: &super::Golden,
+) -> Result<Vec<OriginalDiagnosticDifference>> {
+    fn plain_boxes(node: &super::Node, expected: &super::Expectation) -> bool {
+        node.kind == super::NodeKind::Div
+            && node.text.is_none()
+            && [expected.x, expected.y, expected.width, expected.height]
+                .into_iter()
+                .all(|value| value.is_some_and(|value| value.is_finite()))
+            && node.children.len() == expected.children.len()
+            && node
+                .children
+                .iter()
+                .zip(&expected.children)
+                .all(|(child, expected)| plain_boxes(child, expected))
+    }
+    if golden.element_scroll_sizes.is_some()
+        || golden.measured_leaf.is_some()
+        || golden.has_prepared_range_frame()
+        || golden.has_flex_content_text()
+        || golden.root.children.len() != 2
+        || golden.root.children.iter().any(|container| {
+            container.children.len() != 2
+                || container
+                    .children
+                    .iter()
+                    .any(|leaf| !leaf.children.is_empty())
+        })
+        || !plain_boxes(&golden.root, &golden.expectations)
+    {
+        return Err(malformed(
+            "original diagnostics require complete finite plain-box geometry",
+        ));
+    }
+    super::collect_surgeist_numeric_mismatches(golden)
+        .map_err(|error| changed(error.to_string()))?
+        .into_iter()
+        .map(|mismatch| match mismatch {
+            super::NumericMismatch::Layout(value) => Ok(OriginalDiagnosticDifference {
+                path: value.path().to_owned(),
+                field: value.field(),
+                browser: value.browser_value(),
+                native: value.native_value(),
+            }),
+            super::NumericMismatch::ElementScrollSize(_) => {
+                Err(malformed("unexpected original diagnostic observation"))
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OriginalDiagnosticCase {
+    pub(crate) case: CaseDescriptor,
+    pub(crate) historical: PathDigest,
+    pub(crate) identity: IdentityProjection,
+    pub(crate) raw_differences: Vec<OriginalDiagnosticDifference>,
+}
+
+pub(crate) type OriginalDiagnosticReceipt = QualificationData<OriginalDiagnosticCase>;
+
+impl OriginalDiagnosticReceipt {
+    pub(crate) fn parse(raw: &str) -> Result<Self> {
+        unique_json(raw)?;
+        let receipt: Self =
+            serde_json::from_str(raw).map_err(|error| malformed(error.to_string()))?;
+        receipt.validate_original_diagnostics()?;
+        Ok(receipt)
+    }
+
+    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>> {
+        self.validate_original_diagnostics()?;
+        let mut bytes = serde_json::to_vec_pretty(self).map_err(|e| malformed(e.to_string()))?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    }
+
+    fn validate_original_diagnostics(&self) -> Result<()> {
+        let sources: BTreeSet<_> = GRID_LANES_AXIS_ORIGINAL_SOURCES.into_iter().collect();
+        let variants = fixture_cases();
+        if self.schema_version != 1
+            || self.edition != ORIGINAL_DIAGNOSTIC_EDITION
+            || self.declaration.path != "corpus.toml"
+            || self.report.path != "xml/generation-reports/all.json"
+            || self.ownership.path != "xml/generation-ownership.json"
+            || self.retained_inputs.get(&self.declaration.path) != Some(&self.declaration.sha256)
+            || self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
+            || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
+                != Some(&self.capture_validation.validator_helper_sha256)
+            || self.records.len() != sources.len()
+            || self.cases.len() != sources.len() * variants.len()
+        {
+            return Err(malformed("original diagnostic receipt identity or census"));
+        }
+        verify_grid_lanes_producing_helper(&self.retained_inputs)?;
+        for binding in [&self.declaration, &self.report, &self.ownership] {
+            digest(&binding.sha256)?;
+        }
+        let mut records = BTreeMap::new();
+        for record in &self.records {
+            if !sources.contains(record.source.as_str())
+                || record.source_kind()? != SourceKind::Original
+                || record.value["source"].as_str() != Some(record.source.as_str())
+                || semantic_record_digest(&record.value)? != record.sha256
+                || records.insert(record.source.as_str(), record).is_some()
+            {
+                return Err(malformed("original diagnostic source projection"));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        let mut historical_paths = BTreeSet::new();
+        for diagnostic in &self.cases {
+            let case = &diagnostic.case;
+            let record = records
+                .get(case.source.as_str())
+                .ok_or_else(|| malformed("original diagnostic case source"))?;
+            let family = case
+                .source
+                .strip_prefix("html/")
+                .and_then(|s| s.strip_suffix(".html"))
+                .ok_or_else(|| malformed("original diagnostic source path"))?;
+            let stem = family
+                .rsplit('/')
+                .next()
+                .ok_or_else(|| malformed("original diagnostic stem"))?;
+            let variant = case.variant.as_str();
+            let identity = &diagnostic.identity;
+            if !variants.iter().any(|(known, _)| *known == variant)
+                || !seen.insert((case.source.as_str(), variant))
+                || case.name != format!("{stem}__{variant}")
+                || case.output.path != format!("xml/{family}__{variant}.xml")
+                || diagnostic.historical.path != format!("historical/{family}__{variant}.xml")
+                || record.value["historical_sha256"][variant].as_str()
+                    != Some(diagnostic.historical.sha256.as_str())
+                || self.retained_inputs.get(&diagnostic.historical.path)
+                    != Some(&diagnostic.historical.sha256)
+                || identity.historical_sha256.as_ref() != Some(&diagnostic.historical.sha256)
+                || identity.policy_source_sha256.is_some()
+                || identity.source != case.source
+                || identity.variant != case.variant
+                || identity.capture_sha256 != case.output.sha256
+                || identity.record_sha256 != case.record_sha256
+                || record.sha256 != case.record_sha256
+                || record.value["source_sha256"].as_str() != Some(identity.source_sha256.as_str())
+                || self.retained_inputs.get(&case.source) != Some(&identity.source_sha256)
+            {
+                return Err(malformed("original diagnostic case binding"));
+            }
+            digest(&case.output.sha256)?;
+            digest(&diagnostic.historical.sha256)?;
+            historical_paths.insert(diagnostic.historical.path.as_str());
+            if diagnostic
+                .raw_differences
+                .iter()
+                .any(|entry| !entry.browser.is_finite() || !entry.native.is_finite())
+            {
+                return Err(malformed("nonfinite original diagnostic difference"));
+            }
+        }
+        if self
+            .retained_inputs
+            .keys()
+            .filter(|path| path.starts_with("historical/"))
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != historical_paths
+        {
+            return Err(malformed("original diagnostic historical input census"));
+        }
+        Ok(())
+    }
+}
+
+impl QualificationData<QualifiedCaseWire> {
+    fn bind_source_provenance(self) -> Result<Qualification> {
+        let sources: BTreeMap<_, _> = self
+            .records
+            .iter()
+            .map(|record| Ok((record.source.as_str(), record.source_kind()?)))
+            .collect::<Result<_>>()?;
+        let cases = self
+            .cases
+            .into_iter()
+            .map(|case| match case {
+                QualifiedCaseWire::Exact(case) => Ok(QualifiedCase::Exact(case)),
+                QualifiedCaseWire::Specialized(case) => Ok(QualifiedCase::Specialized(case)),
+                QualifiedCaseWire::Matching(wire) => {
+                    let kind = sources
+                        .get(wire.case.source.as_str())
+                        .ok_or_else(|| malformed("matching source is missing"))?;
+                    Ok(QualifiedCase::Matching(wire.bind(*kind)?))
+                }
+            })
+            .collect::<Result<_>>()?;
+        Ok(Qualification {
+            schema_version: self.schema_version,
+            edition: self.edition,
+            declaration: self.declaration,
+            records: self.records,
+            browser_settings: self.browser_settings,
+            report: self.report,
+            ownership: self.ownership,
+            cases,
+            retained_inputs: self.retained_inputs,
+            current_owner_inputs: self.current_owner_inputs,
+            capture_validation: self.capture_validation,
+        })
+    }
+}
+
 impl Qualification {
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>> {
         self.validate()?;
@@ -1343,7 +1806,9 @@ impl Qualification {
                 "matching capture binding cannot contain policy identity",
             ));
         }
-        let value: Self = serde_json::from_str(raw).map_err(|e| malformed(e.to_string()))?;
+        let wire: QualificationData<QualifiedCaseWire> =
+            serde_json::from_str(raw).map_err(|e| malformed(e.to_string()))?;
+        let value = wire.bind_source_provenance()?;
         value.validate()?;
         Ok(value)
     }
@@ -1412,6 +1877,8 @@ impl Qualification {
         let mut names = BTreeSet::new();
         let mut outputs = BTreeSet::new();
         let mut variants = BTreeSet::new();
+        let mut matching_history = BTreeSet::new();
+        let mut paired_diagnostics = None;
         for case in &self.cases {
             let descriptor = case.descriptor();
             path(&descriptor.output.path)?;
@@ -1465,32 +1932,64 @@ impl Qualification {
                         .next()
                         .ok_or_else(|| malformed("matching source stem"))?;
                     let variant = descriptor.variant.as_str();
-                    if record.value["matching_publication"] != self.edition
-                        || record.value["source_kind"] != "original"
+                    let kind = record.source_kind()?;
+                    let membership: MatchingMembership =
+                        serde_json::from_value(record.value["matching_publication"].clone())
+                            .map_err(|_| malformed("missing or invalid matching membership"))?;
+                    membership.validate(&descriptor.source, kind)?;
+                    if let MatchingMembership::SourceEquivalent(pair) = &membership {
+                        if paired_diagnostics
+                            .as_ref()
+                            .is_some_and(|reference| reference != &pair.diagnostics)
+                        {
+                            return Err(malformed("paired matching diagnostic references differ"));
+                        }
+                        paired_diagnostics = Some(pair.diagnostics.clone());
+                    }
+                    if self
+                        .current_owner_inputs
+                        .get(&kind.owner_path(&descriptor.source))
+                        != Some(&case.identity.source_sha256)
+                    {
+                        return Err(changed("matching current source owner"));
+                    }
+                    if membership.edition() != self.edition
                         || !record.value["semantic_specifications"].is_null()
                         || !record.value["specialized_publication"].is_null()
                         || !record.value["relation"].is_null()
                         || record.value["expected"]["kind"] != "generated"
-                        || record.value["historical_sha256"]
-                            .as_object()
-                            .map(|m| m.len())
-                            != Some(fixture_cases().len())
+                        || record.value["expected"]["metadata"]["context"] != "absolute-local"
+                        || !record.value["expected"]["metadata"]["root_size"].is_null()
                         || !fixture_cases().iter().any(|(v, _)| *v == variant)
                         || descriptor.name != format!("{stem}__{variant}")
                         || descriptor.output.path != format!("xml/{family}__{variant}.xml")
-                        || case.historical.path != format!("historical/{family}__{variant}.xml")
-                        || record.value["historical_sha256"][variant] != case.historical.sha256
-                        || case.identity.historical_sha256.as_ref() != Some(&case.historical.sha256)
                         || record.value["source_sha256"] != case.identity.source_sha256
                         || self.retained_inputs.get(&descriptor.source)
                             != Some(&case.identity.source_sha256)
                         || case.identity.policy_source_sha256.is_some()
                     {
-                        return Err(malformed(
-                            "matching terminal source, category or predecessor changed",
-                        ));
+                        return Err(malformed("matching terminal source or category changed"));
                     }
-                    self.require_retained(&case.historical)?;
+                    let history = record.value["historical_sha256"]
+                        .as_object()
+                        .ok_or_else(|| malformed("missing matching record historical pins"))?;
+                    match (kind, case.provenance()) {
+                        (SourceKind::Original, MatchingProvenance::Original { historical })
+                            if history.len() == fixture_cases().len()
+                                && historical.path
+                                    == format!("historical/{family}__{variant}.xml")
+                                && history.get(variant).and_then(Value::as_str)
+                                    == Some(historical.sha256.as_str())
+                                && case.identity.historical_sha256.as_ref()
+                                    == Some(&historical.sha256) =>
+                        {
+                            self.require_retained(historical)?;
+                            matching_history.insert(historical.path.as_str());
+                        }
+                        (SourceKind::Authored, MatchingProvenance::Authored)
+                            if history.is_empty() && case.identity.historical_sha256.is_none() => {}
+                        _ => return Err(malformed("matching terminal predecessor changed")),
+                    }
                 }
                 _ => return Err(malformed("terminal edition or variant association changed")),
             }
@@ -1502,6 +2001,25 @@ impl Qualification {
             {
                 return Err(malformed("stored projection/case association changed"));
             }
+        }
+        if matching
+            && self
+                .retained_inputs
+                .keys()
+                .filter(|path| path.starts_with("historical/"))
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>()
+                != matching_history
+        {
+            return Err(malformed("matching historical input census changed"));
+        }
+        if self.edition == GRID_LANES_PAIRED_EDITION {
+            if paired_diagnostics.is_none()
+                || self.records.len() != GRID_LANES_AXIS_ORIGINAL_SOURCES.len()
+            {
+                return Err(malformed("incomplete source-equivalent matching cohort"));
+            }
+            verify_grid_lanes_producing_helper(&self.retained_inputs)?;
         }
         if matching
             && (self.cases.len() != self.records.len() * fixture_cases().len()
