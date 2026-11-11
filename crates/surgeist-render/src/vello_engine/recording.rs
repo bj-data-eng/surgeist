@@ -81,33 +81,30 @@ enum ResourceBinding {
     TargetOutput,
 }
 
-/// Every built-in kernel has at most nine bindings. Fixed storage avoids a
-/// separate per-dispatch heap allocation and is part of each command's backing.
-struct Bindings {
-    values: [ResourceBinding; 9],
-    len: usize,
-}
-impl<const N: usize> From<[ResourceBinding; N]> for Bindings {
-    fn from(values: [ResourceBinding; N]) -> Self {
-        assert!(N <= 9, "built-in kernel binding bound");
-        let mut result = Self {
-            values: [ResourceBinding::TargetOutput; 9],
-            len: N,
-        };
-        result.values[..N].copy_from_slice(&values);
-        result
-    }
-}
-impl Bindings {
-    fn push(&mut self, value: ResourceBinding) {
-        self.values[self.len] = value;
-        self.len += 1;
-    }
+/// Built-in binding arrays remain inline in each command's backing.
+/// The word-sized tag preserves the footprint of the former length word.
+#[repr(usize)]
+enum Bindings {
+    Two([ResourceBinding; 2]),
+    Three([ResourceBinding; 3]),
+    Four([ResourceBinding; 4]),
+    Six([ResourceBinding; 6]),
+    Seven([ResourceBinding; 7]),
+    Eight([ResourceBinding; 8]),
+    Nine([ResourceBinding; 9]),
 }
 impl std::ops::Deref for Bindings {
     type Target = [ResourceBinding];
     fn deref(&self) -> &Self::Target {
-        &self.values[..self.len]
+        match self {
+            Self::Two(values) => values,
+            Self::Three(values) => values,
+            Self::Four(values) => values,
+            Self::Six(values) => values,
+            Self::Seven(values) => values,
+            Self::Eight(values) => values,
+            Self::Nine(values) => values,
+        }
     }
 }
 impl<'a> IntoIterator for &'a Bindings {
@@ -178,7 +175,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagReduce,
             workgroups,
-            Bindings::from([
+            Bindings::Three([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_reduced),
@@ -194,7 +191,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagReduce2,
             workgroups,
-            Bindings::from([
+            Bindings::Two([
                 ResourceBinding::Buffer(path_reduced),
                 ResourceBinding::Buffer(path_reduced2),
             ]),
@@ -210,7 +207,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScan1,
             workgroups,
-            Bindings::from([
+            Bindings::Three([
                 ResourceBinding::Buffer(path_reduced),
                 ResourceBinding::Buffer(path_reduced2),
                 ResourceBinding::Buffer(path_reduced_scan),
@@ -228,7 +225,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScan,
             workgroups,
-            Bindings::from([
+            Bindings::Four([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_tag_parent),
@@ -247,7 +244,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScanLarge,
             workgroups,
-            Bindings::from([
+            Bindings::Four([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_tag_parent),
@@ -264,7 +261,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::BboxClear,
             workgroups,
-            Bindings::from([
+            Bindings::Two([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(path_bboxes),
             ]),
@@ -283,7 +280,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Flatten,
             workgroups,
-            Bindings::from([
+            Bindings::Six([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_monoids),
@@ -303,7 +300,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::DrawReduce,
             workgroups,
-            Bindings::from([
+            Bindings::Three([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_reduced),
@@ -327,7 +324,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::DrawLeaf,
             workgroups,
-            Bindings::from([
+            Bindings::Seven([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_reduced),
@@ -349,7 +346,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::ClipReduce,
             workgroups,
-            Bindings::from([
+            Bindings::Four([
                 ResourceBinding::Buffer(clip_inputs),
                 ResourceBinding::Buffer(path_bboxes),
                 ResourceBinding::Buffer(clip_bics),
@@ -374,7 +371,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::ClipLeaf,
             workgroups,
-            Bindings::from([
+            Bindings::Seven([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(clip_inputs),
                 ResourceBinding::Buffer(path_bboxes),
@@ -403,7 +400,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Binning,
             workgroups,
-            Bindings::from([
+            Bindings::Eight([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(draw_monoids),
                 ResourceBinding::Buffer(path_bboxes),
@@ -428,7 +425,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::TileAlloc,
             workgroups,
-            Bindings::from([
+            Bindings::Six([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_bboxes),
@@ -447,7 +444,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathCountSetup,
             workgroups,
-            Bindings::from([
+            Bindings::Two([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(indirect_count),
             ]),
@@ -466,7 +463,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_indirect(
             RasterKernel::PathCount,
             indirect_count,
-            Bindings::from([
+            Bindings::Six([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(lines),
@@ -487,7 +484,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Backdrop,
             workgroups,
-            Bindings::from([
+            Bindings::Four([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(paths),
@@ -514,7 +511,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Coarse,
             workgroups,
-            Bindings::from([
+            Bindings::Nine([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_monoids),
@@ -537,7 +534,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTilingSetup,
             workgroups,
-            Bindings::from([
+            Bindings::Three([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(indirect_count),
                 ResourceBinding::Buffer(per_tile_command_list),
@@ -557,7 +554,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_indirect(
             RasterKernel::PathTiling,
             indirect_count,
-            Bindings::from([
+            Bindings::Six([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(segment_counts),
                 ResourceBinding::Buffer(lines),
@@ -586,10 +583,10 @@ pub(super) struct FineDispatchBindings {
 }
 
 impl FineDispatchBindings {
-    fn into_parts(self) -> (vello_encoding::WorkgroupSize, Bindings) {
+    fn into_parts(self) -> (vello_encoding::WorkgroupSize, [ResourceBinding; 8]) {
         (
             self.workgroups,
-            Bindings::from([
+            [
                 ResourceBinding::Buffer(self.config),
                 ResourceBinding::Buffer(self.segments),
                 ResourceBinding::Buffer(self.per_tile_command_list),
@@ -598,7 +595,38 @@ impl FineDispatchBindings {
                 ResourceBinding::TargetOutput,
                 ResourceBinding::Image(self.gradient_image),
                 ResourceBinding::Image(self.image_atlas),
-            ]),
+            ],
+        )
+    }
+
+    fn into_parts_with_mask_lut(
+        self,
+        mask_lut: BufferHandle,
+    ) -> (vello_encoding::WorkgroupSize, [ResourceBinding; 9]) {
+        let (workgroups, bindings) = self.into_parts();
+        let [
+            config,
+            segments,
+            per_tile_command_list,
+            info_bin_data,
+            blend_spill,
+            target,
+            gradient,
+            atlas,
+        ] = bindings;
+        (
+            workgroups,
+            [
+                config,
+                segments,
+                per_tile_command_list,
+                info_bin_data,
+                blend_spill,
+                target,
+                gradient,
+                atlas,
+                ResourceBinding::Buffer(mask_lut),
+            ],
         )
     }
 }
@@ -612,27 +640,25 @@ impl FineDispatch {
         Self(DispatchIntent::fine_direct(
             RasterKernel::FineArea,
             workgroups,
-            bindings,
+            Bindings::Eight(bindings),
         ))
     }
 
     pub(super) fn msaa8(bindings: FineDispatchBindings, mask_lut: BufferHandle) -> Self {
-        let (workgroups, mut bindings) = bindings.into_parts();
-        bindings.push(ResourceBinding::Buffer(mask_lut));
+        let (workgroups, bindings) = bindings.into_parts_with_mask_lut(mask_lut);
         Self(DispatchIntent::fine_direct(
             RasterKernel::FineMsaa8,
             workgroups,
-            bindings,
+            Bindings::Nine(bindings),
         ))
     }
 
     pub(super) fn msaa16(bindings: FineDispatchBindings, mask_lut: BufferHandle) -> Self {
-        let (workgroups, mut bindings) = bindings.into_parts();
-        bindings.push(ResourceBinding::Buffer(mask_lut));
+        let (workgroups, bindings) = bindings.into_parts_with_mask_lut(mask_lut);
         Self(DispatchIntent::fine_direct(
             RasterKernel::FineMsaa16,
             workgroups,
-            bindings,
+            Bindings::Nine(bindings),
         ))
     }
 
@@ -917,7 +943,7 @@ impl RecordingBuilder {
             phase: RasterPhase::ImagePreparation,
             kernel: RasterKernel::ExpandImage,
             workgroups: (extent.width().div_ceil(8), extent.height().div_ceil(8), 1),
-            bindings: Bindings::from([
+            bindings: Bindings::Two([
                 ResourceBinding::Buffer(buffer),
                 ResourceBinding::Image(atlas),
             ]),
