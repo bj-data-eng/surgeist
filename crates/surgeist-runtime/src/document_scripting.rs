@@ -28,6 +28,7 @@ use crate::{
 
 mod projection;
 mod source;
+mod window_relations;
 pub use source::{
     DocumentScriptEventError, DocumentScriptEventProgress, DocumentScriptEventReport,
     DocumentScriptGuestResult, SelectedDocumentScriptListener,
@@ -315,7 +316,7 @@ impl PreparedDocumentScriptHost {
     }
 
     /// Attach an actual engine to the selected native top-level Document.
-    /// Installs the Window CSS namespace and the explicitly named host services.
+    /// Installs the Window relations, CSS namespace, DOMException, and named host services.
     pub fn enable(
         self,
         target: DomHostedTopLevel,
@@ -362,7 +363,7 @@ impl PreparedDocumentScriptHost {
             document: target.document(),
         };
         let read = child_count_callback(Rc::downgrade(owner), permit.clone());
-        let detach = source::detach_callback(Rc::downgrade(owner), permit);
+        let detach = source::detach_callback(Rc::downgrade(owner), permit.clone());
         let hook_bytes = size_of_val(&read)
             .checked_add(size_of_val(&detach))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
@@ -382,6 +383,7 @@ impl PreparedDocumentScriptHost {
             .and_then(|bytes| bytes.checked_add(css_bytes))
             .and_then(|bytes| bytes.checked_add(css_failure_bytes))
             .and_then(|bytes| bytes.checked_add(dom_exception_bytes))
+            .and_then(|bytes| bytes.checked_add(window_relations::storage_bytes()))
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         if bytes > owner.storage_limit {
             return Err(DocumentScriptNativeError::StorageLimit.into());
@@ -394,6 +396,7 @@ impl PreparedDocumentScriptHost {
             css_backing,
             css_failure_backing,
             dom_exception_backing,
+            window_relations_backing,
         ) = {
             let mut session = owner
                 .session
@@ -421,6 +424,12 @@ impl PreparedDocumentScriptHost {
             let dom_exception = hosted
                 .retain_script_payload(&mut dom, dom_exception_bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?;
+            let window_relations = hosted
+                .retain_script_payload(&mut dom, window_relations::storage_bytes(), cancel)
+                .map_err(DocumentScriptNativeError::from)?;
+            hosted
+                .admit_script_work(&dom, window_relations::installation_work(), cancel)
+                .map_err(DocumentScriptNativeError::from)?;
             (
                 hook,
                 failure,
@@ -429,6 +438,7 @@ impl PreparedDocumentScriptHost {
                 css,
                 css_failure,
                 dom_exception,
+                window_relations,
             )
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
@@ -465,6 +475,12 @@ impl PreparedDocumentScriptHost {
             })?;
         }
         process.execution().in_realm(&realm, |scope| {
+            window_relations::install(
+                scope,
+                Rc::downgrade(owner),
+                permit,
+                window_relations_backing,
+            )?;
             css::install_window_css(
                 scope,
                 owner.css_limits.get(),

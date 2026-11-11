@@ -234,7 +234,12 @@ front joins an idle bound root to its original hosted destruction Cleanup.
 
 The optional `document-scripting` feature attaches a bindings process and realm
 to an authenticated native top-level Document. Before publishing the attachment,
-Runtime installs `CSS` and `DOMException` on the realm's global object.
+Runtime installs `window`, `self`, `parent`, `opener`, `CSS`, and `DOMException`
+on the realm's global object. For this native no-opener top-level, the first
+three getters return the same WindowProxy and the `opener` getter returns
+`null`. The relation accessors qualify the receiving Window against the
+current native attachment. Assignments to `self`, `parent`, or a non-null
+`opener` replace the corresponding own property with the supplied guest value.
 `CSS.escape` preserves exact UTF-16 and uses `CssNamespaceLimits`.
 The `DOMException` constructor uses `DomExceptionLimits` for its DOMString
 conversions. A conflicting host hook name refuses attachment.
