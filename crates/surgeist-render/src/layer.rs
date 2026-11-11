@@ -392,6 +392,22 @@ impl ResolvedLayerLuminanceMask {
     }
 }
 
+/// Resolved coverage for one entry in a mask stack.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResolvedMaskSource {
+    /// A present layer whose coverage is transparent everywhere.
+    Transparent,
+    Alpha(ResolvedLayerAlphaMask),
+    Luminance(ResolvedLayerLuminanceMask),
+}
+
+/// One resolved mask source and its operation against lower masks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResolvedMaskLayer {
+    pub source: ResolvedMaskSource,
+    pub composite: crate::MaskCompositeMode,
+}
+
 /// Creates an unmodified layer with identity transform, opacity `1`, normal
 /// blending, and no clip, mask, or filter.
 impl Default for Layer {
@@ -511,6 +527,17 @@ enum LayerCompositionKind {
 }
 
 impl LayerComposition {
+    pub(crate) const fn normal_porter_duff(operator: PorterDuffOperator) -> Self {
+        let kind = match operator {
+            PorterDuffOperator::PlusLighter => LayerCompositionKind::PlusLighter,
+            operator => LayerCompositionKind::Basic {
+                operator,
+                blend: BlendMode::Normal,
+            },
+        };
+        Self { kind }
+    }
+
     /// Pairs a basic operator with one of the sixteen mixing functions, or
     /// selects [`PorterDuffOperator::PlusLighter`] with [`BlendMode::Normal`].
     ///

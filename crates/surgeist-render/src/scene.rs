@@ -172,6 +172,60 @@ impl Scene {
         self
     }
 
+    /// Applies an ordered stack of resolved masks to one isolated group of children.
+    ///
+    /// Supply masks from top to bottom. Coverage combines from bottom to top,
+    /// starting with the bottom mask's coverage. An empty stack adds the children
+    /// directly to this scene. A transparent entry still participates in the fold.
+    pub fn masked_group(
+        &mut self,
+        masks: &[ResolvedMaskLayer],
+        children: impl FnOnce(&mut Scene),
+    ) -> &mut Self {
+        let Some((bottom, above)) = masks.split_last() else {
+            children(self);
+            return self;
+        };
+        self.layer(Layer::new().isolated(), |target| {
+            children(target);
+            let apply = Layer::new().with_composition(LayerComposition::normal_porter_duff(
+                PorterDuffOperator::DestinationIn,
+            ));
+            target.layer(apply, |coverage| {
+                coverage.append_mask_coverage(&bottom.source, PorterDuffOperator::SourceOver);
+                for layer in above.iter().rev() {
+                    let operator = match layer.composite {
+                        MaskCompositeMode::Add => PorterDuffOperator::SourceOver,
+                        MaskCompositeMode::Subtract => PorterDuffOperator::SourceOut,
+                        MaskCompositeMode::Intersect => PorterDuffOperator::SourceIn,
+                        MaskCompositeMode::Exclude => PorterDuffOperator::Xor,
+                    };
+                    coverage.append_mask_coverage(&layer.source, operator);
+                }
+            });
+        })
+    }
+
+    fn append_mask_coverage(&mut self, source: &ResolvedMaskSource, operator: PorterDuffOperator) {
+        let layer = Layer::new().with_composition(LayerComposition::normal_porter_duff(operator));
+        let (layer, bounds) = match source {
+            ResolvedMaskSource::Transparent => (layer, None),
+            ResolvedMaskSource::Alpha(mask) => (
+                layer.with_resolved_alpha_mask(mask.clone()),
+                Some(mask.bounds()),
+            ),
+            ResolvedMaskSource::Luminance(mask) => (
+                layer.with_resolved_luminance_mask(mask.clone()),
+                Some(mask.bounds()),
+            ),
+        };
+        self.layer(layer, |scene| {
+            if let Some(bounds) = bounds {
+                scene.fill(bounds, Color::BLACK);
+            }
+        });
+    }
+
     /// Builds children under a logical transform layer.
     ///
     /// The supplied [`Transform`] already guarantees finite coefficients.

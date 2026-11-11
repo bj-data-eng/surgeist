@@ -772,6 +772,10 @@ pub surgeist_render::RepeatMode::NoRepeat
 pub surgeist_render::RepeatMode::Repeat
 pub surgeist_render::RepeatMode::Round
 pub surgeist_render::RepeatMode::Space
+pub enum surgeist_render::ResolvedMaskSource
+pub surgeist_render::ResolvedMaskSource::Alpha(surgeist_render::ResolvedLayerAlphaMask)
+pub surgeist_render::ResolvedMaskSource::Luminance(surgeist_render::ResolvedLayerLuminanceMask)
+pub surgeist_render::ResolvedMaskSource::Transparent
 pub enum surgeist_render::RuntimeCapabilities
 pub surgeist_render::RuntimeCapabilities::Available(surgeist_render::AvailableRuntimeCapabilities)
 pub surgeist_render::RuntimeCapabilities::Unavailable(surgeist_render::RuntimeCapabilityUnavailableReason)
@@ -1891,6 +1895,9 @@ pub const fn surgeist_render::ResolvedLayerLuminanceMask::bounds(&self) -> surge
 pub const fn surgeist_render::ResolvedLayerLuminanceMask::color_space(&self) -> surgeist_render::MaskLuminanceSpace
 pub const fn surgeist_render::ResolvedLayerLuminanceMask::image(&self) -> &surgeist_render::Image
 pub fn surgeist_render::ResolvedLayerLuminanceMask::try_new(image: surgeist_render::Image, bounds: surgeist_render::Rect, color_space: surgeist_render::MaskLuminanceSpace) -> surgeist_render::Result<Self>
+pub struct surgeist_render::ResolvedMaskLayer
+pub surgeist_render::ResolvedMaskLayer::composite: surgeist_render::MaskCompositeMode
+pub surgeist_render::ResolvedMaskLayer::source: surgeist_render::ResolvedMaskSource
 pub struct surgeist_render::ResourceCacheBudget(_)
 impl surgeist_render::ResourceCacheBudget
 pub const surgeist_render::ResourceCacheBudget::DEFAULT: Self
@@ -1914,6 +1921,7 @@ pub fn surgeist_render::Scene::inspect(&self, context: &mut surgeist_render::Ren
 pub fn surgeist_render::Scene::is_empty(&self) -> bool
 pub fn surgeist_render::Scene::layer(&mut self, layer: surgeist_render::Layer, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub fn surgeist_render::Scene::len(&self) -> usize
+pub fn surgeist_render::Scene::masked_group(&mut self, masks: &[surgeist_render::ResolvedMaskLayer], children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub fn surgeist_render::Scene::new() -> Self
 pub fn surgeist_render::Scene::prepared_glyph_run(&mut self, run: surgeist_render::PreparedGlyphRun, transform: surgeist_render::Transform, paint: surgeist_render::TextPaint) -> &mut Self
 pub fn surgeist_render::Scene::shadow(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, shadow: surgeist_render::Shadow) -> &mut Self

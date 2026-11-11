@@ -263,10 +263,10 @@ fn source_with_clip_mask(destination_position: vec2<f32>) -> vec4<f32> {
 }
 
 fn safe_straight_rgb(premultiplied: vec4<f32>) -> vec3<f32> {
-    if (premultiplied.a == 0.0) {
-        return vec3<f32>(0.0);
-    }
-    return clamp(premultiplied.rgb / premultiplied.a, vec3<f32>(0.0), vec3<f32>(1.0));
+    let transparent = premultiplied.a == 0.0;
+    let divisor = select(premultiplied.a, 1.0, transparent);
+    let rgb = clamp(premultiplied.rgb / divisor, vec3<f32>(0.0), vec3<f32>(1.0));
+    return select(rgb, vec3<f32>(0.0), transparent);
 }
 
 fn color_dodge(source: f32, backdrop: f32) -> f32 {
