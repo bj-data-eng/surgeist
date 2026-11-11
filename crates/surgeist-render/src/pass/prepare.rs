@@ -2152,6 +2152,184 @@ mod reconstructed_key_accounting_tests {
     }
 
     #[test]
+    fn preparation_duplicate_runtime_read_follows_its_edge_admission() {
+        use crate::{
+            ErrorCode, RenderAccountingError, RenderAttemptStatus, RenderQuantity,
+            RenderRefusalReason, RenderResource,
+        };
+
+        let lowered = terminal_fixture();
+        let setup = Account::for_test();
+        for limit in [1, 2] {
+            let mut prefix = AnalysisPrefix::new(&lowered, &setup).unwrap();
+            let mut pass = lowered.passes[prefix.position].clone();
+            assert!(matches!(pass.kind, RuntimePassKind::CanonicalizeCapture));
+            assert_eq!(pass.reads.len(), 1);
+            assert!(pass.cache_keys.is_some());
+            pass.dependencies
+                .try_edit_for_test(0, &setup.storage(), Vec::clear)
+                .unwrap();
+            pass.reads
+                .try_edit_for_test(1, &setup.storage(), |reads| reads.push(reads[0]))
+                .unwrap();
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    analyze_runtime_pass(
+                        &pass,
+                        prefix.position,
+                        &lowered,
+                        &prefix.resources,
+                        &prefix.positions,
+                        &mut prefix.facts,
+                        account,
+                    )
+                    .map(drop)
+                });
+            let error = result.unwrap_err();
+            let attempt = report.attempt().unwrap();
+            if limit == 1 {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(error.code(), ErrorCode::Accounting);
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+                assert_eq!(report.status(), RenderAttemptStatus::Refused);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (1, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 1 });
+            } else {
+                assert_eq!(error.code(), ErrorCode::RenderFailed);
+                assert_eq!(
+                    error.message(),
+                    "prepared pass contains a duplicate runtime read binding"
+                );
+                assert_eq!(error.accounting_diagnostic(), None);
+                assert_eq!(
+                    report.status(),
+                    RenderAttemptStatus::Failed(ErrorCode::RenderFailed)
+                );
+                assert_eq!(attempt.refusal(), None);
+            }
+            let usage = attempt.usage();
+            assert_eq!(usage.work(RenderWork::GraphEdgeVisits), limit);
+            assert_eq!(usage.work(RenderWork::ShaderBindingVisits), 0);
+            assert_eq!(usage.work(RenderWork::KernelSampleVisits), 0);
+            assert_eq!(
+                report
+                    .renderer_cpu()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::ScratchCpuBytes),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn preparation_read_set_backing_overlaps_gaussian_weights() {
+        use crate::accounting::{
+            FrameFixture, RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus,
+            RenderCpuScope, RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource,
+            RendererCpu,
+        };
+
+        fn reserved_bytes<T>(setup: &Account, count: usize) -> u64 {
+            let backing = setup.temporary::<T>(count).unwrap();
+            assert_eq!(backing.capacity(), count);
+            (backing.capacity() * std::mem::size_of::<T>()) as u64
+        }
+
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let mut backend =
+            crate::backend::Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options)
+                .unwrap();
+        let identity = pollster::block_on(backend.select_device(None))
+            .unwrap()
+            .unwrap();
+        let (device, _) = backend
+            .device_queue(identity, crate::RuntimeOperation::EffectRendering)
+            .unwrap();
+        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
+            crate::FilterBlur::try_new(4.0).unwrap(),
+        )])
+        .unwrap();
+        let lowered = lower_filter_proof_fixture(vec![filters]);
+        let setup = Account::for_test();
+        let mut resources = PassMap::temporary(&setup, lowered.resources.len()).unwrap();
+        for resource in &lowered.resources {
+            resources
+                .insert_with(resource.id, resource, &setup)
+                .unwrap();
+        }
+        let mut blurs = lowered
+            .passes
+            .iter()
+            .filter_map(|pass| runtime_blur_for_kernel(&pass.kind).map(|blur| (pass, blur)));
+        for _ in 0..2 {
+            let (pass, blur) = blurs.next().unwrap();
+            assert_eq!(pass.reads.len(), 1);
+            assert_eq!(blur.spatial.result.raster_scale, 1.0);
+            assert_eq!(blur.support_radius, 10);
+        }
+        assert!(blurs.next().is_none());
+
+        // The position map and six fact maps remain live at either blur.
+        let resource_count = lowered.resources.len();
+        let maps = reserved_bytes::<(RuntimePassId, usize)>(&setup, lowered.passes.len())
+            + reserved_bytes::<(RuntimeResourceId, u32)>(&setup, resource_count)
+            + 3 * reserved_bytes::<(RuntimeResourceId, RuntimePassId)>(&setup, resource_count)
+            + reserved_bytes::<(RuntimePassId, GaussianKernelKey)>(&setup, 2)
+            + reserved_bytes::<(GaussianKernelKey, RuntimeKernelPreparationRequest)>(&setup, 2);
+        let reads = reserved_bytes::<(RuntimeResourceId, ())>(&setup, 1);
+        let weights = reserved_bytes::<f64>(&setup, 11);
+        let exact = maps + reads + weights;
+
+        for limit in [exact, exact - 1] {
+            let options = RenderAccountingOptions::new()
+                .with_limits(RenderLimits::new().with_scratch_bytes(limit));
+            let cpu = RendererCpu::new(options).unwrap();
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    analyze_runtime_passes(&lowered, &resources, device, attempt.account())
+                        .map(drop)
+                })
+                .unwrap()
+                .into_parts();
+            assert_eq!(fault, None);
+            let usage = report.renderer_cpu().unwrap().usage();
+            assert_eq!(usage.opening_live(RenderResource::ScratchCpuBytes), 0);
+            assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+            let attempt = report.attempt().unwrap();
+            if limit == exact {
+                result.unwrap();
+                assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), exact);
+                // Each build computes 11 weights, sums 10, normalizes 11 and
+                // emits 11 samples. Reuse compares all 11 rebuilt samples.
+                assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 97);
+            } else {
+                let expected = RenderAccountingError::CpuRefused {
+                    scope: RenderCpuScope::Root,
+                    quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                    current: maps + reads,
+                    amount: weights,
+                    reason: RenderRefusalReason::Limit { limit },
+                };
+                assert_eq!(result.unwrap_err().accounting_diagnostic(), Some(expected));
+                assert_eq!(report.accounting_diagnostic(), Some(expected));
+                assert_eq!(report.status(), RenderAttemptStatus::Refused);
+                assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 0);
+            }
+        }
+    }
+
+    #[test]
     fn preparation_kernel_reuse_admits_each_reconstructed_sample_comparison() {
         pollster::block_on(async {
             let options = crate::RenderAccountingOptions::new();
