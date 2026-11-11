@@ -55,6 +55,8 @@ struct Cost {
     retained_bytes: u64,
     /// The provider requests the parse charged, one per allocation it made.
     allocations: u64,
+    /// The bytes the parse's work copied.
+    copied_bytes: u64,
     /// The nodes the parse retains.
     nodes: u64,
     /// The text code units the parse retains.
@@ -66,8 +68,15 @@ struct Cost {
 }
 
 fn cost(html: String) -> Cost {
+    cost_with_detail(html, crate::DetailSet::NONE)
+}
+
+/// What one parse of a document cost when it records `detail`.
+fn cost_with_detail(html: String, detail: crate::DetailSet) -> Cost {
     let bytes = html.len() as u64;
     let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(html), limits())
+        .with_detail(detail)
+        .unwrap_or_else(|unavailable| panic!("the detail is available: {unavailable:?}"))
         .parse()
         .unwrap_or_else(|failure| panic!("the document parses within the limits: {failure:?}"));
     let usage = report.usage().clone();
@@ -78,6 +87,7 @@ fn cost(html: String) -> Cost {
         credits: usage.resource(HtmlParseResource::WorkCredits).current(),
         retained_bytes: usage.actual_capacity_bytes,
         allocations: usage.work(HtmlParseWorkCategory::ProviderCall),
+        copied_bytes: usage.work(HtmlParseWorkCategory::CopyByte),
         nodes: usage.resource(HtmlParseResource::ManagedNodes).current(),
         units: usage
             .resource(HtmlParseResource::ManagedUtf16Units)
@@ -185,6 +195,25 @@ fn attributes_merged_into_the_root(merges: usize) -> String {
         let _ = write!(html, "<html m{merge}=\"v\">");
     }
     html.push_str("<body>content</body></html>");
+    html
+}
+
+/// `elements` elements of eight attributes each, then as many `html` start tags, each carrying
+/// one attribute the root does not have yet. The origins of the root's attributes are recorded
+/// with those of every element before it in the document.
+fn attributes_merged_into_the_root_after_many_elements(elements: usize) -> String {
+    let mut html = String::from("<!DOCTYPE html><html a=\"v\"><body>");
+    for element in 0..elements {
+        let _ = write!(html, "<div id=\"e{element}\"");
+        for attribute in 0..8_usize {
+            let _ = write!(html, " data-a{attribute}=\"value {element} {attribute}\"");
+        }
+        html.push_str(">content</div>");
+    }
+    for merge in 0..elements {
+        let _ = write!(html, "<html m{merge}=\"v\">");
+    }
+    html.push_str("</body></html>");
     html
 }
 
@@ -367,6 +396,29 @@ fn attributes_merged_into_the_root_one_at_a_time_grow_linearly() {
     assert_family(
         "attributes merged into the root",
         &costs([100, 200, 400, 800], attributes_merged_into_the_root),
+    );
+}
+
+/// With the origin graph recorded, merging an attribute into an element moves the origin
+/// records of that element alone, however many elements follow it in the document.
+#[cfg(feature = "detail")]
+#[test]
+fn attributes_merged_into_the_root_grow_linearly_when_origins_are_recorded() {
+    let costs: Vec<Cost> = [100, 200, 400, 800]
+        .iter()
+        .map(|&elements| {
+            cost_with_detail(
+                attributes_merged_into_the_root_after_many_elements(elements),
+                crate::DetailSet::ALL,
+            )
+        })
+        .collect();
+    assert_family("attributes merged into the root, origins recorded", &costs);
+    assert_at_most_doubles(
+        "attributes merged into the root, origins recorded",
+        "copied bytes",
+        &costs,
+        |cost| cost.copied_bytes,
     );
 }
 
