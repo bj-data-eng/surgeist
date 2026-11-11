@@ -2,9 +2,10 @@ use super::graph::{
     GpuRenderGraph, GraphBuildResult, GraphValidationError, PassIndex, ResourceIndex,
     SemanticCompositeKind, SemanticGraphPass, SemanticPassId, SemanticPassIntent,
     SemanticPassResult, SemanticResourceId, SemanticResourceProducer, SemanticResourceRole,
-    WorkingImageInitialization,
+    WorkingImageInitialization, graph_build,
 };
-use crate::accounting::{Account, AccountedVec, RenderWork};
+use super::lower::{graph_lowering_pass_kind, graph_lowering_read_bindings};
+use crate::accounting::{Account, AccountedVec, RenderWork, StorageContractError};
 
 pub(super) fn validate_semantic_frame_graph(
     graph: &GpuRenderGraph,
@@ -152,19 +153,28 @@ fn validate_import_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphB
     Ok(())
 }
 
-pub(super) struct LoweringValidationState<'graph, 'account> {
+pub(super) fn validate_lowering_graph(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> crate::Result<()> {
+    let mut validation = graph_build(LoweringValidationState::begin(graph, account))?;
+    for (index, pass) in graph.passes.iter().enumerate() {
+        graph_build(validation.validate_pass(index, pass))?;
+        graph_build(graph_lowering_pass_kind(graph, pass, account))?;
+        graph_build(graph_lowering_read_bindings(graph, pass, account))?;
+    }
+    graph_build(validation.finish())
+}
+
+struct LoweringValidationState<'graph, 'account> {
     account: &'account Account,
     graph: &'graph GpuRenderGraph,
     actual_reads: AccountedVec<u32>,
     last_reads: AccountedVec<Option<SemanticPassId>>,
-    next_pass_index: usize,
 }
 
 impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
-    pub(super) fn begin(
-        graph: &'graph GpuRenderGraph,
-        account: &'account Account,
-    ) -> GraphBuildResult<Self> {
+    fn begin(graph: &'graph GpuRenderGraph, account: &'account Account) -> GraphBuildResult<Self> {
         validate_semantic_frame_graph(graph, account)?;
         if graph.resources.is_empty() {
             return Err(GraphValidationError::MissingRootWorkingImage);
@@ -184,14 +194,12 @@ impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
             graph,
             actual_reads,
             last_reads,
-            next_pass_index: 0,
         })
     }
 
-    pub(super) fn validate_pass(&mut self, pass: &SemanticGraphPass) -> GraphBuildResult<()> {
+    fn validate_pass(&mut self, index: usize, pass: &SemanticGraphPass) -> GraphBuildResult<()> {
         let account = self.account;
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let index = self.next_pass_index;
         let graph = self.graph;
         let expected_id = SemanticPassId::new(graph.generation, PassIndex::try_from_len(index)?);
         if pass.id != expected_id {
@@ -247,10 +255,20 @@ impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
                     });
                 }
             }
-            self.actual_reads[resource_index] = self.actual_reads[resource_index]
+            let count_len = self.actual_reads.len();
+            let count = self
+                .actual_reads
+                .get_mut(resource_index)
+                .ok_or_else(|| invalid_read_slot(resource_index, count_len))?;
+            *count = count
                 .checked_add(1)
                 .ok_or(GraphValidationError::ReadCountOverflow(*read))?;
-            self.last_reads[resource_index] = Some(pass.id);
+            let last_len = self.last_reads.len();
+            let last = self
+                .last_reads
+                .get_mut(resource_index)
+                .ok_or_else(|| invalid_read_slot(resource_index, last_len))?;
+            *last = Some(pass.id);
             seen_reads.append_slot()?.write(*read);
         }
         if let SemanticPassResult::Resource(result) = pass.result {
@@ -264,15 +282,44 @@ impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
             }
         }
 
-        self.next_pass_index += 1;
         Ok(())
     }
 
-    pub(super) fn finish(self) -> GraphBuildResult<()> {
+    fn finish(self) -> GraphBuildResult<()> {
         let account = self.account;
-        validate_lowering_lifetimes(self.graph, &self.actual_reads, &self.last_reads, account)?;
+        for (index, resource) in self.graph.resources.iter().enumerate() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let count = *self
+                .actual_reads
+                .get(index)
+                .ok_or_else(|| invalid_read_slot(index, self.actual_reads.len()))?;
+            if resource.descriptor.expected_reads != count || resource.recorded_reads != count {
+                return Err(GraphValidationError::DeclaredReadCountMismatch {
+                    resource: resource.id,
+                    declared: resource.descriptor.expected_reads,
+                    recorded: count,
+                });
+            }
+            let last_read = self
+                .last_reads
+                .get(index)
+                .ok_or_else(|| invalid_read_slot(index, self.last_reads.len()))?;
+            let Some(last_read) = *last_read else {
+                return Err(GraphValidationError::OrphanResult(resource.id));
+            };
+            if resource.releasable_after != Some(last_read) {
+                return Err(GraphValidationError::UnscheduledReads {
+                    resource: resource.id,
+                    remaining: 0,
+                });
+            }
+        }
         validate_lowering_anchors(self.graph, account)
     }
+}
+
+fn invalid_read_slot(index: usize, len: usize) -> GraphValidationError {
+    crate::Error::from(StorageContractError::InvalidPosition { index, len }).into()
 }
 
 fn validate_lowering_resources(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
@@ -340,37 +387,6 @@ fn validate_lowering_imports(graph: &GpuRenderGraph, account: &Account) -> Graph
             })? != 1
         {
             return Err(GraphValidationError::InvalidImportedResourceRole);
-        }
-    }
-    Ok(())
-}
-
-fn validate_lowering_lifetimes(
-    graph: &GpuRenderGraph,
-    actual_reads: &[u32],
-    last_reads: &[Option<SemanticPassId>],
-
-    account: &Account,
-) -> GraphBuildResult<()> {
-    for (index, resource) in graph.resources.iter().enumerate() {
-        account.work(RenderWork::GraphNodeVisits, 1)?;
-        if resource.descriptor.expected_reads != actual_reads[index]
-            || resource.recorded_reads != actual_reads[index]
-        {
-            return Err(GraphValidationError::DeclaredReadCountMismatch {
-                resource: resource.id,
-                declared: resource.descriptor.expected_reads,
-                recorded: actual_reads[index],
-            });
-        }
-        let Some(last_read) = last_reads[index] else {
-            return Err(GraphValidationError::OrphanResult(resource.id));
-        };
-        if resource.releasable_after != Some(last_read) {
-            return Err(GraphValidationError::UnscheduledReads {
-                resource: resource.id,
-                remaining: 0,
-            });
         }
     }
     Ok(())
@@ -517,7 +533,8 @@ mod repeated_proof_edge_tests {
     use crate::frame::{FrameContext, FramePlan, forced_base_graph_for_test};
     use crate::{
         Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color,
-        FilterAmount, FilterList, FilterOp, Layer, Rect, Scene, Size,
+        FilterAmount, FilterList, FilterOp, Layer, Rect, RenderAccountingError, RenderQuantity,
+        RenderResource, Scene, Size,
     };
 
     fn graph(backdrop: bool) -> crate::accounting::OwnedBox<GpuRenderGraph> {
@@ -561,6 +578,37 @@ mod repeated_proof_edge_tests {
             )
             .unwrap()
         }
+    }
+
+    #[test]
+    fn lowering_releases_read_counts_when_last_use_storage_refuses() {
+        let graph = graph(false);
+        let resources = graph.resources.len();
+        let count_bytes = u64::try_from(resources * std::mem::size_of::<u32>()).unwrap();
+        let last_use_bytes =
+            u64::try_from(resources * std::mem::size_of::<Option<SemanticPassId>>()).unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(RenderLimits::new().with_scratch_bytes(count_bytes + last_use_bytes - 1));
+        let mut accounting = RenderAccountingContext::new(options);
+        let error = accounting
+            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                graph.lowering_view(account).map(|_| ())
+            })
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("the second read table must return the scratch refusal");
+        };
+        let scratch = RenderResource::ScratchCpuBytes;
+        assert_eq!(refusal.quantity(), RenderQuantity::Resource(scratch));
+        assert_eq!(
+            (refusal.current(), refusal.amount()),
+            (count_bytes, last_use_bytes)
+        );
+        let attempt = accounting.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(attempt.usage().peak(scratch), count_bytes);
+        assert_eq!(attempt.usage().live(scratch), 0);
+
+        graph.lowering_view(&Account::for_test()).unwrap();
     }
 
     #[test]

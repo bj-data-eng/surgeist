@@ -14,7 +14,7 @@ use super::{
         SemanticResourceRole, SemanticVelloSpan, SemanticVelloSpanScope,
         WorkingImageInitialization, graph_build,
     },
-    validate::LoweringValidationState,
+    validate::validate_lowering_graph,
 };
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 use crate::{
@@ -135,13 +135,7 @@ impl GraphLoweringResourceId {
 impl GpuRenderGraph {
     pub(crate) fn lowering_view(&self, account: &Account) -> Result<GraphLoweringView<'_>> {
         let account = &account.at(RenderPhase::Lower);
-        let mut validation = graph_build(LoweringValidationState::begin(self, account))?;
-        for pass in &self.passes {
-            graph_build(validation.validate_pass(pass))?;
-            graph_build(graph_lowering_pass_kind(self, pass, account))?;
-            graph_build(graph_lowering_read_bindings(self, pass, account))?;
-        }
-        graph_build(validation.finish())?;
+        validate_lowering_graph(self, account)?;
         Ok(GraphLoweringView { graph: self })
     }
 }
