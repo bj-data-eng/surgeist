@@ -518,6 +518,7 @@ pub fn surgeist_bindings_js::Process::bootstrap(kind: surgeist_bindings_js::Engi
 pub fn surgeist_bindings_js::Process::conversion_cleanup_status(&self) -> surgeist_bindings_js::conversion::CleanupStatus
 pub fn surgeist_bindings_js::Process::execution(&mut self) -> surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Process::managed_object_storage_bytes(&self) -> usize
+pub fn surgeist_bindings_js::Process::realm_storage_bytes(&self) -> usize
 pub fn surgeist_bindings_js::Process::release_managed_object(&mut self, object: surgeist_bindings_js::ManagedObject) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub struct surgeist_bindings_js::Realm(_)
 pub struct surgeist_bindings_js::RealmAuthority

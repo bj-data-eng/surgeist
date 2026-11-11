@@ -74,6 +74,7 @@ pub(crate) trait Engine {
     ) -> Result<(), Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
     fn memory_pressure(&mut self);
+    fn realm_storage_bytes(&self) -> usize;
     fn managed_object_storage_bytes(&self) -> usize;
     fn release_managed_object(&mut self, holder: Root) -> Result<(), Error>;
     fn reap(&mut self);

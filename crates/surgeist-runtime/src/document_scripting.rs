@@ -14,8 +14,8 @@ use surgeist_bindings_js::{
 use surgeist_css::{query::media::CssMediaScripting, serialization::CssSerializationError};
 use surgeist_dom::{
     DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
-    DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
-    DomSnapshot,
+    DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedGlobalId,
+    DomHostedRuntimeRetention, DomSnapshot,
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
@@ -55,6 +55,8 @@ pub enum DocumentScriptNativeError {
     SourceAccess,
     /// The native Comment's creation Global is unavailable in this attachment.
     CreationGlobalUnavailable,
+    /// The exact native Global already has a creation realm.
+    CreationRealmAlreadyRegistered,
     /// A previously admitted projected node lost its managed pin record.
     ProjectionCustody,
     /// The result cannot be represented in the supported service profile.
@@ -469,6 +471,7 @@ impl PreparedDocumentScriptHost {
             process,
             realm,
             comments: projection::ProjectedComments::default(),
+            creations: CreationRealms::default(),
             retained_bytes: bytes,
             _hook_backing: hook_backing,
         })
@@ -490,12 +493,49 @@ impl DocumentScriptPermit {
     }
 }
 
+#[derive(Default)]
+struct CreationRealms(Option<Box<CreationRealm>>);
+
+impl CreationRealms {
+    fn find<E>(
+        &self,
+        global: DomHostedGlobalId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&Realm>, E> {
+        let mut entry = self.0.as_deref();
+        while let Some(record) = entry {
+            step()?;
+            if record.global == global {
+                return Ok(Some(&record.realm));
+            }
+            entry = record.next.as_deref();
+        }
+        Ok(None)
+    }
+}
+
+impl Drop for CreationRealms {
+    fn drop(&mut self) {
+        while let Some(mut entry) = self.0.take() {
+            self.0 = entry.next.take();
+        }
+    }
+}
+
+struct CreationRealm {
+    next: Option<Box<CreationRealm>>,
+    global: DomHostedGlobalId,
+    realm: Realm,
+    _backing: DomHostedRuntimeRetention,
+}
+
 struct ScriptEngine {
     // Close the canonical engine fact before releasing SDK handles/captures.
     registration: DomDocumentScriptRegistration,
     process: Process,
     realm: Realm,
     comments: projection::ProjectedComments,
+    creations: CreationRealms,
     retained_bytes: usize,
     _hook_backing: DomHostedRuntimeRetention,
 }
@@ -640,6 +680,72 @@ impl DocumentScriptHost {
                 Err(error.into())
             }
         }
+    }
+
+    /// Admit a creation realm for nodes originating at a live
+    /// top level in this attachment's native Session. The original attachment
+    /// remains the sole script execution entry. The creation realm stays
+    /// available for adopted nodes after their original top level retires.
+    pub fn register_node_creation_realm(
+        &mut self,
+        permit: &DocumentScriptPermit,
+        origin: DomHostedTopLevel,
+    ) -> Result<(), DocumentScriptError> {
+        self.check_permit(permit)?;
+        self.observe()?;
+        let attachment = self.attachment()?;
+        let receiving_global = attachment.target.global();
+        let engine = self
+            .engine
+            .as_mut()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let bytes = size_of::<CreationRealm>()
+            .checked_add(engine.process.realm_storage_bytes())
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let retained_bytes = engine
+            .retained_bytes
+            .checked_add(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let total = engine
+            .retained_bytes_with(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let cancel = &self.native.cancellation;
+        let backing = {
+            let mut session = self
+                .native
+                .session
+                .try_borrow_mut()
+                .map_err(|_| DocumentScriptNativeError::Busy)?;
+            let hosted = session.hosted_execution();
+            let mut dom = session.dom();
+            hosted
+                .with_script_target(&mut dom, origin, cancel, |_, _| Ok(()))
+                .map_err(DocumentScriptNativeError::from)?;
+            let registered = origin.global() == receiving_global
+                || engine
+                    .creations
+                    .find(origin.global(), || hosted.admit_script_work(&dom, cancel))
+                    .map_err(DocumentScriptNativeError::from)?
+                    .is_some();
+            if registered {
+                return Err(DocumentScriptNativeError::CreationRealmAlreadyRegistered.into());
+            }
+            if total > self.native.storage_limit {
+                return Err(DocumentScriptNativeError::StorageLimit.into());
+            }
+            hosted
+                .retain_script_payload(&mut dom, bytes, cancel)
+                .map_err(DocumentScriptNativeError::from)?
+        };
+        let realm = engine.process.execution().create_realm()?;
+        engine.creations.0 = Some(Box::new(CreationRealm {
+            next: engine.creations.0.take(),
+            global: origin.global(),
+            realm,
+            _backing: backing,
+        }));
+        engine.retained_bytes = retained_bytes;
+        Ok(())
     }
 
     /// Sample the current scripting fact for the exact native snapshot.

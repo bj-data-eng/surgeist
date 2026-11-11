@@ -985,6 +985,7 @@ fn main() {
                 native_window_css_hook_collision_preserves_the_original_session()
             }
             "conversion-revocation" => source_events::run(),
+            "creation-realms" => source_events::run_creation_realms(),
             "native-retirement" => {
                 let expired = native_read_snapshot_and_explicit_queue();
                 real_retirement_revokes_and_abandons(&expired);
@@ -1012,4 +1013,5 @@ fn main() {
     retirement_refusals_follow_actual_canonical_publication();
     native_refusal_stays_typed_and_sticky();
     source_events::run();
+    source_events::run_creation_realms();
 }

@@ -18,6 +18,7 @@ use crate::{
 pub(super) struct ActiveSource {
     request: DomSourceEventRequest,
     delegated: NodeId,
+    creation_global: DomHostedGlobalId,
     limits: DomSourceLimits,
     argument: Root,
 }
@@ -260,8 +261,8 @@ fn call_guest(
     delegated: NodeId,
     limits: DomSourceLimits,
 ) -> Result<(), Error> {
-    enum PreparedComment {
-        Pinned(usize),
+    enum PreparedPin {
+        Existing(usize),
         Funded {
             plan: projection::SlotPlan,
             watch: DomNodeRetirementWatch,
@@ -286,97 +287,137 @@ fn call_guest(
         .and_then(|bytes| bytes.checked_add(event_report_bytes()))
         .and_then(|additional| engine.retained_bytes_with(additional));
     let comments = &mut engine.comments;
-    let result = engine.process.execution().in_realm(&engine.realm, |scope| {
-        let prepare = (|| {
-            let mut session = native
-                .session
-                .try_borrow_mut()
-                .map_err(|_| DocumentScriptNativeError::Busy)?;
-            native.qualify_event(attachment, &mut session, &request)?;
-            require_delegated_comment(&session, attachment, delegated)?;
-            let mut dom = session.dom();
-            let step = || dom.raw().source_event_step(&request, &native.cancellation);
-            step()?;
-            if let Some(existing) = comments.find(delegated, || step().map_err(Into::into))? {
-                return Ok(PreparedComment::Pinned(existing));
-            }
-            if miss_bytes.is_none_or(|total| total > native.storage_limit) {
-                return Err(DocumentScriptNativeError::StorageLimit);
-            }
-            let pin_bytes = pin_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            let slot_bytes =
-                slot_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            let plan = plan.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            let bytes = pin_bytes
-                .checked_add(slot_bytes)
-                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-            let mut retained =
-                dom.raw()
-                    .retain_source_event_payload(&request, bytes, 0, &native.cancellation)?;
-            let backing = retained.split_payload(pin_bytes, 0)?;
-            let slots_backing = (slot_bytes != 0)
-                .then(|| retained.split_payload(slot_bytes, 0))
-                .transpose()?;
-            let watch = comments.arm(
-                dom.raw_mut(),
-                &request,
-                delegated,
-                plan,
-                &native.cancellation,
-            )?;
-            Ok(PreparedComment::Funded {
-                plan,
-                watch,
-                backing,
-                slots_backing,
-            })
-        })();
-        let prepare = match prepare {
-            Ok(prepare) => prepare,
-            Err(error) => return refuse(scope, &attachment.failures, error),
-        };
-        let handler = scope.import(handler)?;
-        let key = match prepare {
-            PreparedComment::Pinned(key) => key,
-            PreparedComment::Funded {
+    let receiving_realm = &engine.realm;
+    let result = (|| {
+        let mut execution = engine.process.execution();
+        let (creation_global, creation_realm, prepared) =
+            execution.in_realm(receiving_realm, |scope| {
+                let prepare = (|| {
+                    let mut session = native
+                        .session
+                        .try_borrow_mut()
+                        .map_err(|_| DocumentScriptNativeError::Busy)?;
+                    native.qualify_event(attachment, &mut session, &request)?;
+                    let creation_global =
+                        delegated_comment_global(&session, attachment, delegated)?;
+                    let mut dom = session.dom();
+                    let step = || {
+                        dom.raw()
+                            .source_event_step(&request, &native.cancellation)
+                            .map_err(DocumentScriptNativeError::from)
+                    };
+                    let creation_realm = if creation_global == attachment.target.global() {
+                        receiving_realm
+                    } else {
+                        engine
+                            .creations
+                            .find(creation_global, step)?
+                            .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)?
+                    };
+                    step()?;
+                    if let Some(existing) = comments.find(delegated, step)? {
+                        return Ok((
+                            creation_global,
+                            creation_realm,
+                            PreparedPin::Existing(existing),
+                        ));
+                    }
+                    if miss_bytes.is_none_or(|total| total > native.storage_limit) {
+                        return Err(DocumentScriptNativeError::StorageLimit);
+                    }
+                    let pin_bytes =
+                        pin_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let slot_bytes =
+                        slot_bytes.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let plan = plan.ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let bytes = pin_bytes
+                        .checked_add(slot_bytes)
+                        .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+                    let mut retained = dom.raw().retain_source_event_payload(
+                        &request,
+                        bytes,
+                        0,
+                        &native.cancellation,
+                    )?;
+                    let backing = retained.split_payload(pin_bytes, 0)?;
+                    let slots_backing = (slot_bytes != 0)
+                        .then(|| retained.split_payload(slot_bytes, 0))
+                        .transpose()?;
+                    let watch = comments.arm(
+                        dom.raw_mut(),
+                        &request,
+                        delegated,
+                        plan,
+                        &native.cancellation,
+                    )?;
+                    Ok((
+                        creation_global,
+                        creation_realm,
+                        PreparedPin::Funded {
+                            plan,
+                            watch,
+                            backing,
+                            slots_backing,
+                        },
+                    ))
+                })();
+                let prepared = match prepare {
+                    Ok(prepared) => prepared,
+                    Err(error) => return refuse(scope, &attachment.failures, error),
+                };
+                scope.import(handler)?;
+                Ok(prepared)
+            })?;
+
+        let key = match prepared {
+            PreparedPin::Existing(key) => key,
+            PreparedPin::Funded {
                 plan,
                 watch,
                 backing,
                 slots_backing,
             } => {
                 if let Err(error) = comments.grow(plan, slots_backing) {
-                    return refuse(scope, &attachment.failures, error.into());
+                    return execution.in_realm(receiving_realm, |scope| {
+                        refuse(scope, &attachment.failures, error.into())
+                    });
                 }
                 let Some(vacant) = comments.vacant(plan.key) else {
-                    return refuse(
-                        scope,
-                        &attachment.failures,
-                        DocumentScriptNativeError::ProjectionCustody,
-                    );
+                    return execution.in_realm(receiving_realm, |scope| {
+                        refuse(
+                            scope,
+                            &attachment.failures,
+                            DocumentScriptNativeError::ProjectionCustody,
+                        )
+                    });
                 };
-                let object = scope.managed_object()?;
+                let object = execution.in_realm(creation_realm, |scope| scope.managed_object())?;
                 vacant.install(delegated, object, watch, backing);
                 plan.key
             }
         };
-        let Some(object) = comments.object(key) else {
-            return refuse(
-                scope,
-                &attachment.failures,
-                DocumentScriptNativeError::ProjectionCustody,
-            );
-        };
-        let argument = scope.open_managed_object(object)?;
-        native.active_source.set(Some(ActiveSource {
-            request,
-            delegated,
-            limits,
-            argument: scope.retain(&argument),
-        }));
-        let receiver = scope.primitive(Primitive::Undefined)?;
-        scope.call(&handler, &receiver, &[argument])?;
-        Ok(())
-    });
+        execution.in_realm(receiving_realm, |scope| {
+            let handler = scope.import(handler)?;
+            let Some(object) = comments.object(key) else {
+                return refuse(
+                    scope,
+                    &attachment.failures,
+                    DocumentScriptNativeError::ProjectionCustody,
+                );
+            };
+            let argument = scope.open_managed_object(object)?;
+            native.active_source.set(Some(ActiveSource {
+                request,
+                delegated,
+                creation_global,
+                limits,
+                argument: scope.retain(&argument),
+            }));
+            let receiver = scope.primitive(Primitive::Undefined)?;
+            scope.call(&handler, &receiver, &[argument])?;
+            Ok(())
+        })
+    })();
     drop(active);
     engine.finish_projection_cleanup(&attachment.realm);
     result
@@ -507,11 +548,11 @@ pub(super) fn detach_callback(
     }
 }
 
-fn require_delegated_comment(
+fn delegated_comment_global(
     session: &DomSession,
     attachment: &Attachment,
     delegated: NodeId,
-) -> Result<(), DocumentScriptNativeError> {
+) -> Result<DomHostedGlobalId, DocumentScriptNativeError> {
     let snapshot = session.snapshot();
     let node = snapshot.node(delegated)?;
     if !matches!(node.kind(), DomNodeKind::Comment(_))
@@ -519,14 +560,10 @@ fn require_delegated_comment(
     {
         return Err(DocumentScriptNativeError::SourceAccess);
     }
-    if snapshot
+    snapshot
         .relevant_global(delegated)
         .map_err(DomHostedRuntimeError::Dom)?
-        != Some(attachment.target.global())
-    {
-        return Err(DocumentScriptNativeError::CreationGlobalUnavailable);
-    }
-    Ok(())
+        .ok_or(DocumentScriptNativeError::CreationGlobalUnavailable)
 }
 
 fn finish_detach_conversion(
@@ -546,8 +583,13 @@ fn finish_detach_conversion(
         if !should_detach {
             return Ok(None);
         }
-        require_delegated_comment(&session, attachment, active.delegated)?;
-        let execution = session.source_execution_scope(attachment.target.host(), cancel)?;
+        if delegated_comment_global(&session, attachment, active.delegated)?
+            != active.creation_global
+        {
+            return Err(DocumentScriptNativeError::CreationGlobalUnavailable);
+        }
+        // The parent request authenticates the receiving Document. Native
+        // detach captures its own creation provenance from the exact Comment.
         let mut source = session.source_execution();
         Ok(Some(source.apply(
             &mut session.dom(),
@@ -555,7 +597,7 @@ fn finish_detach_conversion(
             active.limits,
             &mut DomSourceServices {
                 meta: None,
-                execution_scope: Some(&execution),
+                execution_scope: None,
                 style_policy: &mut |_| None,
                 url: None,
             },

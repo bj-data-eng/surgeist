@@ -173,6 +173,12 @@ impl Process {
         self.engine.owner_state().cleanup_status()
     }
 
+    /// Requested Rust identity and context records for one realm, excluding
+    /// allocator and SDK storage. Admit this before creating a realm.
+    pub fn realm_storage_bytes(&self) -> usize {
+        self.engine.realm_storage_bytes()
+    }
+
     /// Requested Rust root record backing for one managed object, excluding
     /// allocator and SDK storage. Admit this before allocating a holder.
     pub fn managed_object_storage_bytes(&self) -> usize {

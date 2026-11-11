@@ -442,6 +442,12 @@ impl super::Engine for Engine {
             .retain(|_, entry| entry.identity.strong_count() != 0);
     }
 
+    fn realm_storage_bytes(&self) -> usize {
+        std::mem::size_of::<RealmIdentity>()
+            + std::mem::size_of::<(u64, ContextEntry)>()
+            + std::mem::size_of::<RealmKey>()
+    }
+
     fn managed_object_storage_bytes(&self) -> usize {
         std::mem::size_of::<RootIdentity>()
             + std::mem::size_of::<RootEntry>()
