@@ -1262,6 +1262,7 @@ mod accounting_tests {
         identity: crate::backend::DeviceSlotIdentity,
         generation: Generation,
         cpu: CpuAccount,
+        renderer_cpu: crate::accounting::RendererCpu,
         keys: crate::pass::RuntimePassCacheKeys,
     }
 
@@ -1329,6 +1330,7 @@ mod accounting_tests {
                 identity,
                 generation,
                 cpu: cpu.at(crate::RenderCpuScope::DeviceBacking),
+                renderer_cpu: cpu,
                 keys,
             }
         }
@@ -1410,6 +1412,53 @@ mod accounting_tests {
             cache.shaders.capacity(),
             cache.pipelines.capacity(),
         ]
+    }
+
+    fn capacity_bytes([samplers, layouts, shaders, pipelines]: [usize; 4]) -> u64 {
+        use std::mem::size_of;
+
+        (samplers * size_of::<(SamplerKey, OwnedGpu<wgpu::Sampler>)>()
+            + layouts * size_of::<(BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>)>()
+            + shaders * size_of::<(ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>)>()
+            + pipelines * size_of::<(RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>)>())
+            as u64
+    }
+
+    #[test]
+    fn pass_cache_accounts_provisional_and_committed_usable_capacity() {
+        let mut fixture = CheckedCorePassFixture::new();
+        let owner = fixture.renderer_cpu.clone();
+        let live = || {
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes)
+        };
+        let opening = live();
+        let mut cache = fixture.empty_cache();
+        let update = fixture.update(&cache);
+        let provisional = capacity_bytes([
+            update.samplers.capacity(),
+            update.layouts.capacity(),
+            update.shaders.capacity(),
+            update.pipelines.capacity(),
+        ]);
+        assert!(provisional > 0);
+        assert_eq!(live() - opening, provisional);
+
+        let account = Account::for_test();
+        let PassCacheCommitPreparation::Ready(ready) = update.prepare_commit(&mut cache, &account)
+        else {
+            panic!("prepared cache must reserve its destination");
+        };
+        let committed = capacity_bytes(cache_capacity(ready.cache));
+        assert_eq!(live() - opening, provisional + committed);
+        ready.commit();
+        assert_eq!(cache_entries(&cache), [1; 4]);
+        assert_eq!(live() - opening, committed);
+        drop(cache);
+        assert_eq!(live(), opening);
     }
 
     fn measure_readiness(
