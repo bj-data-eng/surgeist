@@ -744,6 +744,20 @@ where
         subgrid_report,
         report,
     } = initialized_tracks;
+    if input.requires_fixed_grid_tracks()
+        && !column_tracks
+            .iter()
+            .chain(&row_tracks)
+            .all(TrackSizingOf::is_fixed_without_basis)
+    {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
+                crate::RootContextMismatch::WritingMode,
+            )),
+        ));
+    }
     debug_assert_eq!(subgrid_report.items.len(), tree.child_count(node));
     let gap = context.gap;
     let lines = &context.lines;
