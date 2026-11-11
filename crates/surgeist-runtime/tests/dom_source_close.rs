@@ -866,7 +866,7 @@ fn hosted_dialog_toggle_and_close_keep_original_creation_across_retained_deliver
         destination.document().node().into(),
         destination.global().into(),
     ];
-    for pair in context.delivered.chunks_exact(2) {
+    for pair in context.delivered.as_chunks::<2>().0 {
         assert_eq!(pair[0].current, Some(destination.document().node().into()));
         assert_eq!(pair[1].current, Some(subject.into()));
         for observation in pair {

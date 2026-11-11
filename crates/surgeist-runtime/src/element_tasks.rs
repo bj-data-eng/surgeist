@@ -1341,26 +1341,25 @@ impl ElementTaskState {
                 .event_storage
                 .clone();
             let backing = crate::dom_event::EventBodyCustody::element(&mut retained, storage)?;
+            let creation = native_task
+                .map(|task| task.sample_event_creation(dom, cancel))
+                .transpose()
+                .map_err(DomElementTaskRuntimeError::Hosted)?;
             task.event = Some(match value {
-                DomElementTask::DetailsToggle(details) => {
-                    let creation = native_task
-                        .map(|task| task.sample_event_creation(dom, cancel))
-                        .transpose()
-                        .map_err(DomElementTaskRuntimeError::Hosted)?;
-                    NativeDomEvent::details_toggle(
-                        value.id().target(),
-                        details.event(),
-                        creation,
-                        backing,
-                    )
-                }
+                DomElementTask::DetailsToggle(details) => NativeDomEvent::details_toggle(
+                    value.id().target(),
+                    details.event(),
+                    creation,
+                    backing,
+                ),
                 DomElementTask::DialogClose(_) => {
-                    NativeDomEvent::dialog_close(value.id().target(), backing)
+                    NativeDomEvent::dialog_close(value.id().target(), creation, backing)
                 }
                 DomElementTask::DialogToggle(dialog) => NativeDomEvent::dialog_toggle(
                     value.id().target(),
                     dialog.old_state(),
                     dialog.new_state(),
+                    creation,
                     backing,
                 ),
             });

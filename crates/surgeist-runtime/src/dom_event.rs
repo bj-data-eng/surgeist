@@ -27,6 +27,7 @@
 //! Unwinding callbacks are reported alongside ordinary callback failures and
 //! later listeners continue. With panic=abort, Rust terminates the process.
 
+use crate::dom_lifecycle::EventCreation;
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
@@ -1654,10 +1655,7 @@ enum EventData {
     DialogCancel {
         cancelable: bool,
     },
-    DetailsToggle {
-        payload: DomToggleEvent,
-        creation: Option<crate::dom_lifecycle::EventCreation>,
-    },
+    DetailsToggle(DomToggleEvent),
     DialogToggle(DomToggleEvent),
     DialogBeforeToggle {
         payload: DomToggleEvent,
@@ -2187,22 +2185,24 @@ fn snapshot_formation_bytes(limits: DomEventDispatchLimits) -> Option<usize> {
 }
 
 impl EventInvocationOwner {
-    fn new(original: NodeId, data: EventData, backing: EventBodyCustody) -> Self {
-        let (cause, toggle, cancelable, creation) = match data {
-            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false, None),
-            EventData::StyleError => (NativeEventCause::StyleError, None, false, None),
-            EventData::DialogClose => (NativeEventCause::DialogClose, None, false, None),
+    fn new(
+        original: NodeId,
+        data: EventData,
+        creation: Option<EventCreation>,
+        backing: EventBodyCustody,
+    ) -> Self {
+        let (cause, toggle, cancelable) = match data {
+            EventData::StyleLoad => (NativeEventCause::StyleLoad, None, false),
+            EventData::StyleError => (NativeEventCause::StyleError, None, false),
+            EventData::DialogClose => (NativeEventCause::DialogClose, None, false),
             EventData::DialogCancel { cancelable } => {
-                (NativeEventCause::DialogCancel, None, cancelable, None)
+                (NativeEventCause::DialogCancel, None, cancelable)
             }
-            EventData::DetailsToggle { payload, creation } => (
-                NativeEventCause::DetailsToggle,
-                Some(payload),
-                false,
-                creation,
-            ),
+            EventData::DetailsToggle(payload) => {
+                (NativeEventCause::DetailsToggle, Some(payload), false)
+            }
             EventData::DialogToggle(payload) => {
-                (NativeEventCause::DialogToggle, Some(payload), false, None)
+                (NativeEventCause::DialogToggle, Some(payload), false)
             }
             EventData::DialogBeforeToggle {
                 payload,
@@ -2211,7 +2211,6 @@ impl EventInvocationOwner {
                 NativeEventCause::DialogBeforeToggle,
                 Some(payload),
                 cancelable,
-                None,
             ),
         };
         let event = NativeDomEvent(
@@ -2224,7 +2223,7 @@ impl EventInvocationOwner {
                     composed: false,
                 }),
                 trusted: Cell::new(true),
-                creation: creation.map(crate::dom_lifecycle::EventCreation::into_observation),
+                creation: creation.map(EventCreation::into_observation),
                 toggle,
                 storage: backing.storage,
                 target: RefCell::new(None),
@@ -2478,11 +2477,11 @@ impl NativeDomEvent {
     }
     /// Construct the load event for an actual owning Style completion operation.
     pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::StyleLoad, backing)
+        EventInvocationOwner::new(target, EventData::StyleLoad, None, backing)
     }
     /// Construct the error event for an actual owning Style completion operation.
     pub(crate) fn style_error(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::StyleError, backing)
+        EventInvocationOwner::new(target, EventData::StyleError, None, backing)
     }
     /// The actual Details task owner supplies its exact queued/coalesced data.
     /// The selected HTML firing clause supplies no source Element. Equal states
@@ -2490,18 +2489,16 @@ impl NativeDomEvent {
     pub(crate) fn details_toggle(
         target: NodeId,
         payload: surgeist_html::elements::details::HtmlDetailsToggleEvent,
-        creation: Option<crate::dom_lifecycle::EventCreation>,
+        creation: Option<EventCreation>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
             target,
-            EventData::DetailsToggle {
-                payload: DomToggleEvent {
-                    old_state: payload.old_state().as_str(),
-                    new_state: payload.new_state().as_str(),
-                },
-                creation,
-            },
+            EventData::DetailsToggle(DomToggleEvent {
+                old_state: payload.old_state().as_str(),
+                new_state: payload.new_state().as_str(),
+            }),
+            creation,
             backing,
         )
     }
@@ -2511,11 +2508,20 @@ impl NativeDomEvent {
         cancelable: bool,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::DialogCancel { cancelable }, backing)
+        EventInvocationOwner::new(
+            target,
+            EventData::DialogCancel { cancelable },
+            None,
+            backing,
+        )
     }
 
-    pub(crate) fn dialog_close(target: NodeId, backing: EventBodyCustody) -> EventInvocationOwner {
-        EventInvocationOwner::new(target, EventData::DialogClose, backing)
+    pub(crate) fn dialog_close(
+        target: NodeId,
+        creation: Option<EventCreation>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(target, EventData::DialogClose, creation, backing)
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.
@@ -2523,6 +2529,7 @@ impl NativeDomEvent {
         target: NodeId,
         old: surgeist_html::elements::dialog::HtmlDialogState,
         new: surgeist_html::elements::dialog::HtmlDialogState,
+        creation: Option<EventCreation>,
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(
@@ -2531,6 +2538,7 @@ impl NativeDomEvent {
                 old_state: old.as_str(),
                 new_state: new.as_str(),
             }),
+            creation,
             backing,
         )
     }
@@ -2553,6 +2561,7 @@ impl NativeDomEvent {
                 },
                 cancelable,
             },
+            None,
             backing,
         )
     }

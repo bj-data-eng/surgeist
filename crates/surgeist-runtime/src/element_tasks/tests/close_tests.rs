@@ -135,6 +135,80 @@ fn close_queue(
     (session, subject, queue)
 }
 #[test]
+fn never_hosted_dialog_tasks_deliver_with_unavailable_creation_timing() {
+    let (mut session, subject, request) = close_queue(true);
+    assert_eq!(session.snapshot().relevant_global(subject).unwrap(), None);
+    let runtime = session.element_task_execution();
+    {
+        let mut dom = session.dom();
+        let mut lease = dom
+            .resume_source_edit(request.operation(), source_limits(), &cancel())
+            .unwrap();
+        runtime
+            .queue_dialog(&mut lease, &request, &cancel())
+            .unwrap();
+        assert!(matches!(
+            lease.advance(&cancel()).unwrap(),
+            surgeist_dom::DomSourceProgress::Complete(_)
+        ));
+    }
+    let mut context = context(&mut session);
+    let mut registry = registry();
+    let observed = Rc::new(Cell::new(None));
+    for (source, event_type) in [
+        (
+            DomElementTaskSourceKind::UserInteraction,
+            DomEventType::CLOSE,
+        ),
+        (
+            DomElementTaskSourceKind::DomManipulation,
+            DomEventType::TOGGLE,
+        ),
+    ] {
+        let queued = runtime.pending_task(source, 0).unwrap().unwrap();
+        assert_eq!(queued.queue_association(), None);
+        let listener = observed.clone();
+        registry
+            .add_listener(
+                &mut session.dom(),
+                subject,
+                event_type.clone(),
+                DomEventCallback::new(move |_, _, _, event| {
+                    listener.set(Some((event.creation().copied(), event.time_stamp())));
+                    Ok(())
+                }),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        let DomElementTaskProgress::Complete { task, receipt, .. } =
+            DomElementTaskRuntime::run_next(
+                &mut session.dom(),
+                source,
+                &mut registry,
+                &mut context,
+                DomElementTaskRunLimits {
+                    dispatch: dispatch_limits(),
+                    source: source_limits(),
+                },
+                &cancel(),
+            )
+            .unwrap()
+        else {
+            panic!("the original never-hosted Dialog task must deliver");
+        };
+        assert_eq!(task, queued);
+        assert_eq!(receipt.event_type(), event_type);
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.failures().is_empty());
+        assert_eq!(
+            observed.take(),
+            Some((None, Err(crate::DomEventTimestampUnavailable)))
+        );
+    }
+    assert_eq!(runtime.pending_total_tasks().unwrap(), 0);
+}
+
+#[test]
 fn close_reserves_two_original_task_serials_before_its_first_queue_effect() {
     for remaining in [1_u64, 2] {
         let (mut session, subject, request) = close_queue(false);

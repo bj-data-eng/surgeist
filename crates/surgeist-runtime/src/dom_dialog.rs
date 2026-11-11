@@ -293,6 +293,7 @@ impl State {
                         request.subject(),
                         payload.old_state(),
                         payload.new_state(),
+                        None,
                         backing,
                     )
                 }
@@ -300,7 +301,7 @@ impl State {
                     NativeDomEvent::dialog_cancel(request.subject(), request.cancelable(), backing)
                 }
                 surgeist_dom::DomSourceEventKind::Close => {
-                    NativeDomEvent::dialog_close(request.subject(), backing)
+                    NativeDomEvent::dialog_close(request.subject(), None, backing)
                 }
             },
             phase: Phase::Ready,
