@@ -61,9 +61,13 @@ fn surgeist_blend_set_sat(color: vec3<f32>, saturation: f32) -> vec3<f32> {
     let minimum = min(min(color.r, color.g), color.b);
     let maximum = max(max(color.r, color.g), color.b);
     let span = maximum - minimum;
-    let chromatic = span > 0.0;
-    let divisor = select(1.0, span, chromatic);
+    let chromatic = vec3<bool>(span > 0.0);
+    let at_minimum = color == vec3<f32>(minimum);
+    let at_maximum = color == vec3<f32>(maximum);
+    let interior = chromatic & !at_minimum & !at_maximum;
+    // Extremum channels have exact values even when the span is subnormal.
+    let divisor = select(vec3<f32>(1.0), vec3<f32>(span), interior);
     let scaled = (color - minimum) * saturation / divisor;
-    let result = select(scaled, vec3<f32>(saturation), color == vec3<f32>(maximum));
-    return select(vec3<f32>(0.0), result, vec3<bool>(chromatic));
+    let endpoint = select(vec3<f32>(0.0), vec3<f32>(saturation), at_maximum & chromatic);
+    return select(endpoint, scaled, interior);
 }
