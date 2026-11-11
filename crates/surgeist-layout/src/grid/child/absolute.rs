@@ -8,7 +8,7 @@ use crate::layout_math::{
     absolute_inset_alignment_offsets,
 };
 use crate::sizing::resolve::{
-    resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
+    SizeResultExt, resolve_child_preferred_size, resolve_maximum_optional, resolve_minimum_optional,
 };
 
 #[derive(Clone, Copy)]
@@ -174,25 +174,17 @@ where
         })
         .transpose_with_node(tree, child)?;
     let padding_border_size = (padding + border).sum_axes();
+    let child_owned_preferred_axis =
+        crate::flex::child_preferred_inline_axis::<Tree, M>(tree, child);
     let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
-        preferred: Size::new(
-            resolve_preferred_optional(
-                &child_style.size.width,
-                SizingAlgorithm::Positioned,
-                PhysicalAxis::Horizontal,
-                area_parent.width,
-                true,
-            )
-            .map_err(|error| sizing_resolution_error(child, error))?,
-            resolve_preferred_optional(
-                &child_style.size.height,
-                SizingAlgorithm::Positioned,
-                PhysicalAxis::Vertical,
-                area_parent.height,
-                true,
-            )
-            .map_err(|error| sizing_resolution_error(child, error))?,
-        ),
+        preferred: resolve_child_preferred_size(
+            child_style.size,
+            area_parent,
+            SizingAlgorithm::Positioned,
+            child_owned_preferred_axis,
+        )
+        .transpose_with_node(tree, child)?,
+        child_owned_preferred_axis,
         min: Size::new(
             resolve_minimum_optional(
                 &child_style.min_size.width,
@@ -255,6 +247,7 @@ where
         tree.node_input(child),
         padding_border_size,
     );
+    let stretch = used_size.automatic_stretch(stretch);
     let known = used_size
         .clamp_optional(used_size.transfer_ratio(used_size.preferred.or(stretch), remaining_ratio));
     let fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(

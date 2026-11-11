@@ -1,7 +1,5 @@
 use super::scroll::retained_child_scroll_geometry;
-use super::sizing::{
-    maximum_size, minimum_size, preferred_size, resolve_auto_optional, resolve_length_or_zero,
-};
+use super::sizing::{maximum_size, minimum_size, resolve_auto_optional, resolve_length_or_zero};
 use super::{Constants, with_block_scroll_projections};
 use crate::error::layout_child_geometry_error;
 use crate::geometry::{
@@ -14,7 +12,7 @@ use crate::layout_math::{
     absolute_stretch_fit_sizes, floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
-use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
+use crate::sizing::resolve::{EdgesResultExt, SizeResultExt, resolve_child_preferred_size};
 use crate::{
     AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
     LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
@@ -150,14 +148,17 @@ where
             )
             .transpose_with_node(tree, child)?;
         let padding_border_size = (padding + border).sum_axes();
+        let child_owned_preferred_axis =
+            crate::flex::child_preferred_inline_axis::<Tree, M>(tree, child);
         let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
-            preferred: preferred_size(
+            preferred: resolve_child_preferred_size(
                 style.common.size,
                 area_size.map(Some),
                 SizingAlgorithm::Positioned,
-                true,
+                child_owned_preferred_axis,
             )
             .transpose_with_node(tree, child)?,
+            child_owned_preferred_axis,
             min: minimum_size(
                 style.common.min_size,
                 area_size.map(Some),
@@ -225,6 +226,7 @@ where
             child_input,
             padding_border_size,
         );
+        let stretch = used_size.automatic_stretch(stretch);
         if known_size.width.is_none()
             && let Some(stretch_width) = stretch.width
         {
