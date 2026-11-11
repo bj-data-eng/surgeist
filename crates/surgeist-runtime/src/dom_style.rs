@@ -2543,9 +2543,9 @@ impl DomStyleRuntime {
                             else {
                                 return Err(DomStyleRuntimeError::Protocol);
                             };
-                            if owner.is_abandoned() {
+                            if let Some(error) = owner.terminal_dispatch_error() {
                                 return Err(DomStyleRuntimeError::Dispatch(
-                                    dispatcher.abandoned_dispatch_error(dom.raw()),
+                                    dispatcher.qualify_terminal_error(dom.raw(), error),
                                 ));
                             }
                             let formation = owner

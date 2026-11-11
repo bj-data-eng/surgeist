@@ -525,17 +525,15 @@ impl DomEventHostInvocation {
         if self.event.0.status.get() == Status::Abandoned {
             return Err(DomEventDispatchError::Abandoned);
         }
-        {
-            let dispatch = custody
-                .dispatch
-                .try_borrow()
-                .map_err(|_| DomEventDispatchError::AlreadyDispatching)?;
-            let dispatch = dispatch
-                .as_ref()
-                .ok_or(DomEventDispatchError::WrongContinuation)?;
-            if !Rc::ptr_eq(&dispatch._reservation.0, &dispatcher.owner) {
-                return Err(DomEventDispatchError::WrongContinuation);
-            }
+        let mut parked = custody
+            .dispatch
+            .try_borrow_mut()
+            .map_err(|_| DomEventDispatchError::AlreadyDispatching)?;
+        let dispatch = parked
+            .as_ref()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        if !Rc::ptr_eq(&dispatch._reservation.0, &dispatcher.owner) {
+            return Err(DomEventDispatchError::WrongContinuation);
         }
         let mut frame = custody
             .host
@@ -549,12 +547,20 @@ impl DomEventHostInvocation {
             custody.host.set(Some(frame));
             return Err(DomEventDispatchError::AlreadyCompleted);
         }
-        frame.result = Some(result);
         frame.scope.take();
         frame.running.take();
-        custody.host.set(Some(frame));
         self.event.clear_invocation();
-        self.event.0.status.set(Status::Retained);
+        match result {
+            HostResult::Returned(result) => {
+                frame.result = Some(result);
+                custody.host.set(Some(frame));
+                self.event.0.status.set(Status::Retained);
+            }
+            HostResult::Refused(error) => {
+                self.event.0.status.set(Status::HostRefused(error));
+                drop(parked.take());
+            }
+        }
         self.reported = true;
         Ok(())
     }
@@ -611,7 +617,7 @@ struct HostFrame {
     sequence: usize,
     registration: DomEventRegistrationId,
     current_target: DomEventTarget,
-    result: Option<HostResult>,
+    result: Option<Result<(), DomEventCallbackError>>,
     running: Option<RunningReservation>,
     scope: Option<surgeist_dom::DomSourceEventDispatchGuard>,
 }
@@ -896,11 +902,12 @@ impl<C> DomEventDispatcher<C> {
         }
     }
 
-    pub(crate) fn abandoned_dispatch_error(&self, dom: &Dom) -> DomEventDispatchError {
-        self.association
-            .validate(dom)
-            .err()
-            .unwrap_or(DomEventDispatchError::Abandoned)
+    pub(crate) fn qualify_terminal_error(
+        &self,
+        dom: &Dom,
+        error: DomEventDispatchError,
+    ) -> DomEventDispatchError {
+        self.association.validate(dom).err().unwrap_or(error)
     }
 
     /// Validate and admit the entire path before the first callback.
@@ -922,6 +929,7 @@ impl<C> DomEventDispatcher<C> {
             Status::Ready => (),
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
             Status::Abandoned => return Err(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             _ => return Err(DomEventDispatchError::AlreadyDispatching),
         }
         self.admit_running()?;
@@ -1035,9 +1043,7 @@ impl<C> DomEventDispatcher<C> {
             if self.pending[pending]
                 .upgrade()
                 .and_then(|custody| custody.event())
-                .is_some_and(|event| {
-                    !matches!(event.0.status.get(), Status::Complete | Status::Abandoned)
-                })
+                .is_some_and(|event| !event.0.status.get().is_terminal())
             {
                 pending += 1;
             } else {
@@ -1085,6 +1091,7 @@ impl<C> DomEventDispatcher<C> {
             }
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
             Status::Abandoned => return Err(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             Status::Ready => return Err(DomEventDispatchError::WrongContinuation),
             Status::Retained => (),
         }
@@ -1132,19 +1139,14 @@ impl<C> DomEventDispatcher<C> {
         }
         if let Some(frame) = custody.host.take() {
             match frame.result {
-                Some(HostResult::Returned(Err(error))) => {
+                Some(Err(error)) => {
                     dispatch.failures.push(DomEventListenerFailure {
                         registration: frame.registration,
                         current_target: frame.current_target,
                         kind: DomEventListenerFailureKind::Reported(error),
                     });
                 }
-                Some(HostResult::Returned(Ok(()))) => (),
-                Some(HostResult::Refused(error)) => {
-                    custody.host.set(Some(frame));
-                    dispatch.release_unused_funding();
-                    return Err(DomEventDispatchError::HostRefused(error));
-                }
+                Some(Ok(())) => (),
                 None => {
                     custody.host.set(Some(frame));
                     dispatch.release_unused_funding();
@@ -1468,7 +1470,7 @@ impl<C> Drop for DomEventDispatcher<C> {
         for entry in &self.pending {
             if let Some(custody) = entry.upgrade() {
                 if let Some(event) = custody.event()
-                    && event.0.status.get() != Status::Complete
+                    && !event.0.status.get().is_terminal()
                 {
                     event.abandon();
                 }
@@ -1490,8 +1492,18 @@ enum Status {
     Ready,
     Running,
     HostPending,
+    HostRefused(DomEventHostError),
     Retained,
     Complete,
+}
+
+impl Status {
+    fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Complete | Self::Abandoned | Self::HostRefused(_)
+        )
+    }
 }
 /// Immutable ToggleEvent data projected from the actual HTML producer states.
 /// No public constructor or arbitrary state/source injection is offered.
@@ -2146,8 +2158,12 @@ impl NativeDomEvent {
     pub(crate) fn has_active_dispatch(&self) -> bool {
         matches!(self.0.status.get(), Status::Running | Status::HostPending)
     }
-    pub(crate) fn is_abandoned(&self) -> bool {
-        self.0.status.get() == Status::Abandoned
+    pub(crate) fn terminal_dispatch_error(&self) -> Option<DomEventDispatchError> {
+        match self.0.status.get() {
+            Status::Abandoned => Some(DomEventDispatchError::Abandoned),
+            Status::HostRefused(error) => Some(DomEventDispatchError::HostRefused(error)),
+            _ => None,
+        }
     }
     /// Construct the load event for an actual owning Style completion operation.
     pub(crate) fn style_load(target: NodeId, backing: EventBodyCustody) -> NativeDomEventOwner {

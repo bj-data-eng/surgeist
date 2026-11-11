@@ -264,8 +264,9 @@ can continue. Foreign completion leaves the original token and scope untouched;
 repeat completion is rejected even after a registration slot has been reused.
 
 Use `invocation.refuse(&dispatcher, error)` for host refusal. The event
-retains this first host failure and cannot issue a successful receipt or run
-later listeners; it is separate from guest exception reporting. Dropping an
+retains this first host failure even after its dispatcher is gone. Refusal
+releases the parked dispatch and prevents a successful receipt or later listeners.
+This outcome is separate from guest exception reporting. Dropping an
 unreported token terminally abandons event delivery, clears active observation
 and closes Source reentry without attesting success. Its original unacknowledged
 Source tail remains pending. Graceful Session shutdown returns the whole pending

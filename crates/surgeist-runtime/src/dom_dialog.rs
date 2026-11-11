@@ -560,9 +560,9 @@ impl SourceEventRuntime {
                 state.step(1, cancel)?;
                 let formation = {
                     let row = job.borrow();
-                    if row.event.is_abandoned() {
+                    if let Some(error) = row.event.terminal_dispatch_error() {
                         return Err(DomSourceEventRuntimeError::Dispatch(
-                            dispatcher.abandoned_dispatch_error(dom.raw()),
+                            dispatcher.qualify_terminal_error(dom.raw(), error),
                         ));
                     }
                     if row.event.has_active_dispatch() {

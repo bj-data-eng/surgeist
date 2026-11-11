@@ -1296,9 +1296,9 @@ impl ElementTaskState {
             );
         }
         let (formation, fixed) = if let Some(event) = &self.tasks[index].event {
-            if event.is_abandoned() {
+            if let Some(error) = event.terminal_dispatch_error() {
                 return Err(DomElementTaskRuntimeError::Dispatch(
-                    dispatcher.abandoned_dispatch_error(dom.raw()),
+                    dispatcher.qualify_terminal_error(dom.raw(), error),
                 ));
             }
             (event.dispatch_formation(limits.dispatch), 0)
