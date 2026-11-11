@@ -11925,6 +11925,34 @@ fn renderer_public_dispatch_validates_direct_and_masked_composition_routes() {
 }
 
 #[test]
+fn gpu_resolved_mask_stack_preserves_fractional_mask_sampling() {
+    use crate::{ResolvedMaskLayer, ResolvedMaskSource};
+
+    let size = Size::new(1.0, 1.0);
+    let bounds = Rect::new(0.25, 0.0, 0.5, 1.0);
+    let image = Image::from_rgba(size, vec![255; 4]).unwrap();
+    let mask = ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+    let stack = [ResolvedMaskLayer {
+        source: ResolvedMaskSource::Alpha(mask.clone()),
+        composite: MaskCompositeMode::Intersect,
+    }];
+    let target = |scene: &mut Scene| {
+        scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+    };
+    let mut single = Scene::new();
+    single.layer(Layer::new().with_resolved_alpha_mask(mask), target);
+    let mut grouped = Scene::new();
+    grouped.masked_group(&stack, target);
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface = pollster::block_on(renderer.create_headless(size, 1.0)).unwrap();
+    for (name, scene) in [("single", single), ("stack", grouped)] {
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+        let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_eq!(pixel_alpha(&output, 0, 0), 255, "{name}");
+    }
+}
+
+#[test]
 fn gpu_resolved_mask_stack_composites_coverage_bottom_up_in_isolation() {
     use crate::{
         MaskLuminanceSpace, ResolvedLayerLuminanceMask, ResolvedMaskLayer, ResolvedMaskSource,
