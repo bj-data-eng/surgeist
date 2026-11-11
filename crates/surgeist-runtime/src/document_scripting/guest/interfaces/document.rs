@@ -8,6 +8,7 @@ use surgeist_html::values::DocumentString;
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
 mod character_data;
+mod element;
 mod fragment;
 mod ordinary;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
@@ -18,13 +19,14 @@ pub(in crate::document_scripting::guest) enum GuestNode {
     Fragment(NodeId),
     Text(NodeId),
     Comment(NodeId),
+    Element(NodeId),
 }
 
 impl GuestNode {
     pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
         match self {
             Self::Document(id) => id.node(),
-            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) => id,
+            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) | Self::Element(id) => id,
         }
     }
 
@@ -34,6 +36,7 @@ impl GuestNode {
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
+            (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),
             _ => Err(DocumentScriptNativeError::ProjectionCustody),
         }
     }
@@ -68,6 +71,7 @@ pub(super) struct DocumentBindings {
     documents: RefCell<Option<Box<DocumentPin>>>,
     fragment: fragment::FragmentBindings,
     character_data: character_data::CharacterBindings,
+    element: element::ElementBindings,
     ordinary: ordinary::OrdinaryBindings,
 }
 
@@ -271,6 +275,14 @@ impl DocumentBindings {
             capture,
             fund,
         )?;
+        let element = element::ElementBindings::install(
+            scope,
+            &node,
+            &node_constructor,
+            &prototype,
+            capture,
+            fund,
+        )?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -297,6 +309,7 @@ impl DocumentBindings {
             documents: RefCell::new(None),
             fragment,
             character_data,
+            element,
             ordinary: ordinary::OrdinaryBindings::new(inbox),
         })
     }
