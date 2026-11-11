@@ -162,6 +162,10 @@ impl DomHostedSource {
         check_cancel(cancel)?;
         dom.validate_hosted_source(self)?;
         dom.require_source_idle()?;
+        // Hosted creation owns this slot before publishing a snapshot marker.
+        if dom.hosted_operations.synchronous().is_some() {
+            return Err(DomHostedError::IncompleteOperation.into());
+        }
         if global.source() != self.id() {
             return Err(DomHostedError::ForeignSource.into());
         }
