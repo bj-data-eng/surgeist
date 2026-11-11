@@ -3567,6 +3567,10 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
         item.unresolved_margin
             .map(|margin| margin.unwrap_or(S::ZERO)),
     );
+    // Normalizing a natural lane size also replaces any stretch allocation
+    // made before the stacking alignment was selected.
+    let natural_stacking_size =
+        |margin| (!child_owns_ratio_cross).then(|| (lane_axis_margin_box - margin).max(S::ZERO));
     match lane_axis.logical_axis() {
         LogicalAxis::Inline => {
             let alignment = resolve_grid_item_normal_alignment(
@@ -3587,10 +3591,8 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 || margins.inline_start.is_none()
                 || margins.inline_end.is_none())
                 && logical_style_size.inline.is_auto()
-                && !child_owns_ratio_cross
             {
-                logical_known.inline =
-                    Some((lane_axis_margin_box - logical_margin.inline_sum()).max(S::ZERO));
+                logical_known.inline = natural_stacking_size(logical_margin.inline_sum());
             }
             item.justify_self = alignment;
         }
@@ -3613,10 +3615,8 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 || margins.block_start.is_none()
                 || margins.block_end.is_none())
                 && logical_style_size.block.is_auto()
-                && !child_owns_ratio_cross
             {
-                logical_known.block =
-                    Some((lane_axis_margin_box - logical_margin.block_sum()).max(S::ZERO));
+                logical_known.block = natural_stacking_size(logical_margin.block_sum());
             }
             item.align_self = alignment;
         }
