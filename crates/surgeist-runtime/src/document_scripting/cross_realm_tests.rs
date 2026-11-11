@@ -187,11 +187,12 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     drop(session);
     projected_comment_custody_outlives_collection_and_the_origin_realm_token();
     rejected_comment_requires_each_diagnostic_utf16_work_unit();
-    dom_exception_storage_admits_exact_and_refuses_one_byte_short();
+    window_binding_storage_admits_exact_and_refuses_one_byte_short();
 }
 
-fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
+fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
     use surgeist_bindings_js::conversion::{CleanupStatus, ConversionAccount};
+    use surgeist_css::serialization::CssomIdentifierLimits;
 
     let cancel = Arc::new(AtomicBool::new(false));
     let (session, target) = hosted_session(&cancel, 0);
@@ -202,20 +203,26 @@ fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
 
     // Independent layout oracle for the native budget. The Bindings native
     // qualification checks these account field shapes against the actual
-    // installed Rc<Account> target. The hosted budget counts requested Rust
+    // retained Rc<Account> targets. The hosted budget counts requested Rust
     // payload bytes and excludes allocator and V8 overhead.
     let account = size_of::<(Weak<()>, Arc<()>, (u64, usize), Cell<CleanupStatus>)>();
     let dom_exception = size_of::<(Rc<ConversionAccount>, DomHostedRuntimeRetention)>()
         + size_of::<ConversionAccount>()
         + size_of::<Weak<ConversionAccount>>()
         + account;
+    let escape = size_of::<(
+        ConversionAccount,
+        CssomIdentifierLimits,
+        HostFailureSlot<CssSerializationError, DomHostedRuntimeRetention>,
+        DomHostedRuntimeRetention,
+    )>() + account;
     let exact = size_of::<NativeOwner>()
         + size_of_val(&read)
         + size_of_val(&detach)
         + FailureSlot::storage_bytes()
         + SourceFailureSlot::storage_bytes()
         + DomDocumentScriptRegistration::storage_bytes()
-        + css::callback_storage_bytes::<DomHostedRuntimeRetention>()
+        + escape
         + HostFailureSlot::<CssSerializationError, DomHostedRuntimeRetention>::storage_bytes()
         + dom_exception;
     drop(read);
@@ -231,12 +238,14 @@ fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
         child_count: &child_count,
         detach_source_node_if: &detach_source_node_if,
     };
-    let native_constructor_is_live = |host: &mut DocumentScriptHost| {
+    let native_bindings_are_live = |host: &mut DocumentScriptHost| {
         let permit = host.permit().unwrap();
         host.in_document(&permit, |scope| {
-            let script: Vec<_> = "new DOMException().name".encode_utf16().collect();
+            let script = r#"new DOMException().name === "Error" && CSS.escape("0") === "\\30 ""#
+                .encode_utf16()
+                .collect::<Vec<_>>();
             let value = scope.evaluate(&script)?;
-            assert_eq!(scope.to_utf16(&value)?, [69, 114, 114, 111, 114]);
+            assert_eq!(scope.to_utf16(&value)?, [116, 114, 117, 101]);
             Ok(())
         })
         .unwrap();
@@ -247,7 +256,7 @@ fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
         .unwrap()
         .enable(target, policy, hooks())
         .unwrap();
-    native_constructor_is_live(&mut host);
+    native_bindings_are_live(&mut host);
     let session = host.stop().into_session().unwrap();
     let original = session.snapshot().stamp();
     let one_short = exact - 1;
@@ -257,10 +266,10 @@ fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
     {
         Err(refused) => refused,
         Ok(mut host) => {
-            native_constructor_is_live(&mut host);
+            native_bindings_are_live(&mut host);
             let charged = host.engine.as_ref().unwrap().retained_bytes;
             panic!(
-                "one-byte-short native Window published DOMException: limit={one_short}, required={exact}, charged={charged}, account={account}"
+                "one-byte-short native Window published CSS.escape and DOMException: limit={one_short}, required={exact}, charged={charged}, account={account}"
             );
         }
     };
@@ -280,7 +289,7 @@ fn dom_exception_storage_admits_exact_and_refuses_one_byte_short() {
         .enable(target, policy, hooks())
         .unwrap();
     assert_eq!(restored.engine.as_ref().unwrap().retained_bytes, exact);
-    native_constructor_is_live(&mut restored);
+    native_bindings_are_live(&mut restored);
     restored.stop().into_session().unwrap();
 }
 

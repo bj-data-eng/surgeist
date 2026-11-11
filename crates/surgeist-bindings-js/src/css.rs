@@ -87,10 +87,11 @@ impl<Storage: 'static> Escape<Storage> {
     }
 }
 
-/// Requested Rust callback target body. The host keeps its separate native
-/// failure custody funded using [`HostFailureSlot::storage_bytes`].
+/// Requested Rust callback target and retained conversion account bodies.
+/// The host keeps the separate native failure custody funded using
+/// [`HostFailureSlot::storage_bytes`].
 pub const fn callback_storage_bytes<Storage>() -> usize {
-    size_of::<Escape<Storage>>()
+    size_of::<Escape<Storage>>() + ConversionAccount::retained_body_bytes()
 }
 
 /// Installs the standard namespace in the entered, host-authenticated Window.
