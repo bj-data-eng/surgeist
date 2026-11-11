@@ -228,6 +228,48 @@ pub(super) fn dom() -> Dom {
     )
     .unwrap()
 }
+fn event_session(owner: Dom) -> crate::DomSession {
+    crate::DomSession::new(
+        owner,
+        crate::DomSessionLimits {
+            authored_events: crate::DomEventStorageLimits {
+                storage_bytes: 16_000_000,
+                work: 1_000_000,
+            },
+            source_events: crate::DomSourceEventRuntimeLimits {
+                jobs: 0,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+            },
+            style: crate::DomStyleRuntimeLimits {
+                roots: 0,
+                completions: 0,
+                reports: 0,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
+            },
+            element_tasks: crate::DomElementTaskRuntimeLimits {
+                tasks: 8,
+                storage_bytes: 1_000_000,
+                work: 100_000,
+            },
+            hosted: crate::DomHostedRuntimeLimits {
+                canonical: surgeist_dom::DomHostedLimits::new(
+                    surgeist_dom::DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
+                    1_000_000,
+                    1_000_000,
+                    100_000,
+                ),
+                tasks: 8,
+                storage_bytes: 1_000_000,
+                scratch_bytes: 1_000_000,
+                work: 100_000,
+            },
+        },
+    )
+    .unwrap()
+}
 struct Ordinary {
     dom: Dom,
     document: DocumentId,
@@ -320,6 +362,80 @@ fn recipient_refusal_after_registry_preparation_leaves_no_claim_or_index_backing
         .unwrap();
     assert!(dispatcher.remove_listener(accepted));
     assert_eq!(fixture.dom.snapshot().stamp(), stamp);
+}
+#[cfg(any(
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+))]
+#[test]
+fn direct_global_registration_admits_canonical_lookup_work_before_publication() {
+    let cancel = AtomicBool::new(false);
+    let event_type = [u16::from(b'x')];
+    let options = DomEventListenerOptions {
+        passive: Some(false),
+        ..DomEventListenerOptions::default()
+    };
+
+    for one_short in [false, true] {
+        let mut session = event_session(dom());
+        let mut hosted = session.hosted_execution();
+        let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+        let top = hosted
+            .create_top_level(&mut session.dom(), host, &cancel)
+            .unwrap();
+        let target = DomEventTarget::Global(top.global());
+        let mut dom = session.dom();
+        let mut global_steps = 0_u64;
+        let document = dom
+            .raw()
+            .dispatch_global_document_with(top.global(), &cancel, &mut || {
+                global_steps += 1;
+                Ok::<(), DomHostedError>(())
+            })
+            .unwrap();
+        assert_eq!(document, top.document());
+        assert!(global_steps > 0);
+        let before = dom.usage();
+
+        // Empty registry, explicit passive, six static type length checks
+        // and one code unit copied for the custom type.
+        let work = 7 + global_steps - u64::from(one_short);
+        let mut dispatcher = DomEventDispatcher::<()>::new(DomEventRegistryLimits {
+            registrations: 1,
+            pending_events: 1,
+            nested_dispatches: 1,
+            storage_bytes: 1_000_000,
+            work,
+        })
+        .unwrap();
+        let callback = DomEventCallback::new(|_, _, _: &mut (), _| Ok(()));
+        let registration = dispatcher.add_listener(
+            &mut dom,
+            target.clone(),
+            event_type,
+            callback.clone(),
+            options,
+        );
+        if one_short {
+            assert_eq!(
+                registration,
+                Err(DomEventDispatchError::Admission(DomEventResource::Work)),
+                "registry budget {work}, with {global_steps} canonical lookup steps"
+            );
+            assert_eq!(dom.usage(), before);
+            assert!(dispatcher.slots.is_empty());
+            let mut other = registry();
+            let accepted = other
+                .add_listener(&mut dom, target, event_type, callback, options)
+                .unwrap();
+            assert!(other.remove_listener(accepted));
+        } else {
+            assert!(dispatcher.remove_listener(registration.unwrap()));
+        }
+    }
 }
 #[derive(Debug, Eq, PartialEq)]
 struct Observation {
@@ -2383,13 +2499,9 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
 {
     use crate::{
         DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
-        DomElementTaskRuntime, DomElementTaskRuntimeLimits, DomHostedRuntimeLimits, DomSession,
-        DomSessionLimits, DomSourceEventRuntimeLimits, DomStyleRuntimeLimits,
+        DomElementTaskRuntime,
     };
-    use surgeist_dom::{
-        DomDispatchCustodyLimits, DomElementTaskSourceKind, DomHostedLimits, DomHostedRecordLimits,
-        DomSourceLimits,
-    };
+    use surgeist_dom::{DomDispatchCustodyLimits, DomElementTaskSourceKind, DomSourceLimits};
 
     struct Context {
         tasks: DomElementTaskRuntime,
@@ -2426,46 +2538,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
     batch.insert_before(&details, &document, None);
     let commit = owner.apply(batch, &cancel).unwrap();
     let target = commit.created(&details).unwrap().unwrap();
-    let mut session = DomSession::new(
-        owner,
-        DomSessionLimits {
-            authored_events: crate::DomEventStorageLimits {
-                storage_bytes: 16_000_000,
-                work: 1_000_000,
-            },
-            source_events: DomSourceEventRuntimeLimits {
-                jobs: 0,
-                storage_bytes: 1_000_000,
-                work: 100_000,
-            },
-            style: DomStyleRuntimeLimits {
-                roots: 0,
-                completions: 0,
-                reports: 0,
-                storage_bytes: 1_000_000,
-                work: 100_000,
-                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
-            },
-            element_tasks: DomElementTaskRuntimeLimits {
-                tasks: 8,
-                storage_bytes: 1_000_000,
-                work: 100_000,
-            },
-            hosted: DomHostedRuntimeLimits {
-                canonical: DomHostedLimits::new(
-                    DomHostedRecordLimits::new(8, 8, 8, 8, 8, 8, 8),
-                    1_000_000,
-                    1_000_000,
-                    100_000,
-                ),
-                tasks: 8,
-                storage_bytes: 1_000_000,
-                scratch_bytes: 1_000_000,
-                work: 100_000,
-            },
-        },
-    )
-    .unwrap();
+    let mut session = event_session(owner);
     let mut context = Context {
         tasks: session.element_task_execution(),
         calls: Vec::new(),
