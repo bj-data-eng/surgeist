@@ -388,13 +388,21 @@ fn media_text_setter_with_numeric_spelling_only_change_is_still_published() {
         let sheet = constructed(&mut store, "");
         let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
         let mut edit = batch(&store);
-        edit.set_media_text(&id, &format!("(min-width: {old})"))
-            .unwrap();
+        edit.set_media_text(
+            &id,
+            format!("(min-width: {old})").as_str(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
         store.commit(edit).unwrap();
         let before = store.snapshot();
         let mut edit = batch(&store);
         let result = edit
-            .set_media_text(&id, &format!("(min-width: {new})"))
+            .set_media_text(
+                &id,
+                format!("(min-width: {new})").as_str(),
+                &AtomicBool::new(false),
+            )
             .unwrap();
         assert!(result.changed(), "{old} -> {new}");
         let commit = store.commit(edit).unwrap();

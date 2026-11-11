@@ -98,6 +98,7 @@ impl CssomStore {
             declaration_changes: Vec::new(),
             counter_changes: Vec::new(),
             owner_updates: Vec::new(),
+            media_restorations: HashMap::new(),
             pending_preparations: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -262,6 +263,8 @@ pub struct CssomBatch {
     pub(crate) declaration_changes: Vec<CssomBlockId>,
     pub(crate) counter_changes: Vec<CssomBlockId>,
     pub(crate) owner_updates: Vec<(CssomBlockId, crate::declaration_budget::DeclarationBudget)>,
+    pub(crate) media_restorations:
+        HashMap<CssomMediaListId, crate::media_operations::MediaRestoration>,
     pub(crate) pending_preparations: Arc<AtomicUsize>,
     pub(crate) terminal_replacement: Option<CssomReplaceToken>,
 }
@@ -300,14 +303,26 @@ impl CssomBatch {
         }
         let result = operation(self).and_then(|value| {
             self.staged
-                .check_limits(&self.limits)
+                .check_limits_with_displaced_media(
+                    &self.limits,
+                    self.media_restorations
+                        .values()
+                        .filter_map(crate::media_operations::MediaRestoration::displaced),
+                )
                 .map(|()| value)
                 .map_err(E::from)
         });
         if result.is_err() {
-            self.poisoned = true;
+            self.abort_staging();
         }
         result
+    }
+    pub(crate) fn abort_staging(&mut self) {
+        self.poisoned = true;
+        self.discard_media_restorations();
+    }
+    pub(crate) fn discard_media_restorations(&mut self) {
+        self.media_restorations = HashMap::new();
     }
     pub(crate) fn affect(&mut self, id: CssomObjectId, changes: &[CssomChange]) {
         self.categories.extend(changes.iter().copied());
@@ -1024,19 +1039,14 @@ impl CssomBatch {
             return true;
         }
         self.affected.iter().any(|id| match id {
-            // Equality of CSS values ignores where they were parsed from, so a
-            // sheet, its inputs and its diagnostics also compare their provenance.
             CssomObjectId::Sheet(id) => {
-                !same_provenance(&self.staged.sheets[id].inputs, &self.base.sheets[id].inputs)
-                    || self.staged.sheets[id].owner_rule != self.base.sheets[id].owner_rule
-                    || !same_provenance(
-                        &self.staged.sheets[id].authored,
-                        &self.base.sheets[id].authored,
-                    )
-                    || !same_provenance(
-                        &self.staged.sheets[id].diagnostics,
-                        &self.base.sheets[id].diagnostics,
-                    )
+                let staged = &self.staged.sheets[id];
+                let base = &self.base.sheets[id];
+                !staged.inputs.same_metadata(&base.inputs)
+                    || staged.owner_rule != base.owner_rule
+                    || staged.media != base.media
+                    || !same_provenance(&staged.authored, &base.authored)
+                    || !same_provenance(&staged.diagnostics, &base.diagnostics)
             }
             CssomObjectId::RuleList(id) => self.staged.lists.get(id) != self.base.lists.get(id),
             CssomObjectId::Rule(id) => {
@@ -1112,7 +1122,14 @@ impl CssomBatch {
                 !same_provenance(&self.staged.maps[id].entries, &self.base.maps[id].entries)
             }
             CssomObjectId::MediaList(id) => {
-                !same_provenance(&self.staged.media.get(id), &self.base.media.get(id))
+                let staged = self.staged.media.get(id);
+                let base = self.base.media.get(id);
+                crate::media_operations::exact_media_source_differs(staged, base)
+                    || match (staged, base) {
+                        (Some(staged), Some(base)) => !staged.same_member_provenance(base),
+                        (None, None) => false,
+                        _ => true,
+                    }
             }
             CssomObjectId::SheetList(_) => self.staged.sheet_order != self.base.sheet_order,
         })

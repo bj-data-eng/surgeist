@@ -1,4 +1,5 @@
 //! Concrete extension operations preserve their native owner contracts.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
@@ -501,7 +502,9 @@ fn custom_media_query_is_typed_live_or_same_snapshot_without_evaluation() {
     };
     assert_eq!(old_list.handle(), &list);
     assert_eq!(old_list.snapshot().revision(), old.snapshot().revision());
-    let _result = list.set_media_text(&mut store, "screen,,speech").unwrap();
+    let _result = list
+        .set_media_text(&mut store, "screen,,speech", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(
         list.media_text(&store, Default::default()).unwrap(),
         "screen, not all, speech"
@@ -522,7 +525,9 @@ fn custom_media_query_is_typed_live_or_same_snapshot_without_evaluation() {
     batch.delete_sheet_rule(&sheet, 2).unwrap();
     store.commit(batch).unwrap();
     assert_eq!(rule.parent_style_sheet(&store).unwrap(), None);
-    let _result = list.set_media_text(&mut store, "").unwrap();
+    let _result = list
+        .set_media_text(&mut store, "", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(
         rule.query(&store).unwrap(),
         CustomMediaQuery::MediaList(list.clone())

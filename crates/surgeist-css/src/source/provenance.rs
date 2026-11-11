@@ -7,7 +7,8 @@
 //! fields is structural without a hand-written impl. [`same_provenance`] is the named
 //! operation that also compares them.
 
-use std::cell::Cell;
+use super::CssSourceSnapshot;
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
@@ -15,6 +16,81 @@ use std::ops::Deref;
 thread_local! {
     // Whether `Provenance` equality compares its payload on this thread.
     static COMPARING: Cell<bool> = const { Cell::new(false) };
+    static SOURCE_COMPARISON: RefCell<Option<SourceComparison>> = const { RefCell::new(None) };
+}
+
+enum SourceComparison {
+    Identity,
+    ExactPair(CssSourceSnapshot, CssSourceSnapshot),
+}
+
+struct SourceScope(Option<SourceComparison>);
+
+impl SourceScope {
+    fn enter(comparison: SourceComparison) -> Self {
+        Self(SOURCE_COMPARISON.replace(Some(comparison)))
+    }
+}
+
+impl Drop for SourceScope {
+    fn drop(&mut self) {
+        SOURCE_COMPARISON.replace(self.0.take());
+    }
+}
+
+// Called only after actual snapshot identity failed. An active scope refuses
+// all unmatched pairs without reading their normalized text.
+pub(super) fn compare_distinct_sources(
+    left: &CssSourceSnapshot,
+    right: &CssSourceSnapshot,
+) -> Option<bool> {
+    SOURCE_COMPARISON.with_borrow(|comparison| {
+        comparison.as_ref().map(|comparison| match comparison {
+            SourceComparison::Identity => false,
+            SourceComparison::ExactPair(first, second) => {
+                (left.same_snapshot(first) && right.same_snapshot(second))
+                    || (left.same_snapshot(second) && right.same_snapshot(first))
+            }
+        })
+    })
+}
+
+pub(crate) fn same_provenance_by_source_identity<T: PartialEq + ?Sized>(
+    left: &T,
+    right: &T,
+) -> bool {
+    let _sources = SourceScope::enter(SourceComparison::Identity);
+    same_provenance(left, right)
+}
+
+pub(crate) fn same_provenance_in_exact_sources<T: PartialEq + ?Sized, E>(
+    left: &T,
+    left_source: &CssSourceSnapshot,
+    right: &T,
+    right_source: &CssSourceSnapshot,
+    mut charge_unit: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    let (Some(left_units), Some(right_units)) =
+        (left_source.original_utf16(), right_source.original_utf16())
+    else {
+        return Ok(false);
+    };
+    if !std::sync::Arc::ptr_eq(left_units, right_units) {
+        if left_units.len() != right_units.len() {
+            return Ok(false);
+        }
+        for (left, right) in left_units.iter().zip(right_units.iter()) {
+            charge_unit()?;
+            if left != right {
+                return Ok(false);
+            }
+        }
+    }
+    let _sources = SourceScope::enter(SourceComparison::ExactPair(
+        left_source.clone(),
+        right_source.clone(),
+    ));
+    Ok(same_provenance(left, right))
 }
 
 /// Restores the comparison mode that was in force when a scope began, including on unwind.

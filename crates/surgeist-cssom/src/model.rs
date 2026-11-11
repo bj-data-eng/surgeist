@@ -58,9 +58,10 @@ pub struct CssomLimits {
     pub max_entries: usize,
     pub max_string_bytes: usize,
     pub max_input_bytes: usize,
-    /// CSS-owned preparation policy for one exact UTF-16 sheet input.
+    /// Preparation policy for one exact UTF-16 stylesheet or MediaList input.
     pub sheet_utf16_input: CssUtf16InputLimits,
-    /// Actual shared parse-source backing retained by this canonical state.
+    /// Actual shared parse-source backing retained by the selected state and
+    /// any additional parse sources held during an edit.
     pub max_retained_source_bytes: usize,
     /// Actual source payload visits, identity comparisons and retained-state walk actions.
     pub max_source_traversal_steps: usize,
@@ -261,6 +262,35 @@ pub struct CssomSheetInputs {
     pub media: CssMediaQueryList,
 }
 impl CssomSheetInputs {
+    /// The mirrored media payload belongs to the sheet's separate MediaList.
+    pub(crate) fn same_metadata(&self, other: &Self) -> bool {
+        let Self {
+            version,
+            base_url,
+            location,
+            constructor_document,
+            owner,
+            title,
+            alternate,
+            disabled,
+            origin_clean,
+            constructed,
+            disallow_modification,
+            media: _,
+        } = self;
+        version == &other.version
+            && base_url == &other.base_url
+            && location == &other.location
+            && constructor_document == &other.constructor_document
+            && owner == &other.owner
+            && title == &other.title
+            && *alternate == other.alternate
+            && *disabled == other.disabled
+            && *origin_clean == other.origin_clean
+            && *constructed == other.constructed
+            && *disallow_modification == other.disallow_modification
+    }
+
     /// Source constructor defaults; host identity/base/document remain explicit.
     pub fn constructed(
         version: CssomInputVersion,
@@ -964,7 +994,7 @@ pub enum CssomError {
     StaleRevision,
     StaleContext,
     StaleReplacement,
-    /// The caller cancelled stylesheet construction or rule insertion.
+    /// The caller cancelled a stylesheet or MediaList operation.
     Cancelled,
     BatchAborted,
     ForeignTicket,

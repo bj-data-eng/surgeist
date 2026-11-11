@@ -272,6 +272,15 @@ pub(crate) fn parse_utf16<E, T>(
     poll: impl FnMut() -> Result<(), E>,
     parse: impl FnOnce(&CssSourceSnapshot) -> T,
 ) -> Result<T, CssUtf16InputError<E>> {
+    parse_utf16_with_work(original, limits, poll, parse).map(|(report, _)| report)
+}
+
+pub(crate) fn parse_utf16_with_work<E, T>(
+    original: Arc<Vec<u16>>,
+    limits: CssUtf16InputLimits,
+    poll: impl FnMut() -> Result<(), E>,
+    parse: impl FnOnce(&CssSourceSnapshot) -> T,
+) -> Result<(T, usize), CssUtf16InputError<E>> {
     with_prepared(
         original,
         limits,
@@ -282,7 +291,7 @@ pub(crate) fn parse_utf16<E, T>(
             control.step()?;
             let report = parse(&source);
             control.step()?;
-            Ok(report)
+            Ok((report, control.work))
         },
     )
 }

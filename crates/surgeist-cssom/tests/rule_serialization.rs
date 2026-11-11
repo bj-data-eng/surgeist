@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use surgeist_css::CssParser;
 use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
 use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQueryList};
@@ -603,7 +604,8 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
     };
     let media = media.handle().id().clone();
     let mut edit = batch(&store);
-    edit.set_media_text(&media, "print").unwrap();
+    edit.set_media_text(&media, "print", &AtomicBool::new(false))
+        .unwrap();
     store.commit(edit).unwrap();
     let current = store.snapshot();
     assert_eq!(

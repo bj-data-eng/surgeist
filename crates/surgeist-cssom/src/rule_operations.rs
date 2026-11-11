@@ -1,6 +1,6 @@
 //! Source rule algorithms over the current retained graph. CSS owns all parsing.
 use crate::parser_resources::check_resource_diagnostics;
-use crate::sheet_operations::{check_sheet_cancellation, sheet_utf16_error, sheet_utf16_limits};
+use crate::sheet_operations::{check_cancellation, sheet_utf16_error, sheet_utf16_limits};
 use crate::{model::State, *};
 use std::sync::atomic::AtomicBool;
 use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
@@ -294,14 +294,14 @@ impl CssomBatch {
                 CssParser::new(CssParserContext::default(), component_limits(&this.limits));
             let report = match source.into() {
                 CssomSheetText::Utf8(text) => {
-                    check_sheet_cancellation(cancel)?;
+                    check_cancellation(cancel)?;
                     CssRuleSyntax::classify(&parser, text)
                 }
                 CssomSheetText::Utf16(original) => CssRuleSyntax::classify_utf16(
                     &parser,
                     original,
                     sheet_utf16_limits(&this.limits),
-                    || check_sheet_cancellation(cancel),
+                    || check_cancellation(cancel),
                 )
                 .map_err(sheet_utf16_error)?,
             };
@@ -323,7 +323,7 @@ impl CssomBatch {
                 false,
             )
         })?;
-        self.finish_sheet_staging(inserted, cancel)
+        self.finish_cancellable_staging(inserted, cancel)
     }
     /// CSSGroupingRule insertion checks its index before classifying the input.
     pub fn insert_group_rule(

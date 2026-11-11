@@ -2,6 +2,7 @@
 //! MQ5 WD 2026-02-19 §11: authored MediaList versus true/false, no evaluation.
 //! Color5 WD 2026-09-08 §12.1: serialize associated names/descriptors;
 //! absent descriptors return empty, independently of unavailable whole formats.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::color::CssColorProfileName;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::query::media::{CssCustomMediaBody, CssCustomMediaName};
@@ -156,7 +157,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     let id = media(&store, &before, &rule);
     let mut edit = batch(&store);
     assert!(
-        edit.set_media_text(&id, "screen,,speech")
+        edit.set_media_text(&id, "screen,,speech", &AtomicBool::new(false))
             .unwrap()
             .changed()
     );
@@ -221,7 +222,11 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     assert_eq!(detached.parent_style_sheet(&rule).unwrap(), None);
     assert_eq!(media(&store, &detached, &rule), id);
     let mut edit = batch(&store);
-    assert!(edit.set_media_text(&id, "").unwrap().changed());
+    assert!(
+        edit.set_media_text(&id, "", &AtomicBool::new(false))
+            .unwrap()
+            .changed()
+    );
     store.commit(edit).unwrap();
     let empty = store.snapshot();
     assert_eq!(media(&store, &empty, &rule), id);

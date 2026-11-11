@@ -1068,6 +1068,9 @@ impl PartialEq for CssSourceSnapshot {
         if self.same_snapshot(other) {
             return true;
         }
+        if let Some(equal) = super::provenance::compare_distinct_sources(self, other) {
+            return equal;
+        }
         #[cfg(test)]
         SNAPSHOT_TEXT_BYTES_COMPARED.with(|compared| {
             compared.set(compared.get() + self.as_str().len().min(other.as_str().len()));

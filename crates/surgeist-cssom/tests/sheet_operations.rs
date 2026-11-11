@@ -1359,6 +1359,95 @@ fn exact_base_url_backing_is_shared_by_sheets_and_pending_replacement() {
     }
 }
 
+fn assert_transient_member_edit_preserves_exact_constructor_media(change_other_sheet: bool) {
+    use std::sync::Arc;
+
+    let mut owner = store(CssomLimits::default());
+    let mut units = "print /*".encode_utf16().collect::<Vec<_>>();
+    units.push(0xd800);
+    units.extend("*/, speech".encode_utf16());
+    let original = Arc::new(units);
+    let proceed = AtomicBool::new(false);
+    let sheet = CssStyleSheet::new(
+        &mut owner,
+        document(),
+        CssStyleSheetInit {
+            media: CssStyleSheetMedia::Text(CssomSheetText::Utf16(original.clone())),
+            ..Default::default()
+        },
+        &proceed,
+    )
+    .unwrap()
+    .into_parts()
+    .0;
+    let media = sheet.media(&owner).unwrap();
+    let other = change_other_sheet.then(|| construct(&mut owner));
+    let before = owner.snapshot();
+    let original_source = before
+        .media(media.id())
+        .unwrap()
+        .parse_source()
+        .unwrap()
+        .source();
+    assert!(Arc::ptr_eq(
+        original_source.original_utf16().unwrap(),
+        &original
+    ));
+
+    let mut edit = batch(&owner);
+    assert!(
+        edit.append_medium(media.id(), "screen", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.delete_medium(media.id(), "screen", &proceed)
+            .unwrap()
+            .changed()
+    );
+    if let Some(other) = &other {
+        assert!(edit.set_disabled(other, true).unwrap());
+    }
+    let commit = owner.commit(edit).unwrap();
+    let after = owner.snapshot();
+    if let Some(other) = other {
+        assert!(matches!(commit.publication(), CssomPublication::Changed(_)));
+        assert!(captured_sheet(&owner, &after, &other).disabled().unwrap());
+    } else {
+        assert!(
+            matches!(commit.publication(), CssomPublication::Unchanged { .. }),
+            "transient member edits must leave constructor media unchanged: {:?}",
+            commit.publication()
+        );
+        assert_eq!(after.revision(), before.revision());
+    }
+    assert_eq!(sheet.media(&owner).unwrap().id(), media.id());
+    assert_eq!(
+        media
+            .media_text(&owner, CssSerializationLimits::default())
+            .unwrap(),
+        "print, speech"
+    );
+    let source = after
+        .media(media.id())
+        .unwrap()
+        .parse_source()
+        .expect("transient member edits must keep the exact constructor list source")
+        .source();
+    assert!(source.same_snapshot(original_source));
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &original));
+}
+
+#[test]
+fn transient_member_edits_do_not_publish_over_exact_constructor_media() {
+    assert_transient_member_edit_preserves_exact_constructor_media(false);
+}
+
+#[test]
+fn publishing_another_sheet_change_preserves_exact_constructor_media() {
+    assert_transient_member_edit_preserves_exact_constructor_media(true);
+}
+
 #[test]
 fn sheet_constructor_keeps_exact_media_input_and_copies_a_list_through_cssom_text() {
     use std::sync::Arc;
@@ -1447,7 +1536,9 @@ fn sheet_constructor_keeps_exact_media_input_and_copies_a_list_through_cssom_tex
     assert_eq!(copied_source.as_str(), "not all, print");
     assert!(copied_source.original_utf16().is_none());
     assert!(!copied_source.same_snapshot(source));
-    let _ = live.set_media_text(&mut owner, "speech").unwrap();
+    let _ = live
+        .set_media_text(&mut owner, "speech", &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(
         copied
             .media_text(&owner, CssSerializationLimits::default())

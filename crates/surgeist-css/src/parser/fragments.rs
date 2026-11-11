@@ -934,12 +934,11 @@ pub(crate) fn parse_media_query_list_snapshot(
 }
 
 pub(crate) fn parse_cssom_media_query(
-    source: &str,
+    snapshot: &crate::source::CssSourceSnapshot,
     context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssMediaQuery>> {
-    let (list, mut diagnostics) =
-        parse_media_query_list_snapshot(&crate::source::CssSourceSnapshot::new(source), context)
-            .into_parts();
+    let source = snapshot.as_str();
+    let (list, mut diagnostics) = parse_media_query_list_snapshot(snapshot, context).into_parts();
     // Condition depth counts `not` and grouping levels, so shallow source can
     // still need the bounded thread here. Without it the query is refused.
     let deep = list

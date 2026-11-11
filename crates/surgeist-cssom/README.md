@@ -281,7 +281,17 @@ the associated collection's identity and earlier snapshots, without applying
 sheet guards or writing owner attributes. Recovered parser diagnostics and typed
 resource failures remain observable. Append/delete charge the candidate and
 all current members through one cumulative CSS input, projection and output
-budget.
+budget. The three mutation methods also accept exact UTF16 and check the
+caller cancellation signal before the live publication fence. For text
+replacement, comparing independently allocated original inputs spends the
+remaining preparation work. Equal originals preserve the revision, while
+distinct originals retain their own source even when their normalization agrees.
+Member edits can restore an earlier exact whole list, including its original
+source and comma origins, or the original ordered members of a committed
+list without a list source. Both comparisons share the remaining work
+allowance. Publication compares the retained origins without rereading
+original units. Any additional displaced row shares the staged source
+allowance until restoration or supersession.
 
 `CssCustomMediaRule::name` and `query` expose readonly facets of the checked
 current rule. The query is an authored boolean or a typed `MediaList`, including
