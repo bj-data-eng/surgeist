@@ -1,5 +1,61 @@
 use super::*;
-use surgeist_bindings_js::{Arguments, FunctionMetadata};
+use surgeist_bindings_js::{Arguments, FunctionMetadata, NativeObject};
+
+pub(super) enum GuestReceiver {
+    Projected(Rc<NativeObject<GuestTargetProjection>>),
+    Window(DomHostedGlobalId),
+}
+
+impl GuestReceiver {
+    pub(super) fn target(&self) -> DomEventTarget {
+        match self {
+            Self::Projected(projection) => projection.payload().native.clone().into(),
+            Self::Window(global) => (*global).into(),
+        }
+    }
+}
+
+pub(super) fn event_receiver<'scope>(
+    owner: &NativeOwner,
+    scope: &mut Scope<'scope>,
+    receiver: &Value<'scope>,
+) -> Result<Option<GuestReceiver>, Error> {
+    if let Some(projection) = scope.native_object::<GuestTargetProjection>(receiver)? {
+        return Ok(Some(GuestReceiver::Projected(projection)));
+    }
+    let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+    let global = scope.global()?;
+    Ok(scope
+        .strict_equals(receiver, &global)?
+        .then(|| GuestReceiver::Window(attachment.target.global())))
+}
+
+pub(super) fn event_target_value<'scope>(
+    owner: &NativeOwner,
+    scope: &mut Scope<'scope>,
+    event: &Value<'scope>,
+    target: &DomEventTarget,
+) -> Result<Value<'scope>, Error> {
+    if let DomEventTarget::Global(global) = target {
+        let attachment = owner.attachment.get().ok_or(Error::ExpiredIdentity)?;
+        if *global == attachment.target.global() {
+            return scope.global();
+        }
+        return Err(Error::RegistryConflict);
+    }
+    let value = scope
+        .native_object_reference::<GuestEventProjection>(event, interfaces::EVENT_TARGET_REFERENCE)?
+        .ok_or(Error::RegistryConflict)?;
+    let original = scope
+        .native_object::<GuestTargetProjection>(&value)?
+        .ok_or(Error::RegistryConflict)?;
+    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().native)
+    {
+        Ok(value)
+    } else {
+        Err(Error::RegistryConflict)
+    }
+}
 
 struct DispatchMethod {
     owner: Weak<NativeOwner>,
@@ -59,7 +115,7 @@ impl GuestEvents {
         owner: &NativeOwner,
         scope: &mut Scope<'scope>,
         receiver: &Value<'scope>,
-        target: &DomStandaloneEventTarget,
+        target: DomEventTarget,
         argument: &Value<'scope>,
         event: &NativeDomEvent,
     ) -> Result<bool, DocumentGuestEventError> {
@@ -116,7 +172,7 @@ pub(super) fn call_dispatch_event<'scope>(
         return refuse(scope, &events.refusal, error);
     }
     let receiver = arguments.receiver();
-    let Some(target) = scope.native_object::<GuestTargetProjection>(receiver)? else {
+    let Some(target) = event_receiver(owner, scope, receiver)? else {
         return Ok(Completion::Throw(
             scope.type_error(&b"EventTarget required".map(u16::from))?,
         ));
@@ -135,7 +191,7 @@ pub(super) fn call_dispatch_event<'scope>(
         owner,
         scope,
         receiver,
-        &target.payload().native,
+        target.target(),
         argument,
         &event.payload().0,
     ) {

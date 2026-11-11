@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::document_scripting::guest::listeners::ListenerMatch;
+use crate::document_scripting::guest::wrapper::{GuestReceiver, event_receiver};
 use surgeist_bindings_js::conversion::{
     StandaloneListenerOptions,
     declarations::{
@@ -53,9 +54,7 @@ impl Capture {
         operation: Operation,
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
-        let Some(projection) =
-            scope.native_object::<GuestTargetProjection>(arguments.receiver())?
-        else {
+        let Some(target) = event_receiver(&owner, scope, arguments.receiver())? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"EventTarget required"))?,
             ));
@@ -65,14 +64,7 @@ impl Capture {
                 scope.type_error(&ascii(b"Two arguments required"))?,
             ));
         }
-        match self.change_listener(
-            scope,
-            &owner,
-            &events,
-            &arguments,
-            projection.payload(),
-            operation,
-        ) {
+        match self.change_listener(scope, &owner, &events, &arguments, &target, operation) {
             Ok(()) => Ok(Completion::Undefined),
             Err(DocumentGuestEventError::Document(DocumentScriptError::Script(error))) => {
                 Err(error)
@@ -87,7 +79,7 @@ impl Capture {
         owner: &NativeOwner,
         events: &GuestEvents,
         arguments: &Arguments<'scope>,
-        target: &GuestTargetProjection,
+        target: &GuestReceiver,
         operation: Operation,
     ) -> Result<(), DocumentGuestEventError> {
         let ty = match operation {
@@ -108,8 +100,7 @@ impl Capture {
         };
         let callback = if has_callback {
             let callback = arguments.get(1).ok_or(Error::BackendUnavailable)?;
-            let realm = scope.callback_object(callback)?.associated_realm().clone();
-            Some((callback, realm))
+            Some((callback, scope.callback_object(callback)?))
         } else {
             None
         };
@@ -124,18 +115,20 @@ impl Capture {
                 }),
             })
             .map_err(Error::from)?;
-        let Some((callback, callback_realm)) = callback else {
+        let Some((callback, observed)) = callback else {
             return Ok(());
         };
+        let callback_realm = observed.associated_realm();
         if callback_realm.identity() != self.callbacks.permit.realm {
             return Err(DocumentGuestEventError::CallbackRealmUnavailable);
         }
         scope.check_active()?;
         events.step()?;
         self.with_native(owner, |_, _| Ok(()))?;
+        let native_target = target.target();
         let key = ListenerMatch {
             receiver: arguments.receiver(),
-            target: &target.native,
+            target: &native_target,
             event_type: ty.as_code_units(),
             callback,
             capture: flags.capture,
@@ -145,18 +138,26 @@ impl Capture {
             (Operation::Remove, Some(id)) => {
                 events.remove_registration(scope, id)?;
             }
-            (Operation::Add, None) => events.register_traced(
-                owner,
-                scope,
-                target,
-                key,
-                DomEventListenerOptions {
+            (Operation::Add, None) => {
+                let options = DomEventListenerOptions {
                     capture: flags.capture,
                     once: flags.once,
                     passive: flags.passive,
-                },
-                callback_realm,
-            )?,
+                };
+                match target {
+                    GuestReceiver::Projected(projection) => events.register_traced(
+                        owner,
+                        scope,
+                        projection.payload(),
+                        key,
+                        options,
+                        callback_realm.clone(),
+                    )?,
+                    GuestReceiver::Window(_) => {
+                        events.register_retained(owner, scope, key, options, observed)?;
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())

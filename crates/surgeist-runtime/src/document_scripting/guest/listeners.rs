@@ -1,11 +1,12 @@
 //! Registry identity and guest-traced listener custody.
 
 use super::*;
+use surgeist_bindings_js::CallbackObject;
 
 #[derive(Clone, Copy)]
 pub(super) struct ListenerMatch<'value, 'scope> {
     pub(super) receiver: &'value Value<'scope>,
-    pub(super) target: &'value DomStandaloneEventTarget,
+    pub(super) target: &'value DomEventTarget,
     pub(super) event_type: &'value [u16],
     pub(super) callback: &'value Value<'scope>,
     pub(super) capture: bool,
@@ -81,7 +82,6 @@ impl GuestEvents {
         scope: &mut Scope<'scope>,
         key: ListenerMatch<'_, 'scope>,
     ) -> Result<Option<DomEventRegistrationId>, DocumentGuestEventError> {
-        let target = DomEventTarget::from(key.target.clone());
         let mut cursor = 0;
         loop {
             let candidate = self
@@ -89,7 +89,7 @@ impl GuestEvents {
                 .try_borrow()
                 .map_err(|_| DocumentScriptNativeError::Busy)?
                 .next_guest_registration(
-                    &target,
+                    key.target,
                     key.event_type,
                     key.capture,
                     &mut cursor,
@@ -104,6 +104,50 @@ impl GuestEvents {
                 return Ok(Some(registration));
             }
         }
+    }
+
+    pub(super) fn register_retained<'scope>(
+        &self,
+        owner: &NativeOwner,
+        scope: &mut Scope<'scope>,
+        key: ListenerMatch<'_, 'scope>,
+        options: DomEventListenerOptions,
+        observed: CallbackObject<'scope>,
+    ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
+        let attachment = owner
+            .attachment
+            .get()
+            .ok_or(DocumentScriptNativeError::Revoked)?;
+        let backing = self.reserve(owner, size_of::<RegisteredGuestListener>())?;
+        let object = scope.retain_callback_object(observed, |bytes| self.reserve(owner, bytes))?;
+        let code = self
+            .next_callback
+            .get()
+            .checked_add(1)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
+            code,
+            object: RegisteredListenerObject::Retained(object),
+            registration_window: attachment.target,
+            _backing: backing,
+        }));
+        let mut session = owner
+            .session
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let mut registry = self
+            .registry
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?;
+        let registration = registry.add_listener(
+            &mut session.dom(),
+            key.target.clone(),
+            key.event_type,
+            callback,
+            options,
+        )?;
+        self.next_callback.set(code);
+        Ok(registration)
     }
 
     pub(super) fn remove_registration(

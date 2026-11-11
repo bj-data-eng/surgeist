@@ -535,7 +535,7 @@ impl Capture {
         arguments: Arguments<'scope>,
         attribute: Attribute,
     ) -> Result<Completion<'scope>, Error> {
-        let (_, events) = self.active(scope)?;
+        let (owner, events) = self.active(scope)?;
         let Some(native) = scope.native_object::<GuestEventProjection>(arguments.receiver())?
         else {
             return Ok(Completion::Throw(
@@ -554,11 +554,14 @@ impl Capture {
                     .run(scope, |conversion| conversion.copy_to_js(ty.code_units()))?
             }
             Attribute::Target => {
-                operations::nullable_target(scope, arguments.receiver(), event.target())?
+                operations::nullable_target(&owner, scope, arguments.receiver(), event.target())?
             }
-            Attribute::CurrentTarget => {
-                operations::nullable_target(scope, arguments.receiver(), event.current_target())?
-            }
+            Attribute::CurrentTarget => operations::nullable_target(
+                &owner,
+                scope,
+                arguments.receiver(),
+                event.current_target(),
+            )?,
             Attribute::CancelBubble => {
                 scope.primitive(Primitive::Boolean(event.cancel_bubble()))?
             }

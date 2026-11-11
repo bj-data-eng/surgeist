@@ -857,7 +857,6 @@ impl DocumentScriptHost {
         options: DomEventListenerOptions,
     ) -> Result<DomEventRegistrationId, DocumentGuestEventError> {
         self.check_permit(permit)?;
-        let registration_window = self.attachment()?.target;
         let owner = self.native.clone();
         let events = self.guest_events()?;
         self.in_document(permit, |scope| {
@@ -869,51 +868,18 @@ impl DocumentScriptHost {
                     return Err(DocumentGuestEventError::CallbackRealmUnavailable);
                 }
                 let receiver = target.object(scope)?;
-                if let Some(registration) = events.find_listener(
-                    &owner,
-                    scope,
-                    listeners::ListenerMatch {
-                        receiver: &receiver,
-                        target: &target.native,
-                        event_type,
-                        callback: &value,
-                        capture: options.capture,
-                    },
-                )? {
+                let native_target = DomEventTarget::from(target.native.clone());
+                let key = listeners::ListenerMatch {
+                    receiver: &receiver,
+                    target: &native_target,
+                    event_type,
+                    callback: &value,
+                    capture: options.capture,
+                };
+                if let Some(registration) = events.find_listener(&owner, scope, key)? {
                     return Ok(registration);
                 }
-                let target = DomEventTarget::from(target.native.clone());
-                let backing = events.reserve(&owner, size_of::<RegisteredGuestListener>())?;
-                let object = scope
-                    .retain_callback_object(observed, |bytes| events.reserve(&owner, bytes))?;
-                let code = events
-                    .next_callback
-                    .get()
-                    .checked_add(1)
-                    .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
-                let callback = DomEventCallback::guest(Rc::new(RegisteredGuestListener {
-                    code,
-                    object: RegisteredListenerObject::Retained(object),
-                    registration_window,
-                    _backing: backing,
-                }));
-                let mut session = owner
-                    .session
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let mut registry = events
-                    .registry
-                    .try_borrow_mut()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?;
-                let registration = registry.add_listener(
-                    &mut session.dom(),
-                    target,
-                    event_type,
-                    callback,
-                    options,
-                )?;
-                events.next_callback.set(code);
-                Ok(registration)
+                events.register_retained(&owner, scope, key, options, observed)
             })())
         })?
     }
@@ -980,7 +946,7 @@ impl GuestEvents {
         let exceptions = exceptions.insert(bank);
         let receiver = target.object(scope)?;
         let argument = event.object(scope)?;
-        let invocation = self.prepare(owner, &target.native, &event.native)?;
+        let invocation = self.prepare(owner, target.native.clone().into(), &event.native)?;
         self.run(
             owner,
             scope,
@@ -1042,7 +1008,7 @@ impl GuestEvents {
     fn prepare(
         &self,
         owner: &NativeOwner,
-        target: &DomStandaloneEventTarget,
+        target: DomEventTarget,
         event: &NativeDomEvent,
     ) -> Result<DomEventDispatch, DocumentGuestEventError> {
         let mut session = owner
@@ -1053,12 +1019,7 @@ impl GuestEvents {
             .registry
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        Ok(registry.prepare_dispatch(
-            &mut session.dom(),
-            target.clone(),
-            event,
-            &owner.cancellation,
-        )?)
+        Ok(registry.prepare_dispatch(&mut session.dom(), target, event, &owner.cancellation)?)
     }
 
     fn run<'scope>(
@@ -1084,9 +1045,9 @@ impl GuestEvents {
                 scope
                     .native_object::<GuestEventProjection>(argument)?
                     .ok_or(Error::ExpectedNativeObject)?,
-                scope
-                    .native_object::<GuestTargetProjection>(receiver)?
-                    .ok_or(Error::ExpectedNativeObject)?,
+                wrapper::event_receiver(owner, scope, receiver)?
+                    .ok_or(Error::ExpectedNativeObject)?
+                    .target(),
             ))
         } else {
             None
@@ -1112,8 +1073,7 @@ impl GuestEvents {
                 )?
             };
             let projected = if let Some((event, target)) = &projection
-                && matches!(event.payload().0.target(), Some(DomEventTarget::Standalone(ref actual))
-                    if actual == &target.payload().native)
+                && event.payload().0.target().as_ref() == Some(target)
             {
                 projection = None;
                 scope.set_native_object_reference::<GuestEventProjection>(

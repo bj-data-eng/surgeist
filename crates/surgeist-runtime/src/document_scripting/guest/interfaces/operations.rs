@@ -1,4 +1,4 @@
-//! Event operations over the original standalone dispatch state.
+//! Event operations over the original native dispatch state.
 
 use super::*;
 use surgeist_bindings_js::conversion::declarations::{
@@ -78,32 +78,14 @@ pub(super) fn event_setter<'scope>(
 }
 
 pub(super) fn nullable_target<'scope>(
+    owner: &NativeOwner,
     scope: &mut Scope<'scope>,
     event: &Value<'scope>,
     target: Option<DomEventTarget>,
 ) -> Result<Value<'scope>, Error> {
     match target {
-        Some(target) => exact_target(scope, event, &target),
+        Some(target) => super::super::wrapper::event_target_value(owner, scope, event, &target),
         None => scope.primitive(Primitive::Null),
-    }
-}
-
-fn exact_target<'scope>(
-    scope: &mut Scope<'scope>,
-    event: &Value<'scope>,
-    target: &DomEventTarget,
-) -> Result<Value<'scope>, Error> {
-    let value = scope
-        .native_object_reference::<GuestEventProjection>(event, EVENT_TARGET_REFERENCE)?
-        .ok_or(Error::RegistryConflict)?;
-    let original = scope
-        .native_object::<GuestTargetProjection>(&value)?
-        .ok_or(Error::RegistryConflict)?;
-    if matches!(target, DomEventTarget::Standalone(expected) if expected == &original.payload().native)
-    {
-        Ok(value)
-    } else {
-        Err(Error::RegistryConflict)
     }
 }
 
@@ -132,7 +114,9 @@ impl Capture {
                     if path.next().is_some() {
                         return Err(Error::RegistryConflict);
                     }
-                    let target = exact_target(scope, receiver, &target)?;
+                    let target = super::super::wrapper::event_target_value(
+                        &owner, scope, receiver, &target,
+                    )?;
                     scope.array(&[target])?
                 } else {
                     scope.array(&[])?
