@@ -1203,6 +1203,114 @@ mod pixelated_tests {
     use super::*;
 
     #[test]
+    fn pixelated_native_lattice_refuses_before_path_materialization() {
+        use crate::accounting::{FrameFixture, RendererCpu};
+        use crate::{
+            Image, ImageRendering, RenderAccountingError, RenderAccountingOptions,
+            RenderAttemptStatus, RenderCpuScope, RenderEvent, RenderLimits, RenderPhaseFilter,
+            RenderProfile, RenderQuantity, RenderRefusalReason, RenderResource, Size,
+        };
+
+        let image = Image::from_rgba(Size::new(2.0, 1.0), vec![255, 0, 0, 255, 0, 0, 255, 255])
+            .unwrap()
+            .rendering(ImageRendering::Pixelated);
+        let brush = crate::encode::image_brush(&image);
+        let transform = kurbo::Affine::scale_non_uniform(2.5, 1.0);
+        let bounds = kurbo::Rect::new(0.0, 0.0, 2.0, 1.0);
+        let phase = RenderPhase::Encode;
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::CoordinateVisits, 0)
+            .unwrap()
+            .with_work_limit(RenderWork::PathElementVisits, 0)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_profile(RenderProfile::Detailed {
+                timing: false,
+                event_limit: 32,
+                filter: RenderPhaseFilter::Phase(phase),
+            });
+        let cpu = RendererCpu::new(options).unwrap();
+        let mut callback_reached = false;
+        let (result, started, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account().at(phase);
+                account.phase(phase, || {
+                    let mut scene = VelloScene::default();
+                    let result = scene.with_pixelated_image(
+                        &image,
+                        transform,
+                        |scene, compensation| {
+                            callback_reached = true;
+                            scene.fill(
+                                Fill::NonZero,
+                                transform,
+                                &brush,
+                                Some(compensation),
+                                &bounds,
+                                &account,
+                            )
+                        },
+                        &account,
+                    );
+                    assert!(scene.encoding.resources.patches.is_empty());
+                    assert!(scene.image_expansions.is_empty());
+                    result
+                })
+            })
+            .unwrap()
+            .into_parts();
+        assert!(started);
+        assert_eq!(fault, None);
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            result.unwrap_err().accounting_diagnostic(),
+            Some(RenderAccountingError::Refused(refusal))
+        );
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+        assert!(attempt.events().any(|event| matches!(
+            event,
+            RenderEvent::Refused {
+                phase: RenderPhase::Encode,
+                ..
+            }
+        )));
+        assert_eq!(
+            (refusal.quantity(), refusal.current(), refusal.amount()),
+            (RenderQuantity::Work(RenderWork::CoordinateVisits), 0, 1),
+            "the first lattice coordinate must be admitted before the fill callback"
+        );
+        assert!(!callback_reached);
+        let encode = attempt.phase_usage(phase);
+        for work in [
+            RenderWork::CoordinateVisits,
+            RenderWork::PathElementVisits,
+            RenderWork::PaintVisits,
+            RenderWork::ImageSourceBytes,
+            RenderWork::AtlasTexels,
+        ] {
+            assert_eq!(encode.work(work), 0, "{work:?}");
+        }
+        let cpu = report.renderer_cpu().unwrap();
+        let image_payloads = cpu.scope_usage(RenderCpuScope::ImagePayloads);
+        let retained = RenderResource::RetainedCpuBytes;
+        assert!(image_payloads.peak(retained) > image_payloads.opening_live(retained));
+        for scope in [RenderCpuScope::ImagePayloads, RenderCpuScope::FrameBacking] {
+            let usage = cpu.scope_usage(scope);
+            for resource in [retained, RenderResource::ScratchCpuBytes] {
+                assert_eq!(
+                    usage.live(resource),
+                    usage.opening_live(resource),
+                    "{scope:?} {resource:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn original_font_glyph_diagnostic_precedes_sweep_field_capacity() {
         let font = crate::FontData::try_from_bytes(
             include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
