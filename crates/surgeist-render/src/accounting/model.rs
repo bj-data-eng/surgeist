@@ -209,9 +209,11 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::BoxDecoration)
             || self.supported_for(RenderAttemptKind::PaintGradient)
             || self.supported_for(RenderAttemptKind::SdrColor)
+            || self.supported_for(RenderAttemptKind::ColorFilterProjection)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::ColorFilterProjection => matches!(self, Self::FilterOperationVisits),
             RenderAttemptKind::SdrColor => {
                 matches!(self, Self::PaintVisits | Self::CoordinateVisits)
             }
@@ -892,6 +894,8 @@ pub enum RenderAttemptKind {
     PaintGradient,
     /// Standalone resolved color preparation for an SDR sRGB destination.
     SdrColor,
+    /// Standalone projection of an authored list into a color-only pipeline.
+    ColorFilterProjection,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

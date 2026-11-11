@@ -487,7 +487,7 @@ pub(super) fn bounded_backdrop_integration_fixture_for_test() -> (
         .unwrap();
     let invert_pipeline = FilterList::try_ops(vec![FilterOp::invert(invert)])
         .unwrap()
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let filtered = parent
@@ -593,12 +593,12 @@ pub(super) fn spatial_filter_mixed_filter_fixture_for_test()
     let opacity = UnitFilterAmount::try_new(0.8).unwrap();
     let invert_pipeline = FilterList::try_ops(vec![FilterOp::invert(invert)])
         .unwrap()
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let opacity_pipeline = FilterList::try_ops(vec![FilterOp::opacity(opacity)])
         .unwrap()
-        .color_filter_pipeline()
+        .color_filter_pipeline(&mut crate::RenderAccountingContext::default())
         .unwrap()
         .unwrap();
     let expected = source

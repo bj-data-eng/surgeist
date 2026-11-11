@@ -1108,6 +1108,14 @@ caller custody. Pure construction, validation and constant-size
 `ImagePlacementInput::resolve` remain context-free. Returned values and later
 caller clones do not retain the context's participant.
 
+`FilterList::color_filter_pipeline` uses the same context for one
+`ColorFilterProjection` attempt. `Preparation` times the projection and
+`FilterOperationVisits` counts each inspected authored operation in order.
+Render admits actual color-operation vector capacity before inspection and
+transfers it only when the complete pipeline succeeds. `none` produces no
+pipeline or output backing. Blur and drop shadow retain their typed primitive
+identities through `Error::unsupported_primitive`.
+
 `RenderAccountingContext::last_attempt` borrows a `RenderStandaloneReport` for
 the latest started operation. Its `kind` and terminal `status` identify that
 operation even when cleanup or report extraction fails. `attempt()` returns
