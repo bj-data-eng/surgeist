@@ -3191,6 +3191,106 @@ mod repeated_proof_accounting_tests {
     }
 
     #[test]
+    fn malformed_backdrop_copy_refuses_unreserved_context_storage() {
+        use crate::accounting::StorageContractError;
+
+        let mut plan = empty_source_plan();
+        let setup = Account::for_test();
+        assert!(
+            ClosedExecutableGraph::try_from_lowered(plan.clone(), &setup)
+                .unwrap()
+                .is_ok()
+        );
+        let mut passes = plan.passes.to_vec();
+        let [root_clear, copy, composite, present] = passes.as_mut_slice() else {
+            panic!("expected root clear, isolation clear, composite and present");
+        };
+        assert!(matches!(
+            copy.kind,
+            RuntimePassKind::ClearRoot {
+                initialization: RuntimeInitialization::Transparent,
+                ..
+            }
+        ));
+        assert!(matches!(composite.kind, RuntimePassKind::Composite(_)));
+        assert!(matches!(present.kind, RuntimePassKind::Present));
+        assert!(copy.releases.is_empty());
+        let RuntimeResultBinding::Resource(copied) = copy.result else {
+            panic!("the original isolation clear must produce a resource");
+        };
+        let mut resources = plan.resources.to_vec();
+        let root = resources
+            .iter_mut()
+            .find(|resource| resource.id == plan.root_working_image)
+            .unwrap();
+        root.expected_reads += 1;
+        let role = RuntimeReadRole::CompletedParent;
+        let edge = RuntimeSamplingEdge::TransparentBlack;
+        copy.kind = RuntimePassKind::CopyBackdrop;
+        copy.dependencies = shared(&[root_clear.id]);
+        copy.reads = shared(&[RuntimeReadBinding {
+            role,
+            resource: root.id,
+            sampling_filter: RuntimeSamplingFilter::Nearest,
+            sampling_edge: edge,
+            sampler_key: SamplerKey::new(
+                shader_binding_role(role),
+                root.format.shader_key(),
+                ShaderSamplingFilterKey::Nearest,
+                shader_sampling_edge(edge),
+                None,
+            ),
+        }]);
+        let output = resources
+            .iter_mut()
+            .find(|resource| resource.id == copied)
+            .unwrap();
+        assert_eq!(output.role, RuntimeResourceRole::IsolationWorkingImage);
+        output.role = RuntimeResourceRole::BackdropCopy;
+        copy.cache_keys = runtime_pass_cache_keys(
+            &copy.kind,
+            &copy.reads,
+            copy.result,
+            plan.working_format,
+            plan.output_format,
+            |id| {
+                Ok(resources
+                    .iter()
+                    .find(|resource| resource.id == id)
+                    .map(|resource| resource.format))
+            },
+            &setup,
+        )
+        .unwrap();
+        plan.passes = shared(&passes);
+        plan.resources = shared(&resources);
+
+        // The generic accounting proof accepts the copy's exact dependencies,
+        // reads and produced resource. The context reservation still has only
+        // the root slot because the transparent clear is gone.
+        let accounting = Account::for_test();
+        let proof = ProofContext::new(&accounting);
+        let maps = ClosedGraphMaps::try_new(&plan, &proof).unwrap();
+        assert!(validate_closed_graph_accounting(&plan, &maps).is_some());
+        proof.finish().unwrap();
+        assert!(!proof.invalid.get());
+        drop(maps);
+
+        let error = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .err()
+            .expect("the second context must return a typed storage error");
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(error.accounting_diagnostic(), None);
+        assert_eq!(
+            std::error::Error::source(&error).and_then(|source| source.downcast_ref()),
+            Some(&StorageContractError::ReservedCapacity {
+                needed: 2,
+                capacity: 1
+            }),
+        );
+    }
+
+    #[test]
     fn empty_source_execution_requires_transparent_initialization_and_exact_custody() {
         let plan = empty_source_plan();
         let account = Account::for_test();
@@ -4613,6 +4713,118 @@ mod accounting_tests {
         RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
         RenderLimits,
     };
+
+    #[test]
+    fn proof_map_refuses_a_key_without_reserved_backing() {
+        use crate::accounting::StorageContractError;
+        use crate::{RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason};
+
+        for limit in [0, 1] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::GraphNodeVisits, limit)
+                .unwrap();
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                    let proof = ProofContext::new(account);
+                    ProofMap::<u32, ()>::new([1], 0, &proof).map(drop)
+                })
+                .unwrap_err();
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            if limit == 0 {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (0, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+            } else {
+                assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+                assert_eq!(error.accounting_diagnostic(), None);
+                assert_eq!(
+                    std::error::Error::source(&error).and_then(|source| source.downcast_ref()),
+                    Some(&StorageContractError::ReservedCapacity {
+                        needed: 1,
+                        capacity: 0
+                    }),
+                );
+                assert_eq!(attempt.refusal(), None);
+            }
+            assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), limit);
+            assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), 0);
+            assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+            assert_eq!(attempt.usage().peak(RenderResource::ScratchCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn proof_set_epoch_exhaustion_preserves_membership_and_first_error() {
+        use crate::{RenderAccountingError, RenderPhase, RenderQuantity, RenderRefusalReason};
+
+        for prior_refusal in [false, true] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, 1)
+                .unwrap();
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                    let proof = ProofContext::new(account);
+                    let mut set = ProofSet::new([1_u32], 1, &proof)?;
+                    set.epoch = u64::MAX;
+                    assert!(set.insert(1));
+                    if prior_refusal {
+                        assert!(!set.contains(&1));
+                    }
+                    let work = || {
+                        [
+                            RenderWork::GraphNodeVisits,
+                            RenderWork::GraphEdgeVisits,
+                            RenderWork::ResourceProbes,
+                        ]
+                        .map(|dimension| account.work_count(dimension).unwrap())
+                    };
+                    assert_eq!(work(), [1, 0, 1]);
+                    set.clear();
+                    assert_eq!(work(), [1, 0, 1]);
+                    assert_eq!(set.epoch, u64::MAX);
+                    assert_eq!(set.len(), 1);
+                    assert_eq!(set.slots.entries.as_slice(), &[(1, Some(u64::MAX))]);
+                    assert!(set.iter().copied().eq([1]));
+                    assert!(!proof.invalid.get());
+                    proof.finish()
+                })
+                .unwrap_err();
+            let attempt = context.last_attempt().unwrap().attempt().unwrap();
+            if prior_refusal {
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::ResourceProbes)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (1, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 1 });
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+            } else {
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Invariant)
+                );
+                assert_eq!(attempt.refusal(), None);
+            }
+        }
+    }
 
     #[test]
     fn sorted_proof_slots_update_exact_values_without_growth_and_sets_reset_per_pass() {
