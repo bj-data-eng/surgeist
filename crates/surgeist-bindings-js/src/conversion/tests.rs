@@ -603,7 +603,46 @@ fn nested_custody_preserves_selected_exception() -> TestResult {
     Ok(())
 }
 
+fn installed_dom_exception_charges_the_retained_account_body() -> TestResult {
+    use std::mem::{size_of, size_of_val};
+    use std::rc::Weak;
+    use std::sync::Arc;
+
+    use crate::dom_exception::{self, DomExceptionLimits};
+
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let realm = process.execution().create_realm()?;
+    process.execution().in_realm(&realm, |scope| {
+        dom_exception::install(scope, DomExceptionLimits::default(), ())?;
+        let profile = scope
+            .operations
+            .dom_exception_profile()?
+            .expect("the installed realm retains its account");
+
+        // Measure the actual allocation target. The two pointer wrappers are
+        // separate retained bodies and cannot stand in for this measurement.
+        let account = size_of_val(profile.account.0.as_ref());
+        let field_shapes =
+            size_of::<(Weak<()>, Arc<()>, (u64, usize), Cell<super::CleanupStatus>)>();
+        assert_eq!(
+            account, field_shapes,
+            "account field layout used by the Runtime oracle"
+        );
+        let constructor_capture = size_of::<Rc<ConversionAccount>>();
+        let profile_reference = size_of::<Weak<ConversionAccount>>();
+        let account_wrapper = size_of::<ConversionAccount>();
+        assert_eq!(
+            dom_exception::constructor_storage_bytes::<()>(),
+            constructor_capture + profile_reference + account_wrapper + account,
+            "DOMException storage must include the live {account}-byte account target"
+        );
+        Ok::<_, Error>(())
+    })?;
+    Ok(())
+}
+
 pub(crate) fn run() -> TestResult {
+    installed_dom_exception_charges_the_retained_account_body()?;
     foreign_native_error_is_refused_during_cleanup()?;
     selected_native_error_survives_local_cleanup(false)?;
     selected_native_error_survives_local_cleanup(true)?;
