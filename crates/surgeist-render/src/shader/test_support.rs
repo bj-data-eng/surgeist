@@ -50,7 +50,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 entries: &[],
             })
         })?;
-        let previous = self.layouts.insert(layout.clone(), malformed);
+        let previous = self.layouts.replace_for_test(layout, malformed);
         assert!(
             previous.is_some(),
             "the scope-failure fixture requires a realized bind-group layout"
@@ -647,8 +647,9 @@ impl DevicePassCache {
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
         );
-        self.samplers
-            .try_reserve(1)
+        let slot = self
+            .samplers
+            .slot(&self.cpu)
             .expect("test sampler cache capacity");
         let sampler = self
             .generation
@@ -660,7 +661,7 @@ impl DevicePassCache {
             })
             .expect("test sampler custody");
         assert!(
-            self.samplers.insert(key, sampler).is_none(),
+            slot.write(key, sampler).is_none(),
             "the fixed pass-cache preservation sampler key must be vacant"
         );
         self.counts_for_test()

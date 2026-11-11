@@ -1,9 +1,104 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, hash::Hash, ops::Deref, sync::Arc};
 
 use crate::{
     Error, Result,
-    accounting::{Account, CpuAccount, Generation, OwnedGpu, RenderResource, RenderWork},
+    accounting::{
+        Account, CpuAccount, CpuHold, Generation, Hold, OwnedGpu, RenderResource, RenderWork,
+    },
 };
+
+pub(super) struct CacheIndex<K, V> {
+    values: HashMap<K, V>,
+    backing: Option<CpuHold>,
+}
+
+impl<K: Eq + Hash, V> CacheIndex<K, V> {
+    fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+            backing: None,
+        }
+    }
+
+    fn reserve(&mut self, additional: usize, cpu: &CpuAccount) -> Result<()> {
+        let resource = RenderResource::RetainedCpuBytes;
+        let needed = self
+            .len()
+            .checked_add(additional)
+            .ok_or_else(|| cpu.capacity_error(resource))?;
+        if needed <= self.capacity() {
+            return Ok(());
+        }
+        let existing = self.backing.as_ref().map(CpuHold::account);
+        let cpu = existing.as_ref().unwrap_or(cpu);
+        cpu.phase(|| {
+            cpu.preview(resource, cpu.sized::<(K, V)>(needed, resource)?)?;
+            let mut replacement = Self {
+                values: HashMap::with_hasher(self.values.hasher().clone()),
+                backing: None,
+            };
+            replacement
+                .values
+                .try_reserve(needed)
+                .map_err(|_| cpu.allocation_error(resource))?;
+            let actual_bytes = cpu.sized::<(K, V)>(replacement.capacity(), resource)?;
+            replacement.backing = Some(cpu.acquire(resource, actual_bytes)?);
+            if !self.is_empty() {
+                cpu.work(RenderWork::StorageRelocations, self.len())?;
+            }
+            for (key, value) in self.values.drain() {
+                replacement.values.insert(key, value);
+            }
+            std::mem::swap(self, &mut replacement);
+            Ok(())
+        })
+    }
+
+    pub(super) fn slot(&mut self, cpu: &CpuAccount) -> Result<CacheIndexSlot<'_, K, V>> {
+        self.reserve(1, cpu)?;
+        Ok(CacheIndexSlot(&mut self.values))
+    }
+
+    fn append_reserved(&mut self, mut incoming: Self) {
+        for (key, value) in incoming.values.drain() {
+            self.values.insert(key, value);
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn replace_for_test(&mut self, key: &K, value: V) -> Option<V> {
+        self.values
+            .get_mut(key)
+            .map(|current| std::mem::replace(current, value))
+    }
+}
+
+impl<K, V> Deref for CacheIndex<K, V> {
+    type Target = HashMap<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl<K, V> Drop for CacheIndex<K, V> {
+    fn drop(&mut self) {
+        let values = std::mem::take(&mut self.values);
+        if let Some(backing) = self.backing.take() {
+            Hold::Renderer(backing).dispose(|| drop(values));
+        } else {
+            drop(values);
+        }
+    }
+}
+
+pub(super) struct CacheIndexSlot<'a, K, V>(&'a mut HashMap<K, V>);
+
+impl<K: Eq + Hash, V> CacheIndexSlot<'_, K, V> {
+    pub(super) fn write(self, key: K, value: V) -> Option<V> {
+        self.0.insert(key, value)
+    }
+}
 
 use super::key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderCompositePathKey, ShaderModuleKey,
@@ -36,10 +131,10 @@ use super::validate::{
 #[must_use = "provisional pass-cache handles must be committed only after checked success"]
 pub(crate) struct ProvisionalDevicePassCacheUpdate {
     pub(super) cache_identity: Arc<()>,
-    pub(super) samplers: HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>,
-    pub(super) layouts: HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
-    pub(super) shaders: HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
-    pub(super) pipelines: HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
+    pub(super) samplers: CacheIndex<SamplerKey, OwnedGpu<wgpu::Sampler>>,
+    pub(super) layouts: CacheIndex<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
+    pub(super) shaders: CacheIndex<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
+    pub(super) pipelines: CacheIndex<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
 }
 
 /// Keeps a rejected update available for its caller's ordered cleanup.
@@ -121,10 +216,10 @@ pub(crate) struct DevicePassCache {
     pub(super) generation: Generation,
     pub(super) cpu: CpuAccount,
     pub(super) identity: Arc<()>,
-    pub(super) samplers: HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>,
-    pub(super) layouts: HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
-    pub(super) shaders: HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
-    pub(super) pipelines: HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
+    pub(super) samplers: CacheIndex<SamplerKey, OwnedGpu<wgpu::Sampler>>,
+    pub(super) layouts: CacheIndex<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
+    pub(super) shaders: CacheIndex<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
+    pub(super) pipelines: CacheIndex<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
 }
 
 impl DevicePassCache {
@@ -132,29 +227,29 @@ impl DevicePassCache {
     pub(crate) fn new(generation: Generation, cpu: CpuAccount) -> Self {
         Self {
             generation,
-            cpu,
             identity: Arc::new(()),
-            samplers: HashMap::new(),
-            layouts: HashMap::new(),
-            shaders: HashMap::new(),
-            pipelines: HashMap::new(),
+            samplers: CacheIndex::new(),
+            layouts: CacheIndex::new(),
+            shaders: CacheIndex::new(),
+            pipelines: CacheIndex::new(),
+            cpu,
         }
     }
 
     pub(crate) fn clear(&mut self) {
-        self.samplers.clear();
-        self.layouts.clear();
-        self.shaders.clear();
-        self.pipelines.clear();
+        self.samplers.values.clear();
+        self.layouts.values.clear();
+        self.shaders.values.clear();
+        self.pipelines.values.clear();
     }
 
     pub(crate) fn provisional_update(&self) -> ProvisionalDevicePassCacheUpdate {
         ProvisionalDevicePassCacheUpdate {
             cache_identity: Arc::clone(&self.identity),
-            samplers: HashMap::new(),
-            layouts: HashMap::new(),
-            shaders: HashMap::new(),
-            pipelines: HashMap::new(),
+            samplers: CacheIndex::new(),
+            layouts: CacheIndex::new(),
+            shaders: CacheIndex::new(),
+            pipelines: CacheIndex::new(),
         }
     }
 }
@@ -189,8 +284,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -205,8 +300,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_core_pass_bind_group_layout(
                     &cache.generation,
@@ -220,8 +315,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_core_pass_shader_module(
                     &cache.generation,
@@ -235,7 +330,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 core_pass_cache_error("core-pass bind-group layout realization was lost")
@@ -253,7 +348,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 shader_handle,
                 fragment_entry,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
 
         self.pass_objects(cache, account, keys)
@@ -325,8 +420,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -341,8 +436,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_copy_backdrop_bind_group_layout(
                     &cache.generation,
@@ -355,8 +450,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_copy_backdrop_shader_module(
                     &cache.generation,
@@ -369,7 +464,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let created = create_copy_backdrop_pipeline(
                 &cache.generation,
                 &cache.cpu,
@@ -391,7 +486,7 @@ impl ProvisionalDevicePassCacheUpdate {
                     },
                 )?,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
         self.copy_backdrop_pass_objects(cache, account, keys)
     }
@@ -449,8 +544,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -465,8 +560,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_color_filter_bind_group_layout(
                     &cache.generation,
@@ -479,8 +574,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_color_filter_shader_module(
                     &cache.generation,
@@ -493,7 +588,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 color_filter_cache_error("color-filter bind-group layout realization was lost")
@@ -511,7 +606,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 layout_handle,
                 shader_handle,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
         self.color_filter_pass_objects(cache, account, keys)
     }
@@ -554,8 +649,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -570,8 +665,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_blur_bind_group_layout(
                     &cache.generation,
@@ -585,8 +680,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_blur_shader_module(&cache.generation, &cache.cpu, Some(account), device)?,
             );
@@ -594,7 +689,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 blur_cache_error("blur bind-group layout realization was lost")
@@ -611,7 +706,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 layout_handle,
                 shader_handle,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
         self.blur_pass_objects(cache, account, keys)
     }
@@ -633,8 +728,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -649,8 +744,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_drop_shadow_colorize_bind_group_layout(
                     &cache.generation,
@@ -663,8 +758,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_drop_shadow_colorize_shader_module(
                     &cache.generation,
@@ -677,7 +772,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 drop_shadow_cache_error(
@@ -697,7 +792,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 layout_handle,
                 shader_handle,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
         self.drop_shadow_colorize_pass_objects(cache, account, keys)
     }
@@ -831,8 +926,8 @@ impl ProvisionalDevicePassCacheUpdate {
             if !contains(&cache.samplers, sampler_key, account)?
                 && !contains(&self.samplers, sampler_key, account)?
             {
-                reserve_map(&mut self.samplers, 1, &cache.cpu)?;
-                self.samplers.insert(
+                let slot = self.samplers.slot(&cache.cpu)?;
+                slot.write(
                     *sampler_key,
                     create_sampler(
                         &cache.generation,
@@ -847,8 +942,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.layouts, keys.layout, account)?
             && !contains(&self.layouts, keys.layout, account)?
         {
-            reserve_map(&mut self.layouts, 1, &cache.cpu)?;
-            self.layouts.insert(
+            let slot = self.layouts.slot(&cache.cpu)?;
+            slot.write(
                 keys.layout.clone(),
                 create_composite_bind_group_layout(
                     &cache.generation,
@@ -862,8 +957,8 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.shaders, keys.shader, account)?
             && !contains(&self.shaders, keys.shader, account)?
         {
-            reserve_map(&mut self.shaders, 1, &cache.cpu)?;
-            self.shaders.insert(
+            let slot = self.shaders.slot(&cache.cpu)?;
+            slot.write(
                 keys.shader.clone(),
                 create_composite_shader_module(
                     &cache.generation,
@@ -876,7 +971,7 @@ impl ProvisionalDevicePassCacheUpdate {
         if !contains(&cache.pipelines, keys.pipeline, account)?
             && !contains(&self.pipelines, keys.pipeline, account)?
         {
-            reserve_map(&mut self.pipelines, 1, &cache.cpu)?;
+            let slot = self.pipelines.slot(&cache.cpu)?;
             let layout_handle = lookup_pair(&self.layouts, &cache.layouts, keys.layout, account)?
                 .ok_or_else(|| {
                 core_pass_cache_error("composite bind-group layout realization was lost")
@@ -894,7 +989,7 @@ impl ProvisionalDevicePassCacheUpdate {
                 shader_handle,
                 fragment_entry_override,
             )?;
-            self.pipelines.insert(keys.pipeline.clone(), created);
+            slot.write(keys.pipeline.clone(), created);
         }
         self.composite_pass_objects(cache, account, keys)
     }
@@ -1000,7 +1095,7 @@ impl ProvisionalDevicePassCacheUpdate {
                         ));
                     }
                 }
-                reserve_map(&mut cache.$field, self.$field.len(), &cache.cpu)?;
+                cache.$field.reserve(self.$field.len(), &cache.cpu)?;
             }};
         }
         prepare!(samplers);
@@ -1020,29 +1115,13 @@ impl ReadyPassCacheUpdate<'_> {
         let Self { update, cache } = self;
         // The exclusive destination borrow preserves the checked keys and capacity.
         // Individual insertion avoids HashMap::extend making a speculative reservation.
-        for (key, value) in update.samplers {
-            cache.samplers.insert(key, value);
-        }
-        for (key, value) in update.layouts {
-            cache.layouts.insert(key, value);
-        }
-        for (key, value) in update.shaders {
-            cache.shaders.insert(key, value);
-        }
-        for (key, value) in update.pipelines {
-            cache.pipelines.insert(key, value);
-        }
+        cache.samplers.append_reserved(update.samplers);
+        cache.layouts.append_reserved(update.layouts);
+        cache.shaders.append_reserved(update.shaders);
+        cache.pipelines.append_reserved(update.pipelines);
     }
 }
 
-fn reserve_map<K: Eq + std::hash::Hash, V>(
-    map: &mut HashMap<K, V>,
-    additional: usize,
-    cpu: &CpuAccount,
-) -> Result<()> {
-    map.try_reserve(additional)
-        .map_err(|_| cpu.allocation_error(RenderResource::RetainedCpuBytes))
-}
 fn contains<K: Eq + std::hash::Hash, V>(
     map: &HashMap<K, V>,
     key: &K,
@@ -1262,6 +1341,7 @@ mod accounting_tests {
         identity: crate::backend::DeviceSlotIdentity,
         generation: Generation,
         cpu: CpuAccount,
+        renderer_cpu: crate::accounting::RendererCpu,
         keys: crate::pass::RuntimePassCacheKeys,
     }
 
@@ -1329,6 +1409,7 @@ mod accounting_tests {
                 identity,
                 generation,
                 cpu: cpu.at(crate::RenderCpuScope::DeviceBacking),
+                renderer_cpu: cpu,
                 keys,
             }
         }
@@ -1410,6 +1491,260 @@ mod accounting_tests {
             cache.shaders.capacity(),
             cache.pipelines.capacity(),
         ]
+    }
+
+    fn capacity_bytes([samplers, layouts, shaders, pipelines]: [usize; 4]) -> u64 {
+        use std::mem::size_of;
+
+        (samplers * size_of::<(SamplerKey, OwnedGpu<wgpu::Sampler>)>()
+            + layouts * size_of::<(BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>)>()
+            + shaders * size_of::<(ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>)>()
+            + pipelines * size_of::<(RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>)>())
+            as u64
+    }
+
+    #[test]
+    fn pass_cache_accounts_provisional_and_committed_usable_capacity() {
+        let mut fixture = CheckedCorePassFixture::new();
+        let owner = fixture.renderer_cpu.clone();
+        let live = || {
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes)
+        };
+        let opening = live();
+        let mut cache = fixture.empty_cache();
+        let update = fixture.update(&cache);
+        let provisional = capacity_bytes([
+            update.samplers.capacity(),
+            update.layouts.capacity(),
+            update.shaders.capacity(),
+            update.pipelines.capacity(),
+        ]);
+        assert!(provisional > 0);
+        assert_eq!(live() - opening, provisional);
+
+        let account = Account::for_test();
+        let PassCacheCommitPreparation::Ready(ready) = update.prepare_commit(&mut cache, &account)
+        else {
+            panic!("prepared cache must reserve its destination");
+        };
+        let committed = capacity_bytes(cache_capacity(ready.cache));
+        assert_eq!(live() - opening, provisional + committed);
+        ready.commit();
+        assert_eq!(cache_entries(&cache), [1; 4]);
+        assert_eq!(live() - opening, committed);
+        drop(cache);
+        assert_eq!(live(), opening);
+    }
+
+    #[test]
+    fn pass_cache_destination_capacity_refusal_keeps_update_for_retry() {
+        use crate::accounting::RendererCpu;
+        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity, RenderRefusalReason};
+
+        let mut fixture = CheckedCorePassFixture::new();
+        let native_opening = fixture.live_objects();
+        let capacities = {
+            let cache = fixture.empty_cache();
+            let update = fixture.update(&cache);
+            [
+                update.samplers.capacity(),
+                update.layouts.capacity(),
+                update.shaders.capacity(),
+                update.pipelines.capacity(),
+            ]
+        };
+        let total = capacity_bytes(capacities);
+        let options = RenderAccountingOptions::new();
+        let opening = RendererCpu::new(options)
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let owner = RendererCpu::new(
+            options.with_limits(RenderLimits::new().with_retained_bytes(opening + 2 * total)),
+        )
+        .unwrap();
+        let live = || {
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes)
+        };
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let mut cache = DevicePassCache::new(fixture.generation.clone(), cpu.clone());
+        let update = fixture.update(&cache);
+        assert_eq!(live(), opening + total);
+        let pressure = cpu.acquire(RenderResource::RetainedCpuBytes, 1).unwrap();
+        let (update, error, report) = rejected_readiness(update, &mut cache, 4);
+        let [samplers, layouts, shaders, _] = capacities;
+        let prefix = [samplers, layouts, shaders, 0];
+        let live_prefix = opening + total + capacity_bytes(prefix) + 1;
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::CpuRefused {
+                scope: RenderCpuScope::Root,
+                quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                current: live_prefix,
+                amount: total - capacity_bytes(prefix),
+                reason: RenderRefusalReason::Limit {
+                    limit: opening + 2 * total,
+                },
+            }),
+        );
+        assert_readiness_work(&report, 4);
+        assert_eq!(cache_capacity(&cache), prefix);
+        assert_eq!(cache_entries(&cache), [0; 4]);
+        assert_eq!(live(), live_prefix);
+        assert_eq!(fixture.live_objects(), native_opening + 4);
+
+        drop(pressure);
+        let account = Account::for_test();
+        let PassCacheCommitPreparation::Ready(ready) = update.prepare_commit(&mut cache, &account)
+        else {
+            panic!("retry must retain the provisional native handles");
+        };
+        assert_eq!(live(), opening + 2 * total);
+        ready.commit();
+        assert_eq!(cache_entries(&cache), [1; 4]);
+        assert_eq!(live(), opening + total);
+        assert_eq!(fixture.live_objects(), native_opening + 4);
+        drop(cache);
+        assert_eq!(live(), opening);
+        assert_eq!(fixture.live_objects(), native_opening);
+        cpu.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn pass_cache_index_growth_preserves_old_entries_on_refusal() {
+        use crate::accounting::RendererCpu;
+        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity};
+
+        let actual_capacity = |count| {
+            let mut map = HashMap::<usize, usize>::new();
+            map.try_reserve(count).unwrap();
+            map.capacity()
+        };
+        let first = actual_capacity(1);
+        let second = actual_capacity(first + 1);
+        let bytes = |capacity| (capacity * std::mem::size_of::<(usize, usize)>()) as u64;
+        let options = RenderAccountingOptions::new();
+        let opening = RendererCpu::new(options)
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let owner = RendererCpu::new(options.with_limits(
+            RenderLimits::new().with_retained_bytes(opening + bytes(first) + bytes(second)),
+        ))
+        .unwrap();
+        let usage = || owner.snapshot().unwrap().usage();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let mut index = CacheIndex::new();
+        for key in 0..first {
+            index.slot(&cpu).unwrap().write(key, key + 10);
+        }
+        assert_eq!(
+            usage().live(RenderResource::RetainedCpuBytes),
+            opening + bytes(first)
+        );
+        let pressure = cpu.acquire(RenderResource::RetainedCpuBytes, 1).unwrap();
+        let error = index.slot(&cpu).err().unwrap();
+        assert!(matches!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::CpuRefused {
+                quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                ..
+            })
+        ));
+        assert_eq!(index.capacity(), first);
+        assert_eq!(usage().work(RenderWork::StorageRelocations), 0);
+        for key in 0..first {
+            assert_eq!(index.get(&key), Some(&(key + 10)));
+        }
+
+        drop(pressure);
+        index.slot(&cpu).unwrap().write(first, first + 10);
+        assert_eq!(index.capacity(), second);
+        assert_eq!(
+            usage().peak(RenderResource::RetainedCpuBytes),
+            opening + bytes(first) + bytes(second)
+        );
+        assert_eq!(
+            usage().live(RenderResource::RetainedCpuBytes),
+            opening + bytes(second)
+        );
+        assert_eq!(usage().work(RenderWork::StorageRelocations), first as u64);
+        for key in 0..=first {
+            assert_eq!(index.get(&key), Some(&(key + 10)));
+        }
+        drop(index);
+        assert_eq!(usage().live(RenderResource::RetainedCpuBytes), opening);
+        cpu.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn pass_cache_first_record_refusal_precedes_native_creation() {
+        use crate::accounting::RendererCpu;
+        use crate::{RenderAccountingError, RenderCpuScope, RenderQuantity};
+
+        let mut fixture = CheckedCorePassFixture::new();
+        let native_opening = fixture.live_objects();
+        let options = RenderAccountingOptions::new();
+        let opening = RendererCpu::new(options)
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let owner =
+            RendererCpu::new(options.with_limits(RenderLimits::new().with_retained_bytes(opening)))
+                .unwrap();
+        let cache = DevicePassCache::new(
+            fixture.generation.clone(),
+            owner.at(RenderCpuScope::DeviceBacking),
+        );
+        let mut update = cache.provisional_update();
+        let keys = fixture.keys.clone();
+        fixture.checked(|device, account| {
+            let result = update.realize_core_pass(
+                device,
+                &cache,
+                account,
+                CorePassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
+            );
+            let error = result.err().unwrap();
+            assert!(matches!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::CpuRefused {
+                    quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                    ..
+                })
+            ));
+            assert_eq!(account.work_count(RenderWork::GpuObjectsCreated)?, 0);
+            Ok(())
+        });
+        assert_eq!(fixture.live_objects(), native_opening);
+        assert_eq!(update.samplers.capacity(), 0);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            opening,
+        );
     }
 
     fn measure_readiness(
@@ -1618,7 +1953,14 @@ mod accounting_tests {
             create_sampler(&cache.generation, &cache.cpu, Some(account), device, key)
         });
         let expected = sampler.clone();
-        assert!(cache.samplers.insert(key, sampler).is_none());
+        assert!(
+            cache
+                .samplers
+                .slot(&cache.cpu)
+                .unwrap()
+                .write(key, sampler)
+                .is_none()
+        );
         let reserved = cache_capacity(&cache);
         let (update, error, report) = rejected_readiness(update, &mut cache, 1);
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);

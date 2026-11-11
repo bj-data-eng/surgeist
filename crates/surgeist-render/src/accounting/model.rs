@@ -164,10 +164,9 @@ dimensions! {
         ShaderSourceScanBytes,
         /// Shader key elements actually copied into distinct owned backing.
         ShaderKeyCopies,
-        /// Existing elements physically moved between replacement owned-vector
-        /// backings; excludes new writes, insertion shifts and in-place rotations.
-        /// Standalone preparation charges its forward owner. Renderer vectors
-        /// charge checked-unlimited CPU lifetime work, never frame/readback work.
+        /// Existing records moved into replacement vector or pass-cache index backing.
+        /// Standalone preparation charges its forward owner. Renderer backing
+        /// charges checked-unlimited CPU lifetime work.
         StorageRelocations,
         /// Typed elements actually copied between independently owned Vello
         /// encoding streams; excludes replacement-backing relocation.
@@ -358,7 +357,8 @@ dimensions! {
     /// Named resource units. See the crate accounting reference for units.
     #[non_exhaustive]
     pub enum RenderResource => RenderResourceTable {
-        /// Live explicit result backing: actual Vec capacity bytes, font/image payloads and documented fixed result units.
+        /// Live explicit backing, including vector capacity, usable pass-cache
+        /// index record capacity, font/image payloads and documented fixed units.
         RetainedCpuBytes,
         /// Live actual temporary Vec capacity bytes and declared fixed decoder workspace.
         ScratchCpuBytes,

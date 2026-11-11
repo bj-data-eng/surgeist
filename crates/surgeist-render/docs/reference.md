@@ -912,6 +912,14 @@ and disjoint byte ranges before acquiring output scratch, then emits from those
 ranges in source order. A frame-owned observer retains its binding work in
 the frame attempt.
 
+The device pass cache admits usable sampler, layout, shader-module and
+pipeline index capacity under `DeviceBacking`. Its byte unit is the
+container's guaranteed record capacity times the key/value record size.
+Bucket storage beyond that capacity and allocator overhead are outside the
+unit. Both provisional and committed capacity count while their backings coexist.
+Growth admits the replacement before relocating records. Publication uses
+the capacity reserved by the checked cache update.
+
 `Summary` and `Detailed` optionally collect host elapsed time using Ledger's
 platform clock or `RenderClock::Host`. Timed phases surround actual work and
 awaits, including pending preparation, submission resolution and surface
@@ -948,14 +956,13 @@ by their canonical Arc identity. Run-owned bytes are separate from shared
 font/image payloads. Inline structs, allocator headers/buckets, Ledger/control
 storage, dependency-private scratch and process/RSS usage are excluded. Native
 device-state, manager and handle-registry infrastructure is also excluded; its
-nested source/key/index Vecs and retained payloads remain measured.
+nested source, key and index storage and retained payloads remain measured.
 Temporary text values and resource iterators retain their backing admissions
 through actual destruction inside the owning CPU disposal phase, including
 early failure and cancellation.
-`StorageRelocations` counts existing elements moved to a replacement owned-vector
-backing. It excludes new element writes, insertion suffix shifts and in-place
-rotations. Renderer storage charges this checked-unlimited work to its CPU
-lifetime owner; it does not spend a fresh frame or readback work allowance.
+`StorageRelocations` counts existing records moved into replacement vector or
+pass-cache index backing. Renderer storage charges this checked-unlimited work
+to its CPU lifetime owner.
 Standalone preparation charges its own operation and permits a work limit where
 that entrypoint produces relocations. Existing image-identity and raster-resource
 copy units retain their new writes and suffix shifts, without counting the same
