@@ -2131,10 +2131,15 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             return Ok(source);
         };
 
-        for step in plan.steps.iter().cloned() {
+        for step in plan.steps.iter() {
             self.account.work(RenderWork::FilterOperationVisits, 1)?;
-            let mut passes = self.account.retained(4)?;
-            match step.operation_intent {
+            let pass_count = match &step.operation_intent {
+                ResolvedFilterOperationIntent::ColorRun(_) => 1,
+                ResolvedFilterOperationIntent::Blur(_) => 2,
+                ResolvedFilterOperationIntent::DropShadow(_) => 4,
+            };
+            let mut passes = self.account.retained(pass_count)?;
+            match &step.operation_intent {
                 ResolvedFilterOperationIntent::ColorRun(_) => {
                     source = self.declare_unary_resource_pass(
                         source,
@@ -2231,7 +2236,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             }
             self.filter_steps.push(SemanticFilterStepPlan {
                 passes: SharedValue::from_accounted(passes, &self.account.storage())?,
-                step,
+                step: step.clone(),
             })?;
         }
         Ok(source)

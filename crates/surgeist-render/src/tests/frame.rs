@@ -1631,6 +1631,11 @@ fn gpu_graph_executor_accepts_only_color_blur_and_drop_shadow_filter_graphs() {
 
 #[test]
 fn semantic_filter_steps_reserve_only_their_pass_id_count() {
+    use crate::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
+        RenderLimits, RenderPhase, RenderQuantity, RenderResource,
+    };
+
     let operations = spatial_filter_authored_filter_steps_for_test()
         .iter()
         .flat_map(|filters| filters.ops().iter().cloned())
@@ -1642,20 +1647,44 @@ fn semantic_filter_steps_reserve_only_their_pass_id_count() {
             scene.fill(Rect::new(2.0, 2.0, 4.0, 3.0), Color::BLACK);
         },
     );
-    let account = crate::accounting::Account::for_test();
-    let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
-    let crate::frame::FramePlan::GpuGraph(graph) = commands
-        .plan_for(filter_graph_context_for_test(), &account)
-        .unwrap()
-    else {
-        panic!("a foreground filter list must produce a semantic graph");
+    let plan = |limits| {
+        let mut accounting =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let result = accounting.run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+            let commands = scene.normalize(Capabilities::CURRENT, account)?;
+            let crate::frame::FramePlan::GpuGraph(graph) =
+                commands.plan_for(filter_graph_context_for_test(), account)?
+            else {
+                panic!("a foreground filter list must produce a semantic graph");
+            };
+            Ok(graph.filter_step_pass_backing_for_test())
+        });
+        (result, accounting.take_last_attempt().unwrap())
     };
     // Color, blur, drop shadow and color emit one, two, four and one passes.
     // The zero-radius blur contributes no step or pass-ID backing.
+    let expected = [(1, 1), (2, 2), (4, 4), (1, 1)];
+    let retained = RenderResource::RetainedCpuBytes;
+    let (result, baseline) = plan(RenderLimits::new());
+    assert_eq!(result.unwrap(), expected);
+    let peak = baseline.attempt().unwrap().usage().peak(retained);
+
+    let (result, terminal) = plan(RenderLimits::new().with_retained_bytes(peak - 1));
+    assert!(result.unwrap_err().accounting_diagnostic().is_some());
+    assert_eq!(terminal.cleanup_fault(), None);
+    let attempt = terminal.attempt().unwrap();
+    assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
     assert_eq!(
-        graph.filter_step_pass_backing_for_test(),
-        [(1, 1), (2, 2), (4, 4), (1, 1)]
+        attempt.refusal().unwrap().quantity(),
+        RenderQuantity::Resource(retained)
     );
+    assert_eq!(attempt.usage().live(retained), 0);
+    assert_eq!(attempt.usage().live(RenderResource::ScratchCpuBytes), 0);
+
+    let (retry, terminal) = plan(RenderLimits::new().with_retained_bytes(peak));
+    assert_eq!(retry.unwrap(), expected);
+    assert_eq!(terminal.attempt().unwrap().usage().peak(retained), peak);
+    assert_eq!(terminal.cleanup_fault(), None);
 }
 
 #[test]
