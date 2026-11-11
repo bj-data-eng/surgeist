@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
+#[path = "browser_parity/historical_disposition.rs"]
+mod historical_disposition;
 #[path = "browser_parity/portable_qualification.rs"]
 mod portable_qualification;
 #[path = "browser_parity/support.rs"]
@@ -3119,8 +3121,47 @@ fn runs_registered_current_browser_parity_qualification() {
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
-    run_raw_browser_parity(fixtures, None)
-        .unwrap_or_else(|report| panic!("default full-inventory parity must qualify:\n{report}"));
+    if let Some(mode) = std::env::var_os("SURGEIST_PARITY_RAW_EXACT") {
+        assert_eq!(mode, "1", "SURGEIST_PARITY_RAW_EXACT must be 1 when set");
+        let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
+        run_raw_browser_parity(fixtures, filter.as_deref())
+            .unwrap_or_else(|report| panic!("{report}"));
+        return;
+    }
+
+    let report =
+        collect_browser_parity(fixtures, None, true).unwrap_or_else(|error| panic!("{error}"));
+    let qualified = report
+        .qualified
+        .expect("default corpus qualification was collected");
+    if let Err(error) = qualified.require_complete() {
+        if let Some(raw) = report.raw.failure() {
+            eprintln!("{raw}");
+        }
+        panic!("{error}");
+    }
+    let counts = qualified
+        .historical
+        .expect("completed historical accounting");
+    eprintln!(
+        "Historical accounting complete: {} retired, {} same-source successors, {} source-equivalent successors",
+        counts.retired, counts.unchanged_source, counts.source_equivalent,
+    );
+    eprintln!(
+        "Current qualification passed: {} registered captures",
+        qualified.current_cases
+    );
+    if let Some(raw) = report.raw.failure() {
+        eprintln!(
+            "Raw-exact failed: {} historical cases, {} current cases, {} current difference fields",
+            report.raw.historical.len(),
+            report.raw.current.len(),
+            report.raw.current_difference_fields,
+        );
+        eprintln!("{raw}");
+    } else {
+        eprintln!("Raw-exact passed");
+    }
 }
 
 #[test]
@@ -3161,80 +3202,250 @@ fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
     );
 }
 
+#[derive(Default)]
+struct RawBrowserParity {
+    historical: Vec<String>,
+    current: Vec<String>,
+    by_suite: BTreeMap<String, usize>,
+    by_kind: BTreeMap<String, usize>,
+    current_difference_fields: usize,
+}
+
+impl RawBrowserParity {
+    fn failure(&self) -> Option<String> {
+        if self.historical.is_empty() && self.current.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nHistorical failure details:\n{}\n\nCurrent raw failures ({}):\n{}",
+            self.historical.len() + self.current.len(),
+            self.historical.len(),
+            count_lines(&self.by_suite),
+            count_lines(&self.by_kind),
+            self.historical.join("\n"),
+            self.current.len(),
+            self.current.join("\n")
+        ))
+    }
+}
+
+#[derive(Default)]
+struct QualifiedBrowserParity {
+    historical: Option<historical_disposition::HistoricalCounts>,
+    current_cases: usize,
+    failures: Vec<String>,
+}
+
+impl QualifiedBrowserParity {
+    fn observe_current(&mut self, run: &portable_qualification::EditionRun) {
+        self.current_cases = run.cases.len();
+        for case in &run.cases {
+            if let Err(error) = &case.qualified {
+                self.failures
+                    .push(format!("current/{}: {error}", case.output));
+            } else if let Err(error) = &case.raw {
+                self.failures.push(format!(
+                    "current/{} lacks a raw comparison: {error}",
+                    case.output
+                ));
+            }
+        }
+        self.failures.extend(
+            run.uncovered
+                .iter()
+                .map(|case| format!("current/{case}: missing capture authority")),
+        );
+        if let Some(error) = &run.freshness_error {
+            self.failures.push(error.clone());
+        }
+        if run.cases.len() != run.declared_cases || run.cases.is_empty() {
+            self.failures
+                .push("current registered case census is incomplete".into());
+        }
+    }
+
+    fn require_complete(&self) -> Result<(), String> {
+        if !self.failures.is_empty() {
+            return Err(self.failures.join("\n"));
+        }
+        if self.historical.is_none() {
+            return Err("historical accounting is incomplete".into());
+        }
+        if self.current_cases == 0 {
+            return Err("current qualification is incomplete".into());
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn default_corpus_rejects_missing_current_authority_and_additional_differences() {
+    let mut qualified = QualifiedBrowserParity {
+        historical: Some(historical_disposition::HistoricalCounts {
+            retired: 1,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    qualified.observe_current(&portable_qualification::EditionRun {
+        cases: Vec::new(),
+        declared_cases: 1,
+        freshness_error: None,
+        uncovered: vec!["required-current.xml".into()],
+    });
+    assert!(
+        qualified
+            .require_complete()
+            .unwrap_err()
+            .contains("required-current.xml: missing capture authority")
+    );
+
+    let mut qualified = QualifiedBrowserParity {
+        historical: Some(historical_disposition::HistoricalCounts {
+            retired: 1,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    qualified.observe_current(&portable_qualification::EditionRun {
+        cases: vec![portable_qualification::CaseOutcome {
+            output: "current.xml".into(),
+            raw: Ok(vec!["extra field".into()]),
+            qualified: Err("additional unclassified difference".into()),
+        }],
+        declared_cases: 1,
+        freshness_error: None,
+        uncovered: Vec::new(),
+    });
+    assert_eq!(
+        qualified.require_complete().unwrap_err(),
+        "current/current.xml: additional unclassified difference"
+    );
+}
+
+struct BrowserParityRun {
+    raw: RawBrowserParity,
+    qualified: Option<QualifiedBrowserParity>,
+}
+
 fn run_raw_browser_parity(fixtures: Vec<PathBuf>, filter: Option<&str>) -> Result<(), String> {
+    let report = collect_browser_parity(fixtures, filter, false)?;
+    report.raw.failure().map_or(Ok(()), Err)
+}
+
+fn collect_browser_parity(
+    fixtures: Vec<PathBuf>,
+    filter: Option<&str>,
+    qualify: bool,
+) -> Result<BrowserParityRun, String> {
     assert!(
         !fixtures.is_empty(),
         "expected at least one browser parity XML fixture"
     );
-
-    let mut historical = Vec::new();
-    let mut current = Vec::new();
-    let mut by_suite = BTreeMap::<String, usize>::new();
-    let mut by_kind = BTreeMap::<String, usize>::new();
+    let mut raw = RawBrowserParity::default();
+    let mut qualified = qualify.then(QualifiedBrowserParity::default);
     let edition = registered_current_edition();
     let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter)?;
-    for fixture in selection.originals {
-        let (kind, error) = match support::Golden::parse_file(&fixture) {
-            Ok(golden) => match support::assert_surgeist_matches(&golden) {
-                Ok(()) => continue,
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    let mut accounting = match (&edition, &mut qualified) {
+        (Ok(admitted), Some(qualified)) => {
+            match historical_disposition::HistoricalAccounting::load(&root, admitted) {
+                Ok(accounting) => Some(accounting),
                 Err(error) => {
-                    let error = error.to_string();
-                    (classified_error_kind(&golden, &error), error)
+                    qualified.failures.push(error);
+                    None
                 }
-            },
-            Err(error) => ("InvalidFixtureInput".to_owned(), error.to_string()),
+            }
+        }
+        _ => None,
+    };
+    for fixture in selection.originals {
+        let xml = std::fs::read_to_string(&fixture);
+        let parsed = xml
+            .as_deref()
+            .map_err(|error| error.to_string())
+            .and_then(|xml| support::Golden::parse(xml).map_err(|error| error.to_string()));
+        let mut missing_root_authority = false;
+        let failure = match parsed {
+            Ok(golden) => support::assert_surgeist_matches(&golden)
+                .err()
+                .map(|error| {
+                    let error = error.to_string();
+                    missing_root_authority = matches!(
+                        &golden.viewport.root_context,
+                        support::RootContext::UnqualifiedCapture { .. }
+                    ) && error.starts_with("MissingRootContextAuthority:");
+                    (classified_error_kind(&golden, &error), error)
+                }),
+            Err(error) => Some(("InvalidFixtureInput".to_owned(), error)),
         };
-        *by_suite.entry(suite_name(&fixture)).or_default() += 1;
-        *by_kind.entry(kind).or_default() += 1;
-        historical.push(format!("{} failed: {error}", fixture.display()));
+        if let Some((kind, error)) = failure {
+            *raw.by_suite.entry(suite_name(&fixture)).or_default() += 1;
+            *raw.by_kind.entry(kind).or_default() += 1;
+            raw.historical
+                .push(format!("{} failed: {error}", fixture.display()));
+        }
+        if let (Some(accounting), Some(qualified)) = (&mut accounting, &mut qualified)
+            && let Err(error) =
+                accounting.observe(&root, &fixture, xml.as_deref().ok(), missing_root_authority)
+        {
+            qualified.failures.push(error);
+        }
+    }
+    if let (Some(accounting), Some(qualified)) = (accounting, &mut qualified) {
+        match accounting.finish() {
+            Ok(counts) => qualified.historical = Some(counts),
+            Err(error) => qualified.failures.push(error),
+        }
     }
 
-    match edition {
-        Err(error) => current.push(format!("current edition admission failed: {error}")),
-        Ok(admitted) => match admitted.execute_selected(&selection.current) {
-            Err(error) => current.push(format!("current edition execution failed: {error}")),
-            Ok(run) => {
-                for case in run.cases {
-                    match case.raw {
-                        Ok(differences) if differences.is_empty() => {}
-                        Ok(differences) => current.push(format!(
+    let current = edition
+        .map_err(|error| format!("current edition admission failed: {error}"))
+        .and_then(|admitted| {
+            admitted
+                .execute_selected(&selection.current)
+                .map_err(|error| format!("current edition execution failed: {error}"))
+        });
+    match current {
+        Err(error) => {
+            if let Some(qualified) = &mut qualified {
+                qualified.failures.push(error.clone());
+            }
+            raw.current.push(error);
+        }
+        Ok(run) => {
+            if let Some(qualified) = &mut qualified {
+                qualified.observe_current(&run);
+            }
+            for case in run.cases {
+                match case.raw {
+                    Ok(differences) if differences.is_empty() => {}
+                    Ok(differences) => {
+                        raw.current_difference_fields += differences.len();
+                        raw.current.push(format!(
                             "current/{} raw differences:\n{}",
                             case.output,
                             differences.join("\n")
-                        )),
-                        Err(error) => {
-                            current.push(format!("current/{} raw failure: {error}", case.output))
-                        }
+                        ));
                     }
-                }
-                if filter.is_none() {
-                    current.extend(
-                        run.uncovered
-                            .into_iter()
-                            .map(|case| format!("current/{case}: missing capture authority")),
-                    );
-                }
-                if let Some(error) = run.freshness_error {
-                    current.push(error);
+                    Err(error) => raw
+                        .current
+                        .push(format!("current/{} raw failure: {error}", case.output)),
                 }
             }
-        },
+            if filter.is_none() {
+                raw.current.extend(
+                    run.uncovered
+                        .into_iter()
+                        .map(|case| format!("current/{case}: missing capture authority")),
+                );
+            }
+            if let Some(error) = run.freshness_error {
+                raw.current.push(error);
+            }
+        }
     }
-
-    if historical.is_empty() && current.is_empty() {
-        return Ok(());
-    }
-
-    Err(format!(
-        "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nHistorical failure details:\n{}\n\nCurrent raw failures ({}):\n{}",
-        historical.len() + current.len(),
-        historical.len(),
-        count_lines(&by_suite),
-        count_lines(&by_kind),
-        historical.join("\n"),
-        current.len(),
-        current.join("\n")
-    ))
+    Ok(BrowserParityRun { raw, qualified })
 }
 
 fn suite_name(path: &Path) -> String {
