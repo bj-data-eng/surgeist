@@ -626,6 +626,55 @@ mod tests {
     }
 
     #[test]
+    fn tiling_scales_along_the_admitted_clip_thickness() {
+        let mut input = request();
+        input.border_origin.y = 9_007_199_254_740_992.0;
+        input.border_widths.top = 3.0;
+        let repeat = Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Stretch);
+        let plan = tiling(input, repeat);
+        let top = plan.regions()[0][1].unwrap().axes();
+        assert_eq!(top.height.extent(), 4.0);
+        assert_eq!(top.width.extent(), 12.0);
+        assert_eq!(plan.regions()[1][1].unwrap().axes().width.extent(), 12.0);
+    }
+
+    fn center_only(destination_width: f64, source_width: f64) -> BorderImageRequest {
+        BorderImageRequest {
+            border_origin: Point::new(0.0, 0.0),
+            border_size: Size::new(destination_width, 1.0),
+            border_widths: Edges::all(0.0),
+            source: BorderImageSource {
+                coordinate_size: Size::new(source_width, 1.0),
+                natural_size: Size::new(None, None),
+            },
+            slices: Edges::all(BorderImageSlice::SourceUnits(0.0)),
+            ..request()
+        }
+    }
+
+    #[test]
+    fn tiling_refuses_space_whose_rounded_gap_clips_the_last_tile() {
+        let input = center_only(f64::from_bits(23), f64::from_bits(5));
+        let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
+        let outcome = resolve_border_image_tiling(
+            &geometry(input),
+            repeat,
+            options(PaintLimits::unlimited()),
+        );
+        assert_eq!(outcome.result, Err(geometry_error()));
+    }
+
+    #[test]
+    fn tiling_keeps_centered_repeat_phase_at_large_tile_counts() {
+        let input = center_only(18_014_398_509_481_984.0, 1.0);
+        let repeat = Size::new(BorderImageRepeat::Repeat, BorderImageRepeat::Stretch);
+        let plan = tiling(input, repeat);
+        let axis = plan.regions()[1][1].unwrap().axes().width;
+        assert_eq!(axis.extent(), 1.0);
+        assert_eq!(axis.anchor().rem_euclid(1.0), 0.5);
+    }
+
+    #[test]
     fn tiling_reports_refusal_prefix_and_releases_a_provisional_plan() {
         use BorderImageRepeat::{Repeat, Space};
         let geometry = geometry(request());
