@@ -62,9 +62,10 @@ every registered box tree and recorded scroll-span pair.
 
 The producer manifest declares source pins, imports, artifact inventory, and
 expected outcomes. [Historical observation accounting](historical-observations.json)
-binds it and its historical report by digest. Each original source family
-has an authenticated successor or an obsolete observation retired from
-current evidence. Sources of retired observations remain available for recapture.
+binds it, its historical report, and the [prepared Text ledger](prepared-text-accounting.json)
+by digest. Each original source family has an authenticated successor or an
+obsolete observation retired from current evidence. Sources of retired
+observations remain available for recapture.
 
 Ordinary tests traverse every historical XML and every registered current
 capture. The default verdict requires complete historical accounting and
@@ -187,10 +188,11 @@ set. A missing field, new or changed difference, unexpected pass, or late
 freshness failure fails qualification. Raw differences remain available
 independently.
 
-`SURGEIST_PARITY_FILTER` can select a fixture substring for diagnosis. Filtered
-execution makes no complete-edition coverage claim. Run without it for the
-full declared cohort. These checked-in comparisons need no browser or fixture
-regeneration.
+The default full-inventory test always traverses the complete corpus.
+For a filtered raw diagnostic, set `SURGEIST_PARITY_RAW_EXACT=1` and
+`SURGEIST_PARITY_FILTER` to a fixture substring. The registered-current
+qualification test also accepts the filter and reports partial coverage.
+These comparisons use existing XML.
 
 The publication owner creates and validates each immutable edition.
 

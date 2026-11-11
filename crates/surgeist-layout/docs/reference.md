@@ -1520,6 +1520,11 @@ XML bytes remain layout-owned and comment-free; semantic parsing and comparison
 remain in layout tests. See the [browser parity guide](../tests/layout/browser_parity/README.md)
 for commands, cache behavior, and current provenance requirements.
 
+Ordinary `cargo test -p surgeist-layout` traverses every historical XML and
+registered current capture. It requires complete historical accounting and
+fresh current qualification. The named strict raw verdict uses the same
+inventory and fails on every raw mismatch or authority refusal.
+
 ## Local commands
 
 Run these recipes from the crate directory with `just` already available. The
