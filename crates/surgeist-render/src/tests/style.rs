@@ -361,6 +361,105 @@ fn image_repeat_does_not_need_the_full_distance_between_origins() {
 }
 
 #[test]
+fn image_repeat_resolves_an_odd_subnormal_period() {
+    let unit = f64::from_bits(1);
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(2.0 * unit, 0.0, 6.0 * unit, 1.0),
+        Rect::new(-2.0 * unit, 0.0, 3.0 * unit, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
+    assert_eq!(positions, [unit, 4.0 * unit, 7.0 * unit]);
+}
+
+#[test]
+fn image_repeat_refuses_an_unrepresentable_first_tile() {
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(2.0_f64.powi(54), 0.0, 8.0, 1.0),
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let mut accounting = crate::RenderAccountingContext::default();
+    let error = repeat.resolve(placement, &mut accounting).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    assert_eq!(
+        error.invalid_value_diagnostic().map(InvalidValue::field),
+        Some("image repeat geometry")
+    );
+    assert_style_failure_releases_backing(accounting.last_attempt().unwrap());
+}
+
+#[test]
+fn background_repeat_preserves_distant_tile_phase_after_budget_retry() {
+    use crate::{RenderPhase, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderWork};
+
+    let rect = Rect::new(0.0, 0.0, 8.0, 1.0);
+    let image = ResolvedImageResource::try_new(ImageId::new(7), Size::new(3.0, 1.0)).unwrap();
+    let layer = StyleImageLayer::try_new(StyleImageSource::resolved(image))
+        .unwrap()
+        .with_position(BackgroundPosition::length(2.0_f64.powi(54) + 4.0, 0.0).unwrap())
+        .with_repeat(BackgroundRepeat::repeat_x());
+    let stack = BackgroundStack::try_new(None, vec![BackgroundLayer::new(layer)]).unwrap();
+    let input = BackgroundNormalizationInput::try_new(
+        stack,
+        BackgroundAreas::try_new(rect, rect, rect).unwrap(),
+    )
+    .unwrap();
+    let cap = 14;
+    let mut accounting = style_work_limit(RenderWork::CoordinateVisits, cap);
+    let error = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap_err();
+    let report = accounting.last_attempt().unwrap();
+    assert_style_refusal(
+        &error,
+        report,
+        RenderRefusal {
+            phase: RenderPhase::Attempt,
+            quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+            current: cap,
+            amount: 1,
+            reason: RenderRefusalReason::Limit { limit: cap },
+        },
+    );
+    let attempt = report.attempt().unwrap();
+    assert_eq!(
+        attempt
+            .phase_usage(RenderPhase::Repeat)
+            .work(RenderWork::CoordinateVisits),
+        12
+    );
+    assert_eq!(attempt.usage().work(RenderWork::RepeatTiles), 0);
+    assert_eq!(attempt.usage().work(RenderWork::CommandsEmitted), 0);
+    assert_style_failure_releases_backing(report);
+
+    accounting.set_options(crate::RenderAccountingOptions::default());
+    let normalized = input
+        .normalize(Capabilities::CURRENT, &mut accounting)
+        .unwrap();
+    let [command] = normalized.commands() else {
+        panic!("expected one normalized background command");
+    };
+    let NormalizedBackgroundCommandKind::Layer { layer } = command.kind() else {
+        panic!("expected a normalized layer");
+    };
+    let positions: Vec<_> = layer
+        .repeat()
+        .tile_rects()
+        .iter()
+        .map(|tile| tile.x())
+        .collect();
+    assert_eq!(positions, [-1.0, 2.0, 5.0]);
+}
+
+#[test]
 fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
     let placement = ResolvedImagePlacement::from_parts(
         Rect::new(0.0, 0.0, 40.0, 10.0),

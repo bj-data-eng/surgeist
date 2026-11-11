@@ -1235,16 +1235,72 @@ fn first_repeated_tile_origin(
     tile_axis: f64,
     account: &Account,
 ) -> Result<f64> {
-    let delta = account.coordinate(|| clip_origin - tile_origin)?;
-    let quotient = account.coordinate(|| delta / tile_axis)?;
-    let index = account.coordinate(|| quotient.floor())?;
-    let offset = account.coordinate(|| index * tile_axis)?;
-    let origin = account.coordinate(|| tile_origin + offset)?;
-    let end = account.coordinate(|| origin + tile_axis)?;
-    if account.coordinate(|| end <= clip_origin)? {
-        return Ok(end);
+    let mut origin = if account.coordinate(|| clip_origin == tile_origin)? {
+        clip_origin
+    } else {
+        let clip = centered_repeat_remainder(clip_origin, tile_axis, account)?;
+        let anchor = centered_repeat_remainder(tile_origin, tile_axis, account)?;
+        let negative_anchor = account.coordinate(|| -anchor)?;
+        let (delta, tail) = repeat_sum(clip, negative_anchor, account)?;
+        // Centered residues bound their difference by one period. Retain the
+        // residual until the origin is formed so rounding at a seam cannot
+        // discard a phase that is still representable near the clip.
+        let (phase, correction) =
+            if account.coordinate(|| delta.abs() == tile_axis && tail == 0.0)? {
+                (0.0, 0.0)
+            } else if account.coordinate(|| delta < 0.0)? {
+                let (phase, wrapped_tail) = repeat_sum(tile_axis, delta, account)?;
+                (phase, account.coordinate(|| tail + wrapped_tail)?)
+            } else {
+                (delta, tail)
+            };
+        let negative_phase = account.coordinate(|| -phase)?;
+        let (left, left_tail) = repeat_sum(clip_origin, negative_phase, account)?;
+        let correction = account.coordinate(|| left_tail - correction)?;
+        account.coordinate(|| left + correction)?
+    };
+    let mut end = account.coordinate(|| origin + tile_axis)?;
+    if account.coordinate(|| end == clip_origin && origin < clip_origin)? {
+        // The preceding tile has no visible width at the published precision.
+        origin = clip_origin;
+        end = account.coordinate(|| origin + tile_axis)?;
+    }
+    if account.coordinate(|| {
+        !origin.is_finite() || !end.is_finite() || origin > clip_origin || end <= clip_origin
+    })? {
+        return Err(Error::invalid_value(
+            "image repeat geometry",
+            origin,
+            "first tile must have a finite origin and reach past the clip start",
+        ));
     }
     Ok(origin)
+}
+
+fn centered_repeat_remainder(value: f64, period: f64, account: &Account) -> Result<f64> {
+    let remainder = account.coordinate(|| value % period)?;
+    let magnitude = account.coordinate(|| remainder.abs())?;
+    let complement = account.coordinate(|| period - magnitude)?;
+    // Comparing against the complement avoids rounding a subnormal midpoint.
+    if account.coordinate(|| magnitude > complement)? {
+        let period = account.coordinate(|| period.copysign(remainder))?;
+        account.coordinate(|| remainder - period)
+    } else {
+        Ok(remainder)
+    }
+}
+
+fn repeat_sum(left: f64, right: f64, account: &Account) -> Result<(f64, f64)> {
+    let sum = account.coordinate(|| left + right)?;
+    let (larger, smaller) = if account.coordinate(|| left.abs() >= right.abs())? {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    // Magnitude ordering makes this residual exact for a finite sum.
+    let rounded_smaller = account.coordinate(|| sum - larger)?;
+    let tail = account.coordinate(|| smaller - rounded_smaller)?;
+    Ok((sum, tail))
 }
 
 fn repeat_position_count(
