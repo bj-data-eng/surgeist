@@ -1598,3 +1598,43 @@ fn root_local_auto_grid_uses_authored_orthogonal_tracks() {
 fn root_local_auto_grid_uses_authored_orthogonal_tracks_f32() {
     assert_root_local_auto_grid_geometry::<f32>();
 }
+
+#[test]
+fn root_local_auto_grid_refuses_nested_counted_tracks() {
+    let mut root = auto_fixed_grid::<f64>(WritingMode::VerticalRl);
+    let inner =
+        TrackRepetitionOf::count_components(1, std::mem::take(&mut root.grid_template_columns))
+            .unwrap();
+    let outer =
+        TrackRepetitionOf::count_components(1, vec![TrackComponentOf::Repeat(inner)]).unwrap();
+    root.grid_template_columns = vec![TrackComponentOf::Repeat(outer)];
+
+    let error = compute_layout(&auto_grid_tree(root), 0, auto_grid_request(0.0, 0.0)).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
+            RootContextMismatch::WritingMode
+        ))
+    ));
+}
+
+#[test]
+fn root_local_auto_grid_refuses_leaf_measurement() {
+    let root = auto_fixed_grid::<f64>(WritingMode::VerticalRl);
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [])
+        .style(0, root)
+        .measure(0, Size::new(12.0, 10.0));
+
+    let error = compute_layout(&tree, 0, auto_grid_request(0.0, 0.0)).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(
+            RootContextMismatch::WritingMode
+        ))
+    ));
+}
