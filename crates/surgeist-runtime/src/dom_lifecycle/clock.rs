@@ -1398,6 +1398,346 @@ mod tests {
             }
 
             #[test]
+            fn queued_details_retains_the_reached_unavailable_clock_observation() {
+                queued_element_task_retains_clock_failure(false);
+            }
+
+            #[test]
+            fn queued_dialog_close_retains_the_reached_regressed_clock_observation() {
+                queued_element_task_retains_clock_failure(true);
+            }
+
+            fn queued_element_task_retains_clock_failure(dialog: bool) {
+                use crate::{
+                    DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
+                    DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
+                    DomElementTaskSourceKind, DomEventCallback, DomEventDispatchLimits,
+                    DomEventDispatchOutcome, DomEventDispatcher, DomEventInit,
+                    DomEventListenerOptions, DomEventRegistryLimits, DomEventResource,
+                    DomEventTimestampUnavailable, DomEventType, DomSourceEventRuntimeLimits,
+                    DomSourceEventServiceLimits, DomSourceEventServiceProgress,
+                    DomSourceUnavailable,
+                };
+                use surgeist_dom::{
+                    DomError, DomSourceEventClockFailure, DomSourceEventKind, Namespace,
+                };
+
+                struct Context {
+                    tasks: DomElementTaskRuntime,
+                    seen: Vec<(bool, Result<f64, DomEventTimestampUnavailable>)>,
+                }
+
+                impl DomElementTaskEventContext for Context {
+                    fn element_tasks(&mut self) -> &mut DomElementTaskRuntime {
+                        &mut self.tasks
+                    }
+                }
+
+                let cancel = AtomicBool::new(false);
+                let mut session = session_with_dom_limits(|limits| {
+                    limits
+                        .with_details_toggle_intentions(4)
+                        .unwrap()
+                        .with_dispatch_custody(
+                            surgeist_dom::DomDispatchCustodyLimits::new(
+                                8, 64, 2_000_000, 2_000_000, 100_000,
+                            )
+                            .unwrap(),
+                        )
+                });
+                let mut hosted = session.hosted_execution();
+                let mut observations = vec![Ok(150_001), Ok(260_001)];
+                let expected_failure = if dialog {
+                    observations.extend([Ok(430_001), Ok(300_001)]);
+                    DomSourceEventClockFailure::Regressed
+                } else {
+                    observations.push(Err(Error::Unavailable));
+                    DomSourceEventClockFailure::Unavailable
+                };
+                observations.push(Ok(845_001));
+                script(&hosted, &observations);
+                let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, &cancel)
+                    .unwrap();
+                let owner = hosted.state().unwrap();
+                let samples_left = || owner.borrow().clock.observations.as_ref().unwrap().len();
+
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(top.document())
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut batch = DomBatch::new();
+                let target = batch.create_element_ns(
+                    top.document(),
+                    Namespace::html(),
+                    if dialog { "dialog" } else { "details" },
+                );
+                batch.insert_before(&target, body, None);
+                if !dialog {
+                    batch.set_attribute(&target, "open", "");
+                }
+                let target = session
+                    .dom()
+                    .apply(batch, &cancel)
+                    .unwrap()
+                    .created(&target)
+                    .unwrap()
+                    .unwrap();
+                let dispatch = DomEventDispatchLimits {
+                    path_items: 16,
+                    snapshot_listeners: 2,
+                    failure_records: 2,
+                    callbacks: 2,
+                    work: 100_000,
+                };
+                let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 2,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 2_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                let mut context = Context {
+                    tasks: session.element_task_execution(),
+                    seen: Vec::new(),
+                };
+                let (task_source, event_type) = if dialog {
+                    let mut source = session.source_execution();
+                    let mut services = DomSourceServices {
+                        meta: None,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    };
+                    assert!(matches!(
+                        source
+                            .apply(
+                                &mut session.dom(),
+                                DomSourceEdit::set_attribute(target, "open", ""),
+                                source_limits(),
+                                &mut services,
+                                &cancel,
+                            )
+                            .unwrap(),
+                        DomSourceDriveProgress::Complete(_)
+                    ));
+                    source
+                        .raise_event_runtime_limits(
+                            &session.dom(),
+                            DomSourceEventRuntimeLimits {
+                                jobs: 1,
+                                storage_bytes: 16_000_000,
+                                work: 1_000_000,
+                            },
+                            &cancel,
+                        )
+                        .unwrap();
+                    let DomSourceDriveProgress::Pending {
+                        request: DomSourceRequest::Event(request),
+                        reason: DomSourceUnavailable::Event,
+                    } = source
+                        .apply(
+                            &mut session.dom(),
+                            DomSourceEdit::close_dialog(target, None),
+                            source_limits(),
+                            &mut services,
+                            &cancel,
+                        )
+                        .unwrap()
+                    else {
+                        panic!("actual Close must first expose its beforetoggle");
+                    };
+                    assert_eq!(request.kind(), DomSourceEventKind::BeforeToggle);
+                    let DomSourceEventServiceProgress::Serviced { receipt } = source
+                        .service_event(
+                            &mut session.dom(),
+                            &request,
+                            &mut dispatcher,
+                            &mut context,
+                            DomSourceEventServiceLimits {
+                                dispatch,
+                                source: source_limits(),
+                            },
+                            &cancel,
+                        )
+                        .unwrap()
+                    else {
+                        panic!("actual Close beforetoggle must deliver");
+                    };
+                    assert_eq!(receipt.callbacks(), 0);
+                    assert!(matches!(
+                        source
+                            .resume(
+                                &mut session.dom(),
+                                request.operation(),
+                                source_limits(),
+                                &mut services,
+                                &cancel,
+                            )
+                            .unwrap(),
+                        DomSourceDriveProgress::Complete(_)
+                    ));
+                    (
+                        DomElementTaskSourceKind::UserInteraction,
+                        DomEventType::CLOSE,
+                    )
+                } else {
+                    assert_eq!(
+                        context.tasks.ingest(&mut session.dom(), &cancel).unwrap(),
+                        1
+                    );
+                    (
+                        DomElementTaskSourceKind::DomManipulation,
+                        DomEventType::TOGGLE,
+                    )
+                };
+                let queued = context.tasks.pending_task(task_source, 0).unwrap().unwrap();
+                assert_eq!(queued.id().target(), target);
+                assert_eq!(queued.queue_association().unwrap().global(), top.global());
+                assert!(matches!(
+                    (dialog, queued),
+                    (true, DomElementTask::DialogClose(_))
+                        | (false, DomElementTask::DetailsToggle(_))
+                ));
+                assert!(session.dom().pending_source_edit().is_none());
+                assert_eq!(samples_left(), 2);
+                for _ in 0..2 {
+                    dispatcher
+                        .add_listener(
+                            &mut session.dom(),
+                            target,
+                            event_type.clone(),
+                            DomEventCallback::new(|_, _, context: &mut Context, event| {
+                                context
+                                    .seen
+                                    .push((event.creation().is_some(), event.time_stamp()));
+                                Ok(())
+                            }),
+                            DomEventListenerOptions::default(),
+                        )
+                        .unwrap();
+                }
+
+                let mut run = |session: &mut DomSession,
+                               context: &mut Context,
+                               dispatch,
+                               cancel: &AtomicBool| {
+                    DomElementTaskRuntime::run_next(
+                        &mut session.dom(),
+                        task_source,
+                        &mut dispatcher,
+                        context,
+                        DomElementTaskRunLimits {
+                            dispatch,
+                            source: source_limits(),
+                        },
+                        cancel,
+                    )
+                };
+                assert!(matches!(
+                    run(&mut session, &mut context, dispatch, &AtomicBool::new(true)),
+                    Err(DomElementTaskRuntimeError::Dom(DomError::Cancelled))
+                ));
+                assert_eq!(samples_left(), 2);
+                assert_eq!(
+                    context.tasks.pending_task(task_source, 0).unwrap(),
+                    Some(queued)
+                );
+
+                // A single Host/top-level/cluster/Global route takes four reads and
+                // first entry takes one step. Leave the sample's own admission one short.
+                let (short_cap, original_cap) = {
+                    let mut state = owner.borrow_mut();
+                    let original = state.limits.work;
+                    let short = state.work + 5;
+                    state.limits.work = short;
+                    (short, original)
+                };
+                let refused = run(&mut session, &mut context, dispatch, &cancel);
+                assert!(
+                    matches!(
+                        refused,
+                        Err(DomElementTaskRuntimeError::Hosted(
+                            DomHostedRuntimeError::Admission
+                        ))
+                    ),
+                    "the sample work gate must refuse before provider access: {refused:?}"
+                );
+                assert_eq!(owner.borrow().work, short_cap);
+                owner.borrow_mut().limits.work = original_cap;
+                assert_eq!(samples_left(), 2);
+                assert!(context.seen.is_empty());
+                assert_eq!(
+                    context.tasks.pending_task(task_source, 0).unwrap(),
+                    Some(queued)
+                );
+
+                let reached = run(
+                    &mut session,
+                    &mut context,
+                    DomEventDispatchLimits {
+                        callbacks: 1,
+                        ..dispatch
+                    },
+                    &cancel,
+                );
+                assert_eq!(
+                    samples_left(),
+                    1,
+                    "the reached provider observation is consumed"
+                );
+                assert!(
+                    matches!(
+                        reached,
+                        Ok(DomElementTaskProgress::Retained {
+                            task,
+                            dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                            ..
+                        }) if task == queued
+                    ),
+                    "the reached provider failure must retain the original firing for delivery: {reached:?}"
+                );
+                let expected = (
+                    false,
+                    Err(DomEventTimestampUnavailable::Provider(expected_failure)),
+                );
+                assert_eq!(context.seen, [expected]);
+                let DomElementTaskProgress::Complete { task, receipt, .. } =
+                    run(&mut session, &mut context, dispatch, &cancel).unwrap()
+                else {
+                    panic!("the same queued task must deliver its original Event receipt");
+                };
+                assert_eq!(task, queued);
+                assert_eq!(receipt.original_target(), target.into());
+                assert_eq!(receipt.event_type(), event_type);
+                assert_eq!(receipt.callbacks(), 2);
+                assert!(receipt.failures().is_empty());
+                assert_eq!(context.seen, [expected, expected]);
+                assert!(session.dom().pending_source_edit().is_none());
+                assert!(matches!(
+                    run(&mut session, &mut context, dispatch, &cancel).unwrap(),
+                    DomElementTaskProgress::Empty
+                ));
+                assert_eq!(samples_left(), 1);
+                let next = hosted
+                    .create_event(
+                        &mut session.dom(),
+                        top.global(),
+                        &[],
+                        DomEventInit::default(),
+                        &cancel,
+                    )
+                    .unwrap();
+                assert_eq!(next.creation().unwrap().occurrence_microseconds(), 800);
+                assert_eq!(samples_left(), 0);
+            }
+
+            #[test]
             fn hosted_style_load_keeps_its_first_networking_firing_time_across_resume() {
                 use crate::{
                     DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
