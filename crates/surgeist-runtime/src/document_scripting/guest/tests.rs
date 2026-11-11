@@ -73,6 +73,53 @@ fn attach_registry_with_limits(
     assert!(registry.is_none());
 }
 
+pub(in crate::document_scripting) fn refused_projection_releases_native_backing_before_retry() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let events = host.guest_events().unwrap();
+    let kind = units("projection");
+    let before = events.used.get();
+    let control = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let with_control = events.used.get();
+    let projection = with_control - before;
+    assert!(projection > 0);
+
+    // Measure the complete backing of the same Event projection. Hold its
+    // positive control live so the second attempt cannot borrow its storage.
+    let exact_margin = events.limits.storage_bytes - with_control - projection;
+    let one_short = events.reserve(&host.native, exact_margin + 1).unwrap();
+    let at_refusal = events.used.get();
+    assert!(matches!(
+        host.create_guest_event(&permit, &kind, DomEventInit::default()),
+        Err(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+        ))
+    ));
+    assert_eq!(
+        events.used.get(),
+        at_refusal,
+        "an unpublished Event must release its backing without collection"
+    );
+    drop(one_short);
+
+    let exact = events.reserve(&host.native, exact_margin).unwrap();
+    let retry = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    assert_eq!(events.used.get(), events.limits.storage_bytes);
+    host.in_document(&permit, |scope| {
+        let control = control.object(scope)?;
+        let retry = retry.object(scope)?;
+        assert!(!scope.strict_equals(&control, &retry)?);
+        Ok(())
+    })
+    .unwrap();
+    drop(exact);
+}
+
 pub(in crate::document_scripting) fn attached_registered_function_uses_the_exact_native_invocation()
 {
     let cancel = Arc::new(AtomicBool::new(false));
