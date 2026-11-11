@@ -1146,15 +1146,26 @@ fn style_denial_before_a_disabled_script_completes_the_original_insertion() {
 
 #[test]
 fn published_style_acknowledges_sheet_after_svg_refusal() {
-    check_published_style_after_svg_refusal(false);
+    check_published_style_after_svg_refusal(StyleClose::Complete);
 }
 
 #[test]
 fn published_style_retains_acknowledgment_through_svg_close_refusals() {
-    check_published_style_after_svg_refusal(true);
+    check_published_style_after_svg_refusal(StyleClose::Retry);
 }
 
-fn check_published_style_after_svg_refusal(retry_close: bool) {
+#[test]
+fn published_style_closes_after_an_independent_cssom_commit() {
+    check_published_style_after_svg_refusal(StyleClose::RetryAfterCssomCommit);
+}
+
+enum StyleClose {
+    Complete,
+    Retry,
+    RetryAfterCssomCommit,
+}
+
+fn check_published_style_after_svg_refusal(scenario: StyleClose) {
     use crate::{DomDocumentScriptingFacts, DomSourceScriptStep, DomStyleInlineCspObservation};
     use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
     use surgeist_html::values::Namespace;
@@ -1280,10 +1291,41 @@ fn check_published_style_after_svg_refusal(retry_close: bool) {
         assert!(!svg.flags().already_processed());
     };
     check_prefix(&prefix);
+    let producer = if matches!(scenario, StyleClose::RetryAfterCssomCommit) {
+        let mut batch = root.batch(CssomEditGuard::from_snapshot(&applied)).unwrap();
+        let unrelated = batch
+            .construct_sheet(
+                surgeist_cssom::CssomConstructorDocument {
+                    version: CssomInputVersion {
+                        role: CssomInputRole::Document,
+                        identity: "other".into(),
+                        revision: 1,
+                    },
+                    identity: "other".into(),
+                    base_location: "about:blank".into(),
+                },
+                Default::default(),
+                &cancel,
+            )
+            .unwrap();
+        let commit = root.commit(&mut Some(batch)).unwrap();
+        let producer = root.snapshot().unwrap();
+        assert_ne!(producer.revision(), applied.revision());
+        assert!(
+            producer
+                .sheet(commit.sheet(unrelated.ticket()).unwrap())
+                .is_ok()
+        );
+        assert_eq!(producer.sheets(), applied.sheets());
+        assert_eq!(dom.snapshot().stamp(), prefix.stamp());
+        producer
+    } else {
+        applied.clone()
+    };
     drop(registration);
     dom.release_document_script_registration(&binding);
     assert_eq!(dom.snapshot().stamp(), prefix.stamp());
-    let limits = if retry_close {
+    let limits = if !matches!(scenario, StyleClose::Complete) {
         let spent = dom.changes_since(before.stamp()).unwrap().changes().len();
         let with_outputs = |outputs| {
             let limits = source_limits();
@@ -1301,10 +1343,11 @@ fn check_published_style_after_svg_refusal(retry_close: bool) {
         let mut lease = dom
             .resume_source_edit(read.operation(), with_outputs(spent + 1), &cancel)
             .unwrap();
-        assert!(matches!(
-            lease.advance(&cancel),
-            Err(DomError::SourceOutputLimit)
-        ));
+        let refused = lease.advance(&cancel);
+        assert!(
+            matches!(refused, Err(DomError::SourceOutputLimit)),
+            "{refused:?}"
+        );
         drop(lease);
         let cleanup = dom.pending_source_edit().unwrap();
         assert_eq!(cleanup.operation(), read.operation());
@@ -1326,7 +1369,7 @@ fn check_published_style_after_svg_refusal(retry_close: bool) {
             old_style
         );
         check_prefix(&unchanged);
-        assert_eq!(root.snapshot().unwrap().revision(), applied.revision());
+        assert_eq!(root.snapshot().unwrap().revision(), producer.revision());
         let enough = with_outputs(spent + 2);
         let mut lease = dom
             .resume_source_edit(read.operation(), enough, &cancel)
@@ -1358,7 +1401,7 @@ fn check_published_style_after_svg_refusal(retry_close: bool) {
     let closed = dom.snapshot();
     check_prefix(&closed);
     let current = root.snapshot().unwrap();
-    assert_eq!(current.revision(), applied.revision());
+    assert_eq!(current.revision(), producer.revision());
     assert_eq!(current.sheets(), applied.sheets());
     let pending = dom.pending_source_edit();
     assert!(
