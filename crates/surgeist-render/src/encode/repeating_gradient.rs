@@ -622,16 +622,12 @@ mod tests {
         assert_eq!(intended_phase, 0.0);
         assert_eq!(narrowed_phase - intended_phase, 1.0 / 16.0);
         let error = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device,
-                radial: None,
-                comparison_only: false,
-            },
+            local,
+            reference_device,
+            false,
             output,
-            None,
             PhysicalSize::new(32, 32),
-            LinearSampling::Direct,
+            NativeGlyphField::Linear(LinearSampling::Direct),
             &Account::for_test(),
         )
         .expect_err("native glyph factors must preserve the intended linear origin");
@@ -678,11 +674,12 @@ mod tests {
             [16.0, 0.0, 0.0, 16.0, 0.0, 0.0]
         );
         let local = native_glyph_transform(
-            paired,
+            paired.local,
+            paired.reference_device,
+            paired.comparison_only,
             output,
-            None,
             PhysicalSize::new(32, 32),
-            LinearSampling::Direct,
+            NativeGlyphField::Linear(LinearSampling::Direct),
             &account,
         )
         .unwrap();
@@ -704,13 +701,15 @@ mod tests {
         let brush = prepare(&gradient, transform, &account).unwrap();
         let local = brush.transform().unwrap();
         let outline = vello_encoding::Transform::from_kurbo(&(transform * local));
+        let brush_transform = brush.transform.unwrap();
         let glyph = vello_encoding::Transform::from_kurbo(&transform)
             * native_glyph_transform(
-                brush.transform.unwrap(),
+                brush_transform.local,
+                brush_transform.reference_device,
+                brush_transform.comparison_only,
                 transform,
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &account,
             )
             .unwrap();
@@ -1027,20 +1026,19 @@ mod tests {
         let local = kurbo::Affine::new([16.0, 0.0, 0.0, 16.0, center, 0.0]);
         let output = kurbo::Affine::translate((-center, 0.0));
         let native_local = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device: output * local,
-                radial: Some(RadialReference {
+            local,
+            output * local,
+            false,
+            output,
+            PhysicalSize::new(2, 2),
+            NativeGlyphField::Radial {
+                radii: (0.0, 1.0),
+                reference: RadialReference {
                     start: 0.0,
                     end: 1.0,
                     delta: 1.0,
-                }),
-                comparison_only: false,
+                },
             },
-            output,
-            Some((0.0, 1.0)),
-            PhysicalSize::new(2, 2),
-            LinearSampling::Direct,
             &Account::for_test(),
         )
         .unwrap();
@@ -1085,25 +1083,162 @@ mod tests {
         assert_eq!(ideal_phase_at_origin - native_phase_at_origin, 1.0 / 16.0);
         assert!(ideal_phase_at_origin - native_phase_at_origin > 1.0 / 511.0);
         let error = native_glyph_transform(
-            BrushTransform {
-                local,
-                reference_device: ideal_device,
-                radial: Some(RadialReference {
+            local,
+            ideal_device,
+            false,
+            output,
+            PhysicalSize::new(2, 2),
+            NativeGlyphField::Radial {
+                radii: (0.0, 1.0),
+                reference: RadialReference {
                     start: 0.0,
                     end: 1.0,
                     delta: 1.0,
-                }),
-                comparison_only: false,
+                },
             },
-            output,
-            Some((0.0, 1.0)),
-            PhysicalSize::new(2, 2),
-            LinearSampling::Direct,
             &account,
         )
         .expect_err("glyph qualification must compare the actual narrowed composition");
         assert_eq!(error.code(), ErrorCode::InvalidInput);
         assert!(error.invalid_value_diagnostic().is_some());
+    }
+
+    #[test]
+    fn prepared_radial_glyph_preserves_phase_refusal_and_hint_mapping() {
+        use crate::{GradientHint, GradientRealizationError};
+
+        let center = f64::from(1_u32 << 28);
+        let output = kurbo::Affine::translate((-center, 0.0));
+        let extent = PhysicalSize::new(2, 2);
+        let account = Account::for_test();
+        let first = stop(0.0, Color::BLACK);
+        for (first, hinted) in [
+            (first, false),
+            (
+                first.with_hint_after(GradientHint::try_new(0.25).unwrap()),
+                true,
+            ),
+        ] {
+            let gradient = RepeatingGradient::try_radial(
+                Point::new(center + 1.0, 0.0),
+                16.0,
+                16.0,
+                vec![first, stop(1.0, Color::TRANSPARENT)],
+            )
+            .unwrap();
+            let brush =
+                crate::encode::glyph_paint_brush(&gradient.into(), output, extent, &account)
+                    .unwrap();
+            // The exact translated center is 1. Separately narrowed factors
+            // move it to 0, an error of 1/16 of a cycle at the origin.
+            let ideal_center = (center + 1.0) - center;
+            let native_center = f64::from((center + 1.0) as f32 - center as f32);
+            let phase_loss = (ideal_center - native_center) / 16.0;
+            assert_eq!(phase_loss, 1.0 / 16.0);
+            assert!(phase_loss > 1.0 / 511.0);
+            let error = brush
+                .native_glyph_transform(output, extent, &account)
+                .unwrap_err();
+            if hinted {
+                assert_eq!(error.code(), ErrorCode::GradientRealization);
+                assert_eq!(
+                    error.gradient_realization_diagnostic(),
+                    Some(&GradientRealizationError::InsufficientNativeCapacity)
+                );
+            } else {
+                assert_eq!(error.code(), ErrorCode::InvalidInput);
+                let diagnostic = error.invalid_value_diagnostic().unwrap();
+                assert_eq!(diagnostic.field(), "native gradient realization");
+                assert_eq!(
+                    diagnostic.value(),
+                    "insufficient native circular phase capacity"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn prepared_repeating_radial_glyph_accepts_exact_cancellation_with_stored_radii() {
+        use crate::{GradientHint, RenderClock, RenderProfile, RenderRefusalReason};
+        use std::time::Duration;
+
+        let center = f64::from(1_u32 << 28);
+        let output = kurbo::Affine::translate((-center, 0.0));
+        let extent = PhysicalSize::new(2, 2);
+        let first = 0.75 + 2.0_f64.powi(-24) + 2.0_f64.powi(-27);
+        let last = first + 1.0;
+        let hint = GradientHint::try_new(first + 0.25).unwrap();
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(center, 0.0),
+            16.0,
+            16.0,
+            vec![
+                stop(first, Color::BLACK).with_hint_after(hint),
+                stop(last, Color::TRANSPARENT),
+            ],
+        )
+        .unwrap();
+        let account = Account::for_test();
+        let brush =
+            crate::encode::glyph_paint_brush(&gradient.into(), output, extent, &account).unwrap();
+        let native = brush
+            .native_glyph_transform(output, extent, &account)
+            .unwrap()
+            .unwrap();
+        assert_eq!(native.matrix, [16.0, 0.0, 0.0, 16.0]);
+        assert_eq!(native.translation, [268_435_456.0, 0.0]);
+        let peniko::BrushRef::Gradient(gradient) = brush.as_ref() else {
+            panic!("repeating gradient");
+        };
+        let peniko::GradientKind::Radial(radial) = gradient.kind else {
+            panic!("radial field");
+        };
+        // Adding one to the rounded start lands on an even tie. The ideal
+        // end is above that tie and would narrow to the next binary32 value.
+        assert_eq!(radial.start_radius.to_bits(), 0x3f40_0001);
+        assert_eq!(radial.end_radius.to_bits(), 0x3fe0_0000);
+        assert_eq!((last as f32).to_bits(), 0x3fe0_0001);
+        assert_eq!(gradient.extend, peniko::Extend::Repeat);
+
+        // Each affine narrowing admits 18 visits. The native product admits
+        // 20 more before the radial certificate's eight input captures.
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: true })
+                .with_clock(RenderClock::Host(|| Duration::ZERO))
+                .with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, 56)
+                        .unwrap(),
+                ),
+        );
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                brush.native_glyph_transform(output, extent, account)
+            })
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("native radial certificate input admission");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits)
+        );
+        assert_eq!(refusal.current(), 56);
+        assert_eq!(refusal.amount(), 8);
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 56 });
+        let attempt = context.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(attempt.phase_count(RenderPhase::GradientPrepare), 1);
+        assert_eq!(
+            attempt.phase_elapsed(RenderPhase::GradientPrepare),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            attempt
+                .phase_usage(RenderPhase::GradientPrepare)
+                .work(RenderWork::CoordinateVisits),
+            56
+        );
     }
 
     #[test]
@@ -1211,32 +1346,24 @@ mod tests {
         // Glyph paint inverts the composed native map, not either factor.
         assert!(
             native_glyph_transform(
-                BrushTransform {
-                    local: kurbo::Affine::scale(1.0e20),
-                    reference_device: kurbo::Affine::scale(1.0e-19) * kurbo::Affine::scale(1.0e20),
-                    radial: None,
-                    comparison_only: false,
-                },
+                kurbo::Affine::scale(1.0e20),
+                kurbo::Affine::scale(1.0e-19) * kurbo::Affine::scale(1.0e20),
+                false,
                 kurbo::Affine::scale(1.0e-19),
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &Account::for_test(),
             )
             .is_ok()
         );
         assert!(
             native_glyph_transform(
-                BrushTransform {
-                    local: kurbo::Affine::scale(1.0e50),
-                    reference_device: kurbo::Affine::scale(1.0e-49) * kurbo::Affine::scale(1.0e50),
-                    radial: None,
-                    comparison_only: false,
-                },
+                kurbo::Affine::scale(1.0e50),
+                kurbo::Affine::scale(1.0e-49) * kurbo::Affine::scale(1.0e50),
+                false,
                 kurbo::Affine::scale(1.0e-49),
-                None,
                 PhysicalSize::new(2, 2),
-                LinearSampling::Direct,
+                NativeGlyphField::Linear(LinearSampling::Direct),
                 &Account::for_test(),
             )
             .is_err()

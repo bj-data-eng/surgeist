@@ -939,6 +939,8 @@ impl FrameBrush {
         target_extent: PhysicalSize,
         account: &Account,
     ) -> Result<Option<vello_encoding::Transform>> {
+        use gradient_field::NativeGlyphField;
+
         let Some(brush_transform) = self.transform else {
             return Ok(None);
         };
@@ -953,12 +955,24 @@ impl FrameBrush {
                 },
                 _ => None,
             };
+            let sampling = self.linear_sampling(&account)?;
+            let field = match (radial_radii, brush_transform.radial) {
+                (Some(radii), Some(reference)) => NativeGlyphField::Radial { radii, reference },
+                (None, None) => NativeGlyphField::Linear(sampling),
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err(Error::new(
+                        BackendErrorCode::RenderFailed,
+                        "prepared native glyph radial field has mismatched radii and reference",
+                    ));
+                }
+            };
             gradient_field::native_glyph_transform(
-                brush_transform,
+                brush_transform.local,
+                brush_transform.reference_device,
+                brush_transform.comparison_only,
                 transform,
-                radial_radii,
                 target_extent,
-                self.linear_sampling(&account)?,
+                field,
                 &account,
             )
             .map_err(|error| {
