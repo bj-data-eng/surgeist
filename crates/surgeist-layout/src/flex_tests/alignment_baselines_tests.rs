@@ -1669,6 +1669,7 @@ fn flex_row_child_baselines(
     margin: Edges<LengthAuto>,
     children: &[u32],
     cross_operation: SizingOperation,
+    preferred_cross: PreferredSize,
 ) -> ComputeOutput {
     let mut tree = FlexTree::default();
     tree.insert_children(1, children.to_vec());
@@ -1695,7 +1696,7 @@ fn flex_row_child_baselines(
     tree.insert_style(
         1,
         NodeInput {
-            size: Size::new(PreferredSize::px(100.0), PreferredSize::AUTO),
+            size: Size::new(PreferredSize::px(100.0), preferred_cross),
             ..NodeInput::default()
         },
     );
@@ -1757,6 +1758,7 @@ fn flex_row_reports_first_child_baseline() {
         Edges::all(LengthAuto::ZERO),
         &[2],
         SizingOperation::Normal,
+        PreferredSize::AUTO,
     );
     assert_eq!(output.first_baselines.y, Some(7.0));
     assert_eq!(output.last_baselines.y, Some(7.0));
@@ -1776,6 +1778,7 @@ fn flex_row_exports_the_unshared_parallel_end_items_last_baseline() {
             Edges::all(LengthAuto::ZERO),
             &[2],
             SizingOperation::Normal,
+            PreferredSize::AUTO,
         );
         (output.first_baselines.y, output.last_baselines.y)
     });
@@ -1802,6 +1805,7 @@ fn flex_row_exports_the_end_items_last_baseline_with_a_cross_auto_margin() {
             margin,
             &[2],
             SizingOperation::Normal,
+            PreferredSize::AUTO,
         );
         (output.first_baselines.y, output.last_baselines.y)
     });
@@ -1828,6 +1832,7 @@ fn flex_row_exports_the_shared_last_baseline_with_a_nonsharing_end_item() {
             margin,
             &[3, 2],
             SizingOperation::Normal,
+            PreferredSize::AUTO,
         );
         (output.first_baselines.y, output.last_baselines.y)
     });
@@ -1854,6 +1859,7 @@ fn flex_row_exports_the_shared_first_baseline_with_a_nonsharing_start_item() {
             margin,
             &[2, 3],
             SizingOperation::Normal,
+            PreferredSize::AUTO,
         );
         (output.first_baselines.y, output.last_baselines.y)
     });
@@ -1880,6 +1886,7 @@ fn flex_single_line_intrinsic_cross_sizes_use_the_largest_item_contribution() {
                 Edges::all(LengthAuto::ZERO),
                 &[2, 3],
                 operation,
+                PreferredSize::AUTO,
             )
             .size
             .height
@@ -4422,4 +4429,26 @@ fn assert_flex_safe_main_overflow_uses_the_flex_start_edge<S: LayoutScalar>() {
 fn flex_safe_main_overflow_uses_the_flex_start_edge() {
     assert_flex_safe_main_overflow_uses_the_flex_start_edge::<f32>();
     assert_flex_safe_main_overflow_uses_the_flex_start_edge::<f64>();
+}
+
+#[test]
+fn flex_preferred_max_content_cross_uses_the_largest_item_contribution() {
+    let baselines = BaselinesOf {
+        first: Point::new(None, Some(3.0)),
+        last: Point::new(None, Some(8.0)),
+    };
+    for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+        let output = flex_row_child_baselines(
+            mode,
+            baselines,
+            Some(AlignItems::Baseline),
+            Edges::all(LengthAuto::ZERO),
+            &[2, 3],
+            SizingOperation::Normal,
+            PreferredSize::MAX_CONTENT,
+        );
+        // Each item contributes 10px. Baseline alignment requires 12px
+        // for an automatic cross size but does not enlarge this intrinsic size.
+        assert_eq!(output.size.height, 10.0, "{mode:?}");
+    }
 }
