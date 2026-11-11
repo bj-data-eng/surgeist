@@ -1111,22 +1111,28 @@ impl GuestEvents {
                     DispatchHost::Guest,
                 )?
             };
-            if let Some((event, target)) = &projection
+            let projected = if let Some((event, target)) = &projection
                 && matches!(event.payload().0.target(), Some(DomEventTarget::Standalone(ref actual))
                     if actual == &target.payload().native)
             {
-                if let Err(error) = scope.set_native_object_reference::<GuestEventProjection>(
+                projection = None;
+                scope.set_native_object_reference::<GuestEventProjection>(
                     argument,
                     interfaces::EVENT_TARGET_REFERENCE,
                     Some(receiver),
-                ) {
-                    return refuse(scope, &self.refusal, DocumentGuestEventError::from(error))
-                        .map_err(Into::into);
-                }
-                projection = None;
-            }
+                )
+            } else {
+                Ok(())
+            };
+            let projection_failed = projected.is_err();
             let mut selected = match outcome {
-                DomEventDispatchOutcome::Complete(receipt) => return Ok(receipt),
+                DomEventDispatchOutcome::Complete(receipt) => {
+                    if let Err(error) = projected {
+                        return refuse(scope, &self.refusal, DocumentGuestEventError::from(error))
+                            .map_err(Into::into);
+                    }
+                    return Ok(receipt);
+                }
                 DomEventDispatchOutcome::HostInvocation(selected) => selected,
                 DomEventDispatchOutcome::Retained(resource) => {
                     return Err(DomEventDispatchError::Admission(resource).into());
@@ -1163,10 +1169,10 @@ impl GuestEvents {
             };
             let key = selected.key();
             let mut current_event = None;
-            let result = (|| {
-                let callback = selected
-                    .selected_guest()
-                    .ok_or(DocumentGuestEventError::RegistryState)?;
+            let callback = selected.selected_guest();
+            let prepared = (|| {
+                projected?;
+                let callback = callback.ok_or(DocumentGuestEventError::RegistryState)?;
                 let authority = callback.realm();
                 authority.check_owner_active()?;
                 if callback.registration_window != attachment.target
@@ -1187,15 +1193,19 @@ impl GuestEvents {
                     }
                 }
                 self.step()?;
-                let object = callback.open(scope, receiver)?;
-                let once_removed = !self
-                    .registry
-                    .try_borrow()
-                    .map_err(|_| DocumentScriptNativeError::Busy)?
-                    .has_registration(selected.registration());
-                if once_removed {
-                    callback.clear_receiver(scope, receiver)?;
+                Ok((callback.open(scope, receiver)?, authority.identity()))
+            })();
+            // Native selection already removed this once registration. Keep the
+            // selected object local on success, but always clear the exact edge.
+            let cleared = match callback {
+                Some(callback) if selected.once_removed() => {
+                    callback.clear_receiver(scope, receiver)
                 }
+                _ => Ok(()),
+            };
+            let result = (|| {
+                let (object, realm) = prepared?;
+                cleared?;
                 // A standalone path item is outside any shadow tree.
                 current_event = Some(self.window_event.enter(scope.retain(argument)));
                 let arguments = std::slice::from_ref(argument);
@@ -1209,7 +1219,7 @@ impl GuestEvents {
                     Ok(_) => Ok(None),
                     Err(Error::Exception(exception)) => Ok(Some(DocumentGuestListenerException {
                         registration: selected.registration(),
-                        realm: authority.identity(),
+                        realm,
                         exception,
                     })),
                     Err(error) => Err(error.into()),
@@ -1230,6 +1240,10 @@ impl GuestEvents {
                 Ok(result) => selected.complete(&registry, result)?,
                 Err(error) => {
                     selected.refuse(&registry, DomEventHostError { code: key })?;
+                    drop(registry);
+                    if projection_failed {
+                        return refuse(scope, &self.refusal, error).map_err(Into::into);
+                    }
                     return Err(error);
                 }
             }
