@@ -334,9 +334,8 @@ impl LayoutAdapter {
             BoxObservationRequest::EmptyLineBrFontBand
                 | BoxObservationRequest::OriginalFlexParent
                 | BoxObservationRequest::OriginalPercentageFlexParent
-                | BoxObservationRequest::OriginalBlockAxes
-                | BoxObservationRequest::OriginalFlexAxes
-        ) {
+        ) || original_axis_capture(request).is_some()
+        {
             &[]
         } else {
             input.input_bytes(&font_path).ok_or_else(|| {

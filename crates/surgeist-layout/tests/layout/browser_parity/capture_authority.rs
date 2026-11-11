@@ -15,7 +15,10 @@ use crate::original_flex_parent_profile::{
     self as original_flex_parent, percentage as percentage_flex_parent,
 };
 use crate::prepared_atomic_percentage_profile as atomic_percentage;
-use crate::{original_block_axes_profile as block_axes, original_flex_axes_profile as flex_axes};
+use crate::{
+    original_block_axes_profile as block_axes, original_flex_axes_profile as flex_axes,
+    original_grid_axes_profile as grid_axes,
+};
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
@@ -296,6 +299,7 @@ pub(crate) fn current_owner_bindings(
                 ),
                 ("original_block_axes_request.json", block_axes::REQUEST),
                 ("original_flex_axes_request.json", flex_axes::REQUEST),
+                ("original_grid_axes_request.json", grid_axes::REQUEST),
                 (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
@@ -329,6 +333,8 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/original_block_axes.js".to_owned()
         } else if name == flex_axes::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_flex_axes.js".to_owned()
+        } else if name == grid_axes::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_grid_axes.js".to_owned()
         } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_subgrid_body.js".to_owned()
         } else if name == atomic_percentage::SCRIPT_PATH {
@@ -674,6 +680,13 @@ pub(crate) fn capture_binding_from_verified_inputs(
             "original Flex axes proof requires its observation request",
         ));
     }
+    if observation_request != SpecializedProfile::OriginalGridAxes.observation_request()
+        && full_inputs.contains_key(grid_axes::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "original Grid axes proof requires its observation request",
+        ));
+    }
     if observation_request != SpecializedProfile::OriginalSubgridBody.observation_request()
         && full_inputs.contains_key(original_subgrid_body::PROOF_SCRIPT_PATH)
     {
@@ -835,30 +848,38 @@ pub(crate) fn capture_binding_from_verified_inputs(
             }
             (profile, font_demand)
         }
-        ("original-block-axes" | "original-flex-axes", Some(request_sha256)) => {
+        (
+            "original-block-axes" | "original-flex-axes" | "original-grid-axes",
+            Some(request_sha256),
+        ) => {
+            let helper_digest = full_inputs.get(ROOT_HELPER_INPUT).map(String::as_str);
             let (profile, source_digest, request, script_path, script, helper_valid) =
-                if observation_request == "original-block-axes" {
-                    (
+                match observation_request {
+                    "original-block-axes" => (
                         "canonical-original-block-axes",
                         block_axes::source_digest(&case.source),
                         block_axes::REQUEST,
                         block_axes::SCRIPT_PATH,
                         block_axes::SCRIPT,
-                        full_inputs
-                            .get(ROOT_HELPER_INPUT)
-                            .is_some_and(|digest| block_axes::accepts_helper(digest)),
-                    )
-                } else {
-                    (
+                        helper_digest.is_some_and(block_axes::accepts_helper),
+                    ),
+                    "original-flex-axes" => (
                         "canonical-original-flex-axes",
                         flex_axes::source_digest(&case.source),
                         flex_axes::REQUEST,
                         flex_axes::SCRIPT_PATH,
                         flex_axes::SCRIPT,
-                        full_inputs
-                            .get(ROOT_HELPER_INPUT)
-                            .is_some_and(|digest| flex_axes::accepts_helper(digest)),
-                    )
+                        helper_digest.is_some_and(flex_axes::accepts_helper),
+                    ),
+                    "original-grid-axes" => (
+                        "canonical-original-grid-axes",
+                        grid_axes::source_digest(&case.source),
+                        grid_axes::REQUEST,
+                        grid_axes::SCRIPT_PATH,
+                        grid_axes::SCRIPT,
+                        helper_digest.is_some_and(grid_axes::accepts_helper),
+                    ),
+                    _ => unreachable!("only original axis capture profiles enter this arm"),
                 };
             let proof_sha256 = sha256(script.as_bytes());
             if source_digest != Some(artifact.source_sha256.as_str())
@@ -1228,6 +1249,7 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         }
         "original-block-axes" => Some(sha256(block_axes::SCRIPT.as_bytes())),
         "original-flex-axes" => Some(sha256(flex_axes::SCRIPT.as_bytes())),
+        "original-grid-axes" => Some(sha256(grid_axes::SCRIPT.as_bytes())),
         "original-subgrid-body" => Some(sha256(original_subgrid_body::PROOF_SCRIPT)),
         "prepared-atomic-percentage" => Some(sha256(atomic_percentage::SCRIPT.as_bytes())),
         "horizontal-br-font-band" => Some(sha256(super::br_font_band::SCRIPT.as_bytes())),
@@ -1381,6 +1403,7 @@ pub(crate) enum SpecializedProfile {
     OriginalPercentageFlexParent,
     OriginalBlockAxes,
     OriginalFlexAxes,
+    OriginalGridAxes,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -1416,6 +1439,9 @@ impl SpecializedProfile {
             Self::OriginalFlexAxes => {
                 "tests/layout/browser_parity/captured/original-flex-axes-qualification"
             }
+            Self::OriginalGridAxes => {
+                "tests/layout/browser_parity/captured/original-grid-axes-qualification"
+            }
             Self::OriginalSubgridBody => {
                 "tests/layout/browser_parity/captured/original-subgrid-body-qualification"
             }
@@ -1442,6 +1468,7 @@ impl SpecializedProfile {
             Self::OriginalPercentageFlexParent => "original-percentage-flex-parent",
             Self::OriginalBlockAxes => "original-block-axes",
             Self::OriginalFlexAxes => "original-flex-axes",
+            Self::OriginalGridAxes => "original-grid-axes",
             Self::OriginalSubgridBody => "original-subgrid-body",
             Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
             Self::HorizontalBrFontBand => "horizontal-br-font-band",
@@ -1458,6 +1485,7 @@ impl SpecializedProfile {
             Self::OriginalPercentageFlexParent => &[percentage_flex_parent::SOURCE],
             Self::OriginalBlockAxes => block_axes::SOURCES,
             Self::OriginalFlexAxes => flex_axes::SOURCES,
+            Self::OriginalGridAxes => grid_axes::SOURCES,
             Self::OriginalSubgridBody => &[original_subgrid_body::SOURCE],
             Self::PreparedAtomicPercentage => &[atomic_percentage::SOURCE],
             Self::HorizontalBrFontBand => &[super::br_font_band::SOURCE],
@@ -1474,6 +1502,7 @@ impl SpecializedProfile {
             Self::OriginalPercentageFlexParent,
             Self::OriginalBlockAxes,
             Self::OriginalFlexAxes,
+            Self::OriginalGridAxes,
             Self::OriginalSubgridBody,
             Self::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand,
@@ -1521,6 +1550,15 @@ pub(crate) fn original_flex_axes_evidence() -> SpecializedEvidence {
     }
 }
 
+pub(crate) fn original_grid_axes_evidence() -> SpecializedEvidence {
+    SpecializedEvidence::OriginalGridAxes {
+        proof_script: PathDigest {
+            path: grid_axes::SCRIPT_PATH.to_owned(),
+            sha256: sha256(grid_axes::SCRIPT.as_bytes()),
+        },
+    }
+}
+
 pub(crate) fn prepared_atomic_percentage_evidence() -> SpecializedEvidence {
     SpecializedEvidence::PreparedAtomicPercentage {
         proof_script: PathDigest {
@@ -1554,6 +1592,9 @@ pub(crate) enum SpecializedEvidence {
     OriginalFlexAxes {
         proof_script: PathDigest,
     },
+    OriginalGridAxes {
+        proof_script: PathDigest,
+    },
     OriginalSubgridBody {
         proof_script: PathDigest,
     },
@@ -1582,6 +1623,7 @@ impl SpecializedEvidence {
             }
             Self::OriginalBlockAxes { .. } => SpecializedProfile::OriginalBlockAxes,
             Self::OriginalFlexAxes { .. } => SpecializedProfile::OriginalFlexAxes,
+            Self::OriginalGridAxes { .. } => SpecializedProfile::OriginalGridAxes,
             Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
             Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand { .. } => SpecializedProfile::HorizontalBrFontBand,
@@ -1597,6 +1639,7 @@ impl SpecializedEvidence {
             | Self::OriginalPercentageFlexParent { proof_script }
             | Self::OriginalBlockAxes { proof_script }
             | Self::OriginalFlexAxes { proof_script }
+            | Self::OriginalGridAxes { proof_script }
             | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
@@ -1619,6 +1662,7 @@ impl SpecializedEvidence {
             | Self::OriginalPercentageFlexParent { proof_script }
             | Self::OriginalBlockAxes { proof_script }
             | Self::OriginalFlexAxes { proof_script }
+            | Self::OriginalGridAxes { proof_script }
             | Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
@@ -2453,6 +2497,9 @@ impl Qualification {
             }
             SpecializedEvidence::OriginalFlexAxes { .. } => {
                 original_flex_axes_evidence() == case.evidence
+            }
+            SpecializedEvidence::OriginalGridAxes { .. } => {
+                original_grid_axes_evidence() == case.evidence
             }
             SpecializedEvidence::OriginalSubgridBody { .. } => {
                 original_subgrid_body::evidence() == case.evidence

@@ -27,6 +27,8 @@ mod original_block_axes_profile;
 mod original_flex_axes_profile;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
 mod original_flex_parent_profile;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_grid_axes_profile.rs"]
+mod original_grid_axes_profile;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
 mod original_subgrid_body_profile;
 #[path = "../tests/layout/browser_parity/support.rs"]
@@ -171,6 +173,14 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedSpecialized(SpecializedProfile::OriginalFlexAxes),
         )),
+        [mode] if mode == "--publish-original-grid-axes-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::OriginalGridAxes),
+        )),
+        [mode] if mode == "--check-published-original-grid-axes-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(SpecializedProfile::OriginalGridAxes),
+        )),
         [mode] if mode == "--publish-original-subgrid-body-qualification" => Ok((
             None,
             QualificationMode::PublishSpecialized(SpecializedProfile::OriginalSubgridBody),
@@ -295,7 +305,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-grid-lanes-original-diagnostics | --check-grid-lanes-original-diagnostics | --derive-published-qualification <edition> | --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --publish-relative-inset-differences | --check-published-relative-inset-differences | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-flex-parent-qualification | --check-published-original-flex-parent-qualification | --publish-original-percentage-flex-parent-qualification | --check-published-original-percentage-flex-parent-qualification | --publish-original-block-axes-qualification | --check-published-original-block-axes-qualification | --publish-original-flex-axes-qualification | --check-published-original-flex-axes-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --paired-geometry-capture --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-grid-lanes-original-diagnostics | --check-grid-lanes-original-diagnostics | --derive-published-qualification <edition> | --publish-matching-geometry <declared-edition> | --check-published-matching-geometry <declared-edition> | --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --publish-relative-inset-differences | --check-published-relative-inset-differences | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-flex-parent-qualification | --check-published-original-flex-parent-qualification | --publish-original-percentage-flex-parent-qualification | --check-published-original-percentage-flex-parent-qualification | --publish-original-block-axes-qualification | --check-published-original-block-axes-qualification | --publish-original-flex-axes-qualification | --check-published-original-flex-axes-qualification | --publish-original-grid-axes-qualification | --check-published-original-grid-axes-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | --publish-empty-line-br-font-band-qualification | --check-published-empty-line-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --paired-geometry-capture --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }

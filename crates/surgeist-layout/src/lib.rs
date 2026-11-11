@@ -294,6 +294,9 @@ mod original_flex_axes_profile;
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_flex_parent_profile.rs"]
 mod original_flex_parent_profile;
 #[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_grid_axes_profile.rs"]
+mod original_grid_axes_profile;
+#[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
 mod original_subgrid_body_profile;
 mod output;
