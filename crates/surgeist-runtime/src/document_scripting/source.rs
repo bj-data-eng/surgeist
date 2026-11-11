@@ -500,18 +500,7 @@ pub(super) fn detach_callback(
                 DocumentScriptNativeError::SourceAccess,
             );
         };
-        let admitted = native
-            .session
-            .try_borrow_mut()
-            .map_err(|_| DocumentScriptNativeError::Busy)
-            .and_then(|mut session| {
-                session
-                    .dom()
-                    .raw()
-                    .source_event_step(&active.request, &native.cancellation)
-                    .map_err(DocumentScriptNativeError::from)
-            });
-        if let Err(error) = admitted {
+        if let Err(error) = admit_detach_work(&native, &active.request, 1) {
             return refuse(scope, &attachment.failures, error);
         }
         let expected = scope.import(&active.argument)?;
@@ -520,12 +509,22 @@ pub(super) fn detach_callback(
             None => false,
         };
         if !matches {
-            let message = b"Delegated Comment required".map(u16::from);
-            return Ok(Completion::Throw(scope.type_error(&message)?));
+            return detach_type_error(
+                scope,
+                &native,
+                attachment,
+                &active.request,
+                b"Delegated Comment required",
+            );
         }
         let Some(value) = arguments.get(0) else {
-            let message = b"Number required".map(u16::from);
-            return Ok(Completion::Throw(scope.type_error(&message)?));
+            return detach_type_error(
+                scope,
+                &native,
+                attachment,
+                &active.request,
+                b"Number required",
+            );
         };
         let converted = scope.unrestricted_double(value);
         scope.check_active()?;
@@ -546,6 +545,36 @@ pub(super) fn detach_callback(
         )?;
         Ok(Completion::Undefined)
     }
+}
+
+fn admit_detach_work(
+    native: &NativeOwner,
+    request: &DomSourceEventRequest,
+    steps: usize,
+) -> Result<(), DocumentScriptNativeError> {
+    let mut session = native
+        .session
+        .try_borrow_mut()
+        .map_err(|_| DocumentScriptNativeError::Busy)?;
+    let dom = session.dom();
+    for _ in 0..steps {
+        dom.raw().source_event_step(request, &native.cancellation)?;
+    }
+    Ok(())
+}
+
+fn detach_type_error<'scope, const N: usize>(
+    scope: &mut Scope<'scope>,
+    native: &NativeOwner,
+    attachment: &Attachment,
+    request: &DomSourceEventRequest,
+    ascii: &[u8; N],
+) -> Result<Completion<'scope>, Error> {
+    if let Err(error) = admit_detach_work(native, request, N) {
+        return refuse(scope, &attachment.failures, error);
+    }
+    let message = ascii.map(u16::from);
+    Ok(Completion::Throw(scope.type_error(&message)?))
 }
 
 fn delegated_comment_global(

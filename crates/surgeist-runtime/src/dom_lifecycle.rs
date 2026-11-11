@@ -862,6 +862,7 @@ impl HostedRuntime {
     pub(crate) fn admit_script_work(
         &self,
         dom: &DomEventDom<'_>,
+        steps: usize,
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedRuntimeError> {
         let owner = self.state()?;
@@ -869,7 +870,10 @@ impl HostedRuntime {
             .try_borrow_mut()
             .map_err(|_| DomHostedRuntimeError::Busy)?;
         state.qualify(dom)?;
-        state.step(cancel)
+        for _ in 0..steps {
+            state.step(cancel)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn retain_script_payload(

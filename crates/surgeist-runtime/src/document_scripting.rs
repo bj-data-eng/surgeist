@@ -411,12 +411,21 @@ impl PreparedDocumentScriptHost {
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
-        process.execution().in_realm(&realm, |scope| {
-            let global = scope.global()?;
-            for (name, callback) in [
-                (hooks.child_count, Callback::new(read)),
-                (hooks.detach_source_node_if, Callback::new(detach)),
-            ] {
+        for (name, callback) in [
+            (hooks.child_count, Callback::new(read)),
+            (hooks.detach_source_node_if, Callback::new(detach)),
+        ] {
+            {
+                let mut session = owner
+                    .session
+                    .try_borrow_mut()
+                    .map_err(|_| DocumentScriptNativeError::Busy)?;
+                hosted
+                    .admit_script_work(&session.dom(), name.len(), cancel)
+                    .map_err(DocumentScriptNativeError::from)?;
+            }
+            process.execution().in_realm(&realm, |scope| {
+                let global = scope.global()?;
                 let hook = scope.function(&callback)?;
                 scope.define_new_property(
                     &global,
@@ -427,8 +436,10 @@ impl PreparedDocumentScriptHost {
                         enumerable: false,
                         configurable: false,
                     },
-                )?;
-            }
+                )
+            })?;
+        }
+        process.execution().in_realm(&realm, |scope| {
             css::install_window_css(
                 scope,
                 owner.css_limits.get(),
@@ -724,7 +735,9 @@ impl DocumentScriptHost {
             let registered = origin.global() == receiving_global
                 || engine
                     .creations
-                    .find(origin.global(), || hosted.admit_script_work(&dom, cancel))
+                    .find(origin.global(), || {
+                        hosted.admit_script_work(&dom, 1, cancel)
+                    })
                     .map_err(DocumentScriptNativeError::from)?
                     .is_some();
             if registered {
