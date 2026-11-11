@@ -780,7 +780,9 @@ impl<'scope> Scope<'scope> {
         Ok(self.value(root))
     }
 
-    fn fixed_arity_function(
+    /// Creates a callable with declared name and length. The native handler
+    /// receives only the supplied arguments up to that length.
+    pub fn fixed_arity_function(
         &mut self,
         callback: &Callback,
         metadata: FunctionMetadata<'_>,

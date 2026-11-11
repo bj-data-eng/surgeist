@@ -217,6 +217,9 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
         "globalThis.thrown = {}; globalThis.before = 0; globalThis.after = 0;
          globalThis.neutral = 0; globalThis.rejectedForgedComment = 0;
          ((comment) => { globalThis.delegatedComment = comment;
+                   if (window !== globalThis || self !== window || parent !== window || opener !== null) {
+                       throw Error('wrong native Window relations during Source dispatch');
+                   }
                    before = readChildCount();
                    if (comment !== null && typeof comment === 'object') {
                        const forged = Object.create(Object.getPrototypeOf(comment));

@@ -938,6 +938,7 @@ impl HostedRuntime {
                 .as_ref()
                 .is_none_or(|top| top.id != target.navigable)
             || group.context != target.context
+            || global.context.id != target.context
             || !global.settings.ready
             || global.settings.document != Some(target.document)
         {

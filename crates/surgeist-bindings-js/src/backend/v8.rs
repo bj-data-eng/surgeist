@@ -712,9 +712,9 @@ impl Operations for Entered<'_, '_, '_> {
         callback: &Callback,
         fixed: Option<FunctionMetadata<'_>>,
     ) -> Result<Root, Error> {
-        let prefix = fixed
-            .map(|metadata| i32::try_from(metadata.length).map_err(|_| Error::TooManyArguments))
-            .transpose()?;
+        // V8 reports the supplied count as i32. A larger declared length
+        // still captures every supplied argument and remains exact metadata.
+        let prefix = fixed.map(|metadata| i32::try_from(metadata.length).unwrap_or(i32::MAX));
         self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
     }
 
