@@ -61,7 +61,7 @@ impl Watches {
                 if Arc::ptr_eq(&current.queue, &admission.inbox.queue) {
                     return Err(DomError::NodeRetirementAlreadyWatched);
                 }
-                // Promotion gives both watches an indexed unlink to fund.
+                // Each indexed watch prepays its unlink or ordinary delivery.
                 admission.step()?;
                 admission.step()?;
                 let bytes = slot_bytes(2)?;
@@ -161,7 +161,7 @@ impl Shared {
             .live
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
-        // A fresh watch must fund its unlink even if it reuses a free slot.
+        // A fresh watch prepays unlink or delivery even in a reused slot.
         admission.step()?;
         if let Some(slot) = self.free {
             let entry = self
@@ -227,8 +227,8 @@ fn slot_bytes(capacity: usize) -> Result<usize, DomError> {
 }
 
 fn empty_slots(capacity: usize, admission: &WatchAdmission<'_>) -> Result<Vec<Entry>, DomError> {
-    // The last disarm can release every vacancy. Fund teardown when this
-    // allocation is admitted, before any later watch can use its slots.
+    // The last disarm can release every vacancy. Prepay that teardown or
+    // the ordinary publication scan when the allocation is admitted.
     for _ in 0..capacity {
         admission.step()?;
     }

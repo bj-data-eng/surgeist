@@ -335,11 +335,31 @@ fn replacement_watch_can_still_disarm_the_old_generation_before_publication() {
     assert_eq!(bytes(&dom), staged_bytes);
     let watch = attempt(exact).unwrap();
     assert_eq!(bytes(&dom), exact);
-    assert!(watch.index.prepare_match(original, || Ok(())).unwrap());
-    assert!(watch.index.prepare_match(created, || Ok(())).unwrap());
+    assert!(
+        watch
+            .index
+            .prepare_match(original, false, || Ok(()))
+            .unwrap()
+    );
+    assert!(
+        watch
+            .index
+            .prepare_match(created, false, || Ok(()))
+            .unwrap()
+    );
     drop(old_watch);
-    assert!(!watch.index.prepare_match(original, || Ok(())).unwrap());
-    assert!(watch.index.prepare_match(created, || Ok(())).unwrap());
+    assert!(
+        !watch
+            .index
+            .prepare_match(original, false, || Ok(()))
+            .unwrap()
+    );
+    assert!(
+        watch
+            .index
+            .prepare_match(created, false, || Ok(()))
+            .unwrap()
+    );
     let watch = dom.finish_watch(watch, created);
     dom.publish_prepared(publication);
     assert!(inbox.take().is_none());
@@ -576,7 +596,7 @@ fn ordinary_retirement_prepares_shared_delivery_without_repeating_prepaid_work()
     assert!(
         first_watch
             .index
-            .prepare_match(node, || {
+            .prepare_match(node, false, || {
                 checks += 1;
                 check_cancel(&cancel)
             })

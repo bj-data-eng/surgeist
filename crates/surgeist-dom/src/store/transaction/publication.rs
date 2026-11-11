@@ -663,7 +663,7 @@ impl Draft {
         for &(target, document) in &self.dispatch_retirements {
             self.source_step(cancel)?;
             if let Some(index) = &dom.node_retirements
-                && index.prepare_match(target, || self.source_step(cancel))?
+                && index.prepare_match(target, budget.is_some(), || self.source_step(cancel))?
             {
                 source::formation::reserve(&mut node_retirement_candidates, 1, budget, cancel)?;
                 self.source_step(cancel)?;

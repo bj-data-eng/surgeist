@@ -431,6 +431,7 @@ impl Index {
     pub(super) fn prepare_match(
         &self,
         node: NodeId,
+        charge_delivery: bool,
         mut step: impl FnMut() -> Result<(), DomError>,
     ) -> Result<bool, DomError> {
         let work = {
@@ -448,6 +449,11 @@ impl Index {
         let Some((depth, (visits, notices))) = work else {
             return Ok(false);
         };
+        if !charge_delivery {
+            // An ordinary Draft has no work meter. The watch admission
+            // already funds its disarm or delivery, including shared slots.
+            return Ok(true);
+        }
         // Admit the removal descent, branch updates and append. A new arm
         // in the same ordinary publication admits any additional branch.
         for _ in 0..depth {
