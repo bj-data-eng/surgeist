@@ -983,6 +983,42 @@ mod tests {
     }
 
     #[test]
+    fn packing_rejects_area_outside_atlas_limit_before_scratch_admission() {
+        let image = image();
+        let expansion = ImageExpansion::from_factors(&image, [1, 1]).unwrap();
+        let mut entries = [AtlasEntry {
+            image,
+            origin: [7, 9],
+            expansion,
+        }];
+        let options =
+            RenderAccountingOptions::new().with_limits(RenderLimits::new().with_scratch_bytes(0));
+        let cpu = RendererCpu::new(options).unwrap();
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| pack_entries(&mut entries, MAX_TEXELS + 1, attempt.account()))
+            .unwrap()
+            .into_parts();
+
+        let error = result.expect_err("packing area exceeds the atlas contract");
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "image atlas area exceeds the representable texel limit"
+        );
+        assert_eq!(fault, None);
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), 0);
+        let cpu = report.renderer_cpu().unwrap();
+        let backing = cpu.scope_usage(RenderCpuScope::FrameBacking);
+        assert_eq!(backing.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(entries[0].origin, [7, 9]);
+
+        let extent = pack_entries(&mut entries, MAX_TEXELS, &Account::for_test()).unwrap();
+        assert_eq!(extent, PhysicalSize::new(2, 1));
+        assert_eq!(entries[0].origin, [0, 0]);
+    }
+
+    #[test]
     fn four_rectangles_fit_one_square_without_an_overlong_texture_axis() {
         let mut encoding = Encoding::new();
         for _ in 0..4 {
