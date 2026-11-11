@@ -902,11 +902,91 @@ fn node_retirement_notice_requires_the_exact_committed_generation() {
 }
 
 #[test]
+fn source_retirement_disarm_requires_the_exact_original_work_allowance() {
+    // One qualified entry, bank entry plus one page, first index row,
+    // original observer read, dispatch-custody inspection and retention,
+    // and bounded radix disarm.
+    let exact = 1 + 2 + 1 + 3 + 2 * u64::from(usize::BITS) + 1;
+    for remaining in [exact - 1, exact] {
+        let cancel = AtomicBool::new(false);
+        let (mut dom, _executor, document, dialog, _) = fixture();
+        let mut batch = DomBatch::new();
+        let ticket = batch.create_comment(document.node(), "bounded retirement");
+        let node = dom
+            .apply(batch, &cancel)
+            .unwrap()
+            .created(&ticket)
+            .unwrap()
+            .unwrap();
+        let tight = DomSourceLimits {
+            work: 4096,
+            ..limits()
+        };
+        let event = {
+            let mut lease = dom
+                .begin_source_edit(DomSourceEdit::show_dialog(dialog), tight, &cancel)
+                .unwrap();
+            let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
+                lease.advance(&cancel).unwrap()
+            else {
+                panic!("actual Dialog Source event");
+            };
+            event
+        };
+        let mut inbox = dom
+            .source_event_node_retirement_inbox(&event, &cancel)
+            .unwrap();
+        let spent = dom.pending_source_edit().unwrap().spent_work();
+        assert!(spent < tight.work() - remaining);
+        for _ in spent..tight.work() - remaining {
+            dom.source_event_step(&event, &cancel).unwrap();
+        }
+
+        let stamp = dom.snapshot().stamp();
+        let ledger = dom.custody_registry.ledger().clone();
+        let backing = ledger.total();
+        let watch = dom.watch_source_event_node_retirement(&event, node, &inbox, 42, &cancel);
+        let exhausted = DomError::SourceWorkLimit {
+            limit: tight.work(),
+        };
+        if remaining < exact {
+            assert_eq!(watch.err(), Some(exhausted));
+            assert_eq!(ledger.total(), backing);
+        } else {
+            let watch = watch.unwrap();
+            assert_eq!(dom.source_event_step(&event, &cancel), Err(exhausted));
+            let armed = ledger.total();
+            cancel.store(true, Ordering::Relaxed);
+            drop(watch);
+            assert!(ledger.total().bytes() < armed.bytes());
+            assert_eq!(
+                dom.pending_source_edit().unwrap().spent_work(),
+                tight.work()
+            );
+            cancel.store(false, Ordering::Relaxed);
+            dom.raise_source_event_limits(&event, limits(), &cancel)
+                .unwrap();
+            let fresh = dom
+                .watch_source_event_node_retirement(&event, node, &inbox, 81, &cancel)
+                .unwrap();
+            drop(fresh);
+        }
+        assert_eq!(dom.snapshot().stamp(), stamp);
+        assert_eq!(
+            dom.pending_source_edit().unwrap().operation(),
+            event.operation()
+        );
+        assert!(inbox.take().is_none());
+    }
+}
+
+#[test]
 fn a_deep_duplicate_watch_requires_each_original_source_work_step() {
     // Four consecutive slots aligned to two bits require two independent
     // slot-bit decisions to identify any watched generation, then the exact
-    // leaf comparison. The Source entry also costs one step.
-    const EXACT: u64 = 1 + 2 + 1;
+    // leaf comparison. The Source entry costs one step, and the native
+    // bank entry and its one page cost one step each.
+    const EXACT: u64 = 1 + 2 + 2 + 1;
     for remaining in [EXACT - 1, EXACT] {
         let cancel = AtomicBool::new(false);
         let (mut dom, _executor, document, dialog, _) = fixture();
