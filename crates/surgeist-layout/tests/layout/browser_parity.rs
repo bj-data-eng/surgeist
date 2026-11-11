@@ -2791,6 +2791,27 @@ fn select_parity_inventory(
 }
 
 #[test]
+fn corpus_authority_preserves_an_original_missing_from_discovery() {
+    let relative = Path::new("xml/block/block_basic__border_box_ltr.xml");
+    let mut originals = support::fixture_files("xml").expect("original fixture inventory");
+    let index = originals
+        .iter()
+        .position(|path| path.ends_with(relative))
+        .unwrap();
+    originals.remove(index);
+
+    let selected = select_parity_inventory(originals, None, None)
+        .expect("full inventory can report absent historical observations");
+    assert!(
+        selected
+            .originals
+            .iter()
+            .any(|path| path.ends_with(relative)),
+        "full corpus must report a sealed historical artifact absent from discovery"
+    );
+}
+
+#[test]
 fn combined_inventory_filter_selects_current_edition_without_a_historical_match() {
     let edition = registered_current_edition().expect("required edition must authenticate");
     let selected = select_parity_inventory(

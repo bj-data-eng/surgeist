@@ -449,6 +449,17 @@ mod tests {
     }
 
     #[test]
+    fn corpus_authority_refuses_empty_prepared_text_ledger() {
+        let accounting = sample(Disposition::Retired);
+        assert_eq!(
+            accounting
+                .verify_prepared_text(br#"{"variants":[]}"#)
+                .unwrap_err(),
+            "prepared Text accounting identity changed"
+        );
+    }
+
+    #[test]
     fn historical_disposition_requires_exact_authenticated_successor() {
         let mut link = HistoricalLink {
             source: SOURCE.into(),
