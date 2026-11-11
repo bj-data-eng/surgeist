@@ -117,29 +117,40 @@ fn clip_coverage_transform(
 }
 
 fn exact_fit_clip_circle(
-    rounded: kurbo::RoundedRect,
+    rect: Rect,
+    radii: Radii,
     account: &Account,
 ) -> Result<Option<kurbo::Circle>> {
-    let side = coordinate_action(account, || rounded.width())?;
-    let height = coordinate_action(account, || rounded.height())?;
+    let side = coordinate_action(account, || rect.width())?;
+    let height = coordinate_action(account, || rect.height())?;
+    if coordinate_action(account, || side != height)? {
+        return Ok(None);
+    }
     let radius = coordinate_action(account, || side * 0.5)?;
-    if radius <= 0.0
-        || side != height
-        || rounded.radii() != kurbo::RoundedRectRadii::from_single_radius(radius)
-    {
+    if coordinate_action(account, || radius <= 0.0)? {
         return Ok(None);
     }
 
-    let bounds = rounded.rect();
-    let x = coordinate_action(account, || bounds.x0 + radius)?;
-    let y = coordinate_action(account, || bounds.y0 + radius)?;
-    let opposite_x = coordinate_action(account, || bounds.x1 - radius)?;
-    let opposite_y = coordinate_action(account, || bounds.y1 - radius)?;
-    if x != opposite_x || y != opposite_y {
-        return Ok(None);
+    // The rounded-rectangle encoder clamps each corner to half the shorter
+    // side. Test that effective radius using the stored logical dimensions.
+    let corners: [fn(Radii) -> f64; 4] = [
+        Radii::top_left,
+        Radii::top_right,
+        Radii::bottom_right,
+        Radii::bottom_left,
+    ];
+    for read_radius in corners {
+        let corner = coordinate_action(account, || read_radius(radii))?;
+        if coordinate_action(account, || corner < radius)? {
+            return Ok(None);
+        }
     }
     // The four corner arcs share a center. A circle has no straight joins
     // whose generated endpoints can differ only by trigonometric roundoff.
+    let origin_x = coordinate_action(account, || rect.x())?;
+    let origin_y = coordinate_action(account, || rect.y())?;
+    let x = coordinate_action(account, || origin_x + radius)?;
+    let y = coordinate_action(account, || origin_y + radius)?;
     Ok(Some(kurbo::Circle::new((x, y), radius)))
 }
 
@@ -158,11 +169,15 @@ fn push_vello_clip(
             account,
         ),
         RenderClipGeometry::RoundedRect { rect, radii } => {
-            let rounded = kurbo_rounded_rect(*rect, *radii);
-            if let Some(circle) = exact_fit_clip_circle(rounded, account)? {
+            if let Some(circle) = exact_fit_clip_circle(*rect, *radii, account)? {
                 scene.push_clip_layer(peniko::Fill::NonZero, transform, &circle, account)
             } else {
-                scene.push_clip_layer(peniko::Fill::NonZero, transform, &rounded, account)
+                scene.push_clip_layer(
+                    peniko::Fill::NonZero,
+                    transform,
+                    &kurbo_rounded_rect(*rect, *radii),
+                    account,
+                )
             }
         }
         RenderClipGeometry::Circle { center, radius } => scene.push_clip_layer(
@@ -850,8 +865,7 @@ fn encode_layer_start(
             account,
         ),
         RenderClipGeometry::RoundedRect { rect, radii } => {
-            let rounded = kurbo_rounded_rect(*rect, *radii);
-            if let Some(circle) = exact_fit_clip_circle(rounded, account)? {
+            if let Some(circle) = exact_fit_clip_circle(*rect, *radii, account)? {
                 push_vello_layer(
                     scene,
                     layer,
@@ -866,7 +880,7 @@ fn encode_layer_start(
                     layer,
                     peniko::Fill::NonZero,
                     clip_transform,
-                    &rounded,
+                    &kurbo_rounded_rect(*rect, *radii),
                     account,
                 )
             }
