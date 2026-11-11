@@ -183,6 +183,19 @@ impl<E> CssUtf16InputError<E> {
             kind => Err(Self { kind }),
         }
     }
+    /// Returns a CSS-owned refusal with no possible interruption payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns the original caller interruption when it stopped preparation.
+    pub fn into_refusal(self) -> Result<CssUtf16InputError<std::convert::Infallible>, E> {
+        match self.kind {
+            Utf16InputErrorKind::Limit(resource) => Ok(CssUtf16InputError::limit(resource)),
+            Utf16InputErrorKind::Allocation => Ok(CssUtf16InputError::allocation()),
+            Utf16InputErrorKind::CapacityOverflow => Ok(CssUtf16InputError::capacity_overflow()),
+            Utf16InputErrorKind::Interrupted(error) => Err(error),
+        }
+    }
     /// Returns the consumer's interruption.
     #[must_use]
     pub const fn interruption(&self) -> Option<&E> {

@@ -138,7 +138,7 @@ impl State {
         self.source_traversal_steps(limits).map(|_| ())
     }
     fn source_traversal_steps(&self, limits: &CssomLimits) -> Result<usize, CssomError> {
-        let mut sources = CssSourceRetention::new(
+        let mut sources = CssSourceRetention::with_shared_original_utf16(
             limits.max_retained_source_bytes,
             limits.max_source_traversal_steps,
             limits.max_source_traversal_depth,

@@ -1,5 +1,6 @@
 //! Conditional5 §8 permits named supports definitions before imports/namespaces,
 //! including before a later prefix member. CSSOM insert step7 remains separate.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::rule::CssRule;
 use surgeist_cssom::*;
 
@@ -57,7 +58,9 @@ fn successful_insertion(source: &str, initial: &[Kind], incoming: &str, index: u
     let original = before.rules(&list).unwrap().to_vec();
     assert_eq!(kinds(&before, &original), initial);
     let mut edit = batch(&store);
-    let (returned_index, ticket) = edit.insert_sheet_rule(&sheet, incoming, index).unwrap();
+    let (returned_index, ticket) = edit
+        .insert_sheet_rule(&sheet, incoming, index, &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(returned_index, index);
     let committed = store.commit(edit).unwrap();
     let inserted = committed.rule(&ticket).unwrap().clone();
@@ -148,7 +151,8 @@ fn new_namespace_after_named_definition_reaches_whole_list_invalid_state() {
     assert_eq!(kinds(&before, &original), [Kind::Named]);
     let mut edit = batch(&store);
     edit.set_disabled(&sheet, true).unwrap();
-    let result = edit.insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 1);
+    let result =
+        edit.insert_sheet_rule(&sheet, "@namespace p 'urn:p';", 1, &AtomicBool::new(false));
     assert!(
         matches!(
             result,
@@ -175,7 +179,7 @@ fn ordinary_body_rules_still_block_a_later_import() {
         assert_eq!(original.len(), 1);
         let mut edit = batch(&store);
         assert!(matches!(
-            edit.insert_sheet_rule(&sheet, "@import 'blocked.css';", 1),
+            edit.insert_sheet_rule(&sheet, "@import 'blocked.css';", 1, &AtomicBool::new(false)),
             Err(CssomError::Source(CssomException::HierarchyRequest))
         ));
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));

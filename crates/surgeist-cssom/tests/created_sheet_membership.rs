@@ -1,4 +1,5 @@
 //! CSSOM §6.2 caller-selected order with exact batch-local creation ownership.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::CssParser;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_cssom::*;
@@ -263,6 +264,7 @@ fn full_entry_limit_counts_retained_media_beside_mixed_selected_membership() {
                     base_location: String::new(),
                 },
                 CssomSheetInit::default(),
+                &AtomicBool::new(false),
             )
             .unwrap();
         let old = owner

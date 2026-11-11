@@ -71,10 +71,28 @@ fn shared_utf16_original_is_unique_across_distinct_snapshots_including_empty_hea
         let mut retained = CssSourceRetention::new(usize::MAX, 100, 10);
         retained.source(&first).unwrap();
         retained.source(&second).unwrap();
+        let legacy_bytes =
+            first.storage_usage().retained_bytes() + second.storage_usage().retained_bytes();
+        assert_eq!(retained.usage().retained_bytes(), legacy_bytes);
+        assert_eq!(retained.steps(), 3);
         assert_eq!(
             retained.complete_payload_bytes_with(|| Ok::<_, ()>(())),
             Ok(expected)
         );
+        let shared_bytes = legacy_bytes - capacity * std::mem::size_of::<u16>();
+        let mut shared = CssSourceRetention::with_shared_original_utf16(shared_bytes, 4, 10);
+        shared.source(&first).unwrap();
+        shared.source(&second).unwrap();
+        assert_eq!(shared.usage().retained_bytes(), shared_bytes);
+        assert_eq!(shared.steps(), 4);
+
+        let mut short = CssSourceRetention::with_shared_original_utf16(shared_bytes, 3, 10);
+        short.source(&first).unwrap();
+        assert_eq!(
+            short.source(&second).unwrap_err().exhausted_limit(),
+            Some(crate::source::CssSourceRetentionResource::Visits)
+        );
+        assert_eq!(short.usage(), first.storage_usage());
         // Equal contents in a different original allocation contribute separately.
         let distinct = source(Arc::new(original.as_ref().clone()));
         let extra = observed_snapshot(&distinct)

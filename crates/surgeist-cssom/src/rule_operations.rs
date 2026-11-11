@@ -1,6 +1,8 @@
 //! Source rule algorithms over the current retained graph. CSS owns all parsing.
 use crate::parser_resources::check_resource_diagnostics;
+use crate::sheet_operations::{check_sheet_cancellation, sheet_utf16_error, sheet_utf16_limits};
 use crate::{model::State, *};
+use std::sync::atomic::AtomicBool;
 use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::container::{CssContainerPrelude, CssContainerQueryEntry};
@@ -276,25 +278,32 @@ impl State {
 
 impl CssomBatch {
     /// CSSStyleSheet insertion's preliminary checks precede the shared index guard.
+    /// Cancellation during staging aborts this batch. A caller preparing a
+    /// composed publication checks the same signal at its final commit fence.
     pub fn insert_sheet_rule<'a>(
         &mut self,
         id: &CssomSheetId,
         source: impl Into<CssomSheetText<'a>>,
         index: usize,
+        cancel: &AtomicBool,
     ) -> Result<(usize, CssomRuleTicket), CssomError> {
-        self.apply(|this| {
+        let inserted = self.apply(|this| {
             let sheet = this.staged.editable_sheet_rules(id)?;
             let constructed = sheet.inputs.constructed;
             let parser =
                 CssParser::new(CssParserContext::default(), component_limits(&this.limits));
             let report = match source.into() {
-                CssomSheetText::Utf8(text) => CssRuleSyntax::classify(&parser, text),
+                CssomSheetText::Utf8(text) => {
+                    check_sheet_cancellation(cancel)?;
+                    CssRuleSyntax::classify(&parser, text)
+                }
                 CssomSheetText::Utf16(original) => CssRuleSyntax::classify_utf16(
                     &parser,
                     original,
-                    crate::sheet_operations::sheet_utf16_limits(&this.limits),
-                    || Ok::<(), std::convert::Infallible>(()),
-                )?,
+                    sheet_utf16_limits(&this.limits),
+                    || check_sheet_cancellation(cancel),
+                )
+                .map_err(sheet_utf16_error)?,
             };
             let (candidate, diagnostics) = report.into_parts();
             check_resource_diagnostics(&diagnostics)?;
@@ -313,7 +322,8 @@ impl CssomBatch {
                 index,
                 false,
             )
-        })
+        })?;
+        self.finish_sheet_staging(inserted, cancel)
     }
     /// CSSGroupingRule insertion checks its index before classifying the input.
     pub fn insert_group_rule(
@@ -499,7 +509,10 @@ impl CssomBatch {
             .adopt(authored, parent.clone(), depth, &self.limits)?;
         let record = self.staged.rules.get_mut(&id).expect("adopted rule");
         if matches!(destination, RuleDestination::Sheet(_)) {
-            record.insertion_origin = candidate.map(|syntax| syntax.origin().clone());
+            record.insertion_origin = candidate
+                .map(CssRuleSyntax::origin)
+                .filter(|origin| origin.source().original_utf16().is_some())
+                .cloned();
         }
         record.admission_diagnostics = retained_diagnostics.into();
         self.staged

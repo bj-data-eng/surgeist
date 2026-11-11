@@ -476,7 +476,7 @@ impl CssomRule {
     pub fn admission_diagnostics(&self) -> &[CssRecoveryDiagnostic] {
         &self.admission_diagnostics
     }
-    /// Original selected rule and complete source for a sheet insertion.
+    /// Original selected rule and complete source for an exact UTF16 sheet insertion.
     pub fn insertion_origin(&self) -> Option<&CssParsedOrigin> {
         self.insertion_origin.as_ref()
     }
@@ -964,6 +964,8 @@ pub enum CssomError {
     StaleRevision,
     StaleContext,
     StaleReplacement,
+    /// The caller cancelled stylesheet construction or rule insertion.
+    Cancelled,
     BatchAborted,
     ForeignTicket,
     IdentityExhausted,

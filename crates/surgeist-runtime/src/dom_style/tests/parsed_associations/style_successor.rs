@@ -4,6 +4,7 @@ use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending};
+use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html_parser::{
@@ -128,7 +129,8 @@ fn successor_removes_real_sheet_preserves_names_and_requires_a_new_full_text_dec
     let owner = owner(&session);
     let before = owner.snapshot().unwrap();
     let mut edit = owner.batch(CssomEditGuard::from_snapshot(&before)).unwrap();
-    edit.insert_sheet_rule(sheet.id(), "x{}", 0).unwrap();
+    edit.insert_sheet_rule(sheet.id(), "x{}", 0, &AtomicBool::new(false))
+        .unwrap();
     drop(owner.commit(&mut Some(edit)).unwrap());
     let names = session
         .style_execution()

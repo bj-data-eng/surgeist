@@ -6173,6 +6173,7 @@ pub const fn surgeist_css::source::CssSourceRetention<'admit>::steps(&self) -> u
 pub const fn surgeist_css::source::CssSourceRetention<'admit>::usage(&self) -> surgeist_css::source::CssSourceStorageUsage
 pub fn surgeist_css::source::CssSourceRetention<'admit>::visit<T: surgeist_css::source::CssRetainedSources + ?core::marker::Sized>(&mut self, value: &T) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub fn surgeist_css::source::CssSourceRetention<'admit>::with_admission(bytes: usize, maximum_visits: usize, maximum_depth: usize, admit: &'admit mut dyn core::ops::function::FnMut(surgeist_css::source::CssSourceRetentionAction) -> bool) -> core::result::Result<Self, surgeist_css::source::CssSourceRetentionError>
+pub const fn surgeist_css::source::CssSourceRetention<'admit>::with_shared_original_utf16(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self
 impl core::fmt::Debug for surgeist_css::source::CssSourceRetention<'_>
 pub fn surgeist_css::source::CssSourceRetention<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::source::CssSourceRetentionError
@@ -6222,6 +6223,7 @@ pub const fn surgeist_css::source::CssUtf16InputError<E>::exhausted_limit(&self)
 pub const fn surgeist_css::source::CssUtf16InputError<E>::interrupted(error: E) -> Self
 pub const fn surgeist_css::source::CssUtf16InputError<E>::interruption(&self) -> core::option::Option<&E>
 pub fn surgeist_css::source::CssUtf16InputError<E>::into_interruption(self) -> core::result::Result<E, Self>
+pub fn surgeist_css::source::CssUtf16InputError<E>::into_refusal(self) -> core::result::Result<surgeist_css::source::CssUtf16InputError<core::convert::Infallible>, E>
 pub const fn surgeist_css::source::CssUtf16InputError<E>::is_allocation_failure(&self) -> bool
 pub const fn surgeist_css::source::CssUtf16InputError<E>::is_capacity_overflow(&self) -> bool
 pub const fn surgeist_css::source::CssUtf16InputError<E>::limit(resource: surgeist_css::source::CssUtf16Resource) -> Self

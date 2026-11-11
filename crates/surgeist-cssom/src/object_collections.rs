@@ -10,9 +10,9 @@
 //! use surgeist_cssom::{CssomStylesheetReplacementWork, CssomReplaceToken};
 //! fn invalid(token: CssomReplaceToken) { let _ = CssomStylesheetReplacementWork { token }; }
 //! ```
-use crate::object_operations::execute;
+use crate::object_operations::{execute, execute_with_cancellation};
 use crate::*;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::serialization::CssSerializationLimits;
 
@@ -130,12 +130,14 @@ sheet_reads!(CssStyleSheet);
 impl CssStyleSheet {
     /// Construct and validate the returned handle before the single publication.
     /// Construction does not add the sheet to the host's selected sheet list.
+    /// A cancellation observed before publication abandons the staged sheet.
     pub fn new(
         store: &mut CssomStore,
         document: CssomConstructorDocument,
         init: CssStyleSheetInit<'_>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<Self>, CssomError> {
-        execute(store, |batch| {
+        execute_with_cancellation(store, Some(cancel), |batch| {
             let media = match init.media {
                 CssStyleSheetMedia::Text(text) => CssomInitialMedia::Text(text),
                 CssStyleSheetMedia::List(capture) => CssomInitialMedia::List {
@@ -151,6 +153,7 @@ impl CssStyleSheet {
                         media,
                         disabled: init.disabled,
                     },
+                    cancel,
                 )?
                 .into_parts();
             let value = Self::from_state(&batch.staged, batch.created_sheet_id(&ticket)?)?;
@@ -173,14 +176,18 @@ impl CssStyleSheet {
     pub fn rules(&self, store: &CssomStore) -> Result<CssRuleList, CssomError> {
         self.css_rules(store)
     }
+    /// Insert one authored rule. Cancellation is observed during UTF16 input
+    /// preparation and before publication of the staged insertion.
     pub fn insert_rule<'a>(
         &self,
         store: &mut CssomStore,
         rule: impl Into<CssomSheetText<'a>>,
         index: Option<usize>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<usize>, CssomError> {
-        execute(store, |batch| {
-            let (index, _) = batch.insert_sheet_rule(self.id(), rule, index.unwrap_or(0))?;
+        execute_with_cancellation(store, Some(cancel), |batch| {
+            let (index, _) =
+                batch.insert_sheet_rule(self.id(), rule, index.unwrap_or(0), cancel)?;
             let diagnostics = insertion_diagnostics(batch, self.id(), index)?;
             Ok(CssomStagedOperation::new(index, diagnostics))
         })
@@ -202,9 +209,10 @@ impl CssStyleSheet {
         selector: Option<&str>,
         style: Option<&str>,
         index: Option<usize>,
+        cancel: &AtomicBool,
     ) -> Result<CssomOperationOutcome<i32>, CssomError> {
-        execute(store, |batch| {
-            let value = batch.add_sheet_rule(self.id(), selector, style, index)?;
+        execute_with_cancellation(store, Some(cancel), |batch| {
+            let value = batch.add_sheet_rule(self.id(), selector, style, index, cancel)?;
             let list = batch.staged.sheet(self.id())?.rules();
             let index = index.unwrap_or(batch.staged.lists[list].len() - 1);
             Ok(CssomStagedOperation::new(

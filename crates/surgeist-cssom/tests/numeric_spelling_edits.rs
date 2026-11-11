@@ -16,6 +16,7 @@
 //!
 //! Numeric spelling is therefore never CSSOM-observable through text getters,
 //! while object identity, revisions and owner updates follow the algorithms above.
+use std::sync::atomic::AtomicBool;
 use surgeist_css::CssParser;
 use surgeist_css::component::CssValueOrigin;
 use surgeist_css::declaration::CssSpecifiedDeclarationEntry;
@@ -67,6 +68,7 @@ fn constructed(store: &mut CssomStore, text: &str) -> CssomSheetId {
                 base_location: String::new(),
             },
             CssomSheetInit::default(),
+            &AtomicBool::new(false),
         )
         .unwrap();
     let sheet = store

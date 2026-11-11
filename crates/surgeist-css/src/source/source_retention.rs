@@ -173,6 +173,7 @@ pub enum CssSourceRetentionAction {
 struct Admission<'a> {
     callback: Option<&'a mut dyn FnMut(CssSourceRetentionAction) -> bool>,
     refused: bool,
+    share_original_utf16: bool,
 }
 impl Admission<'_> {
     fn check(&self) -> Result<(), CssSourceRetentionError> {
@@ -338,8 +339,22 @@ impl<'admit> CssSourceRetention<'admit> {
             admission: Admission {
                 callback: None,
                 refused: false,
+                share_original_utf16: false,
             },
         }
+    }
+    /// Bounds retained backing across distinct snapshots, counting a shared original
+    /// UTF16 allocation once by identity. Each snapshot's normalized text, position
+    /// checkpoints and input map still count separately.
+    #[must_use]
+    pub const fn with_shared_original_utf16(
+        bytes: usize,
+        maximum_visits: usize,
+        maximum_depth: usize,
+    ) -> Self {
+        let mut collector = Self::new(bytes, maximum_visits, maximum_depth);
+        collector.admission.share_original_utf16 = true;
+        collector
     }
     /// Construct a collector borrowing the caller's finite admission policy.
     ///
@@ -399,8 +414,8 @@ impl<'admit> CssSourceRetention<'admit> {
     }
     /// Records one source snapshot as retained backing.
     ///
-    /// Charges a step, plus one per snapshot recorded earlier that is compared, and ignores a
-    /// snapshot already recorded (identity, not text). Otherwise it adds the snapshot's storage to
+    /// Charges a step, plus one per snapshot or shared original backing identity compared, and
+    /// ignores a snapshot already recorded (identity, not text). Otherwise it adds the storage to
     /// the cumulative usage, refusing with [`CssSourceRetentionResource::RetainedBytes`] beyond the
     /// byte bound, with [`CssSourceRetentionResource::Storage`] when the snapshot bank's size
     /// overflows or would exceed the visit bound, and with [`CssSourceRetentionError::allocation`]
@@ -408,15 +423,43 @@ impl<'admit> CssSourceRetention<'admit> {
     /// storage is returned unchanged.
     pub fn source(&mut self, source: &CssSourceSnapshot) -> Result<(), CssSourceRetentionError> {
         self.charge_step()?;
+        let mut original = self
+            .admission
+            .share_original_utf16
+            .then(|| source.original_utf16())
+            .flatten();
+        let mut shared_original_bytes = 0;
         for index in 0..self.sources.len() {
             self.charge_step()?;
             if self.sources[index].same_snapshot(source) {
                 return Ok(());
             }
+            if let Some(original_backing) = original
+                && self.sources[index].original_utf16().is_some()
+            {
+                self.charge_step()?;
+                if self.sources[index]
+                    .original_utf16()
+                    .is_some_and(|recorded_backing| {
+                        std::sync::Arc::ptr_eq(original_backing, recorded_backing)
+                    })
+                {
+                    shared_original_bytes =
+                        original_backing.capacity() * std::mem::size_of::<u16>();
+                    original = None;
+                }
+            }
         }
+        let snapshot_bytes = source
+            .storage_usage()
+            .retained_bytes()
+            .checked_sub(shared_original_bytes)
+            .ok_or(CssSourceRetentionError::limit(
+                CssSourceRetentionResource::RetainedBytes,
+            ))?;
         let usage = self
             .usage
-            .checked_add(source.storage_usage())
+            .checked_add(CssSourceStorageUsage(snapshot_bytes))
             .filter(|value| value.validate(self.bytes))
             .ok_or(CssSourceRetentionError::limit(
                 CssSourceRetentionResource::RetainedBytes,
