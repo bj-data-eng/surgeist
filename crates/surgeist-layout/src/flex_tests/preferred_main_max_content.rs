@@ -1353,3 +1353,58 @@ fn preferred_main_max_content_sets_the_extent_used_for_lane_packing() {
         );
     }
 }
+
+#[test]
+fn preferred_main_max_content_lane_packing_uses_bounded_cross_size() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1, 3])
+        .children(1, [2])
+        .children(2, [])
+        .children(3, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(100.0)),
+                grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Row, false, false),
+                grid_template_rows: vec![TrackComponentOf::px(100.0)],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(80.0)),
+                max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(20.0)),
+                align_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::percent(1.0)),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(3, NodeInputOf::default())
+        .measure_with(2, |input| {
+            let block = input.known_content_size().height.unwrap_or(10.0);
+            Size::new(block, block)
+        })
+        .measure(3, Size::new(10.0, 10.0));
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    for phase in [Phase::Unrounded, Phase::Final] {
+        assert_eq!(
+            readback::single_box_output(&batch, 3, phase).location.x,
+            20.0
+        );
+        assert_eq!(
+            readback::single_box_output(&batch, 1, phase).size,
+            Size::new(20.0, 20.0)
+        );
+    }
+}
