@@ -803,6 +803,17 @@ pub(in crate::document_scripting) fn attached_window_event_clears_on_terminal_li
     let event = host
         .create_guest_event(&permit, &kind, DomEventInit::default())
         .unwrap();
+    let ordinary = host
+        .in_document(&permit, |scope| {
+            let callback = scope.evaluate(&units(
+                "(function(e) { if (globalThis.event !== e) return; throw { ordinary: true }; })",
+            ))?;
+            Ok(scope.retain(&callback))
+        })
+        .unwrap();
+    let ordinary_id = host
+        .add_guest_event_listener(&permit, &target, &kind, &ordinary, Default::default())
+        .unwrap();
     let callback = host
         .in_document(&permit, |scope| {
             let global = scope.global()?;
@@ -827,11 +838,20 @@ pub(in crate::document_scripting) fn attached_window_event_clears_on_terminal_li
     host.add_guest_event_listener(&permit, &target, &kind, &callback, Default::default())
         .unwrap();
     let window_event = host.engine.as_ref().unwrap().window_event.clone();
-    let Err(DocumentGuestEventError::Document(DocumentScriptError::Script(Error::HostFailure(
-        failure,
-    )))) = host.dispatch_guest_event(&permit, &target, &event)
+    let refused = match host.dispatch_guest_event(&permit, &target, &event) {
+        Ok(_) => panic!("the selected object listener must reach the real terminal Source refusal"),
+        Err(refused) => refused,
+    };
+    let [reported] = refused.exceptions() else {
+        panic!("the earlier ordinary exception must survive terminal refusal");
+    };
+    assert_eq!(reported.registration, ordinary_id);
+    assert_eq!(reported.realm, permit.realm);
+    assert_eq!(reported.exception.phase(), ExceptionPhase::Invoke);
+    let DocumentGuestEventError::Document(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        &refused.error
     else {
-        panic!("the selected object listener must reach the real terminal Source refusal")
+        panic!("the original terminal Source refusal must be returned");
     };
     let cause = failure.cause::<DocumentScriptNativeError>().unwrap();
     assert!(matches!(cause, DocumentScriptNativeError::SourceAccess));

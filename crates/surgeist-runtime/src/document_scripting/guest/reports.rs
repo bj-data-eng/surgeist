@@ -59,6 +59,26 @@ impl GuestExceptionReports {
         {
             return Err(DocumentScriptNativeError::StorageLimit.into());
         }
+        let roots = ExceptionRoots::reserve(events, owner, count)?;
+        self.reserved.set(reserved);
+        Ok(ReportReservation {
+            reports: self,
+            roots,
+        })
+    }
+}
+
+pub(super) struct ExceptionRoots {
+    roots: Vec<Box<dyn Any>>,
+    _backing: GuestBacking,
+}
+
+impl ExceptionRoots {
+    pub(super) fn reserve(
+        events: &GuestEvents,
+        owner: &NativeOwner,
+        count: usize,
+    ) -> Result<Self, DocumentGuestEventError> {
         let bytes = count
             .checked_mul(size_of::<Box<dyn Any>>())
             .ok_or(DocumentScriptNativeError::StorageLimit)?;
@@ -78,19 +98,67 @@ impl GuestExceptionReports {
             let root: Box<dyn Any> = Box::new(events.reserve(owner, root_bytes)?);
             roots.push(root);
         }
-        self.reserved.set(reserved);
-        Ok(ReportReservation {
-            reports: self,
+        Ok(Self {
             roots,
             _backing: backing,
         })
+    }
+
+    pub(super) fn take(&mut self) -> Result<Box<dyn Any>, DocumentGuestEventError> {
+        self.roots
+            .pop()
+            .ok_or_else(|| DocumentScriptNativeError::StorageLimit.into())
+    }
+}
+
+pub(super) struct DirectExceptions {
+    exceptions: Vec<DocumentGuestListenerException>,
+    _backing: GuestBacking,
+}
+
+impl DirectExceptions {
+    pub(super) fn reserve(
+        events: &GuestEvents,
+        owner: &NativeOwner,
+        count: usize,
+    ) -> Result<Box<Self>, DocumentGuestEventError> {
+        let bytes = count
+            .checked_mul(size_of::<DocumentGuestListenerException>())
+            .and_then(|bytes| bytes.checked_add(size_of::<Self>()))
+            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let backing = events.reserve(owner, bytes)?;
+        let mut exceptions = Vec::new();
+        exceptions
+            .try_reserve_exact(count)
+            .map_err(|_| Error::Allocation)?;
+        if exceptions.capacity() != count {
+            return Err(DocumentScriptNativeError::StorageLimit.into());
+        }
+        Ok(Box::new(Self {
+            exceptions,
+            _backing: backing,
+        }))
+    }
+
+    pub(super) fn publish(
+        &mut self,
+        scope: &mut Scope<'_>,
+        roots: &mut ExceptionRoots,
+        exception: DocumentGuestListenerException,
+    ) -> Result<(), DocumentGuestEventError> {
+        scope.retain_exception_backing(&exception.exception, roots.take()?)?;
+        self.exceptions.push(exception);
+        Ok(())
+    }
+
+    pub(super) fn observations(&self) -> &[DocumentGuestListenerException] {
+        &self.exceptions
     }
 }
 
 pub(super) struct ReportReservation<'a> {
     reports: &'a GuestExceptionReports,
-    roots: Vec<Box<dyn Any>>,
-    _backing: GuestBacking,
+    roots: ExceptionRoots,
 }
 
 impl ReportReservation<'_> {
@@ -99,10 +167,7 @@ impl ReportReservation<'_> {
         scope: &mut Scope<'_>,
         exception: DocumentGuestListenerException,
     ) -> Result<(), DocumentGuestEventError> {
-        let backing = self
-            .roots
-            .pop()
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
+        let backing = self.roots.take()?;
         self.reports.reserved.set(self.reports.reserved.get() - 1);
         scope.retain_exception_backing(&exception.exception, backing)?;
         self.reports.queue.borrow_mut().push_back(exception);
@@ -114,6 +179,6 @@ impl Drop for ReportReservation<'_> {
     fn drop(&mut self) {
         self.reports
             .reserved
-            .set(self.reports.reserved.get() - self.roots.len());
+            .set(self.reports.reserved.get() - self.roots.roots.len());
     }
 }

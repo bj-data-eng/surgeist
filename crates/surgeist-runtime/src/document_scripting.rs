@@ -29,8 +29,9 @@ use crate::{
 pub(crate) mod guest;
 mod projection;
 pub use guest::{
-    DocumentGuestEvent, DocumentGuestEventError, DocumentGuestEventLimits,
-    DocumentGuestEventReport, DocumentGuestEventTarget, DocumentGuestListenerException,
+    DocumentGuestEvent, DocumentGuestEventDispatchFailure, DocumentGuestEventError,
+    DocumentGuestEventLimits, DocumentGuestEventReport, DocumentGuestEventTarget,
+    DocumentGuestListenerException,
 };
 mod source;
 mod window_event;

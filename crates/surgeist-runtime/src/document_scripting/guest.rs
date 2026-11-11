@@ -12,6 +12,7 @@ use crate::dom_event::{
     NativeDomEvent,
 };
 pub(super) use reports::GuestExceptionReports;
+use reports::{DirectExceptions, ExceptionRoots};
 use surgeist_bindings_js::{Exception, ObjectPrototype, RetainedCallbackObject, Root, Value};
 
 /// Guest adapter limits in addition to the original registry and Hosted limits.
@@ -129,8 +130,7 @@ pub struct DocumentGuestListenerException {
 /// Completed native dispatch with original ordinary guest exceptions.
 pub struct DocumentGuestEventReport {
     receipt: DomEventDispatchReceipt,
-    exceptions: Vec<DocumentGuestListenerException>,
-    _backing: GuestBacking,
+    exceptions: Option<Box<DirectExceptions>>,
 }
 
 impl DocumentGuestEventReport {
@@ -141,7 +141,55 @@ impl DocumentGuestEventReport {
 
     /// Original guest exception observations, in invocation order.
     pub fn exceptions(&self) -> &[DocumentGuestListenerException] {
-        &self.exceptions
+        self.exceptions
+            .as_deref()
+            .map_or(&[], DirectExceptions::observations)
+    }
+}
+
+/// Refused direct dispatch with its original cause and any completed reports.
+pub struct DocumentGuestEventDispatchFailure {
+    /// Exact failure selected by the attached host or native dispatcher.
+    pub error: DocumentGuestEventError,
+    exceptions: Option<Box<DirectExceptions>>,
+}
+
+impl DocumentGuestEventDispatchFailure {
+    /// Ordinary listener exceptions reported before the refusal, in order.
+    pub fn exceptions(&self) -> &[DocumentGuestListenerException] {
+        self.exceptions
+            .as_deref()
+            .map_or(&[], DirectExceptions::observations)
+    }
+}
+
+impl fmt::Debug for DocumentGuestEventDispatchFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DocumentGuestEventDispatchFailure")
+            .field("error", &self.error)
+            .field("exceptions", &self.exceptions())
+            .finish()
+    }
+}
+
+impl fmt::Display for DocumentGuestEventDispatchFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for DocumentGuestEventDispatchFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl From<DocumentGuestEventError> for DocumentGuestEventDispatchFailure {
+    fn from(error: DocumentGuestEventError) -> Self {
+        Self {
+            error,
+            exceptions: None,
+        }
     }
 }
 
@@ -540,13 +588,26 @@ impl DocumentScriptHost {
         permit: &DocumentScriptPermit,
         target: &DocumentGuestEventTarget,
         event: &DocumentGuestEvent,
-    ) -> Result<DocumentGuestEventReport, DocumentGuestEventError> {
-        self.check_permit(permit)?;
+    ) -> Result<DocumentGuestEventReport, DocumentGuestEventDispatchFailure> {
+        self.check_permit(permit)
+            .map_err(DocumentGuestEventError::from)?;
         let owner = self.native.clone();
         let events = self.guest_events()?;
-        self.in_document(permit, |scope| {
-            Ok(events.dispatch(&owner, scope, target, event))
-        })?
+        let mut exceptions = None;
+        let result = self
+            .in_document(permit, |scope| {
+                Ok(events.dispatch(&owner, scope, target, event, &mut exceptions))
+            })
+            .map_err(DocumentGuestEventError::from)
+            .and_then(std::convert::identity);
+        let exceptions = exceptions.filter(|bank| !bank.observations().is_empty());
+        match result {
+            Ok(receipt) => Ok(DocumentGuestEventReport {
+                receipt,
+                exceptions,
+            }),
+            Err(error) => Err(DocumentGuestEventDispatchFailure { error, exceptions }),
+        }
     }
 }
 
@@ -560,42 +621,25 @@ impl GuestEvents {
         scope: &mut Scope<'_>,
         target: &DocumentGuestEventTarget,
         event: &DocumentGuestEvent,
-    ) -> Result<DocumentGuestEventReport, DocumentGuestEventError> {
+        exceptions: &mut Option<Box<DirectExceptions>>,
+    ) -> Result<DomEventDispatchReceipt, DocumentGuestEventError> {
         let max = self.limits.dispatch.failure_records;
-        let bytes = size_of::<DocumentGuestListenerException>()
-            .checked_add(self.exception_root_bytes)
-            .and_then(|bytes| bytes.checked_mul(max))
-            .ok_or(DocumentScriptNativeError::StorageLimit)?;
-        let backing = self.reserve(owner, bytes)?;
-        let mut exceptions = Vec::new();
-        exceptions
-            .try_reserve_exact(max)
-            .map_err(|_| Error::Allocation)?;
-        if exceptions.capacity() != max {
-            return Err(DocumentScriptNativeError::StorageLimit.into());
-        }
+        let bank = DirectExceptions::reserve(self, owner, max)?;
+        let mut roots = ExceptionRoots::reserve(self, owner, max)?;
+        // Store observations outside the engine entry, whose terminal failure
+        // can override the result returned by its action.
+        let exceptions = exceptions.insert(bank);
         let receiver = target.object(scope)?;
         let argument = event.object(scope)?;
         let invocation = self.prepare(owner, &target.native, &event.native)?;
-        let receipt = self.run(
+        self.run(
             owner,
             scope,
             invocation,
             &receiver,
             &argument,
-            |_, exception| {
-                if exceptions.len() == max {
-                    return Err(DocumentScriptNativeError::StorageLimit.into());
-                }
-                exceptions.push(exception);
-                Ok(())
-            },
-        )?;
-        Ok(DocumentGuestEventReport {
-            receipt,
-            exceptions,
-            _backing: backing,
-        })
+            |scope, exception| exceptions.publish(scope, &mut roots, exception),
+        )
     }
 
     fn prepare(
