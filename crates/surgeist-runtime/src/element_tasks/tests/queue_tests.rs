@@ -5,6 +5,8 @@ use surgeist_dom::{
     DomSourceDialogRequest, DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest,
 };
 
+mod element_started;
+
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(16_000_000, 16_000_000, 4_000_000, 64, 65_536, 65_536, 16)
 }

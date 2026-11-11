@@ -15,6 +15,7 @@ use surgeist_dom::{
 };
 
 mod dynamic_custody;
+mod same_request_reentry;
 
 fn limits() -> DomSourceEventServiceLimits {
     DomSourceEventServiceLimits {
@@ -29,6 +30,10 @@ fn limits() -> DomSourceEventServiceLimits {
     }
 }
 fn fixture() -> (DomSession, NodeId, NodeId, NodeId) {
+    fixture_with_source_storage(16_000_000)
+}
+
+fn fixture_with_source_storage(storage_bytes: usize) -> (DomSession, NodeId, NodeId, NodeId) {
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(
@@ -64,7 +69,7 @@ fn fixture() -> (DomSession, NodeId, NodeId, NodeId) {
         DomSessionLimits {
             source_events: DomSourceEventRuntimeLimits {
                 jobs: 8,
-                storage_bytes: 16_000_000,
+                storage_bytes,
                 work: 1_000_000,
             },
             style: DomStyleRuntimeLimits {
