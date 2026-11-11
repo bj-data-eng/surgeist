@@ -1920,6 +1920,77 @@ fn declared_callable_length_is_exact_and_only_captures_supplied_prefix(
     Ok(())
 }
 
+fn bounded_constructor_admits_declared_conversion_and_exact_output(
+    process: &mut Process,
+) -> Result<(), Error> {
+    use surgeist_bindings_js::conversion::{
+        ArgumentValue, ConversionAccount, ResourceTable, WorkTable,
+        declarations::{event_constructor_0_event_init_dict, event_constructor_0_type},
+    };
+
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let account = ConversionAccount::standalone(
+            scope,
+            WorkTable {
+                CodeUnit: 4,
+                ..WorkTable::splat(8)
+            },
+            ResourceTable { BufferBytes: 4 },
+        )?;
+        let callback = ConstructorCallback::bounded(
+            2,
+            |scope| scope.object(ObjectPrototype::Default),
+            move |scope, arguments| {
+                assert_eq!(arguments.len(), 2);
+                let ty = event_constructor_0_type();
+                let init = event_constructor_0_event_init_dict();
+                let (ty, init) = account.run(scope, |conversion| {
+                    Ok((
+                        conversion.argument(&ty, arguments.get(ty.index()))?,
+                        conversion.argument(&init, arguments.get(init.index()))?,
+                    ))
+                })?;
+                let ArgumentValue::Present(ty) = ty.get() else {
+                    panic!("the required type was supplied");
+                };
+                let ArgumentValue::Present(init) = init.get() else {
+                    panic!("the dictionary was supplied");
+                };
+                assert!(init.composed);
+                let selected = arguments.select_prototype(scope)?;
+                let output = scope.object(ObjectPrototype::Object(selected.prototype()))?;
+                let ty = account.run(scope, |conversion| {
+                    conversion.copy_to_js(ty.as_code_units())
+                })?;
+                scope.set(&output, PropertyKey::String(&units("type")), &ty)?;
+                Ok(ConstructorCompletion::Return(output))
+            },
+        );
+        let constructor = scope.constructor(
+            &callback,
+            FunctionMetadata {
+                name: &units("Bounded"),
+                length: 1,
+            },
+        )?;
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("Bounded")),
+            &constructor,
+        )?;
+        let result = scope.evaluate(&units(
+            r#"Bounded.length === 1 &&
+                new Bounded("A\ud800", { composed: true }, 3, 4).type === "A\ud800""#,
+        ))?;
+        let yes = scope.primitive(Primitive::Boolean(true))?;
+        assert!(scope.strict_equals(&result, &yes)?);
+        Ok(())
+    })
+}
+
 fn declared_constructor_length_is_exact_u32(process: &mut Process) -> Result<(), Error> {
     let mut execution = process.execution();
     let realm = execution.create_realm()?;
@@ -2356,6 +2427,7 @@ fn main() -> Result<(), Error> {
     declared_constructors_preserve_calls_metadata_and_installed_descriptors(&mut process)?;
     declared_callable_length_is_exact_and_only_captures_supplied_prefix(&mut process)?;
     declared_constructor_length_is_exact_u32(&mut process)?;
+    bounded_constructor_admits_declared_conversion_and_exact_output(&mut process)?;
     declared_constructor_prototype_get_follows_conversions_and_preserves_abrupt(&mut process)?;
     declared_constructor_cross_realm_fallback_is_once_and_guest_intrinsic_independent(
         &mut process,

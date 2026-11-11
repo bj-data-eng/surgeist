@@ -153,8 +153,8 @@ pub fn install<Storage: 'static>(
     };
     let prototype_root = scope.operations.native_error()?;
     let prototype = scope.value(prototype_root);
-    let callback = ConstructorCallback::with_argument_limit(
-        Some(CAPTURED_ARGUMENTS),
+    let callback = ConstructorCallback::bounded(
+        CAPTURED_ARGUMENTS,
         interface_prototype,
         move |scope, arguments| state.construct(scope, arguments),
     );

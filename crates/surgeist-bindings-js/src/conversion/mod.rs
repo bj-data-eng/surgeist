@@ -228,7 +228,7 @@ impl<'scope> Conversion<'_, 'scope> {
     /// Admit one explicit Rust-to-JavaScript payload copy before entering the
     /// SDK. The meter counts code units submitted to the backend, independently
     /// of the engine's internal representation and allocation.
-    pub(crate) fn copy_to_js(&mut self, units: &[u16]) -> Result<Value<'scope>, Failure> {
+    pub fn copy_to_js(&mut self, units: &[u16]) -> Result<Value<'scope>, Failure> {
         self.core(self.scope.operations.validate_string_length(units.len()))?;
         let length = u64::try_from(units.len()).map_err(|_| self.host(Error::StringTooLong))?;
         self.work(Work::CodeUnit, length).map_err(Failure)?;

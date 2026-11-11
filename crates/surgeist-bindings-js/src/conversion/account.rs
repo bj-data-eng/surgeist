@@ -1,7 +1,9 @@
 use std::cell::Cell;
 use std::rc::{Rc, Weak};
 
-use surgeist_ledger::{Change, Limits, PhaseObservation, ScopeLedger, SharedOperation, Tariffs};
+use surgeist_ledger::{
+    Change, Limits, Operation, PhaseObservation, ScopeLedger, SharedOperation, Tariffs,
+};
 
 use crate::owner::OwnerState;
 use crate::{Error, Scope};
@@ -118,8 +120,25 @@ pub struct ConversionAccount(pub(super) Rc<Account>);
 
 impl ConversionAccount {
     /// Requested allocation body retained by the account's Rc.
-    pub(crate) const fn retained_body_bytes() -> usize {
+    pub const fn retained_body_bytes() -> usize {
         size_of::<Account>()
+    }
+
+    /// Create a bounded conversion participant with no enclosing operation.
+    /// Work is cumulative per dimension and resource limits bound live buffers.
+    /// Use [`Self::new`] when binding work belongs to an enclosing Ledger.
+    pub fn standalone(
+        scope: &mut Scope<'_>,
+        work: WorkTable<u64>,
+        resources: ResourceTable<u64>,
+    ) -> Result<Self, Error> {
+        scope.check_active()?;
+        let limits = Limits::new(work, resources);
+        let ledger = Operation::new("js-bindings", limits, 2)
+            .map_err(Error::ConversionLedger)?
+            .share();
+        let parent = ledger.root();
+        Self::new(scope, ledger, parent, limits, Tariffs::identity())
     }
 
     pub fn new(

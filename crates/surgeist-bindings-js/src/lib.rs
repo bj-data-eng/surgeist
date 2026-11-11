@@ -398,6 +398,21 @@ impl ConstructorCallback {
         Self::with_argument_limit(None, fallback, action)
     }
 
+    /// Like [`Self::new`], with at most `maximum_arguments` supplied values
+    /// captured for the handler. This bound is independent of the declared
+    /// JavaScript [`FunctionMetadata::length`].
+    pub fn bounded(
+        maximum_arguments: u32,
+        fallback: impl for<'scope> Fn(&mut Scope<'scope>) -> Result<Value<'scope>, Error> + 'static,
+        action: impl for<'scope> Fn(
+            &mut Scope<'scope>,
+            ConstructorArguments<'scope>,
+        ) -> Result<ConstructorCompletion<'scope>, Error>
+        + 'static,
+    ) -> Self {
+        Self::with_argument_limit(Some(maximum_arguments), fallback, action)
+    }
+
     fn with_argument_limit(
         argument_limit: Option<u32>,
         fallback: impl for<'scope> Fn(&mut Scope<'scope>) -> Result<Value<'scope>, Error> + 'static,
@@ -440,7 +455,7 @@ pub struct ConstructorArguments<'scope> {
 }
 
 impl<'scope> ConstructorArguments<'scope> {
-    /// Number of supplied values, including explicit undefined.
+    /// Number of captured supplied values, including explicit undefined.
     pub fn len(&self) -> usize {
         self.values.len()
     }
@@ -502,7 +517,7 @@ pub struct ConstructorInvocation<'scope> {
 }
 
 impl<'scope> ConstructorInvocation<'scope> {
-    /// Number of supplied values, including explicit undefined.
+    /// Number of captured supplied values, including explicit undefined.
     pub fn len(&self) -> usize {
         self.values.len()
     }
