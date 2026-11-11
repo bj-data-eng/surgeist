@@ -5,9 +5,9 @@ use super::{
     gradient_with_stops, hint_program,
 };
 use crate::{
-    Error, Gradient, GradientRealizationError as Refusal, PhysicalSize, Result,
+    Error, GradientRealizationError as Refusal, PhysicalSize, Result,
     accounting::{Account, AccountedVec, RenderWork},
-    paint::GradientKind,
+    paint::{OrdinaryGeometry, OrdinaryGradient},
     vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates},
 };
 
@@ -229,14 +229,14 @@ pub(super) fn cutoff(value: f64, shift: i32, account: &Account) -> Result<f32> {
 }
 
 fn scaled_geometry(
-    gradient: &Gradient,
+    field_geometry: OrdinaryGeometry<'_>,
     range: Option<Range>,
     shift: i32,
     account: &Account,
 ) -> Result<([Scaled; 6], Option<field::RadialReference>)> {
     let zero = Scaled::new(0.0, account)?;
-    let (local, radial) = match gradient.kind() {
-        GradientKind::Linear { start, end, .. } => {
+    let (local, radial) = match field_geometry {
+        OrdinaryGeometry::Linear { start, end } => {
             // Capture each authored coordinate once; all later arithmetic uses
             // these values rather than inspecting source points again.
             account.work(RenderWork::CoordinateVisits, 4)?;
@@ -286,11 +286,10 @@ fn scaled_geometry(
             };
             ([u, v, minus_v, u, ox, oy], None)
         }
-        GradientKind::Radial {
+        OrdinaryGeometry::Radial {
             center,
             radius_x,
             radius_y,
-            ..
         } => {
             // Center coordinates and axes are captured once and reused.
             account.work(RenderWork::CoordinateVisits, 4)?;
@@ -328,7 +327,7 @@ fn scaled_geometry(
                 Some(reference),
             )
         }
-        GradientKind::HorizontalDistance { origin_x, .. } => {
+        OrdinaryGeometry::HorizontalDistance { origin_x } => {
             let origin_x = scalar(account, || *origin_x)?;
             let scale = if let Some(range) = range {
                 Scaled::new(range.scale, account)?
@@ -348,19 +347,18 @@ fn scaled_geometry(
                 None,
             )
         }
-        GradientKind::Sweep { .. } => unreachable!("sweep uses normalized native path"),
     };
     Ok((local, radial))
 }
 
 fn geometry(
-    gradient: &Gradient,
+    field_geometry: OrdinaryGeometry<'_>,
     range: Option<Range>,
     shift: i32,
     transform: kurbo::Affine,
     account: &Account,
 ) -> Result<(kurbo::Affine, kurbo::Affine, Option<field::RadialReference>)> {
-    let (local, radial) = scaled_geometry(gradient, range, shift, account)?;
+    let (local, radial) = scaled_geometry(field_geometry, range, shift, account)?;
     let device = affine(compose(transform, local, account)?, account)?;
     // Linear preparation solves its local brush map from the device field.
     // Its unused unsolved local coefficient may overflow despite finite device geometry.
@@ -404,7 +402,7 @@ fn qualify_stop_order(
 }
 
 fn realize(
-    gradient: &Gradient,
+    field_geometry: OrdinaryGeometry<'_>,
     range: Option<Range>,
     shift: i32,
     transform: kurbo::Affine,
@@ -412,7 +410,7 @@ fn realize(
     sampling: field::LinearSampling,
     account: &Account,
 ) -> Result<(peniko::Gradient, BrushTransform)> {
-    let (local, device, radial) = geometry(gradient, range, shift, transform, account)?;
+    let (local, device, radial) = geometry(field_geometry, range, shift, transform, account)?;
     let comparison_only = range.is_none();
     if let Some(reference) = radial {
         let radii = narrow_radial_radii(reference, account)?;
@@ -459,7 +457,7 @@ fn realize(
 }
 
 fn realize_with_fallback(
-    gradient: &Gradient,
+    field_geometry: OrdinaryGeometry<'_>,
     range: Option<Range>,
     transform: kurbo::Affine,
     target: PhysicalSize,
@@ -467,41 +465,57 @@ fn realize_with_fallback(
     account: &Account,
 ) -> Result<(peniko::Gradient, BrushTransform, i32)> {
     let mut shift = 0;
-    let (native, brush) =
-        match realize(gradient, range, shift, transform, target, sampling, account) {
-            Ok(result) => result,
-            Err(error)
-                if range.is_none()
-                    && error.accounting_diagnostic().is_none()
-                    && error.gradient_realization_diagnostic()
-                        != Some(&Refusal::DegenerateLinearField) =>
-            {
-                // A power-two basis is selected only when the original native basis
-                // cannot qualify. No translation is introduced at the threshold.
-                let (local, _) = scaled_geometry(gradient, None, 0, account)?;
-                let device = compose(transform, local, account)?;
-                let mut exponent = None;
-                for value in &device[..4] {
-                    if !scalar(account, || value.mantissa == 0.0)? {
-                        exponent =
-                            Some(exponent.map_or(value.exponent, |e: i32| e.max(value.exponent)));
-                    }
+    let (native, brush) = match realize(
+        field_geometry,
+        range,
+        shift,
+        transform,
+        target,
+        sampling,
+        account,
+    ) {
+        Ok(result) => result,
+        Err(error)
+            if range.is_none()
+                && error.accounting_diagnostic().is_none()
+                && error.gradient_realization_diagnostic()
+                    != Some(&Refusal::DegenerateLinearField) =>
+        {
+            // A power-two basis is selected only when the original native basis
+            // cannot qualify. No translation is introduced at the threshold.
+            let (local, _) = scaled_geometry(field_geometry, None, 0, account)?;
+            let device = compose(transform, local, account)?;
+            let mut exponent = None;
+            for value in &device[..4] {
+                if !scalar(account, || value.mantissa == 0.0)? {
+                    exponent =
+                        Some(exponent.map_or(value.exponent, |e: i32| e.max(value.exponent)));
                 }
-                shift = exponent.ok_or(error)?;
-                realize(gradient, range, shift, transform, target, sampling, account)?
             }
-            Err(error) => return Err(error),
-        };
+            shift = exponent.ok_or(error)?;
+            realize(
+                field_geometry,
+                range,
+                shift,
+                transform,
+                target,
+                sampling,
+                account,
+            )?
+        }
+        Err(error) => return Err(error),
+    };
     Ok((native, brush, shift))
 }
 
 pub(super) fn prepare(
-    gradient: &Gradient,
+    gradient: OrdinaryGradient<'_>,
     transform: kurbo::Affine,
     target: PhysicalSize,
     account: &Account,
 ) -> Result<FrameBrush> {
-    if matches!(gradient.kind(), GradientKind::HorizontalDistance { .. }) {
+    let field_geometry = gradient.geometry();
+    if matches!(field_geometry, OrdinaryGeometry::HorizontalDistance { .. }) {
         return prepare_horizontal_distance(gradient, transform, target, account);
     }
     let supplied = gradient.stops();
@@ -514,7 +528,7 @@ pub(super) fn prepare(
     let last = supplied[supplied.len() - 1];
     account.work(RenderWork::CoordinateVisits, 2)?;
     let (a, b) = (first.position(), last.position());
-    if matches!(gradient.kind(), GradientKind::Radial { .. }) && scalar(account, || b <= 0.0)? {
+    if matches!(field_geometry, OrdinaryGeometry::Radial { .. }) && scalar(account, || b <= 0.0)? {
         return Ok(FrameBrush::solid(last.color().into()));
     }
     let range = if scalar(account, || a == b)? {
@@ -523,7 +537,7 @@ pub(super) fn prepare(
         Some(Range::new(a, b, account)?)
     };
     let (native, brush, shift) = realize_with_fallback(
-        gradient,
+        field_geometry,
         range,
         transform,
         target,
@@ -672,11 +686,12 @@ fn distance_position(value: f64, scale: f64, index: usize, account: &Account) ->
 }
 
 fn prepare_horizontal_distance(
-    gradient: &Gradient,
+    gradient: OrdinaryGradient<'_>,
     transform: kurbo::Affine,
     target: PhysicalSize,
     account: &Account,
 ) -> Result<FrameBrush> {
+    let field_geometry = gradient.geometry();
     let supplied = gradient.stops();
     account.work(RenderWork::GradientStopVisits, 1)?;
     let first = supplied[0];
@@ -692,7 +707,7 @@ fn prepare_horizontal_distance(
     }
     if scalar(account, || a == b)? {
         let (native, brush, shift) = realize_with_fallback(
-            gradient,
+            field_geometry,
             None,
             transform,
             target,
@@ -738,7 +753,7 @@ fn prepare_horizontal_distance(
         delta: 1.0,
     };
     let (native, brush, _) = realize_with_fallback(
-        gradient,
+        field_geometry,
         Some(range),
         transform,
         target,
@@ -770,7 +785,15 @@ fn prepare_horizontal_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, GradientStop, Point};
+    use crate::{Color, Gradient, GradientStop, Point};
+
+    fn ordinary_field(gradient: &Gradient) -> OrdinaryGradient<'_> {
+        let crate::paint::GradientPreparation::Ordinary(field) = gradient.preparation() else {
+            panic!("ordinary fixture requires a field");
+        };
+        field
+    }
+
     #[test]
     fn directed_cutoff_preserves_both_sides_of_binary32_coordinates() {
         let account = Account::for_test();
@@ -814,7 +837,7 @@ mod tests {
         let ellipse = Gradient::try_radial(Point::new(0., 0.), tiny, tiny, stops).unwrap();
         for gradient in [line, ellipse] {
             let brush = prepare(
-                &gradient,
+                ordinary_field(&gradient),
                 kurbo::Affine::IDENTITY,
                 PhysicalSize::new(8, 8),
                 &account,
@@ -840,7 +863,7 @@ mod tests {
         ];
         let gradient = Gradient::try_linear(Point::new(0., 0.), Point::new(8., 0.), stops).unwrap();
         let error = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::IDENTITY,
             PhysicalSize::new(8, 8),
             &Account::for_test(),
@@ -865,7 +888,7 @@ mod tests {
         )
         .unwrap();
         let brush = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::IDENTITY,
             PhysicalSize::new(8, 8),
             &Account::for_test(),
@@ -896,7 +919,12 @@ mod tests {
         // The logical origin MAX*2-MAX is finite; device shrink keeps its
         // actual native projection finite without materializing unused axes.
         let transform = kurbo::Affine::scale(f64::MIN_POSITIVE);
-        let result = prepare(&gradient, transform, PhysicalSize::new(8, 8), &account);
+        let result = prepare(
+            ordinary_field(&gradient),
+            transform,
+            PhysicalSize::new(8, 8),
+            &account,
+        );
         assert!(result.is_ok());
     }
     #[test]
@@ -994,7 +1022,7 @@ mod tests {
         )
         .unwrap();
         let brush = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::scale(2.0_f64.powi(500)),
             PhysicalSize::new(8, 8),
             &Account::for_test(),
@@ -1004,7 +1032,7 @@ mod tests {
         assert!(field.comparison_only);
         assert_eq!(field.reference_device.as_coeffs(), [1., 0., 0., 1., 0., 0.]);
         let original = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::IDENTITY,
             PhysicalSize::new(8, 8),
             &Account::for_test(),
@@ -1051,7 +1079,13 @@ mod tests {
             ],
         )
         .unwrap();
-        let brush = prepare(&gradient, kurbo::Affine::IDENTITY, target, &account).unwrap();
+        let brush = prepare(
+            ordinary_field(&gradient),
+            kurbo::Affine::IDENTITY,
+            target,
+            &account,
+        )
+        .unwrap();
         let solved = brush.transform.unwrap();
         let [x, b, c, y, tx, ty] = solved.reference_device.as_coeffs();
         assert_eq!([b, c, tx, ty], [0.; 4]);
@@ -1095,7 +1129,7 @@ mod tests {
         .unwrap();
         let mut context = RenderAccountingContext::default();
         context.run(RenderAttemptKind::Frame,RenderPhase::GradientPrepare,|account|{
-            let brush=prepare(&gradient,kurbo::Affine::IDENTITY,PhysicalSize::new(8,8),account)?;
+            let brush=prepare(ordinary_field(&gradient),kurbo::Affine::IDENTITY,PhysicalSize::new(8,8),account)?;
             assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(color) if color==peniko::Color::TRANSPARENT));
             Ok(())
         }).unwrap();
@@ -1118,7 +1152,7 @@ mod tests {
                 RenderPhase::GradientPrepare,
                 |account| {
                     prepare(
-                        &gradient,
+                        ordinary_field(&gradient),
                         kurbo::Affine::IDENTITY,
                         PhysicalSize::new(8, 8),
                         account,
@@ -1133,7 +1167,7 @@ mod tests {
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(
             prepare(
-                &gradient,
+                ordinary_field(&gradient),
                 kurbo::Affine::IDENTITY,
                 PhysicalSize::new(8, 8),
                 &Account::for_test()
@@ -1293,7 +1327,7 @@ mod tests {
                 RenderPhase::GradientPrepare,
                 |account| {
                     prepare(
-                        &gradient,
+                        ordinary_field(&gradient),
                         kurbo::Affine::IDENTITY,
                         PhysicalSize::new(8, 8),
                         account,
@@ -1332,7 +1366,7 @@ mod tests {
                 RenderPhase::GradientPrepare,
                 |account| {
                     prepare(
-                        &gradient,
+                        ordinary_field(&gradient),
                         kurbo::Affine::IDENTITY,
                         PhysicalSize::new(8, 8),
                         account,
@@ -1375,7 +1409,7 @@ mod tests {
         )
         .unwrap();
         let brush = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::IDENTITY,
             PhysicalSize::new(32, 8),
             &Account::for_test(),
@@ -1423,7 +1457,7 @@ mod tests {
         )
         .unwrap();
         let brush = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::scale(f64::MIN_POSITIVE),
             PhysicalSize::new(8, 4),
             &Account::for_test(),
@@ -1452,7 +1486,7 @@ mod tests {
         )
         .unwrap();
         let brush = prepare(
-            &gradient,
+            ordinary_field(&gradient),
             kurbo::Affine::IDENTITY,
             PhysicalSize::new(8, 4),
             &Account::for_test(),

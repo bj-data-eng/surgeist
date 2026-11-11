@@ -13,7 +13,7 @@ use super::{
 };
 use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates};
 use crate::{
-    Color, Error, GradientStop, PhysicalSize, RepeatingGradient, Result,
+    Color, Error, GradientStop, PhysicalSize, Point, RepeatingGradient, Result,
     accounting::{Account, RenderPhase, RenderWork},
     color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
@@ -41,20 +41,30 @@ pub(super) fn prepare(
         if scalar(&account, || span == 0.0)? {
             return solid_average(stops, Average::Uniform, &account);
         }
-        if matches!(
-            gradient.geometry(),
-            GradientGeometry::HorizontalDistance { .. }
-        ) {
-            return prepare_horizontal_distance(
-                gradient,
-                first,
-                span,
-                paint_to_device,
-                target_extent,
-                &account,
-            );
-        }
-        let geometry = period_geometry(gradient.geometry(), first, span, &account)?;
+        let field_geometry = match gradient.geometry() {
+            GradientGeometry::HorizontalDistance { origin_x } => {
+                return prepare_horizontal_distance(
+                    gradient,
+                    origin_x,
+                    first,
+                    span,
+                    paint_to_device,
+                    target_extent,
+                    &account,
+                );
+            }
+            GradientGeometry::Linear { start, end } => PeriodFieldGeometry::Linear { start, end },
+            GradientGeometry::Radial {
+                center,
+                radius_x,
+                radius_y,
+            } => PeriodFieldGeometry::Radial {
+                center,
+                radius_x,
+                radius_y,
+            },
+        };
+        let geometry = period_geometry(field_geometry, first, span, &account)?;
         let (field, local) = match geometry {
             PeriodGeometry::RoundedZero => return solid_average(stops, Average::Uniform, &account),
             PeriodGeometry::ZeroHeight => {
@@ -172,6 +182,7 @@ fn horizontal_phase(first: f64, span: f64, account: &Account) -> Result<f32> {
 
 fn prepare_horizontal_distance(
     gradient: &RepeatingGradient,
+    origin_x: f64,
     first: f64,
     span: f64,
     transform: kurbo::Affine,
@@ -196,9 +207,6 @@ fn prepare_horizontal_distance(
     if scalar(account, || period < 2.0)? {
         return solid_average(stops, Average::Weighted(span), account);
     }
-    let GradientGeometry::HorizontalDistance { origin_x } = gradient.geometry() else {
-        unreachable!("distance variant selected by caller")
-    };
     let origin_x = scalar(account, || origin_x)?;
     let phase = horizontal_phase(first, span, account)?;
     let device = ordinary_gradient::horizontal_device(origin_x, span, transform, account)
@@ -250,6 +258,18 @@ enum NativeField {
     Radial { start_radius: f64 },
 }
 
+enum PeriodFieldGeometry {
+    Linear {
+        start: Point,
+        end: Point,
+    },
+    Radial {
+        center: Point,
+        radius_x: f64,
+        radius_y: f64,
+    },
+}
+
 enum PeriodGeometry {
     RoundedZero,
     ZeroHeight,
@@ -260,14 +280,14 @@ enum PeriodGeometry {
 }
 
 fn period_geometry(
-    geometry: GradientGeometry,
+    geometry: PeriodFieldGeometry,
     first: f64,
     span: f64,
     account: &Account,
 ) -> Result<PeriodGeometry> {
     let phase = scalar(account, || first.rem_euclid(span))?;
     let (field, local) = match geometry {
-        GradientGeometry::Linear { start, end } => {
+        PeriodFieldGeometry::Linear { start, end } => {
             account.work(RenderWork::CoordinateVisits, 4)?;
             let (sx, sy, ex, ey) = (start.x(), start.y(), end.x(), end.y());
             let dx = scalar(account, || ex - sx)?;
@@ -292,10 +312,7 @@ fn period_geometry(
                 kurbo::Affine::new([x, y, minus_y, x, ox, oy]),
             )
         }
-        GradientGeometry::HorizontalDistance { .. } => {
-            unreachable!("distance is prepared with its unshifted carrier")
-        }
-        GradientGeometry::Radial {
+        PeriodFieldGeometry::Radial {
             center,
             radius_x,
             radius_y,
@@ -1421,6 +1438,71 @@ mod tests {
             0
         );
     }
+    #[test]
+    fn repeating_geometry_dispatch_preserves_the_first_accounting_refusal() {
+        use crate::RenderRefusalReason;
+
+        let stops = [stop(1.0, Color::BLACK), stop(5.0, Color::TRANSPARENT)];
+        let cases = [
+            (linear(stops.to_vec()), 1),
+            (
+                RepeatingGradient::try_radial(Point::new(0.0, 0.0), 1.0, 1.0, stops.to_vec())
+                    .unwrap(),
+                1,
+            ),
+            (
+                RepeatingGradient::try_horizontal_distance(2.0, stops.to_vec()).unwrap(),
+                4,
+            ),
+        ];
+        for (gradient, geometry_amount) in cases {
+            // Two endpoint reads and their difference precede the zero-span
+            // comparison. Linear and radial next admit one remainder, while
+            // horizontal distance admits four linear coefficients together.
+            for (limit, amount) in [(3, 1), (4, geometry_amount)] {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let error = context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        prepare(&gradient, kurbo::Affine::IDENTITY, account).map(drop)
+                    })
+                    .unwrap_err();
+                let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+                else {
+                    panic!("expected coordinate admission refusal for {gradient:?}");
+                };
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(
+                    refusal.quantity(),
+                    RenderQuantity::Work(RenderWork::CoordinateVisits)
+                );
+                assert_eq!((refusal.current(), refusal.amount()), (limit, amount));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+                let report = context.last_attempt().unwrap();
+                assert_eq!(report.cleanup_fault(), None);
+                let attempt = report.attempt().unwrap();
+                assert_eq!(attempt.refusal(), Some(refusal));
+                let usage = attempt.usage();
+                assert_eq!(usage.work(RenderWork::CoordinateVisits), limit);
+                assert_eq!(usage.work(RenderWork::GradientStopVisits), 2);
+                assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+                assert_eq!(usage.work(RenderWork::GpuObjectsCreated), 0);
+                for resource in [
+                    RenderResource::ScratchCpuBytes,
+                    RenderResource::RetainedCpuBytes,
+                    RenderResource::GpuBytes,
+                ] {
+                    assert_eq!(usage.live(resource), 0);
+                    assert_eq!(usage.peak(resource), 0);
+                }
+            }
+        }
+    }
+
     #[test]
     fn distance_phase_actions_refuse_before_the_fifth_comparison_and_retry() {
         let account = Account::for_test();

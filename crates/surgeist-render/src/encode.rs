@@ -1082,10 +1082,13 @@ fn gradient_brush(
 ) -> Result<FrameBrush> {
     let account = account.at(RenderPhase::GradientPrepare);
     account.phase(RenderPhase::GradientPrepare, || {
-        if let Some(sweep) = gradient.sweep() {
-            prepare_sweep_gradient(sweep, &account)
-        } else {
-            ordinary_gradient::prepare(gradient, transform, target_extent, &account)
+        match gradient.preparation() {
+            crate::paint::GradientPreparation::Sweep(sweep) => {
+                prepare_sweep_gradient(sweep, &account)
+            }
+            crate::paint::GradientPreparation::Ordinary(field) => {
+                ordinary_gradient::prepare(field, transform, target_extent, &account)
+            }
         }
     })
 }
