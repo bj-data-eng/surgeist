@@ -39,8 +39,9 @@ impl RetainedCallbackObject {
 
 impl<'scope> Scope<'scope> {
     /// Observe an object's engine creation Realm without invoking guest code.
-    /// The observation is independent of the scope that retained its root.
-    /// A proxy or object with no supported creation context refuses explicitly.
+    /// The observation uses the original object, including a Proxy, and is
+    /// independent of the scope that retained its root. An unavailable
+    /// creation context refuses explicitly.
     pub fn callback_object(
         &mut self,
         value: &Value<'scope>,

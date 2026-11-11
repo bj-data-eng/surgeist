@@ -79,9 +79,6 @@ fn creation_context<'s>(
     roots: &Roots,
     object: v8::Local<'s, v8::Object>,
 ) -> Result<(v8::Local<'s, v8::Context>, RealmKey), Error> {
-    if object.is_proxy() {
-        return Err(Error::CallbackRealmUnavailable);
-    }
     let context = object
         .get_creation_context(scope)
         .ok_or(Error::CallbackRealmUnavailable)?;
