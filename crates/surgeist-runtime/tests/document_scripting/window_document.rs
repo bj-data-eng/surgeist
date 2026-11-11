@@ -5,6 +5,7 @@ use super::*;
 pub(super) fn window_projects_the_live_document_and_node_brands() {
     let (mut host, _) = prepare_event_window();
     let permit = host.permit().unwrap();
+    let before = count_documents(&host);
     let script = r##"(() => {
         const descriptor = Object.getOwnPropertyDescriptor(window, "document");
         if (typeof descriptor?.get !== "function") return "missing Window.document getter";
@@ -30,6 +31,37 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
             actual.getRootNode() !== actual) {
             return "Node reads must observe the canonical Document";
         }
+        let reads = 0;
+        let wrongNodeRejected = false;
+        const options = { get composed() { reads++; return true; } };
+        try { Node.prototype.getRootNode.call(Object.create(Node.prototype), options); }
+        catch (error) { wrongNodeRejected = error instanceof TypeError; }
+        if (!wrongNodeRejected || reads !== 0 || actual.getRootNode(options) !== actual || reads !== 1) {
+            return "Node receiver qualification must precede options conversion";
+        }
+        class DerivedDocument extends Document {}
+        const created = new DerivedDocument();
+        if (created === actual || !(created instanceof Document) ||
+            Object.getPrototypeOf(created) !== DerivedDocument.prototype ||
+            created.getRootNode() !== created || created.nodeType !== 9) {
+            return "Document construction must use native identity and the selected prototype";
+        }
+        const capture = [];
+        const observe = label => function (event) {
+            const path = event.composedPath();
+            capture.push(label, this === event.currentTarget, event.target === actual,
+                path.length === 2 && path[0] === actual && path[1] === window);
+        };
+        const api = EventTarget.prototype;
+        api.addEventListener.call(window, "native-route", observe("capture"), true);
+        actual.addEventListener("native-route", observe("target"));
+        api.addEventListener.call(window, "native-route", observe("bubble"));
+        const event = new Event("native-route", { bubbles: true });
+        if (!actual.dispatchEvent(event) || event.target !== actual ||
+            event.currentTarget !== null || event.composedPath().length !== 0 ||
+            capture.join(",") !== "capture,true,true,true,target,true,true,true,bubble,true,true,true") {
+            return "Document dispatch must preserve the native Window path and recipient order";
+        }
         return "ok";
     })()"##;
     let result = host
@@ -39,6 +71,15 @@ pub(super) fn window_projects_the_live_document_and_node_brands() {
         })
         .unwrap();
     assert_eq!(String::from_utf16(&result).unwrap(), "ok");
+    assert_eq!(count_documents(&host), before + 1);
+}
+
+fn count_documents(host: &DocumentScriptHost) -> usize {
+    let snapshot = host.snapshot().unwrap();
+    snapshot
+        .nodes()
+        .filter(|id| snapshot.node(*id).unwrap().as_document().is_some())
+        .count()
 }
 
 pub(super) fn window_uses_the_real_global_event_target() {
