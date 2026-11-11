@@ -15,6 +15,8 @@ degenerate case from a concrete radial size request.
 `resolve_zero_height_gradient_colors` resolves a native zero-height case into
 borrowed color weights for a solid result. Its [basis policy](docs/reference.md#zero-height-gradient-colors)
 keeps mixed length/percentage semantics explicit.
+`resolve_border_image` partitions an already-sized image and its outset paint
+area into source regions and destination rectangles.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.

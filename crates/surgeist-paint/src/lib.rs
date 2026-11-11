@@ -3,6 +3,7 @@
 
 mod accounting;
 mod algorithm;
+mod border_image;
 mod gradient;
 mod gradient_stops;
 mod model;
@@ -15,6 +16,11 @@ pub use accounting::{
     PaintPhase, PaintReport, PhaseReport, RefusalReason, ResourceKind, WorkKind,
 };
 pub use algorithm::{PaintOutcome, plan_stacking};
+pub use border_image::{
+    BorderImageGeometry, BorderImageGeometryError, BorderImageOutcome, BorderImageOutset,
+    BorderImageRect, BorderImageRegion, BorderImageRequest, BorderImageSlice, BorderImageSource,
+    BorderImageWidth, resolve_border_image,
+};
 pub use gradient::{
     GradientGeometryError, LinearGradientDirection, LinearGradientLine, LinearGradientOutcome,
     resolve_linear_gradient,

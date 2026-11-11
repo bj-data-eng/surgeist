@@ -5,6 +5,7 @@ The [public front door](../src/lib.rs) exports these surfaces:
 
 | Surface | Contract |
 | --- | --- |
+| `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
 | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
 | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
 | `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
@@ -40,6 +41,29 @@ does not inspect the prepared fields: a consumer admits its visit before
 same inline head and tail, without source indexing or interpreting source kinds
 again. No prepared record is stored twice. `source()` retains the exact original slice;
 the result and its views cannot outlive that source.
+
+## Border-image geometry
+
+`BorderImageRequest` takes the border-box origin, size, and computed border
+widths in CSS pixels. The source carries its concrete coordinate extent and
+independently optional natural CSS-pixel dimensions. A raster slice can therefore
+refer to decoded image pixels while an automatic destination width uses the
+corresponding natural CSS-pixel extent. When that natural axis is absent, the
+automatic width uses the supplied border width.
+
+The outset paint area supplies the percentage basis for destination widths.
+One common factor fits opposing widths to the area. The nine output regions
+are in physical top-to-bottom, left-to-right order and distinguish independent
+source and destination emptiness. An overlapping source axis removes its middle
+span while preserving the corner slices. Center source geometry is supplied
+only when fill is requested. The resulting paint area is separate from layout,
+scrolling, and pointer geometry.
+
+Ledger reports admitted `BorderImageValidation`, `BorderImageCoordinate`, and
+`OutputRecord` work. Each region and the complete result count as output
+records. The fixed result accounts for retained bytes, and refusal releases
+any provisional result custody. Source sizing, resource selection, repetition,
+and concrete draw lowering belong to the callers and their respective owners.
 
 ## Zero-height gradient colors
 
