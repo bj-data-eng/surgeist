@@ -4738,12 +4738,44 @@ mod repeated_proof_accounting_tests {
                 // Select the real prepared release boundary without claiming
                 // that this isolated fixture encoded the preceding frame.
                 prepared.next_pass = index;
+                let generation = prepared.resources.generation().clone();
+                let cache_custody = || {
+                    [
+                        generation.cache_bytes().unwrap(),
+                        generation.registered_cache_bytes().unwrap(),
+                        generation.idle_cache_bytes().unwrap(),
+                    ]
+                };
+                let cache_before = cache_custody();
+                let probes_before = generation.cache_work(RenderWork::ResourceProbes).unwrap();
+                let returns = |class| {
+                    generation
+                        .class_usage(class)
+                        .unwrap()
+                        .work(RenderWork::ResourceLeaseReturns)
+                };
+                let texture_before = returns(GenerationClass::CacheEffects);
+                let kernel_before = returns(GenerationClass::CacheKernels);
                 let (result, report) =
                     measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
                         prepared
                             .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
                             .map(|completed| completed.pass)
                     });
+                let completed = u64::from(limit == 4);
+                assert_eq!(cache_custody(), cache_before);
+                assert_eq!(
+                    generation.cache_work(RenderWork::ResourceProbes).unwrap() - probes_before,
+                    completed * 4
+                );
+                assert_eq!(
+                    returns(GenerationClass::CacheEffects) - texture_before,
+                    completed
+                );
+                assert_eq!(
+                    returns(GenerationClass::CacheKernels) - kernel_before,
+                    completed
+                );
                 if limit == 4 {
                     result.unwrap();
                     // Each of the two relationships is inspected once while
@@ -4815,6 +4847,176 @@ mod repeated_proof_accounting_tests {
                     0
                 );
             }
+        });
+    }
+
+    #[test]
+    fn prepared_color_release_admits_its_exact_forward_prefix() {
+        use crate::accounting::{FrameFixture, RenderCpuScope, RenderProfile};
+        use crate::{RenderAccountingError, RenderQuantity, RenderRefusalReason, RenderResource};
+
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let options = RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false });
+            let preparation_cpu = RendererCpu::new(options).unwrap();
+            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                crate::FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap();
+            let lowered = lower_filter_proof_fixture(vec![filters]);
+            let (result, _, _, fault) = FrameFixture::new(&preparation_cpu, options)
+                .run(async |attempt| {
+                    let setup = attempt.account();
+                    let transaction = backend.begin_gpu_operation(
+                        identity,
+                        crate::gpu_transaction::GpuOperationStage::Render,
+                        crate::RuntimeOperation::EffectRendering,
+                    )?;
+                    let mut prepared = backend.prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        setup,
+                    )?;
+                    let index = prepared
+                        .plan
+                        .passes
+                        .iter()
+                        .position(|request| {
+                            matches!(request.runtime.kind, RuntimePassKind::ColorFilter(Some(_)))
+                        })
+                        .unwrap();
+                    let request = &prepared.plan.passes[index];
+                    assert_eq!(request.runtime.releases.len(), 1);
+                    assert!(request.kernel_releases.is_empty());
+                    let pass = request.runtime.id;
+                    let source = request.runtime.releases[0];
+                    assert_eq!(prepared.resource_bindings.len(), 7);
+                    assert_eq!(prepared.resource_bindings.entries[4].0, source);
+                    assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
+                    assert_eq!(prepared.color_filter_operation_bindings.entries[0].0, pass);
+                    let source_id = prepared.resource_bindings.entries[4]
+                        .1
+                        .lease
+                        .as_ref()
+                        .unwrap()
+                        .resource_identity();
+                    assert_eq!(
+                        prepared.color_filter_operation_bindings.entries[0]
+                            .1
+                            .buffer
+                            .as_ref()
+                            .unwrap()
+                            .size(),
+                        48
+                    );
+                    prepared.next_pass = index;
+
+                    let generation = prepared.resources.generation().clone();
+                    let cache_custody = || {
+                        [
+                            generation.cache_bytes().unwrap(),
+                            generation.registered_cache_bytes().unwrap(),
+                            generation.idle_cache_bytes().unwrap(),
+                        ]
+                    };
+                    let buffer_bytes = || {
+                        generation
+                            .class_usage(GenerationClass::PassBuffers)
+                            .unwrap()
+                            .live(RenderResource::GpuBytes)
+                    };
+                    let texture_returns = || {
+                        generation
+                            .class_usage(GenerationClass::CacheEffects)
+                            .unwrap()
+                            .work(RenderWork::ResourceLeaseReturns)
+                    };
+                    let cleanup_probes = || {
+                        preparation_cpu
+                            .snapshot()
+                            .unwrap()
+                            .scope_usage(RenderCpuScope::Cleanup)
+                            .unwrap()
+                            .work(RenderWork::ResourceProbes)
+                    };
+                    // A search for index four among seven sorted keys compares
+                    // indices three, five and four. The color map has one key.
+                    // Two source searches and one color search need seven probes.
+                    for limit in [6, 7] {
+                        let cache_before = cache_custody();
+                        let buffer_before = buffer_bytes();
+                        let returns_before = texture_returns();
+                        let probes_before =
+                            generation.cache_work(RenderWork::ResourceProbes).unwrap();
+                        let cleanup_before = cleanup_probes();
+                        let (result, report) =
+                            measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                                prepared
+                                    .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
+                                    .map(|receipt| (receipt.pass, receipt.color_buffer_taken))
+                            });
+                        let attempt = report.attempt().unwrap();
+                        let usage = attempt.usage();
+                        assert_eq!(usage.work(RenderWork::GraphNodeVisits), 1);
+                        assert_eq!(usage.work(RenderWork::GraphEdgeVisits), 2);
+                        assert_eq!(usage.work(RenderWork::ResourceProbes), limit);
+                        let succeeded = limit == 7;
+                        if succeeded {
+                            assert_eq!(result.unwrap(), (pass, true));
+                            assert_eq!(attempt.refusal(), None);
+                        } else {
+                            let refusal = attempt.refusal().unwrap();
+                            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                            assert_eq!(
+                                refusal.quantity(),
+                                RenderQuantity::Work(RenderWork::ResourceProbes)
+                            );
+                            assert_eq!((refusal.current(), refusal.amount()), (6, 1));
+                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
+                            assert_eq!(
+                                result.unwrap_err().accounting_diagnostic(),
+                                Some(RenderAccountingError::Refused(refusal))
+                            );
+                        }
+                        assert_eq!(prepared.next_pass, index + usize::from(succeeded));
+                        assert_eq!(
+                            prepared.resource_bindings.entries[4]
+                                .1
+                                .lease
+                                .as_ref()
+                                .map(|lease| lease.resource_identity()),
+                            (!succeeded).then_some(source_id)
+                        );
+                        assert_eq!(
+                            prepared.color_filter_operation_bindings.entries[0]
+                                .1
+                                .buffer
+                                .as_ref()
+                                .map(|buffer| buffer.size()),
+                            (!succeeded).then_some(48)
+                        );
+                        assert_eq!(cache_custody(), cache_before);
+                        assert_eq!(buffer_before - buffer_bytes(), 48 * u64::from(succeeded));
+                        assert_eq!(texture_returns() - returns_before, u64::from(succeeded));
+                        assert_eq!(
+                            generation.cache_work(RenderWork::ResourceProbes).unwrap()
+                                - probes_before,
+                            2 * u64::from(succeeded)
+                        );
+                        assert_eq!(cleanup_probes() - cleanup_before, 4 * u64::from(succeeded));
+                    }
+                    drop(prepared);
+                    transaction
+                        .finish(crate::RuntimeOperation::EffectRendering, Some(setup))
+                        .await
+                })
+                .await
+                .unwrap()
+                .into_parts();
+            result.unwrap();
+            assert_eq!(fault, None);
         });
     }
 
