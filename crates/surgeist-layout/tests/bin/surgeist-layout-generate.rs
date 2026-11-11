@@ -28,6 +28,8 @@ mod original_flex_axes_profile;
 mod original_flex_parent_profile;
 #[path = "surgeist-layout-generate/measurement/original_grid_axes_profile.rs"]
 mod original_grid_axes_profile;
+#[path = "surgeist-layout-generate/measurement/original_subgrid_axes_profile.rs"]
+mod original_subgrid_axes_profile;
 #[path = "surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
 mod original_subgrid_body_profile;
 #[path = "../layout/browser_parity/pinned_font.rs"]

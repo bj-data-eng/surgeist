@@ -1316,7 +1316,7 @@ fn original_subgrid_axes_require_auto_block_and_both_inherited_axes() {
         } else {
             "gridTemplateRows"
         };
-        inherited[axis] = json!([{"kind": "subgrid"}]);
+        inherited[axis] = json!([{"kind": "subgrid", "lineNames": []}]);
         inherited["gridColumnStart"] = line(1);
         inherited["gridColumnEnd"] = line(3);
         inherited["gridRowStart"] = line(1);
