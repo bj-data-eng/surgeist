@@ -46,13 +46,13 @@ impl DomEventRegistryAssociation {
 
 /// One actual Node or Global event endpoint. An identity retains no tree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DomEventTarget {
+pub enum DomEventRecipientTarget {
     /// Exact owner-qualified Node identity.
     Node(NodeId),
     /// Actual issuer-qualified Global identity.
     Global(DomHostedGlobalId),
 }
-impl DomEventTarget {
+impl DomEventRecipientTarget {
     /// The Node endpoint, when selected.
     pub const fn node(self) -> Option<NodeId> {
         match self {
@@ -68,12 +68,12 @@ impl DomEventTarget {
         }
     }
 }
-impl From<NodeId> for DomEventTarget {
+impl From<NodeId> for DomEventRecipientTarget {
     fn from(value: NodeId) -> Self {
         Self::Node(value)
     }
 }
-impl From<DomHostedGlobalId> for DomEventTarget {
+impl From<DomHostedGlobalId> for DomEventRecipientTarget {
     fn from(value: DomHostedGlobalId) -> Self {
         Self::Global(value)
     }

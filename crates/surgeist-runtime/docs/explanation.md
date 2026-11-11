@@ -210,13 +210,20 @@ the event result; ordinary `resume` then runs the remaining Source cursor.
 `HostedRuntime::create_event` constructs an Event using the supplied current
 Global, its original navigation-start origin and the shared native clock. The
 session's `authored_events` limits fund the body and exact UTF-16 type. Creation
-leaves the canonical registry unclaimed. `prepare_node_dispatch` selects one
-exact Event, Node and dispatcher. Its first admitted `advance` starts the shared
+leaves the canonical registry unclaimed. `prepare_dispatch` selects one exact
+Event, target and dispatcher. Its first admitted `advance` starts the shared
 dispatch algorithm. Eligible Node paths reach Global listeners and honor
 capture, bubbling and the originating ShadowRoot's composed boundary. After
 cleanup, the Event can be used again on the same DOM with the current registry.
 The canceled flag remains sticky across dispatch. Idle `init_event` clears it
 and preserves the original creation time and composed flag.
+
+`HostedRuntime::create_event_target` constructs a standalone target using its
+own authenticated relevant Global. The supplied dispatcher owns its listener
+list. Direct Global and standalone dispatch each have one at-target path item
+and invoke capture before noncapture. A standalone target holds its original
+registry identity through escaped observations. Dropping the dispatcher closes
+its listener list, and the last target observation releases its backing.
 
 `DomEventDispatcher::new` creates an empty, unbound listener owner. Its first
 accepted registration or dispatch claims the canonical DOM's one registry
@@ -243,8 +250,7 @@ authority therefore closes live work immediately while physically retained
 backing stays charged until its last observation drops. The original accounting
 counters include their own retained targets. The element task counter carries
 its separate DOM Source debit through its final shared reference, independent of
-task State. Direct dispatch to Global and standalone EventTargets, legacy
-uninitialized Event construction, passive and signal listener integration,
+task State. Legacy uninitialized Event construction, passive and signal listener integration,
 callback realms, and authenticated creation observations for selected producers
 remain separate work.
 

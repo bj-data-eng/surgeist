@@ -285,7 +285,7 @@ struct EventObservation {
 fn observe(event: &NativeDomEvent) -> EventObservation {
     EventObservation {
         kind: event.event_type(),
-        target: event.target(),
+        target: event.target().and_then(|target| target.node()),
         current: event.current_target(),
         payload: event.toggle_event().copied(),
         path: event.composed_path().collect(),
@@ -402,7 +402,7 @@ fn run(
                     .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
             );
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), task.id().target());
+            assert_eq!(receipt.original_target(), task.id().target().into());
             assert_eq!(
                 receipt.event_type(),
                 if source == DomElementTaskSourceKind::UserInteraction {
@@ -965,7 +965,7 @@ fn started_close_finishes_late_once_listener_then_reports_exact_retired_read_ope
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                 context.calls.push("late");
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 assert!(!event.cancelable());
                 event.prevent_default();
                 assert!(!event.default_prevented());
@@ -1722,7 +1722,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
             assert_eq!(task, close);
             assert_eq!(dialog_toggle_disposition, None);
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), subject);
+            assert_eq!(receipt.original_target(), subject.into());
             assert_eq!(receipt.event_type(), DomEventType::CLOSE);
             assert_eq!(receipt.callbacks(), 2);
             assert!(receipt.failures().is_empty());

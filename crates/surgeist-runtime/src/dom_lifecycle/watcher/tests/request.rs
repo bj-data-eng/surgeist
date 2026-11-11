@@ -696,7 +696,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut RetirementContext, event| {
                 context.calls.push("late");
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 Ok(())
             }),
             DomEventListenerOptions {

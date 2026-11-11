@@ -413,7 +413,7 @@ fn original_allow_policy_drives_both_invocations_despite_final_canonical_deny() 
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())

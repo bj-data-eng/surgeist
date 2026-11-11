@@ -135,7 +135,7 @@ fn fixture_with_setup<T>(
             dialog,
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |dom, _, trace: &mut NativeTrace, event| {
-                assert_eq!(event.target(), Some(dialog));
+                assert_eq!(event.target(), Some(dialog.into()));
                 let snapshot = dom.snapshot();
                 assert_eq!(snapshot.node(comment).unwrap().parent(), None);
                 assert!(

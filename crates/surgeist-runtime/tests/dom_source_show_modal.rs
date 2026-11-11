@@ -781,7 +781,7 @@ fn started_beforetoggle_finishes_late_once_after_actual_receiver_retirement() {
                 DomEventType::BEFORE_TOGGLE,
                 DomEventCallback::new(move |_, _, calls: &mut Vec<&'static str>, event| {
                     calls.push("late");
-                    assert_eq!(event.target(), Some(subject));
+                    assert_eq!(event.target(), Some(subject.into()));
                     assert_eq!(event.default_prevented(), prevent);
                     Ok(())
                 }),

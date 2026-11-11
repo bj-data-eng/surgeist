@@ -153,7 +153,7 @@ fn deliver_load(
             style,
             DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut Notifications, event| {
-                assert_eq!(event.target(), Some(style));
+                assert_eq!(event.target(), Some(style.into()));
                 assert_eq!(event.event_type(), DomEventType::LOAD);
                 assert!(!event.cancelable());
                 context.delivered.push(style);

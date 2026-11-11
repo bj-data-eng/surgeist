@@ -160,7 +160,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
-                        event.target(),
+                        event.target().and_then(|target| target.node()),
                         event.phase(),
                     ));
                     let mut batch = DomBatch::new();
@@ -180,7 +180,7 @@ fn started_hosted_details_dispatch_delivers_later_listener_after_target_retireme
                 DomEventCallback::new(|dom, _, context: &mut Context, event| {
                     context.observations.push((
                         event.current_target(),
-                        event.target(),
+                        event.target().and_then(|target| target.node()),
                         event.phase(),
                     ));
                     let mut batch = DomBatch::new();
@@ -377,9 +377,11 @@ fn reentry_registry(
             target,
             DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
-                context
-                    .observations
-                    .push((event.current_target(), event.target(), event.phase()));
+                context.observations.push((
+                    event.current_target(),
+                    event.target().and_then(|target| target.node()),
+                    event.phase(),
+                ));
                 let mut batch = DomBatch::new();
                 batch.detach(context.target);
                 match context.edit {
@@ -418,9 +420,11 @@ fn reentry_registry(
             target,
             DomEventType::TOGGLE,
             DomEventCallback::new(|dom, _, context: &mut ReentryContext, event| {
-                context
-                    .observations
-                    .push((event.current_target(), event.target(), event.phase()));
+                context.observations.push((
+                    event.current_target(),
+                    event.target().and_then(|target| target.node()),
+                    event.phase(),
+                ));
                 let mut batch = DomBatch::new();
                 batch.set_attribute(context.target, "later-listener", "delivered");
                 context.edits.push(dom.apply(batch, &cancel()));

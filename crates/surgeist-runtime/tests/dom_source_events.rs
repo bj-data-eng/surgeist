@@ -737,7 +737,7 @@ fn canceled_receipt_is_actual_and_distinct_from_callback_failure_without_running
     );
     assert_eq!(receipt.callbacks(), 1);
     assert_eq!(observed, (1, true));
-    assert_eq!(receipt.original_target(), subject);
+    assert_eq!(receipt.original_target(), subject.into());
     assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
     assert_eq!(session.snapshot().stamp(), before);
     let DomSourceDriveProgress::Complete(done) = resume(&mut session, request.operation()) else {

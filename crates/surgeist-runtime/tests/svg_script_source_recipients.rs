@@ -406,7 +406,7 @@ fn observed_beforetoggle_reentry_retains_svg_recipients_and_atomically_refuses_p
     let DomSourceEventServiceProgress::Serviced { receipt } = serviced else {
         panic!("original real observer delivery must finish")
     };
-    assert_eq!(receipt.original_target(), dialog);
+    assert_eq!(receipt.original_target(), dialog.into());
     assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
@@ -515,7 +515,7 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
             DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut OnceLoad, event| {
                 assert_eq!(event.event_type(), DomEventType::LOAD);
-                assert_eq!(event.target(), Some(style));
+                assert_eq!(event.target(), Some(style.into()));
                 context.calls += 1;
                 Ok(())
             }),
@@ -581,7 +581,7 @@ fn real_style_load_consumes_once_ancestor_recipient_before_svg_processing_retry(
     let DomStyleNetworkingProgress::Complete { receipt, .. } = progress else {
         panic!("the queued real Style load must be delivered")
     };
-    assert_eq!(receipt.original_target(), style);
+    assert_eq!(receipt.original_target(), style.into());
     assert_eq!(receipt.event_type(), DomEventType::LOAD);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());

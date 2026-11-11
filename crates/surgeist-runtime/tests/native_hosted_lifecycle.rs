@@ -148,7 +148,7 @@ fn listen(
                 context.seen.push(Observation {
                     label,
                     current: event.current_target(),
-                    target: event.target(),
+                    target: event.target().and_then(|target| target.node()),
                     phase: event.phase(),
                     payload: event.toggle_event().copied(),
                     bubbles: event.bubbles(),
@@ -1866,7 +1866,7 @@ fn destination_retired_in_global_capture_prevents_later_callbacks_without_replay
     );
     assert_eq!(context.seen, ["destination-global"]);
     assert_eq!(context.observed.len(), 1);
-    assert_eq!(context.observed[0].target(), Some(target));
+    assert_eq!(context.observed[0].target(), Some(target.into()));
     assert_eq!(
         context.observed[0].toggle_event().unwrap().new_state(),
         "open"

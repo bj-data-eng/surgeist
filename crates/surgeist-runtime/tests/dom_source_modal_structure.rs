@@ -146,7 +146,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, calls: &mut usize, event| {
                 *calls += 1;
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 assert!(event.cancelable());
                 assert!(!event.default_prevented());
                 assert_eq!(

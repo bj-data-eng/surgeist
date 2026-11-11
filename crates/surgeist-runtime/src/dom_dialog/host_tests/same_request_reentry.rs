@@ -98,7 +98,7 @@ fn attempt(storage_bytes: usize, repeat_request: bool) -> bool {
         Ok(DomSourceEventServiceProgress::Serviced { receipt }) => receipt,
         other => panic!("the actual original Show dispatch must finish: {other:?}"),
     };
-    assert_eq!(receipt.original_target(), target);
+    assert_eq!(receipt.original_target(), target.into());
     assert_eq!(receipt.callbacks(), 2);
     assert!(receipt.failures().is_empty());
     assert!(receipt.default_prevented());

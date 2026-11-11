@@ -30,7 +30,7 @@ fn observer(capture_listener: bool) -> DomEventCallback<Vec<Recorded>> {
     DomEventCallback::new(move |_, _, seen: &mut Vec<Recorded>, event| {
         seen.push(Recorded {
             current: event.current_target(),
-            target: event.target(),
+            target: event.target().and_then(|target| target.node()),
             phase: event.phase(),
             capture_listener,
             path: event.composed_path().collect(),
@@ -142,14 +142,14 @@ fn dispatch_hosted(kind: DomEventType) {
     let ancestor = DomEventTarget::Node(html);
     let target_endpoint = DomEventTarget::Node(target);
     let mut listeners = registry::<Vec<Recorded>>();
-    for endpoint in [target_endpoint, ancestor, document, global] {
+    for endpoint in [&target_endpoint, &ancestor, &document, &global] {
         // Opposite registration order must not turn capture traversal into
         // registration order or give nonbubbling ancestors a bubble visit.
         for capture in [false, true] {
             listeners
                 .add_listener(
                     &mut session.dom(),
-                    endpoint,
+                    endpoint.clone(),
                     &kind,
                     observer(capture),
                     DomEventListenerOptions {
@@ -178,16 +178,16 @@ fn dispatch_hosted(kind: DomEventType) {
             )
             .unwrap(),
     );
-    let mut path = vec![target_endpoint, ancestor, document];
+    let mut path = vec![target_endpoint.clone(), ancestor.clone(), document.clone()];
     let mut expected = Vec::new();
     if kind == DomEventType::ERROR {
-        path.push(global);
-        expected.push((global, DomEventPhase::Capturing, true));
+        path.push(global.clone());
+        expected.push((global.clone(), DomEventPhase::Capturing, true));
     }
     expected.extend([
         (document, DomEventPhase::Capturing, true),
         (ancestor, DomEventPhase::Capturing, true),
-        (target_endpoint, DomEventPhase::AtTarget, true),
+        (target_endpoint.clone(), DomEventPhase::AtTarget, true),
         (target_endpoint, DomEventPhase::AtTarget, false),
     ]);
     assert_eq!(
@@ -207,7 +207,7 @@ fn dispatch_hosted(kind: DomEventType) {
         receipt.callbacks(),
         if kind == DomEventType::ERROR { 5 } else { 4 }
     );
-    assert_eq!(receipt.original_target(), target);
+    assert_eq!(receipt.original_target(), target.into());
     assert_eq!(receipt.event_type(), kind);
     assert!(receipt.failures().is_empty());
     assert!(!receipt.default_prevented());
@@ -218,11 +218,11 @@ fn dispatch_hosted(kind: DomEventType) {
     assert!(
         !seen
             .iter()
-            .any(|entry| entry.current == Some(global) && !entry.capture_listener)
+            .any(|entry| entry.current.as_ref() == Some(&global) && !entry.capture_listener)
     );
     assert_eq!(event.current_target(), None);
     assert_eq!(event.phase(), DomEventPhase::None);
-    assert_eq!(event.target(), Some(target));
+    assert_eq!(event.target(), Some(target.into()));
     assert_eq!(event.composed_path().count(), 0);
 }
 

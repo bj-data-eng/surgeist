@@ -1373,6 +1373,27 @@ impl Dom {
         let _work = self.dispatch_hosted_read_work(cancel)?;
         self.dispatch_global_document_current(global)
     }
+    /// Qualify a direct Global dispatch and meter its current association reads
+    /// against both caller work and any enclosing Source event scope.
+    pub fn dispatch_global_document_with<E>(
+        &self,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<DocumentId, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_global_document_current_with(global, &mut || {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })
+    }
     fn dispatch_global_document_current(
         &self,
         global: DomHostedGlobalId,

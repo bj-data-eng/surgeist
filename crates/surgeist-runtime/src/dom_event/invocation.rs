@@ -1,6 +1,6 @@
 use super::*;
 
-/// One affine ordinary dispatch prepared for an exact Event, Node and registry.
+/// One affine ordinary dispatch prepared for an exact Event, target and registry.
 pub struct DomEventDispatch {
     owner: EventInvocationOwner,
     registry: u64,
@@ -9,18 +9,18 @@ impl std::fmt::Debug for DomEventDispatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DomEventDispatch")
             .field("event", &self.owner.event)
-            .field("target", &self.owner.state.original)
+            .field("target", &self.owner.state.origin.target())
             .finish()
     }
 }
 
 impl<C> DomEventDispatcher<C> {
-    /// Prepare fixed custody for one ordinary Node dispatch. Preparation keeps
+    /// Prepare fixed custody for one ordinary dispatch. Preparation keeps
     /// the Event idle. Its first admitted advance commits the dispatch flag.
-    pub fn prepare_node_dispatch(
+    pub fn prepare_dispatch(
         &mut self,
         dom: &mut DomEventDom<'_>,
-        target: NodeId,
+        target: impl Into<DomEventTarget>,
         event: &NativeDomEvent,
         cancel: &AtomicBool,
     ) -> Result<DomEventDispatch, DomEventDispatchError> {
@@ -31,14 +31,22 @@ impl<C> DomEventDispatcher<C> {
         if event.0.owner != dom.owner() {
             return Err(DomError::ForeignOwner.into());
         }
-        dom.snapshot().node(target)?;
-        self.storage.step(1, cancel)?;
+        let target = target.into();
+        if let DomEventTarget::Global(global) = &target {
+            self.storage.step(1, cancel)?;
+            dom.raw()
+                .dispatch_global_document_with(*global, cancel, &mut || {
+                    self.storage.step(1, cancel)
+                })?;
+        } else {
+            self.validate_target(dom.raw(), &target, cancel)?;
+            self.storage.step(1, cancel)?;
+        }
         let bytes = EventBodyCustody::continuation_bytes();
         let allocation = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
         let owner = EventInvocationOwner::from_event(
             event.clone(),
-            target,
-            None,
+            target.into(),
             BodyCustody {
                 _storage: BodyStorage::Owned {
                     _retained: allocation,

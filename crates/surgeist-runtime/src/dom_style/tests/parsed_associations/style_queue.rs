@@ -172,7 +172,7 @@ fn authentic_queue_survives_current_authored_import_removal_output_drop_and_sess
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())

@@ -197,7 +197,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())
@@ -499,7 +499,10 @@ fn settled_a_meta_c_d_ack_publishes_exact_readiness_preserves_snapshots_and_enab
         meta_output.preference().preferred_name(),
         &DocumentString::from("B")
     );
-    assert_eq!(receipts[0].original_target(), a.association().element());
+    assert_eq!(
+        receipts[0].original_target(),
+        a.association().element().into()
+    );
     assert_eq!(
         a0.original_document(),
         &DomParsedHtmlHistoricalDocument::Constructed(report.document().unwrap().root().id())

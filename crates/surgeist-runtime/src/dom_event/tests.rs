@@ -101,7 +101,7 @@ impl NativeDomEvent {
         (
             snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>(),
             dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>(),
-            dispatch.association_custody.retained_bytes(),
+            dispatch.association_bytes(),
         )
     }
 
@@ -127,7 +127,7 @@ impl NativeDomEvent {
         let snapshot = dispatch.snapshot.as_ref().unwrap();
         path + snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
             + dispatch.failures.capacity() * std::mem::size_of::<DomEventListenerFailure>()
-            + dispatch.association_custody.retained_bytes()
+            + dispatch.association_bytes()
     }
 }
 
@@ -311,7 +311,7 @@ fn observer() -> DomEventCallback<Vec<Observation>> {
     DomEventCallback::new(|_, _, log: &mut Vec<Observation>, event| {
         log.push(Observation {
             current: event.current_target().unwrap().node().unwrap(),
-            target: event.target().unwrap(),
+            target: event.target().and_then(|target| target.node()).unwrap(),
             phase: event.phase(),
             path: event
                 .composed_path()
@@ -392,14 +392,14 @@ fn nonbubbling_source_events_capture_ancestors_then_both_target_phases() {
                 },
             ]
         );
-        assert_eq!(receipt.original_target(), f.target);
+        assert_eq!(receipt.original_target(), f.target.into());
         assert_eq!(receipt.event_type(), kind);
         assert_eq!(receipt.callbacks(), 4);
         assert!(receipt.failures().is_empty());
         assert!(!receipt.default_prevented());
         assert_eq!(event.current_target(), None);
         assert_eq!(event.phase(), DomEventPhase::None);
-        assert_eq!(event.target(), Some(f.target));
+        assert_eq!(event.target(), Some(f.target.into()));
         assert_eq!(event.composed_path().count(), 0);
         assert!(matches!(
             listeners.dispatch(
@@ -1058,7 +1058,7 @@ fn slotted_light_origin_crosses_shadow_host_and_closed_composed_path_hides_only_
                 }
             );
         }
-        assert_eq!(event.target(), Some(f.light));
+        assert_eq!(event.target(), Some(f.light.into()));
     }
 }
 #[test]
@@ -1517,13 +1517,16 @@ fn completed_observation_reports_original_invocation_after_the_owner_drops() {
             )
             .unwrap(),
     );
-    assert_eq!(receipt.original_target(), f.target);
+    assert_eq!(receipt.original_target(), f.target.into());
     drop(owner);
 
     let diagnostic = format!("{observation:?}");
     assert!(diagnostic.contains("status: Complete"), "{diagnostic}");
     assert!(
-        diagnostic.contains(&format!("original_target: {:?}", f.target)),
+        diagnostic.contains(&format!(
+            "original_target: {:?}",
+            DomEventTarget::Node(f.target)
+        )),
         "{diagnostic}"
     );
 }
@@ -1679,7 +1682,7 @@ fn retirement_keeps_started_exact_path_and_never_delivers_or_mutates_reused_gene
             DomEventType::LOAD,
             DomEventCallback::new(move |dom, _, c: &mut Vec<NodeId>, event| {
                 assert_eq!(event.current_target(), Some(target.into()));
-                assert_eq!(event.target(), Some(target));
+                assert_eq!(event.target(), Some(target.into()));
                 c.push(target);
                 let mut b = DomBatch::new();
                 b.set_attribute(target, "stale", "never");
@@ -2551,7 +2554,7 @@ fn unsupported_details_host_listener_retains_cursor_once_and_counts_only_entered
             panic!("removing the unentered host listener permits actual completion: {progress:?}")
         };
         assert_eq!(Some(task.id()), original_task);
-        assert_eq!(receipt.original_target(), target);
+        assert_eq!(receipt.original_target(), target.into());
         assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
         assert_eq!(
             receipt.callbacks(),

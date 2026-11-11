@@ -133,8 +133,8 @@ mod element;
 mod event;
 pub use event::{
     DomEventParent, DomEventParentQuery, DomEventPayloadRetention, DomEventRecipient,
-    DomEventRecipientLimits, DomEventRegistryAssociation, DomEventRegistryPreparation,
-    DomEventTarget,
+    DomEventRecipientLimits, DomEventRecipientTarget, DomEventRegistryAssociation,
+    DomEventRegistryPreparation,
 };
 mod fieldset;
 mod form;

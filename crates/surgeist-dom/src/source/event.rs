@@ -239,6 +239,11 @@ pub struct DomSourceEventPayloadRetention {
     _debit: crate::store::custody::Debit,
 }
 impl DomSourceEventRetention {
+    /// Bytes still held by this affine receipt.
+    pub const fn retained_bytes(&self) -> usize {
+        self.bytes
+    }
+
     /// Transfer an admitted subextent to backing that can outlive the
     /// original event's work. The canonical storage debit remains live while
     /// the transferred portion leaves the request's diagnostic mirrors.

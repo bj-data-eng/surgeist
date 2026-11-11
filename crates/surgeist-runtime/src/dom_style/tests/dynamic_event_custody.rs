@@ -57,7 +57,7 @@ fn escaped_style_path_retains_exact_storage_after_task_and_event_disposal() {
         panic!("actual Style load completes")
     };
     assert_eq!(receipt.callbacks(), 1);
-    assert_eq!(receipt.original_target(), target);
+    assert_eq!(receipt.original_target(), target.into());
     assert_eq!(receipt.event_type(), DomEventType::LOAD);
     assert!(context.styles.pending_sheet(0).unwrap().is_none());
     assert_eq!(

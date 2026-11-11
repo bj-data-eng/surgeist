@@ -736,7 +736,7 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
                 DomEventType::CANCEL,
                 DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                     context.calls.push("late");
-                    assert_eq!(event.target(), Some(subject));
+                    assert_eq!(event.target(), Some(subject.into()));
                     assert_eq!(event.default_prevented(), prevent);
                     Ok(())
                 }),
@@ -963,7 +963,7 @@ fn nested_close_retirement_preserves_its_stopped_action_and_settles_original_wat
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, context: &mut MutationContext, event| {
                 context.calls.push("nested late");
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 Ok(())
             }),
             DomEventListenerOptions {
@@ -1386,7 +1386,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             DomEventType::CANCEL,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {
                 context.calls.push("child late");
-                assert_eq!(event.target(), Some(context.child));
+                assert_eq!(event.target(), Some(context.child.into()));
                 assert!(event.default_prevented());
                 Ok(())
             }),
@@ -1444,7 +1444,7 @@ fn terminal_child_request_inside_parent_cancel_preserves_original_parent_and_no_
             DomEventType::CANCEL,
             DomEventCallback::new(|_, _, context: &mut TerminalChildContext, event| {
                 context.calls.push("parent late");
-                assert_eq!(event.target(), Some(context.parent));
+                assert_eq!(event.target(), Some(context.parent.into()));
                 assert!(event.default_prevented());
                 Ok(())
             }),

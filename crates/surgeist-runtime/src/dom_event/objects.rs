@@ -57,12 +57,12 @@ impl std::fmt::Display for DomEventTimestampUnavailable {
 }
 impl std::error::Error for DomEventTimestampUnavailable {}
 
-/// Construction preserves the actual hosted or storage refusal.
+/// Event and EventTarget construction preserves the actual hosted or storage refusal.
 #[derive(Debug)]
 pub enum DomEventConstructionError {
     /// Actual creation Global, Source owner or native clock refused observation.
     Hosted(crate::DomHostedRuntimeError),
-    /// Event object storage or exact type construction was refused.
+    /// Event or target storage, or exact type construction was refused.
     Event(DomEventDispatchError),
 }
 impl std::fmt::Display for DomEventConstructionError {
@@ -119,7 +119,7 @@ impl NativeDomEvent {
                 creation: Some(creation.into_observation()),
                 toggle: None,
                 storage,
-                target: Cell::new(None),
+                target: RefCell::new(None),
                 stop: Cell::new(false),
                 immediate: Cell::new(false),
                 canceled: Cell::new(false),
@@ -145,7 +145,7 @@ impl NativeDomEvent {
         self.0.trusted.get()
     }
     /// Legacy alias of the current shadow-adjusted target.
-    pub fn src_element(&self) -> Option<NodeId> {
+    pub fn src_element(&self) -> Option<DomEventTarget> {
         self.target()
     }
     /// Legacy observation of the stop-propagation flag.
@@ -194,7 +194,7 @@ impl NativeDomEvent {
             composed,
         });
         self.0.trusted.set(false);
-        self.0.target.set(None);
+        self.0.target.replace(None);
         self.0.stop.set(false);
         self.0.immediate.set(false);
         self.0.canceled.set(false);

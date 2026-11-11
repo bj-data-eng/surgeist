@@ -211,7 +211,7 @@ fn check_delivery(progress: DomElementTaskProgress, expected: DomElementTask, ca
                     .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
             );
             assert!(displaced_owner.is_none());
-            assert_eq!(receipt.original_target(), expected.id().target());
+            assert_eq!(receipt.original_target(), expected.id().target().into());
             assert_eq!(
                 receipt.event_type(),
                 if expected.dialog_close().is_some() {

@@ -221,7 +221,8 @@ pub use dom_event::{
     DomEventHostError, DomEventHostInvocation, DomEventInit, DomEventListenerFailure,
     DomEventListenerFailureKind, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId,
     DomEventRegistryLimits, DomEventResource, DomEventStorageLimits, DomEventTarget,
-    DomEventTimestampUnavailable, DomEventType, DomToggleEvent, NativeDomEvent,
+    DomEventTimestampUnavailable, DomEventType, DomStandaloneEventTarget, DomToggleEvent,
+    NativeDomEvent,
 };
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,

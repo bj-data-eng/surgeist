@@ -258,7 +258,7 @@ fn deliver_closed_tasks(session: &mut DomSession, top: DomHostedTopLevel, subjec
                 .map(|_| DomDialogToggleTaskDisposition::TrackerCleared)
         );
         assert!(displaced_owner.is_none());
-        assert_eq!(receipt.original_target(), subject);
+        assert_eq!(receipt.original_target(), subject.into());
         assert_eq!(receipt.callbacks(), 1);
         assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
         assert!(!receipt.default_prevented());

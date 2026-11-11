@@ -208,7 +208,9 @@ fn idle_native_document() -> IdleDocument {
             style,
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Notifications, event| {
-                context.delivered.push(event.target().unwrap());
+                context
+                    .delivered
+                    .push(event.target().and_then(|target| target.node()).unwrap());
                 Ok(())
             }),
             DomEventListenerOptions {

@@ -221,7 +221,10 @@ impl Fixture {
                 style,
                 DomEventType::LOAD,
                 DomEventCallback::new(move |_, _, context: &mut Context, event| {
-                    context.events.push((style, event.target().unwrap()));
+                    context.events.push((
+                        style,
+                        event.target().and_then(|target| target.node()).unwrap(),
+                    ));
                     Ok(())
                 }),
                 DomEventListenerOptions {

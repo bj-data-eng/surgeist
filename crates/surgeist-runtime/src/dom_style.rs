@@ -2719,7 +2719,7 @@ impl DomStyleRuntime {
                         return Err(DomStyleRuntimeError::Protocol);
                     };
                     if parsed_cleanup
-                        && (receipt.original_target() != task.token.target()
+                        && (receipt.original_target().node() != Some(task.token.target())
                             || receipt.native_cause()
                                 != Some(crate::dom_event::NativeEventCause::StyleLoad))
                     {
@@ -3395,7 +3395,7 @@ mod tests {
                 DomEventType::LOAD,
                 DomEventCallback::new(move |dom, _dispatcher, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     let edit = DomSourceEdit::detach(style);
@@ -3765,7 +3765,7 @@ mod tests {
                 DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -4434,7 +4434,7 @@ mod tests {
                 DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -5316,7 +5316,7 @@ mod tests {
                 DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())
@@ -5401,7 +5401,7 @@ mod tests {
                 DomEventType::LOAD,
                 DomEventCallback::new(|_, _, context: &mut Context, event| {
                     context.events.push((
-                        event.target().unwrap(),
+                        event.target().and_then(|target| target.node()).unwrap(),
                         event.current_target().unwrap().node().unwrap(),
                     ));
                     Ok(())

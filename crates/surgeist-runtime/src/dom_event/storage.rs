@@ -480,7 +480,7 @@ mod tests {
                 )
                 .unwrap();
             let mut invocation = registry
-                .prepare_node_dispatch(&mut dom, target, &event, &cancel)
+                .prepare_dispatch(&mut dom, target, &event, &cancel)
                 .unwrap();
             let mut held = None;
             let result =
@@ -551,6 +551,75 @@ mod tests {
                 top.global().into()
             ]
         );
+        drop(escaped);
+        assert_eq!(storage.counter().unwrap().bytes.get(), header);
+    }
+
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "android",
+        target_os = "ios"
+    ))]
+    #[test]
+    fn standalone_identity_is_charged_until_its_last_observation() {
+        use super::super::{
+            DomEventConstructionError, DomEventDispatcher, DomEventRegistryLimits, DomEventTarget,
+            tests::hosted_style_parent_tests,
+        };
+
+        let cancel = AtomicBool::new(false);
+        let mut session = hosted_style_parent_tests::hosted_session();
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let global = hosted
+            .create_top_level(&mut dom, host, &cancel)
+            .unwrap()
+            .global();
+        let registry = |storage_bytes| {
+            DomEventDispatcher::<()>::new(DomEventRegistryLimits {
+                registrations: 0,
+                pending_events: 0,
+                nested_dispatches: 0,
+                storage_bytes,
+                work: 100,
+            })
+            .unwrap()
+        };
+        let probe = registry(16_000_000);
+        let actual = {
+            let target = hosted
+                .create_event_target(&mut dom, &probe, global, &cancel)
+                .unwrap();
+            target.inspect_allocations().0
+        };
+        let header = size_of::<StorageCounter>();
+        assert_eq!(probe.storage.counter().unwrap().bytes.get(), header);
+        drop(probe);
+
+        let short = registry(header + actual - 1);
+        assert!(matches!(
+            hosted.create_event_target(&mut dom, &short, global, &cancel),
+            Err(DomEventConstructionError::Event(
+                DomEventDispatchError::Admission(DomEventResource::Storage)
+            ))
+        ));
+        assert_eq!(short.storage.counter().unwrap().bytes.get(), header);
+
+        let exact = registry(header + actual);
+        let target = hosted
+            .create_event_target(&mut dom, &exact, global, &cancel)
+            .unwrap();
+        let (bytes, backing) = target.inspect_allocations();
+        assert_eq!(bytes, actual);
+        assert_eq!(backing.retained.retained_bytes(), actual);
+        let escaped = DomEventTarget::Standalone(target.clone());
+        drop(target);
+        let storage = exact.storage.clone();
+        drop(exact);
+        assert_eq!(storage.counter().unwrap().bytes.get(), header + actual);
         drop(escaped);
         assert_eq!(storage.counter().unwrap().bytes.get(), header);
     }

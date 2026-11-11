@@ -192,7 +192,7 @@ fn accepted_toggle_reports_exact_retired_or_surviving_cleanup_after_later_once_l
         assert!(displaced_owner.is_none());
         assert_eq!(receipt.callbacks(), 2);
         assert!(receipt.failures().is_empty(), "{:?}", receipt.failures());
-        assert_eq!(receipt.original_target(), subject);
+        assert_eq!(receipt.original_target(), subject.into());
         assert!(!receipt.default_prevented());
         assert_eq!(context.calls, ["first", "late"]);
         assert!(!registry.remove_listener(late));

@@ -125,7 +125,10 @@ fn real_end_releases_old_and_recreated_tasks_in_fifo_without_repeating_processin
         };
         assert_eq!(task, expected);
         assert_eq!(receipt.event_type(), DomEventType::LOAD);
-        assert_eq!(receipt.original_target(), new_sheet.association().element());
+        assert_eq!(
+            receipt.original_target(),
+            new_sheet.association().element().into()
+        );
     }
     assert!(matches!(
         networking(&mut session),

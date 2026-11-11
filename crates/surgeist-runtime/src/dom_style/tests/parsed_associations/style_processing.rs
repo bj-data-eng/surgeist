@@ -433,7 +433,7 @@ fn native_wait_and_delivery_remain_distinct_beside_original_processing_rows() {
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())

@@ -1,7 +1,9 @@
 //! Positive recipient ownership, independent of callbacks and immutable State.
 use super::*;
 use crate::event::Notification;
-use crate::{DomEventPayloadRetention, DomEventRecipient, DomEventRecipientLimits, DomEventTarget};
+use crate::{
+    DomEventPayloadRetention, DomEventRecipient, DomEventRecipientLimits, DomEventRecipientTarget,
+};
 use source::formation::Formation;
 use std::{cell::Cell, sync::Mutex};
 
@@ -163,7 +165,7 @@ impl Drop for LocalDebit {
 }
 
 struct Bucket {
-    target: DomEventTarget,
+    target: DomEventRecipientTarget,
     counts: [AtomicUsize; 4],
     _storage: LocalDebit,
 }
@@ -240,9 +242,9 @@ struct Address {
     len: usize,
 }
 impl Address {
-    fn new(target: DomEventTarget) -> Self {
+    fn new(target: DomEventRecipientTarget) -> Self {
         let mut value = Self {
-            global: matches!(target, DomEventTarget::Global(_)),
+            global: matches!(target, DomEventRecipientTarget::Global(_)),
             parts: [0; MAX_PARTS],
             len: 0,
         };
@@ -254,12 +256,12 @@ impl Address {
             }
         };
         match target {
-            DomEventTarget::Node(node) => {
+            DomEventRecipientTarget::Node(node) => {
                 value.parts[0] = node.slot;
                 value.len = 1;
                 number(node.generation, &mut value);
             }
-            DomEventTarget::Global(global) => {
+            DomEventRecipientTarget::Global(global) => {
                 number(global.source.serial, &mut value);
                 value.parts[value.len] = global.slot;
                 value.len += 1;
@@ -493,14 +495,14 @@ impl Owner {
     }
     pub(super) fn has_recipient(
         &self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         event_type: Notification,
         at_target: bool,
         processing: &Processing<'_>,
     ) -> Result<bool, DomError> {
         let owner = match target {
-            DomEventTarget::Node(node) => node.owner,
-            DomEventTarget::Global(global) => global.source.owner,
+            DomEventRecipientTarget::Node(node) => node.owner,
+            DomEventRecipientTarget::Global(global) => global.source.owner,
         };
         if owner != self.owner {
             return Err(DomError::ForeignOwner);
@@ -531,7 +533,7 @@ impl Owner {
     }
     fn retain(
         &self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         event: usize,
         capture: bool,
         processing: &Processing<'_>,
@@ -619,7 +621,7 @@ impl Dom {
     /// this occurrence. It grants no dispatch, callback or execution authority.
     pub fn retain_event_recipient(
         &mut self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         event_type: &[u16],
         capture: bool,
         cancel: &AtomicBool,
@@ -631,10 +633,10 @@ impl Dom {
         self.require_source_entry()?;
         check_cancel(cancel)?;
         match target {
-            DomEventTarget::Node(node) => {
+            DomEventRecipientTarget::Node(node) => {
                 self.state.node(self.owner, node)?;
             }
-            DomEventTarget::Global(global) => {
+            DomEventRecipientTarget::Global(global) => {
                 self.dispatch_global_document(global, cancel)?;
             }
         }

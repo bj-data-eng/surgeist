@@ -235,7 +235,7 @@ fn listen(session: &mut DomSession, dispatcher: &mut DomEventDispatcher<Context>
             DomEventType::LOAD,
             DomEventCallback::new(|_, _, context: &mut Context, event| {
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())
@@ -396,7 +396,7 @@ fn queued_a_old_and_late_a_final_survive_output_drop_subject_retirement_and_sess
             panic!("real end releases FIFO")
         };
         assert_eq!(actual, task);
-        assert_eq!(receipt.original_target(), target);
+        assert_eq!(receipt.original_target(), target.into());
         assert_eq!(receipt.event_type(), DomEventType::LOAD);
     }
     assert!(matches!(

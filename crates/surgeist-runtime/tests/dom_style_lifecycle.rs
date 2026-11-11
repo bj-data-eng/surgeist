@@ -204,7 +204,7 @@ fn registry() -> DomEventDispatcher<Context> {
 }
 fn listener() -> DomEventCallback<Context> {
     DomEventCallback::new(|dom, _, context: &mut Context, event| {
-        let target = event.target().unwrap();
+        let target = event.target().and_then(|target| target.node()).unwrap();
         context.events.push((
             event.event_type(),
             target,
@@ -1129,7 +1129,7 @@ fn graceful_pending_preserves_custody_and_terminal_drop_does_not_finish_observed
         assert_eq!(context.observations.len(), 1);
         assert!(context.events.is_empty());
         assert_eq!(context.observations[0].event_type(), DomEventType::LOAD);
-        assert_eq!(context.observations[0].target(), Some(style));
+        assert_eq!(context.observations[0].target(), Some(style.into()));
         (style, old_dom, sheet, old_cssom, task)
     };
     let session = match session.try_shutdown() {

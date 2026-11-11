@@ -1,7 +1,9 @@
 use super::*;
 use crate::dom_event::{
-    DomEventConstructionError, DomEventCreationObservation, DomEventInit, NativeDomEvent,
+    DomEventConstructionError, DomEventCreationObservation, DomEventDispatcher, DomEventInit,
+    DomStandaloneEventTarget, NativeDomEvent,
 };
+use surgeist_dom::DocumentId;
 
 /// Private one-use proof of this constructor's current Global and clock join.
 pub(crate) struct EventCreation(DomEventCreationObservation);
@@ -9,6 +11,39 @@ pub(crate) struct EventCreation(DomEventCreationObservation);
 impl EventCreation {
     pub(crate) fn into_observation(self) -> DomEventCreationObservation {
         self.0
+    }
+}
+
+pub(crate) struct EventTargetAssociation {
+    global: DomHostedGlobalId,
+    document: DocumentId,
+}
+
+impl EventTargetAssociation {
+    pub(crate) fn into_parts(self) -> (DomHostedGlobalId, DocumentId) {
+        (self.global, self.document)
+    }
+}
+
+impl HostedState {
+    fn event_global(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<(EventTargetAssociation, clock::CoarsenedSample), DomHostedRuntimeError> {
+        self.qualify(dom)?;
+        let document = dom
+            .raw()
+            .dispatch_global_document(global, cancel)
+            .map_err(DomHostedRuntimeError::Dom)?;
+        let route = self.find_global(global, cancel, |source| {
+            source
+                .admit_runtime_work(dom.raw(), 1, cancel)
+                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
+        })?;
+        let origin = self.settings_at(route, document)?.navigation_start;
+        Ok((EventTargetAssociation { global, document }, origin))
     }
 }
 
@@ -28,17 +63,7 @@ impl HostedRuntime {
             let mut state = owner
                 .try_borrow_mut()
                 .map_err(|_| DomHostedRuntimeError::Busy)?;
-            state.qualify(dom)?;
-            let document = dom
-                .raw()
-                .dispatch_global_document(global, cancel)
-                .map_err(DomHostedRuntimeError::Dom)?;
-            let route = state.find_global(global, cancel, |source| {
-                source
-                    .admit_runtime_work(dom.raw(), 1, cancel)
-                    .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
-            })?;
-            let origin = state.settings_at(route, document)?.navigation_start;
+            let (_, origin) = state.event_global(dom, global, cancel)?;
             state.step(cancel)?;
             state
                 .source
@@ -56,6 +81,27 @@ impl HostedRuntime {
             cancel,
         )
         .map_err(Into::into)
+    }
+
+    /// Construct a standalone EventTarget with this session's actual relevant
+    /// Global. Its listener list belongs to the supplied dispatcher.
+    pub fn create_event_target<C>(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &DomEventDispatcher<C>,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<DomStandaloneEventTarget, DomEventConstructionError> {
+        let association = {
+            let owner = self.state()?;
+            let mut state = owner
+                .try_borrow_mut()
+                .map_err(|_| DomHostedRuntimeError::Busy)?;
+            state.event_global(dom, global, cancel)?.0
+        };
+        dispatcher
+            .create_standalone_target(dom, association, cancel)
+            .map_err(Into::into)
     }
 }
 

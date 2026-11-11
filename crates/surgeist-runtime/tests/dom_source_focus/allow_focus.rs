@@ -521,7 +521,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             DomEventType::TOGGLE,
             DomEventCallback::new(move |dom, _, delivery: &mut Delivery, event| {
                 delivery.calls += 1;
-                delivery.target = event.target();
+                delivery.target = event.target().and_then(|target| target.node());
                 delivery.current = event.current_target();
                 delivery.payload = event.toggle_event().copied();
                 delivery.path = event.composed_path().collect();
@@ -570,7 +570,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     };
     assert_eq!(delivered_task, original_task);
     assert!(displaced_owner.is_none());
-    assert_eq!(receipt.original_target(), subject);
+    assert_eq!(receipt.original_target(), subject.into());
     assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
     assert_eq!(receipt.callbacks(), 1);
     assert!(receipt.failures().is_empty());

@@ -595,7 +595,7 @@ impl SourceEventRuntime {
                 let retained =
                     dom.raw()
                         .retain_source_event_payload(request, formation.source, 0, cancel)?;
-                let funding = DispatchFunding::source(&state.body_bytes, retained, formation);
+                let funding = DispatchFunding::source(&state.body_bytes, retained, formation.full);
                 if matches!(job.borrow().phase, Phase::Ready) {
                     let permit = state.executor.begin_dispatch(dom.raw(), request, cancel)?;
                     job.borrow_mut().phase = Phase::Dispatching {
@@ -671,7 +671,7 @@ impl SourceEventRuntime {
             else {
                 return Err(DomSourceEventRuntimeError::Protocol);
             };
-            if receipt.original_target() != request.subject()
+            if receipt.original_target().node() != Some(request.subject())
                 || receipt.native_cause()
                     != Some(match request.kind() {
                         surgeist_dom::DomSourceEventKind::BeforeToggle => {
@@ -979,7 +979,7 @@ mod payload_tests {
         assert_eq!(calls, (0..LISTENERS).collect::<Vec<_>>());
         assert_eq!(receipt.callbacks(), LISTENERS);
         assert_eq!(receipt.failures().len(), LISTENERS);
-        assert_eq!(receipt.original_target(), request.subject());
+        assert_eq!(receipt.original_target(), request.subject().into());
         assert!(receipt.default_prevented());
         assert!(owner.state.borrow().jobs.is_none());
         let mut lease = dom

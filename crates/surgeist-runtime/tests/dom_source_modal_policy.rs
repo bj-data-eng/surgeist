@@ -208,7 +208,7 @@ fn initial_iframe_focus_policy_denial_completes_modal_before_focus_target_select
             DomEventType::BEFORE_TOGGLE,
             DomEventCallback::new(move |_, _, calls: &mut usize, event| {
                 *calls += 1;
-                assert_eq!(event.target(), Some(subject));
+                assert_eq!(event.target(), Some(subject.into()));
                 assert!(event.cancelable());
                 assert!(!event.default_prevented());
                 assert_eq!(

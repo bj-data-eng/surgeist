@@ -611,7 +611,7 @@ fn assert_abandoned_details_row(
     assert_eq!(toggle.new_state(), "open");
     assert_eq!(
         held.path.as_mut().unwrap().by_ref().collect::<Vec<_>>(),
-        expected_path.map(surgeist_dom::DomEventTarget::Node),
+        expected_path.map(crate::DomEventTarget::Node),
     );
 }
 

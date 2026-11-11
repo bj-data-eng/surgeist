@@ -18,6 +18,9 @@ fn units(value: &str) -> Vec<u16> {
     value.encode_utf16().collect()
 }
 fn session() -> DomSession {
+    session_with_event_capacity(64, 128)
+}
+fn session_with_event_capacity(node_scopes: usize, recipient_slots: usize) -> DomSession {
     let dom = Dom::new(
         DomLimits::new(
             512,
@@ -31,10 +34,12 @@ fn session() -> DomSession {
         )
         .unwrap()
         .with_event_recipients(
-            DomEventRecipientLimits::new(128, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+            DomEventRecipientLimits::new(recipient_slots, 16_000_000, 16_000_000, 4_000_000)
+                .unwrap(),
         )
         .with_dispatch_custody(
-            DomDispatchCustodyLimits::new(64, 4096, 16_000_000, 16_000_000, 4_000_000).unwrap(),
+            DomDispatchCustodyLimits::new(node_scopes, 4096, 16_000_000, 16_000_000, 4_000_000)
+                .unwrap(),
         )
         .with_details_toggle_intentions(32)
         .unwrap(),
@@ -129,7 +134,7 @@ fn fire<C>(
     context: &mut C,
 ) -> DomEventDispatchReceipt {
     let mut invocation = registry
-        .prepare_node_dispatch(&mut session.dom(), target, event, &cancel())
+        .prepare_dispatch(&mut session.dom(), target, event, &cancel())
         .unwrap();
     complete(
         invocation
@@ -256,7 +261,7 @@ fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation()
             registry
                 .add_listener(
                     &mut session.dom(),
-                    endpoint,
+                    endpoint.clone(),
                     &name,
                     DomEventCallback::new(move |_, _, trace: &mut Vec<&'static str>, event| {
                         trace.push(label);
@@ -307,8 +312,8 @@ fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation()
         ]
     );
     assert!(receipt.default_prevented());
-    assert_eq!(event.target(), Some(target));
-    assert_eq!(event.src_element(), Some(target));
+    assert_eq!(event.target(), Some(target.into()));
+    assert_eq!(event.src_element(), Some(target.into()));
     assert_eq!(event.current_target(), None);
     assert_eq!(event.phase(), DomEventPhase::None);
     assert_eq!(event.composed_path().count(), 0);
@@ -349,7 +354,7 @@ fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation()
         .default_prevented()
     );
     assert_eq!(calls, 1);
-    assert_eq!(event.target(), Some(destination_node));
+    assert_eq!(event.target(), Some(destination_node.into()));
     assert_eq!(event.creation(), Some(&creation));
     assert_eq!(event.time_stamp().unwrap(), timestamp);
 }
@@ -387,7 +392,7 @@ fn active_reentry_and_legacy_initialization_obey_the_same_real_event_identity() 
             DomEventCallback::new(move |dom, registry, calls: &mut usize, event| {
                 *calls += 1;
                 assert!(matches!(
-                    registry.prepare_node_dispatch(dom, target, event, &cancel()),
+                    registry.prepare_dispatch(dom, target, event, &cancel()),
                     Err(DomEventDispatchError::AlreadyDispatching)
                 ));
                 event
@@ -457,7 +462,7 @@ fn terminal_dispatcher_teardown_cannot_enable_reentry_before_stack_cleanup() {
                     calls.push("callback");
                     drop(std::mem::replace(dispatcher, new_registry()));
                     assert!(matches!(
-                        dispatcher.prepare_node_dispatch(dom, target, event, &cancel()),
+                        dispatcher.prepare_dispatch(dom, target, event, &cancel()),
                         Err(DomEventDispatchError::AlreadyDispatching)
                     ));
                     event
@@ -472,7 +477,7 @@ fn terminal_dispatcher_teardown_cannot_enable_reentry_before_stack_cleanup() {
         )
         .unwrap();
     let mut invocation = dispatcher
-        .prepare_node_dispatch(&mut session.dom(), target, &event, &cancel())
+        .prepare_dispatch(&mut session.dom(), target, &event, &cancel())
         .unwrap();
     let mut calls = Vec::new();
     assert!(matches!(
@@ -559,7 +564,7 @@ fn host_unavailability_preserves_once_and_cursor_until_real_native_resume() {
         )
         .unwrap();
     let mut invocation = registry
-        .prepare_node_dispatch(&mut session.dom(), target, &event, &cancel())
+        .prepare_dispatch(&mut session.dom(), target, &event, &cancel())
         .unwrap();
     let mut calls = Vec::new();
     assert!(matches!(
@@ -576,7 +581,7 @@ fn host_unavailability_preserves_once_and_cursor_until_real_native_resume() {
     ));
     assert_eq!(calls, ["prefix"]);
     assert!(matches!(
-        registry.prepare_node_dispatch(&mut session.dom(), target, &event, &cancel()),
+        registry.prepare_dispatch(&mut session.dom(), target, &event, &cancel()),
         Err(DomEventDispatchError::AlreadyDispatching)
     ));
     assert!(registry.remove_listener(host));
@@ -651,7 +656,7 @@ fn actual_composed_shadow_paths_retarget_and_filter_both_root_modes() {
                         seen.push(PathObservation {
                             label,
                             phase: event.phase(),
-                            target: event.target(),
+                            target: event.target().and_then(|target| target.node()),
                             path: event.composed_path().collect(),
                         });
                         Ok(())
@@ -743,7 +748,7 @@ fn actual_composed_shadow_paths_retarget_and_filter_both_root_modes() {
                 },
             ]
         );
-        assert_eq!(composed.target(), Some(host));
+        assert_eq!(composed.target(), Some(host.into()));
     }
 }
 
@@ -862,7 +867,7 @@ fn native_toggle_payload_and_receipt_survive_ordinary_body_reinitialization() {
     assert_eq!(event.toggle_event(), Some(&payload));
     assert_eq!(receipt.event_type(), original_receipt_type);
     assert_eq!(receipt.event_type(), DomEventType::TOGGLE);
-    assert_eq!(receipt.original_target(), target);
+    assert_eq!(receipt.original_target(), target.into());
     registry
         .add_listener(
             &mut session.dom(),
@@ -908,7 +913,7 @@ fn stale_and_dropped_preparations_preserve_idle_event_state() {
     event.stop_propagation();
     let mut registry = new_registry::<usize>();
     let mut stale = registry
-        .prepare_node_dispatch(&mut session.dom(), target, &event, &cancel())
+        .prepare_dispatch(&mut session.dom(), target, &event, &cancel())
         .unwrap();
     let mut foreign = new_registry::<usize>();
     let mut calls = 0;
@@ -953,7 +958,7 @@ fn stale_and_dropped_preparations_preserve_idle_event_state() {
     assert_eq!(event.event_type().code_units(), original);
     assert_eq!(event.target(), None);
     let mut ready = registry
-        .prepare_node_dispatch(&mut session.dom(), parent, &event, &cancel())
+        .prepare_dispatch(&mut session.dom(), parent, &event, &cancel())
         .unwrap();
     let replacement = units("initialized-while-ready");
     event
@@ -985,4 +990,231 @@ fn stale_and_dropped_preparations_preserve_idle_event_state() {
     assert_eq!(calls, 1);
     assert_eq!(receipt.event_type().code_units(), replacement);
     assert!(!receipt.default_prevented());
+}
+
+#[test]
+fn direct_global_load_has_one_at_target_path_without_node_custody() {
+    let mut session = session_with_event_capacity(0, 128);
+    let top = top(&mut session);
+    let global = DomEventTarget::Global(top.global());
+    let event = session
+        .hosted_execution()
+        .create_event(
+            &mut session.dom(),
+            top.global(),
+            DomEventType::LOAD.code_units(),
+            DomEventInit {
+                cancelable: true,
+                ..DomEventInit::default()
+            },
+            &cancel(),
+        )
+        .unwrap();
+    let mut registry = new_registry::<Vec<(&'static str, DomEventPhase)>>();
+    for (target, capture, label) in [
+        (global.clone(), false, "global noncapture"),
+        (
+            DomEventTarget::Node(top.document().node()),
+            true,
+            "document capture",
+        ),
+        (global.clone(), true, "global capture"),
+    ] {
+        let expected = global.clone();
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::LOAD,
+                DomEventCallback::new(move |_, _, calls: &mut Vec<_>, event| {
+                    calls.push((label, event.phase()));
+                    assert_eq!(event.target(), Some(expected.clone()));
+                    assert_eq!(event.current_target(), Some(expected.clone()));
+                    let path = event.composed_path().collect::<Vec<_>>();
+                    assert_eq!(path.as_slice(), std::slice::from_ref(&expected));
+                    event.prevent_default();
+                    Ok(())
+                }),
+                DomEventListenerOptions {
+                    capture,
+                    once: false,
+                },
+            )
+            .unwrap();
+    }
+    let mut calls = Vec::new();
+    let mut dispatch = registry
+        .prepare_dispatch(&mut session.dom(), global.clone(), &event, &cancel())
+        .unwrap();
+    let receipt = complete(
+        dispatch
+            .advance(
+                &mut session.dom(),
+                &mut registry,
+                &mut calls,
+                DomEventDispatchLimits {
+                    path_items: 1,
+                    ..limits()
+                },
+                &cancel(),
+            )
+            .unwrap(),
+    );
+    assert_eq!(
+        calls,
+        [
+            ("global capture", DomEventPhase::AtTarget),
+            ("global noncapture", DomEventPhase::AtTarget)
+        ]
+    );
+    assert_eq!(receipt.original_target(), global);
+    assert_eq!(receipt.callbacks(), 2);
+    assert!(receipt.failures().is_empty());
+    assert!(receipt.default_prevented());
+    assert_eq!(event.target(), Some(global));
+    assert_eq!(event.current_target(), None);
+    assert_eq!(event.phase(), DomEventPhase::None);
+    assert_eq!(event.composed_path().count(), 0);
+}
+
+#[test]
+fn standalone_uses_its_own_global_and_registry_without_a_dom_recipient() {
+    let mut session = session_with_event_capacity(0, 0);
+    let event_origin = top(&mut session);
+    let target_origin = top(&mut session);
+    let mut hosted = session.hosted_execution();
+    let mut registry = new_registry::<Vec<(DomEventTarget, DomEventComposedPath)>>();
+    let first = hosted
+        .create_event_target(
+            &mut session.dom(),
+            &registry,
+            target_origin.global(),
+            &cancel(),
+        )
+        .unwrap();
+    let second = hosted
+        .create_event_target(
+            &mut session.dom(),
+            &registry,
+            target_origin.global(),
+            &cancel(),
+        )
+        .unwrap();
+    assert_ne!(first, second);
+    assert_eq!(first.relevant_global(), target_origin.global());
+    let first = DomEventTarget::Standalone(first);
+    let second = DomEventTarget::Standalone(second);
+    let event = hosted
+        .create_event(
+            &mut session.dom(),
+            event_origin.global(),
+            DomEventType::LOAD.code_units(),
+            DomEventInit::default(),
+            &cancel(),
+        )
+        .unwrap();
+    let callback = DomEventCallback::new(|dom, registry, seen: &mut Vec<_>, event| {
+        let target = event.current_target().unwrap();
+        assert_eq!(event.target(), Some(target.clone()));
+        assert_eq!(event.phase(), DomEventPhase::AtTarget);
+        assert!(matches!(
+            registry.prepare_dispatch(dom, target.clone(), event, &cancel()),
+            Err(DomEventDispatchError::AlreadyDispatching)
+        ));
+        seen.push((target, event.composed_path()));
+        Ok(())
+    });
+    for target in [first.clone(), second.clone()] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                DomEventType::LOAD,
+                callback.clone(),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+    let mut seen = Vec::new();
+    for target in [first.clone(), second.clone()] {
+        let mut dispatch = registry
+            .prepare_dispatch(&mut session.dom(), target.clone(), &event, &cancel())
+            .unwrap();
+        let receipt = complete(
+            dispatch
+                .advance(
+                    &mut session.dom(),
+                    &mut registry,
+                    &mut seen,
+                    DomEventDispatchLimits {
+                        path_items: 1,
+                        ..limits()
+                    },
+                    &cancel(),
+                )
+                .unwrap(),
+        );
+        assert_eq!(receipt.original_target(), target);
+        assert_eq!(receipt.callbacks(), 1);
+        assert!(receipt.failures().is_empty());
+    }
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[0].0, first);
+    assert_eq!(seen[1].0, second);
+    assert_eq!(event.creation().unwrap().global(), event_origin.global());
+
+    let mut retired_global = registry
+        .prepare_dispatch(
+            &mut session.dom(),
+            target_origin.global(),
+            &event,
+            &cancel(),
+        )
+        .unwrap();
+    let retirement = hosted
+        .destroy_top_level(&mut session.dom(), target_origin.navigable(), &cancel())
+        .unwrap();
+    assert!((0..256).any(|_| matches!(
+        hosted.run_next(&mut session.dom(), retirement.traversable(), &cancel()).unwrap(),
+        DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+    )));
+    assert!(matches!(
+        retired_global.advance(
+            &mut session.dom(),
+            &mut registry,
+            &mut seen,
+            limits(),
+            &cancel()
+        ),
+        Err(DomEventDispatchError::Hosted(DomHostedError::StaleIdentity))
+    ));
+    let mut inactive = registry
+        .prepare_dispatch(&mut session.dom(), second.clone(), &event, &cancel())
+        .unwrap();
+    let receipt = complete(
+        inactive
+            .advance(
+                &mut session.dom(),
+                &mut registry,
+                &mut seen,
+                DomEventDispatchLimits {
+                    path_items: 1,
+                    ..limits()
+                },
+                &cancel(),
+            )
+            .unwrap(),
+    );
+    assert_eq!(receipt.callbacks(), 0);
+    assert_eq!(receipt.original_target(), second);
+    assert_eq!(seen.len(), 2);
+
+    drop(registry);
+    let mut replacement = new_registry::<()>();
+    let escaped = seen.remove(0).1.collect::<Vec<_>>();
+    assert_eq!(escaped, [first]);
+    assert!(matches!(
+        replacement.prepare_dispatch(&mut session.dom(), escaped[0].clone(), &event, &cancel()),
+        Err(DomEventDispatchError::WrongTargetRegistry)
+    ));
 }

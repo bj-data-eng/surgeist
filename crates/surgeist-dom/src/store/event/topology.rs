@@ -4,7 +4,7 @@ use crate::event::{EventParentFacts, LOAD_EVENT, Notification};
 use crate::store::source::formation::Formation;
 use crate::store::{Draft, Key, check_cancel, transaction};
 use crate::{
-    Dom, DomError, DomEventParent, DomEventParentQuery, DomEventTarget, DomHostedError,
+    Dom, DomError, DomEventParent, DomEventParentQuery, DomEventRecipientTarget, DomHostedError,
     DomHostedGlobalId, DomNodeKind, DomSnapshot, NodeId,
 };
 use std::sync::atomic::AtomicBool;
@@ -317,13 +317,13 @@ impl Draft {
 
     fn event_recipient_active(
         &self,
-        target: DomEventTarget,
+        target: DomEventRecipientTarget,
         processing: &Processing<'_>,
     ) -> Result<bool, DomError> {
         processing.step()?;
         let document = match target {
-            DomEventTarget::Node(node) => self.node(Key::Existing(node))?.document(),
-            DomEventTarget::Global(global) => {
+            DomEventRecipientTarget::Node(node) => self.node(Key::Existing(node))?.document(),
+            DomEventRecipientTarget::Global(global) => {
                 let document = self
                     .hosted_globals
                     .as_ref()
@@ -347,11 +347,11 @@ impl Draft {
             return Ok(false);
         }
         let global = match target {
-            DomEventTarget::Node(_) => self
+            DomEventRecipientTarget::Node(_) => self
                 .event_global(document, processing)
                 .map_err(svg_error)?
                 .ok_or(DomError::SvgScriptProcessingUnavailable)?,
-            DomEventTarget::Global(global) => global,
+            DomEventRecipientTarget::Global(global) => global,
         };
         let associated = self
             .hosted_globals
@@ -393,7 +393,7 @@ impl Draft {
             // Only a real published identity can have an indexed registration.
             // New staged keys still participate in every topology decision.
             if let Some(node) = self.published_id(current) {
-                let target = DomEventTarget::Node(node);
+                let target = DomEventRecipientTarget::Node(node);
                 if owner.has_recipient(target, event_type, at_target, processing)?
                     && self.event_recipient_active(target, processing)?
                 {
@@ -422,7 +422,7 @@ impl Draft {
             match next {
                 Parent::None => return Ok(()),
                 Parent::Global(global) => {
-                    let target = DomEventTarget::Global(global);
+                    let target = DomEventRecipientTarget::Global(global);
                     if owner.has_recipient(target, event_type, false, processing)?
                         && self.event_recipient_active(target, processing)?
                     {

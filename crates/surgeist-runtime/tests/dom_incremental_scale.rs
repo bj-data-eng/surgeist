@@ -525,7 +525,7 @@ fn production_session_parked_source_reentry_scale() {
             assert_eq!(receipt.callbacks(), 1);
             assert!(receipt.failures().is_empty());
             assert!(!receipt.default_prevented());
-            assert_eq!(receipt.original_target(), subject);
+            assert_eq!(receipt.original_target(), subject.into());
             assert_eq!(receipt.event_type(), DomEventType::BEFORE_TOGGLE);
             assert_eq!(callback.calls, sample + 1);
             let id = callback.created.take().unwrap();

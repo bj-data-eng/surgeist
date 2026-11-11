@@ -544,7 +544,7 @@ fn deliver_load(fixture: &mut Fixture) {
             DomEventType::LOAD,
             DomEventCallback::new(move |_, _, context: &mut Networking, event| {
                 assert_eq!(event.event_type(), DomEventType::LOAD);
-                assert_eq!(event.target(), Some(style));
+                assert_eq!(event.target(), Some(style.into()));
                 assert!(!event.cancelable());
                 context.delivered.push((event.event_type(), style));
                 Ok(())

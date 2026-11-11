@@ -960,7 +960,7 @@ fn actual_networking_callback_can_select_a_set_without_bypassing_source_custody(
                     .select_sheet_set(dom, &basis, &"B".into(), 1, &flag())
                     .unwrap();
                 context.events.push((
-                    event.target().unwrap(),
+                    event.target().and_then(|target| target.node()).unwrap(),
                     event.current_target().unwrap().node().unwrap(),
                 ));
                 Ok(())

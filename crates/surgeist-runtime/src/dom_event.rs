@@ -1,7 +1,8 @@
 //! Synchronous native DOM event dispatch over the canonical DOM owner.
 //!
 //! Implements the pinned DOM3071 dispatch/invoke and parent algorithms for the
-//! ordinary Node dispatch and selected Style, Details and Dialog delivery.
+//! ordinary Node, Global and standalone dispatch, and selected Style, Details
+//! and Dialog delivery.
 //! Authored Event bodies retain their exact UTF-16 type and creation observation.
 //! The affine dispatch owns one invocation's path, cursor and admission. Details
 //! preserves its queued state and Dialog supplies its source-selected cancelability.
@@ -29,7 +30,6 @@ use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-pub use surgeist_dom::DomEventTarget;
 use surgeist_dom::{
     Dom, DomDispatchCustody, DomError, DomEventParent, DomEventParentQuery, DomEventRecipient,
     DomHostedError, DomParsedHtmlStyleNotificationRequirement, DomSnapshot, HtmlShadowRootMode,
@@ -44,8 +44,10 @@ pub use objects::{
     DomEventConstructionError, DomEventCreationObservation, DomEventInit,
     DomEventTimestampUnavailable,
 };
-mod node;
-pub use node::DomEventDispatch;
+mod invocation;
+pub use invocation::DomEventDispatch;
+mod target;
+pub use target::{DomEventTarget, DomStandaloneEventTarget};
 
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
@@ -222,7 +224,7 @@ pub enum DomEventListenerFailureKind {
     Panicked,
 }
 /// One failure from an actual callback invocation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomEventListenerFailure {
     /// Exact registration that ran.
     pub registration: DomEventRegistrationId,
@@ -234,7 +236,7 @@ pub struct DomEventListenerFailure {
 /// A finite resource whose admission refused further work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomEventResource {
-    /// Actual retained event, listener and invocation backing.
+    /// Actual retained Event, EventTarget, listener and invocation backing.
     Storage,
     /// Listener registration storage.
     Registrations,
@@ -278,6 +280,8 @@ pub enum DomEventDispatchError {
     Abandoned,
     /// Resume requires an event retained by this exact registry.
     WrongContinuation,
+    /// The standalone target belongs to another dispatcher registry.
+    WrongTargetRegistry,
     /// The selected host refused execution; this event cannot produce a receipt.
     HostRefused(DomEventHostError),
     /// Registry/generation/order identity exhausted rather than wrapping.
@@ -303,6 +307,9 @@ impl std::fmt::Display for DomEventDispatchError {
             Self::Abandoned => f.write_str("native DOM event source task was abandoned"),
             Self::WrongContinuation => {
                 f.write_str("native DOM event continuation is not retained by this dispatcher")
+            }
+            Self::WrongTargetRegistry => {
+                f.write_str("standalone EventTarget belongs to another dispatcher")
             }
             Self::HostRefused(error) => write!(f, "native DOM event host refused: {}", error.code),
             Self::IdentityExhausted => {
@@ -337,9 +344,8 @@ impl From<DomHostedError> for DomEventDispatchError {
 /// Real completed delivery. This value is deliberately not cloneable.
 #[derive(Debug)]
 pub struct DomEventDispatchReceipt {
-    target: NodeId,
+    origin: DispatchOrigin,
     event_type: DomEventType,
-    cause: Option<NativeEventCause>,
     callbacks: usize,
     failures: Vec<DomEventListenerFailure>,
     default_prevented: bool,
@@ -347,14 +353,14 @@ pub struct DomEventDispatchReceipt {
 }
 impl DomEventDispatchReceipt {
     pub(crate) fn native_cause(&self) -> Option<NativeEventCause> {
-        self.cause
+        self.origin.cause()
     }
     pub(crate) fn release_producer_retention(&mut self) {
         self.funding.take();
     }
     /// Original exact target, independent of later retirement/reparenting.
-    pub fn original_target(&self) -> NodeId {
-        self.target
+    pub fn original_target(&self) -> DomEventTarget {
+        self.origin.target()
     }
     /// Type that was actually dispatched.
     pub fn event_type(&self) -> DomEventType {
@@ -818,18 +824,7 @@ impl<C> DomEventDispatcher<C> {
         let synchronous = AtomicBool::new(false);
         let event_type = event_type.as_ref();
         let target = target.into();
-        match target {
-            DomEventTarget::Node(node) => {
-                dom.snapshot()
-                    .node(node)
-                    .map_err(DomEventDispatchError::Dom)?;
-            }
-            DomEventTarget::Global(global) => {
-                dom.raw()
-                    .dispatch_global_document(global, &synchronous)
-                    .map_err(DomEventDispatchError::from)?;
-            }
-        }
+        self.validate_target(dom.raw(), &target, &synchronous)?;
         let mut registrations = 0;
         let mut reusable = None;
         for (slot, entry) in self.slots.iter().enumerate() {
@@ -900,12 +895,16 @@ impl<C> DomEventDispatcher<C> {
             &self.storage,
             &synchronous,
         )?;
-        let recipient = dom.raw_mut().retain_event_recipient(
-            target,
-            event_type.code_units(),
-            options.capture,
-            &synchronous,
-        )?;
+        let recipient = if let Some(target) = target.recipient() {
+            dom.raw_mut().retain_event_recipient(
+                target,
+                event_type.code_units(),
+                options.capture,
+                &synchronous,
+            )?
+        } else {
+            None
+        };
         self.association.commit(
             association,
             &mut self.pending,
@@ -1045,51 +1044,31 @@ impl<C> DomEventDispatcher<C> {
         let association =
             self.association
                 .prepare(dom, self.limits.pending_events, &self.storage, cancel)?;
-        let mut path = build_path(
-            dom,
-            &snapshot,
-            state.original,
-            &event_type,
-            event.composed(),
-            state.cause,
-            &mut budget,
-        )?;
-        let final_root = root(
-            &snapshot,
-            path.last()
-                .ok_or(DomEventDispatchError::WrongContinuation)?
-                .target,
-            &mut budget,
-        )?;
-        let clear_target = snapshot
-            .node(final_root)
-            .map_err(DomEventDispatchError::Dom)?
-            .as_shadow_root()
-            .is_some();
-        // This bounded temporary is live alongside the path and producer
-        // scope construction. Family maximum admission includes that overlap.
-        let mut invocation_nodes = Vec::new();
-        // Allocate once from empty: incremental growth would require admitting
-        // an old/new gather overlap as well as the completed path and scope.
-        invocation_nodes
-            .try_reserve_exact(path.len())
-            .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
-        if invocation_nodes.capacity() > limits.path_items {
-            return Err(DomEventDispatchError::Admission(
-                DomEventResource::PathItems,
-            ));
-        }
-        for item in &mut path {
-            budget.tick().map_err(DomEventDispatchError::Admission)?;
-            if let DomEventTarget::Node(node) = item.invocation {
-                item.custody_row = Some(invocation_nodes.len());
-                invocation_nodes.push(node);
-            }
-        }
-        let association_custody = dom
-            .register_dispatch_custody(&invocation_nodes, cancel)
-            .map_err(DomEventDispatchError::Dom)?;
-        drop(invocation_nodes);
+        let (path, clear_target, association_custody) = if let Some(node) = state.origin.node() {
+            let mut path = build_node_path(
+                dom,
+                &snapshot,
+                node,
+                &event_type,
+                event.composed(),
+                state.origin.cause(),
+                &mut budget,
+            )?;
+            let final_target = path
+                .last()
+                .and_then(|item| item.target.node())
+                .ok_or(DomEventDispatchError::WrongContinuation)?;
+            let final_root = root(&snapshot, final_target, &mut budget)?;
+            let clear_target = snapshot.node(final_root)?.as_shadow_root().is_some();
+            let custody = register_node_path_custody(dom, &mut path, &mut budget)?;
+            (path, clear_target, Some(custody))
+        } else {
+            (
+                build_direct_path(dom, state.origin.target(), &mut budget)?,
+                false,
+                None,
+            )
+        };
         let path_bytes = std::mem::size_of::<EventPath>()
             .checked_add(
                 path.capacity()
@@ -1157,7 +1136,7 @@ impl<C> DomEventDispatcher<C> {
         self.pending.push(event.continuation.clone());
         event.0.continuation.set(Some(event.continuation.clone()));
         _custody.clear_target.set(clear_target);
-        if state.cause.is_none() {
+        if state.origin.cause().is_none() {
             event.0.trusted.set(false);
         }
         self.execute(dom, context, event, dispatch, budget, host)
@@ -1190,7 +1169,7 @@ impl<C> DomEventDispatcher<C> {
             Status::Retained => (),
         }
         self.admit_running()?;
-        if dom.owner() != invocation.original.owner() {
+        if dom.owner() != invocation.owner {
             return Err(DomEventDispatchError::Dom(DomError::ForeignOwner));
         }
         let mut state = custody.borrow_mut();
@@ -1333,9 +1312,8 @@ impl<C> DomEventDispatcher<C> {
                 state.status.set(Status::Complete);
                 custody.finish_dispatch(state);
                 let receipt = DomEventDispatchReceipt {
-                    target: state.original,
+                    origin: state.origin.clone(),
                     event_type: dispatch.event_type.clone(),
-                    cause: state.cause,
                     callbacks: dispatch.callbacks,
                     failures: std::mem::take(&mut dispatch.failures),
                     default_prevented: event.default_prevented(),
@@ -1406,7 +1384,8 @@ impl<C> DomEventDispatcher<C> {
         let custody = event.custody().map_err(|_| RunStop::Abandoned)?;
         let state = event.state();
         let event_type = dispatch.event_type.clone();
-        let count = dispatch.path.len();
+        let path = dispatch.path.clone();
+        let count = path.len();
         while dispatch.invoke < count * 2 {
             dispatch_ready(&self.owner, dispatch, dom, state, budget)?;
             budget.tick()?;
@@ -1416,21 +1395,21 @@ impl<C> DomEventDispatcher<C> {
             } else {
                 dispatch.invoke - count
             };
-            let item = dispatch.path[index];
+            let item = &path[index];
             // Nonbubbling ancestor items are skipped by dispatch before invoke;
             // they must not perform invoke's target adjustment as a side effect.
             if !capture && !item.at_target && !event.bubbles() {
                 dispatch.next_invoke();
                 continue;
             }
-            event.0.target.set(Some(item.target));
+            event.0.target.replace(Some(item.target.clone()));
             // Source invoke checks stopPropagation before initializing currentTarget
             // and cloning the list, including the second invocation at target.
             if (dispatch.snapshot.is_none() && event.0.stop.get()) || event.0.immediate.get() {
                 dispatch.next_invoke();
                 continue;
             }
-            custody.current.set(Some(item.invocation));
+            custody.current.replace(Some(item.invocation.clone()));
             custody.phase.set(if item.at_target {
                 DomEventPhase::AtTarget
             } else if capture {
@@ -1502,7 +1481,12 @@ impl<C> DomEventDispatcher<C> {
                 // Native authority admission can refuse before source's
                 // irreversible once removal. A known inactive target instead
                 // follows inner invoke's skip, including its once removal.
-                if !listener_target_active(dom, &dispatch.association_custody, item, budget)? {
+                if !listener_target_active(
+                    dom,
+                    dispatch.association_custody.as_ref(),
+                    item,
+                    budget,
+                )? {
                     let once = r.options.once;
                     dispatch.listener += 1;
                     if once {
@@ -1538,7 +1522,7 @@ impl<C> DomEventDispatcher<C> {
                     CallbackKind::Host(key) => {
                         return Err(RunStop::HostInvocation {
                             registration: id,
-                            current_target: item.invocation,
+                            current_target: item.invocation.clone(),
                             key: **key,
                         });
                     }
@@ -1555,7 +1539,7 @@ impl<C> DomEventDispatcher<C> {
                 if let Some(kind) = failure {
                     dispatch.failures.push(DomEventListenerFailure {
                         registration: id,
-                        current_target: item.invocation,
+                        current_target: item.invocation.clone(),
                         kind,
                     });
                 }
@@ -1685,7 +1669,7 @@ struct Event {
     creation: Option<DomEventCreationObservation>,
     toggle: Option<DomToggleEvent>,
     storage: EventStorage,
-    target: Cell<Option<NodeId>>,
+    target: RefCell<Option<DomEventTarget>>,
     stop: Cell<bool>,
     immediate: Cell<bool>,
     canceled: Cell<bool>,
@@ -1759,7 +1743,6 @@ enum Funding {
     Source {
         extent: BodyExtent,
         retained: surgeist_dom::DomSourceEventRetention,
-        source_bytes: usize,
     },
     Style(BodyExtent),
     #[cfg(test)]
@@ -1792,12 +1775,11 @@ impl DispatchFunding {
     pub(crate) fn source(
         live: &Rc<Cell<usize>>,
         retained: surgeist_dom::DomSourceEventRetention,
-        formation: DispatchFormation,
+        bytes: usize,
     ) -> Self {
         Self(Funding::Source {
-            extent: BodyExtent::new(live, formation.full),
+            extent: BodyExtent::new(live, bytes),
             retained,
-            source_bytes: formation.source,
         })
     }
 
@@ -1813,20 +1795,12 @@ impl DispatchFunding {
             Funding::Element(retained) => PathFunding::Element {
                 _retained: retained.split(bytes, bytes).map_err(task_funding_error)?,
             },
-            Funding::Source {
-                extent,
-                retained,
-                source_bytes,
-            } => {
+            Funding::Source { extent, retained } => {
                 let remainder = extent
                     .bytes
                     .checked_sub(bytes)
                     .ok_or(DomError::RepresentationExhausted)?;
-                let remaining_source = source_bytes
-                    .checked_sub(bytes)
-                    .ok_or(DomError::RepresentationExhausted)?;
                 let path = retained.split_payload(bytes, 0)?;
-                *source_bytes = remaining_source;
                 PathFunding::Source {
                     _extent: extent.transfer(bytes, remainder),
                     _retained: path,
@@ -1855,24 +1829,15 @@ impl DispatchFunding {
                 .split(full, source)
                 .map(Self::element)
                 .map_err(task_funding_error),
-            Funding::Source {
-                extent,
-                retained,
-                source_bytes,
-            } => {
+            Funding::Source { extent, retained } => {
                 let remainder = extent
                     .bytes
                     .checked_sub(full)
                     .ok_or(DomError::RepresentationExhausted)?;
-                let remaining_source = source_bytes
-                    .checked_sub(source)
-                    .ok_or(DomError::RepresentationExhausted)?;
                 let retained = retained.split(source, 0)?;
-                *source_bytes = remaining_source;
                 Ok(Self(Funding::Source {
                     extent: extent.transfer(full, remainder),
                     retained,
-                    source_bytes: source,
                 }))
             }
             Funding::Style(extent) => {
@@ -1894,23 +1859,14 @@ impl DispatchFunding {
                 retained.absorb(other).map_err(task_funding_error)
             }
             (
-                Funding::Source {
-                    extent,
-                    retained,
-                    source_bytes,
-                },
+                Funding::Source { extent, retained },
                 Funding::Source {
                     extent: mut incoming,
                     retained: other,
-                    source_bytes: incoming_source,
                 },
             ) => {
                 let total = extent.join_bytes(&incoming)?;
-                let source_total = source_bytes
-                    .checked_add(incoming_source)
-                    .ok_or(DomError::RepresentationExhausted)?;
                 retained.absorb(other)?;
-                *source_bytes = source_total;
                 extent.bytes = total;
                 incoming.bytes = 0;
                 Ok(())
@@ -1930,11 +1886,7 @@ impl DispatchFunding {
         let (old_full, old_source) = match &mut self.0 {
             Funding::Owned(retained) => return retained.shrink(full, source),
             Funding::Element(retained) => (retained.full(), retained.source()),
-            Funding::Source {
-                extent,
-                source_bytes,
-                ..
-            } => (extent.bytes, *source_bytes),
+            Funding::Source { extent, retained } => (extent.bytes, retained.retained_bytes()),
             Funding::Style(extent) => (extent.bytes, source),
             #[cfg(test)]
             Funding::Fixture => return Ok(()),
@@ -2073,10 +2025,55 @@ fn test_event_backing() -> EventBodyCustody {
 /// The state of one invocation survives weak expiry for truthful diagnostics.
 /// Its storage receipt retains no continuation, callback or execution scope.
 struct ContinuationState {
-    original: NodeId,
-    cause: Option<NativeEventCause>,
+    owner: surgeist_dom::DomOwnerId,
+    origin: DispatchOrigin,
     status: Cell<Status>,
     _body: BodyCustody,
+}
+
+#[derive(Clone, Debug)]
+enum DispatchOrigin {
+    Node(NodeId),
+    Global(surgeist_dom::DomHostedGlobalId),
+    Standalone(DomStandaloneEventTarget),
+    Selected {
+        node: NodeId,
+        cause: NativeEventCause,
+    },
+}
+
+impl From<DomEventTarget> for DispatchOrigin {
+    fn from(target: DomEventTarget) -> Self {
+        match target {
+            DomEventTarget::Node(node) => Self::Node(node),
+            DomEventTarget::Global(global) => Self::Global(global),
+            DomEventTarget::Standalone(target) => Self::Standalone(target),
+        }
+    }
+}
+
+impl DispatchOrigin {
+    fn target(&self) -> DomEventTarget {
+        match self {
+            Self::Node(node) | Self::Selected { node, .. } => (*node).into(),
+            Self::Global(global) => (*global).into(),
+            Self::Standalone(target) => target.clone().into(),
+        }
+    }
+
+    fn node(&self) -> Option<NodeId> {
+        match self {
+            Self::Node(node) | Self::Selected { node, .. } => Some(*node),
+            Self::Global(_) | Self::Standalone(_) => None,
+        }
+    }
+
+    fn cause(&self) -> Option<NativeEventCause> {
+        match self {
+            Self::Selected { cause, .. } => Some(*cause),
+            Self::Node(_) | Self::Global(_) | Self::Standalone(_) => None,
+        }
+    }
 }
 impl ContinuationState {
     fn terminal_dispatch_error(&self) -> Option<DomEventDispatchError> {
@@ -2196,7 +2193,7 @@ impl EventInvocationOwner {
                 creation: None,
                 toggle,
                 storage: backing.storage,
-                target: Cell::new(None),
+                target: RefCell::new(None),
                 stop: Cell::new(false),
                 immediate: Cell::new(false),
                 canceled: Cell::new(false),
@@ -2204,30 +2201,32 @@ impl EventInvocationOwner {
             }),
             backing.event,
         );
-        let owner = Self::from_event(event, original, Some(cause), backing.continuation);
+        let owner = Self::from_event(
+            event,
+            DispatchOrigin::Selected {
+                node: original,
+                cause,
+            },
+            backing.continuation,
+        );
         owner.attach();
         owner
     }
 
-    fn from_event(
-        event: NativeDomEvent,
-        original: NodeId,
-        cause: Option<NativeEventCause>,
-        backing: BodyCustody,
-    ) -> Self {
+    fn from_event(event: NativeDomEvent, origin: DispatchOrigin, backing: BodyCustody) -> Self {
         let custody = Rc::new(EventContinuation {
             event: Cell::new(None),
             lifetime: Cell::new(InvocationLifetime::Idle),
             clear_target: Cell::new(false),
-            current: Cell::new(None),
+            current: RefCell::new(None),
             phase: Cell::new(DomEventPhase::None),
             path: Cell::new(None),
             dispatch: RefCell::new(None),
             host: Cell::new(None),
         });
         let state = Rc::new(ContinuationState {
-            original,
-            cause,
+            owner: event.0.owner,
+            origin,
             status: Cell::new(Status::Ready),
             _body: backing,
         });
@@ -2280,17 +2279,22 @@ impl EventInvocationOwner {
     pub(crate) fn fresh_dispatch_formation(
         limits: DomEventDispatchLimits,
     ) -> Option<DispatchFormation> {
-        Self::formation(limits, None)
+        Self::formation(limits, None, true)
     }
     pub(crate) fn dispatch_formation(
         &self,
         limits: DomEventDispatchLimits,
     ) -> Option<DispatchFormation> {
-        Self::formation(limits, self._custody.borrow().as_ref())
+        Self::formation(
+            limits,
+            self._custody.borrow().as_ref(),
+            self.state.origin.node().is_some(),
+        )
     }
     fn formation(
         limits: DomEventDispatchLimits,
         retained: Option<&Dispatch>,
+        node: bool,
     ) -> Option<DispatchFormation> {
         let new_snapshot = snapshot_formation_bytes(limits)?;
         let new_failures = limits
@@ -2319,28 +2323,29 @@ impl EventInvocationOwner {
                 .checked_add(new_failures.saturating_sub(old_failures))?;
             (replacement.max(run), 0)
         } else {
-            let backing = limits
-                .path_items
-                .checked_mul(std::mem::size_of::<PathItem>())?;
+            let items = if node {
+                limits.path_items
+            } else {
+                limits.path_items.min(1)
+            };
+            let backing = items.checked_mul(std::mem::size_of::<PathItem>())?;
             // Path and exact-node gather are independent formation owners; the
             // gather drops before the path moves into its shared EventPath.
-            let path_formation = std::mem::size_of::<Vec<PathItem>>()
-                .checked_add(backing)?
-                .checked_add(std::mem::size_of::<Vec<NodeId>>())?
-                .checked_add(
-                    limits
-                        .path_items
-                        .checked_mul(std::mem::size_of::<NodeId>())?,
-                )?;
+            let mut path_formation = std::mem::size_of::<Vec<PathItem>>().checked_add(backing)?;
+            let scope = if node {
+                path_formation = path_formation
+                    .checked_add(std::mem::size_of::<Vec<NodeId>>())?
+                    .checked_add(items.checked_mul(std::mem::size_of::<NodeId>())?)?;
+                DomDispatchCustody::maximum_retained_bytes(items).ok()?
+            } else {
+                0
+            };
             let base = std::mem::size_of::<EventPath>().checked_add(backing)?;
             let failure_formation = base
                 .checked_add(std::mem::size_of::<Vec<DomEventListenerFailure>>())?
                 .checked_add(new_failures)?;
             let run = base.checked_add(new_snapshot)?.checked_add(new_failures)?;
-            (
-                path_formation.max(failure_formation).max(run),
-                DomDispatchCustody::maximum_retained_bytes(limits.path_items).ok()?,
-            )
+            (path_formation.max(failure_formation).max(run), scope)
         };
         Some(DispatchFormation {
             source,
@@ -2354,7 +2359,7 @@ impl EventInvocationOwner {
             self._custody
                 .borrow()
                 .as_ref()
-                .map_or(0, |dispatch| dispatch.association_custody.retained_bytes()),
+                .map_or(0, Dispatch::association_bytes),
         )
     }
     /// Actual caller payload only; canonical Source custody body is separate.
@@ -2426,7 +2431,7 @@ impl std::fmt::Debug for NativeDomEvent {
         debug.field("event_type", &self.event_type());
         if let Some(invocation) = self.0.invocation() {
             debug
-                .field("original_target", &invocation.state.original)
+                .field("original_target", &invocation.state.origin.target())
                 .field("status", &invocation.state.status.get());
         }
         debug.finish()
@@ -2523,14 +2528,14 @@ impl NativeDomEvent {
         self.0.toggle.as_ref()
     }
     /// Current shadow-adjusted target; cleanup clears shadow-internal targets.
-    pub fn target(&self) -> Option<NodeId> {
-        self.0.target.get()
+    pub fn target(&self) -> Option<DomEventTarget> {
+        self.0.target.borrow().clone()
     }
     /// Current invocation target, retained across an owned host call and cleared
     /// when that callback reports completion or ordinary dispatch returns.
     pub fn current_target(&self) -> Option<DomEventTarget> {
         self.continuation()
-            .and_then(|invocation| invocation.current.get())
+            .and_then(|invocation| invocation.current.borrow().clone())
     }
     /// Current source phase.
     pub fn phase(&self) -> DomEventPhase {
@@ -2579,10 +2584,11 @@ impl NativeDomEvent {
             invocation.path.set(path.clone());
             path
         });
-        let current = invocation.and_then(|invocation| invocation.current.get());
-        let current_index = path
-            .as_ref()
-            .and_then(|path| path.iter().position(|p| Some(p.invocation) == current));
+        let current = invocation.and_then(|invocation| invocation.current.borrow().clone());
+        let current_index = path.as_ref().and_then(|path| {
+            path.iter()
+                .position(|p| Some(&p.invocation) == current.as_ref())
+        });
         DomEventComposedPath {
             path,
             current_index,
@@ -2606,7 +2612,7 @@ impl Iterator for DomEventComposedPath {
             let index = self.next;
             self.next += 1;
             if visible(path, current, index) {
-                return Some(path[index].invocation);
+                return Some(path[index].invocation.clone());
             }
         }
         None
@@ -2658,15 +2664,14 @@ fn visible(path: &[PathItem], current: usize, desired: usize) -> bool {
     }
     false
 }
-#[derive(Clone, Copy)]
 struct PathItem {
     invocation: DomEventTarget,
-    target: NodeId,
+    target: DomEventTarget,
     at_target: bool,
     closed_root: bool,
     closed_slot: bool,
     // Exact row in this Dispatch's original affine canonical association scope.
-    // Global invocation targets use their own actual current authority instead.
+    // Non-Node targets use their own actual relevant Global authority.
     custody_row: Option<usize>,
 }
 struct EventPath {
@@ -2684,7 +2689,7 @@ struct EventContinuation {
     event: Cell<Option<EventObservation>>,
     lifetime: Cell<InvocationLifetime>,
     clear_target: Cell<bool>,
-    current: Cell<Option<DomEventTarget>>,
+    current: RefCell<Option<DomEventTarget>>,
     phase: Cell<DomEventPhase>,
     path: Cell<Option<Rc<EventPath>>>,
     dispatch: RefCell<Option<Dispatch>>,
@@ -2706,7 +2711,7 @@ impl EventContinuation {
                 .is_some_and(|latest| std::ptr::eq(latest.state.as_ref(), state))
         {
             if self.clear_target.get() {
-                event.0.target.set(None);
+                event.0.target.replace(None);
             }
             event.0.stop.set(false);
             event.0.immediate.set(false);
@@ -2714,7 +2719,7 @@ impl EventContinuation {
         self.lifetime.set(InvocationLifetime::Idle);
     }
     fn clear_invocation(&self) {
-        self.current.set(None);
+        self.current.replace(None);
         self.phase.set(DomEventPhase::None);
         self.path.take();
     }
@@ -2737,7 +2742,7 @@ impl EventContinuation {
     }
 }
 struct Dispatch {
-    association_custody: DomDispatchCustody,
+    association_custody: Option<DomDispatchCustody>,
     _reservation: PendingReservation,
     event_type: DomEventType,
     path: Rc<EventPath>,
@@ -2750,6 +2755,11 @@ struct Dispatch {
     funding: DispatchFunding,
 }
 impl Dispatch {
+    fn association_bytes(&self) -> usize {
+        self.association_custody
+            .as_ref()
+            .map_or(0, DomDispatchCustody::retained_bytes)
+    }
     fn snapshot_backing_bytes(&self) -> usize {
         self.snapshot.as_ref().map_or(0, |snapshot| {
             snapshot.capacity() * std::mem::size_of::<DomEventRegistrationId>()
@@ -2781,7 +2791,7 @@ impl Dispatch {
 
     fn retain_funding(&mut self, source: usize) -> Result<(), DomError> {
         let full = source
-            .checked_add(self.association_custody.retained_bytes())
+            .checked_add(self.association_bytes())
             .ok_or(DomError::RepresentationExhausted)?;
         self.funding.shrink(full, source)
     }
@@ -2807,7 +2817,7 @@ impl Dispatch {
         }
         for failure in &self.failures {
             budget.tick()?;
-            replacement.push(*failure);
+            replacement.push(failure.clone());
         }
         // All fallible formation/copy work precedes the original-bank transfer.
         // The displaced allocation physically drops before callbacks resume.
@@ -2871,28 +2881,33 @@ pub(crate) fn parsed_dispatch_requirement<E: From<DomError>>(
 
 fn listener_target_active(
     dom: &Dom,
-    custody: &DomDispatchCustody,
-    item: PathItem,
+    custody: Option<&DomDispatchCustody>,
+    item: &PathItem,
     budget: &mut Budget<'_>,
 ) -> Result<bool, RunStop> {
     budget.tick()?;
     let snapshot = dom.snapshot();
-    let document = match item.invocation {
-        DomEventTarget::Node(node) => dom
-            .dispatch_custody_association(
-                custody,
-                item.custody_row.ok_or(RunStop::HostedAuthority(
+    let (document, global) = match &item.invocation {
+        DomEventTarget::Node(node) => {
+            let (custody, row) = custody
+                .zip(item.custody_row)
+                .ok_or(RunStop::HostedAuthority(
                     DomError::InvalidDispatchCustody.into(),
-                ))?,
-                node,
-            )
-            .map_err(|error| RunStop::HostedAuthority(error.into()))?
-            .document(),
+                ))?;
+            let association = dom
+                .dispatch_custody_association(custody, row, *node)
+                .map_err(|error| RunStop::HostedAuthority(error.into()))?;
+            (association.document(), None)
+        }
         // Historical association is used only to reach the negative activity
         // check. Positive eligibility below still qualifies current authority.
-        DomEventTarget::Global(global) => snapshot
-            .global_document(global)
-            .map_err(RunStop::HostedAuthority)?,
+        DomEventTarget::Global(global) => (
+            snapshot
+                .global_document(*global)
+                .map_err(RunStop::HostedAuthority)?,
+            Some(*global),
+        ),
+        DomEventTarget::Standalone(target) => (target.document(), Some(target.relevant_global())),
     };
     budget.tick()?;
     let document = snapshot
@@ -2914,12 +2929,12 @@ fn listener_target_active(
         return Ok(false);
     }
     budget.tick()?;
-    let global = match item.invocation {
-        DomEventTarget::Node(_) => dom
+    let global = match global {
+        None => dom
             .dispatch_relevant_global(document.id().node(), budget.cancel)
             .map_err(RunStop::HostedAuthority)?
             .ok_or(RunStop::HostedAuthority(DomHostedError::StaleIdentity))?,
-        DomEventTarget::Global(global) => global,
+        Some(global) => global,
     };
     let current = dom
         .dispatch_global_document(global, budget.cancel)
@@ -2942,7 +2957,7 @@ fn dispatch_ready(
     if !Rc::ptr_eq(registry, &dispatch._reservation.0) {
         return Err(RunStop::ForeignRegistry);
     }
-    if dom.owner() != invocation.original.owner() {
+    if dom.owner() != invocation.owner {
         return Err(RunStop::ForeignOwner);
     }
     if let Some(operation) = dom.source_dispatch_blocker() {
@@ -3001,7 +3016,66 @@ fn root(
         }
     }
 }
-fn build_path(
+fn build_direct_path(
+    dom: &Dom,
+    target: DomEventTarget,
+    budget: &mut Budget<'_>,
+) -> Result<Vec<PathItem>, DomEventDispatchError> {
+    if budget.limits.path_items == 0 {
+        return Err(DomEventDispatchError::Admission(
+            DomEventResource::PathItems,
+        ));
+    }
+    if let DomEventTarget::Global(global) = &target {
+        dom.dispatch_global_document_with(*global, budget.cancel, &mut || source_tick(budget))?;
+    }
+    source_tick(budget)?;
+    let mut path = Vec::new();
+    path.try_reserve_exact(1)
+        .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+    if path.capacity() != 1 {
+        return Err(DomEventDispatchError::Admission(
+            DomEventResource::PathItems,
+        ));
+    }
+    path.push(PathItem {
+        invocation: target.clone(),
+        target,
+        at_target: true,
+        closed_root: false,
+        closed_slot: false,
+        custody_row: None,
+    });
+    Ok(path)
+}
+
+fn register_node_path_custody(
+    dom: &mut Dom,
+    path: &mut [PathItem],
+    budget: &mut Budget<'_>,
+) -> Result<DomDispatchCustody, DomEventDispatchError> {
+    // The bounded gather is live alongside the path and scope construction.
+    let mut invocation_nodes = Vec::new();
+    invocation_nodes
+        .try_reserve_exact(path.len())
+        .map_err(|_| DomEventDispatchError::Admission(DomEventResource::Allocation))?;
+    if invocation_nodes.capacity() > budget.limits.path_items {
+        return Err(DomEventDispatchError::Admission(
+            DomEventResource::PathItems,
+        ));
+    }
+    for item in path {
+        source_tick(budget)?;
+        if let Some(node) = item.invocation.node() {
+            item.custody_row = Some(invocation_nodes.len());
+            invocation_nodes.push(node);
+        }
+    }
+    dom.register_dispatch_custody(&invocation_nodes, budget.cancel)
+        .map_err(Into::into)
+}
+
+fn build_node_path(
     dom: &Dom,
     snapshot: &DomSnapshot,
     original: NodeId,
@@ -3047,7 +3121,7 @@ fn build_path(
             .is_some_and(|r| r.state().mode() == HtmlShadowRootMode::Closed);
         path.push(PathItem {
             invocation: DomEventTarget::Node(node),
-            target,
+            target: target.into(),
             at_target,
             closed_root,
             closed_slot,
@@ -3075,7 +3149,7 @@ fn build_path(
                 }
                 path.push(PathItem {
                     invocation: DomEventTarget::Global(global),
-                    target,
+                    target: target.into(),
                     at_target: false,
                     closed_root: false,
                     closed_slot: false,

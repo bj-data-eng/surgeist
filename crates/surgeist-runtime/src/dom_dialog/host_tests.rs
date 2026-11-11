@@ -496,7 +496,7 @@ fn owned_host_invocation_releases_session_loan_and_retains_real_nested_source_au
     let event = invocation.event().clone();
     assert_eq!(invocation.key(), 7);
     assert_eq!(invocation.registration(), once);
-    assert_eq!(event.target(), Some(dialog));
+    assert_eq!(event.target(), Some(dialog.into()));
     assert_eq!(event.current_target(), Some(dialog.into()));
     assert_eq!(event.phase(), DomEventPhase::AtTarget);
     assert_eq!(
