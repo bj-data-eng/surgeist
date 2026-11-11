@@ -839,6 +839,34 @@ impl<C> DomEventDispatcher<C> {
             association: RegistryAssociation::Unbound,
         })
     }
+    /// Claim this canonical DOM's listener registry without adding a listener
+    /// or dispatching an Event. A refused claim leaves the dispatcher unbound
+    /// and available for a later attempt. An already-bound dispatcher only
+    /// validates its original authority and does not repeat admission.
+    pub fn bind(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomEventDispatchError> {
+        if let RegistryAssociation::Bound(association) = &self.association {
+            return association.validate(dom.raw()).map_err(Into::into);
+        }
+        self.storage.step(1, cancel)?;
+        let prepared = self.association.prepare(
+            dom.raw_mut(),
+            self.limits.pending_events,
+            &self.storage,
+            cancel,
+        )?;
+        self.association.commit(
+            prepared,
+            &mut self.pending,
+            &mut self.pending_funding,
+            dom.raw_mut(),
+            cancel,
+        )
+    }
+
     /// Add in deterministic order. The target/type/callback identity/capture key
     /// deduplicates; changing `once` on a duplicate does not change the listener.
     /// Load/Error registrations retain a finite canonical recipient lease until
