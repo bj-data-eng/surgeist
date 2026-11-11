@@ -76,6 +76,17 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         let commit = session.dom().apply(batch, &cancellation).unwrap();
         commit.created(&element).unwrap().unwrap()
     };
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1_000);
+    let mut rust_inbox = session
+        .dom()
+        .raw()
+        .node_retirement_inbox(watch_limits, &cancellation)
+        .unwrap();
+    let _rust_watch = session
+        .dom()
+        .raw_mut()
+        .watch_node_retirement(element, &rust_inbox, 71, watch_limits, &cancellation)
+        .unwrap();
     let mut host = attach_public_nodes(session, target, cancellation.clone(), 1_000, 20_000);
     let permit = host.permit().unwrap();
     host.register_node_creation_realm(&permit, origin).unwrap();
@@ -109,8 +120,11 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         Some(element)
     );
 
+    assert!(rust_inbox.take().is_none());
     let projected = host.in_document(&permit, |scope| {
-        let wrapper = scope.evaluate(&units("globalThis.adopted = destination.documentElement"))?;
+        let wrapper = scope.evaluate(&units(
+            "globalThis.adopted = destination.documentElement; adopted.marker = Symbol(); adopted",
+        ))?;
         let realm = scope
             .callback_object(&wrapper)?
             .associated_realm()
@@ -137,7 +151,7 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
         .find(origin.global(), || Ok::<(), Error>(()))
         .unwrap()
         .unwrap();
-    engine.process.execution().in_realm(original, |scope| {
+    let original_marker = engine.process.execution().in_realm(original, |scope| {
         assert_eq!(scope.realm_authority()?.identity(), realm);
         let global = scope.global()?;
         let wrapper = scope.import(&wrapper)?;
@@ -146,8 +160,94 @@ pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creatio
             scope,
             "Object.getPrototypeOf(adopted) === HTMLDivElement.prototype && \
              adopted instanceof Node && adopted instanceof Element && adopted instanceof EventTarget",
-        )
+        )?;
+        let marker = scope.evaluate(&units("adopted.marker"))?;
+        scope.evaluate(&units("delete globalThis.adopted"))?;
+        Ok(scope.retain(&marker))
     }).unwrap();
+
+    host.with_native(|dom, mut hosted, _| {
+        let retirement = hosted
+            .destroy_top_level(dom, origin.navigable(), &cancellation)
+            .unwrap();
+        assert!((0..256).any(|_| matches!(
+            hosted.run_next(dom, retirement.traversable(), &cancellation).unwrap(),
+            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+        )));
+        hosted.destroy_host(dom, origin.host(), &cancellation).unwrap();
+        let mut detach = DomBatch::new();
+        detach.detach(element);
+        dom.apply(detach, &cancellation).unwrap();
+    })
+    .unwrap();
+    assert!(rust_inbox.take().is_none());
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "destination.documentElement === null && adopted.getRootNode() === adopted",
+        )
+    })
+    .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut insert = DomBatch::new();
+        insert.insert_before(element, destination, None);
+        dom.apply(insert, &cancellation).unwrap();
+    })
+    .unwrap();
+    let dispatched = host.in_document(&permit, |scope| {
+        let marker = scope.import(&original_marker)?;
+        let wrapper = scope.import(&wrapper)?;
+        let observed = scope.get(&wrapper, PropertyKey::String(&units("marker")))?;
+        assert!(scope.strict_equals(&marker, &observed)?);
+        assert_guest(
+            scope,
+            r#"(() => {
+                const event = new Event("adopted");
+                const calls = [];
+                const listener = { handleEvent(value) {
+                    calls.push(this === listener && value === event
+                        && value.target === adopted && value.currentTarget === adopted);
+                } };
+                adopted.addEventListener("adopted", listener, { once: true });
+                const same = adopted === destination.documentElement;
+                const dispatched = adopted.dispatchEvent(event);
+                return same && dispatched && calls.length === 1 && calls[0]
+                    && event.target === adopted && event.currentTarget === null;
+            })()"#,
+        )
+    });
+    match dispatched {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "inherited EventTarget dispatch refused for the adopted root: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("inherited EventTarget dispatch refused: {error:?}"),
+    }
+    host.with_native(|dom, _, _| {
+        let mut destroy = DomBatch::new();
+        destroy.detach(element);
+        destroy.destroy(element);
+        dom.apply(destroy, &cancellation).unwrap();
+    })
+    .unwrap();
+    let notice = rust_inbox.take().unwrap();
+    assert_eq!(notice.node(), element);
+    assert_eq!(notice.custody_key(), 71);
+    assert!(rust_inbox.take().is_none());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("adopted.localName")).map(drop)
+        })
+    else {
+        panic!("the original V8 wrapper must observe exact native retirement");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
 }
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
