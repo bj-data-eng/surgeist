@@ -125,6 +125,41 @@ fn cleanup_cost(
     }
     assert_eq!(after.fault(), None);
 }
+
+#[test]
+fn native_resource_slots_retain_scoped_cpu_backing() {
+    let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+    let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+    let options = options(RenderProfile::Summary { timing: false });
+    let owner = RendererCpu::new(options).unwrap();
+    let manager = manager(&owner, options);
+    let account = Account::for_test();
+    let scoped_scratch = || {
+        owner
+            .snapshot()
+            .unwrap()
+            .scope_usage(RenderCpuScope::FrameBacking)
+            .unwrap()
+            .live(RenderResource::ScratchCpuBytes)
+    };
+    let opening = scoped_scratch();
+    let lease = clean_lease(
+        device,
+        &manager,
+        &account,
+        Input::BufferAndAtlas,
+        CleanVelloResourceRetention::DirectAtlasOnly,
+    );
+    assert_eq!(manager.observation_for_test().leased_count, 2);
+    assert!(
+        scoped_scratch() > opening,
+        "the two live native records must own FrameBacking scratch",
+    );
+    let aborted = lease.abort();
+    assert_eq!(aborted.discarded_resource_count_for_test(), 2);
+    assert_eq!(scoped_scratch(), opening);
+    assert_eq!(manager.observation_for_test().active_frame_count, 0);
+}
 fn closed(
     manager: &ResourceManager,
     entries: usize,
