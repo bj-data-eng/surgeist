@@ -312,6 +312,55 @@ fn image_repeat_plan_includes_tiles_before_the_anchor_when_visible() {
 }
 
 #[test]
+fn image_repeat_keeps_phase_from_distant_signed_anchors() {
+    let anchor = 2.0_f64.powi(54) + 4.0;
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    // The positive anchor is two modulo three and the negative one is one.
+    for (anchor, origin, width, expected) in [
+        (anchor, 0.0, 8.0, &[-1.0, 2.0, 5.0][..]),
+        (-anchor, 0.0, 8.0, &[-2.0, 1.0, 4.0, 7.0][..]),
+        (anchor, -4.0, 9.0, &[-4.0, -1.0, 2.0][..]),
+        (-anchor, -4.0, 9.0, &[-5.0, -2.0, 1.0, 4.0][..]),
+    ] {
+        let placement = ResolvedImagePlacement::from_parts(
+            Rect::new(origin, 0.0, width, 1.0),
+            Rect::new(anchor, 0.0, 3.0, 1.0),
+        )
+        .unwrap();
+        let repeated = repeat
+            .resolve(placement, &mut crate::RenderAccountingContext::default())
+            .unwrap();
+        let positions: Vec<_> = repeated.tile_rects().iter().map(|tile| tile.x()).collect();
+        assert_eq!(positions, expected, "anchor {anchor}, clip {origin}");
+    }
+}
+
+#[test]
+fn image_repeat_does_not_need_the_full_distance_between_origins() {
+    let anchor = 2.0_f64.powi(1023);
+    let period = 2.0_f64.powi(972);
+    let origin = -anchor;
+    let placement = ResolvedImagePlacement::from_parts(
+        Rect::new(origin, 0.0, 2.0 * period, 1.0),
+        Rect::new(anchor, 0.0, period, 1.0),
+    )
+    .unwrap();
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    let repeated = repeat
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!(
+        repeated.tile_rects(),
+        [
+            Rect::new(origin, 0.0, period, 1.0),
+            Rect::new(origin + period, 0.0, period, 1.0),
+        ]
+    );
+}
+
+#[test]
 fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
     let placement = ResolvedImagePlacement::from_parts(
         Rect::new(0.0, 0.0, 40.0, 10.0),
