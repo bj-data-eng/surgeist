@@ -794,6 +794,101 @@ pub(super) fn stopped_script_precedes_replacement_child_service() {
     );
 }
 
+pub(super) fn enabled_html_script_precedes_unavailable_svg_processing() {
+    let (mut session, top) = setup();
+    let document = top.document();
+    let parent = body(&session, document);
+    let mut batch = DomBatch::new();
+    let detached = batch.create_html_document(document, None);
+    let wrapper = batch.create_element_ns(document, Namespace::html(), "div");
+    let html = make_script(&mut batch, document);
+    let svg = batch.create_element_ns(&detached, Namespace::svg(), "script");
+    batch.insert_before(&html, &wrapper, None);
+    batch.insert_before(&svg, &wrapper, None);
+    let commit = session.dom().apply(batch, &cancel()).unwrap();
+    let [wrapper, html, svg] =
+        [wrapper, html, svg].map(|ticket| commit.created(&ticket).unwrap().unwrap());
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    let before = host.snapshot().unwrap();
+    let check_private = |snapshot: &DomSnapshot| {
+        assert_eq!(snapshot.stamp(), before.stamp());
+        assert_eq!(snapshot.node(wrapper).unwrap().parent(), None);
+        assert_eq!(snapshot.node(wrapper).unwrap().children(), [html, svg]);
+        assert_eq!(
+            snapshot.node(parent).unwrap().children(),
+            before.node(parent).unwrap().children()
+        );
+        let svg = snapshot.node(svg).unwrap();
+        assert_eq!(svg.owner_document(), Some(document));
+        let svg = svg.as_svg_script().unwrap();
+        assert_eq!(svg.origin(), DomSvgScriptOrigin::Native);
+        assert!(!svg.flags().already_processed());
+    };
+    check_private(&before);
+    let progress = host
+        .with_native(|dom, _, mut source| {
+            source
+                .apply(
+                    dom,
+                    DomSourceEdit::insert_before(wrapper, parent, None),
+                    LIMITS,
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                )
+                .unwrap_or_else(|error| {
+                    panic!("the earlier HTML settings read must be exposed: {error:?}")
+                })
+        })
+        .unwrap();
+    let read = request(progress, DomSourceScriptStep::ReadScripting);
+    assert_eq!(read.subject(), Some(html));
+    assert_eq!(read.node_document(), Some(document));
+    assert_eq!(read.relevant_global(), Some(top.global()));
+    assert_eq!(read.basis(), before.stamp());
+    assert_eq!(
+        request(resume(&mut host, read.operation()), read.step()),
+        read
+    );
+    check_private(&host.snapshot().unwrap());
+
+    let settings = host
+        .service_script_settings(&permit, read, LIMITS)
+        .unwrap()
+        .unwrap();
+    assert_eq!(settings.request(), read);
+    assert!(settings.enabled());
+    let executable = request(
+        resume(&mut host, read.operation()),
+        DomSourceScriptStep::ExecutablePreparation,
+    );
+    assert_eq!(executable.operation(), read.operation());
+    assert_eq!(executable.subject(), Some(html));
+    assert_eq!(executable.node_document(), read.node_document());
+    assert_eq!(executable.relevant_global(), read.relevant_global());
+    assert_eq!(executable.basis(), read.basis());
+    assert_eq!(
+        request(resume(&mut host, read.operation()), executable.step()),
+        executable
+    );
+    check_private(&host.snapshot().unwrap());
+    host.with_native(|dom, _, _| {
+        let pending = dom.pending_source_edit().unwrap();
+        assert_eq!(pending.operation(), read.operation());
+        assert!(!pending.has_published());
+    })
+    .unwrap();
+    abandon(&mut host, executable);
+    check_private(&host.snapshot().unwrap());
+}
+
 pub(super) fn run() {
     let foreign = text_and_attribute_keep_the_private_segment();
     adopted_script_uses_original_settings_and_current_browsing_context(foreign);
@@ -801,4 +896,5 @@ pub(super) fn run() {
     stopped_host_resumes_original_settings_read();
     stopped_host_preserves_executable_frontier();
     stopped_script_precedes_replacement_child_service();
+    enabled_html_script_precedes_unavailable_svg_processing();
 }
