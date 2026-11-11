@@ -181,6 +181,65 @@ pub(super) fn generic_and_mathml_roots_keep_exact_namespaces() {
     }
 }
 
+pub(super) fn svg_roots_select_exact_interfaces_and_case() {
+    let (mut host, permit, document) = interface_document();
+    let mut previous = None;
+    for (name, interface, parent) in [
+        ("svg", "SVGSVGElement", "SVGGraphicsElement"),
+        ("rect", "SVGRectElement", "SVGGeometryElement"),
+        (
+            "linearGradient",
+            "SVGLinearGradientElement",
+            "SVGGradientElement",
+        ),
+        (
+            "feFuncR",
+            "SVGFEFuncRElement",
+            "SVGComponentTransferFunctionElement",
+        ),
+        ("textPath", "SVGTextPathElement", "SVGTextContentElement"),
+        (
+            "animateMotion",
+            "SVGAnimateMotionElement",
+            "SVGAnimationElement",
+        ),
+        ("lineargradient", "SVGElement", "Element"),
+        ("unknown-test", "SVGElement", "Element"),
+    ] {
+        previous = Some(
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                if let Some(previous) = previous {
+                    batch.detach(previous);
+                    batch.destroy(previous);
+                }
+                let root = batch.create_element_ns(document, Namespace::svg(), name);
+                batch.insert_before(&root, document, None);
+                dom.apply(batch, &cancel())
+                    .unwrap()
+                    .created(&root)
+                    .unwrap()
+                    .unwrap()
+            })
+            .unwrap(),
+        );
+        let script = format!(
+            r#"Number((() => {{
+                const root = interfaceDocument.documentElement;
+                const type = globalThis["{interface}"];
+                const parent = globalThis["{parent}"];
+                return Object.getPrototypeOf(root) === type.prototype
+                    && Object.getPrototypeOf(type) === parent
+                    && Object.getPrototypeOf(type.prototype) === parent.prototype
+                    && root.localName === "{name}"
+                    && root.namespaceURI === "http://www.w3.org/2000/svg";
+            }})())"#,
+        );
+        host.in_document(&permit, |scope| assert_script_number(scope, &script, 1.0))
+            .unwrap_or_else(|error| panic!("qualified SVG root {name} refused: {error:?}"));
+    }
+}
+
 fn interface_document() -> (DocumentScriptHost, DocumentScriptPermit, DocumentId) {
     let (mut host, top) = prepare_event_window();
     let permit = host.permit().unwrap();
