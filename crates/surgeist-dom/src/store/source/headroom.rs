@@ -70,6 +70,7 @@ pub(in crate::store) struct Scan {
     selects: u64,
     details: u64,
     dialog_wait: bool,
+    script_settings_wait: bool,
 }
 impl Scan {
     fn new() -> Self {
@@ -85,6 +86,7 @@ impl Scan {
             selects: 0,
             details: 0,
             dialog_wait: false,
+            script_settings_wait: false,
         }
     }
     fn find(
@@ -331,6 +333,9 @@ impl Draft {
         match result {
             Err(DomError::DialogProcessingUnavailable { .. }) if scan.dialog_wait => {}
             Err(DomError::DesignModeProcessingUnavailable { .. }) => {}
+            // A later SVG requirement is reached only if the earlier real
+            // settings answer lets Script preparation continue.
+            Err(DomError::SvgScriptProcessingUnavailable) if scan.script_settings_wait => {}
             result => result?,
         }
         scan.qualify(self, dom, phases, cancel)
@@ -366,6 +371,7 @@ impl Draft {
             .invocations
             .checked_add(1)
             .ok_or(DomError::RepresentationExhausted)?;
+        scan.script_settings_wait = true;
         Ok(true)
     }
 
