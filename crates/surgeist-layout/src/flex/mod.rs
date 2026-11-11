@@ -188,7 +188,7 @@ where
         .logical_size(input.sizing_request().axes())
         .inline
         .operation();
-    let first_run_mode = if constants.preferred_inline_discovery {
+    let first_run_mode = if constants.preferred_inline_phase == PreferredInlinePhase::Discover {
         // Preferred-size discovery has no accepted percentage basis yet.
         RunMode::ComputeSize
     } else {
@@ -498,13 +498,20 @@ where
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PreferredInlinePhase {
+    Ordinary,
+    Discover,
+    Accepted,
+}
+
 #[derive(Clone, Copy)]
 struct Constants<S: LayoutScalar> {
     flow_axes: crate::geometry::FlowAxes,
     axes: FlexAxes,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
-    preferred_inline_discovery: bool,
+    preferred_inline_phase: PreferredInlinePhase,
     cross_content_offer: Option<S>,
     percentage_parent_size: Size<Option<S>>,
     physical_baseline_demand: bool,
@@ -683,9 +690,14 @@ impl<S: LayoutScalar> Constants<S> {
             crate::AvailableSpaceOf::Indefinite,
             crate::SizingOperation::MaxContent,
         );
-        let preferred_inline_discovery =
-            max_content_main && axes.main_size(node_outer_size).is_none();
-        if preferred_inline_discovery {
+        let preferred_inline_phase = if !max_content_main {
+            PreferredInlinePhase::Ordinary
+        } else if axes.main_size(node_outer_size).is_some() {
+            PreferredInlinePhase::Accepted
+        } else {
+            PreferredInlinePhase::Discover
+        };
+        if preferred_inline_phase == PreferredInlinePhase::Discover {
             entry_axes = axes.with_main_size(entry_axes, intrinsic);
         }
         if max_content_cross && axes.cross_size(node_outer_size).is_none() {
@@ -831,7 +843,7 @@ impl<S: LayoutScalar> Constants<S> {
             axes,
             node_outer_size,
             node_inner_size,
-            preferred_inline_discovery,
+            preferred_inline_phase,
             cross_content_offer: None,
             percentage_parent_size,
             physical_baseline_demand: input.physical_baseline_demand(),
@@ -883,7 +895,9 @@ impl<S: LayoutScalar> Constants<S> {
         let axes = self.flow_axes;
         let mut percentage_parent = axes.logical_size(self.percentage_parent_size);
         let normal = requested_inline_operation == crate::SizingOperation::Normal;
-        if !self.preferred_inline_discovery && (!normal || percentage_parent.inline.is_some()) {
+        if self.preferred_inline_phase != PreferredInlinePhase::Discover
+            && (!normal || percentage_parent.inline.is_some())
+        {
             return Ok(None);
         }
         // Use the accepted unrounded inline content extent. All block sizing,
@@ -908,7 +922,7 @@ impl<S: LayoutScalar> Constants<S> {
         contents.node_inner_size = axes.physical_size(inner);
         contents.percentage_parent_size = axes.physical_size(percentage_parent);
         let mut requests = axes.logical_size(self.sizing_request.axes());
-        if self.preferred_inline_discovery {
+        if self.preferred_inline_phase == PreferredInlinePhase::Discover {
             // A completed property measurement does not select the caller's
             // sizing operation or establish a formal percentage basis.
             requests.inline = AxisSizingRequestOf::new(
@@ -917,7 +931,7 @@ impl<S: LayoutScalar> Constants<S> {
             );
             contents.sizing_request = self.sizing_request.with_axes(axes.physical_size(requests));
             contents.available_main = self.axes.main_size(contents.sizing_request.axes());
-            contents.preferred_inline_discovery = false;
+            contents.preferred_inline_phase = PreferredInlinePhase::Accepted;
         }
         contents.scrollport_inset = inline_edges(
             self.scrollport_inset,
@@ -1626,6 +1640,7 @@ where
     let main_size_changed = (used_main - axes.main_size(item.initial_output.size)).abs()
         > Tree::Scalar::from_f64(0.001);
     if ratio.is_none()
+        && !item.initial_output_is_preferred_basis
         && item.initial_output.content_size == item.initial_output.size
         && !main_size_changed
     {

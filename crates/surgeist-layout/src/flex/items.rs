@@ -72,6 +72,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) authored_cross_size: Option<S>,
     pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
     pub(super) initial_output: ComputeOutputOf<S>,
+    pub(super) initial_output_is_preferred_basis: bool,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
     pub(super) max_content_main_size: S,
@@ -99,6 +100,7 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) authored_cross_size: Option<S>,
     pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
     pub(super) initial_output: ComputeOutputOf<S>,
+    pub(super) initial_output_is_preferred_basis: bool,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
     pub(super) max_content_main_size: S,
@@ -147,6 +149,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             authored_cross_size: item.authored_cross_size,
             indefinite_percentage_axis: item.indefinite_percentage_axis,
             initial_output: item.initial_output,
+            initial_output_is_preferred_basis: item.initial_output_is_preferred_basis,
             flex_base: item.flex_base,
             hypothetical_main_size: item.hypothetical_main_size,
             max_content_main_size: item.max_content_main_size,
@@ -528,6 +531,36 @@ where
             main_request.with_operation(operation)
         }),
     );
+    let child_context =
+        ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex);
+    let child_sizing = constants.sizing_request.with_axes(child_available);
+    let child_known = if use_content_sizing_for_base
+        && child_owned_axis == Some(constants.axes.main_physical_axis())
+        && style.common.aspect_ratio.is_some()
+        && constants.axes.cross_size(child_known).is_none()
+    {
+        // The basis probe disregards authored sizes. Consult the child in
+        // InherentSize when an independent cross extent has not been imposed,
+        // so the basis probe cannot bypass the child's ratio sizing admission.
+        let cross = tree.compute_child(
+            node,
+            ComputeInputOf::for_child(
+                RunMode::ComputeSize,
+                SizingMode::InherentSize,
+                constants.axes.cross_requested_axis(),
+                child_known,
+                percentage_parent_size,
+                child_context,
+                child_sizing,
+            )
+            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
+        )?;
+        constants
+            .axes
+            .with_cross_size(child_known, Some(constants.axes.cross_size(cross.size)))
+    } else {
+        child_known
+    };
     let output = tree.compute_child(
         node,
         ComputeInputOf::for_child(
@@ -544,8 +577,8 @@ where
             RequestedAxis::Both,
             child_known,
             percentage_parent_size,
-            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
-            constants.sizing_request.with_axes(child_available),
+            child_context,
+            child_sizing,
         )
         .with_physical_baseline_demand(
             constants.physical_baseline_demand
@@ -690,6 +723,7 @@ where
         authored_cross_size,
         indefinite_percentage_axis,
         initial_output: output,
+        initial_output_is_preferred_basis: basis_is_preferred_max_content,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),
         hypothetical_main_size,
         max_content_main_size,

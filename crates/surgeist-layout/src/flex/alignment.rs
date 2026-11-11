@@ -936,7 +936,7 @@ mod final_baseline_selection_tests {
             percentage_parent_size: Size::NONE,
             physical_baseline_demand: false,
             node_inner_size: Size::NONE,
-            preferred_inline_discovery: false,
+            preferred_inline_phase: crate::flex::PreferredInlinePhase::Ordinary,
             cross_content_offer: None,
             min_outer_size: Size::NONE,
             max_outer_size: Size::NONE,
