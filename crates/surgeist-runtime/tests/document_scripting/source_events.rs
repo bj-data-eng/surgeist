@@ -706,11 +706,12 @@ fn open_and_close(
                 .add_listener(
                     dom,
                     fixture.dialog,
-                    DomEventType::BeforeToggle,
+                    DomEventType::BEFORE_TOGGLE,
                     DomEventCallback::host(ROUTE),
                     DomEventListenerOptions {
                         once: true,
                         capture: false,
+                        passive: None,
                     },
                 )
                 .unwrap();

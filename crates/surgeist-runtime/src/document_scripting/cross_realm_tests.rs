@@ -519,13 +519,15 @@ fn native_projection(cancel: Arc<AtomicBool>) -> (Projection, DomHostedTopLevel)
         registrations: 4,
         pending_events: 4,
         nested_dispatches: 4,
+        storage_bytes: 16_000_000,
+        work: 1_000_000,
     })
     .unwrap();
     dispatcher
         .add_listener(
             &mut session.dom(),
             dialog,
-            DomEventType::BeforeToggle,
+            DomEventType::BEFORE_TOGGLE,
             DomEventCallback::host(77),
             DomEventListenerOptions::default(),
         )
