@@ -1,0 +1,6038 @@
+{
+  "schema_version": 1,
+  "historical_report_sha256": "bd85f83b4df911b45f46641b6508a25eb7be19b1ff71f5188e52d9683507e2ba",
+  "live_report_sha256": "2783de0023d70401ca8fd4d60e4c4230a335290b013a8564e878244ad2a14c55",
+  "live_ownership_sha256": "491a3907e186ebd877b67afd48fab184815fd8451fa26e8831ee2622a08fcbf5",
+  "classifications": {
+    "sources": 1451,
+    "historical": {
+      "generated": 5668,
+      "unsupported": 136,
+      "expected_fail": 3,
+      "quarantined": 0,
+      "failed_to_generate": 0
+    },
+    "live": {
+      "generated": 4644,
+      "unsupported": 1160,
+      "expected_fail": 3,
+      "quarantined": 0,
+      "failed_to_generate": 0
+    },
+    "transitions": {
+      "expected-fail to expected-fail": 3,
+      "generated to generated": 4644,
+      "generated to unsupported": 1024,
+      "unsupported to unsupported": 136
+    },
+    "newly_unsupported": {
+      "Root context: AuthoredBodyOrHtmlStyle": 4,
+      "Root context: AuthoredRootEdges": 304,
+      "Root context: PositionedRootProfile": 124,
+      "Root context: RootDisplay": 4,
+      "Root context: RootLocalBoxProfile": 52,
+      "Root context: RootLocalBoxlessObservation": 56,
+      "Root context: RootLocalObservationChannel": 16,
+      "Root context: RootLocalOrthogonalPhysicalSize": 92,
+      "Root context: SourceBodySiblings": 4,
+      "Root context: SourceDocument": 48,
+      "Root context: SourceFrameOrStyle": 264,
+      "Root context: SourceParent": 16,
+      "Root context: SourceResources": 28,
+      "Root context: UnqualifiedInitialBlockOrigin": 12
+    },
+    "changed_unsupported_reasons": {
+      "Root context: RootLocalObservationChannel": 116,
+      "Root context: SourceResources": 4
+    }
+  },
+  "native_matches": 4522,
+  "native_nonmatches": [
+    {
+      "source": "html/block/block_inset_percentage.html",
+      "output": "live-xml/block/block_inset_percentage__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_ltr/0",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 1.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_ltr/1",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_ltr/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 21.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/block/block_inset_percentage.html",
+      "output": "live-xml/block/block_inset_percentage__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_rtl/0",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 1.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_rtl/1",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__border_box_rtl/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 21.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/block/block_inset_percentage.html",
+      "output": "live-xml/block/block_inset_percentage__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_ltr/0",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 1.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_ltr/1",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_ltr/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 21.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/block/block_inset_percentage.html",
+      "output": "live-xml/block/block_inset_percentage__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_rtl/0",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 1.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_rtl/1",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "block_inset_percentage__content_box_rtl/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 21.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_basis_unconstraint_column.html",
+      "output": "live-xml/flex/flex_basis_unconstraint_column__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__border_box_ltr",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__border_box_ltr/0",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_basis_unconstraint_column.html",
+      "output": "live-xml/flex/flex_basis_unconstraint_column__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__border_box_rtl",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__border_box_rtl/0",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_basis_unconstraint_column.html",
+      "output": "live-xml/flex/flex_basis_unconstraint_column__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__content_box_ltr",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__content_box_ltr/0",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_basis_unconstraint_column.html",
+      "output": "live-xml/flex/flex_basis_unconstraint_column__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__content_box_rtl",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_basis_unconstraint_column__content_box_rtl/0",
+              "field": "height",
+              "browser_value": 50.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_root_minimized.html",
+      "output": "live-xml/flex/flex_grow_root_minimized__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_ltr",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_ltr/0",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_ltr/0/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_ltr/0/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_root_minimized.html",
+      "output": "live-xml/flex/flex_grow_root_minimized__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_rtl",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_rtl/0",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_rtl/0/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__border_box_rtl/0/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_root_minimized.html",
+      "output": "live-xml/flex/flex_grow_root_minimized__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_ltr",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_ltr/0",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_ltr/0/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_ltr/0/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_root_minimized.html",
+      "output": "live-xml/flex/flex_grow_root_minimized__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_rtl",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_rtl/0",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_rtl/0/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_root_minimized__content_box_rtl/0/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_within_constrained_max_column.html",
+      "output": "live-xml/flex/flex_grow_within_constrained_max_column__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_ltr",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_ltr/0",
+              "field": "height",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_ltr/1",
+              "field": "y",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_ltr/1",
+              "field": "height",
+              "browser_value": 33.0,
+              "native_value": 17.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_within_constrained_max_column.html",
+      "output": "live-xml/flex/flex_grow_within_constrained_max_column__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_rtl",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_rtl/0",
+              "field": "height",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_rtl/1",
+              "field": "y",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__border_box_rtl/1",
+              "field": "height",
+              "browser_value": 33.0,
+              "native_value": 17.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_within_constrained_max_column.html",
+      "output": "live-xml/flex/flex_grow_within_constrained_max_column__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_ltr",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_ltr/0",
+              "field": "height",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_ltr/1",
+              "field": "y",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_ltr/1",
+              "field": "height",
+              "browser_value": 33.0,
+              "native_value": 17.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_grow_within_constrained_max_column.html",
+      "output": "live-xml/flex/flex_grow_within_constrained_max_column__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_rtl",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_rtl/0",
+              "field": "height",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_rtl/1",
+              "field": "y",
+              "browser_value": 67.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_grow_within_constrained_max_column__content_box_rtl/1",
+              "field": "height",
+              "browser_value": 33.0,
+              "native_value": 17.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_root_ignored.html",
+      "output": "live-xml/flex/flex_root_ignored__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_ltr",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_ltr/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_ltr/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_ltr/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_root_ignored.html",
+      "output": "live-xml/flex/flex_root_ignored__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_rtl",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_rtl/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_rtl/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__border_box_rtl/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_root_ignored.html",
+      "output": "live-xml/flex/flex_root_ignored__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_ltr",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_ltr/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_ltr/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_ltr/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/flex_root_ignored.html",
+      "output": "live-xml/flex/flex_root_ignored__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_rtl",
+              "field": "height",
+              "browser_value": 300.0,
+              "native_value": 100.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_rtl/0",
+              "field": "height",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_rtl/1",
+              "field": "y",
+              "browser_value": 200.0,
+              "native_value": 67.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "flex_root_ignored__content_box_rtl/1",
+              "field": "height",
+              "browser_value": 100.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "refused",
+        "reason": "UnsupportedAnalyticBaselineTextProfile"
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "refused",
+        "reason": "UnsupportedAnalyticBaselineTextProfile"
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "refused",
+        "reason": "UnsupportedAnalyticBaselineTextProfile"
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "refused",
+        "reason": "UnsupportedAnalyticBaselineTextProfile"
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_wrapping.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr",
+              "field": "height",
+              "browser_value": 157.0,
+              "native_value": 68.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 5.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/1",
+              "field": "y",
+              "browser_value": 28.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/1",
+              "field": "height",
+              "browser_value": 35.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/2",
+              "field": "y",
+              "browser_value": 71.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/3",
+              "field": "x",
+              "browser_value": 7.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/3",
+              "field": "y",
+              "browser_value": 109.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/3",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/3",
+              "field": "height",
+              "browser_value": 25.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_ltr/4",
+              "field": "y",
+              "browser_value": 142.0,
+              "native_value": 43.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_wrapping.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_wrapping__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl",
+              "field": "height",
+              "browser_value": 157.0,
+              "native_value": 68.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 45.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/1",
+              "field": "y",
+              "browser_value": 28.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/1",
+              "field": "height",
+              "browser_value": 35.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 80.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/2",
+              "field": "y",
+              "browser_value": 71.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 23.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/3",
+              "field": "y",
+              "browser_value": 109.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/3",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/3",
+              "field": "height",
+              "browser_value": 25.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__border_box_rtl/4",
+              "field": "y",
+              "browser_value": 142.0,
+              "native_value": 43.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_wrapping.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_wrapping__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr",
+              "field": "height",
+              "browser_value": 157.0,
+              "native_value": 68.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/1",
+              "field": "x",
+              "browser_value": 5.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/1",
+              "field": "y",
+              "browser_value": 28.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/1",
+              "field": "height",
+              "browser_value": 35.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/2",
+              "field": "y",
+              "browser_value": 71.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/3",
+              "field": "x",
+              "browser_value": 7.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/3",
+              "field": "y",
+              "browser_value": 109.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/3",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/3",
+              "field": "height",
+              "browser_value": 25.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_ltr/4",
+              "field": "y",
+              "browser_value": 142.0,
+              "native_value": 43.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/fri07_collapsed_strut_wrapping.html",
+      "output": "live-xml/flex/fri07_collapsed_strut_wrapping__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl",
+              "field": "height",
+              "browser_value": 157.0,
+              "native_value": 68.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 45.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/1",
+              "field": "y",
+              "browser_value": 28.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/1",
+              "field": "height",
+              "browser_value": 35.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 80.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/2",
+              "field": "y",
+              "browser_value": 71.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 23.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/3",
+              "field": "y",
+              "browser_value": 109.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/3",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/3",
+              "field": "height",
+              "browser_value": 25.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "fri07_collapsed_strut_wrapping__content_box_rtl/4",
+              "field": "y",
+              "browser_value": 142.0,
+              "native_value": 43.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/multiline_column_max_height.html",
+      "output": "live-xml/flex/multiline_column_max_height__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_ltr",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/multiline_column_max_height.html",
+      "output": "live-xml/flex/multiline_column_max_height__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/4",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/5",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/6",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/7",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/8",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/9",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/10",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/11",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/12",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/13",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/14",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/15",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/16",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/17",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/18",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__border_box_rtl/19",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/multiline_column_max_height.html",
+      "output": "live-xml/flex/multiline_column_max_height__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_ltr",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/multiline_column_max_height.html",
+      "output": "live-xml/flex/multiline_column_max_height__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl",
+              "field": "width",
+              "browser_value": 80.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/4",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/5",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/6",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/7",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/8",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/9",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/10",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/11",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/12",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/13",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/14",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/15",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/16",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/17",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/18",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "multiline_column_max_height__content_box_rtl/19",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": -40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/padding_border_overrides_size_flex_basis_0_growable.html",
+      "output": "live-xml/flex/padding_border_overrides_size_flex_basis_0_growable__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 28.0,
+              "native_value": 22.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 28.0,
+              "native_value": 22.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 6.0,
+              "native_value": 12.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/padding_border_overrides_size_flex_basis_0_growable.html",
+      "output": "live-xml/flex/padding_border_overrides_size_flex_basis_0_growable__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 6.0,
+              "native_value": 12.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 28.0,
+              "native_value": 22.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "padding_border_overrides_size_flex_basis_0_growable__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 6.0,
+              "native_value": 12.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/width_smaller_then_content_with_flex_grow_unconstraint_size.html",
+      "output": "live-xml/flex/width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_ltr",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 90.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/width_smaller_then_content_with_flex_grow_unconstraint_size.html",
+      "output": "live-xml/flex/width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 90.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl/0/0",
+              "field": "x",
+              "browser_value": -70.0,
+              "native_value": -25.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__border_box_rtl/1/0",
+              "field": "x",
+              "browser_value": -20.0,
+              "native_value": 25.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/width_smaller_then_content_with_flex_grow_unconstraint_size.html",
+      "output": "live-xml/flex/width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_ltr",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 90.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_ltr/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/flex/width_smaller_then_content_with_flex_grow_unconstraint_size.html",
+      "output": "live-xml/flex/width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 90.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl/0/0",
+              "field": "x",
+              "browser_value": -70.0,
+              "native_value": -25.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 0.0,
+              "native_value": 45.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "width_smaller_then_content_with_flex_grow_unconstraint_size__content_box_rtl/1/0",
+              "field": "x",
+              "browser_value": -20.0,
+              "native_value": 25.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_parent_orthogonal_child__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_tb_parallel__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_tb_parallel__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_tb_parallel__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_horizontal_tb_parallel__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_horizontal_tb_parallel__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_lr_parallel__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_lr_parallel__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_lr_parallel__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_lr_parallel__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_lr_parallel__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_opposing__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_opposing__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_opposing__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_opposing__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_opposing__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_rl_parallel__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_rl_parallel__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_rl_parallel__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_sideways_rl_parallel__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_sideways_rl_parallel__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_lr_parallel__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_lr_parallel__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_lr_parallel__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_lr_parallel__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_lr_parallel__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_opposing__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_opposing__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_opposing__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_opposing.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_opposing__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_opposing__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_parent_orthogonal_child__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_rl_parallel__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__border_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__border_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_rl_parallel__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__border_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_rl_parallel__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__content_box_ltr/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__content_box_ltr/0/1",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 0.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html",
+      "output": "live-xml/grid-lanes/grid_lanes_axes_vertical_rl_parallel__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_lanes_axes_vertical_rl_parallel__content_box_rtl/0/1",
+              "field": "y",
+              "browser_value": -20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_layout_within_border_static.html",
+      "output": "live-xml/grid/grid_absolute_layout_within_border_static__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/0",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/0",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/1",
+              "field": "y",
+              "browser_value": 40.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/2",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/3",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_ltr/3",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 20.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_layout_within_border_static.html",
+      "output": "live-xml/grid/grid_absolute_layout_within_border_static__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 40.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/0",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/1",
+              "field": "y",
+              "browser_value": 40.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__border_box_rtl/3",
+              "field": "y",
+              "browser_value": 30.0,
+              "native_value": 20.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_layout_within_border_static.html",
+      "output": "live-xml/grid/grid_absolute_layout_within_border_static__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/0",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/0",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/1",
+              "field": "x",
+              "browser_value": 80.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/1",
+              "field": "y",
+              "browser_value": 80.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/2",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/3",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_ltr/3",
+              "field": "y",
+              "browser_value": 70.0,
+              "native_value": 60.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_layout_within_border_static.html",
+      "output": "live-xml/grid/grid_absolute_layout_within_border_static__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 80.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/0",
+              "field": "y",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 20.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/1",
+              "field": "y",
+              "browser_value": 80.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 70.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/2",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_layout_within_border_static__content_box_rtl/3",
+              "field": "y",
+              "browser_value": 70.0,
+              "native_value": 60.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_resolved_insets.html",
+      "output": "live-xml/grid/grid_absolute_resolved_insets__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_ltr/0/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_ltr/0/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_ltr/1/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_ltr/1/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_resolved_insets.html",
+      "output": "live-xml/grid/grid_absolute_resolved_insets__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_rtl/0/0",
+              "field": "x",
+              "browser_value": 180.0,
+              "native_value": 165.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_rtl/0/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_rtl/1/0",
+              "field": "x",
+              "browser_value": 180.0,
+              "native_value": 165.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__border_box_rtl/1/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_resolved_insets.html",
+      "output": "live-xml/grid/grid_absolute_resolved_insets__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_ltr/0/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_ltr/0/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_ltr/1/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_ltr/1/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_absolute_resolved_insets.html",
+      "output": "live-xml/grid/grid_absolute_resolved_insets__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_rtl/0/0",
+              "field": "x",
+              "browser_value": 250.0,
+              "native_value": 235.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_rtl/0/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_rtl/1/0",
+              "field": "x",
+              "browser_value": 250.0,
+              "native_value": 235.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_absolute_resolved_insets__content_box_rtl/1/0",
+              "field": "y",
+              "browser_value": 20.0,
+              "native_value": 35.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_fr_span_2_proportion_sub_1_sum.html",
+      "output": "live-xml/grid/grid_fr_span_2_proportion_sub_1_sum__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_ltr/2",
+              "field": "x",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_ltr/2",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_fr_span_2_proportion_sub_1_sum.html",
+      "output": "live-xml/grid/grid_fr_span_2_proportion_sub_1_sum__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__border_box_rtl/2",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_fr_span_2_proportion_sub_1_sum.html",
+      "output": "live-xml/grid/grid_fr_span_2_proportion_sub_1_sum__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_ltr/2",
+              "field": "x",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_ltr/2",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_fr_span_2_proportion_sub_1_sum.html",
+      "output": "live-xml/grid/grid_fr_span_2_proportion_sub_1_sum__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_fr_span_2_proportion_sub_1_sum__content_box_rtl/2",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/4",
+              "field": "width",
+              "browser_value": 11.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/5",
+              "field": "x",
+              "browser_value": 124.0,
+              "native_value": 123.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/6",
+              "field": "x",
+              "browser_value": 134.0,
+              "native_value": 133.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/6",
+              "field": "width",
+              "browser_value": 65.0,
+              "native_value": 64.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/7",
+              "field": "x",
+              "browser_value": 199.0,
+              "native_value": 197.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/8",
+              "field": "x",
+              "browser_value": 201.0,
+              "native_value": 199.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/9",
+              "field": "x",
+              "browser_value": 205.0,
+              "native_value": 203.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/10",
+              "field": "x",
+              "browser_value": 207.0,
+              "native_value": 205.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/11",
+              "field": "x",
+              "browser_value": 209.0,
+              "native_value": 207.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/12",
+              "field": "x",
+              "browser_value": 220.0,
+              "native_value": 218.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_ltr/13",
+              "field": "x",
+              "browser_value": 231.0,
+              "native_value": 229.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 311.0,
+              "native_value": 309.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 220.0,
+              "native_value": 218.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 209.0,
+              "native_value": 207.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/4",
+              "field": "x",
+              "browser_value": 198.0,
+              "native_value": 197.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/4",
+              "field": "width",
+              "browser_value": 11.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/5",
+              "field": "x",
+              "browser_value": 188.0,
+              "native_value": 187.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__border_box_rtl/6",
+              "field": "width",
+              "browser_value": 65.0,
+              "native_value": 64.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/4",
+              "field": "width",
+              "browser_value": 11.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/5",
+              "field": "x",
+              "browser_value": 124.0,
+              "native_value": 123.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/6",
+              "field": "x",
+              "browser_value": 134.0,
+              "native_value": 133.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/6",
+              "field": "width",
+              "browser_value": 65.0,
+              "native_value": 64.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/7",
+              "field": "x",
+              "browser_value": 199.0,
+              "native_value": 197.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/8",
+              "field": "x",
+              "browser_value": 201.0,
+              "native_value": 199.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/9",
+              "field": "x",
+              "browser_value": 205.0,
+              "native_value": 203.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/10",
+              "field": "x",
+              "browser_value": 207.0,
+              "native_value": 205.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/11",
+              "field": "x",
+              "browser_value": 209.0,
+              "native_value": 207.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/12",
+              "field": "x",
+              "browser_value": 220.0,
+              "native_value": 218.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_ltr/13",
+              "field": "x",
+              "browser_value": 231.0,
+              "native_value": 229.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 311.0,
+              "native_value": 309.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 220.0,
+              "native_value": 218.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 209.0,
+              "native_value": 207.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/4",
+              "field": "x",
+              "browser_value": 198.0,
+              "native_value": 197.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/4",
+              "field": "width",
+              "browser_value": 11.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/5",
+              "field": "x",
+              "browser_value": 188.0,
+              "native_value": 187.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite__content_box_rtl/6",
+              "field": "width",
+              "browser_value": 65.0,
+              "native_value": 64.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/2",
+              "field": "x",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/3",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/4",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/5",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/6",
+              "field": "x",
+              "browser_value": 121.0,
+              "native_value": 120.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/7",
+              "field": "x",
+              "browser_value": 185.0,
+              "native_value": 184.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/8",
+              "field": "x",
+              "browser_value": 187.0,
+              "native_value": 186.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/9",
+              "field": "x",
+              "browser_value": 191.0,
+              "native_value": 190.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/10",
+              "field": "x",
+              "browser_value": 193.0,
+              "native_value": 192.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/11",
+              "field": "x",
+              "browser_value": 195.0,
+              "native_value": 194.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/12",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/13",
+              "field": "x",
+              "browser_value": 226.0,
+              "native_value": 225.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_ltr/13",
+              "field": "width",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 306.0,
+              "native_value": 305.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/4",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/5",
+              "field": "x",
+              "browser_value": 201.0,
+              "native_value": 200.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/6",
+              "field": "x",
+              "browser_value": 137.0,
+              "native_value": 136.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/7",
+              "field": "x",
+              "browser_value": 135.0,
+              "native_value": 134.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/8",
+              "field": "x",
+              "browser_value": 131.0,
+              "native_value": 130.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/9",
+              "field": "x",
+              "browser_value": 129.0,
+              "native_value": 128.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/10",
+              "field": "x",
+              "browser_value": 127.0,
+              "native_value": 126.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/11",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/12",
+              "field": "x",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__border_box_rtl/13",
+              "field": "width",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/2",
+              "field": "x",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/3",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/4",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/5",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/6",
+              "field": "x",
+              "browser_value": 121.0,
+              "native_value": 120.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/7",
+              "field": "x",
+              "browser_value": 185.0,
+              "native_value": 184.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/8",
+              "field": "x",
+              "browser_value": 187.0,
+              "native_value": 186.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/9",
+              "field": "x",
+              "browser_value": 191.0,
+              "native_value": 190.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/10",
+              "field": "x",
+              "browser_value": 193.0,
+              "native_value": 192.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/11",
+              "field": "x",
+              "browser_value": 195.0,
+              "native_value": 194.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/12",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/13",
+              "field": "x",
+              "browser_value": 226.0,
+              "native_value": 225.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_ltr/13",
+              "field": "width",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 322.0,
+              "native_value": 320.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 306.0,
+              "native_value": 305.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 16.0,
+              "native_value": 15.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/4",
+              "field": "x",
+              "browser_value": 211.0,
+              "native_value": 210.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/5",
+              "field": "x",
+              "browser_value": 201.0,
+              "native_value": 200.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/6",
+              "field": "x",
+              "browser_value": 137.0,
+              "native_value": 136.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/7",
+              "field": "x",
+              "browser_value": 135.0,
+              "native_value": 134.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/8",
+              "field": "x",
+              "browser_value": 131.0,
+              "native_value": 130.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/9",
+              "field": "x",
+              "browser_value": 129.0,
+              "native_value": 128.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/10",
+              "field": "x",
+              "browser_value": 127.0,
+              "native_value": 126.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/11",
+              "field": "x",
+              "browser_value": 111.0,
+              "native_value": 110.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/12",
+              "field": "x",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_13_most_non_flex_with_minmax_indefinite_hidden__content_box_rtl/13",
+              "field": "width",
+              "browser_value": 96.0,
+              "native_value": 95.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_max_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_max_content_fit_content_10px_indefinite__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_max_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_max_content_fit_content_10px_indefinite__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_max_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_max_content_fit_content_10px_indefinite__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_ltr/1",
+              "field": "x",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_max_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_max_content_fit_content_10px_indefinite__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 60.0,
+              "native_value": 70.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_max_content_fit_content_10px_indefinite__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr",
+              "field": "width",
+              "browser_value": 40.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr/1",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl",
+              "field": "width",
+              "browser_value": 40.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr",
+              "field": "width",
+              "browser_value": 40.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr/1",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl",
+              "field": "width",
+              "browser_value": 40.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 20.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl/1",
+              "field": "width",
+              "browser_value": 20.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 40.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_ltr",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_ltr",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 10.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__border_box_ltr",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__content_box_ltr",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl",
+              "field": "width",
+              "browser_value": 50.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 60.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 30.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_ltr",
+              "field": "width",
+              "browser_value": 70.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl",
+              "field": "width",
+              "browser_value": 70.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_ltr",
+              "field": "width",
+              "browser_value": 70.0,
+              "native_value": 80.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html",
+      "output": "live-xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl",
+              "field": "width",
+              "browser_value": 70.0,
+              "native_value": 80.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 30.0,
+              "native_value": 40.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 10.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 10.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track.html",
+      "output": "live-xml/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr",
+              "field": "width",
+              "browser_value": 78.0,
+              "native_value": 77.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr/1",
+              "field": "width",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr/2",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr/3",
+              "field": "x",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr/3",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_ltr/4",
+              "field": "width",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track.html",
+      "output": "live-xml/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl",
+              "field": "width",
+              "browser_value": 78.0,
+              "native_value": 77.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 18.0,
+              "native_value": 17.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/1",
+              "field": "x",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/2",
+              "field": "x",
+              "browser_value": 54.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/2",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/3",
+              "field": "x",
+              "browser_value": 18.0,
+              "native_value": 17.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/3",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__border_box_rtl/4",
+              "field": "x",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track.html",
+      "output": "live-xml/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr",
+              "field": "width",
+              "browser_value": 78.0,
+              "native_value": 77.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr/1",
+              "field": "width",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr/2",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr/3",
+              "field": "x",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr/3",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_ltr/4",
+              "field": "width",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track.html",
+      "output": "live-xml/grid/xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl",
+              "field": "width",
+              "browser_value": 78.0,
+              "native_value": 77.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 18.0,
+              "native_value": 17.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/1",
+              "field": "x",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/2",
+              "field": "x",
+              "browser_value": 54.0,
+              "native_value": 50.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/2",
+              "field": "width",
+              "browser_value": 24.0,
+              "native_value": 27.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/3",
+              "field": "x",
+              "browser_value": 18.0,
+              "native_value": 17.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/3",
+              "field": "width",
+              "browser_value": 36.0,
+              "native_value": 33.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "xgrid_fr_span_2_proportion_sub_1_sum_with_non_spanned_track__content_box_rtl/4",
+              "field": "x",
+              "browser_value": 9.0,
+              "native_value": 8.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/subgrid/subgrid_standalone_axis_percentage_columns.html",
+      "output": "live-xml/subgrid/subgrid_standalone_axis_percentage_columns__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__border_box_ltr/0",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 200.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/subgrid/subgrid_standalone_axis_percentage_columns.html",
+      "output": "live-xml/subgrid/subgrid_standalone_axis_percentage_columns__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__border_box_rtl/0",
+              "field": "x",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__border_box_rtl/0",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 200.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__border_box_rtl/0/0",
+              "field": "x",
+              "browser_value": 60.0,
+              "native_value": 160.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__border_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 100.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/subgrid/subgrid_standalone_axis_percentage_columns.html",
+      "output": "live-xml/subgrid/subgrid_standalone_axis_percentage_columns__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__content_box_ltr/0",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 200.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source": "html/subgrid/subgrid_standalone_axis_percentage_columns.html",
+      "output": "live-xml/subgrid/subgrid_standalone_axis_percentage_columns__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "outcome": {
+        "kind": "differences",
+        "fields": [
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__content_box_rtl/0",
+              "field": "x",
+              "browser_value": 100.0,
+              "native_value": 0.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__content_box_rtl/0",
+              "field": "width",
+              "browser_value": 100.0,
+              "native_value": 200.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__content_box_rtl/0/0",
+              "field": "x",
+              "browser_value": 60.0,
+              "native_value": 160.0
+            }
+          },
+          {
+            "domain": "layout",
+            "difference": {
+              "path": "subgrid_standalone_axis_percentage_columns__content_box_rtl/0/1",
+              "field": "x",
+              "browser_value": 0.0,
+              "native_value": 100.0
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
