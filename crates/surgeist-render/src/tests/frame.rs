@@ -1630,6 +1630,35 @@ fn gpu_graph_executor_accepts_only_color_blur_and_drop_shadow_filter_graphs() {
 }
 
 #[test]
+fn semantic_filter_steps_reserve_only_their_pass_id_count() {
+    let operations = spatial_filter_authored_filter_steps_for_test()
+        .iter()
+        .flat_map(|filters| filters.ops().iter().cloned())
+        .collect();
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new().with_filter_list(FilterList::try_ops(operations).unwrap()),
+        |scene| {
+            scene.fill(Rect::new(2.0, 2.0, 4.0, 3.0), Color::BLACK);
+        },
+    );
+    let account = crate::accounting::Account::for_test();
+    let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+    let crate::frame::FramePlan::GpuGraph(graph) = commands
+        .plan_for(filter_graph_context_for_test(), &account)
+        .unwrap()
+    else {
+        panic!("a foreground filter list must produce a semantic graph");
+    };
+    // Color, blur, drop shadow and color emit one, two, four and one passes.
+    // The zero-radius blur contributes no step or pass-ID backing.
+    assert_eq!(
+        graph.filter_step_pass_backing_for_test(),
+        [(1, 1), (2, 2), (4, 4), (1, 1)]
+    );
+}
+
+#[test]
 fn blur_and_drop_shadow_graph_preserves_order_edges_and_lifetimes() {
     use crate::pass::SpatialFilterPassTagForTest as Tag;
 
