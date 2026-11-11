@@ -330,7 +330,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declared_fixture_variants_keep_names_and_corpus_relative_outputs() {
+    fn live_corpus_keeps_fixture_variants_in_its_output_root() {
         let mut manifest: Manifest = surgeist_generator::parse_manifest(
             include_str!("../../layout/browser_parity/corpus.toml"),
             "corpus.toml",
@@ -344,6 +344,7 @@ mod tests {
                 vec![RelativePath::new("grid/example.html").unwrap()],
             )
             .unwrap();
+        assert_eq!(corpus.output_root().as_str(), "live-xml");
         let fixture = &corpus.fixtures()[0];
         assert_eq!(fixture.source().as_str(), "html/grid/example.html");
         let cases = fixture
@@ -357,22 +358,22 @@ mod tests {
                 (
                     "example__border_box_ltr",
                     "border_box_ltr",
-                    "xml/grid/example__border_box_ltr.xml"
+                    "live-xml/grid/example__border_box_ltr.xml"
                 ),
                 (
                     "example__content_box_ltr",
                     "content_box_ltr",
-                    "xml/grid/example__content_box_ltr.xml"
+                    "live-xml/grid/example__content_box_ltr.xml"
                 ),
                 (
                     "example__border_box_rtl",
                     "border_box_rtl",
-                    "xml/grid/example__border_box_rtl.xml"
+                    "live-xml/grid/example__border_box_rtl.xml"
                 ),
                 (
                     "example__content_box_rtl",
                     "content_box_rtl",
-                    "xml/grid/example__content_box_rtl.xml"
+                    "live-xml/grid/example__content_box_rtl.xml"
                 ),
             ]
         );
