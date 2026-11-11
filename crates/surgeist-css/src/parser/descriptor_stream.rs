@@ -147,6 +147,31 @@ pub(super) fn value_failure(
     }
 }
 
+/// Where a rejection of the value `input` has not read yet is located when the
+/// value holds no authored token: after its whitespace and comments, at the
+/// end of the scope. `None` when the value holds a token.
+pub(super) fn blank_end(
+    input: &Stream<'_>,
+    numeric: &NumericInputContext<'_>,
+) -> Option<CssSourcePosition> {
+    if !input.only_whitespace_remains() || input.is_refused() {
+        return None;
+    }
+    Some(location(numeric, input.end_site()))
+}
+
+/// `failure`, located at `end` when the value it rejects is blank (see
+/// [`blank_end`]).
+pub(super) fn locate_blank(
+    failure: GrammarFailure,
+    end: Option<CssSourcePosition>,
+) -> GrammarFailure {
+    match end {
+        Some(end) => failure.at_blank_value(end),
+        None => failure,
+    }
+}
+
 /// A failure of a value grammar at `at` that `make` builds the grammar failure
 /// of, given where `at` is.
 pub(super) fn fail<'i>(
@@ -564,9 +589,11 @@ pub(super) fn parse_descriptor_range<T>(
     let (value_start, value_end) = (range.start, range.end);
     let value = crate::syntax_consumption::source_window_document(snapshot, value_start..value_end)
         .map_err(failed_at(value_end))?;
+    let blank = blank_end(&value.root(), &numeric);
+    let rejected = |error: &ValueError<'_>| locate_blank(value_failure(&numeric, error), blank);
     if boundary.validates_value() {
         validate_root(&mut value.root(), &numeric, owner, descriptor)
-            .map_err(|error| value_failure(&numeric, &error))?;
+            .map_err(|error| rejected(&error))?;
     }
     let components = crate::component::values::parse::promote_window(&value).map_err(|error| {
         invalid_component_value(
@@ -575,11 +602,11 @@ pub(super) fn parse_descriptor_range<T>(
         )
     })?;
     let range = value_start..value_end;
-    let parsed = parse(&mut value.root(), components, &numeric, range)
-        .map_err(|error| value_failure(&numeric, &error))?;
+    let parsed =
+        parse(&mut value.root(), components, &numeric, range).map_err(|error| rejected(&error))?;
     if boundary.refuses_bang() {
         refuse_root_bang(&mut value.root(), &numeric, owner, descriptor)
-            .map_err(|error| value_failure(&numeric, &error))?;
+            .map_err(|error| rejected(&error))?;
     }
     match bang {
         Some(bang) => Err(invalid_descriptor_annotation(
@@ -612,14 +639,16 @@ pub(super) fn parse_descriptor_scope<'i, T>(
     descriptor: &str,
     parse: impl FnOnce(&mut Stream<'i>) -> Value<'i, T>,
 ) -> Result<T, GrammarFailure> {
+    let blank = blank_end(input, numeric);
     match scope {
-        ValueScope::Declared => parse_descriptor_checked(input, numeric, owner, descriptor, parse),
+        ValueScope::Declared => parse_descriptor_checked(input, numeric, owner, descriptor, parse)
+            .map_err(|failure| locate_blank(failure, blank)),
         ValueScope::Text => reading_value_text(input, numeric, owner, descriptor, |input| {
             let parsed = parse(input)?;
             expect_exhausted(input)?;
             Ok(parsed)
         })
-        .map_err(|error| value_failure(numeric, &error)),
+        .map_err(|error| locate_blank(value_failure(numeric, &error), blank)),
     }
 }
 
@@ -769,8 +798,8 @@ where
     items
 }
 
-/// Runs a value grammar over the text `range` of the source, read as a
-/// document of its own: the scope a text front hands a grammar.
+/// Runs a grammar over the text `range` of the source, read as a document of
+/// its own: the scope a text front hands a grammar.
 pub(super) fn parse_text<T>(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
@@ -782,9 +811,24 @@ pub(super) fn parse_text<T>(
     parse(&mut stream, &numeric).map_err(|error| value_failure(&numeric, &error))
 }
 
-/// [`parse_text`], and the components the text holds with the origin of the
-/// text: what a descriptor value retains of the text it was read from.
-pub(super) fn parse_collecting<T>(
+/// [`parse_text`] for the value of a descriptor: a value of only whitespace and
+/// comments is rejected after its trivia (see [`blank_end`]).
+pub(super) fn parse_value_text<T>(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+    parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
+) -> Result<T, GrammarFailure> {
+    let numeric = NumericInputContext::parsed(snapshot);
+    let document = scope_document(snapshot, range)?;
+    let mut stream = document.root();
+    let blank = blank_end(&stream, &numeric);
+    parse(&mut stream, &numeric)
+        .map_err(|error| locate_blank(value_failure(&numeric, &error), blank))
+}
+
+/// [`parse_value_text`], and the components the text holds with the origin of
+/// the text: what a descriptor value retains of the text it was read from.
+pub(super) fn parse_value_collecting<T>(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
     parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
@@ -792,7 +836,9 @@ pub(super) fn parse_collecting<T>(
     let numeric = NumericInputContext::parsed(snapshot);
     let document = scope_document(snapshot, range.clone())?;
     let mut stream = document.root();
-    let value = parse(&mut stream, &numeric).map_err(|error| value_failure(&numeric, &error))?;
+    let blank = blank_end(&stream, &numeric);
+    let value = parse(&mut stream, &numeric)
+        .map_err(|error| locate_blank(value_failure(&numeric, &error), blank))?;
     let (components, origin) = collected(snapshot, &document, range)?;
     Ok((value, components, origin))
 }

@@ -494,6 +494,27 @@ functions, descriptors, at-rule preludes and selector lists.
   structural end-of-input diagnostics, such as a declaration or qualified
   rule cut off by the end of the input (`broken`), keep the input-end
   position with no token.
+- A property or descriptor value of only whitespace and comments, or of
+  nothing, holds no authored token, so its rejection names no token. It sits
+  right after the value's trivia, where the `;`, the `!important`, the `}` or
+  the end of input that follows the value begins, whichever property or
+  descriptor rejects it and in every front: `margin:`, `margin:   `,
+  `margin: /*c*/ ` and `margin:  ;` name the position after the colon and its
+  trivia, and `margin: /*c*/ !important` names the position of the `!`.
+  [Syntax 3 §5.5.6](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration)
+  discards the whitespace after the colon, consumes the value from the next
+  token and removes the `!important` that ends it (step 6), so an empty value
+  begins and ends there and the `!` ends it as a `;` does. The amount and kind
+  of trivia do not change which position is reported. A descriptor that admits
+  no importance rejects the `!important` after a valid value at the `!`,
+  naming it. A property-value text front has no colon, so it reports the end
+  of its text.
+- A context rejection is about the property and not its value. A property
+  that does not apply in `@page` or a margin box is rejected where the first
+  authored token of its value begins and names that token, or after the
+  trivia of a blank value like any blank value; a property that cannot be
+  animated in a keyframe block is rejected at its name and names it, whatever
+  its value.
 - A math function whose contents parse but whose type does not check is
   responsible as a whole ([Values 4 §10.9](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking)),
   except that a sum names its incompatible operand: `calc(1px * 1px)` in a

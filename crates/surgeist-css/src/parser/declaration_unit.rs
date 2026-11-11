@@ -36,6 +36,9 @@ pub(crate) struct DeclarationText {
     value_end: usize,
     /// Where the `!` of the `!important` that ends the declaration is.
     bang: Option<usize>,
+    /// Whether the value holds no authored token: only whitespace and comments
+    /// lie between the colon and the end of the value.
+    blank: bool,
 }
 
 impl DeclarationText {
@@ -48,6 +51,13 @@ impl DeclarationText {
     /// declaration, or at the end of the declaration.
     pub(super) const fn value_end(&self) -> usize {
         self.value_end
+    }
+
+    /// Where a rejection about the value is located when the value is blank:
+    /// after its whitespace and comments, where the value ends. `None` when
+    /// the value holds a token.
+    pub(super) fn blank_end(&self) -> Option<usize> {
+        self.blank.then_some(self.value_end)
     }
 
     /// Where the `!` of the `!important` that ends the declaration is, if there
@@ -110,12 +120,17 @@ impl DeclarationText {
                 significant(important)
             })
             .flatten();
+        let value_stop = bang.unwrap_or(end);
+        let blank = (first..value_stop)
+            .filter(|&index| nodes.get(index).is_some())
+            .all(is_trivia);
         Self {
             name,
             value_start: boundary(first),
-            value_end: boundary(bang.unwrap_or(end)),
+            value_end: boundary(value_stop),
             end: boundary(end),
             bang: bang.map(boundary),
+            blank,
         }
     }
 }
@@ -147,6 +162,13 @@ pub(super) fn parse_declaration_unit(
             )
         })?;
     let mut value_input = document.root();
+    // A value of only whitespace and comments has no authored token to
+    // locate a rejection at. Syntax 3 section 5.5.6 steps 4 and 5 discard the
+    // whitespace after the colon and consume the value from the next token,
+    // so the rejection sits where that consumption begins and ends: after the
+    // trivia, at the `;`, `!`, `}` or end of input that follows, whichever
+    // property rejects it.
+    let blank = value_input.only_whitespace_remains() && !document.is_refused();
     let body = parse_property_declaration_body_from_property_input(
         plan.grammar(),
         &mut value_input,
@@ -154,7 +176,14 @@ pub(super) fn parse_declaration_unit(
         plan.value_context,
     )
     .map_err(SyntaxErrorExt::into_grammar_failure_source)
-    .map_err(|error| plan.contextualize(error))?;
+    .map_err(|error| plan.contextualize(error))
+    .map_err(|error| {
+        if blank {
+            error.at_blank_value(location_at(snapshot, text.value_end()))
+        } else {
+            error
+        }
+    })?;
     let components =
         crate::component::values::parse::promote_window(&document).map_err(|error| {
             crate::diagnostic::error::invalid_component_value(

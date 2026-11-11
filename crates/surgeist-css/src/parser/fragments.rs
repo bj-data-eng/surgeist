@@ -985,7 +985,7 @@ pub(crate) fn parse_font_face_descriptor_value(
             // A stylesheet parser bounds descriptor values before semicolons. A raw
             // value has no such enclosing parser; reject its own delimiters before
             // src member recovery could discard them as part of an invalid member.
-            let value = descriptor_stream::parse_text(
+            let value = descriptor_stream::parse_value_text(
                 state.source_snapshot(),
                 0..source.len(),
                 |value, numeric| {
@@ -1042,7 +1042,7 @@ pub(crate) fn parse_page_descriptor_value(
 ) -> crate::CssParseReport<Option<crate::rule::page::CssPageDescriptorValue>> {
     descriptor_value_fragment(source, Some(("page", kind.as_str())), |snapshot, range| {
         let (value, components, origin) =
-            descriptor_stream::parse_collecting(snapshot, range, |stream, numeric| {
+            descriptor_stream::parse_value_collecting(snapshot, range, |stream, numeric| {
                 descriptor_stream::reading_value_text(
                     stream,
                     numeric,
@@ -1309,6 +1309,9 @@ fn property_value_text(
                         )
                     })?;
             let mut property_input = document.root();
+            // A value of only whitespace and comments is rejected after its
+            // trivia, at the end of the text, as in a declaration.
+            let blank = property_input.only_whitespace_remains() && !document.is_refused();
             let body = parse_property_value_from_parser(
                 grammar,
                 &mut property_input,
@@ -1318,7 +1321,12 @@ fn property_value_text(
             .map_err(|error| {
                 let error = error.into_source_error();
                 let position = error.position();
-                GrammarFailure::new(error, position)
+                let failure = GrammarFailure::new(error, position);
+                if blank {
+                    failure.at_blank_value(location_at(state.source_snapshot(), source.len()))
+                } else {
+                    failure
+                }
             })?;
             // Retain owned source syntax only after grammar admission succeeds.
             let components =
