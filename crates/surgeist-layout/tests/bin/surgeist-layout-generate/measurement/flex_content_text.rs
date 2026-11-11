@@ -92,6 +92,19 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn original_intrinsic_flex_capture_uses_its_own_request() {
+        const REQUEST: &[u8] =
+            b"{\"schema_version\":1,\"text_source\":\"ahem-10px-fri07-intrinsic-flex-text\"}\n";
+        let request = super::super::BoxObservationRequest::from_input_bytes(Some(REQUEST))
+            .expect("the original nested Flex source has an exact Text capture request");
+        assert_eq!(request.input_bytes(), Some(REQUEST));
+        assert_eq!(
+            request.proof_script().map(|(path, _)| path),
+            Some("scripts/gentest/fri07_intrinsic_flex_text.js")
+        );
+    }
+
+    #[test]
     fn flex_content_proof_binds_every_text_occurrence_and_style() {
         let wire = json!({
             "layoutInput": "box",
