@@ -2143,6 +2143,9 @@ impl NativeDomEvent {
     pub(crate) fn has_started(&self) -> bool {
         self.0.status.get() != Status::Ready
     }
+    pub(crate) fn has_active_dispatch(&self) -> bool {
+        matches!(self.0.status.get(), Status::Running | Status::HostPending)
+    }
     pub(crate) fn is_abandoned(&self) -> bool {
         self.0.status.get() == Status::Abandoned
     }

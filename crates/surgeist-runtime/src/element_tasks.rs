@@ -384,7 +384,6 @@ struct Task {
     value: DomElementTask,
     event: Option<NativeDomEventOwner>,
     receipt: Option<DomEventDispatchReceipt>,
-    started: bool,
     running: bool,
     dialog: Option<surgeist_dom::DomDialogTask>,
     publication: Option<surgeist_dom::DomDialogTaskQueuePublication>,
@@ -396,10 +395,14 @@ struct Task {
     dialog_toggle_disposition: Option<surgeist_dom::DomDialogToggleTaskDisposition>,
 }
 impl Task {
+    fn has_started(&self) -> bool {
+        self.event.as_ref().is_some_and(|event| event.has_started())
+    }
+
     fn plan(&self) -> Plan {
         Plan {
             value: self.value,
-            started: self.started || self.running,
+            started: self.has_started() || self.running,
         }
     }
 }
@@ -975,7 +978,6 @@ impl ElementTaskState {
                     value: item.value,
                     event: None,
                     receipt: None,
-                    started: false,
                     running: false,
                     dialog: None,
                     publication: None,
@@ -1227,7 +1229,7 @@ impl ElementTaskState {
         if self.tasks[index].receipt.is_some() {
             return Ok(PreparedEvent::Delivered);
         }
-        if !self.tasks[index].started {
+        if !self.tasks[index].has_started() {
             match dom.snapshot().node(value.id().target()) {
                 Err(DomError::StaleNode) => return Ok(PreparedEvent::Destroyed),
                 Err(error) => return Err(DomElementTaskRuntimeError::Dom(error)),
@@ -1524,7 +1526,7 @@ impl DomElementTaskRuntime {
                         .hosted
                         .clone()
                         .ok_or(DomElementTaskRuntimeError::Binding)?,
-                    head.started,
+                    head.has_started(),
                 )
             };
             let retired_target = !started
@@ -1576,7 +1578,6 @@ impl DomElementTaskRuntime {
                 .iter_mut()
                 .find(|entry| entry.value.id() == value.id())
                 .ok_or(DomElementTaskRuntimeError::Binding)?;
-            task.started = true;
             match outcome {
                 DomEventDispatchOutcome::Complete(receipt) => {
                     task.receipt = Some(receipt);
@@ -1724,9 +1725,7 @@ impl DomElementTaskRuntime {
                 index += 1;
                 continue;
             }
-            let started = task.running
-                || task.started
-                || task.event.as_ref().is_some_and(|event| event.has_started());
+            let started = task.running || task.has_started();
             if started {
                 retained_started = true;
                 index += 1;

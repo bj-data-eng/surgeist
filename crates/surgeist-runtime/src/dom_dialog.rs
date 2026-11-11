@@ -565,6 +565,19 @@ impl SourceEventRuntime {
                             dispatcher.abandoned_dispatch_error(dom.raw()),
                         ));
                     }
+                    if row.event.has_active_dispatch() {
+                        let Phase::Dispatching {
+                            permit: Some(permit),
+                        } = &row.phase
+                        else {
+                            return Err(DomSourceEventRuntimeError::Protocol);
+                        };
+                        // This exact callback already owns the Source scope.
+                        // Preserve the canonical refusal before pricing any
+                        // new dispatch backing.
+                        state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
+                        return Err(DomSourceEventRuntimeError::Protocol);
+                    }
                     row.event.dispatch_formation(limits.dispatch).ok_or(
                         DomSourceEventRuntimeError::Admission(DomSourceEventResource::StorageBytes),
                     )?
