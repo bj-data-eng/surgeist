@@ -2022,7 +2022,7 @@ fn resize_suspend_resume_and_two_surfaces_keep_device_resources_coherent() {
     let stats_before = renderer.stats();
     let observation_before = presented_observation_for_test(&first);
     let old_target_observation = presented_observation_handle_for_test(&first);
-    let failed_candidate = display_free_presented_surface_on_device_for_test(
+    let mut failed_candidate = display_free_presented_surface_on_device_for_test(
         &mut renderer,
         first.options,
         presented_device_identity_for_test(&first),
@@ -2030,7 +2030,7 @@ fn resize_suspend_resume_and_two_surfaces_keep_device_resources_coherent() {
     );
     let error = pollster::block_on(presented_configuration_validation_failure_stage_for_test(
         &mut renderer,
-        &failed_candidate,
+        &mut failed_candidate,
         RuntimeOperation::SurfaceResume,
     ))
     .expect_err("a failed replacement configuration must preserve the installed surface state");

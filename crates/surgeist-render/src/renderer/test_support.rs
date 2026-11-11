@@ -677,6 +677,262 @@ impl Renderer {
     }
 }
 
+#[cfg(all(feature = "render-window", not(target_arch = "wasm32")))]
+mod presented_configuration_tests {
+    use super::*;
+    use crate::surface::{PresentedLifecycle, ResizeState};
+
+    fn fixture() -> (Renderer, Surface) {
+        let options = Options::default().with_accounting(
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false }),
+        );
+        let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+        let mut surface = configured_display_free_presented_surface_for_test(&mut renderer);
+        renderer.set_surface_resizing(&mut surface, true).unwrap();
+        (renderer, surface)
+    }
+
+    fn measure_configure(
+        renderer: &mut Renderer,
+        surface: &mut Surface,
+        limit: u64,
+    ) -> (Result<()>, RenderStandaloneReport) {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ResourceAllocationRequests, limit)
+            .unwrap();
+        let options = RenderAccountingOptions::new()
+            .with_limits(limits)
+            .with_clock(RenderClock::Host(|| Duration::ZERO))
+            .with_profile(RenderProfile::Summary { timing: true });
+        let mut context = RenderAccountingContext::new(options);
+        let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
+            pollster::block_on(
+                renderer.configure_presented_surface_if_needed(surface, Some(account)),
+            )
+        });
+        let report = context.take_last_attempt().unwrap();
+        assert_eq!(report.cleanup_fault(), None);
+        (result, report)
+    }
+
+    fn committed_extent(surface: &Surface) -> Option<PhysicalSize> {
+        let SurfaceBackend::Presented { surface, .. } = &surface.backend else {
+            panic!("the fixture must retain the presented surface");
+        };
+        surface.committed_physical_size()
+    }
+
+    #[test]
+    fn positive_logical_sizes_rounded_to_zero_leave_the_committed_bundle_available_for_reuse() {
+        let (mut renderer, mut surface) = fixture();
+        let initial_resource = presented_resource_id_for_test(&surface).unwrap();
+        let initial_target = presented_target_identity_for_test(&surface);
+        let initial_device = presented_device_identity_for_test(&surface);
+        let initial_custody = renderer.device_accounting_snapshot(Some(&surface)).unwrap();
+        let initial_observation = presented_observation_for_test(&surface);
+        let initial_stats = renderer.stats();
+        let committed = PhysicalSize::new(2, 2);
+        assert_eq!(presented_configuration_count_for_test(&surface), 1);
+
+        for (logical, rounded) in [
+            (Size::new(0.49, 2.0), PhysicalSize::new(0, 2)),
+            (Size::new(2.0, 0.49), PhysicalSize::new(2, 0)),
+        ] {
+            surface.resize(logical, 1.0).unwrap();
+            assert_eq!(surface.size(), logical);
+            assert_eq!(surface.physical_size(), rounded);
+            assert_eq!(
+                presented_lifecycle_for_test(&surface),
+                PresentedLifecycle::NonRenderable {
+                    physical_size: rounded,
+                    resizing: ResizeState::Resizing,
+                }
+            );
+            let (result, report) = measure_configure(&mut renderer, &mut surface, 0);
+            result.unwrap();
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .phase_count(RenderPhase::Configure),
+                0
+            );
+            assert_eq!(presented_configuration_count_for_test(&surface), 1);
+            assert_eq!(
+                presented_resource_id_for_test(&surface),
+                Some(initial_resource)
+            );
+            assert_eq!(committed_extent(&surface), Some(committed));
+
+            surface.resize(Size::new(2.0, 2.0), 1.0).unwrap();
+            assert_eq!(surface.physical_size(), committed);
+            assert_eq!(
+                presented_lifecycle_for_test(&surface),
+                PresentedLifecycle::Ready {
+                    resizing: ResizeState::Resizing,
+                }
+            );
+            let (result, report) = measure_configure(&mut renderer, &mut surface, 0);
+            result.unwrap();
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .phase_count(RenderPhase::Configure),
+                0
+            );
+            assert_eq!(presented_configuration_count_for_test(&surface), 1);
+            assert_eq!(
+                presented_resource_id_for_test(&surface),
+                Some(initial_resource)
+            );
+            assert_eq!(committed_extent(&surface), Some(committed));
+        }
+        assert_eq!(presented_target_identity_for_test(&surface), initial_target);
+        assert_eq!(presented_device_identity_for_test(&surface), initial_device);
+        assert_eq!(
+            presented_observation_for_test(&surface),
+            initial_observation
+        );
+        assert_eq!(
+            renderer.device_accounting_snapshot(Some(&surface)).unwrap(),
+            initial_custody
+        );
+        assert_eq!(renderer.stats(), initial_stats);
+        assert_eq!(surface.last_parameters, None);
+    }
+
+    #[test]
+    fn presented_configure_admits_three_requests_before_the_host_effect() {
+        let (mut renderer, mut surface) = fixture();
+        let initial_resource = presented_resource_id_for_test(&surface).unwrap();
+        let target = presented_target_identity_for_test(&surface);
+        let device = presented_device_identity_for_test(&surface);
+        let initial_observation = presented_observation_for_test(&surface);
+        let initial_stats = renderer.stats();
+        let initial_custody = renderer.device_accounting_snapshot(Some(&surface)).unwrap();
+        let extent = PhysicalSize::new(3, 2);
+        let scope_usage =
+            |snapshot: &RenderDeviceSnapshot, scope| snapshot.scope_usage(scope).unwrap();
+        let surface_targets = RenderGenerationScope::SurfaceTargets;
+        let views = RenderGenerationScope::TextureView;
+        let blitters = RenderGenerationScope::DependencyUtility;
+        let gpu_bytes = RenderResource::GpuBytes;
+        let opaque = RenderResource::OpaqueGpuObjects;
+        let requests = RenderWork::ResourceAllocationRequests;
+        let allocations = RenderWork::ResourceAllocations;
+        let creates = RenderWork::GpuObjectsCreated;
+        assert_eq!(
+            scope_usage(&initial_custody, surface_targets).live(gpu_bytes),
+            16
+        );
+        let initial_views = scope_usage(&initial_custody, views);
+        let initial_blitters = scope_usage(&initial_custody, blitters);
+        surface.resize(Size::new(3.0, 2.0), 1.0).unwrap();
+        let pending = presented_lifecycle_for_test(&surface);
+        assert!(matches!(pending, PresentedLifecycle::ResizePending { .. }));
+        assert_eq!(surface.physical_size(), extent);
+        assert_eq!(pending.resize_state(), ResizeState::Resizing);
+
+        for limit in [2, 3] {
+            let (result, report) = measure_configure(&mut renderer, &mut surface, limit);
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.usage().work(requests), limit);
+            assert_eq!(
+                attempt.phase_usage(RenderPhase::Configure).work(requests),
+                limit
+            );
+            assert_eq!(attempt.phase_count(RenderPhase::Configure), 1);
+            assert_eq!(
+                attempt.phase_elapsed(RenderPhase::Configure),
+                Some(Duration::ZERO)
+            );
+            assert_eq!(attempt.usage().work(RenderWork::Submissions), 0);
+            assert_eq!(attempt.usage().work(RenderWork::Presentations), 0);
+            let custody = renderer.device_accounting_snapshot(Some(&surface)).unwrap();
+            assert_eq!(custody.identity(), initial_custody.identity());
+            assert_eq!(custody.fault(), None);
+            let targets = scope_usage(&custody, surface_targets);
+            let current_views = scope_usage(&custody, views);
+            let current_blitters = scope_usage(&custody, blitters);
+            // The new 24-byte target overlaps the installed 16-byte target.
+            assert_eq!(targets.peak(gpu_bytes), 40);
+            assert_eq!(current_views.live(opaque), initial_views.live(opaque));
+            assert_eq!(current_blitters.live(opaque), initial_blitters.live(opaque));
+
+            if limit == 2 {
+                let error = result.unwrap_err();
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(error.code(), ErrorCode::Accounting);
+                assert_eq!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::Refused(refusal))
+                );
+                assert_eq!(report.status(), RenderAttemptStatus::Refused);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                assert_eq!(refusal.quantity(), RenderQuantity::Work(requests));
+                assert_eq!((refusal.current(), refusal.amount()), (2, 1));
+                assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 2 });
+                assert_eq!(targets.live(gpu_bytes), 16);
+                assert_eq!(
+                    targets.work(allocations),
+                    scope_usage(&initial_custody, surface_targets).work(allocations) + 1
+                );
+                assert_eq!(current_views.work(creates), initial_views.work(creates) + 1);
+                assert_eq!(
+                    current_blitters.work(creates),
+                    initial_blitters.work(creates)
+                );
+                assert_eq!(presented_configuration_count_for_test(&surface), 1);
+                assert_eq!(
+                    presented_resource_id_for_test(&surface),
+                    Some(initial_resource)
+                );
+                assert_eq!(committed_extent(&surface), Some(PhysicalSize::new(2, 2)));
+                assert_eq!(presented_lifecycle_for_test(&surface), pending);
+            } else {
+                result.unwrap();
+                assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+                assert_eq!(attempt.refusal(), None);
+                assert_eq!(targets.live(gpu_bytes), 24);
+                assert_eq!(
+                    targets.work(allocations),
+                    scope_usage(&initial_custody, surface_targets).work(allocations) + 2
+                );
+                assert_eq!(current_views.work(creates), initial_views.work(creates) + 2);
+                assert_eq!(
+                    current_blitters.work(creates),
+                    initial_blitters.work(creates) + 1
+                );
+                assert_eq!(presented_configuration_count_for_test(&surface), 2);
+                assert_ne!(
+                    presented_resource_id_for_test(&surface).unwrap(),
+                    initial_resource
+                );
+                assert_eq!(committed_extent(&surface), Some(extent));
+                assert_eq!(
+                    presented_lifecycle_for_test(&surface),
+                    PresentedLifecycle::Ready {
+                        resizing: ResizeState::Resizing,
+                    }
+                );
+            }
+            assert_eq!(presented_target_identity_for_test(&surface), target);
+            assert_eq!(presented_device_identity_for_test(&surface), device);
+            assert_eq!(
+                presented_observation_for_test(&surface),
+                initial_observation
+            );
+            assert_eq!(renderer.stats(), initial_stats);
+            assert_eq!(surface.last_parameters, None);
+            assert_eq!(
+                renderer.default_device_active_operation_generation_for_test(),
+                None
+            );
+        }
+    }
+}
+
 #[cfg(feature = "render-window")]
 impl Renderer {
     pub(crate) async fn configure_presented_surface_for_test(

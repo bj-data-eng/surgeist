@@ -114,16 +114,22 @@ fn surface_state_reports_availability_without_bool_peeking() {
 ))]
 #[test]
 fn presented_surface_lifecycle_state_names_pending_resize() {
-    let idle = PresentedLifecycle::ResizePending {
-        physical_size: PhysicalSize::new(20, 10),
+    let physical_size = PhysicalSize::new(20, 10);
+    let idle = PresentedSurfaceState::new(physical_size, ResizeState::Idle).lifecycle();
+    let PresentedLifecycle::ResizePending {
+        physical_size: extent,
         resizing: ResizeState::Idle,
+    } = idle
+    else {
+        panic!("positive extent must begin pending configuration");
     };
+    assert_eq!(idle.physical_size(), Some(physical_size));
     let resizing = idle.with_resizing(ResizeState::Resizing);
 
     assert_eq!(
         resizing,
         PresentedLifecycle::ResizePending {
-            physical_size: PhysicalSize::new(20, 10),
+            physical_size: extent,
             resizing: ResizeState::Resizing,
         }
     );
@@ -1129,7 +1135,7 @@ fn presented_setup_and_resize_commit_only_after_clean_configuration() {
     ));
     let error = pollster::block_on(presented_configuration_validation_failure_stage_for_test(
         &mut renderer,
-        &surface,
+        &mut surface,
         RuntimeOperation::SurfaceRendering,
     ))
     .expect_err("a real Configure validation failure must leave the requested resize pending");
@@ -1143,7 +1149,7 @@ fn presented_setup_and_resize_commit_only_after_clean_configuration() {
         PresentedLifecycle::ResizePending { .. }
     ));
 
-    discard_presented_configuration_stage_for_test(&mut renderer, &surface)
+    discard_presented_configuration_stage_for_test(&mut renderer, &mut surface)
         .expect("an explicit Configure draft must be discardable before publication");
     assert_eq!(
         presented_resource_id_for_test(&surface),
