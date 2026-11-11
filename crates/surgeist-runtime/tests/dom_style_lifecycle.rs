@@ -757,12 +757,25 @@ fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_object
     let (style, _) = detached(&mut dom, document, "@unknown x; p { color: red }");
     connect(&mut dom, &mut context, style, parent);
     let old_dom = dom.snapshot();
+    assert_eq!(old_dom.relevant_global(style).unwrap(), None);
     let old = association(&old_dom, style).unwrap();
     let old_cssom = cssom(&context, document);
     assert_eq!(old_cssom.sheet(old.id()).unwrap().diagnostics().len(), 1);
     assert_eq!(context.styles.waiting_resources().unwrap(), 0);
     let mut dispatcher = registry();
     listen(&mut dom, &mut dispatcher, style);
+    dispatcher
+        .add_listener(
+            &mut dom,
+            style,
+            DomEventType::LOAD,
+            DomEventCallback::new(|_, _, context: &mut Context, event| {
+                context.observations.push(event.clone());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
     drive(&mut dom, &mut context, DomSourceEdit::detach(style));
     let removed = cssom(&context, document);
     assert!(removed.sheets().is_empty());
@@ -770,6 +783,14 @@ fn already_queued_parse_recovery_load_survives_detachment_and_retains_old_object
     assert!(association(&dom.snapshot(), style).is_none());
     delivered(&mut dom, &mut dispatcher, &mut context);
     assert_eq!(context.events, vec![(DomEventType::LOAD, style, document)]);
+    let [event] = context.observations.as_slice() else {
+        panic!("one real unhosted Load observation");
+    };
+    assert!(event.creation().is_none());
+    assert_eq!(
+        event.time_stamp(),
+        Err(DomEventTimestampUnavailable::NoAuthenticatedClock)
+    );
     empty(&mut dom, &mut dispatcher, &mut context);
     assert_eq!(association(&old_dom, style).unwrap(), old);
     assert!(old_cssom.sheet(old.id()).unwrap().inputs().owner.is_some());

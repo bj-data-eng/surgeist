@@ -840,6 +840,253 @@ mod tests {
             }
 
             #[test]
+            fn hosted_style_load_keeps_its_first_networking_firing_time_across_resume() {
+                use crate::{
+                    DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
+                    DomEventDispatchOutcome, DomEventDispatcher, DomEventListenerOptions,
+                    DomEventPhase, DomEventRegistryLimits, DomEventResource, DomEventTarget,
+                    DomEventType, DomStyleEventContext, DomStyleNetworkingProgress,
+                    DomStyleRuntime,
+                };
+                use surgeist_dom::{DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace};
+
+                struct Context {
+                    styles: DomStyleRuntime,
+                    seen: Vec<(
+                        Option<DomEventTarget>,
+                        DomEventPhase,
+                        Option<DomEventCreationObservation>,
+                    )>,
+                }
+                impl DomStyleEventContext for Context {
+                    fn styles(&mut self) -> &mut DomStyleRuntime {
+                        &mut self.styles
+                    }
+                }
+
+                let cancel = AtomicBool::new(false);
+                let mut session = session_with_dom_limits(|limits| {
+                    limits
+                        .with_dispatch_custody(
+                            surgeist_dom::DomDispatchCustodyLimits::new(
+                                8, 64, 2_000_000, 2_000_000, 100_000,
+                            )
+                            .unwrap(),
+                        )
+                        .with_event_recipients(
+                            surgeist_dom::DomEventRecipientLimits::new(
+                                16, 2_000_000, 2_000_000, 100_000,
+                            )
+                            .unwrap(),
+                        )
+                });
+                let mut hosted = session.hosted_execution();
+                script(
+                    &hosted,
+                    &[
+                        Ok(150_001),
+                        Ok(260_001),
+                        Ok(430_001),
+                        Ok(545_001),
+                        Ok(845_001),
+                        Ok(1_125_001),
+                    ],
+                );
+                let host = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+                let top = hosted
+                    .create_top_level(&mut session.dom(), host, &cancel)
+                    .unwrap();
+                let document = top.document();
+                let settings = hosted
+                    .settings(&session.dom(), top.global(), &cancel)
+                    .unwrap();
+                let snapshot = session.snapshot();
+                let html = snapshot
+                    .document(document)
+                    .unwrap()
+                    .document_element()
+                    .unwrap();
+                let body = snapshot.node(html).unwrap().children()[1];
+                let mut context = Context {
+                    styles: session.style_execution(),
+                    seen: Vec::new(),
+                };
+                let mut root = Some(DomStyleCssomRoot::new(
+                    document.node(),
+                    surgeist_cssom::CssomStore::new(Default::default(), Default::default())
+                        .unwrap(),
+                ));
+                context
+                    .styles
+                    .bind_root(&session.dom(), "hosted-clock".into(), &mut root, &cancel)
+                    .unwrap();
+                let mut batch = DomBatch::new();
+                let style = batch.create_element_ns(document, Namespace::html(), "style");
+                let text = batch.create_text(document, "p { color: red }");
+                batch.insert_before(&text, &style, None);
+                let target = session
+                    .dom()
+                    .apply(batch, &cancel)
+                    .unwrap()
+                    .created(&style)
+                    .unwrap()
+                    .unwrap();
+                let result = session
+                    .source_execution()
+                    .apply(
+                        &mut session.dom(),
+                        DomSourceEdit::insert_before(target, body, None),
+                        source_limits(),
+                        &mut DomSourceServices {
+                            meta: None,
+                            execution_scope: None,
+                            style_policy: &mut |source| {
+                                Some(DomStyleInlineCspObservation::complete_empty(source, 1))
+                            },
+                            url: None,
+                        },
+                        &cancel,
+                    )
+                    .unwrap();
+                assert!(matches!(result, DomSourceDriveProgress::Complete(_)));
+                let published = session.snapshot();
+                assert_eq!(
+                    published.relevant_global(target).unwrap(),
+                    Some(top.global())
+                );
+                let association = published
+                    .node(target)
+                    .unwrap()
+                    .as_style()
+                    .unwrap()
+                    .sheet()
+                    .unwrap()
+                    .unwrap()
+                    .clone();
+                let cssom = context.styles.snapshot(document.node()).unwrap().unwrap();
+                let sheet = cssom.sheet(association.id()).unwrap();
+                assert_eq!(association.root(), document.node());
+                assert_eq!(sheet.authored().rules().len(), 1);
+                assert!(sheet.diagnostics().is_empty());
+                assert_eq!(context.styles.waiting_resources().unwrap(), 0);
+
+                let mut dispatcher = DomEventDispatcher::new(DomEventRegistryLimits {
+                    registrations: 2,
+                    pending_events: 1,
+                    nested_dispatches: 1,
+                    storage_bytes: 2_000_000,
+                    work: 100_000,
+                })
+                .unwrap();
+                for _ in 0..2 {
+                    dispatcher
+                        .add_listener(
+                            &mut session.dom(),
+                            target,
+                            DomEventType::LOAD,
+                            DomEventCallback::new(|_, _, context: &mut Context, event| {
+                                context.seen.push((
+                                    event.current_target(),
+                                    event.phase(),
+                                    event.creation().copied(),
+                                ));
+                                Ok(())
+                            }),
+                            DomEventListenerOptions::default(),
+                        )
+                        .unwrap();
+                }
+                let mut run = |session: &mut DomSession, context: &mut Context, callbacks| {
+                    DomStyleRuntime::run_networking(
+                        &mut session.dom(),
+                        &mut dispatcher,
+                        context,
+                        DomEventDispatchLimits {
+                            path_items: 16,
+                            snapshot_listeners: 2,
+                            failure_records: 2,
+                            callbacks,
+                            work: 100_000,
+                        },
+                        &cancel,
+                    )
+                    .unwrap()
+                };
+                let clock_control = || {
+                    hosted
+                        .state()
+                        .unwrap()
+                        .borrow_mut()
+                        .clock
+                        .sample()
+                        .unwrap()
+                        .coarsen()
+                        .unwrap()
+                        .microseconds
+                };
+                let after_queue = clock_control();
+                let DomStyleNetworkingProgress::Retained {
+                    task: original,
+                    dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                } = run(&mut session, &mut context, 0)
+                else {
+                    panic!(
+                        "the original networking task must reach dispatch before its first callback"
+                    );
+                };
+                assert!(context.seen.is_empty());
+                let after_firing = clock_control();
+                let DomStyleNetworkingProgress::Retained {
+                    task: resumed,
+                    dispatch: DomEventDispatchOutcome::Retained(DomEventResource::Callbacks),
+                } = run(&mut session, &mut context, 1)
+                else {
+                    panic!("the original networking task must stop after one actual callback");
+                };
+                assert_eq!(resumed, original);
+                assert_eq!(context.seen.len(), 1);
+                let after_first_callback = clock_control();
+                let DomStyleNetworkingProgress::Complete { task, receipt } =
+                    run(&mut session, &mut context, 2)
+                else {
+                    panic!("the same networking task must deliver and complete its cleanup");
+                };
+                assert_eq!(task, original);
+                assert_eq!(receipt.original_target(), target.into());
+                assert_eq!(receipt.event_type(), DomEventType::LOAD);
+                assert_eq!(receipt.callbacks(), 2);
+                assert!(receipt.failures().is_empty());
+                assert!(matches!(
+                    run(&mut session, &mut context, 2),
+                    DomStyleNetworkingProgress::Empty
+                ));
+
+                let [first, second] = context.seen.as_slice() else {
+                    panic!("two actual Load listeners");
+                };
+                for observation in [first, second] {
+                    assert_eq!(observation.0, Some(target.into()));
+                    assert_eq!(observation.1, DomEventPhase::AtTarget);
+                }
+                let [Some(first), Some(second)] = [first.2, second.2] else {
+                    panic!(
+                        "actual hosted Load callbacks must see original Event creation: {:?}",
+                        [first.2, second.2]
+                    );
+                };
+                assert_eq!(first, second);
+                assert_eq!(first.global(), top.global());
+                assert_eq!(first.clock_source(), settings.clock_source());
+                assert_eq!(first.time_origin_microseconds(), 100);
+                assert_eq!(first.occurrence_microseconds(), 500);
+                assert_eq!(first.relative_microseconds(), 400);
+                assert_eq!(
+                    [after_queue, after_firing, after_first_callback],
+                    [400, 800, 1_100]
+                );
+            }
+
+            #[test]
             fn synchronous_dialog_events_keep_their_distinct_reached_clock_samples() {
                 use crate::{
                     DomEventCallback, DomEventCreationObservation, DomEventDispatchLimits,
