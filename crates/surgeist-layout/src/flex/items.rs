@@ -505,14 +505,14 @@ where
     } else {
         None
     };
-    let preferred_basis_probe =
-        use_content_sizing_for_base && (child_owned_axes.width || child_owned_axes.height);
+    let child_owns_preference = child_owned_axes.width || child_owned_axes.height;
+    let preferred_basis_probe = use_content_sizing_for_base && child_owns_preference;
     let base_cross = constants
         .axes
         .cross_size(size)
         .or(stretched_cross)
         .map(clamp_cross);
-    let child_known = if preferred_basis_probe {
+    let child_known = if child_owns_preference {
         constants.axes.with_cross_size(size, base_cross)
     } else if use_content_sizing_for_base {
         constants.axes.with_cross_size(
@@ -1140,6 +1140,12 @@ fn final_item_size<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
+    let mut known = Size::new(Some(item.target_size.width), Some(item.target_size.height));
+    if child_owned_axes.width || child_owned_axes.height {
+        // The accepted target already accounts for the authored cross bounds.
+        return Ok(known);
+    }
     let padding = constants
         .flow_axes
         .zip_physical_edges_with_inline_extent(
@@ -1161,23 +1167,16 @@ where
     } else {
         Size::<Tree::Scalar>::ZERO
     };
-    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
     let authored = resolve_child_preferred_size(
         style.common.size,
         constants.percentage_parent_size,
         SizingAlgorithm::Flex,
-        child_owned_axes,
+        Size::splat(false),
     )
     .transpose_with_node(tree, item.node)?
-    .apply_aspect_ratio(
-        style
-            .common
-            .aspect_ratio
-            .filter(|_| !child_owned_axes.width && !child_owned_axes.height),
-    )
+    .apply_aspect_ratio(*style.common.aspect_ratio)
     .add_optional(box_sizing_adjustment);
 
-    let mut known = Size::new(Some(item.target_size.width), Some(item.target_size.height));
     if constants.axes.main_requested_axis() == RequestedAxis::Horizontal {
         if style.common.size.height.depends_on_basis() {
             known.height = authored.height.or(known.height);
