@@ -30,6 +30,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     sizing_request: SizingRequestOf<S>,
     named_baseline_demand: crate::output::NamedBaselineDemand,
     physical_baseline_demand: bool,
+    requires_fixed_grid_tracks: bool,
     settled_auto_scrollbars: SettledAutoScrollbarState,
     containing_auto_scrollbar_pass: SettledAutoScrollbarState,
     context: CacheKeyContext,
@@ -50,6 +51,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             sizing_request: input.sizing_request(),
             named_baseline_demand: input.named_baseline_demand(),
             physical_baseline_demand: input.physical_baseline_demand(),
+            requires_fixed_grid_tracks: input.requires_fixed_grid_tracks(),
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass(),
             context,
@@ -202,6 +204,7 @@ fn matches_output<S: LayoutScalar, T>(
         && key.block_indent_context == entry.key.block_indent_context
         && key.named_baseline_demand == entry.key.named_baseline_demand
         && key.physical_baseline_demand == entry.key.physical_baseline_demand
+        && key.requires_fixed_grid_tracks == entry.key.requires_fixed_grid_tracks
         && context == entry.key.context
         // ContentSize's original axis purposes can qualify suppressed preferred
         // bounds for descendant fallback. A known body dimension does not erase
@@ -305,6 +308,35 @@ mod sizing_request_cache_tests {
         cache.store_with_context(&indefinite, context, output);
         assert_eq!(cache.get_with_context(&definite, context), None);
         assert_eq!(cache.get_with_context(&indefinite, context), Some(output));
+    }
+
+    #[test]
+    fn cache_distinguishes_fixed_grid_track_requirement() {
+        let context = CacheKeyContext::new();
+        let input = input(
+            None,
+            40.0_f32,
+            SizingOperation::Normal,
+            crate::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        );
+        let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
+        for mode in [RunMode::ComputeSize, RunMode::PerformRootLayout] {
+            let ordinary = input.with_run_mode(mode);
+            let fixed = ordinary.with_fixed_grid_track_requirement(true);
+            let mut cache = CacheOf::new();
+
+            cache.store_with_context(&ordinary, context, output);
+            assert_eq!(cache.get_with_context(&ordinary, context), Some(output));
+            assert_eq!(cache.get_with_context(&fixed, context), None);
+
+            cache.store_with_context(&fixed, context, output);
+            assert_eq!(cache.get_with_context(&ordinary, context), None);
+            assert_eq!(cache.get_with_context(&fixed, context), Some(output));
+        }
     }
 
     #[test]

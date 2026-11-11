@@ -1292,6 +1292,13 @@ impl<S: LayoutScalar> TrackSizingOf<S> {
         Self::new(min, max)
     }
 
+    pub(crate) fn is_fixed_without_basis(&self) -> bool {
+        self.min
+            .definite(None)
+            .zip(self.max.definite(None))
+            .is_some_and(|(minimum, maximum)| minimum == maximum && minimum.is_finite())
+    }
+
     #[must_use]
     pub fn depends_on_basis(&self) -> bool {
         self.min.depends_on_basis() || self.max.depends_on_basis()

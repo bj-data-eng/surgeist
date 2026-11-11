@@ -231,6 +231,7 @@ where
     Tree: Compute<'input, M>,
 {
     let sizing_request = request.sizing_request();
+    let mut requires_fixed_grid_tracks = false;
     let (axes, role, parent, mut known, fill_inline, align_to_parent) = match request.context() {
         crate::LayoutRootContextOf::Standalone {
             containing_flow_axes,
@@ -272,7 +273,7 @@ where
             )
         }
         crate::LayoutRootContextOf::PositionedAutoInsets(context) => {
-            admit_positioned_root(root, style, None)?;
+            admit_positioned_root(tree, root, style, None)?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -283,7 +284,7 @@ where
             )
         }
         crate::LayoutRootContextOf::RootLocalPositioned(context) => {
-            admit_positioned_root(root, style, Some(context))?;
+            requires_fixed_grid_tracks = admit_positioned_root(tree, root, style, Some(context))?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -305,32 +306,24 @@ where
             parent,
         )?);
     }
-    let inline_axis = FlowAxes::new(style.writing_mode, style.direction).inline_axis();
     if matches!(
         request.context(),
         crate::LayoutRootContextOf::PositionedAutoInsets(_)
             | crate::LayoutRootContextOf::RootLocalPositioned(_)
-    ) && root_physical_axis_value(
-        Size::new(&style.size.width, &style.size.height),
-        inline_axis,
-    )
-    .is_auto()
-    {
-        known = root_known_on_axis(
-            inline_axis,
-            positioned_auto_inline_size(
-                tree,
-                root,
-                style,
-                containing,
-                sizing_request,
-                parent,
-                inline_axis,
-            )?,
-        );
+    ) {
+        known = positioned_auto_inline_known_size(
+            tree,
+            root,
+            style,
+            containing,
+            sizing_request,
+            parent,
+            requires_fixed_grid_tracks,
+        )?;
     }
     Ok(RootComputeInput {
-        input: ComputeInputOf::root_layout(known, parent, containing, sizing_request),
+        input: ComputeInputOf::root_layout(known, parent, containing, sizing_request)
+            .with_fixed_grid_track_requirement(requires_fixed_grid_tracks),
         align_to_parent,
     })
 }
@@ -410,13 +403,36 @@ where
     Ok(())
 }
 
-fn admit_positioned_root<Node, S: LayoutScalar, M>(
-    root: Node,
-    style: &NodeInputOf<S>,
-    local_context: Option<crate::RootLocalPositionedContextOf<S>>,
-) -> LayoutResultOf<Node, (), S, M>
+fn fixed_grid_axis<S: LayoutScalar>(
+    components: &[crate::TrackComponentOf<S>],
+    allow_counted_repeat: bool,
+) -> bool {
+    let mut has_track = false;
+    let fixed = components.iter().all(|component| match component {
+        crate::TrackComponentOf::Track(track) => {
+            has_track = true;
+            track.is_fixed_without_basis()
+        }
+        crate::TrackComponentOf::LineNames(_) => true,
+        crate::TrackComponentOf::Repeat(repetition) if allow_counted_repeat => {
+            has_track = true;
+            // CSS track repeat notation cannot nest.
+            matches!(repetition.repeat(), crate::TrackRepeat::Count(_))
+                && fixed_grid_axis(repetition.components(), false)
+        }
+        crate::TrackComponentOf::Repeat(_) | crate::TrackComponentOf::Subgrid(_) => false,
+    });
+    fixed && has_track
+}
+
+fn admit_positioned_root<'input, Tree, M>(
+    tree: &Tree,
+    root: Tree::Node,
+    style: &NodeInputOf<Tree::Scalar>,
+    local_context: Option<crate::RootLocalPositionedContextOf<Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, bool, Tree::Scalar, M>
 where
-    Node: Copy,
+    Tree: Compute<'input, M>,
 {
     let horizontal = style.writing_mode == crate::WritingMode::HorizontalTb;
     let local_containing_size = local_context.map(|context| context.containing_size());
@@ -439,8 +455,20 @@ where
         _ => RootEdgeProfile::Zero,
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
+    let auto_fixed_grid = has_block_offset
+        && style.display == crate::Display::Grid
+        && style.size.width.is_auto()
+        && style.size.height.is_auto()
+        && !tree.has_leaf_measurement(root)
+        && fixed_grid_axis(&style.grid_template_columns, true)
+        && fixed_grid_axis(&style.grid_template_rows, true)
+        && style
+            .grid_auto_columns
+            .iter()
+            .chain(&style.grid_auto_rows)
+            .all(|component| matches!(component, crate::TrackComponentOf::Track(_)));
     let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
-    if !horizontal || has_block_offset {
+    if (!horizontal || has_block_offset) && !auto_fixed_grid {
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
         // original preferred dimensions and owns their min/max constraints.
@@ -482,21 +510,30 @@ where
             crate::RootContextMismatch::Alignment,
         ));
     }
-    Ok(())
+    Ok(auto_fixed_grid)
 }
 
-fn positioned_auto_inline_size<'input, Tree, M>(
+fn positioned_auto_inline_known_size<'input, Tree, M>(
     tree: &mut Tree,
     root: <Tree as Traverse>::Node,
     style: &NodeInputOf<Tree::Scalar>,
     containing: crate::ContainingLayoutContext,
     sizing_request: SizingRequestOf<Tree::Scalar>,
     parent: Size<Option<Tree::Scalar>>,
-    inline_axis: PhysicalAxis,
-) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+    requires_fixed_grid_tracks: bool,
+) -> RootKnownInlineResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let inline_axis = FlowAxes::new(style.writing_mode, style.direction).inline_axis();
+    if !root_physical_axis_value(
+        Size::new(&style.size.width, &style.size.height),
+        inline_axis,
+    )
+    .is_auto()
+    {
+        return Ok(Size::NONE);
+    }
     let available = root_physical_axis_value(sizing_request.axes(), inline_axis)
         .space()
         .definite_size()
@@ -589,7 +626,8 @@ where
                 parent,
                 containing,
                 sizing_request.with_axes(axes),
-            ),
+            )
+            .with_fixed_grid_track_requirement(requires_fixed_grid_tracks),
         )
     };
     let minimum_content =
@@ -628,10 +666,11 @@ where
         false,
     )
     .map_err(|error| sizing_resolution_error(root, error))?;
-    Ok(available
+    let size = available
         .max(minimum_content)
         .min(maximum_content)
-        .clamp_max_before_min_optional(minimum, maximum))
+        .clamp_max_before_min_optional(minimum, maximum);
+    Ok(root_known_on_axis(inline_axis, size))
 }
 
 struct RootEdges<S: LayoutScalar> {

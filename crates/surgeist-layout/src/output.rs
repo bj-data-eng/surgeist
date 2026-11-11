@@ -181,6 +181,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     sizing_request: SizingRequestOf<S>,
     named_baseline_demand: NamedBaselineDemand,
     physical_baseline_demand: bool,
+    requires_fixed_grid_tracks: bool,
     block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
@@ -213,6 +214,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             physical_baseline_demand: false,
+            requires_fixed_grid_tracks: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -241,6 +243,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             physical_baseline_demand: false,
+            requires_fixed_grid_tracks: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -305,6 +308,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
             physical_baseline_demand: false,
+            requires_fixed_grid_tracks: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -351,6 +355,15 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
 
     pub(crate) const fn named_baseline_demand(&self) -> NamedBaselineDemand {
         self.named_baseline_demand
+    }
+
+    pub(crate) const fn requires_fixed_grid_tracks(&self) -> bool {
+        self.requires_fixed_grid_tracks
+    }
+
+    pub(crate) const fn with_fixed_grid_track_requirement(mut self, required: bool) -> Self {
+        self.requires_fixed_grid_tracks = required;
+        self
     }
 
     pub(crate) const fn with_named_baseline_demand(mut self, demand: NamedBaselineDemand) -> Self {
@@ -675,13 +688,15 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// the full containing width. Auto and intrinsic inline sizing require zero
 /// padding and border. Orthogonal roots require zero padding and border.
 /// Their preferred sizes must resolve definite on both physical axes, except
-/// that a vertical-lr or vertical-rl principal Block can fit its Auto inline
-/// size using an explicit hypothetical block-start offset and a definite
-/// opposite preferred size.
+/// for two cases with an explicit hypothetical block-start offset. A
+/// vertical-lr or vertical-rl principal Block can fit its Auto inline size
+/// with a definite opposite preferred size. A Grid with two Auto preferred
+/// sizes, fixed templates on both axes, and no leaf measurement uses normal
+/// Grid sizing when every track after placement is fixed.
 ///
 /// The offset is the hypothetical position relative to the containing block's
 /// physical top. A supplied offset requires both preferred sizes to resolve
-/// definite unless the vertical Auto inline case applies. Its nonnegative
+/// definite unless one of those Auto sizing cases applies. Its nonnegative
 /// remaining height supplies physical availability. Each percentage uses the
 /// full containing-block extent on its physical axis.
 /// Normal sizing applies authored box sizing and min/max constraints.
