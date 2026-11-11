@@ -1,5 +1,6 @@
 //! Canonical native hosted associations and the original creation continuation.
 
+pub(super) mod constructed_sheet;
 pub(in crate::store) mod containers;
 mod destruction;
 pub(crate) mod history;

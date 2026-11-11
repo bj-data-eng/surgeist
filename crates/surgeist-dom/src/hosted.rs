@@ -5,8 +5,9 @@
 
 mod destruction;
 pub use crate::store::{
-    DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
-    DomHostedStyleRootWithdrawalPublished,
+    DomHostedSheetConstruction, DomHostedSheetConstructionError,
+    DomHostedSheetConstructionPublished, DomHostedStyleRootWithdrawal,
+    DomHostedStyleRootWithdrawalPreparation, DomHostedStyleRootWithdrawalPublished,
 };
 pub use destruction::{
     DomHostedChildRemovalHandoff, DomHostedChildRemovalPublication, DomHostedDestructionInvocation,

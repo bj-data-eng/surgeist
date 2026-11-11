@@ -4,10 +4,14 @@
 //! and sheet identity. This owner binds actual root lists, services those source
 //! requests, and queues native completion only after a parsed sheet has no imports.
 //! Original parsed creation retains processing evidence without issuing a task.
+mod constructed_sheet;
 mod meta;
 mod parsed_style;
 mod sheet_sets;
 mod withdrawal;
+pub use constructed_sheet::{
+    DomConstructedSheet, DomConstructedSheetError, DomConstructedSheetOwnerInit,
+};
 pub use meta::parsed::{
     DomStyleParsedAdmissionError, DomStyleParsedInstallError, DomStyleParsedMetaError,
     DomStyleParsedMetaOutcome, DomStyleParsedMetaPreference,
@@ -2791,6 +2795,7 @@ use crate::{
 use surgeist_dom::DomStyleInlineCspObservation;
 #[cfg(test)]
 mod tests {
+    mod constructed_sheet;
     mod dynamic_event_custody;
     mod meta;
     mod meta_source;

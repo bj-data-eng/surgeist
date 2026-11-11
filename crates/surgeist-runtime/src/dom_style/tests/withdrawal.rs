@@ -17,6 +17,7 @@ struct Fixture {
     queued: DomHostedDestructionQueued,
     style: NodeId,
     sheet: DomStyleSheet,
+    constructed: Option<DomConstructedSheet>,
 }
 fn drive(
     session: &mut DomSession,
@@ -44,6 +45,10 @@ fn drive(
 }
 impl Fixture {
     fn new(preferred: DocumentString) -> Self {
+        Self::with_owner(preferred, false)
+    }
+
+    fn with_owner(preferred: DocumentString, construct: bool) -> Self {
         let mut dom = dispatch_dom();
         let dom_limits = dom.limits().with_meta_processing_work(1_000_000);
         dom.set_limits(dom_limits).unwrap();
@@ -54,17 +59,36 @@ impl Fixture {
             .create_top_level(&mut session.dom(), host, &cancel())
             .unwrap();
         let mut styles = session.style_execution();
-        styles
-            .bind_root(
-                &session.dom(),
-                "withdrawal-history".into(),
-                &mut Some(DomStyleCssomRoot::new(
-                    top.document().node(),
-                    CssomStore::new(Default::default(), Default::default()).unwrap(),
-                )),
-                &cancel(),
+        let constructed = if construct {
+            Some(
+                styles
+                    .construct_document_sheet(
+                        &mut session.dom(),
+                        &hosted,
+                        top,
+                        Default::default(),
+                        DomConstructedSheetOwnerInit {
+                            label: "withdrawal-history",
+                            limits: Default::default(),
+                        },
+                        &cancel(),
+                    )
+                    .unwrap(),
             )
-            .unwrap();
+        } else {
+            styles
+                .bind_root(
+                    &session.dom(),
+                    "withdrawal-history".into(),
+                    &mut Some(DomStyleCssomRoot::new(
+                        top.document().node(),
+                        CssomStore::new(Default::default(), Default::default()).unwrap(),
+                    )),
+                    &cancel(),
+                )
+                .unwrap();
+            None
+        };
         let capture = session.snapshot();
         let html = capture.node(top.document().node()).unwrap().children()[0];
         let parent = capture.node(html).unwrap().children()[1];
@@ -81,11 +105,77 @@ impl Fixture {
             .created(&style)
             .unwrap()
             .unwrap();
-        drive(
-            &mut session,
-            DomSourceEdit::insert_before(style, parent, None),
-            &mut policy,
-        );
+        let insert = DomSourceEdit::insert_before(style, parent, None);
+        if let Some(constructed) = &constructed {
+            let mut source = session.source_execution();
+            let parked = source
+                .apply(
+                    &mut session.dom(),
+                    insert,
+                    source_limits(),
+                    &mut DomSourceServices {
+                        meta: None,
+                        execution_scope: None,
+                        style_policy: &mut |_| None,
+                        url: None,
+                    },
+                    &cancel(),
+                )
+                .unwrap();
+            assert!(matches!(
+                parked,
+                DomSourceDriveProgress::Pending {
+                    reason: DomSourceUnavailable::Style(DomStyleUnavailable::InlinePolicy),
+                    ..
+                }
+            ));
+            let pending = session.dom().pending_source_edit().unwrap().operation();
+            let refusal = styles.construct_document_sheet(
+                &mut session.dom(),
+                &hosted,
+                top,
+                Default::default(),
+                DomConstructedSheetOwnerInit {
+                    label: "source",
+                    limits: Default::default(),
+                },
+                &cancel(),
+            );
+            assert!(
+                matches!(
+                    refusal,
+                    Err(DomConstructedSheetError::Hosted(
+                        DomHostedRuntimeError::Dom(DomHostedError::Dom(
+                            DomError::SourceOperationPending
+                        ))
+                    ))
+                ),
+                "{refusal:?}"
+            );
+            assert_eq!(
+                constructed.owner().snapshot().unwrap().revision(),
+                constructed.revision()
+            );
+            assert!(matches!(
+                source
+                    .resume(
+                        &mut session.dom(),
+                        pending,
+                        source_limits(),
+                        &mut DomSourceServices {
+                            meta: None,
+                            execution_scope: None,
+                            style_policy: &mut policy,
+                            url: None,
+                        },
+                        &cancel(),
+                    )
+                    .unwrap(),
+                DomSourceDriveProgress::Complete(_)
+            ));
+        } else {
+            drive(&mut session, insert, &mut policy);
+        }
         let sheet = session
             .snapshot()
             .node(style)
@@ -184,6 +274,7 @@ impl Fixture {
             queued,
             style,
             sheet,
+            constructed,
         }
     }
     fn withdraw(&mut self) -> Result<DomStyleRootWithdrawal, DomStyleRootWithdrawalError> {
@@ -195,6 +286,59 @@ impl Fixture {
             &cancel(),
         )
     }
+}
+
+#[test]
+fn constructed_owner_services_real_style_and_withdraws_after_hosted_retirement() {
+    let mut f = Fixture::with_owner("A".into(), true);
+    let constructed = f.constructed.take().unwrap();
+    let before = constructed.owner().snapshot().unwrap();
+    assert!(before.sheets().is_empty());
+    assert!(
+        before
+            .sheet(constructed.sheet())
+            .unwrap()
+            .inputs()
+            .constructed
+    );
+    assert!(before.sheet(f.sheet.id()).is_ok());
+    assert!(before.revision().value() > constructed.revision().value());
+    let withdrawn = f.withdraw().unwrap();
+    assert_eq!(
+        withdrawn.withdrawal_cssom_snapshot().owner(),
+        before.owner()
+    );
+    assert!(
+        withdrawn
+            .withdrawal_cssom_snapshot()
+            .sheet(constructed.sheet())
+            .is_ok()
+    );
+    assert!(
+        f.session
+            .dom()
+            .style_cssom_root(f.top.document().node())
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        f.styles.construct_document_sheet(
+            &mut f.session.dom(),
+            &f.hosted,
+            f.top,
+            Default::default(),
+            DomConstructedSheetOwnerInit {
+                label: "refused",
+                limits: Default::default()
+            },
+            &cancel()
+        ),
+        Err(DomConstructedSheetError::Hosted(_))
+    ));
+    assert_eq!(
+        constructed.owner().snapshot().unwrap().revision(),
+        before.revision()
+    );
 }
 fn frame_bytes() -> usize {
     (size_of::<DomStyleRootWithdrawal>() - size_of::<surgeist_dom::DomHostedStyleRootWithdrawal>())

@@ -778,8 +778,8 @@ impl HostedRuntime {
     }
 }
 
-#[cfg(feature = "document-scripting")]
 impl HostedRuntime {
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn with_script_target<R>(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -787,6 +787,21 @@ impl HostedRuntime {
         cancel: &AtomicBool,
         use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
     ) -> Result<R, DomHostedRuntimeError> {
+        self.with_current_top_level(dom, target, cancel, |source, dom| {
+            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
+        })
+    }
+
+    pub(crate) fn with_current_top_level<R, E>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        target: DomHostedTopLevel,
+        cancel: &AtomicBool,
+        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, E>,
+    ) -> Result<R, E>
+    where
+        E: From<DomHostedRuntimeError>,
+    {
         self.with_script_settings(dom, target, None, cancel, |source, dom| {
             let canonical = dom
                 .raw()
@@ -803,8 +818,8 @@ impl HostedRuntime {
             {
                 return Err(DomHostedRuntimeError::Inactive);
             }
-            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
-        })
+            Ok(use_target(source, dom))
+        })?
     }
 
     pub(crate) fn with_script_settings<R>(
@@ -859,6 +874,7 @@ impl HostedRuntime {
         use_target(source, dom)
     }
 
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn admit_script_work(
         &self,
         dom: &DomEventDom<'_>,
@@ -876,6 +892,7 @@ impl HostedRuntime {
         Ok(())
     }
 
+    #[cfg(feature = "document-scripting")]
     pub(crate) fn retain_script_payload(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -2030,10 +2047,8 @@ mod constructor_settings_tests {
     use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::{DomHostedRecordLimits, DomLimits};
 
-    #[test]
-    fn settings_url_payload_refusal_and_exact_retry_keep_original_execution() {
-        let cancel = AtomicBool::new(false);
-        let mut limits = DomHostedRuntimeLimits {
+    fn limits() -> DomHostedRuntimeLimits {
+        DomHostedRuntimeLimits {
             canonical: DomHostedLimits::new(
                 DomHostedRecordLimits::new(32, 32, 32, 32, 32, 32, 32),
                 16_000_000,
@@ -2044,8 +2059,11 @@ mod constructor_settings_tests {
             storage_bytes: 16_000_000,
             scratch_bytes: 16_000_000,
             work: 1_000_000,
-        };
-        let mut session = DomSession::new(
+        }
+    }
+
+    fn session(limits: DomHostedRuntimeLimits) -> DomSession {
+        DomSession::new(
             Dom::new(
                 DomLimits::new(
                     128,
@@ -2083,7 +2101,14 @@ mod constructor_settings_tests {
                 hosted: limits,
             },
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn settings_url_payload_refusal_and_exact_retry_keep_original_execution() {
+        let cancel = AtomicBool::new(false);
+        let mut limits = limits();
+        let mut session = session(limits);
         let mut hosted = session.hosted_execution();
         let mut dom = session.dom();
         let host = hosted.create_host(&mut dom, &cancel).unwrap();
@@ -2248,5 +2273,134 @@ mod constructor_settings_tests {
         let mut state = owner.borrow_mut();
         assert_eq!(state.retained_bytes(&cancel).unwrap(), exact);
         assert!(state.creation.is_none());
+    }
+
+    #[test]
+    fn stylesheet_construction_refuses_while_second_top_level_owns_unmarked_native_execution() {
+        use crate::DomConstructedSheetOwnerInit;
+        use surgeist_dom::DomHostedSheetConstructionError;
+
+        let cancel = AtomicBool::new(false);
+        let open_limits = limits();
+        let mut session = session(open_limits);
+        let mut hosted = session.hosted_execution();
+        let styles = session.style_execution();
+        let mut dom = session.dom();
+        let host = hosted.create_host(&mut dom, &cancel).unwrap();
+        let first = hosted.create_top_level(&mut dom, host, &cancel).unwrap();
+        let fresh = || DomConstructedSheetOwnerInit {
+            label: "first-window",
+            limits: Default::default(),
+        };
+        let initial = styles
+            .construct_document_sheet(
+                &mut dom,
+                &hosted,
+                first,
+                Default::default(),
+                fresh(),
+                &cancel,
+            )
+            .unwrap();
+        let root = dom
+            .style_cssom_root(first.document().node())
+            .unwrap()
+            .unwrap();
+        let cssom_before = root.snapshot().unwrap();
+        let dom_before = dom.snapshot();
+        assert!(dom_before.incomplete_hosted_operation().is_none());
+
+        let owner = hosted.state().unwrap();
+        let mut tight = open_limits;
+        {
+            let mut state = owner.borrow_mut();
+            state.reserve_composition(0, &cancel).unwrap();
+            tight.storage_bytes = state.retained_bytes(&cancel).unwrap();
+        }
+        hosted.set_limits(&mut dom, tight, &cancel).unwrap();
+        assert!(matches!(
+            hosted.create_top_level(&mut dom, host, &cancel),
+            Err(DomHostedRuntimeError::Admission)
+        ));
+        let execution = |dom: &DomEventDom<'_>| {
+            let state = owner.borrow();
+            let lease = state.creation.as_ref().unwrap().lease.as_ref().unwrap();
+            let DomHostedCreationStep::NativeExecution(request) = lease.step(dom.raw()).unwrap()
+            else {
+                panic!("the second top level must retain its original NativeExecution request")
+            };
+            request.operation()
+        };
+        let operation = execution(&dom);
+        assert_eq!(dom.snapshot().stamp(), dom_before.stamp());
+        assert!(dom.snapshot().incomplete_hosted_operation().is_none());
+
+        let attempted = {
+            let state = owner.borrow();
+            state
+                .source
+                .prepare_document_sheet(
+                    dom.raw_mut(),
+                    first.global(),
+                    first.document(),
+                    &root,
+                    Default::default(),
+                    &cancel,
+                )
+                .and_then(|prepared| prepared.publish())
+                .map(|published| published.finish())
+        };
+        let cssom_after = root.snapshot().unwrap();
+        let dom_root_after = dom
+            .style_cssom_root(first.document().node())
+            .unwrap()
+            .unwrap()
+            .snapshot()
+            .unwrap();
+        let style_after = styles.snapshot(first.document().node()).unwrap().unwrap();
+        assert_eq!(dom_root_after.owner(), cssom_before.owner());
+        assert_eq!(dom_root_after.revision(), cssom_after.revision());
+        assert_eq!(style_after.owner(), cssom_before.owner());
+        assert_eq!(style_after.revision(), cssom_after.revision());
+        assert_eq!(execution(&dom), operation);
+        assert!(dom.snapshot().incomplete_hosted_operation().is_none());
+        assert_eq!(dom.snapshot().stamp(), dom_before.stamp());
+
+        hosted.set_limits(&mut dom, open_limits, &cancel).unwrap();
+        let second = hosted.resume_top_level_creation(&mut dom, &cancel).unwrap();
+        assert_ne!(second.document(), first.document());
+        assert!(owner.borrow().creation.is_none());
+        let retried = styles
+            .construct_document_sheet(
+                &mut dom,
+                &hosted,
+                first,
+                Default::default(),
+                fresh(),
+                &cancel,
+            )
+            .unwrap();
+        assert_eq!(
+            retried.owner().snapshot().unwrap().owner(),
+            cssom_before.owner()
+        );
+        assert_ne!(retried.sheet(), initial.sheet());
+        assert_eq!(
+            retried.revision().value(),
+            cssom_after.revision().value() + 1
+        );
+
+        assert!(
+            matches!(
+                attempted,
+                Err(DomHostedSheetConstructionError::Hosted(
+                    DomHostedError::IncompleteOperation
+                ))
+            ),
+            "stylesheet construction during the parked native operation returned {attempted:?}; CSSOM revision changed from {} to {}",
+            cssom_before.revision().value(),
+            cssom_after.revision().value()
+        );
+        assert_eq!(cssom_after.revision(), cssom_before.revision());
     }
 }

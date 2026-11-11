@@ -230,11 +230,12 @@ pub use hosted::{
     DomHostedMakeActiveRequest, DomHostedMoment, DomHostedNavigable, DomHostedNavigableId,
     DomHostedOperationId, DomHostedPolicyPublication, DomHostedPolicyRequest,
     DomHostedPreparedChild, DomHostedPreparedTopLevel, DomHostedQueuedHistory,
-    DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
-    DomHostedSourceId, DomHostedSourceRevision, DomHostedStyleRootWithdrawal,
-    DomHostedStyleRootWithdrawalPreparation, DomHostedStyleRootWithdrawalPublished,
-    DomHostedTopLevelPreparation, DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
-    DomPermissionsPolicyValue,
+    DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention,
+    DomHostedSheetConstruction, DomHostedSheetConstructionError,
+    DomHostedSheetConstructionPublished, DomHostedSource, DomHostedSourceId,
+    DomHostedSourceRevision, DomHostedStyleRootWithdrawal, DomHostedStyleRootWithdrawalPreparation,
+    DomHostedStyleRootWithdrawalPublished, DomHostedTopLevelPreparation,
+    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
 };
 pub use hyperlink::{DomEncodingUrlFactsError, DomHyperlink};
 pub use identity::{DocumentId, DomOwnerId, DomRevision, DomStamp, NodeId};
