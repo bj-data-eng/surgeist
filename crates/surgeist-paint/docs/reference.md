@@ -89,18 +89,21 @@ supplies a basis, one source coordinate maps to one CSS pixel on that axis.
 Empty source or destination regions emit no plan.
 
 Each drawable region carries its source rectangle, destination clip, and two
-patterns local to the clip minimum. Stretch emits one tile. Repeat starts
-with a centered tile and extends in both directions to the clip. Round chooses
+patterns local to the clip minimum. Stretch emits one tile. Repeat centers
+a tile and extends in both directions to the clip. Its anchor represents
+that centered pattern modulo one tile. Round chooses
 the nearest positive whole count, with half ties toward the higher count,
 then divides the clip extent evenly. Space retains only whole tiles and
 divides the remainder equally before, after, and between them. Space emits
-no region when a tile cannot fit on either of its axes. A spaced or periodic
-tile `i` starts at `anchor + i * (extent + gap)`. A finite pattern with zero
-gap evenly subdivides the clip into `count` tiles. Use the clip endpoints for
+no region when a tile cannot fit on either of its axes. In real arithmetic,
+a spaced or periodic tile `i` starts at `anchor + i * (extent + gap)`. A
+finite pattern with zero gap evenly subdivides the clip into `count` tiles.
+Use the clip endpoints for
 the first and final boundaries to avoid accumulating rounding in the nominal
 tile extent. Finite counts retain distinguishable binary64 indices and an
 exactly representable extra gap count. Unrepresentable arithmetic returns
-the typed border-image geometry error.
+the typed border-image geometry error. Space refuses a rounded gap that
+would clip the last tile or erase the trailing gap.
 
 Ledger admits coordinate actions and emitted region records in
 `BorderImageTiling` and accounts for the fixed plan at publication. Source

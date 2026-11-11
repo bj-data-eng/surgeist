@@ -38,8 +38,8 @@ impl BorderImageAxisPattern {
 
     /// The origin of tile zero, relative to the clip minimum.
     ///
-    /// For a periodic repeat this is the centered tile, which can start
-    /// outside the clip. Tiles extend in both directions from this anchor.
+    /// For a periodic repeat this is a clip-local representative of the
+    /// centered pattern. Tiles extend in both directions from this anchor.
     pub const fn anchor(self) -> f64 {
         self.anchor
     }
@@ -137,14 +137,13 @@ fn resolve(
         [left, middle, right],
         [bottom_left, bottom, bottom_right],
     ] = *geometry.regions();
-    let widths = geometry.used_widths();
     let top_left = corner(work, top_left)?;
-    let (top, top_basis) = edge(work, top, widths.top, Horizontal, repeat.width)?;
+    let (top, top_basis) = edge(work, top, Horizontal, repeat.width)?;
     let top_right = corner(work, top_right)?;
-    let (left, left_basis) = edge(work, left, widths.left, Vertical, repeat.height)?;
-    let (right, right_basis) = edge(work, right, widths.right, Vertical, repeat.height)?;
+    let (left, left_basis) = edge(work, left, Vertical, repeat.height)?;
+    let (right, right_basis) = edge(work, right, Vertical, repeat.height)?;
     let bottom_left = corner(work, bottom_left)?;
-    let (bottom, bottom_basis) = edge(work, bottom, widths.bottom, Horizontal, repeat.width)?;
+    let (bottom, bottom_basis) = edge(work, bottom, Horizontal, repeat.width)?;
     let bottom_right = corner(work, bottom_right)?;
     let middle = center(
         work,
@@ -201,7 +200,6 @@ impl Direction {
 fn edge(
     work: &mut GeometryWork<'_, '_, '_>,
     region: BorderImageRegion,
-    used_width: f64,
     direction: Direction,
     repeat: BorderImageRepeat,
 ) -> Result<(Option<BorderImageTileRegion>, Option<f64>), PaintError> {
@@ -213,7 +211,7 @@ fn edge(
         None
     } else {
         let (span, thickness) = direction.split(size(work, source)?);
-        Some(proportional(work, span, used_width, thickness)?)
+        Some(proportional(work, span, across, thickness)?)
     };
     let Some(pattern) = axis_pattern(work, repeat, along, basis.unwrap_or(along))? else {
         // Space can discard this edge while its proportional scale is still
@@ -343,7 +341,16 @@ fn axis_pattern(
     match repeat {
         BorderImageRepeat::Stretch => Ok(Some(BorderImageAxisPattern::stretch(extent))),
         BorderImageRepeat::Repeat => {
-            let delta = work.coordinate(|| extent - tile)?;
+            // Remove whole periods before centering. Subtracting a small
+            // tile from the original clip extent could erase half its phase.
+            let double_tile = work.coordinate(|| tile * 2.0)?;
+            let reduced_extent = if work.coordinate(|| double_tile.is_finite())? {
+                work.coordinate(|| extent % double_tile)?
+            } else {
+                // The finite clip is already shorter than two tiles.
+                extent
+            };
+            let delta = work.coordinate(|| reduced_extent - tile)?;
             let anchor = work.coordinate(|| delta * 0.5)?;
             if work.coordinate(|| anchor == 0.0)? && work.coordinate(|| delta != 0.0)? {
                 return Err(geometry_error());
@@ -375,6 +382,19 @@ fn axis_pattern(
             let gap = work.coordinate(|| remainder / gaps)?;
             if work.coordinate(|| gap == 0.0)? && work.coordinate(|| remainder > 0.0)? {
                 return Err(geometry_error());
+            }
+            if work.coordinate(|| gap > 0.0)? {
+                // The rounded gap must leave every tile whole and preserve
+                // a trailing gap. Compare the last end without rounding the
+                // pitch or allowing its accumulated error to hide clipping.
+                let tiles = ExactProduct::new(work, whole, tile)?;
+                let gaps = ExactProduct::new(work, whole, gap)?;
+                let clip = ExactProduct::new(work, extent, 1.0)?;
+                if compare_product_sums(work, [tiles, gaps], [clip, ExactProduct::ZERO])?
+                    != Ordering::Less
+                {
+                    return Err(geometry_error());
+                }
             }
             Ok(Some(BorderImageAxisPattern {
                 extent: tile,
@@ -516,7 +536,7 @@ mod tests {
         assert_eq!(top.clip().min(), Point::new(-5.0, 4.0));
         assert_eq!(top.clip().max(), Point::new(23.0, 8.0));
         assert_eq!(top.axes().width.extent(), 12.0);
-        assert_eq!(top.axes().width.anchor(), 8.0);
+        assert_eq!(top.axes().width.anchor(), -4.0);
         assert_eq!(top.axes().width.count(), None);
         assert_eq!(top.axes().height, BorderImageAxisPattern::stretch(4.0));
 
