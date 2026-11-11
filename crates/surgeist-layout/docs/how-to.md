@@ -99,11 +99,13 @@ With the default test dependencies available, run:
 CARGO_NET_OFFLINE=true just parity-all
 ```
 
-This explicitly selects the ordinary full XML parity test and clears
-`SURGEIST_PARITY_FILTER`. The expected successful result is the selected test
-passing after comparing the full checked-in corpus. Inspect any reported
-geometry mismatches in the test output. The command uses existing XML and does
-not launch a browser.
+The recipe clears `SURGEIST_PARITY_FILTER` and selects the strict raw verdict.
+It reports every raw mismatch and missing authority as a failure. The
+checked-in historical observations lack root-context authority, and some
+qualified current captures retain intentional raw differences.
+
+Ordinary tests traverse the same inventory and require complete historical
+accounting and current qualification. Both commands use existing XML.
 
 ## Work with browser generation or the source cache
 

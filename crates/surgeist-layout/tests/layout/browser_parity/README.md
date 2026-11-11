@@ -60,23 +60,26 @@ covers 44 variants across the original Block, Flex, Grid, and Grid Lanes
 sources. The default Layout test verifies the original topology and compares
 every registered box tree and recorded scroll-span pair.
 
-Current source pins, import rules, artifact inventory, and expected outcome counts
-are declared in `corpus.toml`. Ordinary Cargo test runs compare the original XML
-and registered current editions without launching a browser or regenerating
-fixtures. Generation infrastructure changes must preserve XML bytes and complete
-per-fixture outcomes unless browser expectation changes are separately intended.
+The producer manifest declares source pins, imports, artifact inventory, and
+expected outcomes. [Historical observation accounting](historical-observations.json)
+binds it and its historical report by digest. Each original source family
+has an authenticated successor or an obsolete observation retired from
+current evidence. Sources of retired observations remain available for recapture.
 
-Run checked-in fixtures:
+Ordinary tests traverse every historical XML and every registered current
+capture. The default verdict requires complete historical accounting and
+fresh current qualification. Retired observations retain their raw failures
+and contribute zero qualified coverage. The test output reports historical
+dispositions, qualified current captures, and raw failures separately.
+
+Run the strict raw verdict with the existing XML.
 
 ```sh
-cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
+env -u SURGEIST_PARITY_FILTER SURGEIST_PARITY_RAW_EXACT=1 cargo test --offline --locked -j 1 -p surgeist-layout --test layout layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
 ```
 
-This is the raw-exact result: every original XML runs on its own captured
-evidence, and registered current outputs run separately even when their names
-match an original. Any mismatch or incomplete observation fails. Historical
-missing-root-context errors remain raw failures; a current capture never turns
-them into historical passes.
+The strict verdict fails on every raw mismatch and authority refusal.
+Both verdicts use the same traversal and require no browser or regeneration.
 
 The [original Block axis edition](../../../examples/qualify-root-context/README.md#original-block-axes-qualification)
 covers all 20 direction and box-sizing variants across five writing modes.

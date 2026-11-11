@@ -1535,7 +1535,7 @@ Setting `CARGO_NET_OFFLINE=true` keeps Cargo dependency resolution offline.
 | `just verify` | Default formatting, check, test, and Clippy sequence |
 | `just generator-check` / `just generator-test` / `just generator-clippy` | Corresponding all-targets checks with `layout-golden-generate` |
 | `just verify-generator` | Generator-feature check, tests, and Clippy sequence |
-| `just parity-all` | Execute the ignored full checked-in XML parity test, clearing the parity filter |
+| `just parity-all` | Traverse the full checked-in corpus and enforce the strict raw verdict |
 | `just corpus-check` | Browser-free `check-corpus` with corpus and browser overrides cleared |
 | `just taffy-check` | Validate the existing pinned source cache and imported Taffy corpus |
 
