@@ -1023,7 +1023,7 @@ impl Operations for Entered<'_, '_, '_> {
         self.attempt(ExceptionPhase::PropertyRead, |scope, roots, realm, _| {
             let receiver = roots.local(scope, receiver)?;
             // The SDK's native error predicate rejects proxies, including
-            // proxies of a genuine DOMException, before inspecting private data.
+            // proxies around branded objects before inspecting private data.
             if !receiver.is_native_error() {
                 return Ok(None);
             }
