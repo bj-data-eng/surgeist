@@ -533,11 +533,11 @@ backdrop hue and saturation with source luminosity. These use
 `Lum(C)=0.3R+0.59G+0.11B` and `Sat(C)=max(C)-min(C)`, rather than HSL lightness.
 Joint gamut correction follows the complete luminosity/saturation sequence;
 clamping individual channels before that sequence would change the result.
-Equal-channel gray uses zero saturation without an epsilon cutoff, while
-channel reordering preserves the original RGB identities.
-Luminosity adjustment uses exact gray, black-target and white-target identities
-before subtraction and clipping. These avoid cancellation at the range edges
-without changing the gamut equations for interior non-gray colors.
+Equal-channel gray uses zero saturation without an epsilon cutoff.
+Saturation preserves the original RGB channel positions.
+Luminosity adjustment selects exact gray, black-target and white-target
+results and supplies neutral clipping input for those cases. Interior non-gray
+colors use the gamut correction equations.
 
 `BlendMode::Plus` remains a separate local additive composition choice. It cannot
 serve as the mixing function of a basic Porter-Duff pair. Background-layer blend
