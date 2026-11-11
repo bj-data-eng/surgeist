@@ -55,6 +55,72 @@ fn lifetime_probes(manager: &ResourceManager) -> u64 {
 }
 
 #[test]
+fn mutable_registration_receipt_names_the_missing_identity_and_preserves_custody() {
+    use crate::RenderResource;
+    use surgeist_ledger::Dimension;
+
+    let manager = two_idle_entries();
+    let before = manager.observation_for_test();
+    let generation = manager.generation();
+    let usage = generation.usage().unwrap();
+    {
+        let mut state = lock_state(&manager.state);
+        let identities: Vec<_> = state.entries.keys().copied().collect();
+        let missing = ResourceIdentity(u64::MAX);
+        assert_eq!(
+            ResourceManagerState::selected_entry_mut(&mut state.entries, missing).err(),
+            Some(ResourceAccountingFault::SelectedResourceMissing { resource: missing })
+        );
+        for (identity, class) in [
+            (identities[0], GenerationClass::CacheVello),
+            (identities[1], GenerationClass::CacheEffects),
+        ] {
+            let entry =
+                ResourceManagerState::selected_entry_mut(&mut state.entries, identity).unwrap();
+            assert_eq!(entry.byte_len, 4);
+            assert_eq!(entry.key.generation_class(), class);
+        }
+        assert_eq!(state.accounting_fault, None);
+    }
+    assert_eq!(manager.observation_for_test(), before);
+    let after = generation.usage().unwrap();
+    for &work in RenderWork::ALL {
+        assert_eq!(after.work(work), usage.work(work));
+    }
+    for &resource in RenderResource::ALL {
+        assert_eq!(after.live(resource), usage.live(resource));
+        assert_eq!(after.peak(resource), usage.peak(resource));
+    }
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn idle_reservation_receipt_returns_exact_insertion_positions_or_duplicate_identity() {
+    let reserved = [ResourceIdentity(2), ResourceIdentity(5)];
+    assert_eq!(
+        ResourceManagerState::idle_reservation_index(&[], ResourceIdentity(3)),
+        Ok(0)
+    );
+    for (identity, index) in [
+        (ResourceIdentity(1), 0),
+        (ResourceIdentity(3), 1),
+        (ResourceIdentity(8), 2),
+    ] {
+        assert_eq!(
+            ResourceManagerState::idle_reservation_index(&reserved, identity),
+            Ok(index)
+        );
+    }
+    for identity in reserved {
+        assert_eq!(
+            ResourceManagerState::idle_reservation_index(&reserved, identity),
+            Err(ResourceAccountingFault::SelectedResourceAlreadyReserved { resource: identity })
+        );
+    }
+    assert_eq!(reserved, [ResourceIdentity(2), ResourceIdentity(5)]);
+}
+
+#[test]
 fn absent_selected_entry_preserves_custody_and_real_removal_evicts_its_exact_bytes() {
     let manager = two_idle_entries();
     let mut guard = lock_state(&manager.state);
