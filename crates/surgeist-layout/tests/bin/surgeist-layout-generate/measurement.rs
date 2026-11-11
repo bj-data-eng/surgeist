@@ -22,6 +22,7 @@ use crate::prepared_atomic_percentage_profile;
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
+    original_grid_axes_profile,
 };
 pub(super) use flex_content_text::FlexContentText;
 
@@ -37,6 +38,7 @@ pub(super) enum BoxObservationRequest {
     OriginalPercentageFlexParent,
     OriginalBlockAxes,
     OriginalFlexAxes,
+    OriginalGridAxes,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
@@ -82,6 +84,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalFlexAxes.input_bytes() => {
                 Ok(Self::OriginalFlexAxes)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalGridAxes.input_bytes() => {
+                Ok(Self::OriginalGridAxes)
+            }
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
@@ -123,6 +128,10 @@ impl BoxObservationRequest {
             Self::OriginalFlexAxes => Some((
                 original_flex_axes_profile::SCRIPT_PATH,
                 original_flex_axes_profile::SCRIPT,
+            )),
+            Self::OriginalGridAxes => Some((
+                original_grid_axes_profile::SCRIPT_PATH,
+                original_grid_axes_profile::SCRIPT,
             )),
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
@@ -171,6 +180,7 @@ impl BoxObservationRequest {
             }
             Self::OriginalBlockAxes => Some(original_block_axes_profile::REQUEST),
             Self::OriginalFlexAxes => Some(original_flex_axes_profile::REQUEST),
+            Self::OriginalGridAxes => Some(original_grid_axes_profile::REQUEST),
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
@@ -734,6 +744,7 @@ pub(super) fn decode(
         BoxObservationRequest::VerticalBrFontBand
             | BoxObservationRequest::OriginalBlockAxes
             | BoxObservationRequest::OriginalFlexAxes
+            | BoxObservationRequest::OriginalGridAxes
     ) || (request == BoxObservationRequest::EmptyLineBrFontBand
         && wire
             .style
@@ -831,6 +842,7 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalPercentageFlexParent
         | BoxObservationRequest::OriginalBlockAxes
         | BoxObservationRequest::OriginalFlexAxes
+        | BoxObservationRequest::OriginalGridAxes
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
@@ -873,7 +885,9 @@ pub(super) fn decode(
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
     if matches!(
         request,
-        BoxObservationRequest::OriginalBlockAxes | BoxObservationRequest::OriginalFlexAxes
+        BoxObservationRequest::OriginalBlockAxes
+            | BoxObservationRequest::OriginalFlexAxes
+            | BoxObservationRequest::OriginalGridAxes
     ) {
         context.compatible(
             root_local_positioned
@@ -885,7 +899,11 @@ pub(super) fn decode(
             "viewport",
             "original axes require their first-block root-local frame",
         )?;
-        validate_original_axes(&root, &context, request)?;
+        if request == BoxObservationRequest::OriginalGridAxes {
+            validate_original_grid_axes(&root, &context)?;
+        } else {
+            validate_original_axes(&root, &context, request)?;
+        }
     }
     if root_local_positioned {
         let Observation::Geometry {
@@ -976,6 +994,57 @@ fn validate_original_axes(
                 && has_attribute(&root.attrs, "justify-content", "space-between"),
             "style",
             "original Flex axes require their source alignment",
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_original_grid_axes(root: &Node, context: &Context<'_>) -> Result<(), MeasurementError> {
+    let [first, second] = root.children.as_slice() else {
+        return Err(context.error(
+            "children",
+            MeasurementErrorKind::ContradictoryFields,
+            "original Grid axes require two source children",
+        ));
+    };
+    let auto_box = |node: &Node| {
+        matches!(node.kind, NodeKind::Box)
+            && node.text.is_none()
+            && has_attribute(&node.attrs, "source-tag", "div")
+            && node
+                .attrs
+                .iter()
+                .all(|(name, value)| !matches!(*name, "width" | "height") || value == "auto")
+    };
+    context.compatible(
+        auto_box(root)
+            && has_attribute(&root.attrs, "display", "grid")
+            && has_attribute(&root.attrs, "position", "absolute")
+            && has_attribute(&root.attrs, "grid-template-columns", "30px 40px")
+            && has_attribute(&root.attrs, "grid-template-rows", "50px 60px"),
+        "style",
+        "original Grid axes require an absolute Auto root with fixed authored tracks",
+    )?;
+    for (index, (child, start, end)) in [(first, "1", "2"), (second, "2", "3")]
+        .into_iter()
+        .enumerate()
+    {
+        let place = context.child(index);
+        place.compatible(
+            auto_box(child)
+                && child.children.is_empty()
+                && has_attribute(&child.attrs, "display", "flex")
+                && child.attrs.iter().all(|(name, _)| *name != "position")
+                && [
+                    ("grid-column-start", start),
+                    ("grid-column-end", end),
+                    ("grid-row-start", start),
+                    ("grid-row-end", end),
+                ]
+                .into_iter()
+                .all(|(key, value)| has_attribute(&child.attrs, key, value)),
+            "style",
+            "original Grid axes require authored diagonal child placement",
         )?;
     }
     Ok(())

@@ -1269,8 +1269,7 @@ fn original_grid_axes_require_auto_root_and_authored_placement() {
     altered["style"]["size"] = json!({"width": {"unit": "px", "value": 110}});
     assert_eq!(decode_original(&altered).unwrap_err().field_path, "style");
     root["children"][1]["style"]["gridRowEnd"] = json!({"kind": "line", "value": 4});
-    assert_eq!(
-        decode_original(&root).unwrap_err().field_path,
-        "children[1].style"
-    );
+    let error = decode_original(&root).unwrap_err();
+    assert_eq!(error.node_path, "root.children[1]");
+    assert_eq!(error.field_path, "style");
 }

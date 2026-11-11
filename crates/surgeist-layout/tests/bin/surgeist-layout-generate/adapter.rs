@@ -10,6 +10,7 @@ use crate::xml::{escape_attr, generate_xml};
 use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 use crate::{
     original_block_axes_profile, original_flex_axes_profile, original_flex_parent_profile,
+    original_grid_axes_profile,
 };
 use serde_json::Value;
 
@@ -599,6 +600,12 @@ fn original_axis_capture(request: BoxObservationRequest) -> Option<AxisCapture> 
             script: original_flex_axes_profile::SCRIPT,
             source_digest: original_flex_axes_profile::source_digest,
             accepts_helper: original_flex_axes_profile::accepts_helper,
+        }),
+        BoxObservationRequest::OriginalGridAxes => Some(AxisCapture {
+            function: "captureOriginalGridAxes",
+            script: original_grid_axes_profile::SCRIPT,
+            source_digest: original_grid_axes_profile::source_digest,
+            accepts_helper: original_grid_axes_profile::accepts_helper,
         }),
         _ => None,
     }
