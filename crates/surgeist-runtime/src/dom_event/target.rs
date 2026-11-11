@@ -142,7 +142,9 @@ impl<C> DomEventDispatcher<C> {
                 dom.snapshot().node(*node)?;
             }
             DomEventTarget::Global(global) => {
-                dom.dispatch_global_document(*global, cancel)?;
+                dom.dispatch_global_document_with(*global, cancel, &mut || {
+                    self.storage.step(1, cancel)
+                })?;
             }
             DomEventTarget::Standalone(target) => {
                 if target.document().node().owner() != dom.owner() {
