@@ -594,6 +594,30 @@ normative conflict. Root-backdrop and broad backdrop-policy boundaries remain
 separate. Ledger owns actual graph work, resource custody and optional timings;
 refusal preserves the previous complete pixels and successful statistics.
 
+## Foreground layer blur
+
+`Layer::try_filter(Filter::try_blur(sigma)?)` applies one scalar Gaussian
+standard deviation in layer-local logical units. The authored constructor
+accepts finite nonnegative values. Scene normalization admits `0..=256`
+and reports `InvalidInput` above that range. Device and Ledger limits apply
+to the resulting work and allocations.
+
+Render captures the layer's completed children over transparent black.
+Positive sigma uses horizontal and vertical RGBA Gaussian passes with
+transparent-black sampling outside the input. The output includes the
+filter halo wherever it can contribute to the parent. Zero sigma still
+groups the children and skips both Gaussian passes. Layer clipping,
+resolved alpha masking, opacity, and composition apply to the group
+output. See the [layer composition contract](#layer-composition-and-isolation)
+for the finite operation domain of destructive operators.
+
+`FilterCapabilities::supports_layer_filters` and
+`OffscreenPipelineCapabilities::supports_layer_filter_execution` report
+this foreground blur route. A frame that requires both foreground blur and
+active backdrop execution returns the typed `BroadBackdropExecution`
+diagnostic. Authored shape masks and filtered image paints have their
+separate typed capability boundaries.
+
 ## Image sampling
 
 `Image::rendering` accepts an `ImageRendering` hint already selected by the

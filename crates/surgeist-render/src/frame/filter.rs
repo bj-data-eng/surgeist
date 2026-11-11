@@ -6,6 +6,8 @@ use super::{
     },
 };
 use crate::accounting::{Account, RenderPhase, RenderWork, SharedValue};
+#[cfg(test)]
+use crate::style::FilterList;
 use crate::{
     command::NormalizedLayer,
     error::{Error, Result},
@@ -14,20 +16,20 @@ use crate::{
         CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS,
     },
     geometry::Transform,
-    style::{FilterBlur, FilterDropShadow, FilterList},
+    style::{FilterBlur, FilterDropShadow, FilterOp},
 };
 
 impl FrameContext {
-    pub(super) fn plan_filter_list(
+    pub(super) fn plan_filter_operations(
         self,
         source_bounds: LogicalBounds,
         transform: Transform,
-        filters: &FilterList,
+        operations: &[FilterOp],
         source_role: FilterSourceRole,
         account: &Account,
     ) -> Result<ResolvedFrameFilterPlan> {
         let account = account.at(RenderPhase::Filter);
-        let algorithm = AlgorithmFilterPlan::from_filter_list(filters, &account)?;
+        let algorithm = AlgorithmFilterPlan::from_ops(operations, &account)?;
         account.phase(RenderPhase::Filter, || {
             let initial_spatial = self.plan_local_bounds(source_bounds, transform)?;
             let FrameSpatialPlan::NonEmpty(initial_spatial) = initial_spatial else {
@@ -53,10 +55,7 @@ impl FrameContext {
                     ),
                     AlgorithmFilterStep::Blur(blur) => {
                         let support = InclusiveFilterKernelSupport::try_new(blur, raster_scale)?;
-                        let result_bounds = source_bounds.try_inflate_uniform(
-                            support.logical_radius,
-                            "filter blur result bounds",
-                        )?;
+                        let result_bounds = support.inflate(source_bounds)?;
                         let edge_policy = match source_role {
                             FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
                             FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
@@ -160,15 +159,15 @@ impl SemanticSourceContribution {
             return Ok(source_bounds);
         };
         let algorithm_filter_plan =
-            AlgorithmFilterPlan::from_filter_list(backdrop.filters(), account)?;
+            AlgorithmFilterPlan::from_ops(backdrop.filters().ops(), account)?;
         let capture_bounds = LogicalBounds::try_from_rect(
             backdrop.capture_bounds().rect(),
             "backdrop capture bounds",
         )?;
-        let resolved_filter_plan = context.plan_filter_list(
+        let resolved_filter_plan = context.plan_filter_operations(
             capture_bounds,
             layer_to_surface,
-            backdrop.filters(),
+            backdrop.filters().ops(),
             FilterSourceRole::Backdrop,
             account,
         )?;
@@ -200,13 +199,6 @@ impl SemanticSourceContribution {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Ordinary and backdrop filter plans remain available to graph construction and validation."
-    )
-)]
 pub(super) enum FilterSourceRole {
     Ordinary,
     Backdrop,
@@ -300,7 +292,7 @@ pub(super) struct InclusiveFilterKernelSupport {
 }
 
 impl InclusiveFilterKernelSupport {
-    fn try_new(blur: FilterBlur, raster_scale: RasterScale) -> Result<Self> {
+    pub(super) fn try_new(blur: FilterBlur, raster_scale: RasterScale) -> Result<Self> {
         let scaled_standard_deviation = checked_mul(
             blur.radius(),
             raster_scale.get(),
@@ -329,6 +321,10 @@ impl InclusiveFilterKernelSupport {
             device_radius,
             logical_radius,
         })
+    }
+
+    pub(super) fn inflate(self, bounds: NonEmptyLogicalBounds) -> Result<NonEmptyLogicalBounds> {
+        bounds.try_inflate_uniform(self.logical_radius, "filter blur result bounds")
     }
 }
 
@@ -402,10 +398,10 @@ pub(crate) fn ordered_filter_plan_for_test(
     } else {
         FilterSourceRole::Ordinary
     };
-    let plan = FrameContext::try_for_spatial_test(surface_scale)?.plan_filter_list(
+    let plan = FrameContext::try_for_spatial_test(surface_scale)?.plan_filter_operations(
         source_bounds,
         transform,
-        filters,
+        filters.ops(),
         source_role,
         &Account::for_test(),
     )?;

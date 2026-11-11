@@ -7,7 +7,7 @@ use super::{
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
-    style::{ClipGeometryKind, FilterList},
+    style::{ClipGeometryKind, FilterBlur, FilterList},
     validation::*,
     *,
 };
@@ -207,6 +207,7 @@ pub(crate) struct NormalizedLayer {
     pub(crate) composition: LayerComposition,
     pub(crate) explicit_isolation: bool,
     pub(crate) mask: Option<RenderLayerMask>,
+    pub(crate) foreground_blur: Option<FilterBlur>,
     pub(crate) backdrop: Option<SharedValue<RenderBackdropCapture>>,
     pub(crate) isolation: LayerIsolation,
     pub(crate) pass_plan: LayerPassPlan,
@@ -425,6 +426,17 @@ impl LayerPassPlan {
                 LayerPassRequirement::OffscreenTexture(
                     PrimitiveOperation::BasicPorterDuffCompositeMode,
                 ),
+                LayerPassKind::OffscreenTexture,
+                bounds,
+            ));
+        }
+        if layer.filter().is_some() {
+            capabilities.ensure_supported(UnsupportedPrimitive::new(
+                PrimitiveFamily::OffscreenPipeline,
+                PrimitiveOperation::LayerFilterExecution,
+            ))?;
+            return Ok(Self::new(
+                LayerPassRequirement::OffscreenTexture(PrimitiveOperation::LayerFilterExecution),
                 LayerPassKind::OffscreenTexture,
                 bounds,
             ));
@@ -1116,6 +1128,16 @@ impl NormalizedLayer {
         capabilities: Capabilities,
         account: &Account,
     ) -> Result<Self> {
+        let foreground_blur = layer
+            .filter()
+            .map(|filter| {
+                capabilities.ensure_supported(UnsupportedPrimitive::new(
+                    PrimitiveFamily::Filters,
+                    PrimitiveOperation::LayerFilter,
+                ))?;
+                FilterBlur::try_new(filter.blur_radius())
+            })
+            .transpose()?;
         let clip = layer
             .clip_input()
             .map(|clip| RenderClip::from_input_in(clip, capabilities, account))
@@ -1137,6 +1159,7 @@ impl NormalizedLayer {
             composition: layer.composition(),
             explicit_isolation: layer.is_isolated(),
             mask,
+            foreground_blur,
             backdrop,
             isolation: pass_plan.isolation(),
             pass_plan,
@@ -1183,12 +1206,6 @@ fn unsupported_layer_effect(layer: &Layer) -> Option<UnsupportedPrimitive> {
         return Some(UnsupportedPrimitive::new(
             PrimitiveFamily::MasksAndClips,
             PrimitiveOperation::LayerMask,
-        ));
-    }
-    if layer.filter().is_some() {
-        return Some(UnsupportedPrimitive::new(
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::LayerFilter,
         ));
     }
     None

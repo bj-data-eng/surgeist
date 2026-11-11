@@ -2138,8 +2138,8 @@ impl std::error::Error for ErrorSourceFixture {}
 #[test]
 fn runtime_errors_distinguish_semantic_unsupported_from_device_unavailable() {
     let unsupported = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
-        PrimitiveFamily::Filters,
-        PrimitiveOperation::LayerFilter,
+        PrimitiveFamily::ImageSampling,
+        PrimitiveOperation::FilteredImagePaint,
     ));
     let unavailable =
         Error::runtime_capability_unavailable(RuntimeCapabilityUnavailable::device_lost(
@@ -2349,8 +2349,8 @@ fn typed_error_codes_cannot_exist_without_their_matching_payload() {
     let errors = [
         Error::invalid_value("field", "value", "must be valid"),
         Error::unsupported_render_primitive(UnsupportedPrimitive::new(
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::LayerFilter,
+            PrimitiveFamily::ImageSampling,
+            PrimitiveOperation::FilteredImagePaint,
         )),
         Error::unresolved_resource(UnresolvedResource::new(
             UnresolvedResourceKind::Image,
@@ -2417,8 +2417,8 @@ fn typed_error_codes_cannot_exist_without_their_matching_payload() {
 fn semantic_error_accessors_preserve_payloads() {
     let invalid = Error::invalid_value("radius", -1, "must be non-negative");
     let unsupported = Error::unsupported_render_primitive(UnsupportedPrimitive::new(
-        PrimitiveFamily::Filters,
-        PrimitiveOperation::LayerFilter,
+        PrimitiveFamily::ImageSampling,
+        PrimitiveOperation::FilteredImagePaint,
     ));
     let unresolved = Error::unresolved_resource(UnresolvedResource::new(
         UnresolvedResourceKind::Image,
@@ -3314,51 +3314,48 @@ fn reference_composition_buffers_are_deterministic() {
 }
 
 #[test]
-fn authored_layer_mask_and_filter_inputs_return_typed_diagnostics() {
-    let cases = [
-        (
-            "layer mask",
-            Layer::new()
-                .try_mask(Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)))
-                .unwrap(),
-            UnsupportedPrimitive::new(
-                PrimitiveFamily::MasksAndClips,
-                PrimitiveOperation::LayerMask,
-            ),
-        ),
-        (
-            "layer filter",
-            Layer::new()
-                .try_filter(Filter::try_blur(2.0).unwrap())
-                .unwrap(),
-            UnsupportedPrimitive::new(PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
-        ),
-    ];
-
-    for (label, layer, unsupported) in cases {
-        let mut scene = Scene::new();
-        scene.layer(layer, |scene| {
+fn authored_shape_mask_returns_its_typed_diagnostic() {
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new()
+            .try_mask(Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)))
+            .unwrap(),
+        |scene| {
             scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
-        });
+        },
+    );
+    let error = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .expect_err("authored shape masks require a resolved execution input");
+    let unsupported = UnsupportedPrimitive::new(
+        PrimitiveFamily::MasksAndClips,
+        PrimitiveOperation::LayerMask,
+    );
+    assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+    assert_eq!(error.unsupported_primitive(), Some(unsupported));
+    assert!(error.message().contains(unsupported.label()));
+}
 
-        let error = scene
-            .normalize(
-                Capabilities::CURRENT,
-                &crate::accounting::Account::for_test(),
-            )
-            .expect_err("authored inputs must not imply mask or layer-effect execution");
-
-        assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
-        assert_eq!(
-            error.unsupported_primitive(),
-            Some(unsupported),
-            "{label} must retain its typed diagnostic"
-        );
-        assert!(
-            error.message().contains(unsupported.label()),
-            "{label} must retain its diagnostic label"
-        );
-    }
+#[test]
+fn foreground_blur_accepts_the_execution_limit_during_normalization() {
+    let mut scene = Scene::new();
+    scene.layer(
+        Layer::new()
+            .try_filter(Filter::try_blur(256.0).unwrap())
+            .unwrap(),
+        |scene| {
+            scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+        },
+    );
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .expect("the maximum supported Gaussian sigma must normalize");
 }
 
 #[test]

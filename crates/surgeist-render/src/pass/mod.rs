@@ -256,7 +256,8 @@ mod accounting_tests {
 )]
 pub(crate) use close::{
     BackdropPreparableGraph, BaseExecutionFacts, BasePreparableGraph, ColorFilterPreparableGraph,
-    CompositionPreparableGraph, ExecutableVelloCaptureFacts, SpatialFilterPreparableGraph,
+    CompositionPreparableGraph, ExecutableVelloCaptureFacts, ForegroundBlurPreparableGraph,
+    SpatialFilterPreparableGraph,
 };
 #[expect(
     unused_imports,

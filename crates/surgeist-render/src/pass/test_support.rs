@@ -3060,26 +3060,6 @@ impl ColorFilterPreparableGraph {
 
 #[cfg(test)]
 impl SpatialFilterPreparableGraph {
-    pub(crate) fn working_format(&self) -> WorkingFormat {
-        self.closed.facts.working_format
-    }
-
-    pub(crate) fn output_format(&self) -> Format {
-        self.closed.facts.output_format
-    }
-
-    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
-        for resource in &self.closed.lowered.resources {
-            account.work(crate::RenderWork::ResourceProbes, 1)?;
-            if resource.id == self.closed.lowered.root_working_image {
-                return Ok(resource.spatial.device_extent);
-            }
-        }
-        Err(preparation_error(
-            "the spatial-filter root output resource is missing",
-        ))
-    }
-
     pub(crate) fn first_filter_spatial_for_test(
         &self,
     ) -> Option<(
@@ -5946,32 +5926,6 @@ impl<'device> PreparedGraph<'device> {
         if prepared.color_filter_execution.is_none() {
             return Err(preparation_error(
                 "color-filter preparation lost its validated closed execution facts",
-            ));
-        }
-        Ok(prepared)
-    }
-
-    pub(crate) fn try_prepare_spatial_filter(
-        preparable: SpatialFilterPreparableGraph,
-        capabilities: &DeviceCapabilities,
-        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
-        resources: &'device ResourceManager,
-        pass_cache_phase: (&'device DevicePassCache, bool),
-        account: &Account,
-    ) -> Result<Self> {
-        let selected_working_format = preparable.working_format();
-        let prepared = Self::try_prepare_inner(
-            GraphPreparationSource::SpatialFilter(&preparable),
-            selected_working_format,
-            capabilities,
-            (device, queue),
-            resources,
-            pass_cache_phase,
-            account,
-        )?;
-        if prepared.spatial_filter_execution.is_none() {
-            return Err(preparation_error(
-                "spatial-filter preparation lost its validated closed execution facts",
             ));
         }
         Ok(prepared)
