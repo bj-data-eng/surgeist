@@ -54,7 +54,7 @@ impl Capture {
         operation: Operation,
     ) -> Result<Completion<'scope>, Error> {
         let (owner, events) = self.active(scope)?;
-        let Some(target) = event_receiver(&owner, scope, arguments.receiver())? else {
+        let Some(target) = event_receiver(&owner, &events, scope, arguments.receiver())? else {
             return Ok(Completion::Throw(
                 scope.type_error(&ascii(b"EventTarget required"))?,
             ));

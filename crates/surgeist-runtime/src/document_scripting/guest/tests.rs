@@ -2,7 +2,17 @@ use super::*;
 
 fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
     let cancellation = Arc::new(AtomicBool::new(false));
-    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let (session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    attach_public_nodes(session, target, cancellation, node_work, source_work)
+}
+
+fn attach_public_nodes(
+    mut session: DomSession,
+    target: DomHostedTopLevel,
+    cancellation: Arc<AtomicBool>,
+    node_work: u64,
+    source_work: u64,
+) -> DocumentScriptHost {
     let mut registry = DomEventDispatcher::new(crate::DomEventRegistryLimits {
         registrations: 8,
         pending_events: 2,
@@ -33,7 +43,7 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
                 node_retirement: DomNodeRetirementLimits::new(16_000_000, node_work),
                 source_edits: DomSourceLimits::new(16_000_000, 200_000, source_work, 64, 64, 64, 2),
                 dispatch: DomEventDispatchLimits {
-                    path_items: 2,
+                    path_items: 8,
                     snapshot_listeners: 8,
                     failure_records: 4,
                     callbacks: 8,
@@ -42,6 +52,642 @@ fn public_node_host(node_work: u64, source_work: u64) -> DocumentScriptHost {
             },
         )
         .unwrap()
+}
+
+pub(in crate::document_scripting) fn adopted_element_uses_its_registered_creation_realm() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let cancellation = Arc::new(AtomicBool::new(false));
+    let (mut session, target) = super::super::cross_realm_tests::hosted_session(&cancellation, 0);
+    let origin = {
+        let mut hosted = session.hosted_execution();
+        let mut dom = session.dom();
+        let owner = hosted
+            .create_headless_host(&mut dom, &cancellation)
+            .unwrap();
+        hosted
+            .create_top_level(&mut dom, owner, &cancellation)
+            .unwrap()
+    };
+    let element = {
+        let mut batch = DomBatch::new();
+        let element = batch.create_element_ns(origin.document(), Namespace::html(), "div");
+        let commit = session.dom().apply(batch, &cancellation).unwrap();
+        commit.created(&element).unwrap().unwrap()
+    };
+    let watch_limits = DomNodeRetirementLimits::new(16_000_000, 1_000);
+    let mut rust_inbox = session
+        .dom()
+        .raw()
+        .node_retirement_inbox(watch_limits, &cancellation)
+        .unwrap();
+    let _rust_watch = session
+        .dom()
+        .raw_mut()
+        .watch_node_retirement(element, &rust_inbox, 71, watch_limits, &cancellation)
+        .unwrap();
+    let mut host = attach_public_nodes(session, target, cancellation.clone(), 1_000, 20_000);
+    let permit = host.permit().unwrap();
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units("globalThis.destination = new Document()"))
+            .map(drop)
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let destination = snapshot
+        .nodes()
+        .filter_map(|node| snapshot.node(node).unwrap().as_document())
+        .map(|view| view.id())
+        .find(|document| *document != target.document() && *document != origin.document())
+        .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(element, destination);
+        batch.insert_before(element, destination, None);
+        dom.apply(batch, &cancellation).unwrap();
+    })
+    .unwrap();
+    let snapshot = host.snapshot().unwrap();
+    assert_eq!(
+        snapshot.relevant_global(element).unwrap(),
+        Some(origin.global())
+    );
+    assert_eq!(
+        snapshot.document(destination).unwrap().document_element(),
+        Some(element)
+    );
+
+    assert!(rust_inbox.take().is_none());
+    let projected = host.in_document(&permit, |scope| {
+        let wrapper = scope.evaluate(&units(
+            "globalThis.adopted = destination.documentElement; adopted.marker = Symbol(); adopted",
+        ))?;
+        let realm = scope
+            .callback_object(&wrapper)?
+            .associated_realm()
+            .identity();
+        assert_ne!(realm, scope.realm_authority()?.identity());
+        assert_guest(
+            scope,
+            "adopted === destination.documentElement && adopted.localName === 'div' && \
+             adopted.ownerDocument === destination && adopted.getRootNode() === destination",
+        )?;
+        Ok((realm, scope.retain(&wrapper)))
+    });
+    let (realm, wrapper) = match projected {
+        Ok(projection) => projection,
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "registered origin could not expose the adopted root: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("registered origin could not expose the adopted root: {error:?}"),
+    };
+    let engine = host.engine.as_mut().unwrap();
+    let original = engine
+        .creations
+        .find(origin.global(), || Ok::<(), Error>(()))
+        .unwrap()
+        .unwrap();
+    let (original_marker, origin_dom_exception) = engine.process.execution().in_realm(original, |scope| {
+        assert_eq!(scope.realm_authority()?.identity(), realm);
+        let global = scope.global()?;
+        let wrapper = scope.import(&wrapper)?;
+        scope.set(&global, PropertyKey::String(&units("adopted")), &wrapper)?;
+        assert_guest(
+            scope,
+            "Object.getPrototypeOf(adopted) === HTMLDivElement.prototype && \
+             adopted instanceof Node && adopted instanceof Element && adopted instanceof EventTarget",
+        )?;
+        assert_guest(
+            scope,
+            r#"(() => {
+                try { EventTarget.prototype.dispatchEvent.call(globalThis, null); }
+                catch (error) {
+                    return error instanceof TypeError && error.message === "EventTarget required";
+                }
+                return false;
+            })()"#,
+        )?;
+        let marker = scope.evaluate(&units("adopted.marker"))?;
+        let exception = scope.evaluate(&units("DOMException"))?;
+        scope.evaluate(&units("delete globalThis.adopted"))?;
+        Ok((scope.retain(&marker), scope.retain(&exception)))
+    }).unwrap();
+
+    host.with_native(|dom, mut hosted, _| {
+        let retirement = hosted
+            .destroy_top_level(dom, origin.navigable(), &cancellation)
+            .unwrap();
+        assert!((0..256).any(|_| matches!(
+            hosted.run_next(dom, retirement.traversable(), &cancellation).unwrap(),
+            crate::DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+        )));
+        hosted.destroy_host(dom, origin.host(), &cancellation).unwrap();
+        let mut detach = DomBatch::new();
+        detach.detach(element);
+        dom.apply(detach, &cancellation).unwrap();
+    })
+    .unwrap();
+    assert!(rust_inbox.take().is_none());
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "destination.documentElement === null && adopted.getRootNode() === adopted",
+        )
+    })
+    .unwrap();
+    host.with_native(|dom, _, _| {
+        let mut insert = DomBatch::new();
+        insert.insert_before(element, destination, None);
+        dom.apply(insert, &cancellation).unwrap();
+    })
+    .unwrap();
+    let dispatched = host.in_document(&permit, |scope| {
+        let marker = scope.import(&original_marker)?;
+        let wrapper = scope.import(&wrapper)?;
+        let observed = scope.get(&wrapper, PropertyKey::String(&units("marker")))?;
+        assert!(scope.strict_equals(&marker, &observed)?);
+        let global = scope.global()?;
+        let exception = scope.import(&origin_dom_exception)?;
+        scope.set(
+            &global,
+            PropertyKey::String(&units("originDomException")),
+            &exception,
+        )?;
+        assert_guest(
+            scope,
+            r#"(() => {
+                const event = new Event("adopted");
+                const calls = [];
+                const listener = { handleEvent(value) {
+                    calls.push(this === listener && value === event
+                        && value.target === adopted && value.currentTarget === adopted);
+                    try { adopted.dispatchEvent(value); }
+                    catch (error) {
+                        calls.push(error instanceof originDomException
+                            && !(error instanceof DOMException)
+                            && error.name === "InvalidStateError");
+                    }
+                } };
+                adopted.addEventListener("adopted", listener, { once: true });
+                const same = adopted === destination.documentElement;
+                const dispatched = adopted.dispatchEvent(event);
+                return same && dispatched && calls.length === 2 && calls.every(Boolean)
+                    && event.target === adopted && event.currentTarget === null;
+            })()"#,
+        )
+    });
+    match dispatched {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "inherited EventTarget dispatch refused for the adopted root: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("inherited EventTarget dispatch refused: {error:?}"),
+    }
+    let native_destination = host
+        .with_native(|dom, hosted, _| {
+            let context = hosted
+                .with_current_top_level(dom, target, &cancellation, |source, dom| {
+                    source
+                        .document_constructor_context(dom.raw(), target.global(), &cancellation)
+                        .map_err(DomHostedRuntimeError::Dom)
+                })
+                .unwrap();
+            let mut batch = DomBatch::new();
+            let document = batch.construct_document(context);
+            batch.adopt(element, &document);
+            batch.insert_before(element, &document, None);
+            dom.apply(batch, &cancellation)
+                .unwrap()
+                .document(&document)
+                .unwrap()
+        })
+        .unwrap();
+    assert_eq!(
+        host.snapshot()
+            .unwrap()
+            .node(element)
+            .unwrap()
+            .owner_document(),
+        Some(native_destination),
+    );
+    assert!(rust_inbox.take().is_none());
+    host.in_document(&permit, |scope| {
+        let document = scope.evaluate(&units("adopted.ownerDocument"))?;
+        let actual = scope.callback_object(&document)?.associated_realm().identity();
+        assert_eq!(
+            actual, scope.realm_authority()?.identity(),
+            "a Document first exposed from an origin callback belongs to its own registered realm",
+        );
+        assert_guest(
+            scope,
+            "adopted.ownerDocument instanceof Document && adopted.getRootNode() === adopted.ownerDocument \
+             && adopted.ownerDocument.documentElement === adopted",
+        )
+    }).unwrap();
+    host.with_native(|dom, _, _| {
+        let mut destroy = DomBatch::new();
+        destroy.detach(element);
+        destroy.destroy(element);
+        dom.apply(destroy, &cancellation).unwrap();
+    })
+    .unwrap();
+    let notice = rust_inbox.take().unwrap();
+    assert_eq!(notice.node(), element);
+    assert_eq!(notice.custody_key(), 71);
+    assert!(rust_inbox.take().is_none());
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("adopted.localName")).map(drop)
+        })
+    else {
+        panic!("the original V8 wrapper must observe exact native retirement");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
+}
+
+pub(in crate::document_scripting) fn element_projection_admits_exact_work_and_backing() {
+    const ROOT: &str = "window.document.documentElement";
+    // Entry, bank lookup, one radix page, first index formation and custody
+    // admission, followed by the prepaid worst-case exact disarm.
+    let native_work = 5 + 2 * u64::from(usize::BITS) + 1;
+    let read = |scope: &mut Scope<'_>| {
+        let root = scope.evaluate(&units(ROOT))?;
+        assert_eq!(scope.kind(&root)?, surgeist_bindings_js::ValueKind::Object);
+        Ok(())
+    };
+    let mut control = public_node_host(native_work, 20_000);
+    let permit = control.permit().unwrap();
+    let events = control.guest_events().unwrap();
+    let before = (events.budget.work.get(), events.budget.used.get());
+    control.in_document(&permit, read).unwrap();
+    let binding_work = events.budget.work.get() - before.0;
+    let bytes = events.budget.used.get() - before.1;
+    assert!(binding_work > 0 && bytes > 0);
+    drop((control, events));
+
+    for (work, bytes, accepted) in [
+        (binding_work, bytes, true),
+        (binding_work - 1, bytes, false),
+        (binding_work, bytes - 1, false),
+    ] {
+        let mut host = public_node_host(native_work, 20_000);
+        let permit = host.permit().unwrap();
+        let events = host.guest_events().unwrap();
+        let spare = events.limits.storage_bytes - events.budget.used.get() - bytes;
+        let backing = events.reserve(&host.native, spare).unwrap();
+        events.budget.work.set(events.limits.work - work);
+        let stamp = host.snapshot().unwrap().stamp();
+        let before = events.budget.used.get();
+        let result = host.in_document(&permit, read);
+        assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+        if accepted {
+            result.unwrap();
+            assert_eq!(events.budget.work.get(), events.limits.work);
+            assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+        } else {
+            let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = result else {
+                panic!("one-short Element projection must refuse");
+            };
+            assert!(matches!(
+                (
+                    work < binding_work,
+                    failure.cause::<DocumentGuestEventError>()
+                ),
+                (true, Some(DocumentGuestEventError::WorkLimit))
+                    | (
+                        false,
+                        Some(DocumentGuestEventError::Document(
+                            DocumentScriptError::Native(DocumentScriptNativeError::StorageLimit)
+                        ))
+                    )
+            ));
+            assert_eq!(events.budget.used.get(), before);
+        }
+        drop(backing);
+    }
+
+    let mut host = public_node_host(native_work - 1, 20_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let before = events.budget.used.get();
+    let stamp = host.snapshot().unwrap().stamp();
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, read)
+    else {
+        panic!("one-short canonical watch must refuse Element publication");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(DocumentScriptError::Native(
+            DocumentScriptNativeError::Dom(DomError::NodeRetirementWorkLimit { limit })
+        ))) if *limit == native_work - 1
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert_eq!(
+        events.budget.used.get(),
+        before,
+        "watch refusal must release all wrapper backing"
+    );
+    drop((host, events));
+
+    let mut host = public_node_host(native_work, 20_000);
+    let permit = host.permit().unwrap();
+    let events = host.guest_events().unwrap();
+    let before = (events.budget.work.get(), events.budget.used.get());
+    let stamp = host.snapshot().unwrap().stamp();
+    let cancel = host.native.cancellation.clone();
+    cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(matches!(
+        host.in_document(&permit, read),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Cancelled)
+        ))
+    ));
+    assert_eq!(host.snapshot().unwrap().stamp(), stamp);
+    assert_eq!((events.budget.work.get(), events.budget.used.get()), before);
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+    host.in_document(&permit, read).unwrap();
+}
+
+pub(in crate::document_scripting) fn refused_element_realm_installation_releases_guest_backing() {
+    let create_origin = |host: &mut DocumentScriptHost| {
+        let cancel = host.native.cancellation.clone();
+        host.with_native(|dom, mut hosted, _| {
+            let owner = hosted.create_headless_host(dom, &cancel).unwrap();
+            hosted.create_top_level(dom, owner, &cancel).unwrap()
+        })
+        .unwrap()
+    };
+    let mut control = public_node_host(1_000, 20_000);
+    let permit = control.permit().unwrap();
+    let origin = create_origin(&mut control);
+    let events = control.guest_events().unwrap();
+    let before = (events.budget.used.get(), events.budget.work.get());
+    control
+        .register_node_creation_realm(&permit, origin)
+        .unwrap();
+    let exact = events.budget.used.get() - before.0;
+    let work = events.budget.work.get() - before.1;
+    assert!(exact > 0 && work > 0);
+    drop((control, events));
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let origin = create_origin(&mut host);
+    let events = host.guest_events().unwrap();
+    let spare = events.limits.storage_bytes - events.budget.used.get() - exact;
+    let one_short = events.reserve(&host.native, spare + 1).unwrap();
+    let before = events.budget.used.get();
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::StorageLimit
+        ))
+    ));
+    assert_eq!(
+        events.budget.used.get(),
+        before,
+        "an unpublished realm must release its guest backing"
+    );
+    drop(one_short);
+    let exact_backing = events.reserve(&host.native, spare).unwrap();
+    events.budget.work.set(events.limits.work - work + 1);
+    let before = (events.budget.used.get(), events.budget.work.get());
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationRealmWorkLimit
+        ))
+    ));
+    assert_eq!((events.budget.used.get(), events.budget.work.get()), before);
+    events.budget.work.set(events.limits.work - work);
+    host.register_node_creation_realm(&permit, origin).unwrap();
+    assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+    assert_eq!(events.budget.work.get(), events.limits.work);
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationRealmAlreadyRegistered
+        ))
+    ));
+    drop(exact_backing);
+}
+
+pub(in crate::document_scripting) fn native_element_ancestors_are_projected_and_metered() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let document = permit.document();
+    let events = host.guest_events().unwrap();
+    let snapshot = host.snapshot().unwrap();
+    let root = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.trackedElement = window.document.documentElement",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+    let before = events.budget.work.get();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trackedElement.isConnected")
+    })
+    .unwrap();
+    let shallow = events.budget.work.get() - before;
+
+    let cancel = host.native.cancellation.clone();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let fragment = batch.create_fragment(document);
+        batch.detach(root);
+        batch.insert_before(root, &fragment, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    let fragment = host.in_document(&permit, |scope| {
+        assert_guest(scope, r#"(() => {
+            let path;
+            trackedElement.addEventListener("fragment", event => { path = event.composedPath(); }, { once: true });
+            const dispatched = trackedElement.dispatchEvent(new Event("fragment", { bubbles: true }));
+            const parent = trackedElement.parentNode;
+            return dispatched && path.length === 2 && path[0] === trackedElement
+                && parent instanceof DocumentFragment && path[1] === parent
+                && trackedElement.getRootNode() === parent
+                && parent.ownerDocument === window.document && !trackedElement.isConnected;
+        })()"#)
+    });
+    match fragment {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "fresh native Fragment projection refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("fresh native Fragment projection refused: {error:?}"),
+    }
+    let ancestor = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let ancestor = batch.create_element_ns(document, Namespace::html(), "div");
+            let intermediate = batch.create_element_ns(document, Namespace::html(), "span");
+            let parent = batch.create_element_ns(document, Namespace::html(), "p");
+            batch.detach(root);
+            batch.insert_before(root, &parent, None);
+            batch.insert_before(&parent, &intermediate, None);
+            batch.insert_before(&intermediate, &ancestor, None);
+            let commit = dom.apply(batch, &cancel).unwrap();
+            commit.created(&ancestor).unwrap().unwrap()
+        })
+        .unwrap();
+    let result = host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            r#"(() => {
+            globalThis.observedParent = trackedElement.parentNode;
+            globalThis.observedAncestor = trackedElement.getRootNode();
+            let path;
+            trackedElement.addEventListener("ancestor", event => { path = event.composedPath(); }, { once: true });
+            const dispatched = trackedElement.dispatchEvent(new Event("ancestor", { bubbles: true }));
+            return observedParent instanceof HTMLParagraphElement
+                && observedAncestor instanceof HTMLDivElement
+                && dispatched && path.length === 4 && path[0] === trackedElement
+                && path[1] === observedParent && path[2] instanceof HTMLSpanElement
+                && path[3] === observedAncestor && observedParent.parentNode === path[2]
+                && trackedElement.parentNode === observedParent
+                && trackedElement.getRootNode({ composed: true }) === observedAncestor
+                && !trackedElement.isConnected && observedAncestor.parentNode === null;
+        })()"#,
+        )
+    });
+    match result {
+        Ok(()) => {}
+        Err(DocumentScriptError::Script(Error::HostFailure(failure))) => panic!(
+            "live ancestor projection refused: {:?}",
+            failure.cause::<DocumentGuestEventError>()
+        ),
+        Err(error) => panic!("live ancestor projection refused: {error:?}"),
+    }
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.insert_before(ancestor, document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "window.document.documentElement === observedAncestor && trackedElement.getRootNode() === window.document")
+    }).unwrap();
+    let before = events.budget.work.get();
+    host.in_document(&permit, |scope| {
+        assert_guest(scope, "trackedElement.isConnected")
+    })
+    .unwrap();
+    let deep = events.budget.work.get() - before;
+    assert!(
+        deep > shallow,
+        "native ancestor reads must charge actual visited records"
+    );
+    let retained = events.budget.used.get();
+    events.budget.work.set(events.limits.work - deep + 1);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) =
+        host.in_document(&permit, |scope| {
+            scope
+                .evaluate(&units("trackedElement.isConnected"))
+                .map(drop)
+        })
+    else {
+        panic!("a one-short ancestor walk must refuse");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(events.budget.used.get(), retained);
+}
+
+pub(in crate::document_scripting) fn qualified_tag_presentation_admits_its_utf16_work() {
+    use surgeist_dom::DomBatch;
+    use surgeist_html::values::Namespace;
+
+    let mut host = public_node_host(1_000, 20_000);
+    let permit = host.permit().unwrap();
+    let document = permit.document();
+    let snapshot = host.snapshot().unwrap();
+    let previous = snapshot
+        .document(document)
+        .unwrap()
+        .document_element()
+        .unwrap();
+    let prefix = "prefix".repeat(12);
+    let local = "element".repeat(32) + "Ω";
+    let qualified = format!("{prefix}:{local}");
+    let expected = qualified.to_ascii_uppercase();
+    let units_expected = u64::try_from(expected.encode_utf16().count()).unwrap();
+    let cancel = host.native.cancellation.clone();
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        let element = batch.create_element_ns(document, Namespace::html(), qualified.as_str());
+        batch.detach(previous);
+        batch.insert_before(&element, document, None);
+        dom.apply(batch, &cancel).unwrap();
+    })
+    .unwrap();
+    host.in_document(&permit, |scope| {
+        scope
+            .evaluate(&units(
+                "globalThis.tagProbe = window.document.documentElement",
+            ))
+            .map(drop)
+    })
+    .unwrap();
+
+    let events = host.guest_events().unwrap();
+    let retained = events.budget.used.get();
+    let mut tag_work = 0;
+    for property in ["tagName", "nodeName"] {
+        let before = events.budget.work.get();
+        let probe = format!("tagProbe.{property} === '{expected}'");
+        host.in_document(&permit, |scope| assert_guest(scope, &probe))
+            .unwrap();
+        let work = events.budget.work.get() - before;
+        assert!(
+            work >= units_expected,
+            "{property} must admit the complete qualified spelling before materializing it"
+        );
+        assert_eq!(events.budget.used.get(), retained);
+        if property == "tagName" {
+            tag_work = work;
+        }
+    }
+
+    events.budget.work.set(events.limits.work - tag_work + 1);
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = host
+        .in_document(&permit, |scope| {
+            scope.evaluate(&units("tagProbe.tagName")).map(drop)
+        })
+    else {
+        panic!("one-short spelling admission must refuse before copying");
+    };
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::WorkLimit)
+    ));
+    assert_eq!(events.budget.used.get(), retained);
 }
 
 pub(in crate::document_scripting) fn fragment_custody_survives_collection_and_releases_on_retirement()
@@ -313,7 +959,7 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let mut foreign_registry = Some(foreign_registry);
     let mut bound = Some(bound);
     let limits = DocumentGuestEventLimits {
-        storage_bytes: 32_000,
+        storage_bytes: 64_000,
         work: 1_000,
         pending_exception_reports: 2,
         node_retirement: DomNodeRetirementLimits::new(16_000_000, 1_000),
@@ -593,7 +1239,11 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     let Err(refused) = host.dispatch_guest_event(&permit, &event_target, &event) else {
         panic!("callback work must refuse after native once selection");
     };
-    assert!(matches!(refused.error, DocumentGuestEventError::WorkLimit));
+    assert!(
+        matches!(refused.error, DocumentGuestEventError::WorkLimit),
+        "callback work must be the first refusal, got {:?}",
+        refused.error,
+    );
     assert!(refused.exceptions().is_empty());
     assert!(!events.registry.borrow().has_registration(id));
     host.in_document(&permit, |scope| {

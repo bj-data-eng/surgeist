@@ -163,9 +163,9 @@ pub(crate) fn retired_prototype_refuses_before_native_allocation() -> Result<(),
         let stale = RetainedCallbackObject::new(prototype.holder.clone(), prototype.realm.clone());
         scope.release_callback_object(prototype)?;
         let mut admitted = false;
-        let result = scope.project_retained_native_object_in_prototype_realm(&stale, (), |_| {
+        let result = scope.project_retained_native_object_in_prototype_realm(&stale, (), |_, _| {
             admitted = true;
-            Ok::<(), Error>(())
+            Ok::<_, Error>(((), ()))
         });
         assert!(matches!(result, Err(Error::ExpiredIdentity)));
         assert!(!admitted);

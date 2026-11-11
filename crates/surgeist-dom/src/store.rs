@@ -1294,25 +1294,25 @@ impl State {
         self.node_with(owner, id, &mut || Ok(()))
     }
 
-    fn node_with(
+    pub(crate) fn node_with<E: From<DomError>>(
         &self,
         owner: DomOwnerId,
         id: NodeId,
-        step: &mut impl FnMut() -> Result<(), DomError>,
-    ) -> Result<&Node, DomError> {
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<&Node, E> {
         #[cfg(test)]
         if scale_metrics::ENABLED {
             scale_metrics::record(scale_metrics::Event::CanonicalRecordRead);
         }
 
         if id.owner != owner {
-            return Err(DomError::ForeignOwner);
+            return Err(DomError::ForeignOwner.into());
         }
         self.slots
             .get_with(id.slot, step)?
             .filter(|s| s.generation == id.generation)
             .and_then(|s| s.node.as_ref())
-            .ok_or(DomError::StaleNode)
+            .ok_or_else(|| DomError::StaleNode.into())
     }
 }
 

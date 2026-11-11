@@ -64,10 +64,12 @@ pub enum DocumentScriptNativeError {
     SourcePending,
     /// This hook lacks the selected native event's exact Source authority.
     SourceAccess,
-    /// The native Comment's creation Global is unavailable in this attachment.
+    /// The native node's creation Global is unavailable in this attachment.
     CreationGlobalUnavailable,
     /// The exact native Global already has a creation realm.
     CreationRealmAlreadyRegistered,
+    /// The guest binding budget refused installation in the creation realm.
+    CreationRealmWorkLimit,
     /// A previously admitted projected node lost its managed pin record.
     ProjectionCustody,
     /// The result cannot be represented in the supported service profile.
@@ -934,7 +936,20 @@ impl DocumentScriptHost {
                 .retain_script_payload(&mut dom, bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?
         };
+        let admission = match &engine.guest_events {
+            Some(events) => events.prepare_origin(&self.native)?,
+            None => None,
+        };
         let realm = engine.process.execution().create_realm()?;
+        if let Some((events, admission)) = engine.guest_events.as_ref().zip(admission) {
+            events.install_origin(
+                &mut engine.process,
+                &realm,
+                self.native.dom_exception_limits.get(),
+                origin.global(),
+                admission,
+            )?;
+        }
         engine.creations.0 = Some(Box::new(CreationRealm {
             next: engine.creations.0.take(),
             global: origin.global(),

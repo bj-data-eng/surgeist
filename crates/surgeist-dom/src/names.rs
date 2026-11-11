@@ -268,18 +268,6 @@ pub(crate) fn name_units(
         .checked_add(name.namespace_uri().map_or(0, DocumentString::len))
 }
 
-pub(crate) fn qualified_spelling(
-    name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
-) -> DocumentString {
-    let Some(prefix) = name.prefix() else {
-        return name.local_name().clone();
-    };
-    let mut units = prefix.code_units().to_vec();
-    units.push(0x3a);
-    units.extend_from_slice(name.local_name().code_units());
-    DocumentString::from_utf16(units)
-}
-
 pub(crate) fn qualified_equals(
     name: &(impl surgeist_html::values::HtmlNameInput + ?Sized),
     value: &DocumentString,

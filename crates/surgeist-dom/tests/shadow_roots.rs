@@ -212,6 +212,18 @@ fn shadow_preorder_and_scope_do_not_rewrite_ordinary_or_element_sibling_relation
         snapshot.node(deep).unwrap().shadow_including_root(),
         document.node()
     );
+    let bounded_root = |composed, mut work: u32| {
+        let result = snapshot.node(deep).unwrap().root_with(composed, || {
+            work = work.checked_sub(1).ok_or(DomError::Cancelled)?;
+            Ok(())
+        });
+        (result.map(|node| node.id()), work)
+    };
+    // Each lookup visits the bank and its single populated page. The
+    // composed path additionally crosses both exact shadow host edges.
+    assert_eq!(bounded_root(false, 2), (Ok(inner_root), 0));
+    assert_eq!(bounded_root(true, 9), (Err(DomError::Cancelled), 0));
+    assert_eq!(bounded_root(true, 10), (Ok(document.node()), 0));
     assert_eq!(snapshot.node(inner).unwrap().parent(), Some(root));
     assert_eq!(snapshot.node(inner).unwrap().parent_element(), None);
     assert_eq!(

@@ -281,8 +281,8 @@ pub use slot::{
     DomSlotNotifications, DomSlotQueryLimits, DomSlotSignalCancellationReason,
 };
 pub use snapshot::{
-    DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTreeOrder,
-    DomTreeScope,
+    DomDocument, DomDocumentStamp, DomNode, DomNodeKind, DomShadowRoot, DomSnapshot, DomTagName,
+    DomTreeOrder, DomTreeScope,
 };
 pub use store::meta_atomic::{DomMetaOrdinaryPreparation, DomMetaOrdinaryPublished};
 mod parsed_association;

@@ -106,16 +106,14 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
         let project = scope.function(&Callback::new(move |scope, _| {
             assert_eq!(scope.realm_authority()?.identity(), receiving_id);
             let discovery = account(u64::MAX);
-            let mut prices = Vec::new();
+            let mut prices = [0, 0];
             let refused = scope.project_retained_native_object_in_prototype_realm(
                 &selected,
                 42_u32,
-                |bytes| {
-                    prices.push(u64::try_from(bytes).unwrap());
-                    if prices.len() == 2 {
-                        return Err(Error::Allocation);
-                    }
-                    Backing::admit(&discovery, bytes)
+                |payload, holder| {
+                    prices = [payload, holder].map(|bytes| u64::try_from(bytes).unwrap());
+                    let _payload = Backing::admit(&discovery, payload)?;
+                    Err::<(Backing, Backing), _>(Error::Allocation)
                 },
             );
             assert!(matches!(refused, Err(Error::Allocation)));
@@ -126,7 +124,10 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
                 scope.project_retained_native_object_in_prototype_realm(
                     &selected,
                     42_u32,
-                    |bytes| Backing::admit(&short, bytes)
+                    |payload, holder| Ok((
+                        Backing::admit(&short, payload)?,
+                        Backing::admit(&short, holder)?
+                    ))
                 ),
                 Err(Error::ConversionLedger(_))
             ));
@@ -135,7 +136,12 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
             let holder = scope.project_retained_native_object_in_prototype_realm(
                 &selected,
                 42_u32,
-                |bytes| Backing::admit(&charged, bytes),
+                |payload, holder| {
+                    Ok::<_, Error>((
+                        Backing::admit(&charged, payload)?,
+                        Backing::admit(&charged, holder)?,
+                    ))
+                },
             )?;
             assert_eq!(holder.associated_realm().identity(), origin_id);
             assert_eq!(scope.realm_authority()?.identity(), receiving_id);
@@ -176,8 +182,8 @@ pub(super) fn native_projection_uses_the_retained_prototype_realm(
     drop((origin, opened_in_receiver));
     execution.in_realm(&receiver, |scope| {
         let still_admitted =
-            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
-                Ok::<(), Error>(())
+            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_, _| {
+                Ok::<_, Error>(((), ()))
             })?;
         let projected = scope.open_callback_object(&still_admitted)?;
         assert_eq!(
@@ -215,9 +221,9 @@ pub(super) fn native_projection_refuses_foreign_prototype_before_admission() -> 
     execution.in_realm(&realm, |scope| {
         let mut attempts = 0;
         let result =
-            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_| {
+            scope.project_retained_native_object_in_prototype_realm(&prototype, (), |_, _| {
                 attempts += 1;
-                Ok::<(), Error>(())
+                Ok::<_, Error>(((), ()))
             });
         assert!(matches!(result, Err(Error::ForeignOwner)));
         assert_eq!(attempts, 0);

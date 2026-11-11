@@ -1237,11 +1237,7 @@ impl DomSnapshot {
         &self,
         node: NodeId,
     ) -> Result<Option<DomHostedGlobalId>, DomHostedError> {
-        let global = self.state.node(self.owner, node)?.relevant_global();
-        if global.is_some_and(|id| id.source.owner != self.owner) {
-            return Err(DomHostedError::ForeignSource);
-        }
-        Ok(global)
+        self.node(node)?.relevant_global()
     }
     /// The checked association retained by this exact immutable snapshot.
     /// Current execution uses the exclusive Dom owner's qualified method.

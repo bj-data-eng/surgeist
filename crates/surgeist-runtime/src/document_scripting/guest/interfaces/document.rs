@@ -2,12 +2,13 @@
 
 use super::*;
 use surgeist_bindings_js::conversion::declarations::node_get_root_node_0_options;
-use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, NodeId};
+use surgeist_dom::{DomBatch, DomNodeKind, DomNodeRetirementInbox, DomTagName, NodeId};
 use surgeist_html::values::DocumentString;
 
 const NODE: &[u16] = &ascii(b"Node");
 const DOCUMENT: &[u16] = &ascii(b"Document");
 mod character_data;
+pub(super) mod element;
 mod fragment;
 mod ordinary;
 pub(in crate::document_scripting::guest) use ordinary::NodeLifetime;
@@ -18,13 +19,14 @@ pub(in crate::document_scripting::guest) enum GuestNode {
     Fragment(NodeId),
     Text(NodeId),
     Comment(NodeId),
+    Element(NodeId),
 }
 
 impl GuestNode {
     pub(in crate::document_scripting::guest) fn node(self) -> NodeId {
         match self {
             Self::Document(id) => id.node(),
-            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) => id,
+            Self::Fragment(id) | Self::Text(id) | Self::Comment(id) | Self::Element(id) => id,
         }
     }
 
@@ -34,6 +36,7 @@ impl GuestNode {
             (Self::Fragment(_), DomNodeKind::DocumentFragment) => Ok(11.0),
             (Self::Text(_), DomNodeKind::Text(_)) => Ok(3.0),
             (Self::Comment(_), DomNodeKind::Comment(_)) => Ok(8.0),
+            (Self::Element(_), DomNodeKind::Element(_)) => Ok(1.0),
             _ => Err(DocumentScriptNativeError::ProjectionCustody),
         }
     }
@@ -68,6 +71,7 @@ pub(super) struct DocumentBindings {
     documents: RefCell<Option<Box<DocumentPin>>>,
     fragment: fragment::FragmentBindings,
     character_data: character_data::CharacterBindings,
+    element: element::ElementBindings,
     ordinary: ordinary::OrdinaryBindings,
 }
 
@@ -93,9 +97,9 @@ enum NodeMember {
 enum Observation {
     Number(f64),
     String(DocumentString),
+    TagName(DomTagName),
     Boolean(bool),
     Node(Option<NodeId>),
-    Document(Option<DocumentId>),
 }
 
 impl DocumentBindings {
@@ -106,25 +110,10 @@ impl DocumentBindings {
         inbox: DomNodeRetirementInbox,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        origin: OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let node = scope.object(ObjectPrototype::Object(target_prototype))?;
+        let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
         let prototype = scope.object(ObjectPrototype::Object(&node))?;
-        let node_constructor = scope.constructor(
-            &ConstructorCallback::bounded(
-                0,
-                // Node rejects construction before selecting any prototype.
-                |_| Err(Error::BackendUnavailable),
-                |scope, _| {
-                    Ok(ConstructorCompletion::Throw(
-                        scope.type_error(&ascii(b"Illegal constructor"))?,
-                    ))
-                },
-            ),
-            FunctionMetadata {
-                name: NODE,
-                length: 0,
-            },
-        )?;
         let fallback = capture(size_of::<Capture>())?;
         let construct = capture(size_of::<Capture>())?;
         let callback = ConstructorCallback::bounded(
@@ -143,124 +132,24 @@ impl DocumentBindings {
                 length: 0,
             },
         )?;
-        let target_constructor = scope.get(target_prototype, PropertyKey::String(CONSTRUCTOR))?;
-        scope.set_prototype(
-            &node_constructor,
-            ObjectPrototype::Object(&target_constructor),
-        )?;
         scope.set_prototype(
             &document_constructor,
             ObjectPrototype::Object(&node_constructor),
         )?;
 
-        let global = scope.global()?;
-        for (interface, prototype) in [
-            (&node_constructor, &node),
-            (&document_constructor, &prototype),
-        ] {
-            scope.define_property(
-                interface,
-                PropertyKey::String(PROTOTYPE),
-                PropertyDescriptor::Data {
-                    value: prototype,
-                    writable: false,
-                    enumerable: false,
-                    configurable: false,
-                },
-            )?;
-        }
-        for (member, key, name) in [
-            (
-                NodeMember::Type,
-                &ascii(b"nodeType")[..],
-                &ascii(b"get nodeType")[..],
-            ),
-            (
-                NodeMember::Name,
-                &ascii(b"nodeName")[..],
-                &ascii(b"get nodeName")[..],
-            ),
-            (
-                NodeMember::Connected,
-                &ascii(b"isConnected")[..],
-                &ascii(b"get isConnected")[..],
-            ),
-            (
-                NodeMember::OwnerDocument,
-                &ascii(b"ownerDocument")[..],
-                &ascii(b"get ownerDocument")[..],
-            ),
-            (
-                NodeMember::Parent,
-                &ascii(b"parentNode")[..],
-                &ascii(b"get parentNode")[..],
-            ),
-        ] {
-            let handler = capture(size_of::<(Capture, NodeMember)>())?;
-            install_getter(
-                scope,
-                &node,
-                key,
-                name,
-                true,
-                Callback::new(move |scope, arguments| {
-                    handler.node_member(scope, arguments, member)
-                }),
-            )?;
-        }
-        let root = capture(size_of::<Capture>())?;
-        let root_name = &ascii(b"getRootNode");
-        let method = scope.bounded_function(
-            &Callback::new(move |scope, arguments| root.root_node(scope, arguments)),
-            FunctionMetadata {
-                name: root_name,
-                length: 0,
+        scope.define_property(
+            &document_constructor,
+            PropertyKey::String(PROTOTYPE),
+            PropertyDescriptor::Data {
+                value: &prototype,
+                writable: false,
+                enumerable: false,
+                configurable: false,
             },
-            1,
         )?;
-        define_data(
-            scope,
-            &node,
-            PropertyKey::String(root_name),
-            &method,
-            true,
-            true,
-            true,
-        )?;
-        for (key, code) in [
-            (&ascii(b"ELEMENT_NODE")[..], 1.0),
-            (&ascii(b"ATTRIBUTE_NODE")[..], 2.0),
-            (&ascii(b"TEXT_NODE")[..], 3.0),
-            (&ascii(b"CDATA_SECTION_NODE")[..], 4.0),
-            (&ascii(b"ENTITY_REFERENCE_NODE")[..], 5.0),
-            (&ascii(b"ENTITY_NODE")[..], 6.0),
-            (&ascii(b"PROCESSING_INSTRUCTION_NODE")[..], 7.0),
-            (&ascii(b"COMMENT_NODE")[..], 8.0),
-            (&ascii(b"DOCUMENT_NODE")[..], 9.0),
-            (&ascii(b"DOCUMENT_TYPE_NODE")[..], 10.0),
-            (&ascii(b"DOCUMENT_FRAGMENT_NODE")[..], 11.0),
-            (&ascii(b"NOTATION_NODE")[..], 12.0),
-        ] {
-            let value = scope.primitive(Primitive::Number(code))?;
-            for recipient in [&node_constructor, &node] {
-                define_data(
-                    scope,
-                    recipient,
-                    PropertyKey::String(key),
-                    &value,
-                    false,
-                    true,
-                    false,
-                )?;
-            }
-        }
         fragment::install_factory(scope, &prototype, capture)?;
-        for (name, interface, prototype) in [
-            (NODE, &node_constructor, &node),
-            (DOCUMENT, &document_constructor, &prototype),
-        ] {
-            install_interface(scope, &global, name, interface, prototype)?;
-        }
+        let global = scope.global()?;
+        install_interface(scope, &global, DOCUMENT, &document_constructor, &prototype)?;
         let fragment =
             fragment::FragmentBindings::install(scope, &node, &node_constructor, capture, fund)?;
         let character_data = character_data::CharacterBindings::install(
@@ -271,6 +160,14 @@ impl DocumentBindings {
             capture,
             fund,
         )?;
+        let element = element::ElementBindings::install(
+            scope,
+            &node,
+            &node_constructor,
+            &origin.capture,
+            &origin.retain,
+        )?;
+        element::install_document_root(scope, &prototype, capture)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
             scope,
@@ -297,22 +194,21 @@ impl DocumentBindings {
             documents: RefCell::new(None),
             fragment,
             character_data,
+            element,
             ordinary: ordinary::OrdinaryBindings::new(inbox),
         })
     }
 
-    pub(super) fn open<'scope>(
+    fn find<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         events: &GuestEvents,
         node: surgeist_dom::NodeId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+    ) -> Result<Option<Value<'scope>>, DocumentGuestEventError> {
         if let Some(value) = self.open_document(scope, events, node)? {
-            return Ok(value);
+            return Ok(Some(value));
         }
-        self.ordinary
-            .open(scope, events, node)?
-            .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
+        self.ordinary.open(scope, events, node)
     }
 
     fn open_document<'scope>(
@@ -345,7 +241,7 @@ impl DocumentBindings {
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        prototype: &Value<'scope>,
+        prototype: ordinary::NodePrototype<'_, 'scope>,
         resolve: impl FnOnce() -> Result<DocumentId, DocumentGuestEventError>,
     ) -> Result<Value<'scope>, DocumentGuestEventError> {
         let mut pins = self
@@ -353,15 +249,28 @@ impl DocumentBindings {
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let backing = events.reserve(owner, size_of::<DocumentPin>())?;
-        let holder = events.project(
-            owner,
-            scope,
-            ObjectPrototype::Object(prototype),
-            GuestNodeProjection {
-                node: Cell::new(None),
-                lifetime: None,
-            },
-        )?;
+        let payload = GuestNodeProjection {
+            node: Cell::new(None),
+            lifetime: None,
+        };
+        let holder = match prototype {
+            ordinary::NodePrototype::Selected(prototype) => {
+                events.project(owner, scope, ObjectPrototype::Object(prototype), payload)?
+            }
+            ordinary::NodePrototype::Creation(prototype) => {
+                events.step()?;
+                scope.project_retained_native_object_in_prototype_realm(
+                    prototype,
+                    payload,
+                    |payload, holder| {
+                        Ok::<_, DocumentGuestEventError>((
+                            events.reserve(owner, payload)?,
+                            events.reserve(owner, holder)?,
+                        ))
+                    },
+                )?
+            }
+        };
         let value = scope.open_callback_object(&holder)?;
         let projection = scope
             .native_object::<GuestNodeProjection>(&value)?
@@ -396,7 +305,132 @@ impl DocumentBindings {
     }
 }
 
-fn install_interface<'scope>(
+pub(super) fn install_node<'scope>(
+    scope: &mut Scope<'scope>,
+    target_prototype: &Value<'scope>,
+    capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+) -> Result<(Value<'scope>, Value<'scope>), DocumentGuestEventError> {
+    let node = scope.object(ObjectPrototype::Object(target_prototype))?;
+    let node_constructor = scope.constructor(
+        &ConstructorCallback::bounded(
+            0,
+            // Node rejects construction before selecting any prototype.
+            |_| Err(Error::BackendUnavailable),
+            |scope, _| {
+                Ok(ConstructorCompletion::Throw(
+                    scope.type_error(&ascii(b"Illegal constructor"))?,
+                ))
+            },
+        ),
+        FunctionMetadata {
+            name: NODE,
+            length: 0,
+        },
+    )?;
+    let target_constructor = scope.get(target_prototype, PropertyKey::String(CONSTRUCTOR))?;
+    scope.set_prototype(
+        &node_constructor,
+        ObjectPrototype::Object(&target_constructor),
+    )?;
+    scope.define_property(
+        &node_constructor,
+        PropertyKey::String(PROTOTYPE),
+        PropertyDescriptor::Data {
+            value: &node,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        },
+    )?;
+    for (member, key, name) in [
+        (
+            NodeMember::Type,
+            &ascii(b"nodeType")[..],
+            &ascii(b"get nodeType")[..],
+        ),
+        (
+            NodeMember::Name,
+            &ascii(b"nodeName")[..],
+            &ascii(b"get nodeName")[..],
+        ),
+        (
+            NodeMember::Connected,
+            &ascii(b"isConnected")[..],
+            &ascii(b"get isConnected")[..],
+        ),
+        (
+            NodeMember::OwnerDocument,
+            &ascii(b"ownerDocument")[..],
+            &ascii(b"get ownerDocument")[..],
+        ),
+        (
+            NodeMember::Parent,
+            &ascii(b"parentNode")[..],
+            &ascii(b"get parentNode")[..],
+        ),
+    ] {
+        let handler = capture(size_of::<(Capture, NodeMember)>())?;
+        install_getter(
+            scope,
+            &node,
+            key,
+            name,
+            true,
+            Callback::new(move |scope, arguments| handler.node_member(scope, arguments, member)),
+        )?;
+    }
+    let root = capture(size_of::<Capture>())?;
+    let root_name = &ascii(b"getRootNode");
+    let method = scope.bounded_function(
+        &Callback::new(move |scope, arguments| root.root_node(scope, arguments)),
+        FunctionMetadata {
+            name: root_name,
+            length: 0,
+        },
+        1,
+    )?;
+    define_data(
+        scope,
+        &node,
+        PropertyKey::String(root_name),
+        &method,
+        true,
+        true,
+        true,
+    )?;
+    for (key, code) in [
+        (&ascii(b"ELEMENT_NODE")[..], 1.0),
+        (&ascii(b"ATTRIBUTE_NODE")[..], 2.0),
+        (&ascii(b"TEXT_NODE")[..], 3.0),
+        (&ascii(b"CDATA_SECTION_NODE")[..], 4.0),
+        (&ascii(b"ENTITY_REFERENCE_NODE")[..], 5.0),
+        (&ascii(b"ENTITY_NODE")[..], 6.0),
+        (&ascii(b"PROCESSING_INSTRUCTION_NODE")[..], 7.0),
+        (&ascii(b"COMMENT_NODE")[..], 8.0),
+        (&ascii(b"DOCUMENT_NODE")[..], 9.0),
+        (&ascii(b"DOCUMENT_TYPE_NODE")[..], 10.0),
+        (&ascii(b"DOCUMENT_FRAGMENT_NODE")[..], 11.0),
+        (&ascii(b"NOTATION_NODE")[..], 12.0),
+    ] {
+        let value = scope.primitive(Primitive::Number(code))?;
+        for recipient in [&node_constructor, &node] {
+            define_data(
+                scope,
+                recipient,
+                PropertyKey::String(key),
+                &value,
+                false,
+                true,
+                false,
+            )?;
+        }
+    }
+    let global = scope.global()?;
+    install_interface(scope, &global, NODE, &node_constructor, &node)?;
+    Ok((node_constructor, node))
+}
+
+pub(super) fn install_interface<'scope>(
     scope: &mut Scope<'scope>,
     global: &Value<'scope>,
     name: &[u16],
@@ -455,6 +489,27 @@ fn install_getter<'scope>(
     )
 }
 
+impl PublicEventBindings {
+    fn project_unpinned_document<'scope>(
+        &self,
+        scope: &mut Scope<'scope>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        document: DocumentId,
+    ) -> Result<Value<'scope>, DocumentGuestEventError> {
+        let bindings = &self.document;
+        // Published Document nodes survive for the native owner lifetime.
+        // Qualification established this Document's own attached realm.
+        bindings.publish_document(
+            scope,
+            owner,
+            events,
+            ordinary::NodePrototype::Creation(&bindings.prototype),
+            || Ok(document),
+        )
+    }
+}
+
 impl Capture {
     fn window_document<'scope>(
         &self,
@@ -481,7 +536,9 @@ impl Capture {
                     .map_err(DocumentScriptNativeError::from)?;
                 Ok(())
             })?;
-            bindings.open(scope, &events, bindings.attached_id.node())
+            bindings
+                .open_document(scope, &events, bindings.attached_id.node())?
+                .ok_or(DocumentScriptNativeError::ProjectionCustody.into())
         })();
         complete(scope, &events, result)
     }
@@ -507,16 +564,23 @@ impl Capture {
             events.step()?;
             let observation = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let node = snapshot
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
+                let node = snapshot.node_with(id.node(), || events.step())?;
                 let node_type = id.node_type(node.kind())?;
                 Ok(match member {
                     NodeMember::Type => Observation::Number(node_type),
-                    NodeMember::Name => Observation::String(node.node_name()),
-                    NodeMember::OwnerDocument => Observation::Document(node.owner_document()),
+                    NodeMember::Name => match node.tag_name_spelling_with(|| events.step())? {
+                        Some(name) => Observation::TagName(name),
+                        None => Observation::String(node.node_name()),
+                    },
+                    NodeMember::OwnerDocument => {
+                        Observation::Node(node.owner_document().map(DocumentId::node))
+                    }
                     NodeMember::Parent => Observation::Node(node.parent()),
-                    NodeMember::Connected => Observation::Boolean(node.is_connected()),
+                    NodeMember::Connected => Observation::Boolean(
+                        node.root_with(true, || events.step())?
+                            .as_document()
+                            .is_some(),
+                    ),
                 })
             })?;
             match observation {
@@ -529,42 +593,16 @@ impl Capture {
                         conversion.copy_to_js(value.code_units())
                     })
                     .map_err(Error::from)?),
-                Observation::Node(None) | Observation::Document(None) => {
-                    Ok(scope.primitive(Primitive::Null)?)
-                }
+                Observation::TagName(name) => self.copy_tag_name(scope, &owner, &events, &name),
+                Observation::Node(None) => Ok(scope.primitive(Primitive::Null)?),
                 Observation::Node(Some(node)) => events
                     .public
                     .as_ref()
                     .ok_or(Error::ExpiredIdentity)?
-                    .document
-                    .open(scope, &events, node),
-                Observation::Document(Some(document)) => {
-                    self.project_document(scope, &owner, &events, document)
-                }
+                    .project_node(scope, &owner, &events, node),
             }
         })();
         complete(scope, &events, result)
-    }
-
-    fn project_document<'scope>(
-        &self,
-        scope: &mut Scope<'scope>,
-        owner: &NativeOwner,
-        events: &GuestEvents,
-        document: DocumentId,
-    ) -> Result<Value<'scope>, DocumentGuestEventError> {
-        let bindings = &events
-            .public
-            .as_ref()
-            .ok_or(Error::ExpiredIdentity)?
-            .document;
-        if let Some(value) = bindings.open_document(scope, events, document.node())? {
-            return Ok(value);
-        }
-        let prototype = scope.open_callback_object(&bindings.prototype)?;
-        // Published Document nodes survive for the native owner lifetime.
-        // Their guest pins belong to this attachment, like new Document().
-        bindings.publish_document(scope, owner, events, &prototype, || Ok(document))
     }
 
     fn root_node<'scope>(
@@ -586,10 +624,7 @@ impl Capture {
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
             events.step()?;
             self.with_native(&owner, |session, _| {
-                session
-                    .snapshot()
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
+                session.snapshot().node_with(id.node(), || events.step())?;
                 Ok(())
             })?;
             let options = node_get_root_node_0_options();
@@ -607,20 +642,18 @@ impl Capture {
             events.step()?;
             let root = self.with_native(&owner, |session, _| {
                 let snapshot = session.snapshot();
-                let node = snapshot
-                    .node(id.node())
-                    .map_err(DocumentScriptNativeError::from)?;
-                Ok(if options.composed {
-                    node.shadow_including_root()
-                } else {
-                    node.root()
-                })
+                let node = snapshot.node_with(id.node(), || events.step())?;
+                Ok(node.root_with(options.composed, || events.step())?.id())
             })?;
-            if root != id.node() {
-                return Err(DocumentScriptNativeError::ProjectionCustody.into());
+            if root == id.node() {
+                let receiver = scope.retain(arguments.receiver());
+                return Ok(scope.import(&receiver)?);
             }
-            let receiver = scope.retain(arguments.receiver());
-            Ok(scope.import(&receiver)?)
+            events
+                .public
+                .as_ref()
+                .ok_or(Error::ExpiredIdentity)?
+                .project_node(scope, &owner, &events, root)
         })();
         complete(scope, &events, result)
     }
@@ -645,36 +678,42 @@ impl Capture {
                 .get()
                 .ok_or(DocumentScriptNativeError::Revoked)?
                 .target;
-            bindings.publish_document(scope, &owner, &events, selected.prototype(), || {
-                self.with_native(&owner, |session, global| {
-                    let hosted = session.hosted_execution();
-                    let mut dom = session.dom();
-                    let context = hosted
-                        .with_current_top_level(
-                            &mut dom,
-                            attached,
-                            &owner.cancellation,
-                            |source, dom| {
-                                source
-                                    .document_constructor_context(
-                                        dom.raw(),
-                                        global,
-                                        &owner.cancellation,
-                                    )
-                                    .map_err(DomHostedRuntimeError::Dom)
-                            },
-                        )
-                        .map_err(DocumentScriptNativeError::from)?;
-                    let mut batch = DomBatch::new();
-                    let ticket = batch.construct_document(context);
-                    let commit = dom
-                        .apply(batch, &owner.cancellation)
-                        .map_err(DocumentScriptNativeError::from)?;
-                    commit
-                        .document(&ticket)
-                        .map_err(|error| DocumentScriptNativeError::from(error).into())
-                })
-            })
+            bindings.publish_document(
+                scope,
+                &owner,
+                &events,
+                ordinary::NodePrototype::Selected(selected.prototype()),
+                || {
+                    self.with_native(&owner, |session, global| {
+                        let hosted = session.hosted_execution();
+                        let mut dom = session.dom();
+                        let context = hosted
+                            .with_current_top_level(
+                                &mut dom,
+                                attached,
+                                &owner.cancellation,
+                                |source, dom| {
+                                    source
+                                        .document_constructor_context(
+                                            dom.raw(),
+                                            global,
+                                            &owner.cancellation,
+                                        )
+                                        .map_err(DomHostedRuntimeError::Dom)
+                                },
+                            )
+                            .map_err(DocumentScriptNativeError::from)?;
+                        let mut batch = DomBatch::new();
+                        let ticket = batch.construct_document(context);
+                        let commit = dom
+                            .apply(batch, &owner.cancellation)
+                            .map_err(DocumentScriptNativeError::from)?;
+                        commit
+                            .document(&ticket)
+                            .map_err(|error| DocumentScriptNativeError::from(error).into())
+                    })
+                },
+            )
         })();
         match result {
             Ok(value) => Ok(ConstructorCompletion::Return(value)),
