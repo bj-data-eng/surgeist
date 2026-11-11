@@ -168,13 +168,17 @@ impl ImageAtlasPlan {
                 else {
                     continue;
                 };
-                // Empty image brushes are transparent. Keep their draw records, but
-                // allocate no region and never issue a zero-sized texture upload.
+                let registered = expansions.get(draw_data_offset, &account)?;
+                // Unregistered empty brushes are transparent. A registered expansion
+                // must still match the patch's source axes before resolving the draw.
                 if image.width == 0 || image.height == 0 {
+                    if let Some(expansion) = registered {
+                        expansion.require_source_size(image)?;
+                    }
                     bounded::push_record(&mut draws, (*draw_data_offset, None), &account)?;
                     continue;
                 }
-                let expansion = match expansions.get(draw_data_offset, &account)? {
+                let expansion = match registered {
                     Some(expansion) => *expansion,
                     None => ImageExpansion::from_factors(image, [1, 1])?,
                 };
