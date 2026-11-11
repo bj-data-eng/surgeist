@@ -78,7 +78,12 @@ impl Layer {
 
     /// Returns this layer with a validated foreground blur filter, replacing any prior filter.
     ///
+    /// Rendering applies the blur to the completed child group before the layer's
+    /// clip, alpha mask, opacity, and composition. A zero standard deviation keeps
+    /// the group and skips the Gaussian passes.
+    ///
     /// Returns a typed input diagnostic if canonical filter validation fails.
+    /// Rendering requires the standard deviation to be in `0..=256` logical units.
     pub fn try_filter(mut self, filter: Filter) -> Result<Self> {
         validate_filter(filter)?;
         self.filter = Some(filter);
@@ -481,16 +486,18 @@ pub struct Filter {
 }
 
 impl Filter {
-    /// Creates a blur filter with a finite, non-negative logical radius.
+    /// Creates a blur filter with a finite, non-negative Gaussian standard deviation
+    /// in logical units.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for a negative or non-finite radius.
+    /// Scene normalization rejects values above 256 with the same error code.
     pub fn try_blur(radius: f64) -> Result<Self> {
         validate_non_negative_f64(radius, "layer blur radius")?;
         Ok(Self { radius })
     }
 
     #[must_use]
-    /// Returns the blur radius in logical units.
+    /// Returns the Gaussian standard deviation in logical units.
     pub const fn blur_radius(self) -> f64 {
         self.radius
     }

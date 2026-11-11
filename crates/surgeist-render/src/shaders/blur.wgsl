@@ -85,7 +85,14 @@ fn mirrored_source_texel(
 
 fn sample_transparent_black(texel: vec2<f32>) -> vec4<f32> {
     let extent = vec2<f32>(spatial.source_destination_extents.xy);
-    if (any(texel < vec2<f32>(0.0)) || any(texel >= extent)) {
+    // Linear sampling clamps to the edge texel. Remove the portion of the
+    // bilinear footprint that would otherwise repeat that texel outside the source.
+    let coverage = clamp(
+        min(texel + vec2<f32>(0.5), extent + vec2<f32>(0.5) - texel),
+        vec2<f32>(0.0),
+        vec2<f32>(1.0),
+    );
+    if (any(coverage == vec2<f32>(0.0))) {
         return vec4<f32>(0.0);
     }
     return textureSampleLevel(
@@ -93,7 +100,7 @@ fn sample_transparent_black(texel: vec2<f32>) -> vec4<f32> {
         source_sampler,
         texel / extent,
         0.0,
-    );
+    ) * coverage.x * coverage.y;
 }
 
 fn blur_at(destination_position: vec2<f32>, axis: vec2<f32>) -> vec4<f32> {

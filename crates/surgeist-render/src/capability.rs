@@ -211,7 +211,7 @@ impl Capabilities {
             text_shadows: false,
         },
         filters: FilterCapabilities {
-            layer_filters: false,
+            layer_filters: true,
             ordered_filter_lists: true,
             gpu_color_filter_execution: true,
             gpu_blur_filter_execution: true,
@@ -264,7 +264,7 @@ impl Capabilities {
             composite_pass_execution: true,
             nested_opacity_composition: true,
             mask_execution: false,
-            layer_filter_execution: false,
+            layer_filter_execution: true,
             broad_backdrop_execution: false,
             bounded_backdrop_capture: true,
             bounded_backdrop_filter_execution: true,
@@ -956,7 +956,7 @@ pub struct FilterCapabilities {
 }
 
 impl FilterCapabilities {
-    /// Returns whether authored layer filters are supported.
+    /// Returns whether the authored foreground Gaussian blur is supported.
     #[must_use]
     pub const fn supports_layer_filters(self) -> bool {
         self.layer_filters
@@ -1316,7 +1316,7 @@ impl OffscreenPipelineCapabilities {
         self.mask_execution
     }
 
-    /// Returns whether broad authored layer filters execute through the GPU graph.
+    /// Returns whether authored foreground Gaussian blur executes through the GPU graph.
     #[must_use]
     pub const fn supports_layer_filter_execution(self) -> bool {
         self.layer_filter_execution

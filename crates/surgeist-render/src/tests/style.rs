@@ -4200,9 +4200,9 @@ fn current_capabilities_report_supported_gpu_filters_and_diagnostic_only_effects
         "the delivered GPU filter routes must publish their final semantic truths"
     );
 
-    assert!(!filters.supports_layer_filters());
+    assert!(filters.supports_layer_filters());
     assert!(
-        !capabilities
+        capabilities
             .offscreen_pipeline()
             .supports_layer_filter_execution()
     );
@@ -4231,7 +4231,7 @@ fn color_filter_capability_names_granular_execution_without_broad_effects() {
 
     assert!(capabilities.filters().supports_ordered_filter_lists());
     assert!(capabilities.filters().supports_gpu_color_filter_execution());
-    assert!(!capabilities.filters().supports_layer_filters());
+    assert!(capabilities.filters().supports_layer_filters());
     assert!(
         !capabilities
             .image_sampling()
@@ -4243,14 +4243,14 @@ fn color_filter_capability_names_granular_execution_without_broad_effects() {
             .supports_color_filtered_image_paint()
     );
     assert!(
-        !capabilities
+        capabilities
             .offscreen_pipeline()
             .supports_layer_filter_execution()
     );
 }
 
 #[test]
-fn pixel_moving_filter_capability_names_advertise_materialized_execution_only() {
+fn pixel_moving_filter_capability_names_distinguish_layer_and_image_paint_execution() {
     let capabilities = Capabilities::CURRENT;
 
     assert!(capabilities.filters().supports_ordered_filter_lists());
@@ -4263,14 +4263,14 @@ fn pixel_moving_filter_capability_names_advertise_materialized_execution_only() 
     assert!(capabilities.filters().supports_filter_region_planning());
     assert!(!capabilities.shadows().supports_inset_box_shadows());
     assert!(!capabilities.shadows().supports_text_shadows());
-    assert!(!capabilities.filters().supports_layer_filters());
+    assert!(capabilities.filters().supports_layer_filters());
     assert!(
         !capabilities
             .image_sampling()
             .supports_filtered_image_paint()
     );
     assert!(
-        !capabilities
+        capabilities
             .offscreen_pipeline()
             .supports_layer_filter_execution()
     );
@@ -4430,7 +4430,7 @@ fn mask_clip_capability_diagnostics_report_unsupported_operations() {
 }
 
 #[test]
-fn layer_mask_filter_parent_diagnostics_win_over_unsupported_children() {
+fn authored_mask_refuses_at_the_layer_and_foreground_blur_checks_its_children() {
     let cases = [
         (
             Layer::new()
@@ -4445,7 +4445,10 @@ fn layer_mask_filter_parent_diagnostics_win_over_unsupported_children() {
             Layer::new()
                 .try_filter(Filter::try_blur(4.0).unwrap())
                 .unwrap(),
-            UnsupportedPrimitive::new(PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
+            UnsupportedPrimitive::new(
+                PrimitiveFamily::GeometryTargets,
+                PrimitiveOperation::InsideOutsidePathStrokeAlignment,
+            ),
         ),
     ];
 
@@ -4467,7 +4470,7 @@ fn layer_mask_filter_parent_diagnostics_win_over_unsupported_children() {
                 Capabilities::CURRENT,
                 &crate::accounting::Account::for_test(),
             )
-            .expect_err("parent layer diagnostic should be reported before child geometry");
+            .expect_err("the first unsupported operation must remain a typed diagnostic");
 
         assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
         assert_eq!(error.unsupported_primitive(), Some(primitive));

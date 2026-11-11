@@ -738,7 +738,10 @@ fn vello_baseline_reports_current_unsupported_primitives() {
             PrimitiveFamily::MasksAndClips,
             PrimitiveOperation::LayerMask,
         ),
-        UnsupportedPrimitive::new(PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
+        UnsupportedPrimitive::new(
+            PrimitiveFamily::ImageSampling,
+            PrimitiveOperation::FilteredImagePaint,
+        ),
         UnsupportedPrimitive::new(
             PrimitiveFamily::GeometryTargets,
             PrimitiveOperation::InsideOutsidePathStrokeAlignment,
@@ -1182,7 +1185,7 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
     filter_scene.layer(filter_layer, |scene| {
         scene.shadow(
             Rect::new(0.0, 0.0, 8.0, 8.0),
-            Shadow::try_new(Point::new(1.0, 1.0), 2.0, 0.0, Color::BLACK).unwrap(),
+            Shadow::try_inset(Point::new(1.0, 1.0), 2.0, 0.0, Color::BLACK).unwrap(),
         );
     });
     let filter_error = filter_scene
@@ -1190,12 +1193,12 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
             Capabilities::CURRENT,
             &crate::accounting::Account::for_test(),
         )
-        .expect_err("layer filters remain a typed full-stack diagnostic boundary");
+        .expect_err("foreground blur must retain the typed inset shadow diagnostic");
     assert_eq!(
         filter_error.unsupported_primitive(),
         Some(UnsupportedPrimitive::new(
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::LayerFilter,
+            PrimitiveFamily::Shadows,
+            PrimitiveOperation::InsetBoxShadow,
         ))
     );
 
@@ -4403,14 +4406,14 @@ fn unsupported_layer_masks_report_explicit_error() {
 }
 
 #[test]
-fn unsupported_layer_filters_report_explicit_error() {
+fn foreground_blur_above_the_execution_limit_returns_invalid_input() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
         pollster::block_on(renderer.create_headless(Size::new(24.0, 24.0), 1.0)).unwrap();
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_filter(Filter::try_blur(4.0).unwrap())
+            .try_filter(Filter::try_blur(257.0).unwrap())
             .unwrap(),
         |scene| {
             scene.fill(Rect::new(0.0, 0.0, 8.0, 8.0), Color::BLACK);
@@ -4418,17 +4421,16 @@ fn unsupported_layer_filters_report_explicit_error() {
     );
 
     let error = pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
-        .expect_err("filter lowering should be explicit until implemented");
+        .expect_err("the authored radius exceeds the admitted foreground Gaussian range");
 
-    assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
     assert_eq!(
-        error.unsupported_primitive(),
-        Some(UnsupportedPrimitive::new(
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::LayerFilter,
-        ))
+        error
+            .invalid_value_diagnostic()
+            .map(crate::InvalidValue::field),
+        Some("filter blur radius"),
     );
-    assert!(error.message().contains("layer filter"));
+    assert!(error.message().contains("between 0 and 256"));
 }
 
 #[test]

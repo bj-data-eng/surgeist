@@ -169,7 +169,8 @@ impl Backend {
             ),
             ExactSurfaceGraph::SpatialFilter(preparable) => {
                 PreparedGraph::try_prepare_spatial_filter(
-                    preparable,
+                    &preparable,
+                    selected_working_format,
                     &capabilities,
                     (&ready.device, &ready.queue),
                     &ready.resources,

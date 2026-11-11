@@ -356,6 +356,12 @@ impl Renderer {
                         &account.storage(),
                     )?))
                 }
+                ExecutableGraphDispatchEligibility::ExactForegroundBlur(preparable) => {
+                    Ok(RendererFrameDispatch::ExactGraph(OwnedBox::new(
+                        ExactSurfaceGraph::ForegroundBlur(preparable),
+                        &account.storage(),
+                    )?))
+                }
                 ExecutableGraphDispatchEligibility::FuturePasses => {
                     let error = match reject_future_graph_with_typed_diagnostic(&graph, account) {
                         Err(error) => error,

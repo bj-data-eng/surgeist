@@ -95,6 +95,9 @@ fn view(graph: &ExactGraph) -> GraphPreparationSource<'_> {
             GraphPreparationSource::Composition(composition.closed())
         }
         ExactGraph::Backdrop(backdrop) => GraphPreparationSource::Backdrop(backdrop),
+        ExactGraph::ForegroundBlur(blur) => {
+            GraphPreparationSource::SpatialFilter(blur.spatial_filter())
+        }
     }
 }
 

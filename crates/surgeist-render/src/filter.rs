@@ -1,11 +1,13 @@
 use super::{
     Error, Rect, Result,
     style::{
-        ColorFilterOp, FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterList,
+        ColorFilterOp, FilterAmount, FilterAngle, FilterBlur, FilterDropShadow, FilterOp,
         FilterOpKind, UnitFilterAmount,
     },
 };
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
+#[cfg(test)]
+use crate::style::FilterList;
 
 pub(crate) const CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS: f64 = 2.5;
 #[cfg(test)]
@@ -630,15 +632,15 @@ pub(crate) struct AlgorithmFilterPlan {
 }
 
 impl AlgorithmFilterPlan {
-    pub(crate) fn from_filter_list(filters: &FilterList, account: &Account) -> Result<Self> {
+    pub(crate) fn from_ops(operations: &[FilterOp], account: &Account) -> Result<Self> {
         account.phase(RenderPhase::Filter, || {
             let account = account.at(RenderPhase::Filter);
-            let authored_operation_count = filters.ops().len();
+            let authored_operation_count = operations.len();
             let mut steps = account.retained(0)?;
             let mut color_run = account.retained(0)?;
             let mut output_is_always_transparent = false;
 
-            for op in filters.ops() {
+            for op in operations {
                 account.work(RenderWork::FilterOperationVisits, 1)?;
                 match op.kind() {
                     FilterOpKind::Blur(blur) if blur.radius() == 0.0 => {}
@@ -948,8 +950,7 @@ mod accounting_tests {
         let cpu = RendererCpu::new(options).unwrap();
         let (_, _, report, fault) = FrameFixture::new(&cpu, options)
             .run_sync(|attempt| {
-                let plan =
-                    AlgorithmFilterPlan::from_filter_list(&filters, attempt.account()).unwrap();
+                let plan = AlgorithmFilterPlan::from_ops(filters.ops(), attempt.account()).unwrap();
                 assert_eq!(plan.authored_operation_count(), 5);
                 let [
                     AlgorithmFilterStep::ColorRun(first),

@@ -1186,6 +1186,59 @@ impl SpatialFilterPreparableGraph {
                 .facts
                 .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
+
+    pub(crate) fn working_format(&self) -> WorkingFormat {
+        self.closed.facts.working_format
+    }
+
+    pub(crate) fn output_format(&self) -> Format {
+        self.closed.facts.output_format
+    }
+
+    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
+        for resource in &self.closed.lowered.resources {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if resource.id == self.closed.lowered.root_working_image {
+                return Ok(resource.spatial.device_extent);
+            }
+        }
+        Err(preparation_error(
+            "the spatial-filter root output resource is missing",
+        ))
+    }
+}
+
+/// Exact ordinary Gaussian pairs may execute with the closed layer composition.
+#[must_use]
+pub(crate) struct ForegroundBlurPreparableGraph(SpatialFilterPreparableGraph);
+
+impl ForegroundBlurPreparableGraph {
+    pub(super) fn qualify(
+        graph: SpatialFilterPreparableGraph,
+        account: &Account,
+    ) -> Result<Option<Self>> {
+        let facts = &graph.closed.facts;
+        if facts.blurs.is_empty()
+            || !facts.color_filters.is_empty()
+            || !facts.drop_shadows.is_empty()
+            || !facts.backdrops.is_empty()
+        {
+            return Ok(None);
+        }
+        for blur in &facts.blurs {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            if blur.blur.input != RuntimeBlurInput::Rgba
+                || blur.blur.edge != RuntimeSamplingEdge::TransparentBlack
+            {
+                return Ok(None);
+            }
+        }
+        Ok(Some(Self(graph)))
+    }
+
+    pub(crate) fn spatial_filter(&self) -> &SpatialFilterPreparableGraph {
+        &self.0
+    }
 }
 
 #[must_use]

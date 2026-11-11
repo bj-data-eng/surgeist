@@ -1,5 +1,6 @@
 use super::FrameContext;
-use crate::accounting::{Account, RenderWork};
+use super::filter::InclusiveFilterKernelSupport;
+use crate::accounting::{Account, RenderPhase, RenderWork};
 use crate::{
     command::{
         NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
@@ -44,7 +45,7 @@ impl FrameContext {
         logical_bounds: LogicalBounds,
         transform: Transform,
     ) -> Result<FrameSpatialPlan> {
-        let linear_metrics = linear_transform_metrics(transform)?;
+        let metrics = linear_transform_metrics(transform)?;
         let logical_bounds = match logical_bounds {
             LogicalBounds::Empty(bounds) => {
                 return Ok(FrameSpatialPlan::Empty(EmptyFrameSpatialPlan {
@@ -53,17 +54,12 @@ impl FrameContext {
             }
             LogicalBounds::NonEmpty(bounds) => bounds,
         };
-        if linear_metrics.rank_deficient {
+        if metrics.rank_deficient {
             return Ok(FrameSpatialPlan::Empty(EmptyFrameSpatialPlan {
                 logical_bounds: LogicalBounds::NonEmpty(logical_bounds),
             }));
         }
-
-        let raster_scale = RasterScale::try_new(checked_mul(
-            self.surface_scale,
-            linear_metrics.largest_singular_value,
-            "frame local raster scale",
-        )?)?;
+        let raster_scale = self.raster_scale(metrics.largest_singular_value)?;
         let source = FilterSourceBounds::try_new(logical_bounds.rect())?;
         let region = FilterRegionPlan::try_new(source, FilterOutset::zero(), None)?;
         let device = DevicePixelConversionPolicy::outward()
@@ -79,6 +75,22 @@ impl FrameContext {
             raster_scale,
             texel_center_mapping,
         }))
+    }
+
+    fn local_raster_scale(self, transform: Transform) -> Result<Option<RasterScale>> {
+        let metrics = linear_transform_metrics(transform)?;
+        if metrics.rank_deficient {
+            return Ok(None);
+        }
+        self.raster_scale(metrics.largest_singular_value).map(Some)
+    }
+
+    fn raster_scale(self, transform_scale: f64) -> Result<RasterScale> {
+        RasterScale::try_new(checked_mul(
+            self.surface_scale,
+            transform_scale,
+            "frame local raster scale",
+        )?)
     }
 }
 
@@ -400,6 +412,7 @@ impl SemanticSourceContribution {
             && layer.composition.is_source_over_normal()
             && layer.mask.is_none()
             && layer.backdrop.is_none()
+            && layer.foreground_blur.is_none()
             && (layer.opacity - 1.0).abs() < f32::EPSILON;
         let inverse = destination_to_layer_local_mapping(layer.transform)?;
         let child_parent = if transparent_wrapper && has_bounded_children {
@@ -412,16 +425,18 @@ impl SemanticSourceContribution {
         } else {
             SemanticSourceBounds::exactly_empty()
         };
-        let child_domain = match (domain, inverse) {
-            (SemanticContributionDomain::RootOutputBounded(bounds), Some(inverse)) => {
+        // Ink outside the output can reach it through the filter's halo.
+        let child_domain = match (domain, inverse, layer.foreground_blur) {
+            (_, _, Some(_)) => SemanticContributionDomain::LocalUnbounded,
+            (SemanticContributionDomain::RootOutputBounded(bounds), Some(inverse), None) => {
                 SemanticContributionDomain::RootOutputBounded(
                     bounds.try_transform(inverse.affine, "child image domain")?,
                 )
             }
-            (SemanticContributionDomain::RootOutputBounded(bounds), None) => {
+            (SemanticContributionDomain::RootOutputBounded(bounds), None, None) => {
                 SemanticContributionDomain::RootOutputBounded(bounds)
             }
-            (SemanticContributionDomain::LocalUnbounded, _) => {
+            (SemanticContributionDomain::LocalUnbounded, _, None) => {
                 SemanticContributionDomain::LocalUnbounded
             }
         };
@@ -442,6 +457,20 @@ impl SemanticSourceContribution {
             layer_to_surface,
             account,
         )?;
+        if let Some(blur) = layer.foreground_blur
+            && let Some(bounds) = source_bounds.known_non_empty_extent()
+            && let Some(scale) = context.local_raster_scale(layer_to_surface)?
+        {
+            let filter_account = account.at(RenderPhase::Filter);
+            source_bounds = account.phase(RenderPhase::Filter, || {
+                filter_account.work(RenderWork::FilterOperationVisits, 1)?;
+                let support = InclusiveFilterKernelSupport::try_new(blur, scale)?;
+                Ok(SemanticSourceBounds::from_parts(
+                    Some(support.inflate(bounds)?),
+                    source_bounds.contains_unresolved_content(),
+                ))
+            })?;
+        }
         if let Some(clip) = layer.clip.as_ref() {
             source_bounds = source_bounds.try_intersect(
                 SemanticSourceBounds::try_for_clip(clip, account)?,

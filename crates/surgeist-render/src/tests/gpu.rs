@@ -1471,7 +1471,7 @@ fn offscreen_pipeline_capability_accessors_report_supported_operations() {
     assert!(capabilities.supports_composite_pass_execution());
     assert!(capabilities.supports_nested_opacity_composition());
     assert!(!capabilities.supports_mask_execution());
-    assert!(!capabilities.supports_layer_filter_execution());
+    assert!(capabilities.supports_layer_filter_execution());
     assert!(!capabilities.supports_broad_backdrop_execution());
 }
 
@@ -1490,6 +1490,16 @@ fn affected_capability_queries_map_one_to_one_to_primitive_operations() {
     let capabilities = Capabilities::CURRENT;
     let offscreen = capabilities.offscreen_pipeline();
     let cases = [
+        (
+            capabilities.filters().supports_layer_filters(),
+            PrimitiveFamily::Filters,
+            PrimitiveOperation::LayerFilter,
+        ),
+        (
+            offscreen.supports_layer_filter_execution(),
+            PrimitiveFamily::OffscreenPipeline,
+            PrimitiveOperation::LayerFilterExecution,
+        ),
         (
             capabilities.filters().supports_gpu_color_filter_execution(),
             PrimitiveFamily::Filters,
@@ -1547,7 +1557,6 @@ fn offscreen_pipeline_capability_diagnostics_report_unsupported_operations() {
     for operation in [
         PrimitiveOperation::OffscreenLayerRendering,
         PrimitiveOperation::MaskExecution,
-        PrimitiveOperation::LayerFilterExecution,
         PrimitiveOperation::BroadBackdropExecution,
         PrimitiveOperation::BackdropIsolationComposition,
     ] {
@@ -4051,11 +4060,6 @@ fn bounded_backdrop_broad_capabilities_remain_diagnostic_for_test() -> bool {
             PrimitiveFamily::OffscreenPipeline,
             PrimitiveOperation::BackdropIsolationComposition,
         ),
-        UnsupportedPrimitive::new(PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
-        UnsupportedPrimitive::new(
-            PrimitiveFamily::OffscreenPipeline,
-            PrimitiveOperation::LayerFilterExecution,
-        ),
         UnsupportedPrimitive::new(
             PrimitiveFamily::Compositing,
             PrimitiveOperation::RootBackdropPolicy,
@@ -4064,8 +4068,6 @@ fn bounded_backdrop_broad_capabilities_remain_diagnostic_for_test() -> bool {
     offscreen.supports_bounded_backdrop_filter_execution()
         && !offscreen.supports_broad_backdrop_execution()
         && !offscreen.supports_backdrop_isolation_composition()
-        && !offscreen.supports_layer_filter_execution()
-        && !capabilities.filters().supports_layer_filters()
         && capabilities
             .ensure_supported(UnsupportedPrimitive::new(
                 PrimitiveFamily::OffscreenPipeline,
@@ -4251,13 +4253,20 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
             bounded_backdrop_diagnostic_backdrop_layer_for_test(),
             |_| {},
         );
-    let mut layer_filter = Scene::new();
-    layer_filter.layer(
-        Layer::new()
-            .try_filter(Filter::try_blur(0.5).unwrap())
-            .unwrap(),
-        |_| {},
-    );
+    let mut mixed = Scene::new();
+    mixed
+        .layer(
+            Layer::new()
+                .try_filter(Filter::try_blur(0.5).unwrap())
+                .unwrap(),
+            |scene| {
+                scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            },
+        )
+        .layer(
+            bounded_backdrop_diagnostic_backdrop_layer_for_test(),
+            |_| {},
+        );
     let ready = renderer
         .default_ready_device_state_borrow_for_test()
         .expect("bounded-backdrop broad diagnostic coverage requires a ready device");
@@ -4268,8 +4277,7 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
     let transformed =
         pollster::block_on(renderer.render(surface, &transformed, Parameters::default()));
     let repeated = pollster::block_on(renderer.render(surface, &repeated, Parameters::default()));
-    let layer_filter =
-        pollster::block_on(renderer.render(surface, &layer_filter, Parameters::default()));
+    let mixed = pollster::block_on(renderer.render(surface, &mixed, Parameters::default()));
     let root = BackdropFilterInput::try_root_backdrop(
         single_filter_list_for_test(FilterOp::blur(FilterBlur::try_new(0.5).unwrap()))[0].clone(),
         None,
@@ -4286,8 +4294,6 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
         PrimitiveFamily::OffscreenPipeline,
         PrimitiveOperation::BroadBackdropExecution,
     );
-    let layer =
-        UnsupportedPrimitive::new(PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter);
     let root_policy = UnsupportedPrimitive::new(
         PrimitiveFamily::Compositing,
         PrimitiveOperation::RootBackdropPolicy,
@@ -4301,9 +4307,9 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
         && repeated
             .as_ref()
             .is_err_and(|error| error.unsupported_primitive() == Some(broad))
-        && layer_filter
+        && mixed
             .as_ref()
-            .is_err_and(|error| error.unsupported_primitive() == Some(layer))
+            .is_err_and(|error| error.unsupported_primitive() == Some(broad))
         && root
             .as_ref()
             .is_err_and(|error| error.unsupported_primitive() == Some(root_policy))
@@ -4803,6 +4809,251 @@ fn resolved_alpha_masks_leave_luminance_to_authored_mask_diagnostics() {
             PrimitiveOperation::LuminanceMaskMode,
         ))
     );
+}
+
+#[test]
+fn foreground_layer_blur_filters_group_before_clip_mask_and_opacity() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    let impulse = Rect::new(4.0, 4.0, 1.0, 1.0);
+    let paint_group = |scene: &mut Scene| {
+        scene.fill(impulse, Color::BLACK);
+        scene.fill(impulse, Color::BLACK);
+    };
+    let mut scene = Scene::new();
+    scene.layer(blur.clone(), paint_group);
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("an authored foreground blur should render through the public renderer");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(renderer.stats().route, Some(RenderRoute::GpuGraph));
+    let report = renderer.last_attempt().unwrap();
+    assert!(
+        report
+            .attempt()
+            .unwrap()
+            .phase_usage(crate::RenderPhase::Kernel)
+            .work(crate::RenderWork::KernelSampleVisits)
+            > 0
+    );
+    // An opaque impulse stays opaque when composited with itself. For sigma 1,
+    // the normalized 2D Gaussian yields about 41 alpha at the center and 25
+    // alpha one texel away, on an 8-bit scale.
+    assert!((39..=43).contains(&pixel_alpha(&output, 4, 4)));
+    let adjacent_alpha = pixel_alpha(&output, 5, 4);
+    assert!(
+        (23..=27).contains(&adjacent_alpha),
+        "unexpected adjacent alpha {adjacent_alpha}"
+    );
+    assert_eq!(pixel_alpha(&output, 8, 4), 0);
+
+    let neighbor = Rect::new(5.0, 4.0, 1.0, 1.0);
+    let mask = Image::from_rgba(Size::new(1.0, 1.0), vec![255, 255, 255, 128]).unwrap();
+    let layer = blur
+        .try_clip(Shape::rect(neighbor))
+        .unwrap()
+        .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(mask, neighbor).unwrap())
+        .try_opacity(0.5)
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(layer, paint_group);
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 4, 4), 0);
+    assert!((5..=7).contains(&pixel_alpha(&output, 5, 4)));
+    assert_eq!(pixel_alpha(&output, 6, 4), 0);
+}
+
+#[test]
+fn foreground_layer_blur_keeps_off_surface_ink_on_a_transformed_local_grid() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 10.0), 1.0)).unwrap();
+    let mut scene = Scene::new();
+    let layer = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap()
+        .with_transform(Transform::scale(2.0, 1.0).unwrap());
+    scene.layer(layer, |scene| {
+        scene.fill(Rect::new(-1.0, 4.0, 1.0, 1.0), Color::BLACK);
+    });
+    // An independent isolation group requests the surface grid.
+    scene.layer(Layer::new().isolated(), |scene| {
+        scene.fill(Rect::new(10.0, 8.0, 1.0, 1.0), Color::BLACK);
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("the transformed foreground blur should compose with a surface-grid sibling");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    // All source ink is outside the output. An x scale of 2 stretches the
+    // local sigma 1 halo horizontally, without stretching it vertically.
+    assert!(pixel_alpha(&output, 0, 4) > 20);
+    assert!(pixel_alpha(&output, 2, 4) > 4);
+    assert_eq!(pixel_alpha(&output, 0, 7), 0);
+    assert_eq!(pixel_alpha(&output, 10, 8), 255);
+
+    let stats = renderer.stats();
+    let mut refused = Scene::new();
+    let invalid_for_execution = Layer::new()
+        .try_filter(Filter::try_blur(f64::MAX).unwrap())
+        .unwrap();
+    refused.layer(invalid_for_execution, |scene| {
+        scene.fill(Rect::new(2.0, 2.0, 1.0, 1.0), Color::BLACK);
+    });
+    let error = pollster::block_on(renderer.render(&mut surface, &refused, Parameters::default()))
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    assert_eq!(renderer.stats(), stats);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        output
+    );
+
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        output
+    );
+}
+
+#[test]
+fn foreground_layer_blur_composites_into_the_transformed_parent_local_grid() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(16.0, 9.0), 1.0)).unwrap();
+    let mask_image = Image::from_rgba(Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+    let mask = ResolvedLayerAlphaMask::try_new(mask_image, Rect::new(0.0, 0.0, 9.0, 9.0)).unwrap();
+    let parent = Layer::new()
+        .with_resolved_alpha_mask(mask)
+        .with_transform(Transform::translation(4.0, 0.0).unwrap());
+    let child = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap());
+    let mut scene = Scene::new();
+    scene.layer(parent, |scene| {
+        scene.layer(child, |scene| {
+            scene.fill(Rect::new(4.0, 4.0, 1.0, 1.0), Color::BLACK);
+        });
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    // The impulse center moves from x=4 by 1 in the parent and then by 4 in
+    // the surface. Each translation applies exactly once.
+    let center_alpha = pixel_alpha(&output, 9, 4);
+    assert!(
+        (39..=43).contains(&center_alpha),
+        "unexpected alpha at the translated center {center_alpha}"
+    );
+    assert_eq!(pixel_alpha(&output, 13, 4), 0);
+}
+
+#[test]
+fn foreground_layer_blur_preserves_ordinary_siblings_in_a_translated_wrapper() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(17.0, 10.0), 1.0)).unwrap();
+    let wrapper = Layer::new().with_transform(Transform::translation(7.0, 0.0).unwrap());
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(1.0).unwrap())
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(wrapper, |scene| {
+        scene.fill(Rect::new(1.0, 4.0, 1.0, 1.0), Color::BLACK);
+        scene.layer(blur, |scene| {
+            scene.fill(Rect::new(7.0, 4.0, 1.0, 1.0), Color::BLACK);
+        });
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 8, 4), 255);
+    assert_eq!(pixel_alpha(&output, 1, 4), 0);
+    assert!((39..=43).contains(&pixel_alpha(&output, 14, 4)));
+}
+
+#[test]
+fn foreground_layer_blur_uses_identity_when_device_sigma_underflows() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(12.0, 12.0), 0.5)).unwrap();
+    let blur = Layer::new()
+        .try_filter(Filter::try_blur(f64::from_bits(1)).unwrap())
+        .unwrap();
+    let mut scene = Scene::new();
+    scene.layer(blur, |scene| {
+        scene.fill(Rect::new(4.0, 4.0, 2.0, 2.0), Color::BLACK);
+    });
+    pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default()))
+        .expect("a positive sigma rounded to zero device pixels should preserve the group");
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    assert_eq!(pixel_alpha(&output, 2, 2), 255);
+    assert_eq!(pixel_alpha(&output, 3, 2), 0);
+}
+
+#[test]
+fn foreground_layer_blur_kernel_limit_preserves_frame_and_zero_sigma_needs_no_kernel() {
+    use crate::{RenderAccountingOptions, RenderLimits, RenderPhase, RenderQuantity, RenderWork};
+
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::KernelSampleVisits, 0)
+        .unwrap();
+    let options =
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits));
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(9.0, 9.0), 1.0)).unwrap();
+    let initial = Parameters {
+        base_color: Color::BLACK,
+        ..Parameters::default()
+    };
+    let before = pollster::block_on(renderer.render(&mut surface, &Scene::new(), initial)).unwrap();
+    let pixels_before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+
+    let foreground = |sigma| {
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new()
+                .try_filter(Filter::try_blur(sigma).unwrap())
+                .unwrap(),
+            |scene| {
+                scene.fill(Rect::new(4.0, 4.0, 1.0, 1.0), Color::BLACK);
+            },
+        );
+        scene
+    };
+    let refused = foreground(1.0);
+    assert!(
+        pollster::block_on(renderer.render(&mut surface, &refused, Parameters::default())).is_err()
+    );
+    let report = renderer.last_attempt().unwrap();
+    let refusal = report.attempt().unwrap().refusal().unwrap();
+    // The configured work limit belongs to the attempt that owns the cap.
+    assert_eq!(refusal.phase(), RenderPhase::Attempt);
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::KernelSampleVisits)
+    );
+    assert_eq!(refusal.current(), 0);
+    assert_eq!(refusal.amount(), 1);
+    assert_eq!(renderer.stats(), before);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        pixels_before
+    );
+
+    let identity = foreground(0.0);
+    pollster::block_on(renderer.render(&mut surface, &identity, Parameters::default())).unwrap();
+    let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    assert_eq!(pixel_alpha(&output, 4, 4), 255);
+    assert_eq!(pixel_alpha(&output, 5, 4), 0);
 }
 
 #[test]
@@ -6357,7 +6608,7 @@ fn materialized_color_filter_fusion_matches_reference_bytes() {
 }
 
 #[test]
-fn materialized_filter_support_does_not_enable_layer_effect_execution() {
+fn materialized_filter_support_preserves_unavailable_compositor_diagnostics() {
     let image_buffer =
         ImageBuffer::try_new(PhysicalSize::new(1, 1), vec![100, 150, 200, 255]).unwrap();
     let shadow = Shadow::try_new(Point::new(1.0, 1.0), 2.0, 0.0, Color::BLACK).unwrap();
@@ -6373,19 +6624,6 @@ fn materialized_filter_support_does_not_enable_layer_effect_execution() {
         .execute_to_image_buffer()
         .unwrap();
     assert_eq!(drop_shadow_output.size(), image_buffer.size());
-
-    let layer_filter_error = normalize_single_layer_error(
-        Layer::new()
-            .try_filter(Filter::try_blur(2.0).unwrap())
-            .unwrap(),
-    );
-    assert_eq!(
-        layer_filter_error.unsupported_primitive(),
-        Some(UnsupportedPrimitive::new(
-            PrimitiveFamily::Filters,
-            PrimitiveOperation::LayerFilter,
-        ))
-    );
 
     let layer_mask_error = normalize_single_layer_error(
         Layer::new()
@@ -6577,13 +6815,8 @@ fn composition_rejected_capability_rows(
     _filters: FilterCapabilities,
     masks: MaskClipCapabilities,
     offscreen: OffscreenPipelineCapabilities,
-) -> [CapabilityRowForTest; 9] {
+) -> [CapabilityRowForTest; 8] {
     [
-        (
-            offscreen.supports_layer_filter_execution(),
-            PrimitiveFamily::OffscreenPipeline,
-            PrimitiveOperation::LayerFilterExecution,
-        ),
         (
             offscreen.supports_broad_backdrop_execution(),
             PrimitiveFamily::OffscreenPipeline,
@@ -9569,7 +9802,7 @@ fn renderer_reports_backend_capabilities_by_family() {
     );
     assert!(!capabilities.shadows().supports_ellipse_path_shadows());
 
-    assert!(!capabilities.filters().supports_layer_filters());
+    assert!(capabilities.filters().supports_layer_filters());
     assert!(capabilities.masks_clips().supports_shape_clips());
     assert!(!capabilities.masks_clips().supports_layer_masks());
     assert!(
@@ -10809,13 +11042,15 @@ fn renderer_dispatches_supported_graphs_and_rejects_unsupported_effects() {
         Parameters::default(),
     ));
 
-    let (blur_scene, backdrop_scene) = composition_unsupported_dispatch_scenes_for_test();
+    let (blur_scene, backdrop_scene) = composition_effect_dispatch_scenes_for_test();
     let mut blur_surface = pollster::block_on(renderer.create_headless(Size::new(4.0, 4.0), 1.0))
-        .unwrap_or_else(|error| panic!("unsupported blur coverage requires a surface: {error}"));
+        .unwrap_or_else(|error| panic!("foreground blur coverage requires a surface: {error}"));
     let mut backdrop_surface = pollster::block_on(
         renderer.create_headless(Size::new(4.0, 4.0), 1.0),
     )
     .unwrap_or_else(|error| panic!("unsupported backdrop coverage requires a surface: {error}"));
+    let blur_result =
+        pollster::block_on(renderer.render(&mut blur_surface, &blur_scene, Parameters::default()));
     let resources_before = renderer
         .default_ready_device_state_borrow_for_test()
         .unwrap_or_else(|| panic!("unsupported dispatch coverage requires the ready device"))
@@ -10824,8 +11059,6 @@ fn renderer_dispatches_supported_graphs_and_rejects_unsupported_effects() {
         .default_ready_device_state_borrow_for_test()
         .unwrap_or_else(|| panic!("unsupported dispatch coverage requires the ready cache"))
         .device_pass_cache_counts_for_test();
-    let blur_result =
-        pollster::block_on(renderer.render(&mut blur_surface, &blur_scene, Parameters::default()));
     let backdrop_result = pollster::block_on(renderer.render(
         &mut backdrop_surface,
         &backdrop_scene,
@@ -10839,13 +11072,7 @@ fn renderer_dispatches_supported_graphs_and_rejects_unsupported_effects() {
         .default_ready_device_state_borrow_for_test()
         .unwrap_or_else(|| panic!("unsupported rejection must retain the ready cache"))
         .device_pass_cache_counts_for_test();
-    let exact_unsupported_diagnostics = blur_result.as_ref().is_err_and(|error| {
-        error.unsupported_primitive()
-            == Some(UnsupportedPrimitive::new(
-                PrimitiveFamily::Filters,
-                PrimitiveOperation::LayerFilter,
-            ))
-    }) && backdrop_result.as_ref().is_err_and(|error| {
+    let exact_unsupported_diagnostic = backdrop_result.as_ref().is_err_and(|error| {
         error.unsupported_primitive()
             == Some(UnsupportedPrimitive::new(
                 PrimitiveFamily::OffscreenPipeline,
@@ -10857,10 +11084,11 @@ fn renderer_dispatches_supported_graphs_and_rejects_unsupported_effects() {
         direct.is_ok()
             && graph.is_ok()
             && composition.is_ok()
-            && exact_unsupported_diagnostics
+            && blur_result.is_ok_and(|stats| stats.route == Some(RenderRoute::GpuGraph))
+            && exact_unsupported_diagnostic
             && resources_after == resources_before
             && cache_after == cache_before
-            && blur_surface.headless_publication_count_for_test() == 0
+            && blur_surface.headless_publication_count_for_test() == 1
             && backdrop_surface.headless_publication_count_for_test() == 0,
         "dispatch misrouted supported graphs or admitted unsupported effects"
     );
@@ -12429,12 +12657,12 @@ fn composition_resource_observations_are_stable(
     })
 }
 
-fn composition_unsupported_dispatch_scenes_for_test() -> (Scene, Scene) {
+fn composition_effect_dispatch_scenes_for_test() -> (Scene, Scene) {
     let blur = Filter::try_blur(1.0)
-        .unwrap_or_else(|error| panic!("the unsupported blur fixture must be valid: {error}"));
+        .unwrap_or_else(|error| panic!("the foreground blur fixture must be valid: {error}"));
     let blur_layer = Layer::new()
         .try_filter(blur)
-        .unwrap_or_else(|error| panic!("the unsupported blur layer must be valid: {error}"));
+        .unwrap_or_else(|error| panic!("the foreground blur layer must be valid: {error}"));
     let mut blur_scene = Scene::new();
     blur_scene.layer(blur_layer, |scene| {
         scene.fill(
@@ -12928,6 +13156,11 @@ fn color_filter_public_color_graph_diagnostic_for_test(
 fn retained_public_filter_diagnostics_are_exact_for_test() -> bool {
     let capabilities = Capabilities::CURRENT;
     let supported = [
+        (PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
+        (
+            PrimitiveFamily::OffscreenPipeline,
+            PrimitiveOperation::LayerFilterExecution,
+        ),
         (
             PrimitiveFamily::Filters,
             PrimitiveOperation::GpuColorFilterExecution,
@@ -12942,7 +13175,6 @@ fn retained_public_filter_diagnostics_are_exact_for_test() -> bool {
         ),
     ];
     let unsupported = [
-        (PrimitiveFamily::Filters, PrimitiveOperation::LayerFilter),
         (
             PrimitiveFamily::ImageSampling,
             PrimitiveOperation::FilteredImagePaint,
@@ -12950,10 +13182,6 @@ fn retained_public_filter_diagnostics_are_exact_for_test() -> bool {
         (
             PrimitiveFamily::ImageSampling,
             PrimitiveOperation::ColorFilteredImagePaint,
-        ),
-        (
-            PrimitiveFamily::OffscreenPipeline,
-            PrimitiveOperation::LayerFilterExecution,
         ),
         (
             PrimitiveFamily::OffscreenPipeline,
@@ -12981,16 +13209,12 @@ fn retained_public_filter_diagnostics_are_exact_for_test() -> bool {
         && capabilities
             .filters()
             .supports_gpu_drop_shadow_filter_execution()
-        && !capabilities.filters().supports_layer_filters()
         && !capabilities
             .image_sampling()
             .supports_filtered_image_paint()
         && !capabilities
             .image_sampling()
             .supports_color_filtered_image_paint()
-        && !capabilities
-            .offscreen_pipeline()
-            .supports_layer_filter_execution()
         && capabilities
             .offscreen_pipeline()
             .supports_bounded_backdrop_filter_execution()

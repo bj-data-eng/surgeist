@@ -68,7 +68,10 @@ use validate::validate_semantic_frame_graph;
 
 use super::{
     command::{RenderCommand, RenderCommands},
-    error::{Error, Result, UnresolvedResource, UnresolvedResourceKind},
+    error::{
+        Error, PrimitiveFamily, PrimitiveOperation, Result, UnresolvedResource,
+        UnresolvedResourceKind, UnsupportedPrimitive,
+    },
     geometry::{Rect, Size, Transform},
     paint::Color,
     renderer::Antialiasing,
@@ -146,6 +149,7 @@ enum GraphSelectionRequirement {
     BoundedBackdrop,
     BoundedPorterDuff,
     ExplicitIsolation,
+    ForegroundBlur,
 }
 
 impl FramePlan {
@@ -167,6 +171,16 @@ impl FramePlan {
             let commands = contribution.commands;
             let selection_requirements =
                 graph_selection_requirements(&commands.commands, &account)?;
+            if selection_requirements.contains(&GraphSelectionRequirement::ForegroundBlur)
+                && selection_requirements.contains(&GraphSelectionRequirement::BoundedBackdrop)
+            {
+                return Err(Error::unsupported_render_primitive(
+                    UnsupportedPrimitive::new(
+                        PrimitiveFamily::OffscreenPipeline,
+                        PrimitiveOperation::BroadBackdropExecution,
+                    ),
+                ));
+            }
             if selection_requirements.is_empty() {
                 return Ok(Self::DirectVello(DirectVelloPlan {
                     commands,
@@ -239,6 +253,11 @@ fn collect_graph_selection_requirements(
             && !requirements.contains(&GraphSelectionRequirement::ResolvedAlphaMask)
         {
             requirements.push(GraphSelectionRequirement::ResolvedAlphaMask)?;
+        }
+        if layer.foreground_blur.is_some()
+            && !requirements.contains(&GraphSelectionRequirement::ForegroundBlur)
+        {
+            requirements.push(GraphSelectionRequirement::ForegroundBlur)?;
         }
         collect_graph_selection_requirements(children, requirements, account)?;
     }
