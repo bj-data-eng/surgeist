@@ -536,6 +536,29 @@ impl IssuerFixture {
     }
 }
 
+#[test]
+fn split_runtime_extent_preserves_the_original_issuer_custody() {
+    let mut fixture = issuer_fixture();
+    let cancel = cancellation();
+    let used = || fixture.source.shared.runtime_bytes.load(Ordering::Relaxed);
+    let original = used();
+    let mut all = fixture
+        .source
+        .retain_runtime_payload(&mut fixture._dom, 41, &cancel)
+        .unwrap();
+    assert_eq!(used(), original + 41);
+    assert!(matches!(
+        all.split_off(42),
+        Err(DomError::RepresentationExhausted)
+    ));
+    let part = all.split_off(17).unwrap();
+    assert_eq!(used(), original + 41);
+    drop(all);
+    assert_eq!(used(), original + 17);
+    drop(part);
+    assert_eq!(used(), original);
+}
+
 fn begin_request(fixture: &mut IssuerFixture, revisions: u64) -> Request {
     if fixture.work.is_none() {
         let prefix = fixture

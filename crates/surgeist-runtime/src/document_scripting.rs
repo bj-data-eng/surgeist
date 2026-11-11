@@ -936,9 +936,19 @@ impl DocumentScriptHost {
                 .retain_script_payload(&mut dom, bytes, cancel)
                 .map_err(DocumentScriptNativeError::from)?
         };
+        let admission = match &engine.guest_events {
+            Some(events) => events.prepare_origin(&self.native)?,
+            None => None,
+        };
         let realm = engine.process.execution().create_realm()?;
-        if let Some(events) = &engine.guest_events {
-            events.install_origin(&mut engine.process, &realm, &self.native, origin.global())?;
+        if let Some((events, admission)) = engine.guest_events.as_ref().zip(admission) {
+            events.install_origin(
+                &mut engine.process,
+                &realm,
+                self.native.dom_exception_limits.get(),
+                origin.global(),
+                admission,
+            )?;
         }
         engine.creations.0 = Some(Box::new(CreationRealm {
             next: engine.creations.0.take(),

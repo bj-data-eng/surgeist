@@ -391,12 +391,13 @@ pub(in crate::document_scripting) fn refused_element_realm_installation_releases
     let permit = control.permit().unwrap();
     let origin = create_origin(&mut control);
     let events = control.guest_events().unwrap();
-    let before = events.budget.used.get();
+    let before = (events.budget.used.get(), events.budget.work.get());
     control
         .register_node_creation_realm(&permit, origin)
         .unwrap();
-    let exact = events.budget.used.get() - before;
-    assert!(exact > 0);
+    let exact = events.budget.used.get() - before.0;
+    let work = events.budget.work.get() - before.1;
+    assert!(exact > 0 && work > 0);
     drop((control, events));
 
     let mut host = public_node_host(1_000, 20_000);
@@ -419,8 +420,19 @@ pub(in crate::document_scripting) fn refused_element_realm_installation_releases
     );
     drop(one_short);
     let exact_backing = events.reserve(&host.native, spare).unwrap();
+    events.budget.work.set(events.limits.work - work + 1);
+    let before = (events.budget.used.get(), events.budget.work.get());
+    assert!(matches!(
+        host.register_node_creation_realm(&permit, origin),
+        Err(DocumentScriptError::Native(
+            DocumentScriptNativeError::CreationRealmWorkLimit
+        ))
+    ));
+    assert_eq!((events.budget.used.get(), events.budget.work.get()), before);
+    events.budget.work.set(events.limits.work - work);
     host.register_node_creation_realm(&permit, origin).unwrap();
     assert_eq!(events.budget.used.get(), events.limits.storage_bytes);
+    assert_eq!(events.budget.work.get(), events.limits.work);
     assert!(matches!(
         host.register_node_creation_realm(&permit, origin),
         Err(DocumentScriptError::Native(

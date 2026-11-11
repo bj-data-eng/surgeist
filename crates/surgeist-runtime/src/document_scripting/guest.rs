@@ -352,6 +352,22 @@ struct GuestBacking {
     _canonical: DomHostedRuntimeRetention,
 }
 
+impl GuestBacking {
+    fn split_off(&mut self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
+        let remaining = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        let canonical = self._canonical.split_off(bytes)?;
+        self.bytes = remaining;
+        Ok(Self {
+            used: self.used.clone(),
+            bytes,
+            _canonical: canonical,
+        })
+    }
+}
+
 impl Drop for GuestBacking {
     fn drop(&mut self) {
         self.used.set(self.used.get() - self.bytes);
@@ -410,6 +426,40 @@ struct GuestBudget {
     work: Cell<u64>,
 }
 
+pub(super) struct OriginAdmission {
+    backing: RefCell<GuestBacking>,
+    requests: Cell<u64>,
+}
+
+impl OriginAdmission {
+    fn take(
+        &self,
+        events: &GuestEvents,
+        bytes: usize,
+    ) -> Result<GuestBacking, DocumentGuestEventError> {
+        let remaining = self
+            .requests
+            .get()
+            .checked_sub(1)
+            .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
+        events.step()?;
+        let backing = self
+            .backing
+            .try_borrow_mut()
+            .map_err(|_| DocumentScriptNativeError::Busy)?
+            .split_off(bytes)?;
+        self.requests.set(remaining);
+        Ok(backing)
+    }
+
+    fn finish(self) -> Result<(), DocumentScriptNativeError> {
+        if self.requests.get() != 0 || self.backing.into_inner().bytes != 0 {
+            return Err(DocumentScriptNativeError::RepresentationExhausted);
+        }
+        Ok(())
+    }
+}
+
 impl GuestBudget {
     fn charge_work(&self, limit: u64, units: u64) -> Result<(), DocumentGuestEventError> {
         let work = self
@@ -457,28 +507,49 @@ impl GuestBudget {
 }
 
 impl GuestEvents {
+    pub(super) fn prepare_origin(
+        &self,
+        owner: &NativeOwner,
+    ) -> Result<Option<OriginAdmission>, DocumentScriptError> {
+        let Some(public) = &self.public else {
+            return Ok(None);
+        };
+        let (bytes, requests) = public.origin_installation_cost();
+        // Reserve canonical backing before V8 can retain a callback capture.
+        // The private install has no guest entry and spends its charged work
+        // as each extent is transferred to its final owner.
+        if self
+            .budget
+            .work
+            .get()
+            .checked_add(requests)
+            .and_then(|work| work.checked_add(1))
+            .is_none_or(|work| work > self.limits.work)
+        {
+            return Err(DocumentScriptNativeError::CreationRealmWorkLimit.into());
+        }
+        let backing = self.reserve(owner, bytes).map_err(creation_realm_error)?;
+        Ok(Some(OriginAdmission {
+            backing: RefCell::new(backing),
+            requests: Cell::new(requests),
+        }))
+    }
+
     pub(super) fn install_origin(
         &self,
         process: &mut Process,
         realm: &Realm,
-        owner: &NativeOwner,
+        dom_exception_limits: DomExceptionLimits,
         global: DomHostedGlobalId,
+        admission: OriginAdmission,
     ) -> Result<(), DocumentScriptError> {
-        let Some(public) = &self.public else {
-            return Ok(());
-        };
+        let public = self.public.as_ref().ok_or(Error::RegistryConflict)?;
         process
             .execution()
             .in_realm(realm, |scope| {
-                Ok(public.install_origin(scope, owner, self, global))
+                Ok(public.install_origin(scope, self, dom_exception_limits, global, admission))
             })?
-            .map_err(|error| match error {
-                DocumentGuestEventError::Document(error) => error,
-                DocumentGuestEventError::WorkLimit => {
-                    DocumentScriptNativeError::CreationRealmWorkLimit.into()
-                }
-                _ => Error::BackendUnavailable.into(),
-            })
+            .map_err(creation_realm_error)
     }
 
     fn step(&self) -> Result<(), DocumentGuestEventError> {
@@ -506,6 +577,16 @@ impl GuestEvents {
     ) -> Result<RetainedCallbackObject, DocumentGuestEventError> {
         self.step()?;
         scope.project_retained_native_object(prototype, native, |bytes| self.reserve(owner, bytes))
+    }
+}
+
+fn creation_realm_error(error: DocumentGuestEventError) -> DocumentScriptError {
+    match error {
+        DocumentGuestEventError::Document(error) => error,
+        DocumentGuestEventError::WorkLimit => {
+            DocumentScriptNativeError::CreationRealmWorkLimit.into()
+        }
+        _ => Error::BackendUnavailable.into(),
     }
 }
 

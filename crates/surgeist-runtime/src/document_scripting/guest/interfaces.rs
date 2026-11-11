@@ -99,6 +99,32 @@ struct OriginBindings {
     _backing: GuestBacking,
 }
 
+#[derive(Clone, Copy, Default)]
+struct OriginCost {
+    bytes: usize,
+    requests: u64,
+}
+
+impl OriginCost {
+    fn include(self, bytes: usize) -> Result<Self, DocumentScriptNativeError> {
+        Ok(Self {
+            bytes: self
+                .bytes
+                .checked_add(bytes)
+                .ok_or(DocumentScriptNativeError::StorageLimit)?,
+            requests: self
+                .requests
+                .checked_add(1)
+                .ok_or(DocumentScriptNativeError::RepresentationExhausted)?,
+        })
+    }
+}
+
+struct OriginInterfaceFunding<'a> {
+    capture: &'a dyn Fn(usize) -> Result<Capture, DocumentGuestEventError>,
+    retain: &'a dyn Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+}
+
 pub(super) struct PublicEventBindings {
     callbacks: Rc<Callbacks>,
     window: RetainedCallbackObject,
@@ -108,6 +134,7 @@ pub(super) struct PublicEventBindings {
     dispatch_in_attachment: RetainedCallbackObject,
     document: document::DocumentBindings,
     origins: RefCell<Option<Box<OriginBindings>>>,
+    origin_cost: OriginCost,
 }
 
 impl Drop for PublicEventBindings {
@@ -194,6 +221,22 @@ impl PublicEventBindings {
                 _backing: fund(bytes)?,
             })
         };
+        // Learn the size of one origin graph from the same installers in
+        // the receiving realm. Their requested Rust extents are independent
+        // of the realm in which the V8 objects are created.
+        let origin_cost = Cell::new(OriginCost::default());
+        let fund_origin = |bytes| -> Result<GuestBacking, DocumentGuestEventError> {
+            let backing = fund(bytes)?;
+            origin_cost.set(origin_cost.get().include(bytes)?);
+            Ok(backing)
+        };
+        let capture_origin = |bytes| -> Result<Capture, DocumentGuestEventError> {
+            Ok(Capture {
+                callbacks: callbacks.clone(),
+                origin: None,
+                _backing: fund_origin(bytes)?,
+            })
+        };
 
         let event = scope.object(ObjectPrototype::Default)?;
         for (attribute, key, name) in [
@@ -271,10 +314,10 @@ impl PublicEventBindings {
             &ascii(b"get isTrusted"),
         )?;
 
-        let target = install_target_prototype(scope, &capture)?;
+        let target = install_target_prototype(scope, &capture_origin)?;
 
         install_event_interface(scope, Interface::Event, &event, &capture)?;
-        install_event_interface(scope, Interface::Target, &target, &capture)?;
+        install_event_interface(scope, Interface::Target, &target, &capture_origin)?;
         let observed = scope.callback_object(&event)?;
         let document = document::DocumentBindings::install(
             scope,
@@ -283,10 +326,14 @@ impl PublicEventBindings {
             inbox,
             &capture,
             &fund,
+            OriginInterfaceFunding {
+                capture: &capture_origin,
+                retain: &fund_origin,
+            },
         )?;
         let event = scope.retain_callback_object(observed, fund)?;
         let observed = scope.callback_object(&target)?;
-        let target = scope.retain_callback_object(observed, fund)?;
+        let target = scope.retain_callback_object(observed, fund_origin)?;
         let observed = scope.callback_object(&trusted)?;
         let trusted = scope.retain_callback_object(observed, fund)?;
         let window = scope.global()?;
@@ -311,6 +358,11 @@ impl PublicEventBindings {
         )?;
         let dispatch_in_attachment = scope.callback_object(&dispatch_in_attachment)?;
         let dispatch_in_attachment = scope.retain_callback_object(dispatch_in_attachment, fund)?;
+        let origin_cost = origin_cost
+            .get()
+            .include(size_of::<OriginBindings>())?
+            .include(size_of::<OriginAuthority>())?
+            .include(dom_exception::constructor_storage_bytes::<GuestBacking>())?;
         Ok(Self {
             callbacks,
             window,
@@ -320,17 +372,23 @@ impl PublicEventBindings {
             dispatch_in_attachment,
             document,
             origins: RefCell::new(None),
+            origin_cost,
         })
+    }
+
+    pub(super) fn origin_installation_cost(&self) -> (usize, u64) {
+        (self.origin_cost.bytes, self.origin_cost.requests)
     }
 
     pub(super) fn install_origin(
         &self,
         scope: &mut Scope<'_>,
-        owner: &NativeOwner,
         events: &GuestEvents,
+        dom_exception_limits: DomExceptionLimits,
         global: DomHostedGlobalId,
+        admission: OriginAdmission,
     ) -> Result<(), DocumentGuestEventError> {
-        let fund = |bytes| events.reserve(owner, bytes);
+        let fund = |bytes| admission.take(events, bytes);
         let backing = fund(size_of::<OriginBindings>())?;
         let realm = scope.realm_authority()?.identity();
         let authority = Rc::new(OriginAuthority {
@@ -347,7 +405,7 @@ impl PublicEventBindings {
         };
         dom_exception::install(
             scope,
-            owner.dom_exception_limits.get(),
+            dom_exception_limits,
             fund(dom_exception::constructor_storage_bytes::<GuestBacking>())?,
         )?;
         let target = install_target_prototype(scope, &capture)?;
@@ -362,6 +420,7 @@ impl PublicEventBindings {
         )?;
         let target = scope.callback_object(&target)?;
         let target = scope.retain_callback_object(target, fund)?;
+        admission.finish()?;
         let mut origins = self
             .origins
             .try_borrow_mut()

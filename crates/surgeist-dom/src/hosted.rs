@@ -2020,6 +2020,19 @@ pub struct DomHostedRuntimeRetention {
     pub(crate) bytes: usize,
 }
 impl DomHostedRuntimeRetention {
+    /// Transfer part of this already admitted extent to an independent guard
+    /// of the same issuer. Refusal leaves the original extent unchanged.
+    pub fn split_off(&mut self, bytes: usize) -> Result<Self, DomError> {
+        self.bytes = self
+            .bytes
+            .checked_sub(bytes)
+            .ok_or(DomError::RepresentationExhausted)?;
+        Ok(Self {
+            shared: self.shared.clone(),
+            bytes,
+        })
+    }
+
     /// Merge two actual simultaneous extents of the same original issuer.
     pub fn absorb(&mut self, mut other: Self) -> Result<(), DomError> {
         if !self.shared.ptr_eq(&other.shared) {

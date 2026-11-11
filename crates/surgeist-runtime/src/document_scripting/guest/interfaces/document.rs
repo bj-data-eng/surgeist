@@ -110,8 +110,9 @@ impl DocumentBindings {
         inbox: DomNodeRetirementInbox,
         capture: &impl Fn(usize) -> Result<Capture, DocumentGuestEventError>,
         fund: &impl Fn(usize) -> Result<GuestBacking, DocumentGuestEventError>,
+        origin: OriginInterfaceFunding<'_>,
     ) -> Result<Self, DocumentGuestEventError> {
-        let (node_constructor, node) = install_node(scope, target_prototype, capture)?;
+        let (node_constructor, node) = install_node(scope, target_prototype, &origin.capture)?;
         let prototype = scope.object(ObjectPrototype::Object(&node))?;
         let fallback = capture(size_of::<Capture>())?;
         let construct = capture(size_of::<Capture>())?;
@@ -159,8 +160,13 @@ impl DocumentBindings {
             capture,
             fund,
         )?;
-        let element =
-            element::ElementBindings::install(scope, &node, &node_constructor, capture, fund)?;
+        let element = element::ElementBindings::install(
+            scope,
+            &node,
+            &node_constructor,
+            &origin.capture,
+            &origin.retain,
+        )?;
         element::install_document_root(scope, &prototype, capture)?;
         let getter = capture(size_of::<Capture>())?;
         install_getter(
