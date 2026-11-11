@@ -148,17 +148,16 @@ where
             )
             .transpose_with_node(tree, child)?;
         let padding_border_size = (padding + border).sum_axes();
-        let child_owned_preferred_axis =
-            crate::flex::child_preferred_inline_axis::<Tree, M>(tree, child);
+        let child_owned_preferred_axes = crate::flex::child_preferred_axes::<Tree, M>(tree, child);
         let used_size = PositionedUsedSize::resolve(PositionedSizeDeclarations {
             preferred: resolve_child_preferred_size(
                 style.common.size,
                 area_size.map(Some),
                 SizingAlgorithm::Positioned,
-                child_owned_preferred_axis,
+                child_owned_preferred_axes,
             )
             .transpose_with_node(tree, child)?,
-            child_owned_preferred_axis,
+            child_owned_preferred_axes,
             min: minimum_size(
                 style.common.min_size,
                 area_size.map(Some),

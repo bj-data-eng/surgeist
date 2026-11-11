@@ -60,34 +60,32 @@ use scroll::{
     flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
-/// The authored axis whose intrinsic preference belongs to row Flex.
-pub(crate) fn preferred_inline_axis<S: LayoutScalar>(
+/// When a row owns its preferred inline size, retain any intrinsic cross
+/// preference handled by the same formatter.
+pub(crate) fn preferred_flex_axes<S: LayoutScalar>(
     display: crate::Display,
     direction: FlexDirection,
     flow_axes: FlowAxes,
     preferred: &Size<crate::PreferredSizeOf<S>>,
-) -> Option<PhysicalAxis> {
-    let axis = flow_axes.inline_axis();
-    let inline = match axis {
-        PhysicalAxis::Horizontal => &preferred.width,
-        PhysicalAxis::Vertical => &preferred.height,
-    };
-    (display == crate::Display::Flex && direction.is_row() && inline.is_max_content())
-        .then_some(axis)
+) -> Size<bool> {
+    let preferred = flow_axes.logical_size(Size::new(&preferred.width, &preferred.height));
+    let owns_inline =
+        display == crate::Display::Flex && direction.is_row() && preferred.inline.is_max_content();
+    flow_axes.physical_size(crate::geometry::LogicalSizeOf::new(
+        owns_inline,
+        owns_inline && preferred.block.is_max_content(),
+    ))
 }
 
-pub(crate) fn child_preferred_inline_axis<'input, Tree, M>(
-    tree: &Tree,
-    child: Tree::Node,
-) -> Option<PhysicalAxis>
+pub(crate) fn child_preferred_axes<'input, Tree, M>(tree: &Tree, child: Tree::Node) -> Size<bool>
 where
     Tree: Compute<'input, M>,
 {
     if tree.has_leaf_measurement(child) {
-        return None;
+        return Size::splat(false);
     }
     let input = tree.node_input(child);
-    preferred_inline_axis(
+    preferred_flex_axes(
         input.display,
         input.flex_direction,
         FlowAxes::new(input.writing_mode, input.direction),

@@ -319,7 +319,7 @@ pub(super) fn order_modified_indexes(
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GridItemProjection<'input, S: LayoutScalar> {
     pub(super) display: Display,
-    pub(super) flex_preferred_inline_axis: Option<crate::PhysicalAxis>,
+    pub(super) flex_preferred_axes: Size<bool>,
     pub(super) item_is_table: bool,
     pub(super) item_is_replaced: bool,
     pub(super) item_order: ItemOrder,
@@ -358,7 +358,7 @@ impl<'input, S: LayoutScalar> GridItemProjection<'input, S> {
     pub(super) fn from_node(input: &'input NodeInputOf<S>) -> Self {
         Self {
             display: input.display,
-            flex_preferred_inline_axis: crate::flex::preferred_inline_axis(
+            flex_preferred_axes: crate::flex::preferred_flex_axes(
                 input.display,
                 input.flex_direction,
                 FlowAxes::new(input.writing_mode, input.direction),
@@ -480,7 +480,7 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
         // remain available.
         if has_leaf_measurement {
             self.nested_container = None;
-            self.item.flex_preferred_inline_axis = None;
+            self.item.flex_preferred_axes = Size::splat(false);
             return self;
         }
         if parent.display.establishes_grid_lanes_formatting_context()

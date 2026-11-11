@@ -1157,12 +1157,14 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         box_sizing_adjustment,
     } = grid_item_box_edges(child_style, container_flow_axes, containing_physical_size)?;
     let area_parent = containing_physical_size;
-    let deferred_axis = child_style.flex_preferred_inline_axis;
+    let deferred_axes = child_style.flex_preferred_axes;
+    let child_owns_preference = deferred_axes.width || deferred_axes.height;
+    let logical_deferred = grid_flow_axes.logical_size(deferred_axes);
     // A symbolic Flex preference is not an automatic size that ratio transfer
     // or stretch can supply. Leave it open for the child formatter.
-    let preferred_ratio = child_style.aspect_ratio.filter(|_| deferred_axis.is_none());
+    let preferred_ratio = child_style.aspect_ratio.filter(|_| !child_owns_preference);
     let algorithm = sizing_algorithm_for_grid_display(container_style.display);
-    let inherent_size = Size::new(
+    let raw_preferred = Size::new(
         resolve_preferred_optional(
             &child_style.size.width,
             algorithm,
@@ -1177,9 +1179,10 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
             area_parent.height,
             true,
         )?,
-    )
-    .apply_aspect_ratio(preferred_ratio)
-    .add_optional(box_sizing_adjustment);
+    );
+    let inherent_size = raw_preferred
+        .apply_aspect_ratio(preferred_ratio)
+        .add_optional(box_sizing_adjustment);
     let minimum = Size::new(
         resolve_standalone_subgrid_item_minimum_optional(
             &child_style.min_size.width,
@@ -1204,12 +1207,8 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         minimum.width.standalone_intrinsic(),
         minimum.height.standalone_intrinsic(),
     );
-    let min_size = Size::new(minimum.width.resolved(), minimum.height.resolved())
-        .add_optional(box_sizing_adjustment)
-        .or((padding + border).sum_axes().map(Some))
-        .max_optional((padding + border).sum_axes().map(Some))
-        .apply_aspect_ratio(child_style.aspect_ratio);
-    let max_size = Size::new(
+    let raw_min = Size::new(minimum.width.resolved(), minimum.height.resolved());
+    let raw_max = Size::new(
         resolve_maximum_optional(
             &child_style.max_size.width,
             algorithm,
@@ -1224,9 +1223,26 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
             area_parent.height,
             true,
         )?,
-    )
-    .apply_aspect_ratio(child_style.aspect_ratio)
-    .add_optional(box_sizing_adjustment);
+    );
+    let (raw_min, raw_max) =
+        if let Some(ratio) = child_style.aspect_ratio.filter(|_| child_owns_preference) {
+            crate::layout_math::transfer_aspect_ratio_limits(
+                raw_preferred,
+                raw_min,
+                raw_max,
+                ratio.get(),
+            )
+        } else {
+            (raw_min, raw_max)
+        };
+    let min_size = raw_min
+        .add_optional(box_sizing_adjustment)
+        .or((padding + border).sum_axes().map(Some))
+        .max_optional((padding + border).sum_axes().map(Some))
+        .apply_aspect_ratio(preferred_ratio);
+    let max_size = raw_max
+        .apply_aspect_ratio(preferred_ratio)
+        .add_optional(box_sizing_adjustment);
     let logical_inherent_size = grid_flow_axes.logical_size(inherent_size);
     let logical_style_size =
         grid_flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
@@ -1263,11 +1279,11 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         },
     );
     let logical_unresolved_margin = grid_flow_axes.logical_edges(unresolved_margin);
-    let inline_stretches = deferred_axis != Some(grid_flow_axes.inline_axis())
+    let inline_stretches = !logical_deferred.inline
         && logical_unresolved_margin.inline_start.is_some()
         && logical_unresolved_margin.inline_end.is_some()
         && justify_self == AlignItems::Stretch;
-    let block_stretches = deferred_axis != Some(grid_flow_axes.block_axis())
+    let block_stretches = !logical_deferred.block
         && logical_unresolved_margin.block_start.is_some()
         && logical_unresolved_margin.block_end.is_some()
         && align_self == AlignItems::Stretch;

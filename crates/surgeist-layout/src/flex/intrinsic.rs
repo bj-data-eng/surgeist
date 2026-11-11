@@ -257,8 +257,8 @@ where
     let measured = axes.main_size(measure(tree, operation)?.size);
     let padding_border = (item.padding + item.border).sum_axes();
     let style = tree.node_input(item.node);
-    let child_owned_axis = super::child_preferred_inline_axis::<Tree, M>(tree, item.node);
-    let preferred = if child_owned_axis == Some(axes.main_physical_axis()) {
+    let child_owned_axes = super::child_preferred_axes::<Tree, M>(tree, item.node);
+    let preferred = if axes.main_size(child_owned_axes) {
         if operation == SizingOperation::MaxContent {
             measured
         } else {

@@ -6,7 +6,7 @@ use super::inline_run::{
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
 use super::*;
-use crate::{AxisSizingRequestOf, Display};
+use crate::AxisSizingRequestOf;
 
 /// Raw baseline or float work needed even by an otherwise definite size query.
 /// This does not establish named absence or discharge a named-fact demand.
@@ -1613,7 +1613,7 @@ where
         crate::PhysicalAxis::Vertical => &style.common.size.height,
     };
     let measured = tree.has_leaf_measurement(child);
-    let ratio = if flex_owns_preferred_inline(style.display, inline_size, measured) {
+    let ratio = if !measured && style.flex_owns_preferred_inline {
         None
     } else {
         *style.common.aspect_ratio
@@ -1695,14 +1695,6 @@ pub(super) fn in_flow_child_block_request<S: LayoutScalar>(
     }
 }
 
-fn flex_owns_preferred_inline<S: LayoutScalar>(
-    display: Display,
-    preferred: &crate::PreferredSizeOf<S>,
-    measured: bool,
-) -> bool {
-    display == Display::Flex && !measured && preferred.is_max_content()
-}
-
 pub(super) fn in_flow_child_inline_request<S: LayoutScalar>(
     style: &BlockChildProjection<'_, S>,
     measured: bool,
@@ -1716,9 +1708,7 @@ pub(super) fn in_flow_child_inline_request<S: LayoutScalar>(
     };
     let request = if inline_size.is_min_content() {
         inherited.with_operation(crate::SizingOperation::MinContent)
-    } else if inline_size.is_max_content()
-        && !flex_owns_preferred_inline(style.display, inline_size, measured)
-    {
+    } else if inline_size.is_max_content() && (measured || !style.flex_owns_preferred_inline) {
         inherited.with_operation(crate::SizingOperation::MaxContent)
     } else {
         inherited
