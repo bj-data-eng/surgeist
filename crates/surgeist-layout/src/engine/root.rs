@@ -521,7 +521,7 @@ fn positioned_auto_inline_known_size<'input, Tree, M>(
     sizing_request: SizingRequestOf<Tree::Scalar>,
     parent: Size<Option<Tree::Scalar>>,
     requires_fixed_grid_tracks: bool,
-) -> LayoutResultOf<Tree::Node, Size<Option<Tree::Scalar>>, Tree::Scalar, M>
+) -> RootKnownInlineResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {

@@ -1664,7 +1664,7 @@ fn root_local_auto_grid_refuses_nonfixed_implicit_track() {
             .style(1, child.clone());
 
         let result = compute_layout(&tree, 0, auto_grid_request(0.0, 0.0));
-        let error = result.err().expect("the implicit column is not fixed");
+        let error = result.expect_err("the implicit column is not fixed");
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
         assert_eq!(error.operation(), LayoutOperation::RootLayout);
         assert!(matches!(
