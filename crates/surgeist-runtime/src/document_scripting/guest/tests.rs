@@ -211,6 +211,126 @@ fn assert_guest(scope: &mut Scope<'_>, expression: &str) -> Result<(), Error> {
     Ok(())
 }
 
+pub(in crate::document_scripting) fn attached_window_event_follows_the_listener_invocation() {
+    let mut host = host(Arc::new(AtomicBool::new(false)));
+    let permit = host.permit().unwrap();
+    attach_registry(&mut host, &permit);
+    let target = host.create_guest_event_target(&permit).unwrap();
+    let kind = units("current");
+    let event = host
+        .create_guest_event(&permit, &kind, DomEventInit::default())
+        .unwrap();
+    let (throwing, normal, original_exception) = host
+        .in_document(&permit, |scope| {
+            assert_guest(scope, "globalThis.event === undefined")?;
+            let global = scope.global()?;
+            let projected = event.object(scope)?;
+            scope.set(
+                &global,
+                PropertyKey::String(&units("expectedEvent")),
+                &projected,
+            )?;
+            scope.evaluate(&units(
+                "globalThis.observed = [];
+                 globalThis.replacement = {};
+                 globalThis.marker = {};
+                 globalThis.currentGetter = Object.getOwnPropertyDescriptor(globalThis, 'event')?.get;
+                 globalThis.recordEvent = e => observed.push([
+                     e === expectedEvent,
+                     globalThis.event === e,
+                     globalThis.event === replacement,
+                     currentGetter?.call(globalThis) === e,
+                 ]);",
+            ))?;
+            let throwing = scope.evaluate(&units("(e => { recordEvent(e); throw marker; })"))?;
+            let normal = scope.evaluate(&units("(e => { recordEvent(e); })"))?;
+            let marker = scope.get(&global, PropertyKey::String(&units("marker")))?;
+            Ok((
+                scope.retain(&throwing),
+                scope.retain(&normal),
+                scope.retain(&marker),
+            ))
+        })
+        .unwrap();
+
+    let throwing_id = host
+        .add_guest_event_listener(
+            &permit,
+            &target,
+            &kind,
+            &throwing,
+            DomEventListenerOptions {
+                once: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let thrown = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(thrown.receipt().callbacks(), 1);
+    assert_eq!(thrown.receipt().failures().len(), 1);
+    let [exception] = thrown.exceptions() else {
+        panic!("the ordinary listener exception was reported")
+    };
+    assert_eq!(exception.registration, throwing_id);
+    host.in_document(&permit, |scope| {
+        let original = scope.import(&original_exception)?;
+        let reported = scope.import(exception.exception.value())?;
+        assert!(scope.strict_equals(&original, &reported)?);
+        assert_guest(scope, "observed.length === 1 && observed[0][0]")?;
+        assert_guest(scope, "observed[0][1] && !observed[0][2] && observed[0][3]")?;
+        assert_guest(
+            scope,
+            "globalThis.event === undefined && currentGetter.call(globalThis) === undefined",
+        )
+    })
+    .unwrap();
+
+    host.add_guest_event_listener(&permit, &target, &kind, &normal, Default::default())
+        .unwrap();
+    let completed = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(completed.receipt().callbacks(), 1);
+    assert!(completed.receipt().failures().is_empty());
+    assert!(completed.exceptions().is_empty());
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "observed.length === 2 && observed[1][0] && observed[1][1] &&
+             !observed[1][2] && observed[1][3]",
+        )?;
+        assert_guest(
+            scope,
+            "globalThis.event === undefined && currentGetter.call(globalThis) === undefined",
+        )?;
+        scope.evaluate(&units("globalThis.event = replacement"))?;
+        assert_guest(
+            scope,
+            "(() => {
+                 const property = Object.getOwnPropertyDescriptor(globalThis, 'event');
+                 return property.value === replacement && property.writable &&
+                        property.enumerable && property.configurable;
+             })()",
+        )
+    })
+    .unwrap();
+
+    let shadowed = host.dispatch_guest_event(&permit, &target, &event).unwrap();
+    assert_eq!(shadowed.receipt().callbacks(), 1);
+    assert!(shadowed.receipt().failures().is_empty());
+    assert!(shadowed.exceptions().is_empty());
+    host.in_document(&permit, |scope| {
+        assert_guest(
+            scope,
+            "observed.length === 3 && observed[2][0] && !observed[2][1] &&
+             observed[2][2] && observed[2][3]",
+        )?;
+        assert_guest(
+            scope,
+            "globalThis.event === replacement && currentGetter.call(globalThis) === undefined",
+        )
+    })
+    .unwrap();
+}
+
 pub(in crate::document_scripting) fn attached_object_listeners_look_up_handle_event_when_invoked() {
     let mut host = host(Arc::new(AtomicBool::new(false)));
     let permit = host.permit().unwrap();

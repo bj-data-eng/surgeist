@@ -198,6 +198,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     super::guest::tests::attached_registered_function_uses_the_exact_native_invocation();
     super::guest::tests::attached_proxy_uses_its_own_realm();
     super::guest::tests::attached_object_listeners_look_up_handle_event_when_invoked();
+    super::guest::tests::attached_window_event_follows_the_listener_invocation();
 }
 
 fn window_binding_storage_admits_exact_and_refuses_one_byte_short() {
