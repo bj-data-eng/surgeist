@@ -9,7 +9,10 @@ use surgeist_html::{
 const ELEMENT: &[u16] = &ascii(b"Element");
 const HTML_ELEMENT: &[u16] = &ascii(b"HTMLElement");
 const HTML_MEDIA_ELEMENT: &[u16] = &ascii(b"HTMLMediaElement");
+const MATHML_ELEMENT: &[u16] = &ascii(b"MathMLElement");
 const HTML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1999/xhtml");
+const MATHML_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/1998/Math/MathML");
+const SVG_NAMESPACE: &[u16] = &ascii(b"http://www.w3.org/2000/svg");
 
 // The HTML element interface algorithm and the defining obsolete clauses
 // supplement the language owner's individually named element inventory.
@@ -42,6 +45,8 @@ const OBSOLETE_SPECIAL: &[(&str, &str)] = &[
 ];
 
 pub(super) struct ElementBindings {
+    element: RetainedCallbackObject,
+    mathml: RetainedCallbackObject,
     html: Vec<HtmlPrototype>,
     _html_backing: GuestBacking,
 }
@@ -49,6 +54,12 @@ pub(super) struct ElementBindings {
 struct HtmlPrototype {
     interface: &'static str,
     prototype: RetainedCallbackObject,
+}
+
+enum ElementInterface {
+    Element,
+    Html(&'static str),
+    Mathml,
 }
 
 #[derive(Clone, Copy)]
@@ -90,6 +101,7 @@ impl ElementBindings {
     ) -> Result<Self, DocumentGuestEventError> {
         let global = scope.global()?;
         let (constructor, element) = install(scope, &global, ELEMENT, node_constructor, node)?;
+        let (_, mathml) = install(scope, &global, MATHML_ELEMENT, &constructor, &element)?;
         let (html_constructor, html) =
             install(scope, &global, HTML_ELEMENT, &constructor, &element)?;
         let (media_constructor, media) =
@@ -181,17 +193,26 @@ impl ElementBindings {
             true,
             Callback::new(move |scope, arguments| handler.document_element(scope, arguments)),
         )?;
+        let base = scope.callback_object(&element)?;
+        let mathml = scope.callback_object(&mathml)?;
         Ok(Self {
+            element: scope.retain_callback_object(base, fund)?,
+            mathml: scope.retain_callback_object(mathml, fund)?,
             html: classes,
             _html_backing: html_backing,
         })
     }
 
-    fn html_prototype(
+    fn prototype(
         &self,
         events: &GuestEvents,
-        interface: &str,
+        interface: ElementInterface,
     ) -> Result<&RetainedCallbackObject, DocumentGuestEventError> {
+        let interface = match interface {
+            ElementInterface::Element => return Ok(&self.element),
+            ElementInterface::Mathml => return Ok(&self.mathml),
+            ElementInterface::Html(interface) => interface,
+        };
         for entry in &self.html {
             events.step()?;
             if entry.interface == interface {
@@ -202,17 +223,23 @@ impl ElementBindings {
     }
 }
 
+fn element_interface(
+    name: &DomQualifiedName,
+    events: &GuestEvents,
+) -> Result<ElementInterface, DocumentGuestEventError> {
+    events.step()?;
+    match name.namespace_uri().map(DocumentString::code_units) {
+        Some(HTML_NAMESPACE) => Ok(ElementInterface::Html(html_interface(name, events)?)),
+        Some(MATHML_NAMESPACE) => Ok(ElementInterface::Mathml),
+        Some(SVG_NAMESPACE) => Err(Error::BackendUnavailable.into()),
+        _ => Ok(ElementInterface::Element),
+    }
+}
+
 fn html_interface(
     name: &DomQualifiedName,
     events: &GuestEvents,
 ) -> Result<&'static str, DocumentGuestEventError> {
-    events.step()?;
-    if !name
-        .namespace_uri()
-        .is_some_and(|uri| uri.code_units() == HTML_NAMESPACE)
-    {
-        return Err(Error::BackendUnavailable.into());
-    }
     let local = name.local_name();
     let matches = |spelling: &str| {
         local
@@ -331,10 +358,10 @@ impl Capture {
                     .map_err(DocumentScriptNativeError::from)?
                     .as_element()
                     .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-                html_interface(element.name(), &events)
+                element_interface(element.name(), &events)
             })?;
             let prototype =
-                scope.open_callback_object(bindings.element.html_prototype(&events, interface)?)?;
+                scope.open_callback_object(bindings.element.prototype(&events, interface)?)?;
             bindings
                 .ordinary
                 .project(scope, &owner, &events, &prototype, |inbox, key| {
