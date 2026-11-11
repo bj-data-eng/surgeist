@@ -266,7 +266,7 @@ impl NativeDomEvent {
         Ok(())
     }
 
-    pub(super) fn is_dispatching(&self) -> bool {
+    pub(crate) fn is_dispatching(&self) -> bool {
         self.continuation()
             .is_some_and(|invocation| invocation.lifetime.get() != InvocationLifetime::Idle)
     }

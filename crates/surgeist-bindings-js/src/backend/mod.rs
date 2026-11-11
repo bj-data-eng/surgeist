@@ -92,6 +92,12 @@ pub(crate) struct DomExceptionProfile {
     pub(crate) account: std::rc::Rc<ConversionAccount>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct DeclaredCallable<'a> {
+    pub(crate) metadata: FunctionMetadata<'a>,
+    pub(crate) maximum_arguments: u32,
+}
+
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
@@ -141,7 +147,7 @@ pub(crate) trait Operations {
     fn function(
         &mut self,
         callback: &Callback,
-        fixed: Option<FunctionMetadata<'_>>,
+        declared: Option<DeclaredCallable<'_>>,
     ) -> Result<Root, Error>;
     fn constructor(
         &mut self,

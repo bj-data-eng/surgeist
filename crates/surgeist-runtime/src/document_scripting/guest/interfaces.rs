@@ -1,5 +1,7 @@
 //! Public Event constructors on the authenticated, unpublished Window.
 
+mod operations;
+
 use super::*;
 use surgeist_bindings_js::{
     Arguments, ConstructorArguments, ConstructorCallback, ConstructorCompletion, FunctionMetadata,
@@ -27,6 +29,7 @@ const CONSTRUCTOR: &[u16] = &ascii(b"constructor");
 const TRUSTED: &[u16] = &ascii(b"isTrusted");
 const EVENT: &[u16] = &ascii(b"Event");
 const TARGET: &[u16] = &ascii(b"EventTarget");
+pub(super) const EVENT_TARGET_REFERENCE: u32 = 0;
 
 #[derive(Clone, Copy)]
 enum Interface {
@@ -46,6 +49,10 @@ impl Interface {
 #[derive(Clone, Copy)]
 enum Attribute {
     Type,
+    Target,
+    CurrentTarget,
+    CancelBubble,
+    ReturnValue,
     Bubbles,
     Cancelable,
     Composed,
@@ -145,6 +152,17 @@ impl PublicEventBindings {
                 &ascii(b"type")[..],
                 &ascii(b"get type")[..],
             ),
+            (Attribute::Target, &ascii(b"target"), &ascii(b"get target")),
+            (
+                Attribute::Target,
+                &ascii(b"srcElement"),
+                &ascii(b"get srcElement"),
+            ),
+            (
+                Attribute::CurrentTarget,
+                &ascii(b"currentTarget"),
+                &ascii(b"get currentTarget"),
+            ),
             (
                 Attribute::Bubbles,
                 &ascii(b"bubbles"),
@@ -184,6 +202,7 @@ impl PublicEventBindings {
             )?;
             define_getter(scope, &event, key, &getter, true)?;
         }
+        operations::install(scope, &event, &capture)?;
         let trusted = make_getter(
             scope,
             capture(size_of::<(Capture, Attribute)>())?,
@@ -518,6 +537,16 @@ impl Capture {
                     .conversion
                     .run(scope, |conversion| conversion.copy_to_js(ty.code_units()))?
             }
+            Attribute::Target => {
+                operations::nullable_target(scope, arguments.receiver(), event.target())?
+            }
+            Attribute::CurrentTarget => {
+                operations::nullable_target(scope, arguments.receiver(), event.current_target())?
+            }
+            Attribute::CancelBubble => {
+                scope.primitive(Primitive::Boolean(event.cancel_bubble()))?
+            }
+            Attribute::ReturnValue => scope.primitive(Primitive::Boolean(event.return_value()))?,
             Attribute::Bubbles => scope.primitive(Primitive::Boolean(event.bubbles()))?,
             Attribute::Cancelable => scope.primitive(Primitive::Boolean(event.cancelable()))?,
             Attribute::Composed => scope.primitive(Primitive::Boolean(event.composed()))?,

@@ -735,9 +735,12 @@ fn fixed_arity_captures_only_the_selected_prefix() -> TestResult {
         let raw_name = [114, 97, 119];
         let fixed = entered.function(
             &callback,
-            Some(crate::FunctionMetadata {
-                name: &fixed_name,
-                length: 1,
+            Some(crate::backend::DeclaredCallable {
+                metadata: crate::FunctionMetadata {
+                    name: &fixed_name,
+                    length: 1,
+                },
+                maximum_arguments: 1,
             }),
         )?;
         let raw = entered.function(&callback, None)?;

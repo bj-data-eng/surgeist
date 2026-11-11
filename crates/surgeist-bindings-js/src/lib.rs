@@ -806,7 +806,24 @@ impl<'scope> Scope<'scope> {
         callback: &Callback,
         metadata: FunctionMetadata<'_>,
     ) -> Result<Value<'scope>, Error> {
-        let root = self.operations.function(callback, Some(metadata))?;
+        self.bounded_function(callback, metadata, metadata.length)
+    }
+
+    /// Creates a callable whose captured argument prefix is independent of
+    /// its declared JavaScript length. Explicit undefined remains supplied.
+    pub fn bounded_function(
+        &mut self,
+        callback: &Callback,
+        metadata: FunctionMetadata<'_>,
+        maximum_arguments: u32,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self.operations.function(
+            callback,
+            Some(backend::DeclaredCallable {
+                metadata,
+                maximum_arguments,
+            }),
+        )?;
         Ok(self.value(root))
     }
 

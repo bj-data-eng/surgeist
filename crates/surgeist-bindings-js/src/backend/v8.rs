@@ -729,12 +729,16 @@ impl Operations for Entered<'_, '_, '_> {
     fn function(
         &mut self,
         callback: &Callback,
-        fixed: Option<FunctionMetadata<'_>>,
+        declared: Option<super::DeclaredCallable<'_>>,
     ) -> Result<Root, Error> {
-        // V8 reports the supplied count as i32. A larger declared length
-        // still captures every supplied argument and remains exact metadata.
-        let prefix = fixed.map(|metadata| i32::try_from(metadata.length).unwrap_or(i32::MAX));
-        self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
+        // V8 reports the supplied count as i32. A larger prefix still
+        // captures every supplied argument while metadata remains exact.
+        let prefix =
+            declared.map(|shape| i32::try_from(shape.maximum_arguments).unwrap_or(i32::MAX));
+        self.native_function(
+            NativeCallback::Callable(callback.clone(), prefix),
+            declared.map(|shape| shape.metadata),
+        )
     }
 
     fn constructor(

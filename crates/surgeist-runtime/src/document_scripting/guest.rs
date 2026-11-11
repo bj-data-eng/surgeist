@@ -852,6 +852,19 @@ impl GuestEvents {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
+        let mut projection = if self.public.is_some() {
+            self.step()?;
+            Some((
+                scope
+                    .native_object::<NativeDomEvent>(argument)?
+                    .ok_or(Error::ExpectedNativeObject)?,
+                scope
+                    .native_object::<DomStandaloneEventTarget>(receiver)?
+                    .ok_or(Error::ExpectedNativeObject)?,
+            ))
+        } else {
+            None
+        };
         loop {
             self.step()?;
             let outcome = {
@@ -872,6 +885,20 @@ impl GuestEvents {
                     DispatchHost::Guest,
                 )?
             };
+            if let Some((event, target)) = &projection
+                && matches!(event.payload().target(), Some(DomEventTarget::Standalone(ref actual))
+                    if actual == target.payload())
+            {
+                if let Err(error) = scope.set_native_object_reference::<NativeDomEvent>(
+                    argument,
+                    interfaces::EVENT_TARGET_REFERENCE,
+                    Some(receiver),
+                ) {
+                    return refuse(scope, &self.refusal, DocumentGuestEventError::from(error))
+                        .map_err(Into::into);
+                }
+                projection = None;
+            }
             let mut selected = match outcome {
                 DomEventDispatchOutcome::Complete(receipt) => return Ok(receipt),
                 DomEventDispatchOutcome::HostInvocation(selected) => selected,
