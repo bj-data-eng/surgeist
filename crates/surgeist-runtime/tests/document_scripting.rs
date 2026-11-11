@@ -141,6 +141,72 @@ fn eval(host: &mut DocumentScriptHost, permit: &DocumentScriptPermit, script: &s
     .unwrap();
 }
 
+fn native_window_exposes_dom_exception() {
+    let (session, top) = setup();
+    let mut host = prepare(session, Arc::new(cancel()))
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let permit = host.permit().unwrap();
+    assert_eq!(permit.document(), top.document());
+
+    let kind = host
+        .in_document(&permit, |scope| {
+            let script: Vec<_> = "typeof globalThis.DOMException".encode_utf16().collect();
+            let value = scope.evaluate(&script)?;
+            scope.to_utf16(&value)
+        })
+        .unwrap();
+    assert_eq!(
+        String::from_utf16(&kind).unwrap(),
+        "function",
+        "native Window DOMException constructor is missing"
+    );
+
+    // The selected Web IDL DOMException IDL and the pinned WPT custom bindings
+    // define these descriptor, default and receiver observations.
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const constructor = DOMException;
+            const prototype = constructor.prototype;
+            const global = Object.getOwnPropertyDescriptor(globalThis, "DOMException");
+            const exception = new constructor(undefined, undefined);
+            const descriptor = Object.getOwnPropertyDescriptor(prototype, "name");
+            let brandRefused = false;
+            try { descriptor.get.call(Object.create(prototype)); }
+            catch (error) { brandRefused = error instanceof TypeError; }
+            let callRefused = false;
+            try { constructor(); }
+            catch (error) { callRefused = error instanceof TypeError; }
+            return global.value === constructor && global.writable && global.configurable
+                && !global.enumerable && constructor.length === 0
+                && Object.getPrototypeOf(constructor) === Function.prototype
+                && Object.getPrototypeOf(prototype) === Error.prototype
+                && typeof descriptor.get === "function" && descriptor.set === undefined
+                && descriptor.enumerable && descriptor.configurable
+                && exception.message === "" && exception.name === "Error" && exception.code === 0
+                && !Object.hasOwn(exception, "message") && !Object.hasOwn(exception, "name")
+                && !Object.hasOwn(exception, "code") && brandRefused && callRefused
+                && Object.prototype.toString.call(exception) === "[object DOMException]";
+        })())"#,
+        1.0,
+    );
+    eval(
+        &mut host,
+        &permit,
+        r#"Number((() => {
+            const exception = new DOMException("\ud800", "InvalidCharacterError");
+            Object.defineProperty(exception, "name", {value: "WrongDocumentError"});
+            return exception.message === "\ud800"
+                && DOMException.INVALID_CHARACTER_ERR === 5
+                && DOMException.prototype.INVALID_CHARACTER_ERR === 5
+                && exception.code === 5;
+        })())"#,
+        1.0,
+    );
+}
+
 fn native_window_exposes_css_escape() {
     let (session, top) = setup();
     let mut host = prepare(session, Arc::new(cancel()))
@@ -1101,6 +1167,7 @@ fn explicit_hook_keys_require_each_authored_utf16_work_unit() {
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
+            "native_window_exposes_dom_exception" => native_window_exposes_dom_exception(),
             "css-namespace" => native_window_exposes_css_escape(),
             "css-namespace-admission" => native_window_css_admission(),
             "css-namespace-collision" => {
@@ -1123,6 +1190,7 @@ fn main() {
         }
         return;
     }
+    native_window_exposes_dom_exception();
     native_window_exposes_css_escape();
     native_window_css_admission();
     native_window_css_hook_collision_preserves_the_original_session();
