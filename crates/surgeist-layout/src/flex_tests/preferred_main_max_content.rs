@@ -773,6 +773,11 @@ fn preferred_main_max_content_under_grid_is_not_backfilled_by_ratio() {
 
 #[test]
 fn preferred_main_max_content_inside_flex_item_reaches_the_child_owner() {
+    check_preferred_main_max_content_inside_flex_item(FlexBasisOf::AUTO, 20.0);
+    check_preferred_main_max_content_inside_flex_item(FlexBasisOf::px(40.0), 40.0);
+}
+
+fn check_preferred_main_max_content_inside_flex_item(basis: FlexBasisOf<f64>, leaf_width: f64) {
     let tree = PublicLayoutTreeOf::<f64>::new()
         .children(0, [1])
         .children(1, [2])
@@ -799,7 +804,8 @@ fn preferred_main_max_content_inside_flex_item_reaches_the_child_owner() {
             2,
             NodeInputOf {
                 display: Display::Block,
-                size: Size::new(PreferredSizeOf::percent(0.5), PreferredSizeOf::px(10.0)),
+                size: Size::new(PreferredSizeOf::percent(0.5), PreferredSizeOf::AUTO),
+                flex_basis: basis,
                 min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
                 ..NodeInputOf::default()
             },
@@ -808,7 +814,7 @@ fn preferred_main_max_content_inside_flex_item_reaches_the_child_owner() {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
     for phase in [Phase::Unrounded, Phase::Final] {
-        for (node, width) in [(0, 100.0), (1, 40.0), (2, 20.0)] {
+        for (node, width) in [(0, 100.0), (1, 40.0), (2, leaf_width)] {
             assert_eq!(
                 readback::single_box_output(&batch, node, phase).size,
                 Size::new(width, 10.0),
