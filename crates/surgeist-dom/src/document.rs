@@ -221,7 +221,9 @@ struct NoAssociatedMetaThemeConsumer;
 pub struct DomDocumentEnvironment {
     input: DomNativeInputPlatform,
     pub(crate) hosted: Option<Arc<crate::hosted::DocumentAssociation>>,
-    requires_script_host: bool,
+    // Last actual attachment publication. Current engine provision is sampled
+    // separately, so stopping cannot change historical metadata.
+    script_host_generation: Option<std::num::NonZeroU64>,
 }
 
 /// Native-owner qualification, independent of browsing-context or scripting
@@ -295,7 +297,7 @@ impl DomDocumentEnvironment {
         Self {
             input,
             hosted: None,
-            requires_script_host: false,
+            script_host_generation: None,
         }
     }
     pub const fn input_platform(&self) -> DomNativeInputPlatform {
@@ -321,15 +323,6 @@ impl DomDocumentEnvironment {
     pub const fn has_ever_had_navigable(&self) -> bool {
         self.hosted.is_some()
     }
-    /// Scripting status available from the canonical environment alone.
-    /// A hosted environment requires a separate observation from its owner.
-    pub const fn scripting(&self) -> surgeist_html_semantics::HtmlScriptingStatus {
-        if self.requires_script_host {
-            surgeist_html_semantics::HtmlScriptingStatus::Unavailable
-        } else {
-            surgeist_html_semantics::HtmlScriptingStatus::Disabled
-        }
-    }
 }
 
 impl DomDocumentMetadata {
@@ -353,7 +346,7 @@ impl DomDocumentMetadata {
             DomDocumentEnvironment {
                 input,
                 hosted: Some(association),
-                requires_script_host: false,
+                script_host_generation: None,
             },
             false,
             &mut |text| {
@@ -720,8 +713,11 @@ impl DomDocumentMetadata {
             .as_ref()
             .map(|association| association.policy)
     }
-    pub(crate) fn require_script_host(&mut self) {
-        self.environment.requires_script_host = true;
+    pub(crate) fn publish_script_host(&mut self, generation: std::num::NonZeroU64) {
+        self.environment.script_host_generation = Some(generation);
+    }
+    pub(crate) fn script_host_generation(&self) -> Option<std::num::NonZeroU64> {
+        self.environment.script_host_generation
     }
     pub(crate) fn set_hosted_association(
         &mut self,
@@ -731,7 +727,7 @@ impl DomDocumentMetadata {
             association.phase,
             crate::hosted::DocumentPhase::Retired { .. }
         ) {
-            self.environment.requires_script_host = false;
+            self.environment.script_host_generation = None;
         }
         self.environment.hosted = Some(association);
     }

@@ -184,11 +184,7 @@ impl Draft {
                 }
                 Action::RequireDisabledScripting => {
                     let document = self.node(node)?.document();
-                    let transaction::KindRead::Document(metadata) = &self.node(document)?.kind()
-                    else {
-                        unreachable!("canonical Script node document")
-                    };
-                    match metadata.document_environment().scripting() {
+                    match self.document_scripting(document) {
                         surgeist_html_semantics::HtmlScriptingStatus::Disabled => Reply::Disabled,
                         surgeist_html_semantics::HtmlScriptingStatus::Enabled => Reply::Enabled,
                         surgeist_html_semantics::HtmlScriptingStatus::Unavailable => {
@@ -264,6 +260,20 @@ impl Draft {
             }
         }
         Ok(())
+    }
+}
+
+impl Draft {
+    fn document_scripting(&self, document: Key) -> surgeist_html_semantics::HtmlScriptingStatus {
+        use surgeist_html_semantics::HtmlScriptingStatus;
+        match (&self.script_registration, document) {
+            (Some(registration), Key::Existing(document))
+                if registration.key.document.node() == document && registration.is_active() =>
+            {
+                HtmlScriptingStatus::Unavailable
+            }
+            _ => HtmlScriptingStatus::Disabled,
+        }
     }
 }
 

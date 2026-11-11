@@ -12,14 +12,13 @@ use surgeist_bindings_js::{
 };
 use surgeist_css::query::media::CssMediaScripting;
 use surgeist_dom::{
-    DocumentId, DomDocumentScriptBinding, DomDocumentScriptingFacts,
+    DocumentId, DomDocumentScriptBinding, DomDocumentScriptRegistration, DomDocumentScriptingFacts,
     DomDocumentScriptingObservation, DomError, DomHostedError, DomHostedRuntimeRetention,
     DomSnapshot,
 };
 use surgeist_html::scripting::{HtmlScriptingEngine, HtmlScriptingPolicy};
 use surgeist_html_semantics::HtmlScriptingStatus;
 
-use crate::dom_lifecycle::{ScriptAttachmentObserver, ScriptAttachmentOwner};
 use crate::{
     DomEventDom, DomHostedRuntimeError, DomHostedTopLevel, DomSession, DomSourceRuntime,
     HostedRuntime,
@@ -135,7 +134,6 @@ struct Attachment {
     policy: HtmlScriptingPolicy,
     failures: FailureSlot,
     source_failures: SourceFailureSlot,
-    liveness: ScriptAttachmentObserver,
 }
 
 struct NativeOwner {
@@ -151,8 +149,16 @@ impl NativeOwner {
     fn recover(mut owner: Rc<Self>) -> Result<DomSession, Rc<Self>> {
         // Do not release the funded target body while an outstanding Weak can
         // keep its allocation alive. The installed hook is the only issuer.
-        if Rc::get_mut(&mut owner).is_none() {
+        let Some(native) = Rc::get_mut(&mut owner) else {
             return Err(owner);
+        };
+        if let Some(attachment) = native.attachment.get() {
+            native
+                .session
+                .get_mut()
+                .dom()
+                .raw_mut()
+                .release_document_script_registration(&attachment.canonical);
         }
         Rc::try_unwrap(owner).map(|native| native.session.into_inner())
     }
@@ -334,7 +340,7 @@ impl PreparedDocumentScriptHost {
             .ok_or(DocumentScriptNativeError::RepresentationExhausted)?;
         let failure_bytes = FailureSlot::storage_bytes();
         let source_failure_bytes = SourceFailureSlot::storage_bytes();
-        let liveness_bytes = ScriptAttachmentOwner::storage_bytes();
+        let liveness_bytes = DomDocumentScriptRegistration::storage_bytes();
         let bytes = size_of::<NativeOwner>()
             .checked_add(hook_bytes)
             .and_then(|bytes| bytes.checked_add(failure_bytes))
@@ -366,7 +372,6 @@ impl PreparedDocumentScriptHost {
         };
         let failures = FailureSlot::new(&authority, failure_backing)?;
         let source_failures = SourceFailureSlot::new(&authority, source_failure_backing)?;
-        let (native_liveness, liveness) = ScriptAttachmentOwner::new(liveness_backing);
 
         // Drop Process before releasing the installed hook's debit on failure.
         let mut process = process;
@@ -395,26 +400,20 @@ impl PreparedDocumentScriptHost {
             .session
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
-        let canonical = hosted
-            .attach_script_target(
-                &mut session.dom(),
-                target,
-                cancel,
-                native_liveness,
-                |source, dom| {
-                    source.attach_document_script_host(
-                        dom.raw_mut(),
-                        target.host(),
-                        target.global(),
-                        target.document(),
-                        DomDocumentScriptingFacts {
-                            engine: HtmlScriptingEngine::Supported,
-                            policy,
-                        },
-                        cancel,
-                    )
-                },
-            )
+        let (canonical, registration) = hosted
+            .with_script_target(&mut session.dom(), target, cancel, |source, dom| {
+                source.attach_document_script_host(
+                    dom.raw_mut(),
+                    target.global(),
+                    target.document(),
+                    DomDocumentScriptingFacts {
+                        engine: HtmlScriptingEngine::Supported,
+                        policy,
+                    },
+                    liveness_backing,
+                    cancel,
+                )
+            })
             .map_err(DocumentScriptNativeError::from)?;
         // Only this unpublished owner can initialize the cell; it is consumed
         // on success, and no guest operation can run during publication.
@@ -425,9 +424,9 @@ impl PreparedDocumentScriptHost {
             policy,
             failures,
             source_failures,
-            liveness,
         });
         Ok(ScriptEngine {
+            registration,
             process,
             realm,
             retained_bytes: bytes,
@@ -452,6 +451,8 @@ impl DocumentScriptPermit {
 }
 
 struct ScriptEngine {
+    // Close the canonical engine fact before releasing SDK handles/captures.
+    registration: DomDocumentScriptRegistration,
     process: Process,
     realm: Realm,
     retained_bytes: usize,
@@ -496,7 +497,11 @@ impl DocumentScriptHost {
     }
 
     fn attachment(&self) -> Result<&Attachment, DocumentScriptNativeError> {
-        if self.engine.is_none() {
+        if self
+            .engine
+            .as_ref()
+            .is_none_or(|engine| !engine.registration.is_active())
+        {
             return Err(DocumentScriptNativeError::Revoked);
         }
         let attachment = self
@@ -504,16 +509,15 @@ impl DocumentScriptHost {
             .attachment
             .get()
             .ok_or(DocumentScriptNativeError::Revoked)?;
-        if !attachment.liveness.is_active() {
-            return Err(DocumentScriptNativeError::Revoked);
-        }
         Ok(attachment)
     }
 
     fn dispose_retired_engine(&mut self) {
-        if self.engine.is_some()
+        if self
+            .engine
+            .as_ref()
+            .is_some_and(|engine| !engine.registration.is_active())
             && let Some(attachment) = self.native.attachment.get()
-            && !attachment.liveness.is_active()
         {
             // Preserve the original terminal bindings result before its weak
             // owner expires. Dropping the Process abandons jobs without entry.

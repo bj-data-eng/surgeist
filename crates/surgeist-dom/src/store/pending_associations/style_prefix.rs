@@ -554,8 +554,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         // whose no-engine contract is independent of its browsing context.
         if profile != HtmlStyleExecutionProfile::NoExecutableJavaScript
             || request.cursor.profile() != profile
-            || current.metadata().document_environment().scripting()
-                != surgeist_html_semantics::HtmlScriptingStatus::Disabled
+            || current.scripting() != surgeist_html_semantics::HtmlScriptingStatus::Disabled
             || self
                 .meter
                 .entry()

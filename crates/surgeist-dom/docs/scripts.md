@@ -7,8 +7,8 @@ Native Script preparation and SVG processing use different source rules. Their r
 Native HTML Script has a checked `DomNode::as_html_script()` view over its real
 canonical flags, optional type, parser/preparation Document identities and shared
 Uninitialized result/null-ready state. Fresh native creation has null documents,
-force-async true and other flags false. Actual native node-document browsing
-context proves scripting Disabled, independently of XML/HTML class. Preparation
+force-async true and other flags false. The native no-engine profile establishes
+scripting Disabled, independently of XML/HTML class. Preparation
 still stores recognized type, already-started and actual preparation document
 before that source return. No fetch, compilation, error result, ready callback
 or JavaScript execution is manufactured.
@@ -31,6 +31,30 @@ declaring their unrelated trees complete or adding a fake semantic Script fact.
 Native APIs admit no arbitrary parser/processed-history installation; that cause
 must preserve/remap real metadata separately. Resource-capable preparation
 is not admitted by this native HTML profile.
+
+The optional Runtime engine attaches one exact registration to the canonical
+owner. Its generation is published through the ordinary metadata Draft. The
+registration's already admitted backing is shared with engine custody and live
+Drafts. Canonical navigable retirement closes it immediately after publication,
+including when later cleanup admission refuses. Engine disposal also closes it.
+Recovering a stopped Session releases its exact closed canonical slot while an
+original pending Draft retains its own reference and backing.
+
+`DomDocument::scripting()` reads the immutable native profile captured by its
+snapshot. A captured engine registration requires a separate owner observation.
+After disposal, fresh snapshots report Disabled. Retained snapshots keep their
+original profile, and joining an owner observation requires both its structural
+basis and exact captured registration. Stop changes the engine fact without
+advancing the structural revision.
+
+The later live Script-settings producer must qualify a parked ReadScripting
+request against its original operation, request ordinal, relevant Global and
+current canonical association. Its original Draft can retain the closed
+registration after Session recovery. That positive no-engine fact can answer the
+same pending read through the original acceptance path and work account. An
+already issued enabled receipt must also authenticate the current registration
+at acceptance. A closed registration does not settle an accepted executable
+request or replace a missing, foreign or stale Global's authority.
 
 ## SVG Script
 

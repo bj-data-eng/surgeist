@@ -15,8 +15,6 @@ mod uuid;
 mod watcher;
 pub(crate) use child::SourceProgress as HostedSourceProgress;
 pub use focus::DomSourceExecutionScope;
-#[cfg(feature = "document-scripting")]
-pub(crate) use records::{ScriptAttachmentObserver, ScriptAttachmentOwner};
 
 use crate::dom_event::DomEventDom;
 use std::cell::RefCell;
@@ -789,53 +787,24 @@ impl HostedRuntime {
         cancel: &AtomicBool,
         use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
     ) -> Result<R, DomHostedRuntimeError> {
-        self.with_script_target_attachment(dom, target, cancel, None, use_target)
-    }
-
-    pub(crate) fn attach_script_target<R>(
-        &self,
-        dom: &mut DomEventDom<'_>,
-        target: DomHostedTopLevel,
-        cancel: &AtomicBool,
-        attachment: ScriptAttachmentOwner,
-        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
-    ) -> Result<R, DomHostedRuntimeError> {
-        self.with_script_target_attachment(dom, target, cancel, Some(attachment), use_target)
-    }
-
-    fn with_script_target_attachment<R>(
-        &self,
-        dom: &mut DomEventDom<'_>,
-        target: DomHostedTopLevel,
-        cancel: &AtomicBool,
-        attachment: Option<ScriptAttachmentOwner>,
-        use_target: impl FnOnce(&DomHostedSource, &mut DomEventDom<'_>) -> Result<R, DomHostedError>,
-    ) -> Result<R, DomHostedRuntimeError> {
-        self.with_script_settings_attachment(
-            dom,
-            target,
-            None,
-            cancel,
-            attachment,
-            |source, dom| {
-                let canonical = dom
-                    .raw()
-                    .hosted_navigable(target.navigable)
-                    .map_err(DomHostedRuntimeError::Dom)?;
-                if canonical.parent().is_some()
-                    || canonical.is_retiring()
-                    || canonical.host() != target.host
-                    || canonical.browsing_context() != target.context
-                    || canonical.global() != target.global
-                    || canonical.active_entry() != target.entry
-                    || canonical.current_entry() != target.entry
-                    || canonical.active_document() != Some(target.document)
-                {
-                    return Err(DomHostedRuntimeError::Inactive);
-                }
-                use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
-            },
-        )
+        self.with_script_settings(dom, target, None, cancel, |source, dom| {
+            let canonical = dom
+                .raw()
+                .hosted_navigable(target.navigable)
+                .map_err(DomHostedRuntimeError::Dom)?;
+            if canonical.parent().is_some()
+                || canonical.is_retiring()
+                || canonical.host() != target.host
+                || canonical.browsing_context() != target.context
+                || canonical.global() != target.global
+                || canonical.active_entry() != target.entry
+                || canonical.current_entry() != target.entry
+                || canonical.active_document() != Some(target.document)
+            {
+                return Err(DomHostedRuntimeError::Inactive);
+            }
+            use_target(source, dom).map_err(DomHostedRuntimeError::Dom)
+        })
     }
 
     pub(crate) fn with_script_settings<R>(
@@ -844,21 +813,6 @@ impl HostedRuntime {
         target: DomHostedTopLevel,
         event: Option<&surgeist_dom::DomSourceEventRequest>,
         cancel: &AtomicBool,
-        use_target: impl FnOnce(
-            &DomHostedSource,
-            &mut DomEventDom<'_>,
-        ) -> Result<R, DomHostedRuntimeError>,
-    ) -> Result<R, DomHostedRuntimeError> {
-        self.with_script_settings_attachment(dom, target, event, cancel, None, use_target)
-    }
-
-    fn with_script_settings_attachment<R>(
-        &self,
-        dom: &mut DomEventDom<'_>,
-        target: DomHostedTopLevel,
-        event: Option<&surgeist_dom::DomSourceEventRequest>,
-        cancel: &AtomicBool,
-        attachment: Option<ScriptAttachmentOwner>,
         use_target: impl FnOnce(
             &DomHostedSource,
             &mut DomEventDom<'_>,
@@ -902,13 +856,7 @@ impl HostedRuntime {
         {
             return Err(DomHostedRuntimeError::Inactive);
         }
-        let result = use_target(source, dom)?;
-        if let Some(attachment) = attachment {
-            // The native Global was qualified before canonical attachment. Its
-            // publication has no further lookup, admission or failure boundary.
-            global.settings.script_attachment = Some(attachment);
-        }
-        Ok(result)
+        use_target(source, dom)
     }
 
     pub(crate) fn retain_script_payload(
@@ -1496,8 +1444,6 @@ fn drive_creation(
                             navigation_start: sample,
                             document: None,
                             ready: false,
-                            #[cfg(feature = "document-scripting")]
-                            script_attachment: None,
                             creation_url: request.creation_url().clone(),
                             top_level_creation_url: request.top_level_creation_url().clone(),
                             top_level_origin: request.top_level_origin().clone(),

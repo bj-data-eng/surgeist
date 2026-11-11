@@ -200,12 +200,7 @@ fn failed_enable_preserves_original_owner() {
     let mut original = refused.owner.into_session().unwrap();
     let no_script = original.snapshot();
     assert_eq!(no_script.stamp(), stamp);
-    let status = no_script
-        .document(target.document())
-        .unwrap()
-        .metadata()
-        .document_environment()
-        .scripting();
+    let status = no_script.document(target.document()).unwrap().scripting();
     assert_eq!(status, HtmlScriptingStatus::Disabled);
     assert_eq!(
         media_scripting_for_status(status),
@@ -229,7 +224,10 @@ fn failed_enable_preserves_original_owner() {
         environment.browsing_context(),
         surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
-    assert_eq!(environment.scripting(), HtmlScriptingStatus::Disabled);
+    assert_eq!(
+        snapshot.document(new).unwrap().scripting(),
+        HtmlScriptingStatus::Disabled
+    );
 }
 
 fn native_read_snapshot_and_explicit_queue() -> DocumentScriptPermit {
@@ -573,12 +571,10 @@ fn real_retirement_revokes_and_abandons(foreign: &DocumentScriptPermit) {
     let replacement = Process::bootstrap(EngineKind::V8).unwrap();
     drop(replacement);
     let snapshot = host.snapshot().unwrap();
-    let environment = snapshot
-        .document(top.document())
-        .unwrap()
-        .metadata()
-        .document_environment();
-    assert_eq!(environment.scripting(), HtmlScriptingStatus::Disabled);
+    assert_eq!(
+        snapshot.document(top.document()).unwrap().scripting(),
+        HtmlScriptingStatus::Disabled
+    );
     let _session = host.stop().into_session().unwrap();
 }
 
@@ -695,6 +691,44 @@ fn stopped_host_rejects_the_last_live_observation() {
     }
 }
 
+fn stopped_session_reattaches_with_a_new_scripting_basis() {
+    let (session, top) = setup();
+    let cancellation = Arc::new(cancel());
+    let mut host = prepare(session, cancellation.clone())
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let observation = host.observe_scripting(&host.permit().unwrap()).unwrap();
+    let historical = host.snapshot().unwrap();
+    cancellation.store(true, Ordering::Relaxed);
+    let session = host.stop().into_session().unwrap();
+    let stopped = session.snapshot();
+    assert_eq!(historical.stamp(), stopped.stamp());
+    assert_eq!(
+        stopped.document(top.document()).unwrap().scripting(),
+        HtmlScriptingStatus::Disabled
+    );
+    cancellation.store(false, Ordering::Relaxed);
+    let mut replacement = prepare(session, cancellation)
+        .enable(top, ALLOW, hooks(&hook()))
+        .unwrap();
+    let current = replacement.snapshot().unwrap();
+    assert_ne!(current.stamp(), stopped.stamp());
+    assert!(matches!(
+        current.with_document_scripting(observation),
+        Err(DomHtmlCaptureError::StaleScriptingObservation)
+    ));
+    let new_observation = replacement
+        .observe_scripting(&replacement.permit().unwrap())
+        .unwrap();
+    current.with_document_scripting(new_observation).unwrap();
+    historical.with_document_scripting(observation).unwrap();
+    assert_eq!(
+        stopped.document(top.document()).unwrap().scripting(),
+        HtmlScriptingStatus::Disabled
+    );
+    let _session = replacement.stop().into_session().unwrap();
+}
+
 fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         match scenario.as_str() {
@@ -708,6 +742,7 @@ fn main() {
             "retirement-admission" => retirement_refusals_follow_actual_canonical_publication(),
             "stop-known-no-engine" => stopped_host_captures_known_no_engine(),
             "stop-stale-observation" => stopped_host_rejects_the_last_live_observation(),
+            "stop-reattach" => stopped_session_reattaches_with_a_new_scripting_basis(),
             _ => panic!("unknown scripting scenario: {scenario}"),
         }
         return;
@@ -716,6 +751,7 @@ fn main() {
     let expired_permit = native_read_snapshot_and_explicit_queue();
     stopped_host_captures_known_no_engine();
     stopped_host_rejects_the_last_live_observation();
+    stopped_session_reattaches_with_a_new_scripting_basis();
     real_retirement_revokes_and_abandons(&expired_permit);
     retirement_unwind_disposes_the_revoked_guest_owner();
     retirement_refusals_follow_actual_canonical_publication();

@@ -411,7 +411,8 @@ fn add_document(
     registries: &mut StagedRegistries,
     control: &mut Control<'_>,
 ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
-    let metadata = snapshot.document(document)?.metadata();
+    let view = snapshot.document(document)?;
+    let metadata = view.metadata();
     let environment = metadata.document_environment();
     let registry = registry_input(
         builder,
@@ -422,10 +423,7 @@ fn add_document(
     )?;
     let scripting = scripting
         .filter(|observation| observation.basis().document() == document)
-        .map_or_else(
-            || environment.scripting(),
-            |observation| observation.status(),
-        );
+        .map_or_else(|| view.scripting(), |observation| observation.status());
     let subject = builder.add_document(metadata.mode(), scripting, registry)?;
     builder.establish_document_nonce_environment(
         &subject,
@@ -559,7 +557,9 @@ impl DomSnapshot {
         &self,
         scripting: crate::DomDocumentScriptingObservation,
     ) -> Result<DomScriptingCapture<'_>, DomHtmlCaptureError> {
-        if self.stamp() != scripting.basis().store() {
+        if self.stamp() != scripting.basis().store()
+            || self.script_registration != Some(scripting.registration)
+        {
             return Err(DomHtmlCaptureError::StaleScriptingObservation);
         }
         self.require_complete_source()?;

@@ -1286,6 +1286,7 @@ impl State {
 /// mutable CSSOM custody. Moving it does not replay or rebind that operation.
 /// Shared mutation and Sync are not supplied by this exclusive-owner contract.
 pub struct Dom {
+    script_registration: Option<crate::hosted::CanonicalScriptRegistration>,
     fullscreen_exits: fullscreen::custody::Invocations,
     next_fullscreen_exit: u64,
     element_tasks: Option<std::sync::Weak<crate::element_tasks::Binding>>,
@@ -1413,6 +1414,7 @@ impl Dom {
             hosted_revisions: 0,
             history: history::History::new(),
             document_environment: crate::DomDocumentEnvironment::new(input),
+            script_registration: None,
         })
     }
     pub fn owner(&self) -> DomOwnerId {
@@ -1475,6 +1477,7 @@ impl Dom {
             owner: self.owner,
             revision: self.revision,
             state: self.state.clone(),
+            script_registration: self.active_script_registration(),
         }
     }
     /// Live bounds cannot fall below admitted state. Smaller history bounds
@@ -2135,6 +2138,7 @@ use transaction::staged::DraftNode;
 
 struct Draft {
     base: Arc<State>,
+    script_registration: Option<Arc<crate::hosted::ScriptRegistration>>,
     event_recipients: Option<Arc<event::Owner>>,
     inline_membership: Option<inline_style::Membership>,
     pending_associations: pending_associations::Bank,
@@ -2734,6 +2738,7 @@ impl Draft {
             #[cfg(test)]
             insertion_trace: None,
             document_environment: dom.document_environment.clone(),
+            script_registration: dom.script_registration.as_ref().map(|slot| slot.0.clone()),
             input_processing: input_processing::InputProcessing::new(
                 dom.limits.input_scratch,
                 dom.limits.input_work,
