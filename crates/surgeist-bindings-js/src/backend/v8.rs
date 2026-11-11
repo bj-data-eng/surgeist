@@ -35,7 +35,7 @@ struct RootEntry {
 }
 
 enum NativeCallback {
-    Callable(Callback),
+    Callable(Callback, Option<i32>),
     Constructor(ConstructorCallback),
 }
 
@@ -659,8 +659,15 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn function(&mut self, callback: &Callback) -> Result<Root, Error> {
-        self.native_function(NativeCallback::Callable(callback.clone()), None)
+    fn function(
+        &mut self,
+        callback: &Callback,
+        fixed: Option<FunctionMetadata<'_>>,
+    ) -> Result<Root, Error> {
+        let prefix = fixed
+            .map(|metadata| i32::try_from(metadata.length).map_err(|_| Error::TooManyArguments))
+            .transpose()?;
+        self.native_function(NativeCallback::Callable(callback.clone(), prefix), fixed)
     }
 
     fn constructor(
@@ -841,6 +848,22 @@ impl Operations for Entered<'_, '_, '_> {
                 let context = scope.get_current_context();
                 let value = context.global(scope);
                 roots.retain(scope, realm, value.into())
+            },
+        )
+    }
+
+    fn has_own_property(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<bool, Error> {
+        self.validate_root(object)?;
+        self.attempt(
+            ExceptionPhase::PropertyRead,
+            |scope, roots, _realm, _intrinsics| {
+                let value = roots.local(scope, object)?;
+                let object =
+                    v8::Local::<v8::Object>::try_from(value).map_err(|_| Error::ExpectedObject)?;
+                let name = property_key(scope, roots, key)?;
+                object
+                    .has_own_property(scope, name)
+                    .ok_or(Error::BackendUnavailable)
             },
         )
     }
@@ -1261,17 +1284,19 @@ fn invoke_callback<'s>(
         Throw(Root),
     }
     let outcome = match (&lease.callback, role) {
-        (NativeCallback::Callable(callback), 0) => {
+        (NativeCallback::Callable(callback, prefix), 0) => {
             let receiver = Value {
                 root: roots.retain(entered.scope, lease.realm, arguments.this().into())?,
                 invariant: std::marker::PhantomData,
             };
             let mut values = Vec::new();
-            let count = usize::try_from(arguments.length()).map_err(|_| Error::TooManyArguments)?;
+            let supplied = arguments.length();
+            let selected = prefix.map_or(supplied, |prefix| prefix.min(supplied));
+            let count = usize::try_from(selected).map_err(|_| Error::TooManyArguments)?;
             values
                 .try_reserve_exact(count)
                 .map_err(|_| Error::Allocation)?;
-            for index in 0..arguments.length() {
+            for index in 0..selected {
                 values.push(Value {
                     root: roots.retain(entered.scope, lease.realm, arguments.get(index))?,
                     invariant: std::marker::PhantomData,

@@ -48,6 +48,19 @@ class DescriptionTests(unittest.TestCase):
         for path, output in g.generate(self.data).items():
             self.assertEqual(output, path.read_text(encoding="utf-8"))
 
+    def test_namespace_source_qualifies_exposure_and_cssom_string_profile(self):
+        self.definition("CSS")["attributes"][0]["value"] = "*"
+        self.rejected("only Window namespace exposure is selected")
+        self.setUp()
+        self.definition("CSSOMString")["type"]["name"] = "USVString"
+        self.rejected("source declaration mismatch")
+        self.setUp()
+        self.member("CSS.escape:0")["arguments"][0]["presence"] = "optional"
+        self.rejected("only regular fixed-arity namespace operations are selected")
+        self.setUp()
+        del self.member("CSS.escape:0")["arguments"]
+        self.rejected("only regular fixed-arity namespace operations are selected")
+
     def test_changed_standard_member_type_is_refused(self):
         self.member("Node.nodeName")["type"]["name"] = "USVString"
         self.rejected("source declaration mismatch")

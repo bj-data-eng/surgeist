@@ -75,6 +75,7 @@
 
 mod backend;
 pub mod conversion;
+pub mod css;
 pub mod declarations;
 mod error;
 mod host;
@@ -319,7 +320,7 @@ impl Callback {
     }
 }
 
-/// Exact declaration metadata for a native constructor function.
+/// Exact declaration metadata for a native function.
 #[derive(Clone, Copy)]
 pub struct FunctionMetadata<'name> {
     /// Exact UTF-16 name, including unmatched surrogates.
@@ -719,7 +720,16 @@ impl<'scope> Scope<'scope> {
     /// Callback clones share Rust behavior; each function has distinct guest
     /// identity and preserves its own creation realm.
     pub fn function(&mut self, callback: &Callback) -> Result<Value<'scope>, Error> {
-        let root = self.operations.function(callback)?;
+        let root = self.operations.function(callback, None)?;
+        Ok(self.value(root))
+    }
+
+    fn fixed_arity_function(
+        &mut self,
+        callback: &Callback,
+        metadata: FunctionMetadata<'_>,
+    ) -> Result<Value<'scope>, Error> {
+        let root = self.operations.function(callback, Some(metadata))?;
         Ok(self.value(root))
     }
 

@@ -3957,6 +3957,8 @@ dependencies = [
 name = "surgeist-bindings-js"
 version = "0.1.0"
 dependencies = [
+ "surgeist-css",
+ "surgeist-cssom",
  "surgeist-ledger",
  "v8",
 ]

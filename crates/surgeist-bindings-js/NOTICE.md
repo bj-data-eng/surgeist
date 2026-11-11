@@ -138,3 +138,8 @@ Copyright © WHATWG (Apple, Google, Mozilla, Microsoft), under the existing
 The [binding source index](../../references/js-bindings-standards.md) records
 the complete applicable source clauses. These standards terms are separate from
 the external engine dependency above.
+
+The CSS namespace declaration and its selected DOMString typedef derive from the
+[CSSOM editor capture](../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#source-provenance),
+copyright © 2026 World Wide Web Consortium under the
+[W3C Software and Document License](../../licenses/w3c/software-license-2023.txt).

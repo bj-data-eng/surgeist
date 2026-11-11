@@ -87,7 +87,11 @@ pub(crate) trait Operations {
     fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
     fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
-    fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
+    fn function(
+        &mut self,
+        callback: &Callback,
+        fixed: Option<FunctionMetadata<'_>>,
+    ) -> Result<Root, Error>;
     fn constructor(
         &mut self,
         callback: &ConstructorCallback,
@@ -99,6 +103,7 @@ pub(crate) trait Operations {
         fallback: &PrototypeResolver,
     ) -> Result<Root, Error>;
     fn global(&mut self) -> Result<Root, Error>;
+    fn has_own_property(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<bool, Error>;
     fn get(&mut self, object: &Root, key: PropertyKey<'_>) -> Result<Root, Error>;
     fn set(&mut self, object: &Root, key: PropertyKey<'_>, value: &Root) -> Result<(), Error>;
     fn define_property(
