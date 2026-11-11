@@ -22,46 +22,44 @@ pub enum BorderImageRepeat {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BorderImageAxisPattern {
     extent: f64,
-    anchor: f64,
-    gap: f64,
-    count: Option<NonZeroU64>,
+    placement: BorderImageAxisPlacement,
+}
+
+/// How an axis places tiles within its destination clip.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BorderImageAxisPlacement {
+    /// Evenly subdivide the clip from its first endpoint to its last endpoint.
+    Fit { count: NonZeroU64 },
+    /// Repeat in both directions from the representative anchor of the
+    /// centered pattern, measured from the clip minimum.
+    Repeat { anchor: f64 },
+    /// Divide the exact uncovered extent into `count + 1` equal gaps.
+    ///
+    /// In real arithmetic, tile `i` starts at
+    /// `i * extent + (i + 1) * uncovered / (count + 1)` for `0 <= i < count`.
+    Space { count: NonZeroU64, uncovered: f64 },
 }
 
 impl BorderImageAxisPattern {
-    /// The nominal extent of one tile before clipping.
+    /// The extent of one tile before clipping.
     ///
-    /// A finite pattern with zero gap evenly subdivides the clip. Use the
-    /// clip endpoints for the first and final boundaries of that pattern.
+    /// For `Fit`, this is the nominal extent. Use the clip endpoints for the
+    /// first and final boundaries of the exact subdivision.
     pub const fn extent(self) -> f64 {
         self.extent
     }
 
-    /// The origin of tile zero, relative to the clip minimum.
-    ///
-    /// For a periodic repeat this is a clip-local representative of the
-    /// centered pattern. Tiles extend in both directions from this anchor.
-    pub const fn anchor(self) -> f64 {
-        self.anchor
-    }
-
-    /// The distance between successive tile edges. Space also uses this gap
-    /// between the clip boundaries and the nearest tile on each side.
-    pub const fn gap(self) -> f64 {
-        self.gap
-    }
-
-    /// The number of whole tiles in a finite pattern starting at the anchor.
-    /// A periodic repeat returns `None` and is limited by the region's clip.
-    pub const fn count(self) -> Option<NonZeroU64> {
-        self.count
+    /// The placement and its admitted parameters.
+    pub const fn placement(self) -> BorderImageAxisPlacement {
+        self.placement
     }
 
     fn stretch(extent: f64) -> Self {
         Self {
             extent,
-            anchor: 0.0,
-            gap: 0.0,
-            count: Some(NonZeroU64::MIN),
+            placement: BorderImageAxisPlacement::Fit {
+                count: NonZeroU64::MIN,
+            },
         }
     }
 }
@@ -358,9 +356,7 @@ fn axis_pattern(
             }
             Ok(Some(BorderImageAxisPattern {
                 extent: tile,
-                anchor,
-                gap: 0.0,
-                count: None,
+                placement: BorderImageAxisPlacement::Repeat { anchor },
             }))
         }
         BorderImageRepeat::Round => {
@@ -369,47 +365,22 @@ fn axis_pattern(
             let length = work.coordinate(|| extent / count)?;
             Ok(Some(BorderImageAxisPattern {
                 extent: positive(work, length)?,
-                anchor: 0.0,
-                gap: 0.0,
-                count: Some(tile_count(work, count)?),
+                placement: BorderImageAxisPlacement::Fit {
+                    count: tile_count(work, count)?,
+                },
             }))
         }
         BorderImageRepeat::Space => {
-            let (whole, remainder) = whole_tiles(work, extent, tile)?;
+            let (whole, uncovered) = whole_tiles(work, extent, tile)?;
             if work.coordinate(|| whole == 0.0)? {
                 return Ok(None);
             }
-            let gaps = work.coordinate(|| whole + 1.0)?;
-            let gap = work.coordinate(|| remainder / gaps)?;
-            if work.coordinate(|| gap == 0.0)? && work.coordinate(|| remainder > 0.0)? {
-                return Err(geometry_error());
-            }
-            if work.coordinate(|| gap > 0.0)? {
-                // With subnormal spacing, the gap's rounding quantum can
-                // change its size substantially. Require equal outer gaps in
-                // that range. For normal spacing, prove the last tile fits
-                // with a trailing gap despite nominal rounding.
-                let exact_gap = work.coordinate(|| gap.is_subnormal())?;
-                let used_gaps = if exact_gap { gaps } else { whole };
-                let tiles = ExactProduct::new(work, whole, tile)?;
-                let gaps = ExactProduct::new(work, used_gaps, gap)?;
-                let clip = ExactProduct::new(work, extent, 1.0)?;
-                let expected = if exact_gap {
-                    Ordering::Equal
-                } else {
-                    Ordering::Less
-                };
-                if compare_product_sums(work, [tiles, gaps], [clip, ExactProduct::ZERO])?
-                    != expected
-                {
-                    return Err(geometry_error());
-                }
-            }
             Ok(Some(BorderImageAxisPattern {
                 extent: tile,
-                anchor: gap,
-                gap,
-                count: Some(tile_count(work, whole)?),
+                placement: BorderImageAxisPlacement::Space {
+                    count: tile_count(work, whole)?,
+                    uncovered,
+                },
             }))
         }
     }
@@ -439,6 +410,9 @@ fn whole_tiles(
     if work.coordinate(|| whole >= TILE_COUNT_LIMIT)? {
         return Err(geometry_error());
     }
+    // For a nonzero count, both terms are multiples of the tile's binary64
+    // quantum. The remainder is smaller than a tile, so that same quantum
+    // represents it exactly, including in the subnormal range.
     Ok((whole, remainder))
 }
 
@@ -545,16 +519,16 @@ mod tests {
         assert_eq!(top.clip().min(), Point::new(-5.0, 4.0));
         assert_eq!(top.clip().max(), Point::new(23.0, 8.0));
         assert_eq!(top.axes().width.extent(), 12.0);
-        assert_eq!(top.axes().width.anchor(), -4.0);
-        assert_eq!(top.axes().width.count(), None);
+        assert_eq!(
+            top.axes().width.placement(),
+            BorderImageAxisPlacement::Repeat { anchor: -4.0 }
+        );
         assert_eq!(top.axes().height, BorderImageAxisPattern::stretch(4.0));
 
         let left = left.unwrap();
         assert_eq!(left.axes().width, BorderImageAxisPattern::stretch(3.0));
         assert_eq!(left.axes().height.extent(), 7.0);
-        assert_eq!(left.axes().height.count().unwrap().get(), 2);
-        assert_eq!(left.axes().height.gap(), 2.0);
-        assert_eq!(left.axes().height.anchor(), 2.0);
+        assert_eq!(left.axes().height.placement(), spaced(2, 6.0));
 
         let middle = middle.unwrap();
         assert_eq!(middle.source().min(), Point::new(3.0, 2.0));
@@ -600,9 +574,12 @@ mod tests {
         let plan = tiling(input, Size::new(Round, Stretch));
         let top = plan.regions()[0][1].unwrap().axes().width;
         assert_eq!(top.extent(), 10.0);
-        assert_eq!(top.count().unwrap().get(), 3);
-        assert_eq!(top.anchor(), 0.0);
-        assert_eq!(top.gap(), 0.0);
+        assert_eq!(
+            top.placement(),
+            BorderImageAxisPlacement::Fit {
+                count: NonZeroU64::new(3).unwrap()
+            }
+        );
         assert_eq!(plan.regions()[1][1].unwrap().axes().width, top);
 
         input.border_size.width = 11.0;
@@ -613,12 +590,13 @@ mod tests {
         assert!(plan.regions()[1][1].is_none());
         let bottom = plan.regions()[2][1].unwrap().axes().width;
         assert_eq!(bottom.extent(), 3.0);
-        assert_eq!(bottom.count().unwrap().get(), 1);
-        assert_eq!(bottom.gap(), 1.0);
-        assert_eq!(bottom.anchor(), 1.0);
+        assert_eq!(bottom.placement(), spaced(1, 2.0));
 
         let repeat = tiling(input, Size::new(BorderImageRepeat::Repeat, Stretch));
-        assert_eq!(repeat.regions()[0][1].unwrap().axes().width.anchor(), -3.5);
+        assert_eq!(
+            repeat.regions()[0][1].unwrap().axes().width.placement(),
+            BorderImageAxisPlacement::Repeat { anchor: -3.5 }
+        );
     }
 
     fn axis(
@@ -641,15 +619,19 @@ mod tests {
         use BorderImageRepeat::{Round, Space};
         // The binary64 value 0.1 exceeds one tenth, so only four tiles fit.
         let space = axis(Space, 0.5, 0.1).unwrap().unwrap();
-        assert_eq!(space.count().unwrap().get(), 4);
-        assert!((space.gap() - 0.02).abs() < 1e-17);
+        assert_eq!(space.placement(), spaced(4, 0.09999999999999998));
 
         // 7/5 rounds to one tile. Both the remainder and the rounded half
         // tile equal two subnormal units, but the exact half exceeds it.
         let extent = f64::from_bits(7);
         let tile = f64::from_bits(5);
         let round = axis(Round, extent, tile).unwrap().unwrap();
-        assert_eq!(round.count().unwrap().get(), 1);
+        assert_eq!(
+            round.placement(),
+            BorderImageAxisPlacement::Fit {
+                count: NonZeroU64::MIN
+            }
+        );
         assert_eq!(round.extent(), extent);
         assert_eq!(axis(Round, 1.0, f64::MIN_POSITIVE), Err(geometry_error()));
     }
@@ -681,16 +663,22 @@ mod tests {
         }
     }
 
+    fn spaced(count: u64, uncovered: f64) -> BorderImageAxisPlacement {
+        BorderImageAxisPlacement::Space {
+            count: NonZeroU64::new(count).unwrap(),
+            uncovered,
+        }
+    }
+
     #[test]
-    fn tiling_refuses_space_whose_rounded_gap_clips_the_last_tile() {
+    fn tiling_spaces_all_whole_tiles_with_subnormal_uncovered_extent() {
         let input = center_only(f64::from_bits(23), f64::from_bits(5));
         let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
-        let outcome = resolve_border_image_tiling(
-            &geometry(input),
-            repeat,
-            options(PaintLimits::unlimited()),
-        );
-        assert_eq!(outcome.result, Err(geometry_error()));
+        let plan = tiling(input, repeat);
+        let axis = plan.regions()[1][1].unwrap().axes().width;
+        assert_eq!(axis.extent(), f64::from_bits(5));
+        // Four tiles use 20 units. Three units remain for the five gaps.
+        assert_eq!(axis.placement(), spaced(4, f64::from_bits(3)));
     }
 
     #[test]
@@ -700,7 +688,10 @@ mod tests {
         let plan = tiling(input, repeat);
         let axis = plan.regions()[1][1].unwrap().axes().width;
         assert_eq!(axis.extent(), 1.0);
-        assert_eq!(axis.anchor().rem_euclid(1.0), 0.5);
+        assert_eq!(
+            axis.placement(),
+            BorderImageAxisPlacement::Repeat { anchor: -0.5 }
+        );
     }
 
     #[test]
@@ -717,47 +708,32 @@ mod tests {
 
         let exact = tiling(center_only(f64::from_bits(6), f64::from_bits(2)), repeat);
         let axis = exact.regions()[1][1].unwrap().axes().width;
-        assert_eq!(axis.anchor(), 0.0);
+        assert_eq!(
+            axis.placement(),
+            BorderImageAxisPlacement::Repeat { anchor: 0.0 }
+        );
     }
 
     #[test]
-    fn tiling_refuses_subnormal_space_with_unequal_outer_gaps() {
-        let input = center_only(f64::from_bits(205), f64::from_bits(100));
+    fn tiling_preserves_equal_subnormal_outer_gaps() {
         let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
-        let outcome = resolve_border_image_tiling(
-            &geometry(input),
-            repeat,
-            options(PaintLimits::unlimited()),
-        );
-        // Rounding the ideal 5/3-unit gap to two leaves only one unit at the end.
-        assert_eq!(outcome.result, Err(geometry_error()));
-
-        let exact = tiling(
-            center_only(f64::from_bits(206), f64::from_bits(100)),
-            repeat,
-        );
-        let axis = exact.regions()[1][1].unwrap().axes().width;
-        assert_eq!(axis.count().unwrap().get(), 2);
-        assert_eq!(axis.gap(), f64::from_bits(2));
+        for (clip_units, uncovered_units) in [(205, 5), (206, 6)] {
+            let input = center_only(f64::from_bits(clip_units), f64::from_bits(100));
+            let plan = tiling(input, repeat);
+            let axis = plan.regions()[1][1].unwrap().axes().width;
+            assert_eq!(axis.extent(), f64::from_bits(100));
+            assert_eq!(axis.placement(), spaced(2, f64::from_bits(uncovered_units)));
+        }
     }
 
     #[test]
     fn tiling_space_keeps_equal_outer_gaps_at_a_large_tile_count() {
         let input = center_only(4_503_599_627_370_478.0, 0.875);
         let repeat = Size::new(BorderImageRepeat::Space, BorderImageRepeat::Stretch);
-        let outcome = resolve_border_image_tiling(
-            &geometry(input),
-            repeat,
-            options(PaintLimits::unlimited()),
-        );
-        if let Ok(plan) = outcome.result {
-            let axis = plan.regions()[1][1].unwrap().axes().width;
-            let count = axis.count().unwrap().get();
-            assert_eq!(count, 5_146_971_002_709_117);
-            // This exact tile count leaves 5/8 CSS px for all the gaps.
-            let trailing = (-(count as f64)).mul_add(axis.gap(), 0.625);
-            assert!((trailing - axis.gap()).abs() <= axis.gap() * f64::EPSILON);
-        }
+        let plan = tiling(input, repeat);
+        let axis = plan.regions()[1][1].unwrap().axes().width;
+        assert_eq!(axis.extent(), 0.875);
+        assert_eq!(axis.placement(), spaced(5_146_971_002_709_117, 0.625));
     }
 
     #[test]

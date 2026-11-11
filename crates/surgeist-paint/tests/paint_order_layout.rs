@@ -588,9 +588,10 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
 #[test]
 fn border_image_area_from_completed_layout_precedes_source_partition() {
     use surgeist_paint::{
-        BorderImageAreaRequest, BorderImageOutset, BorderImagePartitionRequest, BorderImageRepeat,
-        BorderImageSlice, BorderImageSource, BorderImageWidth, resolve_border_image_area,
-        resolve_border_image_in_area, resolve_border_image_tiling,
+        BorderImageAreaRequest, BorderImageAxisPlacement, BorderImageOutset,
+        BorderImagePartitionRequest, BorderImageRepeat, BorderImageSlice, BorderImageSource,
+        BorderImageWidth, resolve_border_image_area, resolve_border_image_in_area,
+        resolve_border_image_tiling,
     };
 
     let border = |value| layout::LengthOf::value(layout::LengthPercentageOf::px(value).unwrap());
@@ -656,9 +657,17 @@ fn border_image_area_from_completed_layout_precedes_source_partition() {
     assert_eq!(top.clip().min(), layout::Point::new(5.0, -2.0));
     assert_eq!(top.clip().max(), layout::Point::new(37.0, 2.0));
     assert_eq!(top.axes().width.extent(), 32.0);
-    assert_eq!(top.axes().width.anchor(), 0.0);
+    assert_eq!(
+        top.axes().width.placement(),
+        BorderImageAxisPlacement::Repeat { anchor: 0.0 }
+    );
     let middle = tiling.regions()[1][1].unwrap();
     assert_eq!(middle.axes().height.extent(), 14.0);
-    assert_eq!(middle.axes().height.count().unwrap().get(), 1);
+    assert_eq!(
+        middle.axes().height.placement(),
+        BorderImageAxisPlacement::Fit {
+            count: std::num::NonZeroU64::MIN
+        }
+    );
     assert_eq!(node.final_output(), output);
 }

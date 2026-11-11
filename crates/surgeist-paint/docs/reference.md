@@ -91,20 +91,20 @@ Empty source or destination regions emit no plan.
 Each drawable region carries its source rectangle, destination clip, and two
 patterns local to the clip minimum. Stretch emits one tile. Repeat centers
 a tile and extends in both directions to the clip. Its anchor represents
-that centered pattern modulo one tile. Round chooses
-the nearest positive whole count, with half ties toward the higher count,
-then divides the clip extent evenly. Space retains only whole tiles and
-divides the remainder equally before, after, and between them. Space emits
-no region when a tile cannot fit on either of its axes. In real arithmetic,
-a spaced or periodic tile `i` starts at `anchor + i * (extent + gap)`. A
-finite pattern with zero gap evenly subdivides the clip into `count` tiles.
-Use the clip endpoints for
-the first and final boundaries to avoid accumulating rounding in the nominal
-tile extent. Finite counts retain distinguishable binary64 indices and an
-exactly representable extra gap count. Unrepresentable arithmetic returns
-the typed border-image geometry error. Space refuses a rounded gap that
-would clip the last tile or erase the trailing gap. Subnormal spacing
-requires exact equality across the outer and inner gaps.
+that centered pattern modulo one tile. Round chooses the nearest positive
+whole count, with half ties toward the higher count, then divides the clip
+extent evenly. Stretch and Round use the clip endpoints for the first and
+final boundaries of the subdivision.
+
+Space retains only whole tiles and records the exact uncovered extent.
+The equal gap is `uncovered / (count + 1)` before, after, and between the
+tiles. The start of tile `i` in real arithmetic is
+`i * extent + (i + 1) * uncovered / (count + 1)`. This representation
+retains equal gaps even when that quotient rounds in binary64. Space omits
+a region when a tile cannot fit on an axis using that mode. Finite counts
+retain distinguishable binary64 indices and an exactly representable extra
+gap count. Unrepresentable arithmetic returns the typed border-image
+geometry error.
 
 Ledger admits coordinate actions and emitted region records in
 `BorderImageTiling` and accounts for the fixed plan at publication. Source

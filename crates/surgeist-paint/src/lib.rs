@@ -18,11 +18,12 @@ pub use accounting::{
 pub use algorithm::{PaintOutcome, plan_stacking};
 pub use border_image::{
     BorderImageArea, BorderImageAreaOutcome, BorderImageAreaRequest, BorderImageAxisPattern,
-    BorderImageGeometry, BorderImageGeometryError, BorderImageOutcome, BorderImageOutset,
-    BorderImagePartitionRequest, BorderImageRect, BorderImageRegion, BorderImageRepeat,
-    BorderImageRequest, BorderImageSlice, BorderImageSource, BorderImageTileRegion,
-    BorderImageTiling, BorderImageTilingOutcome, BorderImageWidth, resolve_border_image,
-    resolve_border_image_area, resolve_border_image_in_area, resolve_border_image_tiling,
+    BorderImageAxisPlacement, BorderImageGeometry, BorderImageGeometryError, BorderImageOutcome,
+    BorderImageOutset, BorderImagePartitionRequest, BorderImageRect, BorderImageRegion,
+    BorderImageRepeat, BorderImageRequest, BorderImageSlice, BorderImageSource,
+    BorderImageTileRegion, BorderImageTiling, BorderImageTilingOutcome, BorderImageWidth,
+    resolve_border_image, resolve_border_image_area, resolve_border_image_in_area,
+    resolve_border_image_tiling,
 };
 pub use gradient::{
     GradientGeometryError, LinearGradientDirection, LinearGradientLine, LinearGradientOutcome,

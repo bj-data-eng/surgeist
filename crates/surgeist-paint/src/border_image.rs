@@ -8,8 +8,8 @@ use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
 mod tiling;
 pub use tiling::{
-    BorderImageAxisPattern, BorderImageRepeat, BorderImageTileRegion, BorderImageTiling,
-    BorderImageTilingOutcome, resolve_border_image_tiling,
+    BorderImageAxisPattern, BorderImageAxisPlacement, BorderImageRepeat, BorderImageTileRegion,
+    BorderImageTiling, BorderImageTilingOutcome, resolve_border_image_tiling,
 };
 
 /// The concrete image coordinates and natural CSS-pixel dimensions of a loaded source.
