@@ -19,6 +19,8 @@ keeps mixed length/percentage semantics explicit.
 area into source regions and destination rectangles. When the source first
 needs sizing, use `resolve_border_image_area` to obtain the default sizing
 extent and pass the resolved area to `resolve_border_image_in_area`.
+`resolve_border_image_tiling` uses those partitions to plan clipped corner,
+edge, and center tiles.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.

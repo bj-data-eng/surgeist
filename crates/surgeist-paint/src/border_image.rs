@@ -6,6 +6,12 @@ use std::cmp::Ordering;
 use surgeist_layout::{Edges, LengthPercentageOf, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
+mod tiling;
+pub use tiling::{
+    BorderImageAxisPattern, BorderImageAxisPlacement, BorderImageRepeat, BorderImageTileRegion,
+    BorderImageTiling, BorderImageTilingOutcome, resolve_border_image_tiling,
+};
+
 /// The concrete image coordinates and natural CSS-pixel dimensions of a loaded source.
 ///
 /// The coordinate size is positive. It is the decoded pixel extent for a raster
@@ -200,11 +206,11 @@ pub fn resolve_border_image_area(
         options,
         OperationKind::BorderImageArea,
         PaintPhase::BorderImageArea,
-        |work| {
+        Some(|work: &mut GeometryWork<'_, '_, '_>| {
             validate_box(work, request)?;
             validate_border_widths(work, request.border_widths)?;
             validate_outsets(work, request.outsets)
-        },
+        }),
         |work| resolve_area(work, request),
     );
     BorderImageAreaOutcome { result, report }
@@ -220,11 +226,11 @@ pub fn resolve_border_image_in_area(
         options,
         OperationKind::BorderImage,
         PaintPhase::BorderImageGeometry,
-        |work| {
+        Some(|work: &mut GeometryWork<'_, '_, '_>| {
             validate_source(work, request.source)?;
             validate_slices(work, request.slices)?;
             validate_widths(work, request.widths)
-        },
+        }),
         |work| resolve_geometry(work, request, |_| Ok(area)),
     );
     BorderImageOutcome { result, report }
@@ -251,14 +257,14 @@ pub fn resolve_border_image(
         options,
         OperationKind::BorderImage,
         PaintPhase::BorderImageGeometry,
-        |work| {
+        Some(|work: &mut GeometryWork<'_, '_, '_>| {
             validate_box(work, area)?;
             validate_source(work, partition.source)?;
             validate_border_widths(work, area.border_widths)?;
             validate_slices(work, partition.slices)?;
             validate_outsets(work, area.outsets)?;
             validate_widths(work, partition.widths)
-        },
+        }),
         |work| resolve_geometry(work, partition, |work| resolve_area(work, area)),
     );
     BorderImageOutcome { result, report }
@@ -268,7 +274,7 @@ fn run<T>(
     options: PaintOptions,
     kind: OperationKind,
     geometry_phase: PaintPhase,
-    validate: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>,
+    validate: Option<impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<(), PaintError>>,
     resolve: impl FnOnce(&mut GeometryWork<'_, '_, '_>) -> Result<T, PaintError>,
 ) -> (Result<T, PaintError>, Option<PaintReport>) {
     let mut meter = match options.operation(kind) {
@@ -277,26 +283,38 @@ fn run<T>(
     };
     let result = (|| {
         let root = meter.root();
-        let mut scopes = [root; 4];
-        for (slot, phase) in scopes.iter_mut().zip([
-            PaintPhase::PaintValidation,
-            geometry_phase,
-            PaintPhase::Publication,
-            PaintPhase::Cleanup,
-        ]) {
+        let validation = validate
+            .is_some()
+            .then(|| {
+                meter.child(
+                    root,
+                    PaintPhase::PaintValidation,
+                    Limits::unlimited(),
+                    Tariffs::identity(),
+                )
+            })
+            .transpose()?;
+        let mut scopes = [root; 3];
+        for (slot, phase) in
+            scopes
+                .iter_mut()
+                .zip([geometry_phase, PaintPhase::Publication, PaintPhase::Cleanup])
+        {
             *slot = meter.child(root, phase, Limits::unlimited(), Tariffs::identity())?;
         }
-        let [validation, geometry, publication, cleanup] = scopes;
+        let [geometry, publication, cleanup] = scopes;
         let mut retained = false;
         let result = (|| {
-            meter
-                .with_phase(validation, |phase| {
-                    validate(&mut GeometryWork {
-                        phase,
-                        scope: validation,
+            if let (Some(validation), Some(validate)) = (validation, validate) {
+                meter
+                    .with_phase(validation, |phase| {
+                        validate(&mut GeometryWork {
+                            phase,
+                            scope: validation,
+                        })
                     })
-                })
-                .map_err(setup_error)??;
+                    .map_err(setup_error)??;
+            }
             let result = meter
                 .with_phase(geometry, |phase| {
                     resolve(&mut GeometryWork {
@@ -838,12 +856,32 @@ struct ExactProduct {
 }
 
 impl ExactProduct {
+    const ZERO: Self = Self {
+        significand: 0,
+        exponent: 0,
+    };
+
     fn new(work: &mut GeometryWork<'_, '_, '_>, left: f64, right: f64) -> Result<Self, PaintError> {
         let (left, left_exponent) = exact_parts(work, left)?;
         let (right, right_exponent) = exact_parts(work, right)?;
         Ok(Self {
             significand: work.coordinate(|| left * right)?,
             exponent: work.coordinate(|| left_exponent + right_exponent)?,
+        })
+    }
+
+    fn integer_multiple(
+        work: &mut GeometryWork<'_, '_, '_>,
+        value: f64,
+        count: u64,
+    ) -> Result<Self, PaintError> {
+        let (significand, exponent) = exact_parts(work, value)?;
+        // A binary64 significand uses at most 53 bits and count at most 64.
+        let count = work.coordinate(|| u128::from(count))?;
+        let significand = work.coordinate(|| significand * count)?;
+        Ok(Self {
+            significand,
+            exponent,
         })
     }
 
@@ -886,13 +924,24 @@ fn compare_fit_ratios(
     let x_last = ExactProduct::new(work, x.extent, y.last)?;
     let y_first = ExactProduct::new(work, y.extent, x.first)?;
     let y_last = ExactProduct::new(work, y.extent, x.last)?;
+    compare_product_sums(work, [x_first, x_last], [y_first, y_last])
+}
+
+fn compare_product_sums(
+    work: &mut GeometryWork<'_, '_, '_>,
+    [x_first, x_last]: [ExactProduct; 2],
+    [y_first, y_last]: [ExactProduct; 2],
+) -> Result<Ordering, PaintError> {
     let mut start = i32::MAX;
     let mut end = i32::MIN;
     for term in [&x_first, &x_last, &y_first, &y_last] {
         if work.coordinate(|| term.significand != 0)? {
             start = work.coordinate(|| start.min(term.exponent))?;
-            // Include a possible carry above the product's 106 bits.
-            end = work.coordinate(|| end.max(term.exponent + 107))?;
+            // Include a possible carry above the product.
+            let leading = work.coordinate(|| term.significand.leading_zeros())?;
+            let bits_with_carry = work.coordinate(|| 129 - leading as i32)?;
+            let top = work.coordinate(|| term.exponent + bits_with_carry)?;
+            end = work.coordinate(|| end.max(top))?;
         }
     }
 
