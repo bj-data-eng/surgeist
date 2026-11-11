@@ -223,6 +223,8 @@ enum TypeStorage {
 pub struct DomEventType(TypeStorage);
 
 impl DomEventType {
+    pub(super) const EMPTY: Self = Self(TypeStorage::Static(&[]));
+
     /// Exact `load` spelling.
     pub const LOAD: Self = Self(TypeStorage::Static(&[108, 111, 97, 100]));
     /// Exact `error` spelling.

@@ -218,6 +218,12 @@ cleanup, the Event can be used again on the same DOM with the current registry.
 The canceled flag remains sticky across dispatch. Idle `init_event` clears it
 and preserves the original creation time and composed flag.
 
+`HostedRuntime::create_legacy_event` uses the receiving Document's live relevant
+Global and accepts the base Event aliases `Event`, `Events`, `HTMLEvents` and
+`SVGEvents` with ASCII-insensitive matching. The Event starts with an empty type
+and must be initialized with `init_event` before dispatch. Its original
+creation time remains available before and after initialization.
+
 `HostedRuntime::create_event_target` constructs a standalone target using its
 own authenticated relevant Global. The supplied dispatcher owns its listener
 list. Direct Global and standalone dispatch each have one at-target path item

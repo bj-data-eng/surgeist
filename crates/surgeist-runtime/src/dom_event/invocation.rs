@@ -25,9 +25,7 @@ impl<C> DomEventDispatcher<C> {
         cancel: &AtomicBool,
     ) -> Result<DomEventDispatch, DomEventDispatchError> {
         self.association.validate(dom.raw())?;
-        if event.is_dispatching() {
-            return Err(DomEventDispatchError::AlreadyDispatching);
-        }
+        event.check_dispatch_state()?;
         if event.0.owner != dom.owner() {
             return Err(DomError::ForeignOwner.into());
         }

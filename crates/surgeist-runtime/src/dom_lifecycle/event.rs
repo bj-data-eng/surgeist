@@ -31,19 +31,48 @@ impl HostedState {
         dom: &DomEventDom<'_>,
         global: DomHostedGlobalId,
         cancel: &AtomicBool,
-    ) -> Result<(EventTargetAssociation, clock::CoarsenedSample), DomHostedRuntimeError> {
+    ) -> Result<EventTargetAssociation, DomHostedRuntimeError> {
         self.qualify(dom)?;
         let document = dom
             .raw()
             .dispatch_global_document(global, cancel)
             .map_err(DomHostedRuntimeError::Dom)?;
-        let route = self.find_global(global, cancel, |source| {
+        Ok(EventTargetAssociation { global, document })
+    }
+
+    fn event_settings(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        association: &EventTargetAssociation,
+        cancel: &AtomicBool,
+    ) -> Result<&records::Settings, DomHostedRuntimeError> {
+        let route = self.find_global(association.global, cancel, |source| {
             source
                 .admit_runtime_work(dom.raw(), 1, cancel)
                 .map_err(|error| DomHostedRuntimeError::Dom(error.into()))
         })?;
-        let origin = self.settings_at(route, document)?.navigation_start;
-        Ok((EventTargetAssociation { global, document }, origin))
+        self.settings_at(route, association.document)
+    }
+
+    fn sample_event_creation(
+        &mut self,
+        dom: &DomEventDom<'_>,
+        association: &EventTargetAssociation,
+        cancel: &AtomicBool,
+    ) -> Result<EventCreation, DomHostedRuntimeError> {
+        let origin = self
+            .event_settings(dom, association, cancel)?
+            .navigation_start;
+        self.step(cancel)?;
+        self.source
+            .admit_runtime_work(dom.raw(), 1, cancel)
+            .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
+        let occurrence = self.clock.sample().map_err(clock_error)?;
+        Ok(EventCreation(creation_observation(
+            association.global,
+            origin,
+            occurrence,
+        )?))
     }
 }
 
@@ -63,14 +92,8 @@ impl HostedRuntime {
             let mut state = owner
                 .try_borrow_mut()
                 .map_err(|_| DomHostedRuntimeError::Busy)?;
-            let (_, origin) = state.event_global(dom, global, cancel)?;
-            state.step(cancel)?;
-            state
-                .source
-                .admit_runtime_work(dom.raw(), 1, cancel)
-                .map_err(|error| DomHostedRuntimeError::Dom(error.into()))?;
-            let occurrence = state.clock.sample().map_err(clock_error)?;
-            EventCreation(creation_observation(global, origin, occurrence)?)
+            let association = state.event_global(dom, global, cancel)?;
+            state.sample_event_creation(dom, &association, cancel)?
         };
         NativeDomEvent::authored(
             dom,
@@ -81,6 +104,40 @@ impl HostedRuntime {
             cancel,
         )
         .map_err(Into::into)
+    }
+
+    /// Construct an untrusted, uninitialized Event using the receiving
+    /// Document's actual relevant Global and original time origin.
+    ///
+    /// This base Event constructor accepts Event, Events, HTMLEvents and
+    /// SVGEvents with ASCII-insensitive matching. Dispatch requires a
+    /// successful `NativeDomEvent::init_event`.
+    pub fn create_legacy_event(
+        &mut self,
+        dom: &mut DomEventDom<'_>,
+        document: DocumentId,
+        interface: &[u16],
+        cancel: &AtomicBool,
+    ) -> Result<NativeDomEvent, DomEventConstructionError> {
+        if !base_event_interface(interface) {
+            return Err(DomEventConstructionError::UnsupportedInterface);
+        }
+        let creation = {
+            let owner = self.state()?;
+            let mut state = owner
+                .try_borrow_mut()
+                .map_err(|_| DomHostedRuntimeError::Busy)?;
+            state.qualify(dom)?;
+            let global = dom
+                .raw()
+                .dispatch_relevant_global(document.node(), cancel)
+                .map_err(DomHostedRuntimeError::Dom)?
+                .ok_or(DomEventConstructionError::MissingRelevantGlobal)?;
+            let association = EventTargetAssociation { global, document };
+            state.sample_event_creation(dom, &association, cancel)?
+        };
+        NativeDomEvent::legacy(dom, self.event_storage.clone(), creation, cancel)
+            .map_err(Into::into)
     }
 
     /// Construct a standalone EventTarget with this session's actual relevant
@@ -97,12 +154,24 @@ impl HostedRuntime {
             let mut state = owner
                 .try_borrow_mut()
                 .map_err(|_| DomHostedRuntimeError::Busy)?;
-            state.event_global(dom, global, cancel)?.0
+            let association = state.event_global(dom, global, cancel)?;
+            state.event_settings(dom, &association, cancel)?;
+            association
         };
         dispatcher
             .create_standalone_target(dom, association, cancel)
             .map_err(Into::into)
     }
+}
+
+fn base_event_interface(interface: &[u16]) -> bool {
+    const ALIASES: [&[u8]; 4] = [b"event", b"events", b"htmlevents", b"svgevents"];
+    ALIASES.iter().any(|alias| {
+        interface.len() == alias.len()
+            && interface.iter().zip(alias.iter()).all(|(&unit, &ascii)| {
+                unit == u16::from(ascii) || unit == u16::from(ascii.to_ascii_uppercase())
+            })
+    })
 }
 
 pub(super) fn creation_observation(

@@ -221,6 +221,183 @@ fn actual_constructor_and_registry_preserve_every_utf16_type_exactly() {
 }
 
 #[test]
+fn legacy_event_uses_the_receiving_document_and_requires_successful_initialization() {
+    let mut session = session();
+    let destination = top(&mut session);
+    let receiver = top(&mut session);
+    let target = body(&session.snapshot(), destination.document());
+    let mut hosted = session.hosted_execution();
+    let settings = hosted
+        .settings(&session.dom(), receiver.global(), &cancel())
+        .unwrap();
+    let mut registry = new_registry::<Vec<DomEventPhase>>();
+    let exact_type: &[u16] = &[0xd800, 0, 97];
+    let callback = DomEventCallback::new(move |_, _, seen: &mut Vec<DomEventPhase>, event| {
+        assert_eq!(event.current_target(), Some(target.into()));
+        seen.push(event.phase());
+        event.prevent_default();
+        Ok(())
+    });
+    for event_type in [&[], exact_type] {
+        registry
+            .add_listener(
+                &mut session.dom(),
+                target,
+                event_type,
+                callback.clone(),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+    }
+
+    let mut seen = Vec::new();
+    let ordinary = hosted
+        .create_event(
+            &mut session.dom(),
+            destination.global(),
+            &[],
+            DomEventInit::default(),
+            &cancel(),
+        )
+        .unwrap();
+    let receipt = fire(&mut session, &mut registry, target, &ordinary, &mut seen);
+    assert_eq!(seen, [DomEventPhase::AtTarget]);
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(!receipt.default_prevented());
+
+    for (alias, event_type) in [
+        ("eVeNt", &[][..]),
+        ("EVENTS", exact_type),
+        ("HtmlEvents", exact_type),
+        ("sVgEvEnTs", exact_type),
+    ] {
+        seen.clear();
+        let event = hosted
+            .create_legacy_event(
+                &mut session.dom(),
+                receiver.document(),
+                &units(alias),
+                &cancel(),
+            )
+            .unwrap();
+        let creation = *event.creation().unwrap();
+        let timestamp = event.time_stamp().unwrap();
+        assert_eq!(creation.global(), receiver.global());
+        assert_eq!(creation.clock_source(), settings.clock_source());
+        assert_eq!(
+            creation.time_origin_microseconds(),
+            settings.time_origin_microseconds()
+        );
+        assert_eq!(creation.occurrence_microseconds() % 100, 0);
+        assert!(timestamp.is_finite());
+        assert_eq!(event.event_type().code_units(), []);
+        assert!(!event.bubbles());
+        assert!(!event.cancelable());
+        assert!(!event.composed());
+        assert!(!event.is_trusted());
+        assert!(event.toggle_event().is_none());
+
+        event.stop_propagation();
+        assert!(matches!(
+            event.init_event(&mut session.dom(), &[], true, true, &AtomicBool::new(true)),
+            Err(DomEventDispatchError::Dom(DomError::Cancelled))
+        ));
+        assert!(matches!(
+            registry.prepare_dispatch(&mut session.dom(), target, &event, &cancel()),
+            Err(DomEventDispatchError::Uninitialized)
+        ));
+        assert!(seen.is_empty());
+        assert!(event.cancel_bubble());
+        assert!(!event.default_prevented());
+        assert_eq!(event.target(), None);
+        assert_eq!(event.current_target(), None);
+        assert_eq!(event.phase(), DomEventPhase::None);
+
+        event
+            .clone()
+            .init_event(&mut session.dom(), event_type, true, true, &cancel())
+            .unwrap();
+        assert_eq!(event.event_type().code_units(), event_type);
+        assert!(event.bubbles());
+        assert!(event.cancelable());
+        assert!(!event.composed());
+        assert!(!event.cancel_bubble());
+        assert_eq!(event.creation(), Some(&creation));
+        assert_eq!(event.time_stamp().unwrap(), timestamp);
+        let receipt = fire(&mut session, &mut registry, target, &event, &mut seen);
+        assert_eq!(seen, [DomEventPhase::AtTarget]);
+        assert_eq!(receipt.callbacks(), 1);
+        assert_eq!(receipt.event_type().code_units(), event_type);
+        assert!(receipt.default_prevented());
+        assert!(!event.is_trusted());
+        assert_eq!(event.creation(), Some(&creation));
+        assert_eq!(event.time_stamp().unwrap(), timestamp);
+    }
+}
+
+#[test]
+fn legacy_event_refuses_unsupported_aliases_and_unqualified_receiving_documents() {
+    let mut local = session();
+    let receiver = top(&mut local);
+    let mut foreign_session = session();
+    let foreign = top(&mut foreign_session);
+    let unhosted = {
+        let mut batch = DomBatch::new();
+        let ticket = batch.create_document();
+        local
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .document(&ticket)
+            .unwrap()
+    };
+    let mut hosted = local.hosted_execution();
+    for unsupported in [
+        "",
+        "CustomEvent",
+        "MouseEvents",
+        "Event ",
+        "Event\0",
+        "ＳVGEvents",
+    ] {
+        assert!(matches!(
+            hosted.create_legacy_event(
+                &mut local.dom(),
+                receiver.document(),
+                &units(unsupported),
+                &cancel(),
+            ),
+            Err(DomEventConstructionError::UnsupportedInterface)
+        ));
+    }
+    let base = units("Event");
+    assert!(matches!(
+        hosted.create_legacy_event(&mut local.dom(), foreign.document(), &base, &cancel()),
+        Err(DomEventConstructionError::Hosted(
+            DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::ForeignOwner))
+        ))
+    ));
+    assert!(matches!(
+        hosted.create_legacy_event(&mut local.dom(), unhosted, &base, &cancel()),
+        Err(DomEventConstructionError::MissingRelevantGlobal)
+    ));
+    let retirement = hosted
+        .destroy_top_level(&mut local.dom(), receiver.navigable(), &cancel())
+        .unwrap();
+    assert!((0..256).any(|_| matches!(
+        hosted.run_next(&mut local.dom(), retirement.traversable(), &cancel()).unwrap(),
+        DomHostedTaskProgress::Complete { operation } if operation == retirement.operation()
+    )));
+    assert!(local.snapshot().document(receiver.document()).is_ok());
+    assert!(matches!(
+        hosted.create_legacy_event(&mut local.dom(), receiver.document(), &base, &cancel()),
+        Err(DomEventConstructionError::Hosted(
+            DomHostedRuntimeError::Dom(DomHostedError::StaleIdentity)
+        ))
+    ));
+}
+
+#[test]
 fn real_node_dispatch_orders_capture_and_bubble_and_reuses_sticky_cancellation() {
     let mut session = session();
     let top = top(&mut session);

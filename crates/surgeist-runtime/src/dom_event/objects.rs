@@ -64,12 +64,18 @@ pub enum DomEventConstructionError {
     Hosted(crate::DomHostedRuntimeError),
     /// Event or target storage, or exact type construction was refused.
     Event(DomEventDispatchError),
+    /// The legacy constructor supports only the base Event interface aliases.
+    UnsupportedInterface,
+    /// The receiving Document has no native relevant Global.
+    MissingRelevantGlobal,
 }
 impl std::fmt::Display for DomEventConstructionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hosted(error) => error.fmt(f),
             Self::Event(error) => error.fmt(f),
+            Self::UnsupportedInterface => f.write_str("unsupported legacy Event interface"),
+            Self::MissingRelevantGlobal => f.write_str("Document has no native relevant Global"),
         }
     }
 }
@@ -78,6 +84,7 @@ impl std::error::Error for DomEventConstructionError {
         match self {
             Self::Hosted(error) => Some(error),
             Self::Event(error) => Some(error),
+            Self::UnsupportedInterface | Self::MissingRelevantGlobal => None,
         }
     }
 }
@@ -92,6 +99,11 @@ impl From<crate::DomHostedRuntimeError> for DomEventConstructionError {
     }
 }
 
+struct InitializedEvent {
+    event_type: DomEventType,
+    init: DomEventInit,
+}
+
 impl NativeDomEvent {
     pub(crate) fn authored(
         dom: &mut DomEventDom<'_>,
@@ -103,6 +115,32 @@ impl NativeDomEvent {
     ) -> Result<Self, DomEventDispatchError> {
         storage.step(1, cancel)?;
         let event_type = DomEventType::retain(&storage, dom, event_type, cancel)?;
+        Self::allocate(
+            dom,
+            storage,
+            creation,
+            Some(InitializedEvent { event_type, init }),
+            cancel,
+        )
+    }
+
+    pub(crate) fn legacy(
+        dom: &mut DomEventDom<'_>,
+        storage: EventStorage,
+        creation: crate::dom_lifecycle::EventCreation,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
+        storage.step(1, cancel)?;
+        Self::allocate(dom, storage, creation, None, cancel)
+    }
+
+    fn allocate(
+        dom: &mut DomEventDom<'_>,
+        storage: EventStorage,
+        creation: crate::dom_lifecycle::EventCreation,
+        initialized: Option<InitializedEvent>,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomEventDispatchError> {
         let bytes = EventBodyCustody::event_bytes();
         let allocation = storage.reserve(dom, bytes, bytes, 0, cancel)?;
         let backing = Rc::new(BodyCustody {
@@ -110,6 +148,10 @@ impl NativeDomEvent {
                 _retained: allocation,
             },
         });
+        let (event_type, init) = initialized.map_or_else(
+            || (None, DomEventInit::default()),
+            |event| (Some(event.event_type), event.init),
+        );
         Ok(Self(
             Rc::new(Event {
                 owner: dom.owner(),
@@ -186,7 +228,6 @@ impl NativeDomEvent {
             return Err(DomError::ForeignOwner.into());
         }
         let event_type = DomEventType::retain(&self.0.storage, dom, event_type, cancel)?;
-        self.0.event_type.replace(event_type);
         let composed = self.0.init.get().composed;
         self.0.init.set(DomEventInit {
             bubbles,
@@ -198,6 +239,17 @@ impl NativeDomEvent {
         self.0.stop.set(false);
         self.0.immediate.set(false);
         self.0.canceled.set(false);
+        self.0.event_type.replace(Some(event_type));
+        Ok(())
+    }
+
+    pub(super) fn check_dispatch_state(&self) -> Result<(), DomEventDispatchError> {
+        if self.is_dispatching() {
+            return Err(DomEventDispatchError::AlreadyDispatching);
+        }
+        if self.0.event_type.borrow().is_none() {
+            return Err(DomEventDispatchError::Uninitialized);
+        }
         Ok(())
     }
 

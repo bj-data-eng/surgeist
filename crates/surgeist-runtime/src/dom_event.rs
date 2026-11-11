@@ -280,6 +280,8 @@ pub enum DomEventDispatchError {
     },
     /// This same event is already executing or retained.
     AlreadyDispatching,
+    /// The receiving Document created this legacy Event before initialization.
+    Uninitialized,
     /// This invocation already produced its one completion receipt.
     AlreadyCompleted,
     /// The affine invocation was terminally abandoned.
@@ -309,6 +311,7 @@ impl std::fmt::Display for DomEventDispatchError {
                 "original parsed synchronous execution is pending: {requirement:?}"
             ),
             Self::AlreadyDispatching => f.write_str("native DOM event is already dispatching"),
+            Self::Uninitialized => f.write_str("native DOM event is uninitialized"),
             Self::AlreadyCompleted => f.write_str("native DOM event already completed dispatch"),
             Self::Abandoned => f.write_str("native DOM event source task was abandoned"),
             Self::WrongContinuation => {
@@ -1022,9 +1025,7 @@ impl<C> DomEventDispatcher<C> {
             Status::HostRefused(error) => return Err(DomEventDispatchError::HostRefused(error)),
             _ => return Err(DomEventDispatchError::AlreadyDispatching),
         }
-        if event.is_dispatching() {
-            return Err(DomEventDispatchError::AlreadyDispatching);
-        }
+        event.check_dispatch_state()?;
         if event.0.owner != dom.owner() {
             return Err(DomError::ForeignOwner.into());
         }
@@ -1684,7 +1685,9 @@ impl NativeEventCause {
 }
 struct Event {
     owner: surgeist_dom::DomOwnerId,
-    event_type: RefCell<DomEventType>,
+    // No type means legacy initialization has not occurred. An initialized
+    // Event may have the exact empty type.
+    event_type: RefCell<Option<DomEventType>>,
     init: Cell<DomEventInit>,
     trusted: Cell<bool>,
     creation: Option<DomEventCreationObservation>,
@@ -1698,7 +1701,10 @@ struct Event {
 }
 impl Event {
     fn event_type(&self) -> DomEventType {
-        self.event_type.borrow().clone()
+        self.event_type
+            .borrow()
+            .clone()
+            .unwrap_or(DomEventType::EMPTY)
     }
     fn invocation(&self) -> Option<ContinuationObservation> {
         let invocation = self.continuation.take();
@@ -2204,7 +2210,7 @@ impl EventInvocationOwner {
         let event = NativeDomEvent(
             Rc::new(Event {
                 owner: original.owner(),
-                event_type: RefCell::new(cause.event_type()),
+                event_type: RefCell::new(Some(cause.event_type())),
                 init: Cell::new(DomEventInit {
                     bubbles: false,
                     cancelable,
