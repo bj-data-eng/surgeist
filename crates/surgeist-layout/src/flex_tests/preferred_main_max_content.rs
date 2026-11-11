@@ -669,6 +669,45 @@ fn preferred_main_max_content_ratio_cross_preserves_request_authority() {
     own_ratio_cross_request_authority::<f64>();
 }
 
+#[test]
+fn preferred_main_max_content_ratio_cross_accepts_percentage_with_a_definite_flex_basis() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = own_ratio_tree::<f64>(flow, PreferredSizeOf::AUTO);
+    let mut leaf = tree.node_input(1).clone();
+    leaf.size.height = PreferredSizeOf::percent(1.0);
+    leaf.flex_basis = FlexBasisOf::px(65.0);
+    let tree = tree.style(1, leaf);
+    let batch = compute_layout(&tree, 0, request(flow, None, None)).unwrap();
+    assert_eq!(
+        readback::single_box_output(&batch, 0, Phase::Unrounded).size,
+        Size::new(65.0, 32.5),
+    );
+    assert_eq!(
+        readback::single_box_output(&batch, 1, Phase::Unrounded).size,
+        Size::new(65.0, 10.0),
+    );
+}
+
+#[test]
+fn preferred_main_max_content_ratio_cross_transfers_definite_imposed_inline() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = own_ratio_tree::<f64>(flow, PreferredSizeOf::AUTO);
+    let mut leaf = tree.node_input(1).clone();
+    leaf.size.height = PreferredSizeOf::percent(0.5);
+    let tree = tree.style(1, leaf);
+    let batch = compute_layout(&tree, 0, request(flow, None, Some(80.0))).unwrap();
+    assert_eq!(
+        readback::single_box_output(&batch, 0, Phase::Unrounded).size,
+        Size::new(80.0, 40.0),
+    );
+    assert_eq!(
+        readback::single_box_output(&batch, 1, Phase::Unrounded)
+            .size
+            .height,
+        20.0,
+    );
+}
+
 fn bounded_wrapping<S: LayoutScalar>() {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let tree = two_item_row::<S>(flow, FlexDirection::Row, FlexWrap::Wrap, Some(62.0));
@@ -1533,6 +1572,51 @@ fn preferred_main_max_content_basis_uses_the_bounded_authored_cross_size() {
             );
         }
     }
+}
+
+#[test]
+fn preferred_main_max_content_ratio_cross_keeps_natural_lane_packing_indefinite() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = nested_ratio_flex::<f64>(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO, 2.0);
+    let mut item = tree.node_input(1).clone();
+    item.justify_self = Some(AlignItems::Start);
+    item.align_self = Some(AlignItems::Start);
+    let mut leaf = tree.node_input(2).clone();
+    leaf.size.height = PreferredSizeOf::percent(1.0);
+    let tree = tree
+        .children(0, [1, 3])
+        .children(3, [])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+                grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Column, false, false),
+                grid_template_columns: vec![TrackComponentOf::px(100.0)],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(1, item)
+        .style(2, leaf)
+        .style(3, NodeInputOf::default())
+        .measure(3, Size::new(10.0, 10.0));
+    let batch = compute_layout(&tree, 0, request(flow, None, None)).unwrap();
+    assert_eq!(
+        readback::single_box_output(&batch, 1, Phase::Unrounded).size,
+        Size::new(65.0, 32.5),
+    );
+    assert_eq!(
+        readback::single_box_output(&batch, 3, Phase::Unrounded)
+            .location
+            .y,
+        32.5,
+    );
+    assert_eq!(
+        readback::single_box_output(&batch, 2, Phase::Unrounded)
+            .size
+            .height,
+        10.0,
+    );
 }
 
 #[test]
