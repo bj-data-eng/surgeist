@@ -1419,6 +1419,11 @@ Contents cannot enlarge the accepted
 Normal size queries use the same sizing rule without staging geometry;
 MinContent and MaxContent requests remain intrinsic operations.
 
+A row Flex container uses `PreferredSizeOf::MAX_CONTENT` on its cross axis
+to select the intrinsic cross contribution with indefinite cross space. An
+imposed cross size still takes precedence. The main-axis request and
+descendant percentage bases retain their own sizing inputs.
+
 Cyclic Flex gap percentages
 [resolve against zero](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#gap-percent)
 in every phase, preserving a calculation's fixed term. A later contents size
