@@ -85,11 +85,11 @@ With `just` and the generator feature dependencies available, run:
 CARGO_NET_OFFLINE=true just corpus-check
 ```
 
-Expected: `check-corpus` exits successfully after validating persisted source
-attestation, hashes, paths, inventory, and accounting. It requires no browser or
-source checkout. The recipe clears corpus and browser overrides so the check
-uses the checked-in corpus. See the [runtime reference](reference.md#browser-parity-runtime)
-for the schema and ownership boundary.
+`check-corpus` validates the checked-in live report, ownership, source
+attestation, hashes, paths, and accounting without a browser or source checkout.
+The recipe clears corpus and browser overrides. See the
+[runtime reference](reference.md#browser-parity-runtime) for the schema and
+ownership boundary.
 
 ## Compare all checked-in browser expectations
 
@@ -100,9 +100,9 @@ CARGO_NET_OFFLINE=true just parity-all
 ```
 
 The recipe clears `SURGEIST_PARITY_FILTER` and selects the strict raw verdict.
-It reports every raw mismatch and missing authority as a failure. The
-checked-in historical observations lack root-context authority, and some
-qualified current captures retain intentional raw differences.
+It reports every raw mismatch and missing authority across the historical,
+registered, and live inventories as a failure. The ordinary suite checks the
+complete census and reports live Native parity separately.
 
 Ordinary tests traverse the same inventory and require complete historical
 accounting and current qualification. Both commands use existing XML.

@@ -1511,8 +1511,10 @@ repository-relative executable below the declared cache and never fetches.
 Source checkouts live in `tmp/surgeist-sources/<id>/<revision>/`; browsers live in
 `tmp/surgeist-browser/`. Repository `tmp/` is ignored and survives `cargo clean`.
 
-`check-corpus` validates the generic schema-4 report and persisted source-import
-attestation without a browser or source checkout. Explicit `check-taffy-corpus`
+`check-corpus` validates the live schema-4 report, ownership, and persisted
+source-import attestation without a browser or source checkout. The producer
+publishes under `live-xml/` using the shared source manifest and live counts.
+Explicit `check-taffy-corpus`
 verifies the existing pinned source cache; `import-taffy` may acquire that source
 and publishes verified imports plus attestation. Full generation validates
 accounting before publishing. Filtered generation does not rewrite full reports.
@@ -1520,10 +1522,12 @@ XML bytes remain layout-owned and comment-free; semantic parsing and comparison
 remain in layout tests. See the [browser parity guide](../tests/layout/browser_parity/README.md)
 for commands, cache behavior, and current provenance requirements.
 
-Ordinary `cargo test -p surgeist-layout` traverses every historical XML and
-registered current capture. It requires complete historical accounting and
-fresh current qualification. The named strict raw verdict uses the same
-inventory and fails on every raw mismatch or authority refusal.
+Ordinary `cargo test -p surgeist-layout` traverses historical XML, registered
+current captures, and live XML. It requires complete historical and live
+accounting and fresh registered qualification. The live census compares all
+generated captures through Native Layout and reports its failures separately.
+The named strict raw verdict uses the same inventory and fails on every raw
+mismatch or authority refusal.
 
 ## Local commands
 
