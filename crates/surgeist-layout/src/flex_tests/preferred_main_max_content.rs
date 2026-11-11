@@ -1178,6 +1178,32 @@ fn preferred_main_max_content_nested_ratio_cross_respects_main_definiteness() {
 }
 
 #[test]
+fn preferred_main_max_content_nested_ratio_baseline_respects_cross_definiteness() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = nested_ratio_flex::<f64>(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO, 2.0);
+    let mut outer = tree.node_input(0).clone();
+    outer.align_items = Some(AlignItems::Baseline);
+    let mut leaf = tree.node_input(2).clone();
+    leaf.size.height = PreferredSizeOf::percent(1.0);
+    let tree = tree
+        .children(0, [1, 3])
+        .style(0, outer)
+        .style(2, leaf)
+        .children(3, [])
+        .style(3, NodeInputOf::default())
+        .measure(3, Size::new(15.0, 20.0));
+
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    let inner = readback::single_box_output(&batch, 1, Phase::Unrounded);
+    let leaf = readback::single_box_output(&batch, 2, Phase::Unrounded);
+    let sibling = readback::single_box_output(&batch, 3, Phase::Unrounded);
+    assert_eq!(inner.size, Size::new(65.0, 32.5));
+    assert_eq!(leaf.size.height, 10.0);
+    assert_eq!(inner.location.y + leaf.location.y + leaf.size.height, 20.0);
+    assert_eq!(sibling.location.y, 0.0);
+}
+
+#[test]
 fn preferred_main_max_content_nested_ratio_cross_cannot_feed_back_into_flex_basis() {
     fn measure(input: LeafMeasureInputOf<f64>) -> Size<f64> {
         let known = input.known_content_size();
