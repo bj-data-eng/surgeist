@@ -11,8 +11,10 @@ This harness runs Surgeist layout against browser-derived parity fixtures under
   [live declaration](live-corpus.toml) supplies the current report counts.
 - `scripts/gentest/` contains the capture helper and base CSS.
 
-XML files are generated artifacts. Do not edit browser geometry in XML by hand;
-update the source fixture, importer, manifest, or generator instead.
+The owning producer writes XML from constrained HTML and the capture contract.
+The live declaration uses the historical source and variant inventory. A change
+to shared source inputs requires preserving their historical bytes and updating
+the live reconciliation.
 
 The sizing bridge is a finite fixture adapter, not app-facing CSS parsing. It
 accepts finite px and percentage values plus the existing unitless fixture
@@ -139,7 +141,7 @@ mkdir -p tmp
 env -u SURGEIST_PARITY_FILTER -u SURGEIST_PARITY_RAW_EXACT \
   SURGEIST_PARITY_WRITE_LIVE_RECEIPT="$PWD/tmp/live-native-observations.json" \
   cargo test --offline --locked -j 1 -p surgeist-layout --test layout \
-  layout::browser_parity::runs_all_checked_in_browser_parity_xml -- --exact
+  layout::browser_parity::records_live_native_observations -- --ignored --exact
 ```
 
 The [original Block axis edition](../../../examples/qualify-root-context/README.md#original-block-axes-qualification)
@@ -250,9 +252,9 @@ independently.
 
 The default full-inventory test always traverses the complete corpus.
 For a filtered raw diagnostic, set `SURGEIST_PARITY_RAW_EXACT=1` and
-`SURGEIST_PARITY_FILTER` to a fixture substring. The registered-current
-qualification test also accepts the filter and reports partial coverage.
-These comparisons use existing XML.
+`SURGEIST_PARITY_FILTER` to a fixture path substring. The filter selects
+matching historical, registered, and live captures. The registered-current
+qualification test reports partial coverage when filtered.
 
 The publication owner creates and validates each immutable edition.
 
