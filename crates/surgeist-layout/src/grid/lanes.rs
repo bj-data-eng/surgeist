@@ -3550,6 +3550,19 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
     let logical_style_size =
         flow_axes.logical_size(Size::new(&child_style.size.width, &child_style.size.height));
     let mut logical_known = flow_axes.logical_size(item.known);
+    let stacking_axis = match lane_axis.logical_axis() {
+        LogicalAxis::Inline => flow_axes.inline_axis(),
+        LogicalAxis::Block => flow_axes.block_axis(),
+    };
+    // A packed natural ratio size is a result of the child's intrinsic inline
+    // layout. Let the child settle it again with the same preferred sizing.
+    let child_owns_ratio_cross = child_style.aspect_ratio.is_some()
+        && child_style.flow_axes.block_axis() == stacking_axis
+        && child_style
+            .flow_axes
+            .logical_size(child_style.flex_preferred_axes)
+            .inline;
+
     let logical_margin = flow_axes.logical_edges(
         item.unresolved_margin
             .map(|margin| margin.unwrap_or(S::ZERO)),
@@ -3574,6 +3587,7 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 || margins.inline_start.is_none()
                 || margins.inline_end.is_none())
                 && logical_style_size.inline.is_auto()
+                && !child_owns_ratio_cross
             {
                 logical_known.inline =
                     Some((lane_axis_margin_box - logical_margin.inline_sum()).max(S::ZERO));
@@ -3599,6 +3613,7 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 || margins.block_start.is_none()
                 || margins.block_end.is_none())
                 && logical_style_size.block.is_auto()
+                && !child_owns_ratio_cross
             {
                 logical_known.block =
                     Some((lane_axis_margin_box - logical_margin.block_sum()).max(S::ZERO));

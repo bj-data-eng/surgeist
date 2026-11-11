@@ -72,7 +72,7 @@ where
     constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
     constants.gap = constants
         .gap_input
-        .zip_map(constants.gap_percentage_basis, |length, basis| {
+        .zip_map(constants.entry_percentage_basis, |length, basis| {
             resolve_length_or_zero(length, Some(basis.unwrap_or(Tree::Scalar::ZERO)))
         })
         .transpose_with_node(tree, node)?;

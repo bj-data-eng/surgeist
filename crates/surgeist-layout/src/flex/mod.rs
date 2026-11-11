@@ -222,11 +222,24 @@ where
         .logical_size(input.sizing_request().axes())
         .inline
         .operation();
+    let cross_axis = constants.axes.cross_physical_axis();
+    let inherited_indefinite_cross = input.indefinite_percentage_axis() == Some(cross_axis);
+    let measure_ratio_contents = own_ratio_cross.is_some()
+        || (inherited_indefinite_cross
+            && constants.preferred_inline_phase != PreferredInlinePhase::Ordinary
+            && tree.node_input(node).aspect_ratio.is_some());
+    let contents_run_mode = if measure_ratio_contents {
+        // Final placement supplies the used item dimensions. Until then a
+        // percentage with no qualified cross basis is still indefinite.
+        RunMode::ComputeSize
+    } else {
+        input.run_mode()
+    };
     let first_run_mode = if constants.preferred_inline_phase == PreferredInlinePhase::Discover {
         // Preferred-size discovery has no accepted percentage basis yet.
         RunMode::ComputeSize
     } else {
-        input.run_mode()
+        contents_run_mode
     };
     let mut collected_items = collect_items(tree, node, &constants, first_run_mode)?;
     let (mut layout_constants, mut resolved_items, mut lines) =
@@ -267,20 +280,30 @@ where
                 .axes
                 .with_cross_size(final_scroll_box.border_box().size(), cross);
             let settled = scroll_box_for(tree, &contents_constants, size)?;
-            // Use the settled cross geometry for lines and placement while
-            // retaining only the entry-qualified percentage bases.
             contents_constants = contents_constants.with_final_scroll_box(settled);
+            let axes = constants.axes;
+            if !inherited_indefinite_cross
+                && axes.main_size(constants.entry_percentage_basis).is_some()
+            {
+                // Only an independently definite determining axis grants
+                // percentage authority to the size transferred by the ratio.
+                let cross_basis = Some(axes.cross_size(settled.content_box().size()));
+                contents_constants.percentage_parent_size =
+                    axes.with_cross_size(contents_constants.percentage_parent_size, cross_basis);
+                contents_constants.entry_percentage_basis =
+                    axes.with_cross_size(contents_constants.entry_percentage_basis, cross_basis);
+            }
             contents_constants.max_inner_size = contents_constants
                 .max_outer_size
                 .sub_optional_unchecked(contents_constants.content_box_inset.sum_axes())
                 .max_optional(Size::ZERO.map(Some));
         }
         // Replay with the accepted extent and the caller's contents operation.
-        collected_items = collect_items(tree, node, &contents_constants, input.run_mode())?;
+        collected_items = collect_items(tree, node, &contents_constants, contents_run_mode)?;
         (layout_constants, resolved_items, lines) = resolve_flex_collection(
             tree,
             node,
-            input.run_mode(),
+            contents_run_mode,
             &contents_constants,
             &collected_items,
         )?;
@@ -676,9 +699,9 @@ struct Constants<S: LayoutScalar> {
     settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState,
     gap: Size<S>,
     gap_input: Size<LengthOf<S>>,
-    // Entry-qualified own dimensions for this scrollbar pass. None denotes a
-    // cyclic percentage gap, which uses numeric zero, not a missing basis.
-    gap_percentage_basis: Size<Option<S>>,
+    // Independently qualified dimensions for this scrollbar pass. Intrinsic
+    // inline replay can supply a contents basis without changing these facts.
+    entry_percentage_basis: Size<Option<S>>,
     align_items: AlignItems,
     authored_align_content: Option<AlignContent>,
     align_content: AlignContent,
@@ -986,7 +1009,7 @@ impl<S: LayoutScalar> Constants<S> {
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             gap,
             gap_input: *style.gap,
-            gap_percentage_basis: percentage_parent_size,
+            entry_percentage_basis: percentage_parent_size,
             align_items: style.align_items.unwrap_or(AlignItems::Stretch),
             authored_align_content: style.align_content,
             align_content: style.align_content.unwrap_or(AlignContent::Stretch),

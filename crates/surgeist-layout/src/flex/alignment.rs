@@ -950,7 +950,7 @@ mod final_baseline_selection_tests {
             settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
             gap: Size::ZERO,
             gap_input: Size::splat(LengthOf::ZERO),
-            gap_percentage_basis: Size::NONE,
+            entry_percentage_basis: Size::NONE,
             align_items: AlignItems::Stretch,
             authored_align_content: None,
             align_content: AlignContent::Stretch,
