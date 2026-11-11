@@ -3,6 +3,7 @@ mod focus;
 mod order;
 mod refusal;
 mod replace;
+mod text;
 mod views;
 use crate::html::support::{Cause, cause, charged_by, has_cause, slots};
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use surgeist_html::{
         HtmlConstructionCommit, HtmlConstructionContent, HtmlConstructionGrowth,
         HtmlConstructionLeaf, HtmlConstructionLease, HtmlConstructionNode,
         HtmlConstructionReadyOperation, HtmlConstructionRefusal,
-        HtmlConstructionRetirementDescription, HtmlConstructionStorage, HtmlConstructionTextAppend,
+        HtmlConstructionRetirementDescription, HtmlConstructionStorage,
     },
     construction::{
         ConstructionNodeKind, ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause,

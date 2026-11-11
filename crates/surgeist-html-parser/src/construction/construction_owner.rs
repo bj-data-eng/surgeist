@@ -19,6 +19,7 @@ mod attribute_lists;
 mod dispositions;
 #[cfg(test)]
 mod tests;
+mod text_data;
 pub(super) use attribute_lists::{NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES};
 
 pub(super) struct ConstructionOwner {
@@ -33,6 +34,12 @@ pub(super) struct ConstructionOwner {
     attribute_bytes: u64,
     /// The logical attribute slots the parse holds for the attributes of the storage.
     attribute_entries: u64,
+    /// The units the parse holds for the strings of the non-element fields of the storage: the
+    /// text, comment, instruction and doctype strings its records hold.
+    string_units: u64,
+    /// The bytes the parse holds for those strings: the capacity each reserved and the shared
+    /// wrapper each record holds its string in.
+    string_bytes: u64,
     identity: Option<ConstructionAllocation>,
     records: Option<ConstructionAllocation>,
     children: Vec<Option<ConstructionAllocation>>,
@@ -92,9 +99,9 @@ fn disposition(cause: HtmlConstructionCause) -> Disposition {
         // requested. Every bounded producer of this error reports it with its
         // real layout before it gets this far: the record and child reserves
         // in `ConstructionOwner::perform_action_with_commit`, the attribute-list
-        // reserves in `attribute_lists.rs`, and the candidate
-        // backing reserve in `text_append.rs`. This is only a failure a
-        // caller without a layout still has to report.
+        // reserves in `attribute_lists.rs`, and the text reserves in
+        // `text_data.rs`. This is only a failure a caller without a layout
+        // still has to report.
         Cause::AllocationFailed => AllocationFailed,
         Cause::ShadowHostMustBeElement
         | Cause::ShadowAlreadyAttached
@@ -298,6 +305,8 @@ impl ConstructionOwner {
             name_index_slots: None,
             attribute_bytes: 0,
             attribute_entries: 0,
+            string_units: 0,
+            string_bytes: 0,
             identity,
             records: None,
             children,
@@ -830,6 +839,7 @@ impl ConstructionOwner {
     ) -> Result<HtmlConstructionUsage, SessionError> {
         let mut refused = None;
         keep_first(&mut refused, self.release_attribute_accounts(control));
+        keep_first(&mut refused, self.release_text_accounts(control));
         let Some(storage) = self.owner.take() else {
             // The storage is lent to something that was not ended, so no bank
             // can be retired here; the tickets below still go back to the

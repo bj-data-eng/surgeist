@@ -94,37 +94,24 @@ fn with_instruction(check: impl FnOnce(&mut ParseControl, &mut ParserArenaSessio
 }
 
 #[test]
-fn a_join_naming_a_row_of_another_kind_is_not_the_data_of_a_processing_instruction() {
+fn the_target_and_data_of_a_processing_instruction_have_groups_and_no_registry_row() {
     with_instruction(|c, session, node| {
         let storage = session.active_mut().unwrap();
-        let slot = storage
-            .field_slot(c, FieldRef::ProcessingInstructionData(node))
-            .unwrap();
-        // The target row is a string too, but it is not bound as the data.
-        let target = storage
-            .field_slot(c, FieldRef::ProcessingInstructionTarget(node))
-            .unwrap();
-        let good = storage.payloads.node_joins[node];
-        *storage.payloads.node_joins[node]
-            .rows
-            .get_mut(Join::ProcessingInstructionData) = Some(joined_cell(target).unwrap());
-        assert_eq!(
-            storage.field_slot(c, FieldRef::ProcessingInstructionData(node)),
-            Err(SessionError::WrongToken)
-        );
-        // A row that is not a string at all is refused the same way.
-        *storage.payloads.node_joins[node]
-            .rows
-            .get_mut(Join::ProcessingInstructionData) = Some(joined_cell(0).unwrap());
-        assert_eq!(
-            storage.field_slot(c, FieldRef::ProcessingInstructionData(node)),
-            Err(SessionError::WrongToken)
-        );
-        storage.payloads.node_joins[node] = good;
-        assert_eq!(
-            storage.field_slot(c, FieldRef::ProcessingInstructionData(node)),
-            Ok(slot)
-        );
+        for field in [
+            FieldRef::ProcessingInstructionTarget(node),
+            FieldRef::ProcessingInstructionData(node),
+        ] {
+            assert!(storage.payloads.detail_origins.has(field));
+            // The string is the record's own: no row holds it.
+            assert_eq!(
+                storage.field_slot(c, field),
+                Err(SessionError::registry_row())
+            );
+            assert!(!storage.payloads.values.iter().any(|row| matches!(
+                row,
+                RetainedPayload::String { location, .. } if *location == field
+            )));
+        }
     });
 }
 

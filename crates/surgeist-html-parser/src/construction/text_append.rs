@@ -1,303 +1,62 @@
-//! Real append ownership: one native backing, original registry and controller.
+//! Character data joins the text before it: one direct append to the text of its record.
 use super::*;
-use construction_owner::construction_error;
-use surgeist_html::bounded::construction::{
-    HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
-    HtmlStoredString,
-};
-use surgeist_html::{
-    construction::{ConstructionNodeKind, HtmlConstructionCause},
-    values::DocumentString,
-};
-
-pub(super) fn admit_work(
-    control: &mut ParseControl,
-    description: Description,
-    wrapper_prepared: bool,
-) -> Result<(), SessionError> {
-    // The wrapper's call was charged when it was prepared; a plan that counts fewer differs from
-    // the work already charged for it.
-    description
-        .charge(u64::from(wrapper_prepared), control)
-        .map_err(|error| charge_fault(control, error))
-}
-
-/// One actual stopped pending allocation, kept until explicit owner cleanup.
-pub(super) struct FailedTextAppend {
-    value: DocumentString,
-    allocation: DocumentStringAllocation,
-}
-impl FailedTextAppend {
-    /// A terminal owner holding a ticket, for tests that need the slot taken.
-    #[cfg(test)]
-    pub(super) fn held(value: DocumentString, allocation: DocumentStringAllocation) -> Self {
-        Self { value, allocation }
-    }
-    pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
-        drop(self.value);
-        Ok(control.release_document_string(self.allocation)?)
-    }
-}
-
-pub(super) struct RegisteredTextAppend {
-    pub(super) parent: usize,
-    pub(super) index: usize,
-    pub(super) old_slot: usize,
-    pub(super) incoming_slot: usize,
-    pub(super) incoming: DocumentString,
-    pub(super) dispose_old: bool,
-    /// Whether the text goes to the end of the parent's children, so that the
-    /// node it joins is the last child.
-    pub(super) at_end: bool,
-}
-
-/// What a committed append still holds before the registry row that adopts it
-/// exists: the new backing's ticket, the displaced original's ticket and the
-/// displaced value. Whatever is left after a refusal is released, so nothing
-/// is dropped uncredited.
-struct CommittedTickets {
-    pending: Option<DocumentStringAllocation>,
-    original: Option<DocumentStringAllocation>,
-    discarded: Option<DocumentString>,
-}
-impl CommittedTickets {
-    /// Releases every remaining ticket, remembering the first refusal.
-    fn release(self, control: &mut ParseControl) -> Option<SessionError> {
-        let Self {
-            pending,
-            original,
-            discarded,
-        } = self;
-        drop(discarded);
-        let mut refused = None;
-        for ticket in [pending, original].into_iter().flatten() {
-            keep_first(&mut refused, control.release_document_string(ticket));
-        }
-        refused
-    }
-}
-
-/// The string a text record holds, shared with the registry row that mirrors it. `None` for a
-/// missing position or a record of another kind.
-fn stored_text_of(construction: &ConstructionOwner, index: usize) -> Option<&DocumentString> {
-    construction
-        .node_at(index)
-        .and_then(|record| record.stored_string(HtmlStoredString::Text))
-}
+use surgeist_html::construction::ConstructionNodeKind;
 
 impl SessionStorage {
-    /// Takes the original string's ticket out of its row for the append, leaving
-    /// the row retired or, when it has origins, historical. A refusal leaves
-    /// the row as it was.
-    fn take_original_ticket(
+    /// Appends the character token `text` to the text record at `index`, which `parent` holds
+    /// as the sibling before the insertion location. The text grows in place through the
+    /// construction owner's one admission; the token's own string is released afterwards, as
+    /// it is when the append is refused.
+    ///
+    /// When the parse records the origin graph, the group of the text and the group of the
+    /// token become the parts of a group that replaces the text's own in the table of origins,
+    /// and the replaced group is retired. A refusal of the append leaves the text, the usage
+    /// and the units the parse holds as they were. Three residues remain: the text keeps the
+    /// capacity that a growth reserved and recorded before the refusal, and the bytes counter
+    /// and the ledger hold the capacity last recorded (the capacity chosen, when the second
+    /// record of the growth was refused and the text holds the capacity it reached); a text that
+    /// had no group has the group of no source origins that the merge made for it; the evidence
+    /// keeps the groups it made, which no field names, and the retirement of the replaced group.
+    /// The leaf of the token's group in the merged group names units the text does not hold:
+    /// reading it returns the wrong token. A parse that refuses an append stops, and a stopped
+    /// parse publishes none of them.
+    pub(super) fn merge_text(
         &mut self,
         control: &mut ParseControl,
-        old_slot: usize,
-    ) -> Result<DocumentStringAllocation, SessionError> {
-        let Some(row) = self.payloads.values.get_mut(old_slot) else {
-            return Err(latch_registry_row(control));
-        };
-        let RetainedPayload::String {
-            value, allocation, ..
-        } = &mut *row
-        else {
-            return Err(SessionError::WrongToken);
-        };
-        control.suspend_text_append_ticket(allocation, value)?;
-        match mem::replace(row, RetainedPayload::Retired) {
-            RetainedPayload::String {
-                value,
-                allocation,
-                origins,
-                ..
-            } => {
-                drop(value);
-                if let Some(origins) = origins {
-                    *row = RetainedPayload::HistoricalString { origins };
-                }
-                Ok(allocation)
-            }
-            other => {
-                *row = other;
-                Err(latch_registry_row(control))
-            }
-        }
-    }
-
-    /// Registers a committed append: the surviving ticket is restored to the
-    /// committed text and moves into the row reserved for it. Everything that
-    /// can refuse is checked while the tickets are still in `tickets`, so a
-    /// refusal leaves them there for the caller to release.
-    fn adopt_committed_append(
-        &mut self,
-        control: &mut ParseControl,
-        tickets: &mut CommittedTickets,
-        adoption: Adoption,
-    ) -> Result<(), SessionError> {
-        let Adoption {
-            index,
-            old_slot,
-            slot,
-            origins,
-            dispose_old,
-        } = adoption;
-        let Some(slot) = slot else {
-            return Err(latch_registry_row(control));
-        };
-        if self.payloads.values.get(slot).is_none() {
-            return Err(latch_registry_row(control));
-        }
-        // A reused original has no new backing and displaces nothing.
-        let reused = tickets.pending.is_none();
-        if reused && tickets.discarded.is_some() {
-            return Err(latch_registry_row(control));
-        }
-        // A preserved original no longer names the committed text.
-        if !dispose_old {
-            self.bind_string(old_slot, FieldRef::Detached)
-                .map_err(|_| latch_registry_row(control))?;
-        }
-        let Some(committed) = stored_text_of(&self.construction, index) else {
-            return Err(latch_registry_row(control));
-        };
-        let Some(survivor) = (if reused {
-            tickets.original.as_mut()
-        } else {
-            tickets.pending.as_mut()
-        }) else {
-            return Err(latch_registry_row(control));
-        };
-        control.restore_text_append_ticket(survivor, committed)?;
-        let value = committed.clone();
-        drop(tickets.discarded.take());
-        let Some(allocation) = (if reused {
-            tickets.original.take()
-        } else {
-            tickets.pending.take()
-        }) else {
-            return Err(latch_registry_row(control));
-        };
-        let Some(row) = self.payloads.values.get_mut(slot) else {
-            // Checked above; the ticket goes back rather than being dropped.
-            if reused {
-                tickets.original = Some(allocation);
-            } else {
-                tickets.pending = Some(allocation);
-            }
-            return Err(latch_registry_row(control));
-        };
-        *row = RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            location: FieldRef::Text(index),
-        };
-        // The row owns the surviving ticket from here on.
-        if let Some(old) = tickets.original.take() {
-            control.release_document_string(old)?;
-        }
-        self.payloads
-            .join_text(index, slot)
-            .map_err(|_| latch_registry_row(control))
-    }
-
-    /// Hands back what a stopped append holds: the pending buffer becomes the
-    /// terminal owner, the original string's ticket returns to its row.
-    /// A refusal is latched and reported in place of `error`; the tickets it
-    /// concerns stay with their owners.
-    fn settle_stopped_append(
-        &mut self,
-        control: &mut ParseControl,
-        stopped: StoppedAppend,
-        error: SessionError,
-    ) -> SessionError {
-        let StoppedAppend {
-            index,
-            old_slot,
-            pending,
-            original,
-            discarded,
-        } = stopped;
-        let mut refused: Option<SessionError> = None;
-        match (pending, discarded) {
-            (Some(mut allocation), Some(value)) => {
-                keep_first(
-                    &mut refused,
-                    control.retain_failed_text_append_ticket(&mut allocation, &value),
-                );
-                if self.failed_text_append.is_none() {
-                    self.failed_text_append = Some(FailedTextAppend { value, allocation });
-                } else {
-                    // The terminal owner is taken: this buffer is released
-                    // here instead of replacing it.
-                    keep_first(&mut refused, Err(latch_registry_row(control)));
-                    drop(value);
-                    keep_first(&mut refused, control.release_document_string(allocation));
-                }
-            }
-            // The failure came before the backing existed: only the ticket.
-            (Some(allocation), None) => {
-                keep_first(&mut refused, control.release_document_string(allocation));
-            }
-            (None, Some(value)) => {
-                keep_first(&mut refused, Err(latch_registry_row(control)));
-                drop(value);
-            }
-            (None, None) => {}
-        }
-        if let Some(mut allocation) = original {
-            let restored = match stored_text_of(&self.construction, index) {
-                Some(value) => {
-                    keep_first(
-                        &mut refused,
-                        control.restore_text_append_ticket(&mut allocation, value),
-                    );
-                    match self.payloads.values.get_mut(old_slot) {
-                        Some(
-                            row @ (RetainedPayload::HistoricalString { .. }
-                            | RetainedPayload::Retired),
-                        ) => {
-                            let value = value.clone();
-                            let origins = match mem::replace(row, RetainedPayload::Retired) {
-                                RetainedPayload::HistoricalString { origins } => Some(origins),
-                                _ => None,
-                            };
-                            *row = RetainedPayload::String {
-                                value,
-                                allocation,
-                                origins,
-                                location: FieldRef::Text(index),
-                            };
-                            None
-                        }
-                        _ => Some(allocation),
-                    }
-                }
-                None => Some(allocation),
-            };
-            if let Some(allocation) = restored {
-                // No row can take the ticket back; it is credited here.
-                keep_first(&mut refused, Err(latch_registry_row(control)));
-                keep_first(&mut refused, control.release_document_string(allocation));
-            }
-        }
-        refused.unwrap_or(error)
-    }
-
-    pub(super) fn append_registered_text(
-        &mut self,
-        control: &mut ParseControl,
-        append: RegisteredTextAppend,
+        parent: usize,
+        index: usize,
+        text: Text,
+        at_end: bool,
     ) -> Result<TextInsertion, SessionError> {
-        let RegisteredTextAppend {
+        let Text { value, origins } = text;
+        let mut origins = Some(origins);
+        let result = self.merge_units(
+            control,
             parent,
             index,
-            old_slot,
-            incoming_slot,
-            incoming,
-            dispose_old,
+            value.text().code_units(),
+            &mut origins,
             at_end,
-        } = append;
+        );
+        // The token's origins and string are released with it, whatever the append did.
+        let origins = origins.map_or(Ok(()), |origins| origins.release(control));
+        let value = value.release(control);
+        let inserted = result?;
+        origins?;
+        value?;
+        Ok(inserted)
+    }
+
+    fn merge_units(
+        &mut self,
+        control: &mut ParseControl,
+        parent: usize,
+        index: usize,
+        incoming: &[u16],
+        origins: &mut Option<OwnedVec<HtmlParseTextOrigin>>,
+        at_end: bool,
+    ) -> Result<TextInsertion, SessionError> {
+        let field = FieldRef::Text(index);
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let ConstructionNodeKind::Text(old) = self
             .construction
@@ -309,352 +68,95 @@ impl SessionStorage {
         };
         let offset = old.len();
         let added = incoming.len();
-        // Two live vectors' lengths: their sum is bounded by the address space.
-        let total = offset
-            .checked_add(added)
-            .ok_or_else(|| latch_registry_row(control))?;
-        let node = self.node(control, index)?;
-        // Actual registry row/ticket restoration on both outcomes is prepaid.
-        // Moving the exclusive owner is bounded inline control metadata.
-        payload_write::<RetainedPayload>(control, 2)?;
-        payload_write::<Option<FailedTextAppend>>(control, 1)?;
-        payload_write::<Option<usize>>(control, 1)?;
-        payload_write::<FieldRef>(control, 1)?;
-        // At most registry-strong drop, incoming drop, discarded-original
-        // drop, and the final registry clone; Weak work is ticket-owned.
-        control.charge(HtmlParseWorkCategory::ProviderCall, 4)?;
-        // Prepay the actual two native-view headers used during commit/recovery.
-        control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            const { (2 * mem::size_of::<DocumentString>()) as u64 },
-        )?;
-        // The exclusive owner is taken before anything changes, and goes back
-        // with the refusal of anything that follows until the append begins.
-        let Some(storage) = self.construction.owner.take() else {
+        // Two live strings' lengths: their sum is bounded by the address space.
+        let Some(total) = offset.checked_add(added) else {
             return Err(latch_registry_row(control));
         };
-        let mut original_allocation = if dispose_old {
-            match self.take_original_ticket(control, old_slot) {
-                Ok(ticket) => Some(ticket),
-                Err(error) => {
-                    self.construction.owner = Some(storage);
-                    return Err(error);
-                }
-            }
-        } else {
-            None
-        };
-        let mut operation = Some(Append::begin(storage, node.handle, incoming));
-        let mut pending_allocation = None;
-        let mut merged_group = None;
-        let mut merged_slot = None;
-        let mut children_changed = false;
-        let mut result = (|| {
-            loop {
-                // Same fixed descriptor/header admission as the generic
-                // PendingConstruction driver: phase, target and Vec headers.
-                control.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-                let Some(owner) = operation.as_mut() else {
-                    return Err(latch_registry_row(control));
-                };
-                let preserve = owner.preserves_original();
-                let Some(action) = owner
-                    .next_action()
-                    .map_err(|error| construction_error(control, error))?
-                else {
-                    break;
-                };
-                let description = action.description();
-                let mut minimum = None;
-                let mut expected_capacity = None;
-                match description {
-                    Description::InitializeBacking(_) => {
-                        // The wrapper preparation charges its actual Arc provider.
-                        admit_work(control, description, true)?;
-                        pending_allocation = Some(control.prepare_text_append_allocation()?);
-                    }
-                    Description::Reserve {
-                        before,
-                        required_capacity,
-                        ..
-                    } => {
-                        let Some(allocation) = (if preserve {
-                            pending_allocation.as_ref()
-                        } else {
-                            original_allocation.as_ref()
-                        }) else {
-                            return Err(latch_registry_row(control));
-                        };
-                        let target = control.prepare_text_append_reserve(
-                            allocation,
-                            before,
-                            required_capacity,
-                        )?;
-                        minimum = Some(target);
-                        expected_capacity = Some(target);
-                        admit_work(control, description, false)?;
-                    }
-                    Description::CopyPrefix { units, .. } | Description::CopyTail { units, .. } => {
-                        admit_work(control, description, false)?;
-                        let Some(allocation) = (if preserve {
-                            pending_allocation.as_mut()
-                        } else {
-                            original_allocation.as_mut()
-                        }) else {
-                            return Err(latch_registry_row(control));
-                        };
-                        control.prepare_text_append_units(allocation, units)?;
-                    }
-                    Description::Preflight { .. } => {
-                        merged_group = self.merge_field_groups(
-                            control,
-                            old_slot,
-                            incoming_slot,
-                            offset,
-                            total,
-                        )?;
-                        let prepared = self.prepare_payload_slot_owned(control)?;
-                        merged_slot = Some(
-                            self.payloads
-                                .push_row(prepared, RetainedPayload::Retired)
-                                .map_err(|_| latch_registry_row(control))?,
-                        );
-                        let Some(view) = action.storage_view() else {
-                            return Err(latch_owner_refusal(control));
-                        };
-                        children_changed = self.textarea_slot(control, parent)?.is_some()
-                            || Self::html_local_in(control, view, parent, "script")?
-                            || Self::html_local_in(control, view, parent, "style")?;
-                        if children_changed {
-                            payload_write::<Option<FormEffects>>(control, 1)?;
-                        }
-                        payload_write::<HtmlParseResource>(control, 1)?;
-                        admit_work(control, description, false)?;
-                    }
-                    _ => admit_work(control, description, false)?,
-                }
-                let performed = match &description {
-                    // A test makes the backing fail: it was never created, so
-                    // the action goes unperformed and the operation reports it.
-                    #[cfg(test)]
-                    Description::InitializeBacking(_)
-                        if control.take_text_append_backing_fault() =>
-                    {
-                        Err(None)
-                    }
-                    _ => action.perform(minimum).map_err(Some),
-                };
-                match performed {
-                    Ok(observation) => {
-                        if matches!(
-                            description,
-                            Description::InitializeBacking(_) | Description::Reserve { .. }
-                        ) {
-                            let Some(allocation) = (if observation.preserves_original() {
-                                pending_allocation.as_mut()
-                            } else {
-                                original_allocation.as_mut()
-                            }) else {
-                                return Err(latch_registry_row(control));
-                            };
-                            let Some(capacity) = observation.capacity() else {
-                                return Err(latch_owner_refusal(control));
-                            };
-                            control.record_text_append_capacity(
-                                allocation,
-                                capacity,
-                                expected_capacity.unwrap_or(0),
-                            )?;
-                            if matches!(description, Description::InitializeBacking(_)) {
-                                let Some(backing) = observation.backing() else {
-                                    return Err(latch_owner_refusal(control));
-                                };
-                                control.bind_text_append_pending(allocation, backing)?;
-                            }
-                        }
-                        #[cfg(test)]
-                        if matches!(description, Description::CopyTail { .. })
-                            && let Some(cancellation) = self.cancel_after_text_append_chunk.take()
-                        {
-                            cancellation.cancel();
-                        }
-                        control.checkpoint()?;
-                        observation.accept();
-                    }
-                    Err(error) => {
-                        if let Some(expected) = expected_capacity {
-                            let Some(owner) = operation.as_ref() else {
-                                return Err(latch_registry_row(control));
-                            };
-                            let Some(allocation) = (if preserve {
-                                pending_allocation.as_mut()
-                            } else {
-                                original_allocation.as_mut()
-                            }) else {
-                                return Err(latch_registry_row(control));
-                            };
-                            let Some(capacity) = owner.capacity() else {
-                                return Err(latch_owner_refusal(control));
-                            };
-                            control.record_text_append_capacity(allocation, capacity, expected)?;
-                        }
-                        // `None` is the test-injected backing fault, which reports the
-                        // same refusal as a real failed reservation.
-                        return Err(match error {
-                            Some(error)
-                                if error.cause() != HtmlConstructionCause::AllocationFailed =>
-                            {
-                                construction_error(control, error)
-                            }
-                            _ => control
-                                .construction_allocation_failed(
-                                    expected_capacity
-                                        .unwrap_or(0)
-                                        .saturating_mul(mem::size_of::<u16>()),
-                                )
-                                .into(),
-                        });
-                    }
-                }
-            }
-            let Some(allocation) = pending_allocation.as_mut().or(original_allocation.as_mut())
-            else {
-                return Err(latch_registry_row(control));
-            };
-            control.commit_text_append_domain(allocation)?;
-            // Final fallible retirement preparation; tail remains unobservable
-            // under the exclusive owner and is truncated on refusal.
-            self.retire_text_append_group(control, old_slot, index)?;
-            Ok(())
-        })();
-        let completion = match operation.take() {
-            None => {
-                // The exclusive owner went with the operation; the tickets
-                // are all that is left to hand back.
-                let error = latch_registry_row(control);
-                let tickets = CommittedTickets {
-                    pending: pending_allocation,
-                    original: original_allocation,
-                    discarded: None,
-                };
-                tickets.release(control);
-                return Err(error);
-            }
-            Some(operation) if result.is_ok() => match operation.try_ready() {
-                Ok(ready) => match ready.commit() {
-                    Ok(completion) => Some(completion),
-                    Err(refusal) => {
-                        // The target stopped being a text node: abort the ready append.
-                        let (ready, error) = refusal.into_parts();
-                        result = Err(construction_error(control, error));
-                        ready.abort().ok()
-                    }
-                },
-                Err(refusal) => {
-                    // Not ready after all: abort it like any other failure.
-                    let (operation, error) = refusal.into_parts();
-                    result = Err(construction_error(control, error));
-                    operation.abort().ok()
-                }
-            },
-            Some(operation) => operation.abort().ok(),
-        };
-        let Some(completion) = completion else {
-            // An abort the append refused cannot hand back the exclusive owner it holds, so the
-            // tickets are all that is left. The first stop stays the reported one.
-            let error = match result {
-                Err(error) => error,
-                Ok(()) => latch_registry_row(control),
-            };
-            let tickets = CommittedTickets {
-                pending: pending_allocation,
-                original: original_allocation,
-                discarded: None,
-            };
-            tickets.release(control);
-            return Err(error);
-        };
-        let (storage, handle, incoming, discarded) = completion.into_parts();
-        self.construction.owner = Some(storage);
-        drop(incoming);
-        match result {
-            Ok(()) => {
-                let mut tickets = CommittedTickets {
-                    pending: pending_allocation,
-                    original: original_allocation,
-                    discarded,
-                };
-                let adoption = Adoption {
-                    index,
-                    old_slot,
-                    slot: merged_slot,
-                    origins: merged_group,
-                    dispose_old,
-                };
-                if let Err(error) = self.adopt_committed_append(control, &mut tickets, adoption) {
-                    // The latched refusal is reported; whatever the row did
-                    // not take is credited rather than dropped.
-                    tickets.release(control);
-                    return Err(error);
-                }
-                if children_changed {
-                    self.appended_units = if at_end {
-                        Some(NonZeroUsize::new(added).ok_or_else(|| latch_registry_row(control))?)
-                    } else {
-                        None
-                    };
-                    self.effects.form = Some(FormEffects {
-                        root: parent,
-                        old_parent: None,
-                        new_parent: Some(parent),
-                        stage: if at_end {
-                            FormEffectStage::AppendChildren
-                        } else {
-                            FormEffectStage::InsertionChildren
-                        },
-                        insert: false,
-                        cause: InsertionCause::NonParser,
-                        next: None,
-                        pass: FormEffectPass::Local,
-                        href_base: base::HrefBaseAhead::Unscanned,
-                    });
-                    self.drain_form_effects(control)?;
-                }
-                Ok(TextInsertion {
-                    _node: ParserNode { handle, index },
-                    _offset: offset,
-                })
-            }
-            Err(error) => Err(self.settle_stopped_append(
-                control,
-                StoppedAppend {
-                    index,
-                    old_slot,
-                    pending: pending_allocation,
-                    original: original_allocation,
-                    discarded,
-                },
-                error,
-            )),
+        let node = self.node(control, index)?;
+        // Whether the text is a child of an element that reacts to its children changing.
+        let storage = self.construction.storage(control)?;
+        let children_changed = self.textarea_slot(control, parent)?.is_some()
+            || Self::html_local_in(control, storage, parent, "script")?
+            || Self::html_local_in(control, storage, parent, "style")?;
+        if children_changed {
+            payload_write::<Option<FormEffects>>(control, 1)?;
         }
+        let merged =
+            self.merge_groups_of_text(control, field, origins.take(), offset, added, total)?;
+        let appended = self.construction.append_text(control, index, incoming)?;
+        if appended != offset {
+            return Err(latch_registry_row(control));
+        }
+        if let Some(merged) = merged {
+            // The replacement was charged before the append, and the field holds a group.
+            self.payloads
+                .detail_origins
+                .replace_prepaid(control, field, merged)?;
+        }
+        if children_changed {
+            self.appended_units = if at_end {
+                Some(NonZeroUsize::new(added).ok_or_else(|| latch_registry_row(control))?)
+            } else {
+                None
+            };
+            self.effects.form = Some(FormEffects {
+                root: parent,
+                old_parent: None,
+                new_parent: Some(parent),
+                stage: if at_end {
+                    FormEffectStage::AppendChildren
+                } else {
+                    FormEffectStage::InsertionChildren
+                },
+                insert: false,
+                cause: InsertionCause::NonParser,
+                next: None,
+                pass: FormEffectPass::Local,
+                href_base: base::HrefBaseAhead::Unscanned,
+            });
+            self.drain_form_effects(control)?;
+        }
+        Ok(TextInsertion {
+            _node: node,
+            _offset: offset,
+        })
     }
-}
 
-/// Where a committed append registers its string.
-struct Adoption {
-    index: usize,
-    old_slot: usize,
-    slot: Option<usize>,
-    origins: Option<provenance::OriginGroupRef>,
-    dispose_old: bool,
-}
-
-/// What a stopped append hands back.
-struct StoppedAppend {
-    index: usize,
-    old_slot: usize,
-    pending: Option<DocumentStringAllocation>,
-    original: Option<DocumentStringAllocation>,
-    discarded: Option<DocumentString>,
+    /// The group of the merged text, when the parse records the origin graph: the group of the
+    /// text's origins followed by the group of the token's. The token's leaf names the units it
+    /// will occupy, and the group of the text is retired as the text's group. The group of a
+    /// text that has none is a group of no source origins, which the table then holds.
+    fn merge_groups_of_text(
+        &mut self,
+        control: &mut ParseControl,
+        field: FieldRef,
+        origins: Option<OwnedVec<HtmlParseTextOrigin>>,
+        offset: usize,
+        added: usize,
+        total: usize,
+    ) -> Result<Option<OriginGroupRef>, SessionError> {
+        let Some(incoming) = self.origin_group(control, origins, added)? else {
+            return Ok(None);
+        };
+        if self.payloads.detail_origins.get(control, field)?.is_none() {
+            // An absent group is explicitly source independent. It is never attributed to the
+            // triggering token merely because a later input has lexical origins.
+            let group = self
+                .graph()
+                .ok_or(SessionError::WrongToken)?
+                .source_independent_group(control, offset)?;
+            self.bind_field(control, field, Some(group), 0)?;
+        }
+        self.payloads
+            .detail_origins
+            .charge_replace(control, field)?;
+        let Some(old) = self.payloads.detail_origins.get(control, field)? else {
+            return Err(latch_registry_row(control));
+        };
+        let evidence = self.evidence.as_mut().ok_or(SessionError::WrongToken)?;
+        let merged = evidence.merge_groups(control, old, &incoming, offset, total)?;
+        evidence.bind_leaf_field(control, &incoming, field, offset)?;
+        evidence.retire_group(control, old, field)?;
+        Ok(Some(merged))
+    }
 }

@@ -5,8 +5,6 @@ pub(super) struct SessionStorage {
     pub(super) csp_slot: Option<usize>,
     #[cfg(test)]
     pub(super) cancel_after_radio_peer: Option<crate::HtmlParseCancellation>,
-    #[cfg(test)]
-    pub(super) cancel_after_text_append_chunk: Option<crate::HtmlParseCancellation>,
     pub(super) control: ControlIdentity,
     pub(super) effects: ConstructionEffects,
     pub(super) evidence: Option<ParseEvidence>,
@@ -34,7 +32,6 @@ pub(super) struct SessionStorage {
     pub(super) standalone_ineligibility: Option<HtmlParseUnsupportedState>,
     pub(super) construction: ConstructionOwner,
     pub(super) payloads: PayloadStorage,
-    pub(super) failed_text_append: Option<text_append::FailedTextAppend>,
     /// The units the text append being applied added to the end of the last
     /// child, from the append's commit until the children-changed hook takes
     /// them. Set exactly when the hook's stage is `AppendChildren`.
@@ -137,8 +134,6 @@ impl SessionStorage {
             csp_slot: None,
             #[cfg(test)]
             cancel_after_radio_peer: None,
-            #[cfg(test)]
-            cancel_after_text_append_chunk: None,
             control: control.identity(),
             effects,
             evidence: None,
@@ -159,7 +154,6 @@ impl SessionStorage {
             cancel_after_range_ingress: None,
             standalone_ineligibility: None,
             construction,
-            failed_text_append: None,
             appended_units: None,
             style_order_floor: 0,
             token_end: None,
@@ -294,5 +288,16 @@ impl SessionStorage {
             .storage(control)?
             .position(&node.handle)
             .map_err(|_| SessionError::ForeignNode)
+    }
+}
+
+#[cfg(test)]
+impl SessionStorage {
+    /// The readers of leaf strings over the registry and the records at rest.
+    pub(super) fn leaf_strings(&self) -> provenance::LeafStrings<'_> {
+        provenance::LeafStrings::with_records(
+            &self.payloads,
+            ConstructionView::Active(self.construction.test_storage()),
+        )
     }
 }

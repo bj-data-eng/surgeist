@@ -167,15 +167,8 @@ impl SessionStorage {
                             self.output_clone_slot(c, node)?;
                         }
                     }
-                    ConstructionNodeKind::Text(_) => {
-                        self.field_slot(c, FieldRef::Text(node))?;
-                    }
-                    ConstructionNodeKind::Comment(_) => {
-                        self.field_slot(c, FieldRef::Comment(node))?;
-                    }
+                    ConstructionNodeKind::Text(_) | ConstructionNodeKind::Comment(_) => {}
                     ConstructionNodeKind::ProcessingInstruction(_) => {
-                        self.field_slot(c, FieldRef::ProcessingInstructionTarget(node))?;
-                        self.field_slot(c, FieldRef::ProcessingInstructionData(node))?;
                         self.pi_attribute(c, node, "name")?;
                     }
                     _ => return Err(SessionError::WrongToken),
@@ -302,15 +295,10 @@ impl SessionStorage {
                 } else {
                     FieldRef::Comment(source)
                 };
-                let source_slot = self.field_slot(c, location)?;
-                let (value, slot) = self.copy_registered_field(c, source_slot)?;
-                // Admit the registry binding before installing its native
-                // alias. Allocation success and binding must have no fallible
-                // gap, including a stop at the first binding-copy admission.
+                let FieldString { value, group } = self.copy_record_field(c, location)?;
+                // The binding of the field follows the record's creation; a refusal of it stops
+                // the parse, which publishes no record.
                 payload_write::<FieldRef>(c, 1)?;
-                if text {
-                    payload_write::<Option<usize>>(c, 1)?;
-                }
                 let node = self.allocate_in_document_owned(
                     c,
                     if text {
@@ -323,15 +311,16 @@ impl SessionStorage {
                     0,
                     Some(document),
                 )?;
-                self.bind_string(
-                    slot,
+                self.bind_field(
+                    c,
                     if text {
                         FieldRef::Text(node.index)
                     } else {
                         FieldRef::Comment(node.index)
                     },
-                )
-                .map_err(|_| latch_registry_row(c))?;
+                    group,
+                    0,
+                )?;
                 payload_write::<usize>(c, 1)?;
 
                 Ok(node.index)
@@ -339,10 +328,14 @@ impl SessionStorage {
             ConstructionNodeKind::ProcessingInstruction(_) => {
                 let map = self.prepare_pi_map(c)?;
                 payload_write::<Option<usize>>(c, 1)?;
-                let slot = self.field_slot(c, FieldRef::ProcessingInstructionTarget(source))?;
-                let (target, target_slot) = self.copy_registered_field(c, slot)?;
-                let slot = self.field_slot(c, FieldRef::ProcessingInstructionData(source))?;
-                let (data, data_slot) = self.copy_registered_field(c, slot)?;
+                let FieldString {
+                    value: target,
+                    group: target_group,
+                } = self.copy_record_field(c, FieldRef::ProcessingInstructionTarget(source))?;
+                let FieldString {
+                    value: data,
+                    group: data_group,
+                } = self.copy_record_field(c, FieldRef::ProcessingInstructionData(source))?;
 
                 payload_write::<[FieldRef; 2]>(c, 2)?;
                 let node = self.allocate_in_document_owned(
@@ -353,13 +346,18 @@ impl SessionStorage {
                     0,
                     Some(document),
                 )?;
-                self.bind_string(
-                    target_slot,
+                self.bind_field(
+                    c,
                     FieldRef::ProcessingInstructionTarget(node.index),
-                )
-                .map_err(|_| latch_registry_row(c))?;
-                self.bind_string(data_slot, FieldRef::ProcessingInstructionData(node.index))
-                    .map_err(|_| latch_registry_row(c))?;
+                    target_group,
+                    0,
+                )?;
+                self.bind_field(
+                    c,
+                    FieldRef::ProcessingInstructionData(node.index),
+                    data_group,
+                    0,
+                )?;
                 payload_write::<usize>(c, 1)?;
 
                 self.bind_pi_map(c, map, node.index)?;
@@ -1055,6 +1053,33 @@ impl SessionStorage {
             .transpose()?;
         self.register_literal_copy(c, literal, origins)
     }
+    /// Copies the string of a non-element field of a record into a string of its own, with a
+    /// copy of the field's group when it has one.
+    pub(super) fn copy_record_field(
+        &mut self,
+        c: &mut ParseControl,
+        field: FieldRef,
+    ) -> Result<FieldString, SessionError> {
+        let mut buffer = Utf16Buffer::new(c)?;
+        let result = (|| {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let records = ConstructionView::Active(self.construction.storage(c)?);
+            let Some(units) = field.units(records) else {
+                return Err(latch_registry_row(c));
+            };
+            buffer.extend_units(units, c)?;
+            self.copied_field_group(c, field)
+        })();
+        let group = match result {
+            Ok(group) => group,
+            Err(error) => {
+                buffer.release(c)?;
+                return Err(error);
+            }
+        };
+        let frozen = buffer.freeze(c)?;
+        self.absorb_group_string(c, frozen, group)
+    }
     /// Copies a registered field without aliasing its native backing or ticket.
     pub(super) fn copy_registered_field(
         &mut self,
@@ -1095,52 +1120,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         location: FieldRef,
     ) -> Result<usize, SessionError> {
-        if let FieldRef::Text(node) = location {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let slot = self
-                .payloads
-                .node_joins
-                .get(node)
-                .ok_or(SessionError::ForeignNode)?
-                .text()
-                .ok_or(SessionError::WrongToken)?;
-            let Some(RetainedPayload::String {
-                location: FieldRef::Text(owner),
-                value,
-                allocation,
-                ..
-            }) = self.payloads.values.get(slot)
-            else {
-                return Err(SessionError::WrongToken);
-            };
-            if *owner != node {
-                return Err(SessionError::WrongToken);
-            }
-            c.require_document_string(allocation, value)?;
-            return Ok(slot);
-        }
-        if let FieldRef::ProcessingInstructionData(node) = location {
-            // Parsing a processing instruction reaches this for every
-            // pseudo-attribute piece, so the instruction's data row is joined.
-            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let slot = self
-                .payloads
-                .node_joins
-                .get(node)
-                .ok_or(SessionError::ForeignNode)?
-                .get(Join::ProcessingInstructionData)
-                .ok_or(SessionError::WrongToken)?;
-            let Some(RetainedPayload::String {
-                location: FieldRef::ProcessingInstructionData(owner),
-                ..
-            }) = self.payloads.values.get(slot)
-            else {
-                return Err(SessionError::WrongToken);
-            };
-            if *owner != node {
-                return Err(SessionError::WrongToken);
-            }
-            return Ok(slot);
+        // The string of a non-element field is the record's own: no registry row holds it.
+        if location.is_record_string() {
+            return Err(latch_registry_row(c));
         }
         // Deliberately a registry scan: every other location is looked up on
         // clone paths only, not per parsed node, and has no join.

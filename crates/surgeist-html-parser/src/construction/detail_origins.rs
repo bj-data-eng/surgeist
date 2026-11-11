@@ -1,10 +1,16 @@
-//! The origin groups of attribute fields, for a parse that records the origin graph.
+//! The origin groups of the string fields of records, for a parse that records the origin graph.
 //!
-//! A field is an attribute string of an element: its name, value, namespace or prefix. Each
-//! element that has a group owns a run of entries, one per field that has one, sorted by
-//! attribute position and string. A slot per node position, indexed by the node, names its run,
-//! so an edit of one element reads and moves only that element's entries. A parse that records
-//! no graph has no group to hold and never allocates the table.
+//! A field is an attribute string of an element (its name, value, namespace or prefix) or a
+//! string of a non-element record: the data of a text or comment, the target and data of a
+//! processing instruction, or the name and identifiers of a doctype. Each record that has a
+//! group owns a run of entries, one per field that has one, sorted by attribute position and
+//! string; the strings of a non-element record follow the attribute strings. A slot per node
+//! position, indexed by the node, names its run, so an edit of one record reads and moves only
+//! that record's entries. A parse that records no graph has no group to hold and never
+//! allocates the table.
+//!
+//! The group of a merged-away text, the tokens a text absorbed, is no field's: the group that
+//! replaced the field's own names it as a part, and the evidence keeps it.
 
 use super::string_storage::AttributeString;
 use super::*;
@@ -15,19 +21,31 @@ pub(super) struct DetailOrigin {
     group: OriginGroupRef,
 }
 
-/// The sort key of an attribute field: its element, its position in the list and its string.
+/// The sort key of a field: its record, its position in the attribute list (zero for a
+/// non-element field) and its string.
 fn key(field: FieldRef) -> Option<(usize, usize, u8)> {
-    let (node, index, string) = field.attribute()?;
-    let which = match string {
-        AttributeString::Name => 0,
-        AttributeString::Value => 1,
-        AttributeString::Namespace => 2,
-        AttributeString::Prefix => 3,
-    };
-    Some((node, index, which))
+    if let Some((node, index, string)) = field.attribute() {
+        let which = match string {
+            AttributeString::Name => 0,
+            AttributeString::Value => 1,
+            AttributeString::Namespace => 2,
+            AttributeString::Prefix => 3,
+        };
+        return Some((node, index, which));
+    }
+    match field {
+        FieldRef::Text(node) => Some((node, 0, 4)),
+        FieldRef::Comment(node) => Some((node, 0, 5)),
+        FieldRef::ProcessingInstructionTarget(node) => Some((node, 0, 6)),
+        FieldRef::ProcessingInstructionData(node) => Some((node, 0, 7)),
+        FieldRef::DoctypeName(node) => Some((node, 0, 8)),
+        FieldRef::DoctypePublic(node) => Some((node, 0, 9)),
+        FieldRef::DoctypeSystem(node) => Some((node, 0, 10)),
+        _ => None,
+    }
 }
 
-/// The entries of one element, sorted by attribute position and string.
+/// The entries of one record, sorted by attribute position and string.
 pub(super) struct Run {
     entries: OwnedVec<DetailOrigin>,
 }
@@ -58,6 +76,29 @@ impl DetailOrigins {
         self.table.as_ref().map_or(0, |table| {
             table.runs.iter().map(|run| run.entries.len()).sum()
         })
+    }
+
+    /// The group of `field` when it has one, without a charge.
+    #[cfg(test)]
+    pub(super) fn peek(&self, field: FieldRef) -> Option<&OriginGroupRef> {
+        let (node, _, _) = key(field)?;
+        let table = self.table.as_ref()?;
+        let run = table.runs.get(table.slots.get(node)?.checked_sub(1)?)?;
+        let position = run
+            .entries
+            .as_slice()
+            .binary_search_by_key(&key(field), |entry| key(entry.field))
+            .ok()?;
+        run.entries
+            .as_slice()
+            .get(position)
+            .map(|entry| &entry.group)
+    }
+
+    /// Whether `field` has a group, without a charge.
+    #[cfg(test)]
+    pub(super) fn has(&self, field: FieldRef) -> bool {
+        self.peek(field).is_some()
     }
 
     /// Whether the table has allocated anything.
@@ -144,7 +185,7 @@ impl DetailOrigins {
         control: &mut ParseControl,
         field: FieldRef,
     ) -> Result<Option<&OriginGroupRef>, SessionError> {
-        let Some((node, _, _)) = field.attribute() else {
+        let Some((node, _, _)) = key(field) else {
             return Err(latch_registry_row(control));
         };
         let Some(run) = self.run_of(control, node)? else {
@@ -273,7 +314,7 @@ impl DetailOrigins {
         field: FieldRef,
         group: OriginGroupRef,
     ) -> Result<(), SessionError> {
-        let Some((node, _, _)) = field.attribute() else {
+        let Some((node, _, _)) = key(field) else {
             return Err(latch_registry_row(control));
         };
         let run = self.run_for(control, node)?;
@@ -315,7 +356,7 @@ impl DetailOrigins {
         control: &mut ParseControl,
         field: FieldRef,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let Some((node, _, _)) = field.attribute() else {
+        let Some((node, _, _)) = key(field) else {
             return Err(latch_registry_row(control));
         };
         let Some(run) = self.run_of(control, node)? else {
@@ -353,6 +394,67 @@ impl DetailOrigins {
             tail.rotate_left(1);
         }
         Ok(Some(taken.group))
+    }
+
+    /// Charges what [`Self::replace_prepaid`] does for `field`: the read of the slot of its
+    /// record, the search of the record's run, and the write of the group.
+    pub(super) fn charge_replace(
+        &self,
+        control: &mut ParseControl,
+        field: FieldRef,
+    ) -> Result<(), SessionError> {
+        let Some((node, _, _)) = key(field) else {
+            return Err(latch_registry_row(control));
+        };
+        let Some(run) = self.run_of(control, node)? else {
+            return Ok(());
+        };
+        let run = self
+            .table
+            .as_ref()
+            .and_then(|table| table.runs.get(run))
+            .ok_or_else(|| latch_registry_row(control))?;
+        // The probes of the search are charged; the position is not needed here.
+        let _ = Self::search(control, run, field)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+        control.charge(
+            HtmlParseWorkCategory::CopyByte,
+            size_of::<OriginGroupRef>() as u64,
+        )?;
+        Ok(())
+    }
+
+    /// Puts `group` in place of the group of `field`, which has one, and returns the group it
+    /// replaced. No entry moves and nothing is allocated. The caller has charged it through
+    /// [`Self::charge_replace`]; only a record that holds no group for the field, which the
+    /// caller made sure of beforehand, refuses it, as the registry row.
+    pub(super) fn replace_prepaid(
+        &mut self,
+        control: &mut ParseControl,
+        field: FieldRef,
+        group: OriginGroupRef,
+    ) -> Result<OriginGroupRef, SessionError> {
+        let Some((node, _, _)) = key(field) else {
+            return Err(latch_registry_row(control));
+        };
+        let Some(run) = self.table.as_mut().and_then(|table| {
+            let run = table.slots.get(node).copied()?.checked_sub(1)?;
+            table.runs.get_mut(run)
+        }) else {
+            return Err(latch_registry_row(control));
+        };
+        let Ok(position) = run
+            .entries
+            .as_slice()
+            .binary_search_by_key(&key(field), |entry| key(entry.field))
+        else {
+            return Err(latch_registry_row(control));
+        };
+        let entries = run.entries.as_mut_slice_prepaid(control)?;
+        match entries.get_mut(position) {
+            Some(entry) => Ok(std::mem::replace(&mut entry.group, group)),
+            None => Err(latch_registry_row(control)),
+        }
     }
 
     /// The entries of the attributes of `node` after position `removed` name one place lower, as

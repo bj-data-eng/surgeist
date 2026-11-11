@@ -82,25 +82,6 @@ fn a_failed_operation_refuses_with_its_latched_cause_and_still_aborts_to_its_sto
 }
 
 #[test]
-fn a_refused_text_append_returns_its_operands() {
-    let (owner, text) = create(
-        storage(),
-        HtmlConstructionCommand::Create {
-            leaf: HtmlConstructionLeaf::Text("ab".into()),
-        },
-    );
-    let append = HtmlConstructionTextAppend::begin(owner, text, "cd".into());
-    let refusal = append.try_ready().unwrap_err();
-    expect_not_ready(&refusal);
-    let (mut append, _) = refusal.into_parts();
-    assert!(append.next_action().unwrap().is_some());
-    let (owner, _node, incoming, discarded) = append.abort().unwrap().into_parts();
-    assert_eq!(incoming.code_units(), [0x63, 0x64]);
-    assert!(discarded.is_none());
-    assert_eq!(owner.len(), 1);
-}
-
-#[test]
 fn a_refused_recovery_hands_back_the_result_and_the_lease() {
     let (owner, root) = fragment(storage());
     let (result, lease) = publish(owner, root);

@@ -444,7 +444,6 @@ fn text_select_and_style_order_rows_leave_nothing_retained_when_the_parse_stops_
             "<!doctype html><textarea>a&amp;b</textarea><select><option>a</option><option selected>b</option></select><style>a{}</style><style>b{}</style>",
         ),
         &[
-            ("src/construction/text_append.rs", "append_registered_text"),
             (
                 "src/construction/pending_association.rs",
                 "retain_style_order",
@@ -741,16 +740,6 @@ fn processing_instruction_rows_leave_nothing_retained_when_the_parse_stops_after
     assert_nothing_retained(
         &document("<!doctype html><?target data?><p>x"),
         &[("src/construction/pi.rs", "prepare_pi_map")],
-    );
-}
-
-#[test]
-fn merged_text_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(
-        &document(
-            "<!doctype html><textarea>a&amp;b&lt;c</textarea><style>x&amp;y</style><p>a&amp;b</p>",
-        ),
-        &[("src/construction/text_append.rs", "append_registered_text")],
     );
 }
 

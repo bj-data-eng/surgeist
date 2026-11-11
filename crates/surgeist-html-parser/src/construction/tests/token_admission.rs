@@ -30,7 +30,7 @@ fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validat
     storage_zero(&c);
 }
 #[test]
-fn external_text_alias_and_native_backing_holder_reject_without_consuming_owners() {
+fn external_text_alias_rejects_without_consuming_owners() {
     let mut c = control();
     let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
     let root = session.root(&mut c).unwrap();
@@ -42,28 +42,13 @@ fn external_text_alias_and_native_backing_holder_reject_without_consuming_owners
     ));
     assert!(text.is_some());
     drop(alias);
-    let inserted = session
+    session
         .insert_text(&mut c, &root, None, &mut text, None)
         .unwrap()
         .unwrap();
-    let value = session
-        .active()
-        .unwrap()
-        .construction
-        .node_at(inserted._node.index)
-        .expect("retained construction position")
-        .stored_string(surgeist_html::bounded::construction::HtmlStoredString::Text)
-        .expect("text");
-    let alias = value.clone();
     let mut frozen = session.freeze(&mut c).unwrap();
-    // A native string that another holder still keeps cannot be released: the ticket of a string
-    // that does not share its block requires the block to be unheld.
-    let aliased = HtmlParseStop::InternalInvariant(
-        crate::parser::control::HtmlParseInvariant::SharedAllocationAliased,
-    );
-    assert_eq!(frozen.release(&mut c), Err(SessionError::Stop(aliased)));
-    assert_eq!(c.stop(), Some(aliased));
-    drop(alias);
+    frozen.release(&mut c).unwrap();
+    storage_zero(&c);
 }
 #[test]
 fn foreign_token_owner_preserves_input_and_original_ledger_for_cleanup() {
@@ -88,7 +73,7 @@ fn foreign_token_owner_preserves_input_and_original_ledger_for_cleanup() {
     storage_zero(&foreign);
 }
 #[test]
-fn managed_string_cap_stops_before_text_replacement_and_retains_real_failed_payload() {
+fn managed_string_cap_stops_the_append_and_releases_the_token_string() {
     let caps = limits()
         .into_builder()
         .managed_utf16_units(1)
@@ -120,11 +105,12 @@ fn managed_string_cap_stops_before_text_replacement_and_retains_real_failed_payl
             .current,
         1
     );
+    // The token's string is released with the refusal.
     assert_eq!(
         c.usage()
             .resource(HtmlParseResource::BufferedUtf16Units)
             .current,
-        1
+        0
     );
     let stop = c.stop();
     session.release(&mut c).unwrap();

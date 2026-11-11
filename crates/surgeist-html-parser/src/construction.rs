@@ -39,7 +39,10 @@ use std::{mem, sync::Weak};
 
 use surgeist_html::bounded::script::HtmlScriptPreparationResult as DisabledScriptPreparation;
 
-use surgeist_html::{construction::HtmlBuilderNode, values::DocumentString};
+use surgeist_html::{
+    construction::{ConstructionNodeKind, HtmlBuilderNode},
+    values::DocumentString,
+};
 
 mod activity;
 mod construction_owner;
@@ -96,8 +99,6 @@ mod select;
 mod svg;
 mod template;
 mod text_append;
-#[cfg(test)]
-pub(crate) mod text_append_tests;
 mod tree_root;
 pub use completion::{HtmlParseCompletion, HtmlParseDocumentState, HtmlParseReadiness};
 use effects::ConstructionEffects;
@@ -185,7 +186,7 @@ use session_error::{
     latch_owner_refusal, latch_registry_row, next_cursor, session_fault_invariant, successor,
 };
 use string_storage::ReleasedStorage;
-pub(crate) use string_storage::{FieldRef, TextInsertion};
+pub(crate) use string_storage::{FieldRef, RecordString, TextInsertion};
 mod form_effects;
 mod storage;
 mod storage_allocation;
@@ -196,7 +197,7 @@ mod storage_insertion;
 mod storage_release;
 mod storage_script;
 mod storage_strings;
-use storage_strings::{LITERALS, Literal};
+use storage_strings::{FieldString, LITERALS, Literal};
 mod storage_textarea;
 use storage_textarea::TextareaRefresh;
 mod storage_tree;

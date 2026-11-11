@@ -1,9 +1,8 @@
-//! The build view reports the records a storage holds as borrowed code units, and
-//! `stored_string` names the shared string of a non-element record. Every expectation is built
-//! from the values handed to the commands, never read back from the owner.
+//! The build view reports the records a storage holds as borrowed code units. Every expectation
+//! is built from the values handed to the commands, never read back from the owner.
 use super::*;
 use surgeist_html::{
-    bounded::construction::{HtmlConstructionLeaf, HtmlStoredString},
+    bounded::construction::HtmlConstructionLeaf,
     construction::{BuildStr, HtmlDoctype, HtmlProcessingInstruction},
     values::Attribute,
 };
@@ -138,73 +137,4 @@ fn element_document_and_fragment_views_report_the_created_records() {
         owner.node(&fragment).unwrap().kind(),
         ConstructionNodeKind::Fragment
     );
-}
-
-#[test]
-fn stored_string_names_the_shared_string_of_the_matching_record_only() {
-    let text = DocumentString::from_utf16(vec![0x78, 0xD800]);
-    let comment = DocumentString::from("c");
-    let pi = HtmlProcessingInstruction::new("t", "d");
-    let doctype = HtmlDoctype::new("n", None, Some("s".into()));
-    let (owner, text_node) = leaf(storage(), HtmlConstructionLeaf::Text(text.clone()));
-    let (owner, comment_node) = leaf(owner, HtmlConstructionLeaf::Comment(comment.clone()));
-    let (owner, pi_node) = leaf(
-        owner,
-        HtmlConstructionLeaf::ProcessingInstruction(pi.clone()),
-    );
-    let (owner, doctype_node) = leaf(owner, HtmlConstructionLeaf::Doctype(doctype.clone()));
-    let (owner, element_node) = create(owner, element("p"));
-
-    let held = |node: &HtmlBuilderNode, field| owner.node(node).unwrap().stored_string(field);
-    // The strings handed to the command are the strings the record holds.
-    assert!(
-        held(&text_node, HtmlStoredString::Text)
-            .unwrap()
-            .shares_storage_with(&text)
-    );
-    assert!(
-        held(&comment_node, HtmlStoredString::Comment)
-            .unwrap()
-            .shares_storage_with(&comment)
-    );
-    assert!(
-        held(&pi_node, HtmlStoredString::ProcessingInstructionTarget)
-            .unwrap()
-            .shares_storage_with(pi.target())
-    );
-    assert!(
-        held(&pi_node, HtmlStoredString::ProcessingInstructionData)
-            .unwrap()
-            .shares_storage_with(pi.data())
-    );
-    assert!(
-        held(&doctype_node, HtmlStoredString::DoctypeName)
-            .unwrap()
-            .shares_storage_with(doctype.name())
-    );
-    assert!(
-        held(&doctype_node, HtmlStoredString::DoctypeSystemId)
-            .unwrap()
-            .shares_storage_with(doctype.system_id().unwrap())
-    );
-    // An absent identifier, another record kind and an element have no such string.
-    assert_eq!(held(&doctype_node, HtmlStoredString::DoctypePublicId), None);
-    assert_eq!(held(&text_node, HtmlStoredString::Comment), None);
-    assert_eq!(held(&comment_node, HtmlStoredString::Text), None);
-    assert_eq!(held(&pi_node, HtmlStoredString::DoctypeName), None);
-    assert_eq!(
-        held(&doctype_node, HtmlStoredString::ProcessingInstructionData),
-        None
-    );
-    for field in [
-        HtmlStoredString::Text,
-        HtmlStoredString::Comment,
-        HtmlStoredString::ProcessingInstructionTarget,
-        HtmlStoredString::ProcessingInstructionData,
-        HtmlStoredString::DoctypeName,
-        HtmlStoredString::DoctypePublicId,
-        HtmlStoredString::DoctypeSystemId,
-    ] {
-        assert_eq!(held(&element_node, field), None, "{field:?}");
-    }
 }

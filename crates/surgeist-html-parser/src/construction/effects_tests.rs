@@ -9,7 +9,6 @@ use crate::parser::tokenizer::{
     token::{Event, Token},
 };
 use crate::parser::tree_builder::ConstructionCapability;
-use surgeist_html::bounded::construction::HtmlStoredString;
 use surgeist_html::{
     construction::{ConstructionNodeKind, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode},
     elements::{
@@ -436,9 +435,9 @@ fn select_connected_empty_script_clone_text_merge_runs_children_changed_preparat
     lexer.release(&mut c).unwrap();
     session.release(&mut c).unwrap();
     storage_zero(&c);
-    // replaceData registers the incoming and merged strings. It invokes only
-    // the parent's childrenChanged hook, not an insertion static-list owner.
-    assert_eq!(added_merge_slots, 2);
+    // The merge registers no row: the text grows in place and the token's string is released.
+    // It invokes only the parent's childrenChanged hook, not an insertion static-list owner.
+    assert_eq!(added_merge_slots, 0);
 }
 
 #[test]
@@ -474,28 +473,26 @@ fn select_clones_managed_hidden_textarea_and_exact_comment_pi_text_backing_indep
             .construction
             .node_at(*copy)
             .expect("retained construction position");
-        let distinct = |field: HtmlStoredString| {
-            let (a, b) = (
-                first.stored_string(field).unwrap(),
-                second.stored_string(field).unwrap(),
-            );
+        // A copy holds the same units in a string of its own.
+        let distinct = |a: surgeist_html::construction::BuildStr<'_>,
+                        b: surgeist_html::construction::BuildStr<'_>| {
             assert_eq!(a, b);
-            assert!(!a.shares_storage_with(b));
+            assert!(!std::ptr::eq(
+                a.code_units().as_ptr(),
+                b.code_units().as_ptr()
+            ));
         };
         match (first.kind(), second.kind()) {
-            (ConstructionNodeKind::Text(_), ConstructionNodeKind::Text(_)) => {
-                distinct(HtmlStoredString::Text)
-            }
-            (ConstructionNodeKind::Comment(_), ConstructionNodeKind::Comment(_)) => {
-                distinct(HtmlStoredString::Comment)
+            (ConstructionNodeKind::Text(a), ConstructionNodeKind::Text(b))
+            | (ConstructionNodeKind::Comment(a), ConstructionNodeKind::Comment(b)) => {
+                distinct(a, b)
             }
             (
                 ConstructionNodeKind::ProcessingInstruction(a),
                 ConstructionNodeKind::ProcessingInstruction(b),
             ) => {
                 assert_eq!(a.target(), b.target());
-                assert_eq!(a.data(), b.data());
-                distinct(HtmlStoredString::ProcessingInstructionData);
+                distinct(a.data(), b.data());
             }
             (ConstructionNodeKind::Element(a), ConstructionNodeKind::Element(b)) => {
                 assert_eq!(a.name(), b.name());
@@ -1306,18 +1303,23 @@ fn non_element_clone_binding_boundary(kind: usize) {
                 } => !matches!(location, FieldRef::Detached) || value.block().holders() == 1,
                 _ => true,
             });
-        let installed_bound=(nodes..nodes+installed).all(|node| {
-            let storage=session.active().unwrap();
-            let bound=|location: FieldRef,value:&DocumentString|storage.payloads.values[slots..].iter().any(|payload|matches!(payload,RetainedPayload::String{location:actual,value:stored,..} if *actual==location && value.shares_storage_with(stored)));
-            let record=storage.construction.node_at(node).unwrap();
-            let held=|field:HtmlStoredString|record.stored_string(field);
-            match record.kind() {
-                ConstructionNodeKind::Text(_)=>held(HtmlStoredString::Text).is_some_and(|value|bound(FieldRef::Text(node),value)),
-                ConstructionNodeKind::Comment(_)=>held(HtmlStoredString::Comment).is_some_and(|value|bound(FieldRef::Comment(node),value)),
-                ConstructionNodeKind::ProcessingInstruction(_)=>held(HtmlStoredString::ProcessingInstructionTarget).is_some_and(|value|bound(FieldRef::ProcessingInstructionTarget(node),value))&&held(HtmlStoredString::ProcessingInstructionData).is_some_and(|value|bound(FieldRef::ProcessingInstructionData(node),value)),
-                _=>false,
-            }
-        });
+        // Every installed record's strings have their groups in the table of origins. A work
+        // cut between the installation of a record and the binding of its strings leaves a
+        // record without its groups in a parse that stopped, which publishes nothing.
+        let installed_bound = first.is_some()
+            || (nodes..nodes + installed).all(|node| {
+                let storage = session.active().unwrap();
+                let bound = |field: FieldRef| storage.payloads.detail_origins.has(field);
+                match storage.construction.node_at(node).unwrap().kind() {
+                    ConstructionNodeKind::Text(_) => bound(FieldRef::Text(node)),
+                    ConstructionNodeKind::Comment(_) => bound(FieldRef::Comment(node)),
+                    ConstructionNodeKind::ProcessingInstruction(_) => {
+                        bound(FieldRef::ProcessingInstructionTarget(node))
+                            && bound(FieldRef::ProcessingInstructionData(node))
+                    }
+                    _ => false,
+                }
+            });
         let release = session.release(&mut c);
         assert!(
             coherent && installed_bound && release.is_ok(),
