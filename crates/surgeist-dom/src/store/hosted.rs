@@ -1321,12 +1321,48 @@ impl Dom {
         E: From<DomError> + From<DomHostedError>,
     {
         let _work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_relevant_global_current_with(node, step)
+    }
+    fn dispatch_relevant_global_current_with<E>(
+        &self,
+        node: NodeId,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedGlobalId>, E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
         step()?;
         let global = self.snapshot().relevant_global(node)?;
         if let Some(global) = global {
             self.dispatch_global_document_current_with(global, step)?;
         }
         Ok(global)
+    }
+    /// Qualify the actual current issuer for a hosted Document reached during
+    /// selected native dispatch preparation, independently of its event parent.
+    /// The work hook meters current association reads alongside any active
+    /// Source dispatch scope. The observation grants no execution authority.
+    pub fn qualify_native_dispatch_document<E>(
+        &self,
+        document: DocumentId,
+        cancel: &AtomicBool,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<DomError> + From<DomHostedError>,
+    {
+        let work = self.dispatch_hosted_read_work(cancel)?;
+        self.dispatch_relevant_global_current_with(document.node(), &mut || -> Result<(), E> {
+            check_cancel(cancel)?;
+            step()?;
+            if let Some(work) = &work {
+                work.step(cancel)?;
+            }
+            Ok(())
+        })?
+        .ok_or(DomHostedError::UnsupportedProfile)?;
+        check_cancel(cancel)?;
+        Ok(())
     }
     /// Current issuer/role-qualified Document of a dispatcher Global endpoint.
     pub fn dispatch_global_document(

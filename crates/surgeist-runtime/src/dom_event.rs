@@ -2782,7 +2782,21 @@ fn build_path(
                 // A native Global's default EventTarget parent is null.
                 break;
             }
-            None => break,
+            None => {
+                // Selected native delivery needs current hosted authority even
+                // where the standard parent stops at this Document.
+                if let Some(document) = view.as_document().filter(|document| {
+                    document
+                        .metadata()
+                        .document_environment()
+                        .has_ever_had_navigable()
+                }) {
+                    dom.qualify_native_dispatch_document(document.id(), cancel, &mut || {
+                        source_tick(budget)
+                    })?;
+                }
+                break;
+            }
         };
         closed_slot = next.via_assigned_slot()
             && snapshot
