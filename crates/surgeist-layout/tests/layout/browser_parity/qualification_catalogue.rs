@@ -1059,6 +1059,53 @@ grid_reference_owners = ["/", "/0", "/0/0"]
     }
 
     #[test]
+    fn matching_source_path_identity_admits_distinct_sources_with_one_basename() {
+        let first = matching_source_declaration(ORIGINAL_MATCHING_SOURCE).replacen(
+            "[[records]]\n",
+            "[[records]]\ncase_identity = \"source-path\"\n",
+            1,
+        );
+        let (records, _) = first.split_once("[[matching_publications]]").unwrap();
+        let second_source = ORIGINAL_MATCHING_SOURCE.replace("/grid/", "/block/");
+        let second = records[records.find("[[records]]").unwrap()..]
+            .replace(ORIGINAL_MATCHING_SOURCE, &second_source);
+        let catalogue = format!(
+            "{records}{second}[[matching_publications]]\nedition = \"source-controls\"\nsources = [{ORIGINAL_MATCHING_SOURCE:?}, {second_source:?}]\n"
+        );
+        let declaration = Declaration::parse(catalogue.as_bytes())
+            .expect("full source paths distinguish originals with the same basename");
+        assert_eq!(declaration.records.len(), 2);
+    }
+
+    #[test]
+    fn matching_source_path_identity_preserves_historical_observation_name() {
+        const SOURCE: &str = "html/block/block_basic.html";
+        const HISTORICAL: &str = "block_basic__border_box_ltr";
+        const CURRENT: &str = "block/block_basic__border_box_ltr";
+        let declaration = matching_source_declaration(SOURCE).replacen(
+            "[[records]]\n",
+            "[[records]]\ncase_identity = \"source-path\"\n",
+            1,
+        );
+        let catalogue = Declaration::parse(declaration.as_bytes()).unwrap();
+        let [record] = catalogue.records.as_slice() else {
+            panic!("one matching source");
+        };
+        let capture =
+            include_str!("captured/box-controls/xml/block/block_basic__border_box_ltr.xml");
+        let historical = include_str!("xml/block/block_basic__border_box_ltr.xml");
+        let current = capture.replacen(HISTORICAL, CURRENT, 1);
+        record
+            .verify_matching_capture(&current, Some(historical), CURRENT, "border_box_ltr")
+            .unwrap();
+        assert!(
+            record
+                .verify_matching_capture(capture, Some(historical), HISTORICAL, "border_box_ltr")
+                .is_err()
+        );
+    }
+
+    #[test]
     fn matching_source_declaration_accepts_authored_source_without_history() {
         let input = matching_source_declaration(AUTHORED_MATCHING_SOURCE);
         let parsed = Declaration::parse(input.as_bytes())
