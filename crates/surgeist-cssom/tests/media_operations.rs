@@ -75,6 +75,237 @@ fn exact_media(suffix: &str) -> Vec<u16> {
 }
 
 #[test]
+fn transient_member_edits_keep_the_new_comment_only_exact_source() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let proceed = AtomicBool::new(false);
+    let original = Arc::new(exact_media(""));
+    let before = store.snapshot();
+    let mut edit = batch(&store);
+    assert!(
+        edit.set_media_text(
+            media.id(),
+            CssomSheetText::Utf16(original.clone()),
+            &proceed
+        )
+        .unwrap()
+        .changed()
+    );
+    assert!(
+        edit.append_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.delete_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    let commit = store.commit(edit).unwrap();
+    assert!(
+        matches!(commit.publication(), CssomPublication::Changed(_)),
+        "the staged exact source must publish even with no query members: {:?}",
+        commit.publication()
+    );
+    let after = store.snapshot();
+    assert_ne!(before.revision(), after.revision());
+    let list = after.media(media.id()).unwrap();
+    assert!(list.queries().is_empty());
+    assert!(Arc::ptr_eq(
+        list.parse_source()
+            .unwrap()
+            .source()
+            .original_utf16()
+            .unwrap(),
+        &original
+    ));
+}
+
+#[test]
+fn temporarily_displaced_exact_media_shares_the_staged_source_quota() {
+    let original = Arc::new(exact_media(""));
+    let parser = CssParser::default();
+    let baseline = CssMediaQueryList::parse_utf16(
+        &parser,
+        original.clone(),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, std::convert::Infallible>(()),
+    )
+    .unwrap();
+    let baseline_source = baseline.syntax().parse_source().unwrap().source();
+    let member = CssMediaQuery::parse_medium(&parser, "print");
+    let CssValueOrigin::Parsed(member_origin) = member.syntax().as_ref().unwrap().origin() else {
+        panic!("expected the original print query");
+    };
+    let joint_backing = baseline_source.storage_usage().retained_bytes()
+        + member_origin.source().storage_usage().retained_bytes();
+    let proceed = AtomicBool::new(false);
+    for maximum in [joint_backing - 1, joint_backing] {
+        let policy = CssomLimits {
+            max_retained_source_bytes: maximum,
+            ..Default::default()
+        };
+        let mut store = CssomStore::new(policy, Default::default()).unwrap();
+        let media = source_free_media(&mut store);
+        let before = store.snapshot();
+        let mut edit = batch(&store);
+        assert!(
+            edit.set_media_text(
+                media.id(),
+                CssomSheetText::Utf16(original.clone()),
+                &proceed
+            )
+            .unwrap()
+            .changed()
+        );
+        let appended = edit.append_medium(media.id(), "print", &proceed);
+        if maximum == joint_backing {
+            assert!(appended.unwrap().changed());
+            assert!(
+                edit.delete_medium(media.id(), "print", &proceed)
+                    .unwrap()
+                    .changed()
+            );
+            assert!(matches!(
+                store.commit(edit).unwrap().publication(),
+                CssomPublication::Changed(_)
+            ));
+            let after = store.snapshot();
+            let list = after.media(media.id()).unwrap();
+            assert!(list.queries().is_empty());
+            assert!(Arc::ptr_eq(
+                list.parse_source()
+                    .unwrap()
+                    .source()
+                    .original_utf16()
+                    .unwrap(),
+                &original
+            ));
+        } else {
+            assert!(
+                matches!(appended, Err(CssomError::Limit {
+                    resource: "retained parse source bytes",
+                    maximum: actual
+                }) if actual == maximum),
+                "the staged query and its displaced exact baseline coexist: {appended:?}"
+            );
+            assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
+            let after = store.snapshot();
+            assert_eq!(before.revision(), after.revision());
+            assert!(after.media(media.id()).unwrap().parse_source().is_none());
+        }
+    }
+}
+
+#[test]
+fn other_sheet_publication_keeps_the_staged_exact_source_instead_of_the_old_base() {
+    let mut store = new_store();
+    let media = source_free_media(&mut store);
+    let other = create(&mut store, "", input());
+    let proceed = AtomicBool::new(false);
+    let original = exact_media("");
+    let mut replacement = original.clone();
+    replacement[6] = 0;
+    let (original, replacement) = (Arc::new(original), Arc::new(replacement));
+    let _ = media
+        .set_media_text(
+            &mut store,
+            CssomSheetText::Utf16(original.clone()),
+            &proceed,
+        )
+        .unwrap();
+    let before = store.snapshot();
+    let source = before
+        .media(media.id())
+        .unwrap()
+        .parse_source()
+        .unwrap()
+        .source();
+    assert!(Arc::ptr_eq(source.original_utf16().unwrap(), &original));
+    let mut edit = batch(&store);
+    assert!(
+        edit.set_media_text(
+            media.id(),
+            CssomSheetText::Utf16(replacement.clone()),
+            &proceed
+        )
+        .unwrap()
+        .changed()
+    );
+    assert!(
+        edit.append_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(
+        edit.delete_medium(media.id(), "print", &proceed)
+            .unwrap()
+            .changed()
+    );
+    assert!(edit.set_disabled(&other, true).unwrap());
+    assert!(matches!(
+        store.commit(edit).unwrap().publication(),
+        CssomPublication::Changed(_)
+    ));
+    assert!(
+        store
+            .css_style_sheet(&other)
+            .unwrap()
+            .disabled(&store)
+            .unwrap()
+    );
+    let after = store.snapshot();
+    let list = after.media(media.id()).unwrap();
+    assert!(list.queries().is_empty());
+    let current = list
+        .parse_source()
+        .expect("staged replacement source")
+        .source();
+    assert_eq!(current.as_str(), source.as_str());
+    assert!(Arc::ptr_eq(current.original_utf16().unwrap(), &replacement));
+}
+
+#[test]
+fn empty_utf8_and_utf16_both_clear_exact_comment_only_media_source() {
+    for empty in [
+        CssomSheetText::Utf16(Arc::new(Vec::new())),
+        CssomSheetText::Utf8(""),
+    ] {
+        let mut store = new_store();
+        let media = source_free_media(&mut store);
+        let proceed = AtomicBool::new(false);
+        let original = Arc::new(exact_media(""));
+        let _ = media
+            .set_media_text(
+                &mut store,
+                CssomSheetText::Utf16(original.clone()),
+                &proceed,
+            )
+            .unwrap();
+        let before = store.snapshot();
+        let list = before.media(media.id()).unwrap();
+        assert!(list.queries().is_empty());
+        assert!(Arc::ptr_eq(
+            list.parse_source()
+                .unwrap()
+                .source()
+                .original_utf16()
+                .unwrap(),
+            &original
+        ));
+        let cleared = media.set_media_text(&mut store, empty, &proceed).unwrap();
+        assert!(
+            matches!(cleared.publication(), CssomPublication::Changed(_)),
+            "empty input must release the retained exact source: {:?}",
+            cleared.publication()
+        );
+        let after = store.snapshot();
+        assert_ne!(before.revision(), after.revision());
+        assert!(after.media(media.id()).unwrap().parse_source().is_none());
+    }
+}
+
+#[test]
 fn utf16_setter_retains_original_units_and_changes_only_distinct_source_values() {
     let mut store = new_store();
     let media = source_free_media(&mut store);
