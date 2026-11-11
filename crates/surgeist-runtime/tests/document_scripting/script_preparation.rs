@@ -677,7 +677,7 @@ pub(super) fn stopped_script_precedes_replacement_child_service() {
     assert_eq!(session.snapshot().stamp(), read.basis());
     let operation = read.operation();
     let resume_without_url = |session: &mut DomSession| {
-        session.source_execution().resume(
+        let reached = session.source_execution().resume(
             &mut session.dom(),
             operation,
             LIMITS,
@@ -688,16 +688,17 @@ pub(super) fn stopped_script_precedes_replacement_child_service() {
                 url: None,
             },
             &cancel(),
-        )
+        );
+        let Ok(DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::HostedChild(child),
+            reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
+        }) = reached
+        else {
+            panic!("replacement must reach the original iframe service after stop: {reached:?}");
+        };
+        child
     };
-    let reached = resume_without_url(&mut session);
-    let Ok(DomSourceDriveProgress::Pending {
-        request: DomSourceRequest::HostedChild(child),
-        reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
-    }) = reached
-    else {
-        panic!("replacement must reach the original iframe service after stop: {reached:?}");
-    };
+    let child = resume_without_url(&mut session);
     assert_eq!(child.operation(), operation);
     assert_eq!(child.container(), iframe);
     assert_eq!(child.parent_document().document(), document);
@@ -716,11 +717,7 @@ pub(super) fn stopped_script_precedes_replacement_child_service() {
     assert_eq!(prepared.preparation_document(), Some(document));
     assert_eq!(prepared.script_type(), Some(HtmlScriptKind::Classic));
     assert_eq!(prepared.result(), HtmlScriptResult::Uninitialized);
-    assert!(matches!(resume_without_url(&mut session),
-        Ok(DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::HostedChild(again),
-            reason: DomSourceUnavailable::Url(DomSourceUrlStage::IframeDeclaredOrigin),
-        }) if again == child));
+    assert_eq!(resume_without_url(&mut session), child);
     assert_eq!(session.snapshot().stamp(), published.stamp());
 
     let facts = published

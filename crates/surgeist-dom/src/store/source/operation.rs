@@ -2145,6 +2145,13 @@ impl DomSourceLease<'_> {
             })();
             match result {
                 Err(DomError::ScriptPreparationRequired) => {
+                    if !op.command_admitted {
+                        checkpoint.restore(&mut op.draft);
+                        op.restore_external_receipt(external_applied);
+                        op.started = started;
+                        op.admit_current_command(self.dom, cancel)?;
+                        continue;
+                    }
                     op.started = true;
                     op.script_parked = true;
                     drop(checkpoint);
