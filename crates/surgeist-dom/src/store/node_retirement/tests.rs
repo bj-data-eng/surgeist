@@ -34,6 +34,40 @@ fn bytes(dom: &Dom) -> usize {
 }
 
 #[test]
+fn creation_and_watch_refusal_preserve_the_original_dom_publication() {
+    let cancel = AtomicBool::new(false);
+    let (mut dom, document, original) = fixture(&cancel);
+    let mut inbox = dom.node_retirement_inbox(GENEROUS, &cancel).unwrap();
+    let before = dom.snapshot();
+    let original_bytes = bytes(&dom);
+
+    let mut batch = DomBatch::new();
+    let ticket = batch.create_fragment(document);
+    let result = dom.apply(batch, &cancel).and_then(|commit| {
+        let node = commit
+            .created(&ticket)?
+            .ok_or(DomError::UnavailableCreation)?;
+        dom.watch_node_retirement(
+            node,
+            &inbox,
+            9,
+            DomNodeRetirementLimits::new(16_000_000, 0),
+            &cancel,
+        )
+    });
+    assert!(matches!(
+        result,
+        Err(DomError::NodeRetirementWorkLimit { limit: 0 })
+    ));
+    assert_eq!(dom.snapshot().stamp(), before.stamp());
+    assert_eq!(dom.snapshot().nodes().count(), before.nodes().count());
+    assert!(dom.snapshot().node(original).is_ok());
+    assert_eq!(bytes(&dom), original_bytes);
+    assert!(dom.node_retirements.is_none());
+    assert!(inbox.take().is_none());
+}
+
+#[test]
 fn exact_inbox_and_watch_admission_and_cancelled_disarm() {
     let cancel = AtomicBool::new(false);
     let (mut dom, document, node) = fixture(&cancel);
