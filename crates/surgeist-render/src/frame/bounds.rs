@@ -207,6 +207,15 @@ impl SemanticSourceBounds {
         .with_sampled_mask_coverage(self.sampled_mask_coverage || other.sampled_mask_coverage))
     }
 
+    fn try_limit_to_output(self, output: Self, name: &'static str) -> Result<Self> {
+        if self.sampled_mask_coverage {
+            // The finite raster can contain samples on or beyond its
+            // continuous edge. The sampler determines coverage within it.
+            return Ok(output.with_sampled_mask_coverage(true));
+        }
+        self.try_intersect(output, name)
+    }
+
     fn try_transform(self, transform: Transform, name: &'static str) -> Result<Self> {
         if linear_transform_is_rank_deficient(transform)? {
             return Ok(Self::exactly_empty());
@@ -697,15 +706,15 @@ impl SemanticCommandContribution {
             return Ok(self);
         };
         let output_bounds = SemanticSourceBounds::from_logical_bounds(output_bounds);
-        let source_bounds = self.source_bounds.try_intersect(
+        let source_bounds = self.source_bounds.try_limit_to_output(
             output_bounds,
             "root observable source output-domain intersection",
         )?;
-        let affected_bounds = self.affected_bounds.try_intersect(
+        let affected_bounds = self.affected_bounds.try_limit_to_output(
             output_bounds,
             "root observable affected output-domain intersection",
         )?;
-        let current_parent = self.current_parent.try_intersect(
+        let current_parent = self.current_parent.try_limit_to_output(
             output_bounds,
             "root current-parent output-domain intersection",
         )?;
