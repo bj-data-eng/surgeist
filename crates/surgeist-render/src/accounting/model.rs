@@ -165,7 +165,6 @@ dimensions! {
         /// Shader key elements actually copied into distinct owned backing.
         ShaderKeyCopies,
         /// Existing records moved into replacement vector or pass-cache index backing.
-        /// New writes, insertion shifts and in-place rotations use separate units.
         /// Standalone preparation charges its forward owner. Renderer backing
         /// charges checked-unlimited CPU lifetime work.
         StorageRelocations,

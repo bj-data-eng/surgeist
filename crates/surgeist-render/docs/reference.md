@@ -961,9 +961,8 @@ Temporary text values and resource iterators retain their backing admissions
 through actual destruction inside the owning CPU disposal phase, including
 early failure and cancellation.
 `StorageRelocations` counts existing records moved into replacement vector or
-pass-cache index backing. New element writes, insertion suffix shifts and
-in-place rotations use separate units. Renderer storage charges this
-checked-unlimited work to its CPU lifetime owner.
+pass-cache index backing. Renderer storage charges this checked-unlimited work
+to its CPU lifetime owner.
 Standalone preparation charges its own operation and permits a work limit where
 that entrypoint produces relocations. Existing image-identity and raster-resource
 copy units retain their new writes and suffix shifts, without counting the same
