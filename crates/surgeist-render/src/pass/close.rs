@@ -1,4 +1,6 @@
-use crate::accounting::{Account, AccountedVec, RenderResource, RenderWork, SharedValue};
+use crate::accounting::{
+    Account, AccountedVec, RenderAccountingError, RenderResource, RenderWork, SharedValue,
+};
 use std::{
     cell::{Cell, RefCell},
     ops::{Deref, DerefMut},
@@ -56,6 +58,13 @@ impl<'a> ProofContext<'a> {
             }
         }
     }
+    fn capture_storage_write(&self, result: Result<()>) -> Option<()> {
+        // Successful writes keep the original traversal prefix after a fault.
+        match result {
+            Ok(()) => Some(()),
+            Err(error) => self.capture(Err(error)),
+        }
+    }
     fn work(&self, work: RenderWork, amount: usize) -> bool {
         if self.error.borrow().is_some() {
             return false;
@@ -97,11 +106,7 @@ impl<'a, K: Ord, V> ProofMap<'a, K, V> {
         let mut entries = AccountedVec::new(proof.account, count, RenderResource::ScratchCpuBytes)?;
         for key in keys {
             proof.account.work(RenderWork::GraphNodeVisits, 1)?;
-            assert!(
-                entries.len() < entries.capacity(),
-                "proof key universe has its exact reserved bound"
-            );
-            entries.push((key, None))?;
+            entries.append_slot()?.write((key, None));
         }
         sort_proof_entries(&mut entries, proof.account)?;
         for pair in entries.windows(2) {
@@ -236,12 +241,16 @@ impl<'a, K: Ord> ProofSet<'a, K> {
             count: 0,
         })
     }
-    fn clear(&mut self) {
-        self.epoch = self
-            .epoch
-            .checked_add(1)
-            .expect("pass count fits address space");
+    fn clear(&mut self) -> Option<()> {
+        let Some(next) = self.epoch.checked_add(1) else {
+            return self
+                .slots
+                .proof
+                .capture(Err(RenderAccountingError::Invariant.into()));
+        };
+        self.epoch = next;
         self.count = 0;
+        Some(())
     }
     fn insert(&mut self, key: K) -> bool {
         let Some(position) = self.slots.position(&key) else {
@@ -277,20 +286,15 @@ impl<'a, K: Ord> ProofSet<'a, K> {
     }
 }
 /// The traversal has at most one fact/context per consumed pass. Admission and
-/// allocation happen before the pure traversal; pushes cannot grow or refuse.
+/// allocation happen before the pure traversal; each write requires a reserved slot.
 struct ProofVec<T>(AccountedVec<T>);
 impl<T> ProofVec<T> {
     fn new(account: &Account, count: usize, resource: RenderResource) -> Result<Self> {
         Ok(Self(AccountedVec::new(account, count, resource)?))
     }
-    fn push(&mut self, value: T) {
-        assert!(
-            self.0.len() < self.0.capacity(),
-            "closed proof has its pass bound"
-        );
-        self.0
-            .push(value)
-            .expect("reserved proof backing cannot grow");
+    fn push(&mut self, value: T) -> Result<()> {
+        self.0.append_slot()?.write(value);
+        Ok(())
     }
     fn pop(&mut self) -> Option<T> {
         self.0.pop()
@@ -1397,7 +1401,7 @@ fn validate_closed_pass_accounting<'proof>(
         if !proof.work(RenderWork::GraphNodeVisits, 1) {
             return None;
         }
-        dependencies.clear();
+        dependencies.clear()?;
         if pass.dependencies.iter().any(|dependency| {
             !proof.work(RenderWork::GraphEdgeVisits, 1)
                 || !dependencies.insert(*dependency)
@@ -1408,7 +1412,7 @@ fn validate_closed_pass_accounting<'proof>(
         }) {
             return None;
         }
-        pass_reads.clear();
+        pass_reads.clear()?;
         for read in &pass.reads {
             if !proof.work(RenderWork::GraphEdgeVisits, 1) {
                 return None;
@@ -1421,7 +1425,7 @@ fn validate_closed_pass_accounting<'proof>(
             validate_closed_read(plan, maps, &mut accounting, pass, read, position)?;
         }
         validate_closed_result(plan, maps, &mut accounting, pass)?;
-        pass_releases.clear();
+        pass_releases.clear()?;
         if pass.releases.iter().any(|resource| {
             !proof.work(RenderWork::GraphEdgeVisits, 1)
                 || !pass_releases.insert(*resource)
@@ -1623,7 +1627,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             current: root.id,
             producer: clear.id,
             contains_captured_source: false,
-        });
+        })?;
         let mut expected_resources = ProofSet::new(
             plan.resources.iter().map(|r| r.id),
             plan.resources.len(),
@@ -1796,11 +1800,12 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             return None;
         }
         self.expected_resources.insert(resource);
-        self.contexts.push(ExecutableCompositionContext {
-            current: resource,
-            producer: pass.id,
-            contains_captured_source: false,
-        });
+        self.proof
+            .capture_storage_write(self.contexts.push(ExecutableCompositionContext {
+                current: resource,
+                producer: pass.id,
+                contains_captured_source: false,
+            }))?;
         self.advance(1)
     }
 
@@ -1983,14 +1988,17 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         context.producer = composite.id;
         context.contains_captured_source = true;
         self.expected_resources.extend(resources);
-        self.captures.push(capture);
+        self.proof
+            .capture_storage_write(self.captures.push(capture))?;
         if let Some((resource, facts)) = coverage {
             self.expected_resources.insert(resource);
-            self.captures.push(facts);
+            self.proof
+                .capture_storage_write(self.captures.push(facts))?;
         }
         if let Some(layer) = layer {
             self.record_layer_resources(&layer);
-            self.layer_compositions.push(layer);
+            self.proof
+                .capture_storage_write(self.layer_compositions.push(layer))?;
         }
         Some(())
     }
@@ -2000,7 +2008,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         let (coverage, facts) =
             validate_closed_clip_coverage_capture(pass, composite.id, &self.resources)?;
         self.expected_resources.insert(coverage);
-        self.captures.push(facts);
+        self.proof
+            .capture_storage_write(self.captures.push(facts))?;
         self.advance(1)
     }
 
@@ -2026,9 +2035,12 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         runtime_context.current = color.result;
         runtime_context.producer = pass.id;
         self.expected_resources.insert(color.result);
-        self.filter_steps
-            .push(ExecutableFilterStepFacts::Color(pass.id));
-        self.color_filters.push(color);
+        self.proof.capture_storage_write(
+            self.filter_steps
+                .push(ExecutableFilterStepFacts::Color(pass.id)),
+        )?;
+        self.proof
+            .capture_storage_write(self.color_filters.push(color))?;
         self.advance(1)
     }
 
@@ -2061,11 +2073,13 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         runtime_context.producer = facts.vertical;
         self.expected_resources
             .extend([facts.intermediate, facts.result]);
-        self.filter_steps.push(ExecutableFilterStepFacts::Blur {
-            horizontal: facts.horizontal,
-            vertical: facts.vertical,
-        });
-        self.blurs.push(facts);
+        self.proof.capture_storage_write(self.filter_steps.push(
+            ExecutableFilterStepFacts::Blur {
+                horizontal: facts.horizontal,
+                vertical: facts.vertical,
+            },
+        ))?;
+        self.proof.capture_storage_write(self.blurs.push(facts))?;
         self.advance(2)
     }
 
@@ -2105,14 +2119,16 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             facts.shadow,
             facts.result,
         ]);
-        self.filter_steps
-            .push(ExecutableFilterStepFacts::DropShadow {
+        self.proof.capture_storage_write(self.filter_steps.push(
+            ExecutableFilterStepFacts::DropShadow {
                 horizontal: facts.horizontal,
                 vertical: facts.vertical,
                 colorize: facts.colorize,
                 merge: facts.merge,
-            });
-        self.drop_shadows.push(facts);
+            },
+        ))?;
+        self.proof
+            .capture_storage_write(self.drop_shadows.push(facts))?;
         self.advance(4)
     }
 
@@ -2128,11 +2144,12 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         let parent = *self.contexts.first()?;
         let copied = self.validate_backdrop_copy(copy, parent)?;
         let filter_start = self.filter_steps.len();
-        self.contexts.push(ExecutableCompositionContext {
-            current: copied,
-            producer: copy.id,
-            contains_captured_source: true,
-        });
+        self.proof
+            .capture_storage_write(self.contexts.push(ExecutableCompositionContext {
+                current: copied,
+                producer: copy.id,
+                contains_captured_source: true,
+            }))?;
         self.advance(1)?;
         self.visit_backdrop_filters()?;
         let filtered = self.contexts.pop()?;
@@ -2149,20 +2166,21 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         let completed_group = *self.contexts.last()?;
         let outer_composite = self.visit_backdrop_outer_composite(parent, completed_group)?;
         let result = self.contexts.first()?.current;
-        self.backdrops.push(ExecutableBackdropFacts {
-            copy: copy.id,
-            completed_parent: parent.current,
-            copied,
-            foreground: foreground.map(|context| context.current),
-            filter_steps,
-            filtered: filtered.current,
-            group_clear: group_clear.id,
-            backdrop_composite,
-            foreground_composite,
-            outer_composite,
-            completed_group: completed_group.current,
-            result,
-        });
+        self.proof
+            .capture_storage_write(self.backdrops.push(ExecutableBackdropFacts {
+                copy: copy.id,
+                completed_parent: parent.current,
+                copied,
+                foreground: foreground.map(|context| context.current),
+                filter_steps,
+                filtered: filtered.current,
+                group_clear: group_clear.id,
+                backdrop_composite,
+                foreground_composite,
+                outer_composite,
+                completed_group: completed_group.current,
+                result,
+            }))?;
         Some(())
     }
 
@@ -2324,7 +2342,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         root.contains_captured_source = true;
         self.expected_resources.insert(result);
         self.record_layer_resources(&layer);
-        self.layer_compositions.push(layer);
+        self.proof
+            .capture_storage_write(self.layer_compositions.push(layer))?;
         self.advance(1)?;
         Some(pass.id)
     }
@@ -2362,7 +2381,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         context.contains_captured_source = true;
         self.expected_resources.insert(result);
         self.record_layer_resources(&layer);
-        self.layer_compositions.push(layer);
+        self.proof
+            .capture_storage_write(self.layer_compositions.push(layer))?;
         self.advance(1)
     }
 
@@ -2402,7 +2422,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         context.contains_captured_source = true;
         self.expected_resources.insert(result);
         self.record_layer_resources(&layer);
-        self.layer_compositions.push(layer);
+        self.proof
+            .capture_storage_write(self.layer_compositions.push(layer))?;
         self.advance(1)
     }
 
