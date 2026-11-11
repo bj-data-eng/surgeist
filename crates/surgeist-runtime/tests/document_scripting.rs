@@ -668,6 +668,19 @@ fn native_window_event_observes_its_live_standalone_dispatch() {
             },
         )
         .unwrap();
+    host.in_document(&permit, |scope| {
+        let object = event.object(scope)?;
+        assert!(
+            scope.native_object::<NativeDomEvent>(&object)?.is_none(),
+            "a public Event wrapper must not expose its native mutation authority"
+        );
+        assert!(matches!(
+            scope.native_object_reference::<NativeDomEvent>(&object, 0),
+            Err(Error::ExpectedNativeObject)
+        ));
+        Ok(())
+    })
+    .unwrap();
     let listener = host
         .in_document(&permit, |scope| {
             let listener = scope.evaluate(
