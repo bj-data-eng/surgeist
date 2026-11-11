@@ -702,6 +702,10 @@ const REGISTERED_MATCHING: &[(&str, &str)] = &[
         "197161389553cca64302c8ff9971f5530bfc7cd84326c80f3b6b39a769e23be0",
     ),
     (
+        "fri08-manifest-plain-box-predecessors",
+        "db2f948cb18e3a6661e7297fc15164ebc121c8282e08be9d38b99ef2cc3c2ec9",
+    ),
+    (
         authority::GRID_LANES_PAIRED_EDITION,
         REGISTERED_GRID_LANES_PAIRED_TERMINAL_SHA256,
     ),
