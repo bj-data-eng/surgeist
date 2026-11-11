@@ -276,41 +276,6 @@ fn safe_straight_rgb(premultiplied: vec4<f32>) -> vec3<f32> {
     return select(rgb, vec3<f32>(0.0), transparent);
 }
 
-fn color_dodge(source: f32, backdrop: f32) -> f32 {
-    // The backdrop guard takes precedence at (Cb, Cs) = (0, 1).
-    if (backdrop == 0.0) {
-        return 0.0;
-    }
-    if (source == 1.0) {
-        return 1.0;
-    }
-    return min(1.0, backdrop / (1.0 - source));
-}
-
-fn color_burn(source: f32, backdrop: f32) -> f32 {
-    // The backdrop guard takes precedence at (Cb, Cs) = (1, 0).
-    if (backdrop == 1.0) {
-        return 1.0;
-    }
-    if (source == 0.0) {
-        return 0.0;
-    }
-    return 1.0 - min(1.0, (1.0 - backdrop) / source);
-}
-
-fn soft_light(source: f32, backdrop: f32) -> f32 {
-    if (source <= 0.5) {
-        return backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop);
-    }
-    var d: f32;
-    if (backdrop <= 0.25) {
-        d = ((16.0 * backdrop - 12.0) * backdrop + 4.0) * backdrop;
-    } else {
-        d = sqrt(backdrop);
-    }
-    return backdrop + (2.0 * source - 1.0) * (d - backdrop);
-}
-
 fn nonseparable_lum(color: vec3<f32>) -> f32 {
     return 0.3 * color.r + 0.59 * color.g + 0.11 * color.b;
 }
@@ -320,59 +285,15 @@ fn nonseparable_sat(color: vec3<f32>) -> f32 {
 }
 
 fn nonseparable_clip_color(color: vec3<f32>) -> vec3<f32> {
-    // Keep the original luminosity and extrema across both independent conditions.
-    // Reachable SetLum inputs have L in [0, 1], so active denominators are nonzero.
-    let luminosity = nonseparable_lum(color);
-    let minimum = min(min(color.r, color.g), color.b);
-    let maximum = max(max(color.r, color.g), color.b);
-    var result = color;
-    if (minimum < 0.0) {
-        result = luminosity + (result - luminosity) * luminosity / (luminosity - minimum);
-    }
-    if (maximum > 1.0) {
-        result = luminosity
-            + (result - luminosity) * (1.0 - luminosity) / (maximum - luminosity);
-    }
-    return result;
+    return surgeist_blend_clip_color(color, nonseparable_lum(color));
 }
 
 fn nonseparable_set_lum(color: vec3<f32>, luminosity: f32) -> vec3<f32> {
-    // Exact identities avoid a rounded constant shifted color reaching a clip pole.
-    if (luminosity == 0.0 || luminosity == 1.0
-        || (color.r == color.g && color.g == color.b)) {
-        return vec3<f32>(luminosity);
-    }
+    let exact = vec3<bool>(surgeist_blend_luminosity_identity(color, luminosity));
     let difference = luminosity - nonseparable_lum(color);
-    return nonseparable_clip_color(color + vec3<f32>(difference));
-}
-
-fn nonseparable_set_sat(color: vec3<f32>, saturation: f32) -> vec3<f32> {
-    // Sort channel identities, then write back to their original RGB positions.
-    var minimum = 0u;
-    var middle = 1u;
-    var maximum = 2u;
-    if (color[minimum] > color[middle]) {
-        let previous = minimum;
-        minimum = middle;
-        middle = previous;
-    }
-    if (color[middle] > color[maximum]) {
-        let previous = middle;
-        middle = maximum;
-        maximum = previous;
-    }
-    if (color[minimum] > color[middle]) {
-        let previous = minimum;
-        minimum = middle;
-        middle = previous;
-    }
-    var result = vec3<f32>(0.0);
-    if (color[maximum] > color[minimum]) {
-        result[middle] = (color[middle] - color[minimum]) * saturation
-            / (color[maximum] - color[minimum]);
-        result[maximum] = saturation;
-    }
-    return result;
+    let shifted = select(color + vec3<f32>(difference), vec3<f32>(0.0), exact);
+    let clipped = nonseparable_clip_color(shifted);
+    return select(clipped, vec3<f32>(luminosity), exact);
 }
 
 fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
@@ -395,18 +316,10 @@ fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
             return max(source, backdrop);
         }
         case 7u: {
-            return vec3<f32>(
-                color_dodge(source.r, backdrop.r),
-                color_dodge(source.g, backdrop.g),
-                color_dodge(source.b, backdrop.b),
-            );
+            return surgeist_blend_color_dodge(backdrop, source);
         }
         case 8u: {
-            return vec3<f32>(
-                color_burn(source.r, backdrop.r),
-                color_burn(source.g, backdrop.g),
-                color_burn(source.b, backdrop.b),
-            );
+            return surgeist_blend_color_burn(backdrop, source);
         }
         case 9u: {
             let low = 2.0 * source * backdrop;
@@ -414,11 +327,7 @@ fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
             return select(high, low, source <= vec3<f32>(0.5));
         }
         case 10u: {
-            return vec3<f32>(
-                soft_light(source.r, backdrop.r),
-                soft_light(source.g, backdrop.g),
-                soft_light(source.b, backdrop.b),
-            );
+            return surgeist_blend_soft_light(backdrop, source);
         }
         case 11u: {
             return abs(backdrop - source);
@@ -428,13 +337,13 @@ fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
         }
         case 13u: {
             return nonseparable_set_lum(
-                nonseparable_set_sat(source, nonseparable_sat(backdrop)),
+                surgeist_blend_set_sat(source, nonseparable_sat(backdrop)),
                 nonseparable_lum(backdrop),
             );
         }
         case 14u: {
             return nonseparable_set_lum(
-                nonseparable_set_sat(backdrop, nonseparable_sat(source)),
+                surgeist_blend_set_sat(backdrop, nonseparable_sat(source)),
                 nonseparable_lum(backdrop),
             );
         }

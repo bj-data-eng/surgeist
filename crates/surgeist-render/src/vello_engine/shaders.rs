@@ -230,10 +230,46 @@ const MSAA8_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 2] = [
 
 const SET_LUM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    return clip_color(c + (l - lum(c)));\n}",
-    to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    if (l == 0.0 || l == 1.0 || (c.r == c.g && c.g == c.b)) {\n        return vec3<f32>(l);\n    }\n    return clip_color(c + (l - lum(c)));\n}",
+    to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    let exact = vec3<bool>(surgeist_blend_luminosity_identity(c, l));\n    let shifted = select(c + (l - lum(c)), vec3<f32>(0.0), exact);\n    let clipped = surgeist_blend_clip_color(shifted, lum(shifted));\n    return select(clipped, vec3<f32>(l), exact);\n}",
     count: 1,
     failure: "internal Vello fine shader no longer has the checked SetLum helper",
 };
+
+const BLEND_MATH_REPLACEMENTS: [ShaderSourceReplacement; 5] = [
+    ShaderSourceReplacement {
+        from: "fn blend_mix(",
+        to: concat!(
+            include_str!("../shaders/blend_math.wgsl"),
+            "\nfn blend_mix("
+        ),
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked blend entry point",
+    },
+    ShaderSourceReplacement {
+        from: "b = vec3(color_dodge(cb.x, cs.x), color_dodge(cb.y, cs.y), color_dodge(cb.z, cs.z));",
+        to: "b = surgeist_blend_color_dodge(cb, cs);",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked color dodge call",
+    },
+    ShaderSourceReplacement {
+        from: "b = vec3(color_burn(cb.x, cs.x), color_burn(cb.y, cs.y), color_burn(cb.z, cs.z));",
+        to: "b = surgeist_blend_color_burn(cb, cs);",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked color burn call",
+    },
+    ShaderSourceReplacement {
+        from: "b = soft_light(cb, cs);",
+        to: "b = surgeist_blend_soft_light(cb, cs);",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked soft light call",
+    },
+    ShaderSourceReplacement {
+        from: "set_lum(set_sat(",
+        to: "set_lum(surgeist_blend_set_sat(",
+        count: 2,
+        failure: "internal Vello fine shader no longer has both checked SetSat calls",
+    },
+];
 
 // A live local Plus accumulator can exceed normalized RGB. Bound an ordinary
 // mixing result before backdrop-alpha modulation, preserving Plus as a separate
@@ -309,39 +345,30 @@ fn fine_shader_source(
     shader: &ComputeShader<'_>,
     adapt_msaa8_endpoints: bool,
 ) -> Result<AccountedVec<u8>> {
-    if adapt_msaa8_endpoints {
-        replace_shader_code(
-            cpu,
-            shader.wgsl.code.as_ref(),
-            &[
-                SET_LUM_REPLACEMENT,
-                BLEND_RESULT_REPLACEMENT,
-                NORMAL_BLEND_REPLACEMENT,
-                CIRCULAR_NORM_REPLACEMENT,
-                GRADIENT_ENDPOINT_REPLACEMENTS[0],
-                GRADIENT_ENDPOINT_REPLACEMENTS[1],
-                GRADIENT_ENDPOINT_REPLACEMENTS[2],
-                GRADIENT_ENDPOINT_REPLACEMENTS[3],
-                MSAA8_ENDPOINT_REPLACEMENTS[0],
-                MSAA8_ENDPOINT_REPLACEMENTS[1],
-            ],
-        )
+    let replacements = [
+        SET_LUM_REPLACEMENT,
+        BLEND_RESULT_REPLACEMENT,
+        NORMAL_BLEND_REPLACEMENT,
+        CIRCULAR_NORM_REPLACEMENT,
+        GRADIENT_ENDPOINT_REPLACEMENTS[0],
+        GRADIENT_ENDPOINT_REPLACEMENTS[1],
+        GRADIENT_ENDPOINT_REPLACEMENTS[2],
+        GRADIENT_ENDPOINT_REPLACEMENTS[3],
+        BLEND_MATH_REPLACEMENTS[0],
+        BLEND_MATH_REPLACEMENTS[1],
+        BLEND_MATH_REPLACEMENTS[2],
+        BLEND_MATH_REPLACEMENTS[3],
+        BLEND_MATH_REPLACEMENTS[4],
+        MSAA8_ENDPOINT_REPLACEMENTS[0],
+        MSAA8_ENDPOINT_REPLACEMENTS[1],
+    ];
+    let [common @ .., _, _] = &replacements;
+    let replacements: &[_] = if adapt_msaa8_endpoints {
+        replacements.as_slice()
     } else {
-        replace_shader_code(
-            cpu,
-            shader.wgsl.code.as_ref(),
-            &[
-                SET_LUM_REPLACEMENT,
-                BLEND_RESULT_REPLACEMENT,
-                NORMAL_BLEND_REPLACEMENT,
-                CIRCULAR_NORM_REPLACEMENT,
-                GRADIENT_ENDPOINT_REPLACEMENTS[0],
-                GRADIENT_ENDPOINT_REPLACEMENTS[1],
-                GRADIENT_ENDPOINT_REPLACEMENTS[2],
-                GRADIENT_ENDPOINT_REPLACEMENTS[3],
-            ],
-        )
-    }
+        common
+    };
+    replace_shader_code(cpu, shader.wgsl.code.as_ref(), replacements)
 }
 
 fn replace_shader_code(
@@ -778,6 +805,70 @@ mod cpu_tests {
     use crate::accounting::RendererCpu;
     use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn blend_programs_branch_only_on_the_selected_mode() {
+        use wgpu::naga::{Expression, Statement, front::wgsl};
+
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let area = fine_shader_source(&cpu, &SHADERS.fine_area, false).unwrap();
+        let msaa8 = fine_shader_source(&cpu, &SHADERS.fine_msaa8, true).unwrap();
+        let msaa16 = fine_shader_source(&cpu, &SHADERS.fine_msaa16, false).unwrap();
+        let mut conditional = Vec::new();
+        for (route, entry, source) in [
+            ("graph", "blend_rgb", crate::shader::LAYER_COMPOSITE_WGSL),
+            ("area", "blend_mix", std::str::from_utf8(&area).unwrap()),
+            ("msaa8", "blend_mix", std::str::from_utf8(&msaa8).unwrap()),
+            ("msaa16", "blend_mix", std::str::from_utf8(&msaa16).unwrap()),
+        ] {
+            let module = wgsl::parse_str(source).unwrap();
+            let (root, _) = module
+                .functions
+                .iter()
+                .find(|(_, function)| function.name.as_deref() == Some(entry))
+                .unwrap();
+            let mut pending = vec![root];
+            let mut visited = Vec::new();
+            while let Some(handle) = pending.pop() {
+                if visited.contains(&handle) {
+                    continue;
+                }
+                visited.push(handle);
+                let function = &module.functions[handle];
+                let mut blocks = vec![&function.body];
+                while let Some(block) = blocks.pop() {
+                    for statement in block {
+                        match statement {
+                            Statement::Block(block) => blocks.push(block),
+                            Statement::Call { function, .. } => pending.push(*function),
+                            Statement::Switch { selector, cases }
+                                if handle == root
+                                    && matches!(
+                                        function.expressions[*selector],
+                                        Expression::FunctionArgument(2)
+                                    ) =>
+                            {
+                                blocks.extend(cases.iter().map(|case| &case.body));
+                            }
+                            Statement::If { .. }
+                            | Statement::Loop { .. }
+                            | Statement::Switch { .. } => {
+                                conditional
+                                    .push((route, function.name.as_deref().unwrap().to_owned()));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            conditional.is_empty(),
+            "blend control flow outside mode selection: {conditional:?}"
+        );
+    }
+
     #[test]
     fn fine_replacements_preserve_the_exact_program_and_release_each_scratch_buffer() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
@@ -800,6 +891,9 @@ mod cpu_tests {
                 .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to)
                 .replace(CIRCULAR_NORM_REPLACEMENT.from, CIRCULAR_NORM_REPLACEMENT.to);
             for replacement in GRADIENT_ENDPOINT_REPLACEMENTS {
+                expected = expected.replace(replacement.from, replacement.to);
+            }
+            for replacement in BLEND_MATH_REPLACEMENTS {
                 expected = expected.replace(replacement.from, replacement.to);
             }
             if msaa8 {

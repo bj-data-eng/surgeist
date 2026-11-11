@@ -454,6 +454,18 @@ fn nonseparable_gpu_helpers_preserve_original_extrema_and_channel_identity() {
             },
             [0.0, 0.25, 0.5],
         ),
+        // The endpoints are normal even when their difference flushes to zero.
+        (
+            SetSat {
+                color: [
+                    f32::MIN_POSITIVE,
+                    f32::MIN_POSITIVE.next_up(),
+                    f32::MIN_POSITIVE,
+                ],
+                saturation: 0.5,
+            },
+            [0.0, 0.5, 0.0],
+        ),
     ];
     let permutations = [
         [0, 1, 2],
@@ -517,6 +529,13 @@ fn nonseparable_gpu_helpers_preserve_original_extrema_and_channel_identity() {
             ));
         }
     }
+    fixtures.push((
+        SetLum {
+            color: [1.0e-39, 0.0, 0.0],
+            luminosity: 0.0,
+        },
+        [0.0; 3],
+    ));
     let (mut backend, identity, _) =
         super::gpu::composition_selected_backend_and_requests_for_test();
     let inputs = fixtures.iter().map(|(input, _)| *input).collect::<Vec<_>>();

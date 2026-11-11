@@ -522,9 +522,9 @@ Local Plus retains its separate additive composition arithmetic.
 
 Color dodge returns zero for a zero backdrop before considering a source of
 one. Color burn returns one for a backdrop of one before considering a source
-of zero. Hard light branches on the source component at one half; overlay
-branches on the backdrop. Soft light uses its polynomial curve through a
-backdrop of one quarter, then its square-root curve.
+of zero. Hard light selects its curve at a source component of one half.
+Overlay uses the backdrop component for that selection. Soft light uses its
+polynomial curve through a backdrop of one quarter, then its square-root curve.
 
 Hue preserves backdrop saturation and luminosity with source hue. Saturation
 preserves backdrop hue and luminosity with source saturation. Color preserves
@@ -533,11 +533,11 @@ backdrop hue and saturation with source luminosity. These use
 `Lum(C)=0.3R+0.59G+0.11B` and `Sat(C)=max(C)-min(C)`, rather than HSL lightness.
 Joint gamut correction follows the complete luminosity/saturation sequence;
 clamping individual channels before that sequence would change the result.
-Equal-channel gray uses zero saturation without an epsilon cutoff, while
-channel reordering preserves the original RGB identities.
-Luminosity adjustment uses exact gray, black-target and white-target identities
-before subtraction and clipping. These avoid cancellation at the range edges
-without changing the gamut equations for interior non-gray colors.
+Equal-channel gray uses zero saturation without an epsilon cutoff.
+Saturation preserves the original RGB channel positions.
+Luminosity adjustment selects exact gray, black-target and white-target
+results and supplies neutral clipping input for those cases. Interior non-gray
+colors use the gamut correction equations.
 
 `BlendMode::Plus` remains a separate local additive composition choice. It cannot
 serve as the mixing function of a basic Porter-Duff pair. Background-layer blend
@@ -633,6 +633,12 @@ requires normalized range. Existing local Plus behavior does not resolve that
 normative conflict. Root-backdrop and broad backdrop-policy boundaries remain
 separate. Ledger owns actual graph work, resource custody and optional timings;
 refusal preserves the previous complete pixels and successful statistics.
+
+The graph compositor and internal Vello fine programs share the color dodge,
+color burn, soft light and nonseparable blend math. Blend mode selects the
+shader operation. Color endpoints, channel order and gamut clipping select
+values inside that operation. The shader structure is verified separately
+from hardware execution timing.
 
 ## Foreground layer filters
 
