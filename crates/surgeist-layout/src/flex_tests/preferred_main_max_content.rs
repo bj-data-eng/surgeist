@@ -1288,7 +1288,15 @@ fn preferred_main_max_content_basis_uses_the_bounded_authored_cross_size() {
         .style(1, child)
         .style(2, leaf)
         .measure_with(2, measure);
-    for (tree, child_node) in [(root, 0), (nested, 1)] {
+    let mut percentage_parent = nested.node_input(0).clone();
+    percentage_parent.size.height = PreferredSizeOf::px(50.0);
+    let mut percentage_child = nested.node_input(1).clone();
+    percentage_child.size.height = PreferredSizeOf::percent(0.8);
+    let nested_percentage = nested
+        .clone()
+        .style(0, percentage_parent)
+        .style(1, percentage_child);
+    for (tree, child_node) in [(root, 0), (nested, 1), (nested_percentage, 1)] {
         let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
         for phase in [Phase::Unrounded, Phase::Final] {
             assert_eq!(
@@ -1422,6 +1430,52 @@ fn preferred_main_max_content_lane_packing_uses_bounded_cross_size() {
                 }
             }
             Err(error) => differences.push(format!("expected {expected}, got {error:?}")),
+        }
+    }
+    assert!(differences.is_empty(), "{differences:?}");
+}
+
+#[test]
+fn preferred_main_max_content_accepts_independent_flex_cross_stretch() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut differences = Vec::new();
+    for basis in [FlexBasisOf::px(40.0), FlexBasisOf::CONTENT] {
+        let tree = PublicLayoutTreeOf::<f64>::new()
+            .children(0, [1])
+            .children(1, [2])
+            .children(2, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(300.0), PreferredSizeOf::px(100.0)),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
+                    flex_basis: basis.clone(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    aspect_ratio: AspectRatioOf::new(2.0),
+                    align_self: Some(AlignItems::Stretch),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, NodeInputOf::default())
+            .measure(2, Size::new(40.0, 10.0));
+        match compute_layout(&tree, 0, request(flow, Some(300.0), None)) {
+            Ok(batch) => {
+                for phase in [Phase::Unrounded, Phase::Final] {
+                    let observed = readback::single_box_output(&batch, 1, phase).size;
+                    if observed.height != 100.0 {
+                        differences.push(format!("{basis:?} produced {observed:?}"));
+                    }
+                }
+            }
+            Err(error) => differences.push(format!("{basis:?} produced {error:?}")),
         }
     }
     assert!(differences.is_empty(), "{differences:?}");
