@@ -15,10 +15,25 @@ use std::{
 use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, Tariffs, Usage};
 
 const SCOPE_COUNT: usize = RenderGenerationScope::ALL.len();
-const CACHE: usize = 1;
-const RETIREMENT: usize = 22;
-const LEAVES: [usize; 18] = [
-    2, 3, 4, 5, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+const RETIREMENT_LEAVES: [RenderGenerationScope; 18] = [
+    RenderGenerationScope::Vello,
+    RenderGenerationScope::Effects,
+    RenderGenerationScope::Masks,
+    RenderGenerationScope::Kernels,
+    RenderGenerationScope::SurfaceTargets,
+    RenderGenerationScope::PassBuffers,
+    RenderGenerationScope::ReadbackStaging,
+    RenderGenerationScope::ShaderModule,
+    RenderGenerationScope::BindGroupLayout,
+    RenderGenerationScope::PipelineLayout,
+    RenderGenerationScope::ComputePipeline,
+    RenderGenerationScope::RenderPipeline,
+    RenderGenerationScope::Sampler,
+    RenderGenerationScope::BindGroup,
+    RenderGenerationScope::TextureView,
+    RenderGenerationScope::CommandEncoder,
+    RenderGenerationScope::CommandBuffer,
+    RenderGenerationScope::DependencyUtility,
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,15 +47,15 @@ pub(crate) enum GenerationClass {
     ReadbackStaging,
 }
 impl GenerationClass {
-    const fn index(self) -> usize {
+    const fn scope(self) -> RenderGenerationScope {
         match self {
-            Self::CacheVello => 2,
-            Self::CacheEffects => 3,
-            Self::CacheMasks => 4,
-            Self::CacheKernels => 5,
-            Self::SurfaceTargets => 7,
-            Self::PassBuffers => 8,
-            Self::ReadbackStaging => 9,
+            Self::CacheVello => RenderGenerationScope::Vello,
+            Self::CacheEffects => RenderGenerationScope::Effects,
+            Self::CacheMasks => RenderGenerationScope::Masks,
+            Self::CacheKernels => RenderGenerationScope::Kernels,
+            Self::SurfaceTargets => RenderGenerationScope::SurfaceTargets,
+            Self::PassBuffers => RenderGenerationScope::PassBuffers,
+            Self::ReadbackStaging => RenderGenerationScope::ReadbackStaging,
         }
     }
     const fn is_cache(self) -> bool {
@@ -70,8 +85,25 @@ pub(crate) enum GpuObjectKind {
     DependencyUtility,
 }
 impl GpuObjectKind {
-    const fn index(self) -> usize {
-        11 + self as usize
+    const fn scope(self) -> RenderGenerationScope {
+        match self {
+            Self::ShaderModule => RenderGenerationScope::ShaderModule,
+            Self::BindGroupLayout => RenderGenerationScope::BindGroupLayout,
+            Self::PipelineLayout => RenderGenerationScope::PipelineLayout,
+            Self::ComputePipeline => RenderGenerationScope::ComputePipeline,
+            Self::RenderPipeline => RenderGenerationScope::RenderPipeline,
+            Self::Sampler => RenderGenerationScope::Sampler,
+            Self::BindGroup => RenderGenerationScope::BindGroup,
+            Self::TextureView => RenderGenerationScope::TextureView,
+            Self::CommandEncoder => RenderGenerationScope::CommandEncoder,
+            Self::CommandBuffer => RenderGenerationScope::CommandBuffer,
+            #[cfg(any(
+                test,
+                feature = "render-window",
+                all(feature = "render-web", target_arch = "wasm32")
+            ))]
+            Self::DependencyUtility => RenderGenerationScope::DependencyUtility,
+        }
     }
 }
 
@@ -188,7 +220,7 @@ impl Generation {
     }
     fn apply(
         &self,
-        index: usize,
+        scope: RenderGenerationScope,
         changes: &[Change<RenderWork, RenderResource>],
         cleanup: bool,
     ) -> Result<()> {
@@ -205,10 +237,14 @@ impl Generation {
         }
         self.0
             .ledger
-            .apply_batch(self.0.scopes[index], changes)
+            .apply_batch(self.0.scopes[scope.index()], changes)
             .map_err(|e| self.record(&mut life, e))
     }
-    fn preview(&self, index: usize, changes: &[Change<RenderWork, RenderResource>]) -> Result<()> {
+    fn preview(
+        &self,
+        scope: RenderGenerationScope,
+        changes: &[Change<RenderWork, RenderResource>],
+    ) -> Result<()> {
         let life = self.lock();
         if life.retired {
             return Err(RenderAccountingError::GenerationRetired.into());
@@ -218,7 +254,7 @@ impl Generation {
         }
         self.0
             .ledger
-            .check_batch(self.0.scopes[index], changes)
+            .check_batch(self.0.scopes[scope.index()], changes)
             .map_err(|e| Error::from(Self::diagnostic(e)))
     }
     pub(crate) fn preview_cache_allocations(
@@ -249,7 +285,7 @@ impl Generation {
                 if observer.is_none() { count } else { 0 },
             ),
         ];
-        self.preview(CACHE, &changes)
+        self.preview(RenderGenerationScope::Cache, &changes)
     }
 
     pub(crate) fn allocation<T>(
@@ -287,13 +323,13 @@ impl Generation {
         observer: Option<&Account>,
         create: impl FnOnce() -> T,
     ) -> Result<OwnedGpu<T>> {
-        let index = class.index();
+        let scope = class.scope();
         let resource = RenderResource::GpuBytes;
         let changes = [
             Change::Acquire(resource, bytes),
             Change::Work(RenderWork::ResourceAllocations, 1),
         ];
-        self.preview(index, &changes)?;
+        self.preview(scope, &changes)?;
         if let Some(upload_bytes) = upload_bytes {
             if let Some(observer) = observer {
                 observer.work_batch([
@@ -302,7 +338,7 @@ impl Generation {
                 ])?;
             } else {
                 self.apply(
-                    index,
+                    scope,
                     &[
                         Change::Work(RenderWork::ResourceAllocationRequests, 1),
                         Change::Work(RenderWork::UploadBytes, upload_bytes),
@@ -311,15 +347,15 @@ impl Generation {
                 )?;
             }
         } else {
-            self.forward_work(index, observer, RenderWork::ResourceAllocationRequests, 1)?;
+            self.forward_work(scope, observer, RenderWork::ResourceAllocationRequests, 1)?;
         }
-        let value = self.phase_at(index, create)?; // native calls run unlocked
-        self.apply(index, &changes, false)?;
+        let value = self.phase_at(scope, create)?; // native calls run unlocked
+        self.apply(scope, &changes, false)?;
         Ok(OwnedGpu {
             value,
             hold: Arc::new(NativeHold {
                 generation: self.clone(),
-                index,
+                scope,
                 resource,
                 amount: bytes,
             }),
@@ -332,21 +368,21 @@ impl Generation {
         observer: Option<&Account>,
         create: impl FnOnce() -> T,
     ) -> Result<OwnedGpu<T>> {
-        let index = kind.index();
+        let scope = kind.scope();
         let resource = RenderResource::OpaqueGpuObjects;
         let changes = [
             Change::Acquire(resource, 1),
             Change::Work(RenderWork::GpuObjectsCreated, 1),
         ];
-        self.preview(index, &changes)?;
-        self.forward_work(index, observer, RenderWork::ResourceAllocationRequests, 1)?;
-        let value = self.phase_at(index, create)?;
-        self.apply(index, &changes, false)?;
+        self.preview(scope, &changes)?;
+        self.forward_work(scope, observer, RenderWork::ResourceAllocationRequests, 1)?;
+        let value = self.phase_at(scope, create)?;
+        self.apply(scope, &changes, false)?;
         Ok(OwnedGpu {
             value,
             hold: Arc::new(NativeHold {
                 generation: self.clone(),
-                index,
+                scope,
                 resource,
                 amount: 1,
             }),
@@ -362,7 +398,7 @@ impl Generation {
             return Err(RenderAccountingError::Invariant.into());
         }
         self.apply(
-            class.index(),
+            class.scope(),
             &[Change::Acquire(
                 RenderResource::RegisteredCacheGpuBytes,
                 bytes,
@@ -378,7 +414,7 @@ impl Generation {
     }
     pub(crate) fn reuse(&self, class: GenerationClass) -> Result<()> {
         self.apply(
-            class.index(),
+            class.scope(),
             &[Change::Work(RenderWork::ResourceReuses, 1)],
             false,
         )
@@ -391,7 +427,7 @@ impl Generation {
             Some(observer) => observer.work(RenderWork::ResourceProbes, 1),
             None => {
                 let _ = self.apply(
-                    class.index(),
+                    class.scope(),
                     &[Change::Work(RenderWork::ResourceProbes, 1)],
                     true,
                 );
@@ -406,7 +442,7 @@ impl Generation {
         bytes: usize,
     ) -> Result<()> {
         self.ensure_healthy()?;
-        self.forward_work(class.index(), observer, RenderWork::UploadBytes, bytes)
+        self.forward_work(class.scope(), observer, RenderWork::UploadBytes, bytes)
     }
     pub(crate) fn probe_cache(&self, observer: Option<&Account>) -> Result<()> {
         if observer.is_some() {
@@ -415,14 +451,18 @@ impl Generation {
         match observer {
             Some(observer) => observer.work(RenderWork::ResourceProbes, 1),
             None => {
-                let _ = self.apply(CACHE, &[Change::Work(RenderWork::ResourceProbes, 1)], true);
+                let _ = self.apply(
+                    RenderGenerationScope::Cache,
+                    &[Change::Work(RenderWork::ResourceProbes, 1)],
+                    true,
+                );
                 Ok(())
             }
         }
     }
     fn forward_work(
         &self,
-        index: usize,
+        scope: RenderGenerationScope,
         observer: Option<&Account>,
         work: RenderWork,
         amount: usize,
@@ -430,13 +470,13 @@ impl Generation {
         if let Some(observer) = observer {
             observer.work(work, amount)
         } else {
-            self.apply(index, &[Change::Work(work, super::as_u64(amount)?)], false)
+            self.apply(scope, &[Change::Work(work, super::as_u64(amount)?)], false)
         }
     }
-    fn phase_at<T>(&self, index: usize, run: impl FnOnce() -> T) -> Result<T> {
+    fn phase_at<T>(&self, scope: RenderGenerationScope, run: impl FnOnce() -> T) -> Result<T> {
         self.0
             .ledger
-            .with_phase(self.0.scopes[index], run)
+            .with_phase(self.0.scopes[scope.index()], run)
             .map_err(|e| {
                 let mut life = self.lock();
                 self.record(&mut life, e)
@@ -477,7 +517,7 @@ impl Generation {
             None => self
                 .0
                 .ledger
-                .usage(self.0.scopes[0])
+                .usage(self.0.scopes[RenderGenerationScope::Root.index()])
                 .map_err(|e| Error::from(map_ledger_failure(e)))?,
         };
         Ok(RenderDeviceSnapshot::new(
@@ -492,67 +532,71 @@ impl Generation {
     }
     pub(crate) fn lease_return(&self, class: GenerationClass) {
         let _ = self.apply(
-            class.index(),
+            class.scope(),
             &[Change::Work(RenderWork::ResourceLeaseReturns, 1)],
             true,
         );
     }
     pub(crate) fn eviction(&self, class: GenerationClass) {
         let _ = self.apply(
-            class.index(),
+            class.scope(),
             &[Change::Work(RenderWork::ResourceEvictions, 1)],
             true,
         );
     }
-    fn usage_at(&self, index: usize) -> Result<GenerationUsage> {
+    fn usage_at(&self, scope: RenderGenerationScope) -> Result<GenerationUsage> {
         let mut life = self.lock();
         self.0
             .ledger
-            .usage(self.0.scopes[index])
+            .usage(self.0.scopes[scope.index()])
             .map(GenerationUsage)
             .map_err(|e| self.record(&mut life, e))
     }
     #[cfg(test)]
     pub(crate) fn usage(&self) -> Result<GenerationUsage> {
-        self.usage_at(0)
+        self.usage_at(RenderGenerationScope::Root)
     }
     #[cfg(test)]
     pub(crate) fn class_usage(&self, class: GenerationClass) -> Result<GenerationUsage> {
-        self.usage_at(class.index())
+        self.usage_at(class.scope())
     }
     pub(crate) fn cache_bytes(&self) -> Result<u64> {
-        Ok(self.usage_at(CACHE)?.live(RenderResource::GpuBytes))
+        Ok(self
+            .usage_at(RenderGenerationScope::Cache)?
+            .live(RenderResource::GpuBytes))
     }
     pub(crate) fn registered_cache_bytes(&self) -> Result<u64> {
         Ok(self
-            .usage_at(CACHE)?
+            .usage_at(RenderGenerationScope::Cache)?
             .live(RenderResource::RegisteredCacheGpuBytes))
     }
     #[cfg(test)]
     pub(crate) fn idle_cache_bytes(&self) -> Result<u64> {
         Ok(self
-            .usage_at(CACHE)?
+            .usage_at(RenderGenerationScope::Cache)?
             .live(RenderResource::IdleCacheGpuBytes))
     }
     #[cfg(test)]
     pub(crate) fn cache_work(&self, work: RenderWork) -> Result<u64> {
-        Ok(self.usage_at(CACHE)?.work(work))
+        Ok(self.usage_at(RenderGenerationScope::Cache)?.work(work))
     }
     pub(crate) fn retire(&self) {
         let mut life = self.lock();
         if life.retired {
             return;
         }
-        if let Err(error) = self.0.ledger.with_phase(self.0.scopes[RETIREMENT], || {
-            self.retire_locked(&mut life);
-        }) {
+        if let Err(error) = self.0.ledger.with_phase(
+            self.0.scopes[RenderGenerationScope::Retirement.index()],
+            || self.retire_locked(&mut life),
+        ) {
             self.record(&mut life, error);
         }
     }
     fn retire_locked(&self, life: &mut Lifecycle) {
         // All physical and classification holds originate at these fixed leaves.
-        for index in LEAVES {
-            match self.0.ledger.usage(self.0.scopes[index]) {
+        for leaf in RETIREMENT_LEAVES {
+            let scope = self.0.scopes[leaf.index()];
+            match self.0.ledger.usage(scope) {
                 Ok(usage) => {
                     for resource in [
                         RenderResource::GpuBytes,
@@ -560,10 +604,11 @@ impl Generation {
                         RenderResource::RegisteredCacheGpuBytes,
                         RenderResource::IdleCacheGpuBytes,
                     ] {
-                        if let Err(e) = self.0.ledger.apply(
-                            self.0.scopes[index],
-                            Change::Release(resource, usage.live(resource)),
-                        ) {
+                        if let Err(e) = self
+                            .0
+                            .ledger
+                            .apply(scope, Change::Release(resource, usage.live(resource)))
+                        {
                             self.record(life, e);
                         }
                     }
@@ -576,7 +621,7 @@ impl Generation {
         life.retired = true;
         // Cleanup work cannot veto the releases above.
         if let Err(e) = self.0.ledger.apply(
-            self.0.scopes[RETIREMENT],
+            self.0.scopes[RenderGenerationScope::Retirement.index()],
             Change::Work(RenderWork::ResourceRetirements, 1),
         ) {
             self.record(life, e);
@@ -680,14 +725,14 @@ impl<T> OwnedGpu<T> {
 }
 struct NativeHold {
     generation: Generation,
-    index: usize,
+    scope: RenderGenerationScope,
     resource: RenderResource,
     amount: u64,
 }
 impl Drop for NativeHold {
     fn drop(&mut self) {
         let _ = self.generation.apply(
-            self.index,
+            self.scope,
             &[Change::Release(self.resource, self.amount)],
             true,
         );
@@ -742,20 +787,14 @@ impl OwnedGpu<wgpu::CommandBuffer> {
     ) -> Result<wgpu::SubmissionIndex> {
         let generation = self.generation().clone();
         generation.ensure_healthy()?;
-        generation.forward_work(
-            GpuObjectKind::CommandBuffer.index(),
-            observer,
-            RenderWork::Submissions,
-            1,
-        )?;
+        let scope = GpuObjectKind::CommandBuffer.scope();
+        generation.forward_work(scope, observer, RenderWork::Submissions, 1)?;
         let Self {
             value,
             hold,
             parent,
         } = self;
-        let submission = generation.phase_at(GpuObjectKind::CommandBuffer.index(), || {
-            queue.submit([value])
-        })?;
+        let submission = generation.phase_at(scope, || queue.submit([value]))?;
         drop(hold);
         drop(parent);
         Ok(submission)
@@ -780,7 +819,7 @@ impl CacheRegistration {
             Change::Release(dimension, self.bytes)
         };
         self.generation
-            .apply(self.class.index(), &[change], !idle)?;
+            .apply(self.class.scope(), &[change], !idle)?;
         self.idle = idle;
         Ok(())
     }
@@ -789,7 +828,7 @@ impl Drop for CacheRegistration {
     fn drop(&mut self) {
         if self.idle {
             let _ = self.generation.apply(
-                self.class.index(),
+                self.class.scope(),
                 &[Change::Release(
                     RenderResource::IdleCacheGpuBytes,
                     self.bytes,
@@ -798,7 +837,7 @@ impl Drop for CacheRegistration {
             );
         }
         let _ = self.generation.apply(
-            self.class.index(),
+            self.class.scope(),
             &[Change::Release(
                 RenderResource::RegisteredCacheGpuBytes,
                 self.bytes,
