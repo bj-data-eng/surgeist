@@ -1867,6 +1867,8 @@ fn admit_specialized(
                         xml,
                         historical,
                         &case.case.name,
+                        &case.case.source,
+                        &case.case.variant,
                     )
                     .map_err(|error| changed(error.to_string()))?;
                     let record = terminal

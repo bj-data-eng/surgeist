@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
 use super::capture_authority::{
-    DiagnosticReference, FRI06_SUBGRID_SOURCES, GRID_LANES_AXIS_ORIGINAL_SOURCES, MatchingCategory,
-    MatchingMembership, MatchingProvenance, PathDigest, SourceEquivalentMatching,
+    CaseNaming, DiagnosticReference, FRI06_SUBGRID_SOURCES, GRID_LANES_AXIS_ORIGINAL_SOURCES,
+    MatchingCategory, MatchingMembership, MatchingProvenance, PathDigest, SourceEquivalentMatching,
     grid_lanes_control_source, matching_metadata_is_valid,
 };
 pub(crate) use super::capture_authority::{SourceKind, SpecializedProfile};
@@ -81,6 +81,8 @@ pub(crate) struct Record {
     pub(crate) source: RelativePath,
     pub(crate) source_sha256: Sha256Digest,
     pub(crate) source_kind: SourceKind,
+    #[serde(default, skip_serializing_if = "CaseNaming::is_basename")]
+    case_identity: CaseNaming,
     pub(crate) expected: ExpectedDisposition,
     #[serde(default)]
     pub(crate) historical_sha256: BTreeMap<String, Sha256Digest>,
@@ -391,6 +393,18 @@ impl Declaration {
                 record.matching_publication = Some(membership);
             }
         }
+        for record in &catalogue.records {
+            if record.case_identity == CaseNaming::SourcePath
+                && !matches!(
+                    record.matching_publication,
+                    Some(MatchingMembership::Independent(_))
+                )
+            {
+                return Err(
+                    "source-path case identity requires independent matching publication".into(),
+                );
+            }
+        }
         Ok(Self {
             records: catalogue.records,
         })
@@ -479,18 +493,7 @@ impl Record {
         }
     }
     pub(crate) fn source_names(&self) -> Result<(&str, &str), Box<dyn Error + Send + Sync>> {
-        let family = self
-            .source
-            .as_str()
-            .strip_prefix("html/")
-            .and_then(|path| path.strip_suffix(".html"))
-            .ok_or("qualification source must be an html/*.html path")?;
-        let stem = family
-            .rsplit('/')
-            .next()
-            .filter(|stem| !stem.is_empty())
-            .ok_or("missing source stem")?;
-        Ok((family, stem))
+        Ok(self.case_identity.source_names(self.source.as_str())?)
     }
 }
 
@@ -498,14 +501,18 @@ impl Record {
 pub(crate) fn verify_historical_geometry(
     current: &str,
     historical: &str,
-    name: &str,
+    current_name: &str,
+    source: &str,
+    variant: &str,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let current = roxmltree::Document::parse(current)?;
     let historical = roxmltree::Document::parse(historical)?;
-    for document in [&current, &historical] {
-        if document.root_element().attribute("name") != Some(name) {
-            return Err("historical case association changed".into());
-        }
+    let (_, historical_stem) = CaseNaming::Basename.source_names(source)?;
+    let historical_name = format!("{historical_stem}__{variant}");
+    if current.root_element().attribute("name") != Some(current_name)
+        || historical.root_element().attribute("name") != Some(historical_name.as_str())
+    {
+        return Err("historical case association changed".into());
     }
     if current.root_element().attribute("use-rounding")
         != historical.root_element().attribute("use-rounding")
@@ -705,12 +712,16 @@ impl Record {
         let ExpectedDisposition::Generated { metadata } = &self.expected else {
             return Err("matching output must be Generated".into());
         };
+        let (_, stem) = self.source_names()?;
+        if name != format!("{stem}__{variant}") {
+            return Err("matching capture case association changed".into());
+        }
         match (self.matching_provenance(variant)?, historical) {
             (MatchingProvenance::Original { historical }, Some(bytes)) => {
                 if super::capture_authority::sha256(bytes.as_bytes()) != historical.sha256 {
                     return Err("matching historical bytes changed".into());
                 }
-                verify_historical_geometry(current, bytes, name)?;
+                verify_historical_geometry(current, bytes, name, self.source.as_str(), variant)?;
             }
             (MatchingProvenance::Authored, None) => {}
             _ => return Err("matching capture history disagrees with its source".into()),

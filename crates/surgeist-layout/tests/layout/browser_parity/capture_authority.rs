@@ -1813,6 +1813,37 @@ pub(crate) fn validate_matching_edition(edition: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CaseNaming {
+    #[default]
+    Basename,
+    SourcePath,
+}
+
+impl CaseNaming {
+    pub(crate) fn is_basename(&self) -> bool {
+        *self == Self::Basename
+    }
+
+    pub(crate) fn source_names(self, source: &str) -> Result<(&str, &str)> {
+        let family = source
+            .strip_prefix("html/")
+            .and_then(|path| path.strip_suffix(".html"))
+            .ok_or_else(|| malformed("qualification source must be an html/*.html path"))?;
+        let basename = family
+            .rsplit('/')
+            .next()
+            .filter(|stem| !stem.is_empty())
+            .ok_or_else(|| malformed("missing source stem"))?;
+        let stem = match self {
+            Self::Basename => basename,
+            Self::SourcePath => family,
+        };
+        Ok((family, stem))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum MatchingCategory {
@@ -2349,15 +2380,14 @@ impl Qualification {
                         && variants
                             .insert((descriptor.source.as_str(), descriptor.variant.as_str())) =>
                 {
-                    let family = descriptor
-                        .source
-                        .strip_prefix("html/")
-                        .and_then(|s| s.strip_suffix(".html"))
-                        .ok_or_else(|| malformed("matching source path"))?;
-                    let stem = family
-                        .rsplit('/')
-                        .next()
-                        .ok_or_else(|| malformed("matching source stem"))?;
+                    let naming: CaseNaming = record
+                        .value
+                        .get("case_identity")
+                        .map(|value| serde_json::from_value(value.clone()))
+                        .transpose()
+                        .map_err(|_| malformed("invalid matching case identity"))?
+                        .unwrap_or_default();
+                    let (family, stem) = naming.source_names(&descriptor.source)?;
                     let variant = descriptor.variant.as_str();
                     let kind = record.source_kind()?;
                     let membership: MatchingMembership =
