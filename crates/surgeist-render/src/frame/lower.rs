@@ -7,11 +7,12 @@ use super::{
     },
     graph::{
         BlurInput, GpuRenderGraph, GraphBuildResult, GraphGeneration, GraphValidationError,
-        SemanticClipCoverage, SemanticCompositeKind, SemanticCompositePlan, SemanticFilterStepPlan,
-        SemanticGraphPass, SemanticGraphResource, SemanticImportKind, SemanticImportPlan,
-        SemanticPassId, SemanticPassIntent, SemanticPassResult, SemanticResourceDescriptor,
-        SemanticResourceId, SemanticResourceProducer, SemanticResourceRole, SemanticVelloSpan,
-        SemanticVelloSpanScope, WorkingImageInitialization, graph_build,
+        PassIndex, SemanticClipCoverage, SemanticCompositeKind, SemanticCompositePlan,
+        SemanticFilterStepPlan, SemanticGraphPass, SemanticGraphResource, SemanticImportKind,
+        SemanticImportPlan, SemanticPassId, SemanticPassIntent, SemanticPassResult,
+        SemanticResourceDescriptor, SemanticResourceId, SemanticResourceProducer,
+        SemanticResourceRole, SemanticVelloSpan, SemanticVelloSpanScope,
+        WorkingImageInitialization, graph_build,
     },
     validate::LoweringValidationState,
 };
@@ -260,10 +261,63 @@ pub(crate) enum GraphLoweringImportView<'graph> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringResourceView<'graph> {
     resource: &'graph SemanticGraphResource,
-    import: Option<&'graph SemanticImportPlan>,
+    binding: GraphLoweringResourceBinding<'graph>,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(u32)]
+enum GraphLoweringResourceBinding<'graph> {
+    Pass {
+        last_use: PassIndex,
+        producer: PassIndex,
+    },
+    Imported {
+        // Keep the tag and last-use index together before the borrowed upload.
+        last_use: PassIndex,
+        import: GraphLoweringImportView<'graph>,
+    },
 }
 
 impl<'graph> GraphLoweringResourceView<'graph> {
+    fn try_from_validated(
+        resource: &'graph SemanticGraphResource,
+        import: Option<&'graph SemanticImportPlan>,
+    ) -> GraphBuildResult<Self> {
+        let producer = resource
+            .producer
+            .ok_or(GraphValidationError::ResourceWithoutProducer(resource.id))?;
+        let last_use = resource
+            .releasable_after
+            .ok_or(GraphValidationError::UnscheduledReads {
+                resource: resource.id,
+                remaining: 0,
+            })?
+            .index;
+        // Validation has matched both pass identities to this resource's
+        // generation, so the binding only needs to carry their indices.
+        let binding = match (producer, import) {
+            (SemanticResourceProducer::Pass(producer), None) => {
+                GraphLoweringResourceBinding::Pass {
+                    last_use,
+                    producer: producer.index,
+                }
+            }
+            (SemanticResourceProducer::Imported, Some(import)) => {
+                let SemanticImportKind::ResolvedAlphaMask { upload } = &import.kind;
+                GraphLoweringResourceBinding::Imported {
+                    last_use,
+                    import: GraphLoweringImportView::ResolvedAlphaMask(upload),
+                }
+            }
+            _ => return Err(GraphValidationError::InvalidImportedResourceRole),
+        };
+        Ok(Self { resource, binding })
+    }
+
+    const fn pass_id(self, index: PassIndex) -> GraphLoweringPassId {
+        GraphLoweringPassId::from_semantic(SemanticPassId::new(self.resource.id.generation, index))
+    }
+
     #[must_use]
     pub(crate) const fn id(self) -> GraphLoweringResourceId {
         GraphLoweringResourceId::from_semantic(self.resource.id)
@@ -280,13 +334,14 @@ impl<'graph> GraphLoweringResourceView<'graph> {
     }
 
     #[must_use]
-    pub(crate) fn producer(self) -> GraphLoweringResourceProducer {
-        match self.resource.producer {
-            Some(SemanticResourceProducer::Imported) => GraphLoweringResourceProducer::Imported,
-            Some(SemanticResourceProducer::Pass(pass)) => {
-                GraphLoweringResourceProducer::Pass(GraphLoweringPassId::from_semantic(pass))
+    pub(crate) const fn producer(self) -> GraphLoweringResourceProducer {
+        match self.binding {
+            GraphLoweringResourceBinding::Imported { .. } => {
+                GraphLoweringResourceProducer::Imported
             }
-            None => unreachable!("validated lowering resources always have a producer"),
+            GraphLoweringResourceBinding::Pass { producer, .. } => {
+                GraphLoweringResourceProducer::Pass(self.pass_id(producer))
+            }
         }
     }
 
@@ -296,20 +351,18 @@ impl<'graph> GraphLoweringResourceView<'graph> {
     }
 
     #[must_use]
-    pub(crate) fn last_use(self) -> GraphLoweringPassId {
-        match self.resource.releasable_after {
-            Some(pass) => GraphLoweringPassId::from_semantic(pass),
-            None => unreachable!("validated lowering resources always have a last use"),
-        }
+    pub(crate) const fn last_use(self) -> GraphLoweringPassId {
+        let (GraphLoweringResourceBinding::Pass { last_use, .. }
+        | GraphLoweringResourceBinding::Imported { last_use, .. }) = self.binding;
+        self.pass_id(last_use)
     }
 
     #[must_use]
-    pub(crate) fn import(self) -> Option<GraphLoweringImportView<'graph>> {
-        self.import.map(|import| match &import.kind {
-            SemanticImportKind::ResolvedAlphaMask { upload } => {
-                GraphLoweringImportView::ResolvedAlphaMask(upload)
-            }
-        })
+    pub(crate) const fn import(self) -> Option<GraphLoweringImportView<'graph>> {
+        match self.binding {
+            GraphLoweringResourceBinding::Pass { .. } => None,
+            GraphLoweringResourceBinding::Imported { import, .. } => Some(import),
+        }
     }
 }
 
@@ -823,7 +876,7 @@ impl GraphLoweringPassView<'_> {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct GraphLoweringView<'graph> {
-    pub(super) graph: &'graph GpuRenderGraph,
+    graph: &'graph GpuRenderGraph,
 }
 
 impl<'graph> GraphLoweringView<'graph> {
@@ -858,9 +911,10 @@ impl<'graph> GraphLoweringView<'graph> {
                     break;
                 }
             }
-            result
-                .append_slot()?
-                .write(GraphLoweringResourceView { resource, import });
+            let resource_view = graph_build(GraphLoweringResourceView::try_from_validated(
+                resource, import,
+            ))?;
+            result.append_slot()?.write(resource_view);
         }
         Ok(result)
     }
@@ -1679,4 +1733,181 @@ fn temp_array<T: Clone>(values: &[T], account: &Account) -> Result<AccountedVec<
     let mut result = account.temporary(values.len())?;
     result.extend_from_slice(values)?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod resource_binding_tests {
+    use super::*;
+    use crate::{
+        Image, Layer, RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptKind, RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource,
+        ResolvedLayerAlphaMask, Scene, Size,
+    };
+
+    fn masked_graph(setup: &Account) -> crate::accounting::OwnedBox<GpuRenderGraph> {
+        let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+        let image = Image::from_rgba(Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+        let mask = ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+        let mut scene = Scene::new();
+        scene.layer(Layer::new().with_resolved_alpha_mask(mask), |child| {
+            child.fill(bounds, Color::BLACK);
+        });
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, setup)
+            .unwrap();
+        let frame = crate::frame::FrameContext::try_new(
+            Size::new(2.0, 2.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(frame, setup).unwrap()
+        else {
+            panic!("a masked scene needs graph lowering");
+        };
+        graph
+    }
+
+    #[test]
+    fn qualified_resource_materialization_accounts_for_scan_and_backing() {
+        let setup = Account::for_test();
+        let graph = masked_graph(&setup);
+        let view = graph.lowering_view(&setup).unwrap();
+        assert_eq!(graph.imports.len(), 1);
+        let count = graph.resources.len();
+        let passes = view.passes(&setup).unwrap();
+        assert!(count > 1);
+        let expected_visits = u64::try_from(count * 2).unwrap();
+        let element_bytes = std::mem::size_of::<GraphLoweringResourceView<'_>>();
+        let requested_bytes = u64::try_from(count * element_bytes).unwrap();
+        let mut success = RenderAccountingContext::new(RenderAccountingOptions::new());
+        let actual_bytes = success
+            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                let resources = view.resources(account)?;
+                assert_eq!(resources.len(), count);
+                let mut imports = 0;
+                for resource in resources.iter() {
+                    assert!(passes.iter().any(|pass| pass.id() == resource.last_use()));
+                    match resource.producer() {
+                        GraphLoweringResourceProducer::Imported => {
+                            imports += 1;
+                            assert!(resource.import().is_some());
+                        }
+                        GraphLoweringResourceProducer::Pass(producer) => {
+                            assert!(passes.iter().any(|pass| pass.id() == producer));
+                            assert!(resource.import().is_none());
+                        }
+                    }
+                }
+                assert_eq!(imports, 1);
+                Ok(u64::try_from(resources.capacity() * element_bytes).unwrap())
+            })
+            .unwrap();
+        let report = success.last_attempt().unwrap().attempt().unwrap();
+        let lower = report.phase_usage(RenderPhase::Lower);
+        assert_eq!(lower.work(RenderWork::GraphNodeVisits), expected_visits);
+        assert_eq!(lower.work(RenderWork::GraphEdgeVisits), 0);
+        assert_eq!(
+            report
+                .phase_usage(RenderPhase::Preparation)
+                .peak(RenderResource::ScratchCpuBytes),
+            actual_bytes
+        );
+        eprintln!(
+            "{count} resource views, {element_bytes} bytes per view, {actual_bytes} bytes of scratch backing"
+        );
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+
+        for (limits, quantity, current, amount, limit, visits) in [
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GraphNodeVisits, expected_visits - 1)
+                    .unwrap(),
+                RenderQuantity::Work(RenderWork::GraphNodeVisits),
+                expected_visits - 1,
+                1,
+                expected_visits - 1,
+                expected_visits - 1,
+            ),
+            (
+                RenderLimits::new().with_scratch_bytes(requested_bytes - 1),
+                RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                0,
+                requested_bytes,
+                requested_bytes - 1,
+                0,
+            ),
+        ] {
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                    view.resources(account).map(|_| ())
+                })
+                .unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("resource view admission must return the typed refusal");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(refusal.quantity(), quantity);
+            assert_eq!((refusal.current(), refusal.amount()), (current, amount));
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Lower)
+                    .work(RenderWork::GraphNodeVisits),
+                visits
+            );
+            let peak = report
+                .phase_usage(RenderPhase::Preparation)
+                .peak(RenderResource::ScratchCpuBytes);
+            assert_eq!(peak, if visits == 0 { 0 } else { actual_bytes });
+            assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn incomplete_resource_bindings_fail_before_materialization() {
+        let setup = Account::for_test();
+        let mut graph = masked_graph(&setup);
+        let index = graph
+            .resources
+            .iter()
+            .position(|resource| {
+                matches!(resource.producer, Some(SemanticResourceProducer::Pass(_)))
+            })
+            .unwrap();
+        let id = graph.resources[index].id;
+        let producer = graph.resources[index].producer.take();
+        let error = graph.lowering_view(&setup).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            format!("semantic frame graph validation failed: ResourceWithoutProducer({id:?})")
+        );
+        graph.resources[index].producer = producer;
+
+        let last_use = graph.resources[index].releasable_after.take();
+        let error = graph.lowering_view(&setup).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            format!(
+                "semantic frame graph validation failed: UnscheduledReads {{ resource: {id:?}, remaining: 0 }}"
+            )
+        );
+        graph.resources[index].releasable_after = last_use;
+
+        assert_eq!(graph.imports.len(), 1);
+        drop(graph.imports.pop().unwrap());
+        let error = graph.lowering_view(&setup).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(
+            error.message(),
+            "semantic frame graph validation failed: InvalidImportedResourceRole"
+        );
+    }
 }

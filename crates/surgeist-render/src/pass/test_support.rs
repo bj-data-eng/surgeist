@@ -6617,6 +6617,22 @@ fn runtime_resource_facts_are_exact(
         &account,
     )
     .is_err();
+    let producers_are_exact = plan.resources.iter().all(|resource| {
+        let mut writers = plan
+            .passes
+            .iter()
+            .filter(|pass| pass.result == RuntimeResultBinding::Resource(resource.id));
+        match resource.producer {
+            RuntimeResourceProducer::Imported => {
+                resource.import.is_some() && writers.next().is_none()
+            }
+            RuntimeResourceProducer::Pass(producer) => {
+                resource.import.is_none()
+                    && writers.next().is_some_and(|pass| pass.id == producer)
+                    && writers.next().is_none()
+            }
+        }
+    });
     plan.working_format == WorkingFormat::HighPrecision
         && plan.output_format == output_format
         && plan.resources.iter().all(|resource| {
@@ -6627,6 +6643,7 @@ fn runtime_resource_facts_are_exact(
         && has_distinct_formats
         && imported_keys == graph_imported_keys
         && !imported_keys.is_empty()
+        && producers_are_exact
         && extent_rejected
 }
 
@@ -6695,17 +6712,15 @@ fn runtime_topology_is_exact(graph_view: GraphLoweringView<'_>, plan: &LoweredGr
 #[cfg(test)]
 fn runtime_releases_are_exact(graph_view: GraphLoweringView<'_>, plan: &LoweredGraphPlan) -> bool {
     let account = Account::for_test();
-    let expected = graph_view
-        .resources(&account)
-        .expect("valid graph resource fixture")
-        .into_iter()
-        .map(|resource| {
-            (
-                RuntimeResourceId(resource.id()),
-                RuntimePassId(resource.last_use()),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
+    let mut expected = BTreeMap::new();
+    for pass in graph_view
+        .passes(&account)
+        .expect("valid graph pass fixture")
+    {
+        for read in pass.reads(&account).expect("valid graph read fixture") {
+            expected.insert(RuntimeResourceId(read.resource()), RuntimePassId(pass.id()));
+        }
+    }
     let observed = plan
         .passes
         .iter()
@@ -6716,7 +6731,14 @@ fn runtime_releases_are_exact(graph_view: GraphLoweringView<'_>, plan: &LoweredG
                 .map(move |resource| (resource, pass.id))
         })
         .collect::<BTreeMap<_, _>>();
-    expected == observed
+    let release_count: usize = plan.passes.iter().map(|pass| pass.releases.len()).sum();
+    expected.len() == plan.resources.len()
+        && release_count == plan.resources.len()
+        && expected == observed
+        && plan
+            .resources
+            .iter()
+            .all(|resource| expected.get(&resource.id) == Some(&resource.last_use))
         && plan
             .resources
             .iter()
