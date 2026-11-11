@@ -383,6 +383,60 @@ fn complete_proof_checks_coverage_and_seeds_resolved_leases() {
 }
 
 #[test]
+fn atomic_proof_rejects_an_invalid_second_lease_before_resolving_the_first() {
+    for profile in profiles() {
+        let fixture = Fixture::new(profile);
+        let mut receiving = fixture.frame();
+        let first = acquire(&mut receiving, 4);
+        let second = acquire(&mut receiving, 8);
+        let mut other_frame = fixture.frame();
+        let wrong_frame = acquire(&mut other_frame, 4);
+        let foreign_fixture = Fixture::new(profile);
+        let mut foreign_frame = foreign_fixture.frame();
+        let foreign = acquire(&mut foreign_frame, 4);
+
+        for (invalid, invariant) in [
+            (&foreign, "must belong to this resource manager"),
+            (&wrong_frame, "must belong to this active resource frame"),
+        ] {
+            // The first valid token earns one lookup and scratch insertion.
+            // The second token fails identity admission before its lookup.
+            let error = fixture
+                .check(
+                    ProofWork {
+                        cache_probes: 1,
+                        cpu_probes: 1,
+                        ..ProofWork::default()
+                    },
+                    || receiving.resolve_leases_atomically(&[&first, invalid]),
+                )
+                .unwrap_err();
+            assert_lease_error(error, invalid, invariant);
+        }
+
+        fixture
+            .check(
+                ProofWork {
+                    cache_probes: 4,
+                    cpu_probes: 4,
+                    lease_returns: 2,
+                    ..ProofWork::default()
+                },
+                || receiving.resolve_leases_atomically(&[&second, &first]),
+            )
+            .unwrap();
+        drop((first, second));
+        drop(receiving.finish_checked().unwrap());
+        other_frame.release(wrong_frame).unwrap();
+        drop(other_frame.finish_checked().unwrap());
+        foreign_frame.release(foreign).unwrap();
+        drop(foreign_frame.finish_checked().unwrap());
+        fixture.assert_closed();
+        foreign_fixture.assert_closed();
+    }
+}
+
+#[test]
 fn atomic_proof_refuses_duplicates_and_capacity_before_replay() {
     for profile in profiles() {
         let fixture = Fixture::new(profile);

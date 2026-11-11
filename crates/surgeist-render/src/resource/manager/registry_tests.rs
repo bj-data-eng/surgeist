@@ -188,6 +188,174 @@ fn registry_frame_audit_refuses_the_first_unadmitted_entry_and_retries_without_m
 }
 
 #[test]
+fn repeated_preflight_requests_require_each_distinct_idle_reservation_lookup() {
+    use crate::{
+        RenderResource, ResourceCacheBudget,
+        accounting::{RenderCpuScope, RendererCpu},
+    };
+    use surgeist_ledger::Dimension;
+
+    let options = RenderAccountingOptions::default();
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::DEFAULT,
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let key = ResourceCacheKey::EffectTexture(descriptor().cache_key());
+    let mut frame = manager.begin_frame(None).unwrap();
+    let first = frame.acquire(key.clone(), 4).unwrap();
+    let second = frame.acquire(key, 4).unwrap();
+    assert_ne!(first.resource_identity(), second.resource_identity());
+    frame.release(first).unwrap();
+    frame.release(second).unwrap();
+    drop(frame.finish());
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    let requests = [request.clone(), request];
+    let before = manager.observation_for_test();
+    let facts = registry_facts(&manager);
+    let generation = manager.generation().usage().unwrap();
+    assert_eq!(before.idle_count, 2);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::ScratchCpuBytes),
+        0
+    );
+
+    // Two audit visits, four candidate visits, four membership lookups and
+    // two separate reservation searches require twelve admitted probes.
+    for limit in [11, 12] {
+        let mut context = context(limit);
+        let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
+            manager.preflight_graph_acquisitions(&requests, Some(account))
+        });
+        if limit == 11 {
+            let error = result.unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("the second reservation lookup requires its own admission");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::ResourceProbes)
+            );
+            assert_eq!((refusal.current(), refusal.amount()), (11, 1));
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 11 });
+        } else {
+            result.unwrap();
+        }
+        let report = context.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::ResourceProbes), limit);
+        assert_eq!(
+            report.usage().work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+        assert_eq!(registry_facts(&manager), facts);
+        assert_eq!(manager.observation_for_test(), before);
+        let after = manager.generation().usage().unwrap();
+        for &resource in RenderResource::ALL {
+            assert_eq!(after.live(resource), generation.live(resource));
+            assert_eq!(after.peak(resource), generation.peak(resource));
+        }
+        for &work in RenderWork::ALL {
+            assert_eq!(after.work(work), generation.work(work));
+        }
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        manager.generation().ensure_healthy().unwrap();
+    }
+}
+
+#[test]
+fn preflight_reserves_distinct_idle_entries_before_previewing_fresh_bytes_at_capacity() {
+    use crate::{
+        RenderResource, ResourceCacheBudget,
+        accounting::{RenderCpuScope, RendererCpu},
+    };
+    use surgeist_ledger::Dimension;
+
+    let options = RenderAccountingOptions::default();
+    let cpu = RendererCpu::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        ResourceCacheBudget::new(u64::MAX),
+        Generation::new(options).unwrap(),
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let key = ResourceCacheKey::EffectTexture(descriptor().cache_key());
+    let mut frame = manager.begin_frame(None).unwrap();
+    let first = frame.acquire(key.clone(), 4).unwrap();
+    let second = frame.acquire(key, 4).unwrap();
+    assert_ne!(first.resource_identity(), second.resource_identity());
+    frame.release(first).unwrap();
+    frame.release(second).unwrap();
+    drop(frame.finish());
+    let generation = manager.generation();
+    let filler = generation
+        .allocation(GenerationClass::CacheVello, u64::MAX - 8, None, || ())
+        .unwrap();
+    assert_eq!(generation.cache_bytes().unwrap(), u64::MAX);
+    assert_eq!(generation.registered_cache_bytes().unwrap(), 8);
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 8);
+    let before = manager.observation_for_test();
+    let facts = registry_facts(&manager);
+    let usage = generation.usage().unwrap();
+    let request = ResourceAllocationPreflight::effect_texture(descriptor()).unwrap();
+    let requests = [request.clone(), request.clone(), request];
+
+    for (count, probes) in [(2, 12), (3, 16)] {
+        let mut context = context(u64::MAX);
+        let result = context.run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
+            manager.preflight_graph_acquisitions(&requests[..count], Some(account))
+        });
+        if count == 2 {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+            let value = error.invalid_value_diagnostic().unwrap();
+            assert_eq!(value.field(), "retained resource byte length");
+            assert_eq!(value.value(), "18446744073709551615 + 4");
+            assert_eq!(value.invariant(), "must fit in u64");
+        }
+        let report = context.last_attempt().unwrap().attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::ResourceProbes), probes);
+        assert_eq!(
+            report.usage().work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+        assert_eq!(registry_facts(&manager), facts);
+        assert_eq!(manager.observation_for_test(), before);
+        let after = generation.usage().unwrap();
+        for &resource in RenderResource::ALL {
+            assert_eq!(after.live(resource), usage.live(resource));
+            assert_eq!(after.peak(resource), usage.peak(resource));
+        }
+        for &work in RenderWork::ALL {
+            assert_eq!(after.work(work), usage.work(work));
+        }
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        generation.ensure_healthy().unwrap();
+    }
+    drop(filler);
+    assert_eq!(generation.cache_bytes().unwrap(), 8);
+    assert_eq!(generation.registered_cache_bytes().unwrap(), 8);
+    assert_eq!(generation.idle_cache_bytes().unwrap(), 8);
+}
+
+#[test]
 fn registry_preflight_audits_even_an_empty_request_batch_before_any_mutation() {
     let manager = two_idle_entries();
     let before = registry_facts(&manager);
