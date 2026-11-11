@@ -521,6 +521,87 @@ fn preferred_main_max_content_settles_automatic_own_ratio_cross_f64() {
     own_ratio_cross_from_preferred_inline::<f64>();
 }
 
+fn own_ratio_cross_minimum_controls<S: LayoutScalar>() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let scroll = ComputedOverflow::try_new(Overflow::Hidden, Overflow::Hidden).unwrap();
+    for (label, minimum, maximum, overflow, expected_cross) in [
+        (
+            "content minimum",
+            MinSizeOf::AUTO,
+            MaxSizeOf::NONE,
+            ComputedOverflow::VISIBLE,
+            60.0,
+        ),
+        (
+            "capped content minimum",
+            MinSizeOf::AUTO,
+            MaxSizeOf::px(n(45.0)),
+            ComputedOverflow::VISIBLE,
+            45.0,
+        ),
+        (
+            "explicit zero minimum",
+            MinSizeOf::ZERO,
+            MaxSizeOf::NONE,
+            ComputedOverflow::VISIBLE,
+            32.5,
+        ),
+        (
+            "scroll container",
+            MinSizeOf::AUTO,
+            MaxSizeOf::NONE,
+            scroll,
+            32.5,
+        ),
+    ] {
+        let tree = own_ratio_tree::<S>(flow, PreferredSizeOf::AUTO);
+        let mut root = tree.node_input(0).clone();
+        root.min_size.height = minimum;
+        root.max_size.height = maximum;
+        root.overflow = overflow;
+        let tree = tree.style(0, root).measure(1, Size::new(n(65.0), n(60.0)));
+        let batch = compute_layout(&tree, 0, request(flow, None, None)).unwrap();
+        assert_eq!(
+            readback::single_box_output(&batch, 0, Phase::Unrounded).size,
+            Size::new(n(65.0), n(expected_cross)),
+            "{label}",
+        );
+    }
+}
+
+fn own_ratio_cross_sizing_box_controls<S: LayoutScalar>() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for (box_sizing, cross) in [(BoxSizing::ContentBox, 42.5), (BoxSizing::BorderBox, 37.5)] {
+        let tree = own_ratio_tree::<S>(flow, PreferredSizeOf::AUTO);
+        let mut root = tree.node_input(0).clone();
+        root.box_sizing = box_sizing;
+        root.padding = Edges::all(LengthOf::px(n(3.0)));
+        root.border = Edges::all(LengthOf::px(n(2.0)));
+        let batch = compute_layout(&tree.style(0, root), 0, request(flow, None, None)).unwrap();
+        assert_eq!(
+            readback::single_box_output(&batch, 0, Phase::Unrounded).size,
+            Size::new(n(75.0), n(cross)),
+            "{box_sizing:?}",
+        );
+        assert_eq!(
+            readback::single_box_output(&batch, 1, Phase::Unrounded).location,
+            Point::new(n(5.0), n(5.0)),
+        );
+    }
+}
+
+#[test]
+fn preferred_main_max_content_applies_own_ratio_cross_minimum() {
+    own_ratio_cross_minimum_controls::<f32>();
+    own_ratio_cross_minimum_controls::<f64>();
+}
+
+#[test]
+fn preferred_main_max_content_transfers_own_ratio_in_sizing_box() {
+    own_ratio_cross_sizing_box_controls::<f32>();
+    own_ratio_cross_sizing_box_controls::<f64>();
+}
+
 fn bounded_wrapping<S: LayoutScalar>() {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let tree = two_item_row::<S>(flow, FlexDirection::Row, FlexWrap::Wrap, Some(62.0));
@@ -951,22 +1032,18 @@ fn nested_ratio_flex<S: LayoutScalar>(
 }
 
 #[test]
-fn preferred_main_max_content_preserves_nested_ratio_cross_refusal() {
+fn preferred_main_max_content_settles_nested_ratio_cross_from_flexed_inline() {
     let tree = nested_ratio_flex::<f64>(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO, 2.0);
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let error = compute_layout(&tree, 0, request(flow, Some(300.0), None)).expect_err(
-        "the parent does not settle its child's automatic cross size through the ratio",
-    );
-    assert_eq!(error.site(), LayoutErrorSite::Node(1));
-    assert!(
-        matches!(error.kind(), LayoutErrorKindOf::UnsupportedCapability(
-        LayoutUnsupportedCapability::SizingBehavior(behavior)
-    ) if behavior.property() == SizingProperty::Preferred
-        && behavior.behavior() == SizingBehavior::MaxContent
-        && behavior.algorithm() == SizingAlgorithm::Flex
-        && behavior.axis() == PhysicalAxis::Horizontal),
-        "{error:?}"
-    );
+    let batch = compute_layout(&tree, 0, request(flow, Some(300.0), None)).unwrap();
+    for phase in [Phase::Unrounded, Phase::Final] {
+        for node in [0, 1] {
+            assert_eq!(
+                readback::single_box_output(&batch, node, phase).size,
+                Size::new(100.0, 50.0),
+            );
+        }
+    }
 }
 
 #[test]
