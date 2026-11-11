@@ -393,7 +393,7 @@ impl SemanticSourceContribution {
         local_to_surface: Transform,
         account: &Account,
     ) -> Result<SemanticCommandContribution> {
-        let layer_to_surface = layer.transform.then(local_to_surface)?;
+        let layer_to_surface = layer.transform.then_in(local_to_surface, account)?;
         let singular_source = linear_transform_is_rank_deficient(layer_to_surface)?;
         if singular_source && layer.clip.is_some() {
             // Own clip coverage collapses under the complete ancestor mapping.

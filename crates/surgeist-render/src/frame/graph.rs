@@ -1630,7 +1630,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         parent: PlannedGraphParent,
         state: &SemanticCommandPlanningState,
     ) -> Result<VelloSpanFlush> {
-        let raster_transform = state.capture_transform.then(state.parent_to_surface)?;
+        let raster_transform = state
+            .capture_transform
+            .then_in(state.parent_to_surface, self.account)?;
         let contribution = SemanticSourceContribution::try_from_commands(
             commands,
             SemanticSourceBounds::exactly_empty(),
@@ -1744,8 +1746,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         parent: PlannedGraphParent,
         state: &SemanticCommandPlanningState,
     ) -> Result<PlannedGraphParent> {
-        let layer_transform = layer.transform.then(state.capture_transform)?;
-        let layer_to_surface = layer_transform.then(state.parent_to_surface)?;
+        let layer_transform = layer
+            .transform
+            .then_in(state.capture_transform, self.account)?;
+        let layer_to_surface = layer_transform.then_in(state.parent_to_surface, self.account)?;
         // The shader's destination coordinates belong to the parent image.
         // Ancestor transforms still determine raster density for local captures.
         let layer_to_destination = match state.capture_space {

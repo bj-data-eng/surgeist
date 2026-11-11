@@ -441,6 +441,12 @@ impl Transform {
         ])
     }
 
+    pub(crate) fn then_in(self, next: Self, account: &Account) -> Result<Self> {
+        let product =
+            crate::vello_engine::geometry::affine_product(next.into(), self.into(), account)?;
+        Self::try_new_in(product.as_coeffs(), account)
+    }
+
     /// Conjugates this transform so it operates around `origin`.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] if composition produces a
