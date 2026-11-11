@@ -2598,15 +2598,15 @@ impl NativeDomEvent {
         self.continuation()
             .map_or(DomEventPhase::None, |invocation| invocation.phase.get())
     }
-    /// Source default: these events do not bubble.
+    /// Whether the Event bubbles.
     pub fn bubbles(&self) -> bool {
         self.0.init.get().bubbles
     }
-    /// The actual firing clause's cancelability. Style and Details are false.
+    /// Whether the Event is cancelable.
     pub fn cancelable(&self) -> bool {
         self.0.init.get().cancelable
     }
-    /// Source default: these events are noncomposed.
+    /// Whether the Event is composed across shadow boundaries.
     pub fn composed(&self) -> bool {
         self.0.init.get().composed
     }
