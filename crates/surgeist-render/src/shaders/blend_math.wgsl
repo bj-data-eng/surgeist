@@ -13,10 +13,13 @@ fn surgeist_blend_color_dodge(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f3
 fn surgeist_blend_color_burn(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f32> {
     let zero = vec3<f32>(0.0);
     let one = vec3<f32>(1.0);
-    let divide = source > zero;
+    let complement = max(one - backdrop, zero);
+    let divide = (complement > zero) & (complement < source);
     let divisor = select(one, source, divide);
-    let ratio = clamp(one - backdrop, zero, divisor) / divisor;
-    return select(select(zero, one - ratio, divide), one, backdrop == one);
+    let clamped = select(one, zero, complement == zero);
+    let ratio = select(clamped, complement / divisor, divide);
+    let burned = select(zero, one - ratio, source > zero);
+    return select(burned, one, backdrop == one);
 }
 
 fn surgeist_blend_soft_light(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f32> {
@@ -26,9 +29,11 @@ fn surgeist_blend_soft_light(backdrop: vec3<f32>, source: vec3<f32>) -> vec3<f32
     let low = min(backdrop, quarter);
     let polynomial = ((16.0 * low - 12.0) * low + 4.0) * low;
     let d = select(sqrt(max(backdrop, quarter)), polynomial, backdrop <= quarter);
-    let dark = backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop);
+    let half = vec3<f32>(0.5);
+    let dark_source = min(source, half);
+    let dark = backdrop - (1.0 - 2.0 * dark_source) * backdrop * (1.0 - backdrop);
     let light = backdrop + (2.0 * source - 1.0) * (d - backdrop);
-    return select(light, dark, source <= vec3<f32>(0.5));
+    return select(light, dark, source <= half);
 }
 
 fn surgeist_blend_clip_color(color: vec3<f32>, luminosity: f32) -> vec3<f32> {
@@ -37,8 +42,8 @@ fn surgeist_blend_clip_color(color: vec3<f32>, luminosity: f32) -> vec3<f32> {
     let maximum = max(max(color.r, color.g), color.b);
     let low_span = luminosity - minimum;
     let high_span = maximum - luminosity;
-    let clip_low = all(vec2<bool>((minimum < 0.0), (low_span > 0.0)));
-    let clip_high = all(vec2<bool>((maximum > 1.0), (high_span > 0.0)));
+    let clip_low = (minimum < 0.0) & (low_span > 0.0);
+    let clip_high = (maximum > 1.0) & (high_span > 0.0);
     let low_divisor = select(1.0, low_span, clip_low);
     let high_divisor = select(1.0, high_span, clip_high);
     let low = luminosity + (color - luminosity) * luminosity / low_divisor;
