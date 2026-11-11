@@ -1231,6 +1231,60 @@ grid_reference_owners = ["/", "/0", "/0/0"]
         }
     }
     #[test]
+    fn ordinary_matching_admits_source_bound_relative_block_flow_capture() {
+        const SOURCE: &str = "html/grid/absolute_correct_cross_child_size_with_percentage.html";
+        const NAME: &str = "absolute_correct_cross_child_size_with_percentage__border_box_ltr";
+        const VARIANT: &str = "border_box_ltr";
+        let appendix = format!(
+            "\n[[matching_publications]]\nedition = \"plain-relative-control\"\nsources = [{SOURCE:?}]\n"
+        );
+        let catalogue =
+            Declaration::parse(&[unannotated_catalogue(), appendix.as_bytes()].concat())
+                .expect("plain relative BlockFlow should be admitted to matching geometry");
+        let record = catalogue
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == SOURCE)
+            .unwrap();
+        assert_eq!(record.matching_edition(), Some("plain-relative-control"));
+        let current = include_str!(
+            "captured/root-context-v4/xml/grid/absolute_correct_cross_child_size_with_percentage__border_box_ltr.xml"
+        );
+        let historical = include_str!(
+            "xml/grid/absolute_correct_cross_child_size_with_percentage__border_box_ltr.xml"
+        );
+        record
+            .verify_matching_capture(current, Some(historical), NAME, VARIANT)
+            .expect("historical geometry and source-bound relative root should qualify");
+        for (old, new) in [
+            ("parent-direction=\"ltr\"", "parent-direction=\"rtl\""),
+            (
+                "parent-inline-extent=\"800px\"",
+                "parent-inline-extent=\"799px\"",
+            ),
+            (
+                "parent-inline-extent=\"800px\"",
+                "parent-inline-extent=\"800px\" parent-block-extent=\"600px\"",
+            ),
+            ("display=\"grid\"", "display=\"grid\" position=\"absolute\""),
+            (
+                "observation-frame=\"root-border\"",
+                "observation-frame=\"root-border-local\"",
+            ),
+            ("<node x=\"50\" y=\"40\"", "<node x=\"49\" y=\"40\""),
+        ] {
+            let changed = current.replacen(old, new, 1);
+            assert_ne!(changed, current);
+            assert!(
+                record
+                    .verify_matching_capture(&changed, Some(historical), NAME, VARIANT)
+                    .is_err(),
+                "accepted altered capture field {new}"
+            );
+        }
+    }
+
+    #[test]
     fn matching_capture_revalidation_rejects_changed_history_and_declared_root_metadata() {
         const SOURCE: &str = "html/flex/fri07_collapsed_strut_wrapping.html";
         const NAME: &str = "fri07_collapsed_strut_wrapping__border_box_ltr";

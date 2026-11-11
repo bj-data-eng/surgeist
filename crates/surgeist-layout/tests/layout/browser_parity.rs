@@ -407,6 +407,20 @@ fn fri07_c04_browser_parity_exact_twenty_four_outputs_parse_without_embedded_pro
 }
 
 #[test]
+fn fri07_c04_ordinary_box_captures_match_layout() {
+    let originals = fri07_c04_browser_output_paths()
+        .into_iter()
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_str().unwrap();
+            name.starts_with("fri07_cross_auto_margin_overflow__")
+                || name.starts_with("fri07_absolute_auto_margin_insets__")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(originals.len(), 8);
+    assert_registered_originals_match(&originals);
+}
+
+#[test]
 fn normalized_flex_collapse_ordinary_variants_match_layout() {
     let paths = fri07_c04_browser_output_paths()
         .into_iter()
