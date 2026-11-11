@@ -7,6 +7,7 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | --- | --- |
 | `resolve_border_image`, `BorderImageRequest`, `BorderImageGeometry` | Slice, outset, and width geometry from a concrete source and a supplied border box. |
 | `resolve_border_image_area`, `BorderImageArea`, `resolve_border_image_in_area` | Compute the outset area before source sizing and reuse it for partitioning. |
+| `resolve_border_image_tiling`, `BorderImageTiling` | Scale and position tiles from the admitted nine-slice geometry. |
 | `BoxId`, `BoxFacts` | Rendering-box slots and explicit resolved topology/context facts. |
 | `ChildOrder`, `Participation`, `Position`, `ZIndex`, `ContextEffect` | Shared source/flex/grid traversal and actual-context classification facts. |
 | `plan_stacking`, `PaintOutcome`, `StackingPlan`, `ContextView` | Context membership and ordered immediate child contexts, or typed failure. |
@@ -75,9 +76,38 @@ Ledger reports admitted `BorderImageValidation`, `BorderImageCoordinate`, and
 `OutputRecord` work. The staged area reports its coordinate work in
 `BorderImageArea` and publishes one output record. The partition operation
 charges each region and the complete result. Each operation accounts for its
-own fixed retained result and releases provisional custody on refusal. Source
-sizing, resource selection, repetition, and concrete draw lowering belong to
-the callers and their respective owners.
+own fixed retained result and releases provisional custody on refusal.
+
+## Border-image tiling
+
+`resolve_border_image_tiling` consumes the admitted partition and horizontal
+and vertical repeat choices. Corners stretch to their destination rectangles.
+Edges fit the cross-axis thickness and use the same proportional scale along
+the edge before repetition. The filled center uses the top and left scaling
+bases, falling back to bottom and right respectively. When neither edge
+supplies a basis, one source coordinate maps to one CSS pixel on that axis.
+Empty source or destination regions emit no plan.
+
+Each drawable region carries its source rectangle, destination clip, and two
+patterns local to the clip minimum. Stretch emits one tile. Repeat starts
+with a centered tile and extends in both directions to the clip. Round chooses
+the nearest positive whole count, with half ties toward the higher count,
+then divides the clip extent evenly. Space retains only whole tiles and
+divides the remainder equally before, after, and between them. Space emits
+no region when a tile cannot fit on either of its axes. A spaced or periodic
+tile `i` starts at `anchor + i * (extent + gap)`. A finite pattern with zero
+gap evenly subdivides the clip into `count` tiles. Use the clip endpoints for
+the first and final boundaries to avoid accumulating rounding in the nominal
+tile extent. Finite counts retain distinguishable binary64 indices and an
+exactly representable extra gap count. Unrepresentable arithmetic returns
+the typed border-image geometry error.
+
+Ledger admits coordinate actions and emitted region records in
+`BorderImageTiling` and accounts for the fixed plan at publication. Source
+sizing, resource eligibility, composited order, and concrete draw lowering
+use their respective owners.
+
+[CSS Backgrounds and Borders Level 3, drawing the border image](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-image-process)
 
 ## Zero-height gradient colors
 

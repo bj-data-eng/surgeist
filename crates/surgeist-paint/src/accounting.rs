@@ -58,6 +58,7 @@ pub(crate) enum OperationKind {
     ZeroHeightGradient,
     BorderImageArea,
     BorderImage,
+    BorderImageTiling,
 }
 const MAX_OPERATION_SCOPES: usize = 10;
 
@@ -72,6 +73,7 @@ impl OperationKind {
             Self::ZeroHeightGradient => "paint zero-height gradient colors",
             Self::BorderImageArea => "paint border image area",
             Self::BorderImage => "paint border image geometry",
+            Self::BorderImageTiling => "paint border image tiling",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -83,6 +85,7 @@ impl OperationKind {
             Self::RadialGradient => 5,
             Self::ZeroHeightGradient => 7,
             Self::BorderImageArea | Self::BorderImage => 5,
+            Self::BorderImageTiling => 4,
         }
     }
 }
@@ -202,6 +205,7 @@ pub enum PaintPhase {
     GradientStopDistribution,
     BorderImageGeometry,
     BorderImageArea,
+    BorderImageTiling,
 }
 impl PaintPhase {
     fn name(self) -> &'static str {
@@ -223,6 +227,7 @@ impl PaintPhase {
             Self::GradientStopDistribution => "gradient_stop_distribution",
             Self::BorderImageGeometry => "border_image_geometry",
             Self::BorderImageArea => "border_image_area",
+            Self::BorderImageTiling => "border_image_tiling",
         }
     }
 }
