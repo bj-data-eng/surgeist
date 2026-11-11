@@ -70,21 +70,7 @@ pub(super) fn document_projects_its_current_native_element() {
 }
 
 pub(super) fn html_roots_select_their_exact_interfaces() {
-    let (mut host, top) = prepare_event_window();
-    let permit = host.permit().unwrap();
-    eval(
-        &mut host,
-        &permit,
-        "Number((globalThis.interfaceDocument = new Document()) instanceof Document)",
-        1.0,
-    );
-    let snapshot = host.snapshot().unwrap();
-    let document = snapshot
-        .nodes()
-        .filter_map(|id| snapshot.node(id).unwrap().as_document())
-        .map(|view| view.id())
-        .find(|document| *document != top.document())
-        .expect("canonical document created by the constructor");
+    let (mut host, permit, document) = interface_document();
     let mut previous = None;
     for (name, interface, parent) in [
         ("h2", "HTMLHeadingElement", "HTMLElement"),
@@ -143,6 +129,75 @@ pub(super) fn html_roots_select_their_exact_interfaces() {
                 Object.getPrototypeOf(type.prototype) === HTMLMediaElement.prototype))"#,
         1.0,
     );
+}
+
+pub(super) fn generic_and_mathml_roots_keep_exact_namespaces() {
+    let (mut host, permit, document) = interface_document();
+    let mut previous = None;
+    for (namespace, name, expression) in [
+        (
+            Namespace::none(),
+            "Root",
+            r#"root.namespaceURI === null && root.prefix === null && root.localName === "Root"
+                && root.tagName === "Root" && Object.getPrototypeOf(root) === Element.prototype"#,
+        ),
+        (
+            Namespace::from_uri("urn:surgeist:example"),
+            "p:Ω",
+            r#"root.namespaceURI === "urn:surgeist:example" && root.prefix === "p"
+                && root.localName === "Ω" && root.tagName === "p:Ω"
+                && Object.getPrototypeOf(root) === Element.prototype"#,
+        ),
+        (
+            Namespace::mathml(),
+            "math",
+            r#"root.namespaceURI === "http://www.w3.org/1998/Math/MathML"
+                && root.localName === "math" && Object.getPrototypeOf(root) === MathMLElement.prototype
+                && Object.getPrototypeOf(MathMLElement.prototype) === Element.prototype"#,
+        ),
+    ] {
+        previous = Some(
+            host.with_native(|dom, _, _| {
+                let mut batch = DomBatch::new();
+                if let Some(previous) = previous {
+                    batch.detach(previous);
+                    batch.destroy(previous);
+                }
+                let root = batch.create_element_ns(document, namespace, name);
+                batch.insert_before(&root, document, None);
+                dom.apply(batch, &cancel())
+                    .unwrap()
+                    .created(&root)
+                    .unwrap()
+                    .unwrap()
+            })
+            .unwrap(),
+        );
+        let script = format!(
+            "Number((() => {{ const root = interfaceDocument.documentElement; return {expression}; }})())"
+        );
+        host.in_document(&permit, |scope| assert_script_number(scope, &script, 1.0))
+            .unwrap_or_else(|error| panic!("qualified foreign root {name} refused: {error:?}"));
+    }
+}
+
+fn interface_document() -> (DocumentScriptHost, DocumentScriptPermit, DocumentId) {
+    let (mut host, top) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number((globalThis.interfaceDocument = new Document()) instanceof Document)",
+        1.0,
+    );
+    let snapshot = host.snapshot().unwrap();
+    let document = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).unwrap().as_document())
+        .map(|view| view.id())
+        .find(|document| *document != top.document())
+        .expect("canonical document created by the constructor");
+    (host, permit, document)
 }
 
 pub(super) fn root_identity_survives_adoption_and_exact_retirement() {
