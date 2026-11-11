@@ -37,6 +37,56 @@ mod repeated_proof_edge_tests {
     };
 
     #[test]
+    fn last_color_filter_lookup_uses_a_bounded_step_search() {
+        let setup = Account::for_test();
+        let mut scene = crate::Scene::new();
+        for _ in 0..16 {
+            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                crate::FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap();
+            scene.layer(crate::Layer::new().with_filter_list(filters), |child| {
+                child.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+            });
+        }
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, &setup)
+            .unwrap();
+        let context = crate::frame::FrameContext::try_new(
+            crate::Size::new(4.0, 4.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap()
+        else {
+            panic!("foreground filters must select the graph");
+        };
+        assert_eq!(graph.filter_steps.len(), 16);
+        let passes = graph.lowering_view(&setup).unwrap().passes(&setup).unwrap();
+        let last = passes
+            .iter()
+            .rev()
+            .find(|view| view.pass.intent == SemanticPassIntent::ColorFilter)
+            .copied()
+            .unwrap();
+
+        let mut accounting = RenderAccountingContext::new(RenderAccountingOptions::new());
+        let kind = accounting
+            .run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                last.kind(account)
+            })
+            .unwrap();
+        assert!(matches!(kind, GraphLoweringPassKind::ColorFilter(Some(_))));
+        let report = accounting.last_attempt().unwrap().attempt().unwrap();
+        // The pass plus four binary-search probes and the selected step.
+        assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 6);
+        // One start ID per probe and one membership check in the selected step.
+        assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 5);
+    }
+
+    #[test]
     fn repeated_proof_filter_spatial_mapping_admits_its_source_read() {
         let setup = Account::for_test();
         let mut scene = crate::Scene::new();
