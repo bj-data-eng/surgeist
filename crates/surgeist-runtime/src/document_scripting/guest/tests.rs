@@ -204,6 +204,24 @@ pub(in crate::document_scripting) fn unpublished_window_requires_its_original_bo
     assert!(bound.is_none());
     let exact_activation = host.guest_events().unwrap().budget.used.get();
     let permit = host.permit().unwrap();
+    let names = host
+        .in_document(&permit, |scope| {
+            let names = scope.evaluate(&units("Object.getPrototypeOf(Window.prototype)"))?;
+            Ok(scope.retain(&names))
+        })
+        .unwrap();
+    {
+        let mut execution = host.engine.as_mut().unwrap().process.execution();
+        let other = execution.create_realm().unwrap();
+        execution
+            .in_realm(&other, |scope| {
+                let global = scope.global()?;
+                let names = scope.import(&names)?;
+                scope.set(&global, PropertyKey::String(&units("names")), &names)?;
+                assert_guest(scope, "!Reflect.deleteProperty(names, 'absent')")
+            })
+            .unwrap();
+    }
     host.in_document(&permit, |scope| {
         scope
             .evaluate(&units(

@@ -574,6 +574,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     repeated_host_teardown_discards_queued_jobs_without_executing_them()?;
     distinct_realms_share_native_state_without_sharing_globals()?;
     window_requires_a_constructible_event_target_interface()?;
+    window_rejects_an_effectful_event_target_proxy()?;
     invalid_native_identity_types_are_rejected()?;
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
     missing_managed_holder_refuses_and_allows_other_pins_to_release()?;
@@ -602,6 +603,17 @@ fn window_requires_a_constructible_event_target_interface() -> TestResult {
                 configurable: false,
             },
         )?;
+        let global = scope.global()?;
+        scope.define_new_property(
+            &global,
+            crate::PropertyKey::String(&b"EventTarget".map(u16::from)),
+            crate::PropertyDescriptor::Data {
+                value: &callable,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        )?;
         Ok::<_, Error>((callable, ()))
     });
     assert!(matches!(rejected, Err(Error::PropertyRejected)));
@@ -611,6 +623,38 @@ fn window_requires_a_constructible_event_target_interface() -> TestResult {
         assert_eq!(scope.to_utf16(&value)?, b"undefined".map(u16::from));
         Ok(())
     })?;
+    Ok(())
+}
+
+fn window_rejects_an_effectful_event_target_proxy() -> TestResult {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let pending = execution.prepare_window_realm()?;
+    let rejected = execution.finish_window_realm(pending, |scope, prototype| {
+        let global = scope.global()?;
+        scope.set(
+            &global,
+            crate::PropertyKey::String(&b"reservedPrototype".map(u16::from)),
+            prototype,
+        )?;
+        let source = r#"(() => {
+            const expected = reservedPrototype;
+            return Object.defineProperty(globalThis, "EventTarget", {
+                value: new Proxy(function EventTarget() {}, {
+                    get(target, key) {
+                        if (key !== "prototype") return Reflect.get(target, key);
+                        delete globalThis.EventTarget;
+                        return expected;
+                    },
+                }),
+                writable: true,
+                configurable: true,
+            }).EventTarget;
+        })()"#;
+        let proxy = scope.evaluate(&source.encode_utf16().collect::<Vec<_>>())?;
+        Ok::<_, Error>((proxy, ()))
+    });
+    assert!(matches!(rejected, Err(Error::PropertyRejected)));
     Ok(())
 }
 

@@ -292,7 +292,9 @@ pub(super) fn window_resolves_the_inherited_event_target_operations() {
             || Reflect.setPrototypeOf(Window.prototype, {}) || Reflect.setPrototypeOf(target, {})
             || Reflect.setPrototypeOf(names, {}) || Reflect.preventExtensions(names)
             || Reflect.defineProperty(names, "absent", { value: 1 })
-            || Reflect.deleteProperty(names, "absent")) {
+            || Reflect.deleteProperty(names, "absent")
+            || Reflect.defineProperty(names, "0", { value: 1 })
+            || Reflect.deleteProperty(names, "0")) {
             return "the Window named-properties layer must preserve standard reflection";
         }
         for (const key of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
