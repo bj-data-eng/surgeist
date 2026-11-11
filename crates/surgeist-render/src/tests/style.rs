@@ -447,6 +447,40 @@ fn image_repeat_resolves_finite_positions_with_overflowing_offsets() {
 }
 
 #[test]
+fn image_repeat_preserves_refusal_for_invalid_tiles_across_an_overflowing_span() {
+    use crate::{RenderResource, RenderWork};
+
+    let unit = 2.0_f64.powi(1023);
+    let clip = Rect::new(-unit + unit * 2.0_f64.powi(-22), 0.0, f64::MAX, 1.0);
+    let repeat =
+        ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
+    // The clip extends past unit and both lattices start at -unit. The
+    // smaller period requires over two million tiles. The larger period
+    // puts the third tile at unit, where its right edge cannot be represented.
+    for (period, field, admitted_tiles) in [
+        (unit * 2.0_f64.powi(-20), "image repeat tile count", 0),
+        (unit, "image repeat tile rect max x", 2),
+    ] {
+        let placement =
+            ResolvedImagePlacement::from_parts(clip, Rect::new(0.0, 0.0, period, 1.0)).unwrap();
+        let mut accounting = crate::RenderAccountingContext::default();
+        let error = repeat.resolve(placement, &mut accounting).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert_eq!(
+            error.invalid_value_diagnostic().map(InvalidValue::field),
+            Some(field)
+        );
+        let report = accounting.last_attempt().unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RepeatTiles), admitted_tiles);
+        if admitted_tiles == 0 {
+            assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        }
+        assert_style_failure_releases_backing(report);
+    }
+}
+
+#[test]
 fn image_repeat_restores_a_finite_origin_after_phase_rounding() {
     let high = 2.0_f64.powi(1023);
     let step = 2.0_f64.powi(971);

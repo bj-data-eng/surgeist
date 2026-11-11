@@ -1216,14 +1216,18 @@ fn repeat_positions(
     }
 
     let origin = first_repeated_tile_origin(clip_origin, tile_origin, tile_axis, account)?;
-    let count = repeat_position_count(origin, clip_end, tile_axis, account)?;
+    let (count, overflowing_span) = repeat_position_count(origin, clip_end, tile_axis, account)?;
     validate_image_repeat_tile_count(count, account)?;
 
     let mut positions = account.temporary(count)?;
     for index in 0..count {
-        let index = account.coordinate(|| index as f64)?;
-        let offset = account.coordinate(|| tile_axis * index)?;
-        let position = account.coordinate(|| origin + offset)?;
+        let position = if overflowing_span {
+            fused_repeat_position(origin, tile_axis, index, account)?
+        } else {
+            let index = account.coordinate(|| index as f64)?;
+            let offset = account.coordinate(|| tile_axis * index)?;
+            account.coordinate(|| origin + offset)?
+        };
         positions.push(position)?;
     }
     Ok(positions)
@@ -1354,20 +1358,56 @@ fn repeat_position_count(
     clip_end: f64,
     tile_axis: f64,
     account: &Account,
-) -> Result<usize> {
+) -> Result<(usize, bool)> {
     if account.coordinate(|| origin >= clip_end)? {
-        return Ok(0);
+        return Ok((0, false));
     }
     let delta = account.coordinate(|| clip_end - origin)?;
     let quotient = account.coordinate(|| delta / tile_axis)?;
     let count = account.coordinate(|| quotient.ceil())?;
-    if account.coordinate(|| !count.is_finite())?
-        || account.coordinate(|| count < 0.0)?
-        || account.coordinate(|| count > usize::MAX as f64)?
-    {
+    if account.coordinate(|| !count.is_finite())? {
+        if account.coordinate(|| delta.is_infinite())? {
+            let count = overflowing_repeat_position_count(origin, clip_end, tile_axis, account)?;
+            return Ok((count, true));
+        }
         return Err(image_repeat_tile_count_error(count));
     }
-    account.coordinate(|| count as usize)
+    if account.coordinate(|| count < 0.0)? || account.coordinate(|| count > usize::MAX as f64)? {
+        return Err(image_repeat_tile_count_error(count));
+    }
+    Ok((account.coordinate(|| count as usize)?, false))
+}
+
+fn overflowing_repeat_position_count(
+    origin: f64,
+    clip_end: f64,
+    tile_axis: f64,
+    account: &Account,
+) -> Result<usize> {
+    // Rounded tile origins are monotone. Find the first origin excluded by the
+    // half-open clip. A tile at the limit index proves the count is too large.
+    let mut lower = 0;
+    let mut upper = MAX_IMAGE_REPEAT_TILES + 1;
+    while account.coordinate(|| lower < upper)? {
+        let index = account.coordinate(|| lower.midpoint(upper))?;
+        let position = fused_repeat_position(origin, tile_axis, index, account)?;
+        if account.coordinate(|| position < clip_end)? {
+            lower = account.coordinate(|| index + 1)?;
+        } else {
+            upper = index;
+        }
+    }
+    Ok(lower)
+}
+
+fn fused_repeat_position(
+    origin: f64,
+    tile_axis: f64,
+    index: usize,
+    account: &Account,
+) -> Result<f64> {
+    let index = account.coordinate(|| index as f64)?;
+    account.coordinate(|| tile_axis.mul_add(index, origin))
 }
 
 fn validate_image_repeat_tile_count(tile_count: usize, account: &Account) -> Result<()> {
