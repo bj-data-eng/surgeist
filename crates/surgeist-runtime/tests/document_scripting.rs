@@ -2261,6 +2261,7 @@ fn main() {
             "document-fragment-watched-document" => document_fragment::fragment_observes_a_destination_with_an_existing_host_watch(),
             "document-element-projection" => element_projection::document_projects_its_current_native_element(),
             "html-element-interfaces" => element_projection::html_roots_select_their_exact_interfaces(),
+            "element-adoption-retirement" => element_projection::root_identity_survives_adoption_and_exact_retirement(),
             "character-data-creation" => text_comment::creates_canonical_text_and_comments(),
             "character-data-mutation" => text_comment::edits_canonical_character_data_and_live_ranges(),
             "character-data-arity" => text_comment::rejects_missing_arguments_before_coercion(),
@@ -2340,6 +2341,7 @@ fn main() {
     document_fragment::fragment_observes_a_destination_with_an_existing_host_watch();
     element_projection::document_projects_its_current_native_element();
     element_projection::html_roots_select_their_exact_interfaces();
+    element_projection::root_identity_survives_adoption_and_exact_retirement();
     text_comment::creates_canonical_text_and_comments();
     text_comment::edits_canonical_character_data_and_live_ranges();
     text_comment::rejects_missing_arguments_before_coercion();

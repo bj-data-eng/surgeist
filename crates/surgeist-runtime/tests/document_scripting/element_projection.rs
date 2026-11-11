@@ -144,3 +144,120 @@ pub(super) fn html_roots_select_their_exact_interfaces() {
         1.0,
     );
 }
+
+pub(super) fn root_identity_survives_adoption_and_exact_retirement() {
+    let (mut host, top) = prepare_event_window();
+    let permit = host.permit().unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number((globalThis.originDocument = new Document()) instanceof Document)",
+        1.0,
+    );
+    let snapshot = host.snapshot().unwrap();
+    let origin = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).unwrap().as_document())
+        .map(|view| view.id())
+        .find(|document| *document != top.document())
+        .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        "Number((globalThis.destinationDocument = new Document()) instanceof Document)",
+        1.0,
+    );
+    let snapshot = host.snapshot().unwrap();
+    let destination = snapshot
+        .nodes()
+        .filter_map(|id| snapshot.node(id).unwrap().as_document())
+        .map(|view| view.id())
+        .find(|document| *document != top.document() && *document != origin)
+        .unwrap();
+    let root = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            let root = batch.create_element_ns(origin, Namespace::html(), "div");
+            batch.insert_before(&root, origin, None);
+            dom.apply(batch, &cancel())
+                .unwrap()
+                .created(&root)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    let connected = host.in_document(&permit, |scope| {
+        assert_script_number(
+            scope,
+            r#"Number((() => {
+                globalThis.originalElement = originDocument.documentElement;
+                originalElement.expando = 42;
+                return originalElement instanceof HTMLDivElement
+                    && originalElement.getRootNode() === originDocument;
+            })())"#,
+            1.0,
+        )
+    });
+    if connected.is_err() {
+        panic!(
+            "connected Element root lookup refused: {:?}",
+            native_failure(connected).cause::<DocumentGuestEventError>()
+        );
+    }
+    host.with_native(|dom, _, _| {
+        let mut batch = DomBatch::new();
+        batch.adopt(root, destination);
+        batch.insert_before(root, destination, None);
+        dom.apply(batch, &cancel()).unwrap();
+    })
+    .unwrap();
+    eval(
+        &mut host,
+        &permit,
+        r#"Number(originDocument.documentElement === null
+            && destinationDocument.documentElement === originalElement
+            && originalElement.getRootNode() === destinationDocument
+            && originalElement.ownerDocument === destinationDocument
+            && originalElement.expando === 42)"#,
+        1.0,
+    );
+    let replacement = host
+        .with_native(|dom, _, _| {
+            let mut batch = DomBatch::new();
+            batch.detach(root);
+            batch.destroy(root);
+            let replacement = batch.create_element_ns(destination, Namespace::html(), "div");
+            batch.insert_before(&replacement, destination, None);
+            dom.apply(batch, &cancel())
+                .unwrap()
+                .created(&replacement)
+                .unwrap()
+                .unwrap()
+        })
+        .unwrap();
+    assert_ne!(root, replacement);
+    assert!(matches!(
+        host.snapshot().unwrap().node(root),
+        Err(DomError::StaleNode)
+    ));
+    eval(
+        &mut host,
+        &permit,
+        r#"Number(destinationDocument.documentElement instanceof HTMLDivElement
+            && destinationDocument.documentElement !== originalElement
+            && destinationDocument.documentElement.expando === undefined)"#,
+        1.0,
+    );
+    let failure = native_failure(host.in_document(&permit, |scope| {
+        let code = "originalElement.localName"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        scope.evaluate(&code).map(drop)
+    }));
+    assert!(matches!(
+        failure.cause::<DocumentGuestEventError>(),
+        Some(DocumentGuestEventError::Document(
+            DocumentScriptError::Native(DocumentScriptNativeError::Dom(DomError::StaleNode))
+        ))
+    ));
+}
