@@ -353,37 +353,36 @@ fn ordinary_throw_keeps_the_real_event_and_tail() {
     assert!(close.dialog_close().is_some());
 }
 
-fn conversion_time_native_refusal_retains_original_source() {
+fn conversion_time_native_refusal_retains_original_source(return_value: &str) {
     let cancellation = Arc::new(cancel());
     let revoke = cancellation.clone();
     let jobs = Arc::new(AtomicUsize::new(0));
     let job_counter = jobs.clone();
-    let mut fixture = fixture(
-        "(() => { try { detachIf({ valueOf() { revokeNative(); return 1; } }); } catch (_) {} })",
-        cancellation.clone(),
-        move |scope| {
-            let job = Callback::new(move |_, _| {
-                job_counter.fetch_add(1, Ordering::Relaxed);
-                Ok(Completion::Undefined)
-            });
-            let global = scope.global()?;
-            let function = scope.function(&job)?;
-            let key = "sourceJob".encode_utf16().collect::<Vec<_>>();
-            scope.set(&global, PropertyKey::String(&key), &function)?;
-            let script = "Promise.resolve().then(sourceJob)"
-                .encode_utf16()
-                .collect::<Vec<_>>();
-            scope.evaluate(&script)?;
-            let callback = Callback::new(move |_, _| {
-                revoke.store(true, Ordering::Relaxed);
-                Ok(Completion::Undefined)
-            });
-            let global = scope.global()?;
-            let function = scope.function(&callback)?;
-            let key = "revokeNative".encode_utf16().collect::<Vec<_>>();
-            scope.set(&global, PropertyKey::String(&key), &function)
-        },
+    let handler = format!(
+        "(() => {{ try {{ detachIf({{ valueOf() {{ revokeNative(); return {return_value}; }} }}); }} catch (_) {{}} }})"
     );
+    let mut fixture = fixture(&handler, cancellation.clone(), move |scope| {
+        let job = Callback::new(move |_, _| {
+            job_counter.fetch_add(1, Ordering::Relaxed);
+            Ok(Completion::Undefined)
+        });
+        let global = scope.global()?;
+        let function = scope.function(&job)?;
+        let key = "sourceJob".encode_utf16().collect::<Vec<_>>();
+        scope.set(&global, PropertyKey::String(&key), &function)?;
+        let script = "Promise.resolve().then(sourceJob)"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        scope.evaluate(&script)?;
+        let callback = Callback::new(move |_, _| {
+            revoke.store(true, Ordering::Relaxed);
+            Ok(Completion::Undefined)
+        });
+        let global = scope.global()?;
+        let function = scope.function(&callback)?;
+        let key = "revokeNative".encode_utf16().collect::<Vec<_>>();
+        scope.set(&global, PropertyKey::String(&key), &function)
+    });
     let failure = {
         let progress = fixture
             .host
@@ -523,6 +522,8 @@ fn source_driver_refusal_keeps_the_original_cause() {
 
 pub(super) fn run() {
     ordinary_throw_keeps_the_real_event_and_tail();
-    conversion_time_native_refusal_retains_original_source();
+    for result in ["1", "0", "NaN"] {
+        conversion_time_native_refusal_retains_original_source(result);
+    }
     source_driver_refusal_keeps_the_original_cause();
 }
