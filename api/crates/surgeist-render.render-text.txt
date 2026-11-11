@@ -707,6 +707,7 @@ pub surgeist_render::RenderWork::GpuObjectsCreated
 pub surgeist_render::RenderWork::GradientStopVisits
 pub surgeist_render::RenderWork::GraphEdgeVisits
 pub surgeist_render::RenderWork::GraphNodeVisits
+pub surgeist_render::RenderWork::GraphProofSortMoves
 pub surgeist_render::RenderWork::ImageContentHits
 pub surgeist_render::RenderWork::ImageContentMisses
 pub surgeist_render::RenderWork::ImageFirstObservedBytes
@@ -1816,6 +1817,7 @@ pub surgeist_render::RenderWorkTable::GpuObjectsCreated: T
 pub surgeist_render::RenderWorkTable::GradientStopVisits: T
 pub surgeist_render::RenderWorkTable::GraphEdgeVisits: T
 pub surgeist_render::RenderWorkTable::GraphNodeVisits: T
+pub surgeist_render::RenderWorkTable::GraphProofSortMoves: T
 pub surgeist_render::RenderWorkTable::ImageContentHits: T
 pub surgeist_render::RenderWorkTable::ImageContentMisses: T
 pub surgeist_render::RenderWorkTable::ImageFirstObservedBytes: T
