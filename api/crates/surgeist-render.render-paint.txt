@@ -508,6 +508,7 @@ pub surgeist_render::RenderAttemptKind::ImageRepeat
 pub surgeist_render::RenderAttemptKind::PaintGradient
 pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
+pub surgeist_render::RenderAttemptKind::SdrColor
 pub surgeist_render::RenderAttemptKind::TextLayout
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptStatus
 pub surgeist_render::RenderAttemptStatus::Canceled
@@ -2174,5 +2175,6 @@ pub fn surgeist_render::prepare_linear_gradient(line: &surgeist_paint::gradient:
 pub fn surgeist_render::prepare_radial_gradient(geometry: &surgeist_paint::radial_gradient::RadialGradientGeometry, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Gradient>
 pub fn surgeist_render::prepare_repeating_linear_gradient(line: &surgeist_paint::gradient::LinearGradientLine, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::RepeatingGradient>
 pub fn surgeist_render::prepare_repeating_radial_gradient(geometry: &surgeist_paint::radial_gradient::RadialGradientGeometry, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::RepeatingGradient>
+pub fn surgeist_render::prepare_sdr_srgb_color(resolved: surgeist_color::value::Color, accounting: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub fn surgeist_render::prepare_zero_height_gradient_color(colors: &surgeist_paint::zero_height_gradient::ZeroHeightGradientColors<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Color>
 pub type surgeist_render::Result<T> = core::result::Result<T, surgeist_render::Error>

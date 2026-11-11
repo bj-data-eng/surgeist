@@ -174,6 +174,21 @@ scalar prefixes. Solid or eliminated sources enter no initializer. The work
 limit applies to frames; standalone preparation and readback do not produce it.
 Adding this unit also adds a required field to the public `RenderWorkTable`.
 
+## SDR sRGB color preparation
+
+`prepare_sdr_srgb_color` accepts a resolved `surgeist_color::Color` for a
+caller-selected SDR sRGB destination. It returns the straight numeric-sRGB
+`Color` accepted by existing scene paints. In-gamut channels pass through.
+Out-of-gamut colors use [CSS Color 4 binary search with Local MINDE][local-minde].
+Missing components contribute zero for rendering. Mapping preserves alpha.
+
+This standalone operation records an `SdrColor` attempt with timed preparation
+and coordinate phases when timing is enabled. It admits each color conversion
+as three coordinate visits and accounts for the scalar mapping and output work.
+The caller supplies an accounting context and can reuse it after a refusal.
+
+[local-minde]: https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#css-gamut-mapping
+
 ## Gradient paints
 
 `Gradient` supplies ordinary linear, positive elliptical radial, horizontal-distance
